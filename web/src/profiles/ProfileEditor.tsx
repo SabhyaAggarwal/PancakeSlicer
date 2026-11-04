@@ -8,7 +8,8 @@ import { findProfile, profileKey } from './identity';
 import { ColorPicker } from '../components/ColorPicker';
 import { profileColour,profileSummary } from './metadata';
 import { MenuButton } from '../components/Menu';
-import { WorksWith, applicabilityKey, worksWithNone } from './WorksWith';
+import { applicabilityKey } from './WorksWith';
+import { Fits } from './Fits';
 import type { ProfileApplicability } from './applicability';
 import { acknowledgeProjectProfileChanges,type ProjectProfileChanges } from './project-draft';
 import { requestPreset } from '../components/PresetCombo';
@@ -101,11 +102,8 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const editor: ProfileFields = useMemo(() => ({name, config: shown, baseline, changes, set: type === 'process' ? setOrUnlink : set, reset, mode: type === 'process' ? 'develop' : mode, sources, sourceText, resetToBase: type === 'process' ? relink : resetToBase}), [name, shown, baseline, changes, set, setOrUnlink, reset, mode, type, sources, sourceText, resetToBase, relink]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || scalesDirty || overridesDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
-  const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
-  const openOnWorksWith = useRef(!!source && worksWithNone(type, source.applicability)).current;
   const save = async () => {
     if (!m.can({type: 'SAVE'}) || !dirty) return;
-    if (noPrinter) {setError('Works with matches no printer.'); return;}
     const s = getState(), currentSource=findProfile(s,type,name);
     const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
     if (!s.api) {setError('Not connected. Your edits are kept.'); return;}
@@ -164,7 +162,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
         <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(type === 'process' && source && !scales.length ? [{label: 'Make dynamic', disabled: saving, action: makeDynamic}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
-    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales} fromPrinter={{name: printerName, values: fromPrinter}}/>} : undefined) : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith type={type} profile={profileKey(source)} source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
+    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales} fromPrinter={{name: printerName, values: fromPrinter}}/>} : undefined) : type === 'filament' ? {label:'Fits',icon:'param_dependencies_printers',modified:applicabilityDirty,content:<Fits value={applicability} readOnly={saving} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
       : [{label: 'Print overrides', icon: 'param_speed', modified: overridesDirty, content: <PrintOverrides value={overrides} readOnly={saving} onChange={setOverrides}/>}, ...(connections ? [{label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>}] : [])]}/></fieldset>
   </DetailPane>;
 }
@@ -184,6 +182,6 @@ export function MasterPresetDetail({type, preset, name, config, identity, contro
   return <DetailPane label={name} identity={<>{identity}<span className="pf-editor-name"><strong>{name}</strong></span></>}
     summary={<div className="pf-editor-summary">{profileSummary(type, config)}</div>} controls={controls}>
     <fieldset className="pf-editor-fields"><SettingsTab type={type} hidePreset readOnly editor={editor}
-      auxiliary={type !== 'machine' ? {label: 'Works with', icon: 'param_dependencies_printers', content: <WorksWith type={type} profile={preset} config={config}/>} : undefined}/></fieldset>
+/></fieldset>
   </DetailPane>;
 }

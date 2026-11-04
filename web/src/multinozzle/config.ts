@@ -50,7 +50,7 @@ export function optionIndex(key: string, type: PresetType, config: Config, selec
   if (type === 'process') return print_options_with_variant.has(key) ? variant : null;
   if (printer_options_with_variant_2.has(key)) return variant * 2 + column;
   if (printer_options_with_variant_1.has(key)) return variant;
-  return printer_extruder_options.has(key) || key === 'extruder_offset' ? selection.extruder : null;
+  return printer_extruder_options.has(key) || key === 'extruder_offset' ? Math.min(selection.extruder, extruderCount(config) - 1) : null;
 }
 
 export function filamentVectors(configs: Config[], defaults: Config): Config {

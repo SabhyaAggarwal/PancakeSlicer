@@ -150,3 +150,7 @@
 :where(.orca-parity) :is(.dyn-formula, .print-overrides tr):is(:hover, :focus-within) .row-remove { opacity: 1; }
 @media (pointer: coarse), (hover: none) { :where(.orca-parity) :is(.dyn-formula, .print-overrides tr) .row-remove { opacity: 1; } }
 :where(.orca-parity) .print-overrides .po-remove { width: 1%; text-align: right; }
+
+.fits {display: grid; gap: 12px; padding: 12px 0;}
+.fits-row {display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px;}
+.fits .chips {display: flex; flex-wrap: wrap; gap: 6px;}

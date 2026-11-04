@@ -410,12 +410,16 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	} else if u.options.useAMS {
 		mapping = []int{0}
 	}
+	legacyMapping, addresses, err := bambuMapping(mapping, u.options.amsMapping2, len(mapping))
+	if err != nil {
+		return fail(err)
+	}
 	if err := mqttPublish(conn, p, map[string]any{"print": map[string]any{
 		"sequence_id": sequence, "command": "project_file", "param": plate,
 		"project_id": "0", "profile_id": "0", "task_id": "0", "subtask_id": "0", "subtask_name": name,
 		"file": u.filename, "url": "file:///sdcard/" + u.filename, "md5": md5sum,
 		"timelapse": u.options.timelapse, "bed_type": "auto", "bed_leveling": u.options.bedLeveling, "flow_cali": u.options.flowCali,
-		"vibration_cali": true, "layer_inspect": false, "use_ams": u.options.useAMS, "ams_mapping": mapping,
+		"vibration_cali": u.options.vibrationCali, "layer_inspect": false, "use_ams": u.options.useAMS, "ams_mapping": legacyMapping, "ams_mapping_2": addresses,
 	}}); err != nil {
 		return fail(err)
 	}
@@ -629,6 +633,8 @@ func bambuModel(product, code string) string {
 }
 
 type AMSTray struct {
+	Kind       string `json:"kind,omitempty"`
+	Extruder   *int   `json:"extruder,omitempty"`
 	ID         int    `json:"id"`
 	AMS        int    `json:"ams"`
 	Slot       int    `json:"slot"`
@@ -638,7 +644,12 @@ type AMSTray struct {
 	FilamentID string `json:"filament_id,omitempty"`
 }
 
-const externalTray = 254
+type bambuExternalTray struct {
+	ID    string `json:"id"`
+	Type  string `json:"tray_type"`
+	Color string `json:"tray_color"`
+	Idx   string `json:"tray_info_idx"`
+}
 
 type bambuReport struct {
 	State     string   `json:"gcode_state"`
@@ -655,6 +666,7 @@ type bambuReport struct {
 	AMS       *struct {
 		AMS []struct {
 			ID   string `json:"id"`
+			Info string `json:"info"`
 			Tray []struct {
 				ID    string `json:"id"`
 				Type  string `json:"tray_type"`
@@ -664,15 +676,12 @@ type bambuReport struct {
 			} `json:"tray"`
 		} `json:"ams"`
 	} `json:"ams"`
-	External *struct {
-		Type  string `json:"tray_type"`
-		Color string `json:"tray_color"`
-		Idx   string `json:"tray_info_idx"`
-	} `json:"vt_tray"`
+	External      *bambuExternalTray  `json:"vt_tray"`
+	ExternalSlots []bambuExternalTray `json:"vir_slot"`
 }
 
 func (b *bambuReport) trays() []AMSTray {
-	if b.AMS == nil && b.External == nil {
+	if b.AMS == nil && b.External == nil && b.ExternalSlots == nil {
 		return nil
 	}
 	color := func(c string) string {
@@ -684,15 +693,47 @@ func (b *bambuReport) trays() []AMSTray {
 	trays := []AMSTray{}
 	if b.AMS != nil {
 		for _, unit := range b.AMS.AMS {
-			a, _ := strconv.Atoi(unit.ID)
+			a, err := strconv.Atoi(unit.ID)
+			if err != nil || a < 0 || a > 255 {
+				continue
+			}
+			info, infoErr := strconv.ParseUint(strings.TrimPrefix(unit.Info, "0x"), 16, 64)
+			kind := "ams"
+			var extruder *int
+			if infoErr == nil {
+				kind = map[uint64]string{1: "ams", 2: "ams-lite", 3: "ams-2-pro", 4: "ams-ht", 5: "ams-lite-mixed"}[info&15]
+				if binding := (info >> 8) & 15; binding < 2 {
+					extruder = ptr(1 - int(binding))
+				}
+			}
 			for _, t := range unit.Tray {
-				slot, _ := strconv.Atoi(t.ID)
-				trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
+				slot, err := strconv.Atoi(t.ID)
+				if err != nil || slot < 0 || slot > 3 {
+					continue
+				}
+				id := a*4 + slot
+				if kind == "ams-ht" || a >= 128 {
+					id = a
+				}
+				if kind == "ams-lite-mixed" {
+					id = 24 + slot
+				}
+				trays = append(trays, AMSTray{ID: id, AMS: a, Slot: slot, Kind: kind, Extruder: extruder, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
 			}
 		}
 	}
-	if e := b.External; e != nil {
-		trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
+	externals := b.ExternalSlots
+	if externals == nil && b.External != nil {
+		externals = []bambuExternalTray{*b.External}
+	}
+	for _, e := range externals {
+		id, err := strconv.Atoi(e.ID)
+		if err != nil || !isExternalTray(id) {
+			id = 255
+		}
+		extruder := 255 - id
+		extruder = 1 - extruder
+		trays = append(trays, AMSTray{ID: id, AMS: id, Slot: 0, Kind: "external", Extruder: &extruder, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
 	}
 	return trays
 }

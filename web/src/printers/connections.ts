@@ -9,7 +9,7 @@ export interface PrinterConnection {
   has_secret: boolean; trust?: string;
 }
 export interface Temp { actual: number; target: number }
-export interface Tray { id: number; ams: number; slot: number; type: string; color: string; name?: string; filament_id?: string }
+export interface Tray { kind?: string; extruder?: number; id: number; ams: number; slot: number; type: string; color: string; name?: string; filament_id?: string }
 export interface PrinterStatus {
   printer: string; online: boolean;
   state: 'connecting' | 'idle' | 'printing' | 'paused' | 'finished' | 'failed' | 'busy' | 'error' | 'offline';

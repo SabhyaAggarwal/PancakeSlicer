@@ -458,14 +458,16 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Printer     string `json:"printer"`
-		Start       *bool  `json:"start"`
-		Filename    string `json:"filename"`
-		BedLeveling *bool  `json:"bed_leveling"`
-		FlowCali    bool   `json:"flow_cali"`
-		Timelapse   bool   `json:"timelapse"`
-		UseAMS      bool   `json:"use_ams"`
-		AMSMapping  []int  `json:"ams_mapping"`
+		Printer       string             `json:"printer"`
+		Start         *bool              `json:"start"`
+		Filename      string             `json:"filename"`
+		BedLeveling   *bool              `json:"bed_leveling"`
+		FlowCali      bool               `json:"flow_cali"`
+		Timelapse     bool               `json:"timelapse"`
+		VibrationCali *bool              `json:"vibration_cali"`
+		UseAMS        bool               `json:"use_ams"`
+		AMSMapping    []int              `json:"ams_mapping"`
+		AMSMapping2   []bambuTrayAddress `json:"ams_mapping_2"`
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil {
@@ -507,14 +509,14 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.AMSMapping != nil {
-		valid := p.Kind == "bambu-lan" && len(body.AMSMapping) == len(j.Request.Filaments)
-		for _, t := range body.AMSMapping {
-			valid = valid && (t >= 0 && t < 16 || t == externalTray)
-		}
-		if !valid {
-			fail(w, 400, fmt.Sprintf("ams_mapping needs one tray (0 to 15, or %d for the external spool) per filament of the job, for a Bambu printer", externalTray))
+		_, _, mappingErr := bambuMapping(body.AMSMapping, body.AMSMapping2, len(j.Request.Filaments))
+		if p.Kind != "bambu-lan" || mappingErr != nil {
+			fail(w, 400, "ams_mapping needs one valid AMS tray or external spool per job filament, for a Bambu printer")
 			return
 		}
+	} else if body.AMSMapping2 != nil {
+		fail(w, 400, "ams_mapping_2 requires ams_mapping")
+		return
 	}
 	client := s.clientIP(r)
 	if ok, retry := s.sends.allow(client); !ok {
@@ -565,14 +567,11 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	m.history.record(view)
 	m.hub.changed()
 	audit(map[string]any{"event": "send_accepted", "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": start, "bytes": st.Size()})
-	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, flowCali: body.FlowCali, timelapse: body.Timelapse, useAMS: body.UseAMS, amsMapping: body.AMSMapping}
+	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, flowCali: body.FlowCali, timelapse: body.Timelapse, vibrationCali: body.VibrationCali == nil || *body.VibrationCali, useAMS: body.UseAMS, amsMapping: body.AMSMapping, amsMapping2: body.AMSMapping2}
 	if body.AMSMapping != nil {
 		options.useAMS = false
 		for _, t := range body.AMSMapping {
-			options.useAMS = options.useAMS || t != externalTray
-		}
-		if !options.useAMS {
-			options.amsMapping = nil
+			options.useAMS = options.useAMS || !isExternalTray(t)
 		}
 	}
 	go s.runSend(ctx, stopTimeout, j, t, p, f, client, options, resend)
@@ -611,8 +610,9 @@ func (u *upload) placed() string {
 }
 
 type bambuOptions struct {
-	bedLeveling, flowCali, timelapse, useAMS bool
-	amsMapping                               []int
+	bedLeveling, flowCali, timelapse, vibrationCali, useAMS bool
+	amsMapping                                              []int
+	amsMapping2                                             []bambuTrayAddress
 }
 
 func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions, resend bool) {
