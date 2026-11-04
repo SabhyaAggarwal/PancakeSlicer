@@ -82,6 +82,7 @@ export interface ProgressEvent {
   stage: string;
   pct: number;
   message?: string;
+  queuePosition?: number;
 }
 
 export interface PlateJson {

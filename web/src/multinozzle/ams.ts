@@ -1,6 +1,6 @@
 import type { Tray } from '../printers/connections';
 
-export interface SendFilament { type: string; color: string; extruder?: number }
+export interface SendFilament { type: string; color: string; extruder?: number; name?: string; vendor?: string; id?: string; requiredHRC?: number; printable?: number; compatibility?: number }
 export const isExternalTray = (id: number) => id === 254 || id === 255;
 export const availableTrays = (filament: SendFilament, trays: Tray[]) => trays.filter((t) => filament.extruder === undefined || t.extruder === undefined || t.extruder === filament.extruder);
 export const trayLabel = (t: Tray) => (isExternalTray(t.id) ? t.id === 254 ? 'Left external spool' : 'External spool' :

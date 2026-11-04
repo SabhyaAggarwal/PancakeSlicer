@@ -142,6 +142,7 @@ export interface JobView {
   state: 'idle' | 'submitting' | 'running' | 'done' | 'failed' | 'canceled';
   pct: number;
   stage: string;
+  queuePosition?: number;
   error?: string;
   status?: JobStatus;
   stale?: boolean;

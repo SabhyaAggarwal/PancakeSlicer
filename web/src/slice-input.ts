@@ -37,8 +37,6 @@ export function overrides(s = getState()): Config {
   }
   delete out.layer_height;
   Object.assign(out, nozzleAssignments(s));
-  const machine = effectiveConfig(s, 'machine');
-  if (machine.nozzle_volume_type ?? machine.default_nozzle_volume_type) out.nozzle_volume_type = machine.nozzle_volume_type ?? machine.default_nozzle_volume_type;
   for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
   if (s.projectMaterials && s.project) {
     out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));

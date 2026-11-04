@@ -1,7 +1,8 @@
+import { preprintMaterialChecks } from '../multinozzle/material-checks';
 import { preprintWarnings } from '../multinozzle/preprint';
 import { autoMap, availableTrays, physicalMapping, trayLabel, type SendFilament } from '../multinozzle/ams';
 import { assignedExtruder, nozzleAssignments } from '../multinozzle/assignments';
-import { extruderCount } from '../multinozzle/config';
+import { extruderCount, valueAt } from '../multinozzle/config';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Check } from './Check';
 import { confirmDialog } from './Ask';
@@ -74,7 +75,13 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const [flowCali, setFlowCali] = useState(false);
   const [vibration, setVibration] = useState(true);
   const [timelapse, setTimelapse] = useState(false);
-  const filamentKey = useStore((s) => JSON.stringify(s.filamentSlots.map((_, i) => ({ type: String(effectiveConfig(s, 'filament', i).filament_type ?? ''), color: filamentColor(s, i + 1), ...(extruderCount(effectiveConfig(s, 'machine')) > 1 && String(nozzleAssignments(s).filament_map_mode ?? '').includes('Manual') ? { extruder: assignedExtruder(s, i) } : {}) }))));
+  const filamentKey = useStore((s) => JSON.stringify(s.filamentSlots.map((name, i) => {
+    const config = effectiveConfig(s, 'filament', i), base = resolvePreset(s, 'filament', name).base;
+    return { type: valueAt(config.filament_type, 0), color: filamentColor(s, i + 1), name: (base?.name ?? name).replace(/\s+@.*$/, ''),
+      vendor: valueAt(config.filament_vendor, 0), id: base?.filament_id, requiredHRC: Number(valueAt(config.required_nozzle_HRC, 0, '0')),
+      printable: Number(valueAt(config.filament_printable, 0, '3')), compatibility: Number(valueAt(config.filament_extruder_compatibility, 0, '0')),
+      ...(extruderCount(effectiveConfig(s, 'machine')) > 1 && String(nozzleAssignments(s).filament_map_mode ?? '').includes('Manual') ? { extruder: assignedExtruder(s, i) } : {}) };
+  })));
   const filaments = useMemo(() => JSON.parse(filamentKey) as SendFilament[], [filamentKey]);
   const liveTrays = status?.online ? status.trays : undefined;
   const [readTraysList, setReadTrays] = useState<Tray[] | null>(null);
@@ -100,7 +107,9 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
     return () => { live = false; };
   }, [bambu, printer, !!liveTrays]);
 
-  const warnings = bambu ? preprintWarnings(machineConfig, status, filaments, shown, trays ?? []) : [];
+  const materials = bambu ? preprintMaterialChecks(machineConfig, status, filaments, shown, trays ?? []) : [];
+  const warnings = bambu ? [...preprintWarnings(machineConfig, status, filaments, shown, trays ?? []), ...materials.filter((row) => !row.blocked).map((row) => row.message)] : [];
+  const materialBlocks = materials.filter((row) => row.blocked);
   const send = async (start: boolean) => {
     if (!jobId) return;
     if (start && warnings.length && !await confirmDialog('Check printer setup', warnings.join('\n'), ['Print anyway', 'Cancel'])) return;
@@ -155,6 +164,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
           {needsMap && <div className="warning-text">Choose a tray or external spool connected to the assigned nozzle for every filament.</div>}
         </div>
       )}
+      {materialBlocks.map((row) => <div key={row.message} className="warning-text" role="alert">{row.message}</div>)}
       {warnings.map((warning) => <div key={warning} className="warning-text">{warning}</div>)}
       {busy && (
         <div className="progress-row">
@@ -183,7 +193,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
         ? <button type="button" className="btn-primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
         : <button type="button" className="btn-primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
         <button type="button" className="btn" disabled={busy || !!blocked} onClick={() => void send(false)}>Upload only</button>
-        <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
+        <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running || !!materialBlocks.length} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
       </>}
     </ModalFooter>
   </>;

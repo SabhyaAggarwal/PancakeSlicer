@@ -1,12 +1,12 @@
+import { bambuFilamentId } from '../multinozzle/material-checks';
+import { isExternalTray } from '../multinozzle/ams';
 import type { SystemPreset } from '../api/types';
 import { readTrays, type Tray } from '../printers/connections';
 import { compatible, getState, markStale, setState, toast } from '../state/store';
 import { undoable } from '../state/history';
 
-const EXTERNAL = 254;
-
 function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
-  const byId = t.filament_id && fils.find((f) => f.filament_id === t.filament_id);
+  const byId = t.filament_id && fils.find((f) => bambuFilamentId(f.filament_id ?? '') === bambuFilamentId(t.filament_id!));
   if (byId) return byId;
   const named = t.name && fils.find((f) => f.name.startsWith(`Bambu ${t.name} @`));
   if (named) return named;
@@ -26,8 +26,8 @@ export async function syncAms(printer: string) {
     toast(`Sync filaments with AMS: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  const loaded = trays.filter((t) => t.type && t.id !== EXTERNAL);
-  const used = loaded.length ? loaded : trays.filter((t) => t.type && t.id === EXTERNAL);
+  const loaded = trays.filter((t) => t.type && !isExternalTray(t.id));
+  const used = loaded.length ? loaded : trays.filter((t) => t.type && isExternalTray(t.id));
   if (!used.length) {
     toast('Sync filaments with AMS: the printer reports no loaded filament.');
     return;

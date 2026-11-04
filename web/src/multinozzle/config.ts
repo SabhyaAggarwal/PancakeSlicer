@@ -53,6 +53,13 @@ export function optionIndex(key: string, type: PresetType, config: Config, selec
   return printer_extruder_options.has(key) || key === 'extruder_offset' ? Math.min(selection.extruder, extruderCount(config) - 1) : null;
 }
 
+export function selectedOptionValues(config: Config, type: PresetType, selection: ExtruderSelection): Config {
+  return Object.fromEntries(Object.entries(config).map(([key, value]) => {
+    const index = optionIndex(key, type, config, selection);
+    return [key, index === null ? value : [valueAt(value, index)]];
+  }));
+}
+
 export function filamentVectors(configs: Config[], defaults: Config): Config {
   const variants = configs.map((c) => variantsOf(c, 'filament'));
   const counts = variants.map((list) => Math.max(1, list.length));

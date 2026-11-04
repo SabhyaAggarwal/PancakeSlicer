@@ -11,6 +11,7 @@ const STATUS: Record<string, string> = {
 };
 
 export function sliceProgress(e: ProgressEvent): ProgressEvent {
+  if (e.stage === 'queued' && e.queuePosition) return { stage: 'queued', pct: 0, queuePosition: e.queuePosition };
   const pct = Math.max(0, Math.min(100, e.pct));
   let text = STATUS[e.stage] ?? e.stage.replace(/_/g, ' ');
   if (e.stage === 'slice' || e.stage === 'slicing') {
@@ -27,6 +28,8 @@ export function sliceProgress(e: ProgressEvent): ProgressEvent {
   return { stage: e.message || text || 'Slicing', pct: Math.min(99, range ? range[0] + pct * range[1] / 100 : pct) };
 }
 
-export function slicingText(job: { stage: string; pct: number }, plateIndex = 1): string {
+export function slicingText(job: { stage: string; pct: number; queuePosition?: number }, plateIndex = 1): string {
+  if (job.stage === 'queued' && job.queuePosition)
+    return `Slicing plate ${plateIndex}: Queued · ${job.queuePosition > 1 ? `${job.queuePosition - 1} ahead` : 'next'}`;
   return `Slicing plate ${plateIndex}: ${STATUS[job.stage] ?? (job.stage || 'Slicing')} ${Math.round(job.pct)}%`;
 }

@@ -47,8 +47,10 @@ export function allFlush(s: State): { matrix: number[]; multipliers: number[] } 
 
 export function flushModified(s: State): boolean {
   if (s.filamentSlots.length < 2 || !flush) return false;
+  const { flush_multiplier: _multiplier, ...process } = s.dirty.process;
+  const unedited = { ...s, dirty: { ...s.dirty, process } };
   return Array.from({ length: extruderCount(effectiveConfig(s, 'machine')) }, (_, nozzle) => {
     const { matrix, multiplier } = currentFlush(s, nozzle), auto = autoFlushMatrix(s, nozzle);
-    return multiplier !== defaultMultiplier(s, nozzle) || matrix.some((v, i) => v !== auto[i]);
+    return multiplier !== defaultMultiplier(unedited, nozzle) || matrix.some((v, i) => v !== auto[i]);
   }).some(Boolean);
 }

@@ -564,7 +564,7 @@ export function runJob(api: Api, request: JobRequest, signature: string, sink: J
           if (!live || resulted) return;
           const progress = sliceProgress(e);
           if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
-          if (progress.pct >= pct) sink.progress(progress);
+          if (progress.pct >= pct || progress.queuePosition) sink.progress({ id, ...progress });
           pct = Math.max(pct, progress.pct);
         },
         result: (status) => {
