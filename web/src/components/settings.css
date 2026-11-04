@@ -170,4 +170,5 @@
 :where(.orca-parity) .surface-settings .surface-why { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: 0; padding: 0 var(--space-section, var(--s-5)) var(--s-2); color: var(--warn); font: var(--t-small); }
 :where(.orca-parity) .opt-line[data-source=auto] .opt-field :is(input.text, .dropdown, .dropdown-value, .opt-side) { color: var(--ink-3); }
 :where(.orca-parity) .opt-line[data-source=set] .opt-label-text { color: var(--changed); }
-:where(.orca-parity) .auto-tag { flex: none; margin-left: var(--s-2); padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-3); font: 400 12px/14px var(--font-ui); cursor: default; }
+:where(.orca-parity) .opt-undo:has(> .auto-tag) { justify-content: flex-start; overflow: visible; }
+:where(.orca-parity) .auto-tag { flex: none; padding: 0 5px; white-space: nowrap; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-3); font: 400 12px/14px var(--font-ui); cursor: default; }

@@ -1,6 +1,6 @@
 import type { State } from '../state/store';
 import { selectCompatibility } from './compatibility';
-import { effectiveProfileValues } from './context';
+import { chainAuto, effectiveProfileValues, profileChain } from './context';
 import { captureProjectProfiles } from './project';
 import { methodAvailability } from './method-context';
 import { methodSelectionProblem } from './capabilities';
@@ -148,7 +148,7 @@ export function reconcilePrinterSelection(previous:State,incoming:State,{definit
     const candidates=next.userPresets.filter(p=>p.type==='process' && !p.archived && p.kind!=='master' && processValid(profileKey(p),true,true));
     const standard=scalar(base?.config.default_print_profile),height=Number(scalar(oldProcess.layer_height));
     const rank=(p:UserPreset)=>{const r=resolveProfile(next,'process',profileKey(p)),c=r.config;return [r.base?.name===standard?0:1,scalar(c.nonplanar_mode)===scalar(oldProcess.nonplanar_mode)?0:1,scalar(c.nonplanar_wave)===scalar(oldProcess.nonplanar_wave)?0:1,Number.isFinite(height)?Math.abs(Number(scalar(c.layer_height))-height):0];};
-    candidates.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++)if(Number.isFinite(x[i]-y[i])&&x[i]!==y[i])return x[i]-y[i];return profileKey(a).localeCompare(profileKey(b));});
+    candidates.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++)if(Number.isFinite(x[i]-y[i])&&x[i]!==y[i])return x[i]-y[i];return next.userPresets.indexOf(a)-next.userPresets.indexOf(b);});
     const chosen=candidates[0];summary.changes.push({kind:'process',from:label('process',next.process),to:chosen?.name,reason:chosen?'Compatible print settings selected':'Choose compatible print settings'});
     if(chosen){next.process=profileKey(chosen);next.dirty={...next.dirty,process:{}};if(next.projectPresets)next.projectPresets={...next.projectPresets,process:{}};if(next.profileSnapshots)next.profileSnapshots={...next.profileSnapshots,process:captureProjectProfiles({...next,profileSnapshots:null,projectPresets:null}).process};}
     else summary.needsSelection=true;
@@ -170,32 +170,14 @@ export function reconcilePrinterSelection(previous:State,incoming:State,{definit
   if(next.process!==previous.process && !summary.changes.some(change=>change.kind==='process'))summary.changes.push({kind:'process',from:resolveProfile(previous,'process',previous.process).name ?? previous.process,to:label('process',next.process),reason:'Restored printer print settings'});
   next.filamentSlots.forEach((key,slot)=>{if(key!==previous.filamentSlots[slot]&&!summary.changes.some(change=>change.kind==='filament'&&change.slot===slot))summary.changes.push({kind:'filament',slot,from:resolveProfile(previous,'filament',previous.filamentSlots[slot] ?? '').name ?? previous.filamentSlots[slot] ?? '',to:label('filament',key),reason:'Restored loaded filament'});});
   const contexts={...previous.projectProfileContexts,[previous.printer]:{projectPresets:previous.projectPresets,profileSnapshots:captureProjectProfiles(previous),process:previous.process,dirty:previous.dirty}};
-  return{patch:{process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
+  const preferred=next.process!==previous.process ? chainAuto(profileChain(next,'process',resolveProfile(next,'process',next.process))) : {};
+  return{patch:{...(preferred.preferredHeight?{processVariant:{layerHeight:preferred.preferredHeight}}:{}),...(preferred.preferredSpeed?{speed:preferred.preferredSpeed}:{}),process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
 }
 export function selectionNotice(s:State,summary:ProfileTransitionSummary):string{
   const printer=resolveProfile(s,'machine',s.printer).name ?? s.printer;
   return summary.changes.filter(c=>c.to && c.reason!=='Restored loaded filament' && c.reason!=='Restored printer print settings')
     .map(c=>`${c.kind==='process'?'Print settings':s.filamentSlots.length>1?`Slot ${(c.slot??0)+1} filament`:'Filament'} changed to ${c.to}: ${c.from} isn't compatible with ${printer}`)
     .concat(summary.needsSelection?[`Choose ${summary.changes.some(c=>c.kind==='process'&&!c.to)?'print settings':'a filament'} compatible with ${printer}`]:[]).join(' · ');
-}
-const owned=(p:UserPreset|undefined)=>!!p && !p.archived && p.kind!=='master';
-export function replaceMissingSelection(s:State,active?:string):{patch:Partial<State>;notice:string}|null{
-  if(s.profileLibraryLoad.state!=='ready')return null;
-  const printers=s.userPresets.filter(p=>p.type==='machine' && owned(p));
-  const printerMissing=!owned(findProfile(s,'machine',s.printer));
-  const lost=(type:'process'|'filament',key:string)=>!!key && !owned(findProfile(s,type,key));
-  if(!printers.length || !printerMissing && !lost('process',s.process) && !s.filamentSlots.some(key=>lost('filament',key)))return null;
-  const byReference=printers.find(p=>p.name===s.printer || p.aliases?.includes(s.printer) || resolveProfile(s,'machine',profileKey(p)).base?.name===s.printer);
-  const printer=printerMissing ? profileKey(byReference ?? printers.find(p=>profileKey(p)===active) ?? printers[0]) : s.printer;
-  const next={...s,printer,process:lost('process',s.process) ? '' : s.process,
-    filamentSlots:s.filamentSlots.map(key=>lost('filament',key) ? `missing:${key}` : key)};
-  const {patch,summary}=reconcilePrinterSelection(s,next);
-  const {projectProfileContexts:_contexts,lastProfileTransition:_summary,...rest}=patch;
-  const name=(type:'machine'|'process'|'filament',key:string)=>resolveProfile({...s,...rest},type,key).name ?? key;
-  const lines=[...(printerMissing ? [`This project's printer isn't in your library: using ${name('machine',printer)}`] : []),
-    ...(lost('process',s.process) ? [`Its print settings aren't in your library: using ${name('process',rest.process ?? '')}`] : []),
-    ...s.filamentSlots.flatMap((key,i)=>lost('filament',key) ? [`${s.filamentSlots.length>1?`Slot ${i+1} filament`:'Its filament'} isn't in your library: using ${name('filament',rest.filamentSlots?.[i] ?? '')}`] : [])];
-  return {patch:{...rest,printer,...(summary.needsSelection?{lastProfileTransition:summary}:{})},notice:lines.map((line,i)=>i===0?line.replace(/^Its /,"This project's "):line).join(' · ')};
 }
 export function ensureCompatibleSelection(s:State):{patch:Partial<State>;notice:string}|null{
   if(s.profileLibraryLoad.state!=='ready' || !s.printer)return null;

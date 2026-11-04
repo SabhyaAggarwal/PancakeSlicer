@@ -83,7 +83,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const states = useMemo(() => desc ? optionState(desc, env) : {}, [desc, env]);
   const fieldVisible = (k: string, line: TabLine) => {
     const key = splitKey(k)[0], rank = lineMode(line, k);
-    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (overrides ? overrides.keys.has(key) : type !== 'process' || !TOP_METHOD_KEYS.has(key)) && isMethodSettingSupported(key,config,availability);
+    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (overrides ? overrides.keys.has(key) : type !== 'process' || !(TOP_METHOD_KEYS.has(key) || key === 'layer_height')) && isMethodSettingSupported(key,config,availability);
   };
   const focusKey = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus.key : null));
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)

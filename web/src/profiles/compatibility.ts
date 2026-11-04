@@ -39,6 +39,7 @@ export function selectNativeCompatibility(s: ProfileContextState, type: PresetTy
   const {profile, context, failure} = resolvable(s,type,key,printer,nozzle);
   if (failure) return failure;
   if (!context) return allowed();
+  if (type === 'process' && (profile.source as { auto?: unknown } | undefined)?.auto) return allowed();
   const config = {...profile.config};
   if (config.compatible_printers === undefined && !profile.base?.compatible_evaluated && profile.base?.compatible_printers)
     config.compatible_printers = profile.base.compatible_printers;

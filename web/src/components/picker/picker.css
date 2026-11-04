@@ -28,6 +28,7 @@
 :where(.orca-parity) .pk-row.is-active { background: var(--overlay); }
 :where(.orca-parity) .pk-row.is-active:has(> .pk-option[aria-selected=true]) { background: color-mix(in srgb, #fff 10%, var(--selected)); }
 :where(.orca-parity) .pk-row.is-active .pk-star { color: var(--text); }
+:where(.orca-parity) .pk-row[data-child] > .pk-option { padding-left: calc(var(--s-3) + var(--s-5)); }
 :where(.orca-parity) .pk-option { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
 :where(.orca-parity) .pk-option[aria-disabled=true] { color: var(--muted); cursor: default; }
 :where(.orca-parity) .pk-slots { display: flex; flex: none; gap: var(--s-1); margin-left: auto; padding-left: var(--s-3); }

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { confirmDialog } from './components/Ask';
+import { discardPendingWrites } from './api/access';
 
 let enabled = false, asked = false;
 const listeners = new Set<() => void>();
@@ -19,8 +20,9 @@ export function useDevReset(): boolean {
 
 export async function startOver(): Promise<void> {
   if (!await confirmDialog('Start over?', 'Everything is deleted.', ['Start over', 'Cancel'], true)) return;
-  const r = await fetch('/api/dev/reset', { method: 'POST' });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: /api/dev/reset`);
+  discardPendingWrites();
+  const r = await fetch('/api/dev/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: crypto.randomUUID() }) });
+  if (!r.ok) { discardPendingWrites(false); throw new Error(`${r.status} ${r.statusText}: /api/dev/reset`); }
   await Promise.allSettled([
     caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n)))),
     indexedDB.databases?.().then((dbs) => Promise.all(dbs.map((d) => d.name && new Promise((done) => { const q = indexedDB.deleteDatabase(d.name!); q.onsuccess = q.onerror = q.onblocked = () => done(null); })))),

@@ -68,7 +68,7 @@ function switchingChanges(s: State, type: PresetType, slot = 0): Config {
   const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
   const baseline = Object.fromEntries(Object.entries(project ?? {}).filter(([k, v]) =>
     !PRESET_META.test(k) && (config[k] === undefined || text(v) !== text(config[k]))));
-  return { ...user?.overrides, ...baseline, ...presetEdits(s, type, slot) };
+  return { ...(type === 'process' ? {} : user?.overrides), ...baseline, ...presetEdits(s, type, slot) };
 }
 
 export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'transfer') {

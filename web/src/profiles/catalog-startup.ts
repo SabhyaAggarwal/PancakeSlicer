@@ -11,7 +11,7 @@ import { documentGeneration } from '../state/history';
 import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
 import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
-import { ensureCompatibleSelection, replaceMissingSelection } from './material-library';
+import { ensureCompatibleSelection } from './material-library';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
@@ -62,7 +62,6 @@ export async function loadCatalog() {
       if(!current())return;
       const [document]=await Promise.all([storage.readProfileLibrary(),settings]);
       if(!current())return;
-      void import('./service-recovery').then(m=>m.refreshProfileRecovery());
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
       if(!current())return;
@@ -86,8 +85,6 @@ export async function loadCatalog() {
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error){
         acceptHydratedPrinterSetups();retryDelay=1000;
-        const missing=replaceMissingSelection(getState(),preferenceText('orca.printer'));
-        if(missing)setState(missing.patch);
         const fixed=ensureCompatibleSelection(getState());
         if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice,null,undefined,'warning');}
       }

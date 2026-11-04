@@ -11,6 +11,7 @@ import { assertNever, createMachine, useMachine, type Machine, type Snapshot } f
 import { currentRoute, writeRoute } from './routes';
 import type { createDraftJournal } from './project-journal';
 import { importing } from './import';
+import { writesDiscarded } from '../api/access';
 import { versionShown, versionView, versionWanted } from './version-view';
 
 export type { ProjectMeta } from '../persist/backend';
@@ -353,7 +354,7 @@ async function start(ready: Promise<unknown>) {
   const flush = () => { void flushProject().catch(() => {}); };
   window.addEventListener('pagehide', flush);
   window.addEventListener('beforeunload', (e) => {
-    if (window.orcaDesktop) return;
+    if (window.orcaDesktop || writesDiscarded()) return;
     const v = project.get().value;
     if (project.get().context.loadError || (v !== 'editing' && v !== 'saving' && v !== 'failed' && !(v === 'conflict' && project.get().context.dirty))) return;
     flush(); e.preventDefault(); e.returnValue = '';
@@ -431,10 +432,6 @@ async function resumeUnsaved(id: string) {
   }
   catch (e) { toast(errorText(e)); return false; }
   finally { routing = false; routeSavedProject(); }
-}
-export function confirmProjectSelection() {
-  if (project.get().value === 'missing' || project.get().value === 'opening') return;
-  observed = snapshot(); checkpointProject(observed); project.send({ type: 'EDIT' });
 }
 export const leaveProjectVersion = (id: string) => openProject(id, { reload: true });
 export async function restoreProjectVersion() {

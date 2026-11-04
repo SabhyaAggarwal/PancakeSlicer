@@ -124,6 +124,15 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
   return resolved;
 }
 
+const autoBases = new WeakMap<SystemPreset[], SystemPreset | undefined>();
+function autoBase(s: ProfileCatalog): SystemPreset | undefined {
+  let base = autoBases.get(s.processes);
+  if (!base && !autoBases.has(s.processes)) {
+    base = s.processes.find((p) => /^0\.20mm Standard/.test(p.name)) ?? s.processes[0];
+    if (base) autoBases.set(s.processes, base);
+  }
+  return base;
+}
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
   const lookup = isCatalogKey(name) ? {profile: undefined, ambiguous: false} : lookupProfile(s, type, name), user = lookup.profile;
   const identity = user ? profileKey(user) : name;
@@ -140,7 +149,8 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   if (parent?.issue && parent.status !== 'archived' || parentName && !parent?.source)
     return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
-  const found = findCatalogBase(s, type, user.base ?? user.inherits);
+  const auto = type === 'process' && !!(user as { auto?: unknown }).auto;
+  const found = auto ? { base: autoBase(s), ambiguous: false } : findCatalogBase(s, type, user.base ?? user.inherits);
   const base = found.base ?? (!user.base ? parent?.base : undefined);
   if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
   if (parent?.base && parent.base !== base)
@@ -160,7 +170,8 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const constraints = Object.fromEntries(Object.entries(user.metadata ?? {}).filter(([key]) => /^compatible_(printers|prints)(_condition)?$/.test(key)));
   const owned = { ...master?.user?.overrides, ...parent?.user?.overrides, ...constraints, ...(user.overlay ?? user.overrides) };
   const pinned = type === 'filament' && user.printerId && user.snapshot && user.base?.version !== baseVersion(base);
-  const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...base.config, ...owned };
+  const root = auto ? { ...base.config, nonplanar_mode: 'off', nonplanar_wave: 'off' } : base.config;
+  const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...root, ...owned };
   if (user.archived) {
     const retained = user.snapshot?.config ?? config;
     return {base,source:user,user:{...user,overrides:changedKeys(retained,base.config)},key:identity,name:user.name,config:retained,status:'archived',

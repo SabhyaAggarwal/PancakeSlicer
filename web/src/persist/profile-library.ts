@@ -20,21 +20,3 @@ export async function persistProfileLibrary(write: ProfileLibraryWrite, _mock = 
   if (!response.ok) throw await responseError(response);
   return response.json();
 }
-export interface ProfileRecoveryCount { count: number; unreadable: number }
-export async function readProfileRecovery(): Promise<ProfileRecoveryCount> {
-  const response=await fetch('/api/profile-library/recovery',{cache:'no-store'});
-  if(!response.ok)throw await responseError(response);
-  const value=await response.json() as Partial<ProfileRecoveryCount>;
-  if(!Number.isInteger(value?.count) || value.count!<0 || !Number.isInteger(value.unreadable) || value.unreadable!<0)throw new Error('The profile recovery count is invalid.');
-  return value as ProfileRecoveryCount;
-}
-export interface ProfileRecoveryWrite { operationId: string; expectedRevision: number; action: 'save' | 'reset' }
-export interface ProfileRecoveryResult extends ProfileRecoveryWrite { revision: number; saved: number; unreadable: number }
-export async function commitProfileRecovery(write: ProfileRecoveryWrite): Promise<ProfileRecoveryResult> {
-  const response=await mutation('/api/profile-library/recovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(write)});
-  if(!response.ok)throw await responseError(response);
-  const value=await response.json() as ProfileRecoveryResult;
-  if(value?.operationId!==write.operationId || value.action!==write.action || !Number.isInteger(value.revision) || value.revision<write.expectedRevision)
-    throw new Error('The service returned an invalid profile acknowledgement.');
-  return value;
-}

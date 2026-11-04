@@ -10,7 +10,7 @@ import { Caret } from '../Caret';
 import { Glyph } from '../Glyph';
 import { edgeOf, type Edge } from '../anchor';
 import { SlotChip } from '../SlotChip';
-export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
+export interface PickerItem { id: string; label: string; child?: boolean; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
   image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'paused' | 'offline' | 'error' }; slots?: { n: number; colour: string }[] }
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean; allOnly?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
@@ -62,7 +62,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
 }) {
   countRender('picker-row');
   const media = row.image !== undefined, [head, tail] = splitTail(row.label);
-  return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
+  return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index} data-child={row.child || undefined}>
     <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={(e) => { if (e.pointerType === 'mouse') onActive(index); }} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
       {media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status status-text" data-tone={row.status.tone}>{row.status.label}</span>}</span>
@@ -91,7 +91,7 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
   const pool = useMemo(() => live ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, adding, groups, catalog]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const tabbed = useMemo(() => pool.filter(g => !g.allOnly), [pool]);
-  const rails = useMemo<RailTab[]>(() => sections ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : [...(pool.some(g => g.items.some(r => pinnedSet.has(r.id))) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...pool.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, pool, tabbed]);
+  const rails = useMemo<RailTab[]>(() => sections ? [{id: 'all', title: 'All'}, ...(tabbed.every(g => !g.title) ? [] : tabbed.map(g => ({id: g.id, title: g.title})))] : [...(pool.some(g => g.items.some(r => pinnedSet.has(r.id))) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...pool.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, pool, tabbed]);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
   const activeRail = rails.some(r => r.id === rail) ? rail : 'all';
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);

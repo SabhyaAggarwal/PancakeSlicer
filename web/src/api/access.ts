@@ -56,7 +56,11 @@ async function gzipBody(init: RequestInit): Promise<RequestInit> {
 
 const showNotice = (value: AccessNotice | null) => accessNotice(value);
 
+let discarding = false;
+export const discardPendingWrites = (on = true) => { discarding = on; };
+export const writesDiscarded = () => discarding;
 export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void, quiet = false): Promise<Response> {
+  if (discarding) throw new Error('Starting over: this page\'s changes are discarded.');
   const accessNotice = quiet ? () => undefined : showNotice;
   init = await gzipBody(init);
   const send = () => {

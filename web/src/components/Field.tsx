@@ -120,7 +120,6 @@ export const Field = memo(function Field(props: {
       <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
         {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
-        {props.source === 'auto' && <span className="auto-tag" data-truncated={props.autoReason ? 'true' : undefined} data-full-text={props.autoReason}>Auto</span>}
         {props.hideLabel ? <span className="opt-label-text">{label}</span> : <LabelTip label={label} full={fullLabel}>
           <strong>{fullLabel}</strong>{hint && <p>{hint}</p>}{help && <p>{help}</p>}
           {(def.default !== undefined || def.min !== undefined || def.max !== undefined) && <p className="info-meta">{[def.default !== undefined && asText(def.default) !== '' ? `Default ${asText(def.default)}${def.sidetext && !asText(def.default).endsWith('%') ? ` ${def.sidetext}` : ''}` : '', def.min !== undefined || def.max !== undefined ? `Range ${def.min ?? '…'} to ${def.max ?? '…'}` : ''].filter(Boolean).join(' · ')}</p>}
@@ -137,6 +136,7 @@ export const Field = memo(function Field(props: {
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">
+        {props.source === 'auto' && <span className="auto-tag" data-truncated={props.autoReason ? 'true' : undefined} data-full-text={props.autoReason}>Auto</span>}
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
           <button type="button" className="reset-icon" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => props.dirty || !props.onResetToBase ? reset(key) : props.onResetToBase(key)}>
