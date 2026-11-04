@@ -118,12 +118,20 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxes.map((a) => a.label).join('|')}`);
   const openByDefault = !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100;
   const body = useRef<HTMLDivElement>(null);
+  const labelWidths = useRef<{ flow: Element | null; byKey: Map<string, number> }>({ flow: null, byKey: new Map() });
   const rowKeys = groups.flatMap((g) => g.lines.flatMap((l) => l.options)).join(',');
   useLayoutEffect(() => {
     const flow = editor ? body.current?.querySelector<HTMLElement>('.page-flow') : null;
     if (!flow) return;
-    const natural = (l: Element) => [...l.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0);
-    const widest = Math.max(0, ...[...flow.querySelectorAll('.opt-line:not(.full) > .opt-label')].map(natural), ...[...flow.querySelectorAll('.option-row > .opt-label')].map((l) => natural(l) + 80));
+    const cache = labelWidths.current;
+    if (cache.flow !== flow) { cache.flow = flow; cache.byKey.clear(); }
+    const natural = (l: Element, extra: number) => {
+      const row = l.parentElement, id = `${row?.dataset.opt ?? row?.querySelector('[data-opt]')?.getAttribute('data-opt') ?? ''}|${l.textContent}`;
+      let w = cache.byKey.get(id);
+      if (w === undefined) { w = [...l.children].reduce((n, c) => n + (c as HTMLElement).scrollWidth, 0) + extra; cache.byKey.set(id, w); }
+      return w;
+    };
+    const widest = Math.max(0, ...[...flow.querySelectorAll('.opt-line:not(.full) > .opt-label')].map((l) => natural(l, 0)), ...[...flow.querySelectorAll('.option-row > .opt-label')].map((l) => natural(l, 80)));
     flow.style.setProperty('--label-w', `${Math.min(240, Math.ceil(widest) + 4)}px`);
   }, [!!editor, rowKeys, auxiliaryOn, groupsVersion]);
   useEffect(() => {

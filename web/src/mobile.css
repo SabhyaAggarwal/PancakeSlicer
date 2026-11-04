@@ -116,6 +116,7 @@
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-transport { grid-column: 1; grid-row: 2; gap: 0; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-time { grid-row: 2; text-align: center; min-width: 0; font-size: 13px; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-time[aria-label='Total time'] { display: none; }
+  :where(.orca-parity) .canvas-area .preview .order-bar > .ob-layer { display: none; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-rate { grid-column: 3; grid-row: 2; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-seg { grid-column: 4; grid-row: 2; }
   :where(.orca-parity) .canvas-area .preview .order-bar .ob-gcode { display: none; }
@@ -156,10 +157,20 @@
   :where(.orca-parity) .canvas-area .preview :is(.lg-opt, .lg-switch, .lg-role-row) { min-height: 44px; height: auto; }
   :where(.orca-parity) .canvas-area .preview .lg-fold > summary { min-height: 44px; }
   :where(.orca-parity) .canvas-area .preview .lg-head .lg-view { min-height: 44px; }
+  :where(.orca-parity) .canvas-area .preview .lg-collapse { min-width: 44px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .ob-rate { min-width: 44px; min-height: 44px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .orca-range { min-height: 40px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .orca-range-thumb { width: 40px; height: 40px; border: 10px solid var(--panel); box-shadow: none; }
   :where(.orca-parity) .nav3d { display: none; }
+}
+@media (min-width: 600px) and (max-width: 899px) and (max-height: 500px) and (pointer: coarse), (min-width: 600px) and (max-width: 899px) and (max-height: 500px) and (hover: none) {
+  :where(.orca-parity) .app .canvas-area[data-viewport=preview] { --pv-top: 8px; }
+  :where(.orca-parity) .canvas-area .preview .layer-slider { top: 8px; bottom: 8px; }
+  :where(.orca-parity) .canvas-area .preview .order-bar { right: 68px; }
+  :where(.orca-parity) .canvas-area .preview .legend, :where(.orca-parity) .canvas-area .preview .legend.closed { left: 88px; top: 8px; max-width: calc(100% - 160px); }
+  :where(.orca-parity) .canvas-area .preview .lg-summary { display: flex; gap: 16px; padding: 8px; }
+  :where(.orca-parity) .canvas-area .preview .lg-stat-v { font: var(--t-title); }
+  :where(.orca-parity) .canvas-area .preview .lg-stat-k { display: none; }
 }
 @media (hover: none) {
   :where(.orca-parity) :is(.pf-row-check, .ol-row-actions, .pr-card-actions, .pt-pencil) { opacity: 1; visibility: visible; }
