@@ -14,19 +14,22 @@ import (
 )
 
 type PrinterStatus struct {
-	Printer   string    `json:"printer"`
-	Online    bool      `json:"online"`
-	State     string    `json:"state"`
-	Detail    string    `json:"detail,omitempty"`
-	File      string    `json:"file,omitempty"`
-	Progress  *float64  `json:"progress,omitempty"`
-	Remaining *int      `json:"remaining_s,omitempty"`
-	Layer     *int      `json:"layer,omitempty"`
-	Layers    *int      `json:"layers,omitempty"`
-	Nozzle    *Temp     `json:"nozzle,omitempty"`
-	Bed       *Temp     `json:"bed,omitempty"`
-	Trays     []AMSTray `json:"trays,omitempty"`
-	At        time.Time `json:"at"`
+	Printer   string             `json:"printer"`
+	Online    bool               `json:"online"`
+	State     string             `json:"state"`
+	Detail    string             `json:"detail,omitempty"`
+	File      string             `json:"file,omitempty"`
+	Progress  *float64           `json:"progress,omitempty"`
+	Remaining *int               `json:"remaining_s,omitempty"`
+	Layer     *int               `json:"layer,omitempty"`
+	Layers    *int               `json:"layers,omitempty"`
+	Nozzle    *Temp              `json:"nozzle,omitempty"`
+	Bed       *Temp              `json:"bed,omitempty"`
+	Chamber   *Temp              `json:"chamber,omitempty"`
+	Nozzles   []NozzleStatus     `json:"nozzles,omitempty"`
+	Fans      map[string]float64 `json:"fans,omitempty"`
+	Trays     []AMSTray          `json:"trays,omitempty"`
+	At        time.Time          `json:"at"`
 }
 
 type Temp struct {

@@ -9,12 +9,13 @@ export interface PrinterConnection {
   has_secret: boolean; trust?: string;
 }
 export interface Temp { actual: number; target: number }
+export interface NozzleStatus { id: number; extruder: number; diameter: number; type?: string; flow?: string; rack?: boolean; abnormal?: boolean; legacy?: boolean }
 export interface Tray { kind?: string; extruder?: number; id: number; ams: number; slot: number; type: string; color: string; name?: string; filament_id?: string }
 export interface PrinterStatus {
   printer: string; online: boolean;
   state: 'connecting' | 'idle' | 'printing' | 'paused' | 'finished' | 'failed' | 'busy' | 'error' | 'offline';
   detail?: string; file?: string; progress?: number; remaining_s?: number; layer?: number; layers?: number;
-  nozzle?: Temp; bed?: Temp; trays?: Tray[]; at: string;
+  nozzle?: Temp; bed?: Temp; chamber?: Temp; nozzles?: NozzleStatus[]; fans?: Record<string, number>; trays?: Tray[]; at: string;
 }
 export interface PrinterConnections {
   enabled: boolean;
@@ -110,4 +111,5 @@ export function pickerStatus(c: PrinterConnections, printer: string): { label: s
   return { label: statusLine(st), tone: statusTone(st) };
 }
 export const tempLine = (st: PrinterStatus | undefined) => [st?.nozzle && `Nozzle ${Math.round(st.nozzle.actual)}${st.nozzle.target ? `/${Math.round(st.nozzle.target)}` : ''} °C`,
-  st?.bed && `Bed ${Math.round(st.bed.actual)}${st.bed.target ? `/${Math.round(st.bed.target)}` : ''} °C`].filter(Boolean).join(' · ');
+  st?.bed && `Bed ${Math.round(st.bed.actual)}${st.bed.target ? `/${Math.round(st.bed.target)}` : ''} °C`,
+  st?.chamber && `Chamber ${Math.round(st.chamber.actual)}${st.chamber.target ? `/${Math.round(st.chamber.target)}` : ''} °C`].filter(Boolean).join(' · ');

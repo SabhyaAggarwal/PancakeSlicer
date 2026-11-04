@@ -34,7 +34,14 @@ func bambuMapping(mapping []int, addresses []bambuTrayAddress, count int) ([]int
 		}
 		if addresses != nil {
 			a := addresses[i]
-			if a.AMS < 0 || a.AMS > 255 || a.Slot < 0 || a.Slot > 3 || isExternalTray(id) && a.AMS != id {
+			matches := a.AMS*4+a.Slot == id
+			if id >= 128 {
+				matches = a.AMS == id && a.Slot == 0
+			}
+			if id >= 24 && id <= 27 && a.AMS < 16 && a.Slot == id-24 {
+				matches = true
+			}
+			if a.AMS < 0 || a.AMS > 255 || a.Slot < 0 || a.Slot > 3 || !matches {
 				return nil, nil, fmt.Errorf("AMS mapping has an invalid unit or slot at filament %d", i+1)
 			}
 			v1[i] = a

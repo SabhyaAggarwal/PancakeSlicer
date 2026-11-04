@@ -1,3 +1,4 @@
+import { preprintWarnings } from '../multinozzle/preprint';
 import { autoMap, availableTrays, physicalMapping, trayLabel, type SendFilament } from '../multinozzle/ams';
 import { assignedExtruder, nozzleAssignments } from '../multinozzle/assignments';
 import { extruderCount } from '../multinozzle/config';
@@ -68,6 +69,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const kind = connection.kind, bambu = kind === 'bambu-lan';
   const fits = connectionOutput(kind) === output;
   const single = useStore((s) => s.filamentSlots.length === 1);
+  const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
   const [leveling, setLeveling] = useState(true);
   const [flowCali, setFlowCali] = useState(false);
   const [vibration, setVibration] = useState(true);
@@ -98,11 +100,11 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
     return () => { live = false; };
   }, [bambu, printer, !!liveTrays]);
 
+  const warnings = bambu ? preprintWarnings(machineConfig, status, filaments, shown, trays ?? []) : [];
   const send = async (start: boolean) => {
     if (!jobId) return;
-    if (bambu && trays && filaments.some((f, i) => { const tray = trays.find((t) => t.id === shown[i]); return tray?.type && tray.type.toUpperCase() !== f.type.toUpperCase(); })
-      && !await confirmDialog('Filament mismatch', 'Some mapped spools have a different material type from the sliced filaments. Continue with these mappings?', ['Send', 'Cancel'])) return;
-    const options = !bambu ? {} : { bed_leveling: leveling, flow_cali: flowCali, vibration_cali: vibration, timelapse, ...(trays && shown.length === filaments.length ? { ams_mapping: shown, ams_mapping_2: physicalMapping(shown, trays) } : {}) };
+    if (start && warnings.length && !await confirmDialog('Check printer setup', warnings.join('\n'), ['Print anyway', 'Cancel'])) return;
+    const options = !bambu ? {} : { bed_leveling: leveling, flow_cali: flowCali, vibration_cali: vibration, timelapse, ...(trays && shown.length === filaments.length && shown.every((id) => id >= 0) ? { ams_mapping: shown, ams_mapping_2: physicalMapping(shown, trays) } : {}) };
     await printerSend.submit(printer, jobId, { start, filename: exportFilename(), ...options });
   };
   const handOff = async () => {
@@ -122,7 +124,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const failed = !!error || mine?.state === 'failed' || mine?.state === 'cancelled';
   const running = status?.online && (status.state === 'printing' || status.state === 'paused');
   const blocked = !jobId || !jobReady ? 'Slice the plate first.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
-  const needsMap = bambu && (trays ? filaments.some((f, i) => !availableTrays(f, trays).some((t) => t.id === shown[i])) : !single);
+  const needsMap = bambu && (trays ? filaments.some((f, i) => !availableTrays(f, trays).some((t) => t.id === shown[i])) : !single || extruderCount(machineConfig) > 1);
   return <>
     <ModalBody className="send-body">
       {head}
@@ -153,6 +155,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
           {needsMap && <div className="warning-text">Choose a tray or external spool connected to the assigned nozzle for every filament.</div>}
         </div>
       )}
+      {warnings.map((warning) => <div key={warning} className="warning-text">{warning}</div>)}
       {busy && (
         <div className="progress-row">
           <div className="progress"><div className="progress-fill" style={{ width: `${(100 * (mine?.sent ?? 0)) / Math.max(1, mine?.total ?? 1)}%` }} /></div>
@@ -168,6 +171,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
             <button type="button" className="btn" disabled={!!working} onClick={() => void control('stop')}>Stop</button>
           </div>
           {status!.progress != null && <div className="progress"><div className="progress-fill" style={{ width: `${100 * status!.progress}%` }} /></div>}
+          {status?.fans && <div className="send-live-row">{Object.entries(status.fans).map(([name, speed]) => `${name.charAt(0).toUpperCase() + name.slice(1)} fan ${speed}%`).join(' · ')}</div>}
           {(tempLine(status) || status!.layers) && <div className="send-live-row">{[tempLine(status), status!.layers ? `Layer ${status!.layer ?? 0} of ${status!.layers}` : ''].filter(Boolean).join(' · ')}</div>}
         </div>
       )}
@@ -178,7 +182,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
       {kind === 'bambu-connect' ? (window.orcaDesktop?.bambuConnect
         ? <button type="button" className="btn-primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
         : <button type="button" className="btn-primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
-        <button type="button" className="btn" disabled={busy || !!blocked || needsMap} onClick={() => void send(false)}>Upload only</button>
+        <button type="button" className="btn" disabled={busy || !!blocked} onClick={() => void send(false)}>Upload only</button>
         <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
       </>}
     </ModalFooter>

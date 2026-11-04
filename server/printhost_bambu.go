@@ -652,18 +652,28 @@ type bambuExternalTray struct {
 }
 
 type bambuReport struct {
-	State     string   `json:"gcode_state"`
-	Percent   *float64 `json:"mc_percent"`
-	Remaining *int     `json:"mc_remaining_time"`
-	Layer     *int     `json:"layer_num"`
-	Layers    *int     `json:"total_layer_num"`
-	Nozzle    *float64 `json:"nozzle_temper"`
-	NozzleSet *float64 `json:"nozzle_target_temper"`
-	Bed       *float64 `json:"bed_temper"`
-	BedSet    *float64 `json:"bed_target_temper"`
-	Subtask   string   `json:"subtask_name"`
-	Error     int64    `json:"print_error"`
-	AMS       *struct {
+	State          string          `json:"gcode_state"`
+	Percent        *float64        `json:"mc_percent"`
+	Remaining      *int            `json:"mc_remaining_time"`
+	Layer          *int            `json:"layer_num"`
+	Layers         *int            `json:"total_layer_num"`
+	Nozzle         *float64        `json:"nozzle_temper"`
+	NozzleSet      *float64        `json:"nozzle_target_temper"`
+	Bed            *float64        `json:"bed_temper"`
+	BedSet         *float64        `json:"bed_target_temper"`
+	Chamber        *float64        `json:"chamber_temper"`
+	ChamberSet     *float64        `json:"ctt"`
+	Device         *bambuDevice    `json:"device"`
+	NozzleDiameter json.RawMessage `json:"nozzle_diameter"`
+	NozzleType     string          `json:"nozzle_type"`
+	Flag3          *uint32         `json:"flag3"`
+	FanGear        *uint32         `json:"fan_gear"`
+	PartFan        json.RawMessage `json:"cooling_fan_speed"`
+	AuxFan         json.RawMessage `json:"big_fan1_speed"`
+	ChamberFan     json.RawMessage `json:"big_fan2_speed"`
+	Subtask        string          `json:"subtask_name"`
+	Error          int64           `json:"print_error"`
+	AMS            *struct {
 		AMS []struct {
 			ID   string `json:"id"`
 			Info string `json:"info"`
@@ -739,7 +749,7 @@ func (b *bambuReport) trays() []AMSTray {
 }
 
 func (b *bambuReport) status() PrinterStatus {
-	st := PrinterStatus{Online: true, Detail: b.State, File: b.Subtask, Layer: b.Layer, Layers: b.Layers, Trays: b.trays()}
+	st := PrinterStatus{Online: true, Detail: b.State, File: b.Subtask, Layer: b.Layer, Layers: b.Layers, Trays: b.trays(), Nozzles: b.nozzles(), Fans: b.fans()}
 	st.State = map[string]string{"IDLE": "idle", "PREPARE": "busy", "SLICING": "busy", "RUNNING": "printing", "PAUSE": "paused", "FINISH": "finished", "FAILED": "failed"}[b.State]
 	if st.State == "" {
 		st.State = "busy"
@@ -755,6 +765,9 @@ func (b *bambuReport) status() PrinterStatus {
 	}
 	if b.Bed != nil {
 		st.Bed = &Temp{*b.Bed, deref(b.BedSet)}
+	}
+	if b.Chamber != nil {
+		st.Chamber = &Temp{*b.Chamber, deref(b.ChamberSet)}
 	}
 	switch {
 	case b.State == "FAILED" && b.Error == bambuCancelled:
