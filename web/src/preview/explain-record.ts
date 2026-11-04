@@ -1,5 +1,4 @@
-import { recordConfig, STYLE_NAMES, styleName } from '../style-names';
-import { shortTime } from './format';
+import { recordConfig, styleName } from '../style-names';
 
 type Rec = Record<string, unknown>;
 
@@ -113,25 +112,9 @@ export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(m
 
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null }
 
-function oneshotFact(record: Rec): { fact: string; curved: boolean } | null {
-  const decision = String(((record.oneshot ?? {}) as Rec).decision ?? '');
-  if (!decision) return null;
-  const cpu = num(((record.totals ?? {}) as Rec).cpu_seconds);
-  const slice = cpu == null ? '' : ` · Slice ${Math.round(cpu)} s CPU`;
-  const fell = /fell back to planar, (.*)$/.exec(decision);
-  if (fell) return { fact: `Planar fallback: ${fell[1].replace(/([\d.]+)x the planar time/, '≈$1× planar (estimate)')}${slice}`, curved: false };
-  const print = num(((record.totals ?? {}) as Rec).estimated_time_s);
-  return { fact: `${decision.includes('z-only') ? 'Flat' : 'Curved'} layers${print == null ? '' : ` · ${shortTime(print)} print`}${slice}`, curved: true };
-}
-
 export function objectResults(record: Rec | undefined): ObjectResult[] {
   if (!record || record.status === 'error') return [];
   const inputs = (record.inputs ?? {}) as Rec;
-  const oneshot = oneshotFact(record);
-  if (oneshot) {
-    const names = [...new Set(((record.objects ?? []) as { name?: string }[]).map((o) => String(o.name ?? '')))];
-    return names.map((name) => ({ name, style: STYLE_NAMES.oneshot, ...oneshot, ledge: false, pct: null }));
-  }
   const base = recordConfig(inputs);
   const patches = (((record.results ?? {}) as Rec).patches ?? []) as Patch[];
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];

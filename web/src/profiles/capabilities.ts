@@ -69,8 +69,10 @@ export function methodSelectionProblem(result: MethodAvailabilityResult, config:
       reason: method?.reason ?? 'The saved method is not supported by this printer and engine.', recovery: method?.recovery ?? 'change_method' };
   }
 }
+export const isRetiredSetting = (key: string) => key.startsWith('nonplanar_oneshot_');
 export function isMethodSettingSupported(key: string, config: Config, result: MethodAvailabilityResult): boolean {
   if (key === 'nonplanar_mode') return true;
+  if (isRetiredSetting(key)) return false;
   if (key === 'nonplanar_wave') return result.allowedWaveModes.length > 0;
   if (key.startsWith('rotary_')) return result.printer.rotary;
   if (key.startsWith('nonplanar_wave_')) return result.allowedWaveModes.includes(String(config.nonplanar_wave ?? 'off'));

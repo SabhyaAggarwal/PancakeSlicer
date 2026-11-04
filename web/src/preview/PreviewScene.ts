@@ -59,6 +59,7 @@ export class PreviewScene {
   private timer: { ext: any; query: WebGLQuery | null; gpuMs: number } = { ext: null, query: null, gpuMs: NaN };
   lastFrame: FrameStats & { frameMs: number; gpuMs: number; scale: number } = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0, frameMs: 0, gpuMs: NaN, scale: 1 };
   onFrame: (() => void) | null = null;
+  onLost: (() => void) | null = null;
   private moving = false;
   private still = 0;
   private upscale: { prog: WebGLProgram; vao: WebGLVertexArrayObject; tex: WebGLTexture; scale: WebGLUniformLocation | null; w: number; h: number } | null = null;
@@ -100,6 +101,7 @@ export class PreviewScene {
     this.segments = new SegmentRenderer(this.renderer);
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     this.timer.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    this.renderer.domElement.addEventListener('webglcontextlost', (event) => { event.preventDefault(); this.onLost?.(); });
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
   }

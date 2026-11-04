@@ -10,7 +10,7 @@ import { PresetCombo } from './PresetCombo';
 import { ChangesMark, ConflictLine, PresetActions } from '../profiles/PresetBar';
 import { MenuButton, type MenuEntry } from './Menu';
 import { Caret } from './Caret';
-import { savePreferences } from '../saved-preferences';
+import { preferenceText, savePreferences, usePreference } from '../saved-preferences';
 import { printerCover } from '../profiles/metadata';
 import './settings.css';
 import { Glyph, type GlyphName } from './Glyph';
@@ -20,9 +20,11 @@ const ObjectScope = lazy(() => import('./ObjectOverrides'));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
 function RailSection({title, meta, actions, className = '', children}: {title: string; meta?: ReactNode; actions?: ReactNode; className?: string; children: ReactNode}) {
-  return <section className={`rail-section ${className}`} aria-label={title}>
-    <header className="rail-head"><h2 className="rail-title">{title}</h2>{meta}{actions && <div className="rail-actions">{actions}</div>}</header>
-    {children}
+  const folded = (usePreference('orca.rail_folded') ? preferenceText('orca.rail_folded')! : '').split(',').includes(title);
+  const fold = () => { const rest = (preferenceText('orca.rail_folded') ?? '').split(',').filter(t => t && t !== title); savePreferences({'orca.rail_folded': (folded ? rest : [...rest, title]).join(',')}); };
+  return <section className={`rail-section ${className}${folded ? ' folded' : ''}`} aria-label={title}>
+    <header className="rail-head"><button type="button" className="rail-fold" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${title}`} onClick={fold}><Caret dir={folded ? 'right' : 'down'}/></button><h2 className="rail-title">{title}</h2>{meta}{actions && <div className="rail-actions">{actions}</div>}</header>
+    {!folded && children}
   </section>;
 }
 function RailAction({glyph, label, disabled, onClick}: {glyph: GlyphName; label: string; disabled?: boolean; onClick(): void}) {

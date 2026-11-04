@@ -151,8 +151,9 @@
 :where(.orca-parity) .page-bar[data-fit] .page-tab > img { display: none; }
 :where(.orca-parity) .page-bar[data-fit=wrap] { flex-wrap: wrap; row-gap: 0; }
 :where(.orca-parity) .page-bar[data-fit] .page-tab { padding: 0 calc(5px + var(--tab-run)); }
-:where(.orca-parity) .tab-break { flex: 0 0 100%; height: var(--s-2); }
-:where(.orca-parity) .page-bar[data-fit=wrap] .page-tab[data-row-fill] { flex: var(--tab-grow, 1) 1 auto; }
+:where(.orca-parity) .tab-break { flex: 0 0 100%; height: 0; margin-top: -1px; }
+:where(.orca-parity) .page-bar[data-fit=wrap] .page-tab[data-row-fill] { flex: 1 1 0; min-width: max-content; }
+:where(.orca-parity) .page-bar[data-fit=wrap] .page-tab:is([data-state=active], [aria-selected=true]) { z-index: 3; }
 :where(.orca-parity) .page-bar:not([data-fit=wrap]) .tab-break { display: none; }
 :where(.orca-parity) .page-bar[data-measure] { width: max-content; max-width: none; flex-wrap: nowrap; }
 :where(.orca-parity) .page-tab.modified:not(.active) { color: var(--changed); }

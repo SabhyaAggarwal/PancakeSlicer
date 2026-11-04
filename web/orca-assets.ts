@@ -33,13 +33,13 @@ function assetSource(file: string): Buffer | string {
 }
 
 const DARK_COLOURS: [string, string][] = [
-  ['#262E30', '#F1EDEE'], ['#323A3D', '#B9B3B4'], ['#808080', '#847E7F'], ['#CECECE', '#585253'],
-  ['#6B6B6B', '#847E7F'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#3A3637'],
-  ['#DBDBDB', '#4D4748'], ['#F0F0F1', '#363233'], ['#515151', '#B9B3B4'],
+  ['#262E30', '#F1F1F1'], ['#323A3D', '#B8B8B8'], ['#808080', '#828282'], ['#CECECE', '#555555'],
+  ['#6B6B6B', '#828282'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#383838'],
+  ['#DBDBDB', '#4C4C4C'], ['#F0F0F1', '#353535'], ['#515151', '#B8B8B8'],
 ];
 
 const ACCENT = /#(?:009688|00675B)(?![0-9A-Fa-f])/gi;
-const lightIcon = (file: string) => String(assetSource(file)).replace(ACCENT, '#8E1B30');
+const lightIcon = (file: string) => String(assetSource(file)).replace(ACCENT, '#63378F');
 
 function darkIcon(name: string): string | null {
   const own = path.join(IMAGES, `${name}_dark.svg`);
@@ -47,7 +47,7 @@ function darkIcon(name: string): string | null {
   if (!fs.existsSync(file)) return null;
   let svg = String(assetSource(file));
   for (const [from, to] of DARK_COLOURS) svg = svg.replace(new RegExp(`${from}(?![0-9A-Fa-f])`, 'gi'), to);
-  return svg.replace(ACCENT, '#F2A0B0');
+  return svg.replace(ACCENT, '#A98BD4');
 }
 
 function resolveAsset(url: string): string | null {

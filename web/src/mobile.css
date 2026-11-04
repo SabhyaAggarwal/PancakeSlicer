@@ -63,7 +63,10 @@
 }
 @media (pointer: coarse), (max-width: 599px) {
   :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger, .ls-plus, .notif-link), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
-  :where(.orca-parity) .icon-btn, :where(.orca-parity) .app-menu-button, :where(.orca-parity) .pk-star, :where(.orca-parity) .opt-undo { min-width: 44px; }
+  :where(.orca-parity) .icon-btn, :where(.orca-parity) .app-menu-button, :where(.orca-parity) .pk-star { min-width: 44px; }
+  :where(.orca-parity) :is(.opt-line, .option-row) .opt-undo > :is(button, .icon-btn) { flex: none; width: 44px; height: 44px; margin: -12px; }
+  :where(.orca-parity) .fr-drop-title, :where(.orca-parity) .fr-drop .fr-add kbd { display: none; }
+  :where(.orca-parity) .fr-drop .fr-actions { margin-top: 0; }
   :where(.orca-parity) .text, :where(.orca-parity) input, :where(.orca-parity) textarea, :where(.orca-parity) select { font-size: 16px; }
   :where(.orca-parity) .pf-facet-choice, :where(.orca-parity) .select-row { min-height: 44px; align-items: center; }
   :where(.orca-parity) .pf-row-check { opacity: 1; }

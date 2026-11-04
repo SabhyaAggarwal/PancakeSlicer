@@ -28,7 +28,7 @@
 :where(.orca-parity) .seg:not(.slant-seg) > button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 100%; min-height: 0; white-space: nowrap; }
 :where(.orca-parity) .seg:not(.slant-seg) > button + button { box-shadow: inset 1px 0 var(--line); }
 :where(.orca-parity) .seg > button:hover:not(:disabled, [aria-checked=true], [aria-pressed=true], [data-state=active], .on) { color: var(--ink); background: var(--hover); }
-:where(.orca-parity) .seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { background: var(--segment-active); color: var(--text); }
+:where(.orca-parity) .seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { background: var(--segment-active); color: var(--on-accent); }
 :where(.orca-parity) .seg:not(.slant-seg) > :is([aria-checked=true], [aria-pressed=true], [data-state=active], .on), :where(.orca-parity) .seg:not(.slant-seg) > :is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) + button { box-shadow: none; }
 :where(.orca-parity) .seg > button:disabled { color: var(--ink-3); background: none; cursor: not-allowed; }
 :where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 34px; padding: 0 var(--s-3); }
@@ -37,7 +37,7 @@
 
 :where(.orca-parity) .chip { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 30px; padding: 0 var(--s-3); border: 1px solid var(--line-strong); border-radius: var(--r-2); background: none; color: var(--ink-2); font: var(--t-small); white-space: nowrap; cursor: pointer; }
 :where(.orca-parity) .chip:hover:not(:disabled) { background: var(--hover); color: var(--text); }
-:where(.orca-parity) .chip:is([aria-pressed=true], [aria-checked=true], [data-state=on]) { border-color: var(--segment-active); background: var(--segment-active); color: var(--text); }
+:where(.orca-parity) .chip:is([aria-pressed=true], [aria-checked=true], [data-state=on]) { border-color: var(--segment-active); background: var(--segment-active); color: var(--on-accent); }
 :where(.orca-parity) .chip:disabled { color: var(--ink-3); cursor: not-allowed; }
 :where(.orca-parity) .chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 

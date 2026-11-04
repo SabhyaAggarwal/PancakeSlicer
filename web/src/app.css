@@ -89,7 +89,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .bed-combo { flex: 1; min-width: 0; }
 :where(.orca-parity) .filament-list { display: flex; flex-direction: column; gap: 4px; }
 :where(.orca-parity) .filament-row { display: flex; align-items: center; gap: 6px; }
-:where(.orca-parity) .filament-swatch { width: 24px; height: 24px; border-radius: 3px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 600; text-shadow: -1px 0 #111114, 1px 0 #111114, 0 -1px #111114, 0 1px #111114;  border: 1px solid rgba(0, 0, 0, 0.15); }
+:where(.orca-parity) .filament-swatch { width: 24px; height: 24px; border-radius: 3px; flex: none; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 600; text-shadow: -1px 0 #111111, 1px 0 #111111, 0 -1px #111111, 0 1px #111111;  border: 1px solid rgba(0, 0, 0, 0.15); }
 
 :where(.orca-parity) .process-title { border-top: 1px solid var(--line-a6); }
 
@@ -247,9 +247,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 }
 
 :where(.orca-parity) label.side-btn { display: inline-flex; align-items: center; justify-content: center; }
-:where(.orca-parity) .menu-item[aria-checked] { position: relative; padding-left: 24px; }
-:where(.orca-parity) .menu-item[aria-checked="true"]::before { content: ''; position: absolute; left: 9px; top: 7px; width: 4px; height: 8px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
-
 :where(.orca-parity) .ol-header { padding-left: 4px; padding-right: 8px; align-items: center; }
 :where(.orca-parity) .ol-status, :where(.orca-parity) .ol-printable { width: 28px; flex: none; display: flex; align-items: center; justify-content: center; }
 :where(.orca-parity) .ol-printable, :where(.orca-parity) .ol-sinking { padding: 0; border: 0; background: transparent; height: 22px; cursor: pointer; }
@@ -458,9 +455,12 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .rail-section + .rail-section { border-top: 1px solid var(--line-strong); }
 :where(.orca-parity) .sidebar > .rail-section.process-section { flex: 1 1 0; margin: 0; padding-bottom: 0; background: none; }
 :where(.orca-parity) .rail-head { --rail-act: 24px; display: flex; align-items: center; gap: var(--s-3); min-height: var(--rail-act); padding: 0 var(--s-3) 0 var(--space-section); }
+:where(.orca-parity) .rail-fold { flex: none; display: grid; place-items: center; width: var(--rail-act); height: var(--rail-act); margin-left: calc(-1 * var(--s-3)); padding: 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--ink-3); cursor: pointer; }
+:where(.orca-parity) .rail-fold:hover { background: var(--hover); color: var(--ink); }
+:where(.orca-parity) .sidebar > .rail-section.process-section.folded { flex: none; }
 :where(.orca-parity) .rail-title { flex: none; min-width: 0; margin: 0; font: var(--t-title); color: var(--ink); }
 :where(.orca-parity) .rail-section > .rail-row:first-of-type { margin-top: var(--s-2); }
-:where(.orca-parity) .rail-head .pf-changes-trigger { font: var(--t-small); color: var(--ink-3); }
+:where(.orca-parity) .rail-head .pf-changes-trigger { font: var(--t-small); }
 :where(.orca-parity) .rail-actions { display: flex; align-items: center; gap: var(--s-2); min-width: 0; margin-left: auto; }
 :where(.orca-parity) .rail-actions .icon-btn { width: var(--rail-act); height: var(--rail-act); min-width: var(--rail-act); min-height: var(--rail-act); color: var(--ink-3); font: 400 16px/1 var(--font-ui); }
 :where(.orca-parity) .rail-actions :is(.icon-btn, .rail-menu):hover:not(:disabled), :where(.orca-parity) .rail-actions :is(.icon-btn, .rail-menu)[data-state=open] { color: var(--ink); background: var(--hover); }

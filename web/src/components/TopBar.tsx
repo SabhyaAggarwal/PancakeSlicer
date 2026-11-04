@@ -150,10 +150,10 @@ export function TopBar() {
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
           'sep',
-          { label: 'About OrcaSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
+          { label: 'About PancakeSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}];
   return <header className="topbar compact-topbar">
-    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/><Caret className="app-menu-caret"/></MenuButton>
+    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo.svg" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
     </div>

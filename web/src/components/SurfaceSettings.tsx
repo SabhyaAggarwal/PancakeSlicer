@@ -18,6 +18,21 @@ const openMethodChoice = (key: string) => {
   const trigger = document.querySelector<HTMLElement>(`.opt-line[data-opt="${key}"] .dropdown`);
   trigger?.focus(); trigger?.click();
 };
+const OFFERED_MODES = ['off', 'curved_tops'], ROTARY_MODES = ['multiplanar', 'field'];
+const MODE_LABELS: Record<string, string> = { off: 'Flat layers', curved_tops: 'Curved tops' };
+const MODE_HELP: Record<string, string> = {
+  off: 'Flat layers: every layer flat, as in standard slicers.',
+  curved_tops: 'Curved tops: the top shell and the shells below it follow the top surface, with the print head fixed.',
+  multiplanar: 'Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.',
+  field: 'Rotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the nozzle.',
+};
+export function methodModes(current: string, availability: MethodAvailabilityResult): {enum_values: string[]; enum_labels: string[]; tooltip: string} {
+  const offered = [...OFFERED_MODES, ...availability.printer.rotary ? ROTARY_MODES : []];
+  const values = offered.includes(current) ? offered : [current, ...offered];
+  const def = OPTIONS.nonplanar_mode;
+  return {enum_values: values, enum_labels: values.map(v => MODE_LABELS[v] ?? def?.enum_labels?.[def.enum_values?.indexOf(v) ?? -1] ?? v),
+    tooltip: offered.map(v => MODE_HELP[v]).join('\n')};
+}
 export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Object.keys(CURVED_DEFAULTS),...Object.keys(WAVE_DEFAULTS)]);
 export function SurfaceSettings({config,system,availability,editor,dirty,readOnly = false}: {config:Config;system:Config;availability:MethodAvailabilityResult;editor?:ProfileFields;dirty:Config;readOnly?:boolean}) {
   const engine = useEngineHealth();
@@ -29,11 +44,12 @@ export function SurfaceSettings({config,system,availability,editor,dirty,readOnl
     const def = OPTIONS[key]; if(!def) return null;
     const current = String(config[key] ?? def.default ?? 'off');
     const methods = target ? availability.methods.filter(m => m.target === target) : [];
-    const values = target ? [...new Set([...(target === 'wave' ? ['off'] : []), ...methods.map(m => m.id), current])] : undefined;
-    const labels = values?.map(value => key === 'nonplanar_mode' && value === 'off' ? 'Flat layers' : def.enum_labels?.[def.enum_values?.indexOf(value) ?? -1] ?? value);
+    const modes = target === 'mode' ? methodModes(current, availability) : undefined;
+    const values = modes?.enum_values ?? (target ? [...new Set(['off', ...methods.map(m => m.id), current])] : undefined);
+    const labels = modes?.enum_labels ?? values?.map(value => def.enum_labels?.[def.enum_values?.indexOf(value) ?? -1] ?? value);
     const blocked = values?.map(value => methods.find(m => m.id === value && !m.supported));
     return <Field key={key} type="process" optKey={key} label={label} value={config[key]} systemValue={system[key]} dirty={key in dirty} onSet={editor?.set} onReset={editor?.reset} disabled={readOnly}
-      definition={values ? {enum_values:values,enum_labels:labels,enum_disabled:values.filter((_,i) => blocked![i]),enum_notes:blocked!.map((m, i) => m && values[i] !== current ? shortReason(m) : undefined)} : undefined}/>;
+      definition={values ? {...modes?.tooltip && {tooltip:modes.tooltip},enum_values:values,enum_labels:labels,enum_disabled:values.filter((_,i) => blocked![i]),enum_notes:blocked!.map((m, i) => m && values[i] !== current ? shortReason(m) : undefined)} : undefined}/>;
   };
   const notice = (target:'mode'|'wave') => {
     if (!problem || (target === 'mode' ? mode : wave) !== problem.method) return null;

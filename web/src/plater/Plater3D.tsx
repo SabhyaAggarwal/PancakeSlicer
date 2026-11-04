@@ -206,7 +206,7 @@ export default function Plater3D() {
     };
     scene.add(viewExtras);
     const overhangTint = new THREE.MeshBasicMaterial({ color: 0xc70000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    const outlineLine = new THREE.LineBasicMaterial({ color: 0xf2a0b0 });
+    const outlineLine = new THREE.LineBasicMaterial({ color: 0xa98bd4 });
     const wireLine = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.45 });
     const extrasCache = new Map<string, THREE.BufferGeometry>();
     const outlineCache = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
@@ -1278,7 +1278,7 @@ export default function Plater3D() {
 
     const overlayRoot = new THREE.Group();
     scene.add(overlayRoot);
-    const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#8e1b30';
+    const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#FFC43D';
     const topMat = new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     const ledgeMat = new THREE.LineBasicMaterial();
     const overlayColours = () => {

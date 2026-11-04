@@ -1,3 +1,4 @@
+import { brand } from './brand';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { quick, removed } from 'virtual:option-bootstrap';
 import optionsUrl from './options.generated.json?url&no-inline';
@@ -76,7 +77,7 @@ let settleTooltips!: () => void;
 const tooltipsSettled = new Promise<void>((resolve) => { settleTooltips = resolve; });
 const tooltipListeners = new Set<() => void>();
 function applyTooltips() {
-  for (const [key, text] of Object.entries(tooltips ?? {})) if (OPTIONS[key]) OPTIONS[key].tooltip = text;
+  for (const [key, text] of Object.entries(tooltips ?? {})) if (OPTIONS[key]) OPTIONS[key].tooltip = brand(text);
 }
 function loadTooltips(url: string | null | undefined) {
   if (!url) { settleTooltips(); return; }
@@ -110,6 +111,7 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
         if (Object.keys(e.data.options).length) {
           for (const key of Object.keys(OPTIONS)) delete OPTIONS[key];
           Object.assign(OPTIONS, e.data.options);
+          for (const o of Object.values(OPTIONS)) { if (o.tooltip) o.tooltip = brand(o.tooltip); if (o.label) o.label = brand(o.label); }
           applyTooltips();
           setOptionTypes(OPTIONS);
           loadTooltips(e.data.tooltips);

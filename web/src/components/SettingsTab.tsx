@@ -1,5 +1,5 @@
 import { PresetBar } from '../profiles/PresetBar';
-import { SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
+import { methodModes, SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
 import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
@@ -62,8 +62,11 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const machines = useStore(s => s.machines), processes = useStore(s => s.processes), filaments = useStore(s => s.filaments);
   const projectConfig = useStore(s => effectiveConfig(s, type, slot));
   const config = fields?.config ?? projectConfig;
-  const savedConfig = useMemo(() => resolvePreset(getState(), type, presetName ?? '').config, [type, presetName, userPresets, machines, processes, filaments]);
-  const system = fields?.baseline ?? savedConfig;
+  const unedited = useMemo(() => {
+    const s = getState();
+    return effectiveConfig(type === 'filament' ? {...s, filamentEdits: {...s.filamentEdits, [presetName ?? '']: {}}} : {...s, dirty: {...s.dirty, [type]: {}}}, type, slot);
+  }, [projectConfig, type, slot, presetName]);
+  const system = fields?.baseline ?? unedited;
 
   const env = useMemo(() => {
     const state = getState();
@@ -97,7 +100,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const groups = (page?.groups ?? []).map((g) => gcodeKeys.length ? { ...g, lines: g.lines.filter((l) => !l.options.every((k) => isGcode(splitKey(k)[0]))) } : g).filter((g) => g.lines.length);
   const definitionCache = useRef(new Map<string, Partial<OptionDef>>());
   const definition = (key: string, line: TabLine) => {
-    const next = {...fieldDefinition(key, env), ...line.overrides?.[key]}, prior = definitionCache.current.get(key);
+    const next = {...fieldDefinition(key, env), ...line.overrides?.[key], ...key === 'nonplanar_mode' && methodModes(String(config[key] ?? 'off'), availability)}, prior = definitionCache.current.get(key);
     const same = prior && Object.keys(prior).length === Object.keys(next).length && Object.entries(next).every(([k,v]) => {
       const old = prior[k as keyof OptionDef]; return Array.isArray(v) && Array.isArray(old) ? v.length === old.length && v.every((x,i) => x === old[i]) : v === old;
     });

@@ -1602,6 +1602,135 @@
           ],
           "source": "src/slic3r/GUI/Tab.cpp:2991",
           "icon": "param_overhang"
+        },
+        {
+          "title": "Wave overhangs",
+          "options": [
+            "wave_overhangs",
+            "support_remaining_areas_after_wave_overhangs",
+            "wave_overhangs_instead_of_bridges",
+            "wave_overhang_pattern",
+            "wave_overhang_line_spacing",
+            "wave_overhang_flow_mm3_per_mm",
+            "wave_overhang_outer_perimeters",
+            "wave_overhang_print_speed",
+            "wave_overhang_perimeter_speed",
+            "wave_overhang_floor_layers",
+            "wave_overhang_floor_use_hilbert",
+            "wave_overhang_floor_print_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "wave_overhangs"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhangs": "Simple"
+              }
+            },
+            {
+              "options": [
+                "support_remaining_areas_after_wave_overhangs"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "support_remaining_areas_after_wave_overhangs": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhangs_instead_of_bridges"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhangs_instead_of_bridges": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_pattern"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_pattern": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_line_spacing"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_line_spacing": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_flow_mm3_per_mm"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_flow_mm3_per_mm": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_outer_perimeters"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_outer_perimeters": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_print_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_print_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_perimeter_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_perimeter_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_floor_layers"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_floor_layers": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_floor_use_hilbert"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_floor_use_hilbert": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wave_overhang_floor_print_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:3013",
+              "modes": {
+                "wave_overhang_floor_print_speed": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:3012",
+          "icon": "param_overhang"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:2805"
@@ -5048,7 +5177,19 @@
     "post_process": "Advanced",
     "slicing_pipeline_plugin": "Advanced",
     "print_plugin_config_overrides": "Advanced",
-    "notes": "Advanced"
+    "notes": "Advanced",
+    "wave_overhangs": "Simple",
+    "support_remaining_areas_after_wave_overhangs": "Advanced",
+    "wave_overhangs_instead_of_bridges": "Advanced",
+    "wave_overhang_pattern": "Advanced",
+    "wave_overhang_line_spacing": "Advanced",
+    "wave_overhang_flow_mm3_per_mm": "Advanced",
+    "wave_overhang_outer_perimeters": "Advanced",
+    "wave_overhang_print_speed": "Advanced",
+    "wave_overhang_perimeter_speed": "Advanced",
+    "wave_overhang_floor_layers": "Advanced",
+    "wave_overhang_floor_use_hilbert": "Advanced",
+    "wave_overhang_floor_print_speed": "Advanced"
   },
   "removed_keys": [
     "bbl_calib_mark_logo",
@@ -8480,13 +8621,121 @@
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:1366",
       "condition_source": "DevPrinterConfigUtil::support_wrapping_detection(printer_type)",
       "manual": true
+    },
+    {
+      "options": [
+        "wave_overhangs"
+      ],
+      "condition": "(nonplanar_mode != \"off\") && (wall_loops > 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:826",
+      "condition_source": "wave_allowed && have_perimeters"
+    },
+    {
+      "options": [
+        "support_remaining_areas_after_wave_overhangs"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhangs_instead_of_bridges"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_pattern"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_line_spacing"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_flow_mm3_per_mm"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_outer_perimeters"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_print_speed"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_perimeter_speed"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_floor_layers"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_floor_use_hilbert"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
+    },
+    {
+      "options": [
+        "wave_overhang_floor_print_speed"
+      ],
+      "condition": "((nonplanar_mode != \"off\") && (wall_loops > 0) && wave_overhangs)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:828",
+      "condition_source": "have_waves"
     }
   ],
   "source_counts": [
     {
       "function": "TabPrint::build",
       "pages": 6,
-      "groups": 46
+      "groups": 47
     }
   ],
   "extraction_warnings": [],

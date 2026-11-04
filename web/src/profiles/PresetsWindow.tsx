@@ -277,7 +277,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     });
     return shown.map(r=>{
       const clash=shown.filter(q=>q.title === r.title && q.h === r.h).length > 1,nozzle=nozzleOf(r.i);
-      return {...r.i,fullName:r.i.name,label:nozzle ? `${r.i.name}, ${nozzle} nozzle` : r.i.name,name:clash ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:undefined,lead:dynamicOf(r.i) ? heightRange(namedHeights(dynamicOf(r.i)!)) : r.h > 0 ? r.h.toFixed(2) : '—',method:processMode(r.i.config)};
+      return {...r.i,fullName:r.i.name,label:nozzle ? `${r.i.name}, ${nozzle} nozzle` : r.i.name,name:clash ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:undefined,lead:dynamicOf(r.i) ? heightRange(namedHeights(dynamicOf(r.i)!)) : r.h > 0 ? r.h.toFixed(2) : '—',range:!!dynamicOf(r.i),method:processMode(r.i.config)};
     });
   };
   const machineRow=(i:Item):Item=>i.variants ? {...i,fullName:i.model,name:modelLabel(i.config,i.vendor,i.model)}

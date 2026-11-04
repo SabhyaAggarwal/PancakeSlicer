@@ -1,6 +1,5 @@
 import { isHidden as permanentlyHidden, modeVisible, OPTIONS, splitKey, type TabDesc, type OptionMode, type OptionDef } from './options';
 import type { Config, PresetType } from './api/types';
-import { canOneShot } from './api/client';
 import { effectiveMode, type State } from './state/store';
 import { commonMode, hiddenReason } from './settings/common';
 
@@ -152,15 +151,7 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
       ? ['Default', 'MZV', 'ZVD', 'ZVDD', 'ZVDDD', 'EI2', 'EI3', 'DAA', 'Disable']
       : env.gcode_flavor === 'marlin2' ? ['ZV', 'Disable'] : ['Default', 'Disable'];
   if (values) return { enum_values: values, enum_labels: values.map((v) => def.enum_labels?.[def.enum_values!.indexOf(v)] ?? v) };
-  if (key === 'nonplanar_mode') {
-    const all = [...(def.enum_values ?? []).filter((v) => v !== 'oneshot'), ...(canOneShot() && (env.mode !== 'Simple' || env.nonplanar_mode === 'oneshot') ? ['oneshot'] : [])];
-    const rotary = String(env.nonplanar_kinematics ?? 'none') !== 'none';
-    return {
-      label: 'Slicing method',
-      enum_values: all,
-      enum_labels: all.map((v, i) => `${v === 'oneshot' ? 'One-shot' : def.enum_labels?.[i] ?? v}${!rotary && ['multiplanar', 'field'].includes(v) ? ' (needs rotary axes)' : ''}`),
-    };
-  }
+  if (key === 'nonplanar_mode') return { label: 'Slicing method' };
   if (key === 'brim_width' && env.brim_type === 'brim_ears' && condition('belt_printer == true && (belt_slice_rotation == "x" || belt_slice_rotation == "y") && (belt_slice_rotation_angle >= 1 && belt_slice_rotation_angle <= 85 || belt_slice_rotation_angle <= -1 && belt_slice_rotation_angle >= -85)', env) !== true)
     return { label: 'Brim ear radius' };
   return {};

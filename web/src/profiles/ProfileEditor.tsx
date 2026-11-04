@@ -23,8 +23,8 @@ import { openSplit } from './dynamic-conversions';
 import { chainIsDynamic } from './chain-dynamic';
 import { Choice } from '../components/kit';
 import { OPTIONS } from '../options';
-import { printContext } from './context';
-import { availableHeights, defaultScope, dynamicConflicts, nearestHeight, scopeWhen, withLayerValue, type DynamicContext, type DynamicProfile, type DynamicRecord, type DynamicScope, type DynamicWhen } from './dynamic';
+import { dynamicContext, scopedSave } from './save-to-profile';
+import { dynamicConflicts, withLayerValue, type DynamicContext, type DynamicProfile, type DynamicRecord, type DynamicScope, type DynamicWhen } from './dynamic';
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
 export interface ProfileDraft { applyTo?: DynamicScope; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
@@ -162,21 +162,6 @@ const noop = () => {};
 const mmText = (n: number) => String(Math.round(n * 1000) / 1000);
 const whenText = (w: DynamicWhen) => [w.printerModel, w.nozzle !== undefined ? `${mmText(w.nozzle)} nozzle` : '', w.layerHeight !== undefined ? `${w.layerHeight.toFixed(2)} layer` : ''].filter(Boolean).join(' × ');
 const scopeLabel = (scope: DynamicScope, c: DynamicContext) => scope === 'all' ? 'All' : scope === 'nozzle' ? `${mmText(c.nozzle)} nozzle` : scope === 'layer' ? `${c.layerHeight.toFixed(2)} layer` : `${mmText(c.nozzle)} × ${c.layerHeight.toFixed(2)}`;
-function dynamicContext(p: DynamicRecord & {dynamic: DynamicProfile}, variant: {layerHeight: number} | null): DynamicContext {
-  const pc = printContext(getState()), want = variant?.layerHeight ?? p.dynamic.reference.layerHeight;
-  const heights = p.type === 'process' ? availableHeights(p, pc) : [];
-  return {printerModel: pc.printerModel, nozzle: pc.nozzle, layerHeight: heights.length ? nearestHeight(heights, want) : p.dynamic.reference.layerHeight};
-}
-function scopedSave(p: UserPreset & DynamicRecord & {dynamic: DynamicProfile}, draft: ProfileDraft, ctx: DynamicContext): UserPreset {
-  const overlay: Config = {...(p.overlay ?? p.overrides ?? {})};
-  let dynamic = p.dynamic;
-  for (const k of Object.keys(changedKeys(draft.values, draft.baseline))) {
-    const value = draft.values[k], scope = draft.applyTo ?? defaultScope(p, k, ctx);
-    if (scope === 'all') {if (value === undefined) delete overlay[k]; else overlay[k] = value;}
-    else dynamic = withLayerValue(dynamic, scopeWhen(scope, ctx)!, k, value);
-  }
-  return {...p, id: profileKey(p), overlay, overrides: overlay, dynamic} as UserPreset;
-}
 export function MasterPresetDetail({type, preset, name, config, identity, controls}: {type: PresetType; preset: string; name: string; config: Config; identity?: ReactNode; controls: ReactNode}) {
   const mode = useStore(effectiveMode);
   const editor: ProfileFields = useMemo(() => ({name: preset, config, baseline: config, changes: {}, set: noop, reset: noop, mode}), [preset, config, mode]);

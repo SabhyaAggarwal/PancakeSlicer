@@ -114,12 +114,12 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
         </button>
         <button type="button" className="ob-btn ob-step" aria-label="Next move" onClick={() => step(1)}><Glyph name="next" /></button>
       </span>
+      <span className="ob-time" aria-label="Elapsed time">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)}</span>
       <Range min={1} max={last} value={Math.min(at, last)} aria-label="Print order" onValueChange={seek} />
-      <span className="ob-info">
-        <span className="ob-group ob-time" aria-label="Time"><span className="ob-v">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)}</span> / {shortTime(total)}</span>
-        <span className="ob-group ob-layer"><span className="ob-k">Layer</span> <span className="ob-v">{k == null ? '–' : k + 1}</span> / {data.layers.length}</span>
-        <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
-        <span className="ob-sep" aria-hidden />
+      <span className="ob-time" aria-label="Total time">{shortTime(total)}</span>
+      <span className="ob-layer">Layer {k == null ? '–' : k + 1}/{data.layers.length}</span>
+      <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
+      <span className="ob-seg">
         <button type="button" className="ob-btn ob-one" aria-label="Show one layer (L)" aria-pressed={oneLayer} onClick={onOneLayer}><Glyph name="layers" /></button>
         <button type="button" className="ob-btn ob-gcode" aria-label="G-code viewer (C)" aria-pressed={gcodeOpen} onClick={onGcode}><Glyph name="code" /></button>
       </span>

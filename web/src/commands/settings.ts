@@ -4,6 +4,7 @@ import { lineMode, tabEnvironment } from '../settings-env';
 import { effectiveConfig, getState, setState } from '../state/store';
 import { condition, optionState, settingVisible } from '../visibility';
 import { commonMode, hiddenReason } from '../settings/common';
+import { isRetiredSetting } from '../profiles/capabilities';
 import { display } from '../components/PresetDialogs';
 import type { Command } from './registry';
 
@@ -29,7 +30,7 @@ function buildIndex(): Entry[] {
     const seen = new Set<string>();
     for (const page of TABS[tab]?.pages ?? []) for (const group of page.groups) for (const line of group.lines) for (const k of line.options) {
       const key = splitKey(k)[0], def = OPTIONS[key];
-      if (!def || isHidden(key) || seen.has(key)) continue;
+      if (!def || isHidden(key) || isRetiredSetting(key) || seen.has(key)) continue;
       seen.add(key);
       const label = (line.options.length > 1 || line.index_labels || line.indexed_columns ? def.label || line.label : line.label ?? def.label) || def.full_label || key;
       const tooltip = (line.tooltip && OPTIONS[line.tooltip]?.tooltip) || def.tooltip || '';

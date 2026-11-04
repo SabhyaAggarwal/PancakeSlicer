@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { isSelected, type Selected } from '../state/store';
 
-export const SELECTION_COLOR = 0xf2a0b0;
-export const HOVER_COLOR = 0xf8cad3;
+export const SELECTION_COLOR = 0xa98bd4;
+export const HOVER_COLOR = 0xd4c4e8;
 
 export function selectedSurface(selection: Selected | null, object: number, instance: number, volume?: number): boolean {
   return isSelected(selection, object, instance) && (selection?.volume === undefined || selection.volume === volume);

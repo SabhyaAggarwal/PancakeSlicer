@@ -45,6 +45,12 @@ async function send(req: IncomingMessage, res: ServerResponse, sha: string, name
   res.setHeader('X-Build', sha);
   if (br) res.setHeader('Vary', 'Accept-Encoding');
   if (req.headers['if-none-match'] === etag) { res.statusCode = 304; res.end(); return true; }
+  if (name === 'index.html') {
+    const html = Buffer.from((await readFile(file, 'utf8')).replace('</head>', `<meta name="orca-build" content="${sha}"></head>`));
+    res.setHeader('Content-Length', html.length);
+    res.end(req.method === 'HEAD' ? undefined : html);
+    return true;
+  }
   if (br) res.setHeader('Content-Encoding', 'br');
   res.setHeader('Content-Length', br ? br.size : info.size);
   if (req.method === 'HEAD') res.end();

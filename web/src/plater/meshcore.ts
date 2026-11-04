@@ -154,7 +154,7 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
   const tris = (index ? index.length : p.length / 3) / 3;
   const flip = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]) < 0;
   const head = new ArrayBuffer(84);
-  new TextEncoder().encodeInto('OrcaSlicer web plate object', new Uint8Array(head, 0, 80));
+  new TextEncoder().encodeInto('PancakeSlicer web plate object', new Uint8Array(head, 0, 80));
   new DataView(head).setUint32(80, tris, true);
   const parts: ArrayBuffer[] = [head];
   const PER = 20971;

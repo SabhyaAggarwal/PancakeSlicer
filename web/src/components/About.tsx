@@ -29,8 +29,8 @@ export default function About({ close }: { close: () => void }) {
     });
     return () => controller.abort();
   }, [attempt]);
-  return <Modal size="m" label="About Nonplanar OrcaSlicer" onClose={close}>
-    <ModalTitle title="Nonplanar OrcaSlicer" onClose={close} />
+  return <Modal size="m" label="About PancakeSlicer" onClose={close}>
+    <ModalTitle title="PancakeSlicer" onClose={close} />
     <ModalBody>
       {about ? <AboutContent about={about} /> : error ? <p role="alert">Version information did not load: {error}</p> : <p role="status">Loading…</p>}
     </ModalBody>

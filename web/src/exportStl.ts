@@ -11,7 +11,7 @@ async function oneStl(objects: PlateObject[]): Promise<Blob> {
   const parts = (await Promise.all(objects.map(bakeInstances))).flat();
   const tris = parts.reduce((n, b) => n + (b.size - HEADER) / RECORD, 0);
   const head = new ArrayBuffer(HEADER);
-  new TextEncoder().encodeInto('OrcaSlicer web export', new Uint8Array(head, 0, 80));
+  new TextEncoder().encodeInto('PancakeSlicer web export', new Uint8Array(head, 0, 80));
   new DataView(head).setUint32(80, tris, true);
   return new Blob([head, ...parts.map((b) => b.slice(HEADER))], { type: 'model/stl' });
 }

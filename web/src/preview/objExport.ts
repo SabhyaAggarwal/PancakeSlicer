@@ -8,7 +8,7 @@ export function exportToolpathsObj(name: string) {
   const { data: d, layers: [a, b] } = v;
   const last = Math.min(b, d.layerEnd.length - 1);
   const from = a > 0 ? d.layerEnd[a - 1] ?? 0 : 0, to = d.layerEnd[last] ?? d.n;
-  const parts: string[] = [`# Toolpaths exported by OrcaSlicer (web), layers ${a + 1}-${last + 1}\n`];
+  const parts: string[] = [`# Toolpaths exported by PancakeSlicer (web), layers ${a + 1}-${last + 1}\n`];
   let lines: string[] = [], vtx = 0, segments = 0;
   for (let i = Math.max(1, from); i < to; i++) {
     if ((d.type[i] & 0x7f) !== MoveType.Extrude) continue;

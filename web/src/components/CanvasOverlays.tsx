@@ -10,7 +10,6 @@ import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
-import { STYLE_NAMES } from '../style-names';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
 import { Caret } from './Caret';
@@ -174,7 +173,7 @@ function previewFact(facts: PreviewFact[]) {
 }
 
 function plateFact(results: PlateResult[]) {
-  if (results.length === 1 || results[0].style === STYLE_NAMES.oneshot) return results[0].fact;
+  if (results.length === 1) return results[0].fact;
   if (results.some((r) => r.fact.startsWith('No support'))) return 'No support under ledges';
   const curved = results.filter((r) => r.curved).length;
   return curved ? `Curved tops on ${curved} of ${results.length}` : 'Flat tops, prints as Standard';

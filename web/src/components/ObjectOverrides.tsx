@@ -75,7 +75,6 @@ export function ObjectPicker({ overrides }: { overrides: ObjectOverrides | null 
   const chosen = new Set(usable.filter((o) => o.instances.some((i) => isSelected(selected, o.id, i.id)) && selected?.volume === undefined && selected?.range === undefined).map((o) => o.id));
   const pickObjects = (ids: number[]) => setState((s) => ({ selected: selectionOf(s, s.objects.filter((o) => ids.includes(o.id)).flatMap(instanceKeys)) }));
   const toggle = (o: PlateObject) => pickObjects(chosen.has(o.id) ? [...chosen].filter((id) => id !== o.id) : [...chosen, o.id]);
-  const all = usable.length > 0 && usable.every((o) => chosen.has(o.id));
   const count = (n: number) => n > 0 && <span className="obj-pick-count" aria-label={`${n} ${n === 1 ? 'override' : 'overrides'}`}>{n}</span>;
   const row = (key: string, label: string, checked: boolean, n: number, onPick: () => void, depth = 0, check = true) =>
     <button key={key} type="button" role={check ? 'menuitemcheckbox' : 'menuitemradio'} aria-checked={checked} className="menu-item obj-pick-row" data-depth={depth || undefined}
@@ -83,9 +82,8 @@ export function ObjectPicker({ overrides }: { overrides: ObjectOverrides | null 
   return <Popover.Root open={open} onOpenChange={setOpen}>
     <Popover.Trigger asChild><button type="button" className="pk-trigger dropdown obj-pick" aria-label={`Objects: ${overrides?.name ?? 'none selected'}`}>
       <span className="pk-name">{overrides?.name ?? 'Select objects'}</span><Caret className="pk-caret"/></button></Popover.Trigger>
-    <Popover.Portal><Popover.Content className="orca-menu pk-pop obj-pick-pop" data-menu-family="orca" role="menu" aria-label="Objects" align="start" sideOffset={4} collisionPadding={8}>
-      {row('all', 'All objects', all, 0, () => pickObjects(all ? [] : usable.map((o) => o.id)))}
-      <div className="menu-sep" role="separator" />
+    <Popover.Portal><Popover.Content className="orca-menu obj-pick-pop" data-menu-family="orca" role="menu" aria-label="Objects" align="start" sideOffset={4} collisionPadding={8}
+      onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); e.stopPropagation(); pickObjects(usable.map((o) => o.id)); } }}>
       {usable.map((o) => [
         row(`o${o.id}`, plain(o.name), chosen.has(o.id), overrideCount(o), () => toggle(o)),
         ...(o.volumes ?? []).filter((v) => v.type === 'part' || v.type === 'modifier').map((v) => row(`v${o.id}:${v.id}`, v.name, selected?.object === o.id && selected.volume === v.id, Object.keys(v.settings ?? {}).length,

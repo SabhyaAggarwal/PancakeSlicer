@@ -15,7 +15,6 @@ export interface PickerItem { id: string; label: string; sub?: string; swatch?: 
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean; allOnly?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
 export interface PickerCatalog { label: string; groups(): PickerGroup[]; onAdd(id: string): void }
-export const selectDefaultRail = (source: readonly PickerGroup[], pins: readonly string[]) => source.some(g => g.items.some(item => !item.disabled && pins.includes(item.id))) ? 'pins' : source.find(g => g.items.some(item => !item.disabled))?.id ?? 'all';
 interface Props { label: string; value?: string; groups(): PickerGroup[]; sections?: boolean; onPick(id: string): void; facetHeads?: boolean; memory?: string; footer?: PickerAction[]; catalog?: PickerCatalog; className?: string; triggerProps?: ComponentPropsWithRef<'button'> & { 'data-autofocus'?: boolean | string }; children: ReactNode }
 const read = (key: string): string[] => { const v = preferenceJson<unknown>(key, []); return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; };
 const write = (key: string, value: string[]) => savePreferences({[key]:value});
@@ -90,12 +89,11 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
   const id = useId();
   const live = open || primed;
   const pool = useMemo(() => live ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, adding, groups, catalog]);
-  const home = useMemo(() => { if (!live) return undefined; for (const g of groups()) if (!g.filter && g.items.some(i => i.id === value)) return g.id; return undefined; }, [live, groups, value]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const tabbed = useMemo(() => pool.filter(g => !g.allOnly), [pool]);
   const rails = useMemo<RailTab[]>(() => sections ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : [...(pool.some(g => g.items.some(r => pinnedSet.has(r.id))) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...pool.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, pool, tabbed]);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
-  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => !g.filter && g.items.some(i => i.id === value))?.id ?? (rails.some(r => r.id === home) ? home! : 'all') : selectDefaultRail(pool, pins);
+  const activeRail = rails.some(r => r.id === rail) ? rail : 'all';
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(pool.filter(g => !g.filter).flatMap((g) => g.items).map((item) => [item.id, item])).values()], [pool]);
   const tabs = useMemo<TabRows[]>(() => rails.map(r => {

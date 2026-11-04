@@ -1,11 +1,11 @@
 import type { Config, ConfigValue } from './api/types';
 import { OPTIONS } from './options';
 
-export type StyleId = 'auto' | 'standard' | 'smooth' | 'zaa' | 'multiplanar' | 'field' | 'oneshot';
+export type StyleId = 'auto' | 'standard' | 'smooth' | 'zaa' | 'multiplanar' | 'field';
 
 export const STYLE_NAMES: Record<StyleId | 'custom', string> = {
   auto: 'Auto', standard: 'Standard', smooth: 'Smooth tops', zaa: 'Z contour',
-  multiplanar: 'Tilted chunks', field: 'Rotary curved layers', oneshot: 'One-shot', custom: 'Custom',
+  multiplanar: 'Tilted chunks', field: 'Rotary curved layers', custom: 'Custom',
 };
 
 const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
@@ -20,7 +20,7 @@ export function styleOf(c: Config): StyleId | 'custom' {
     const deform = asText(c.nonplanar_deform) || String(OPTIONS.nonplanar_deform?.default ?? 'auto');
     return deform === 'auto' ? 'auto' : deform === 'off' ? 'smooth' : 'custom';
   }
-  if (mode === 'multiplanar' || mode === 'field' || mode === 'oneshot') return mode;
+  if (mode === 'multiplanar' || mode === 'field') return mode;
   return 'custom';
 }
 

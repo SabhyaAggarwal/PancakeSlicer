@@ -1,6 +1,6 @@
 import { findProfile } from './identity';
 import { profileEdit } from '../flow/profile-edit';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PresetType } from '../api/types';
 import { MenuButton } from '../components/Menu';
 import { Popover } from 'radix-ui';
@@ -21,6 +21,8 @@ export { useChanges } from '../state/useChanges';
 import { reviewProjectProfileChanges } from './project-draft';
 import { toast } from '../state/store';
 import { editing } from './editing';
+import { createProfileSave } from '../flow/profile-save';
+import { newProfileName, newProfileNameError, saveAsNewProfile, saveToProfile, savesInPlace } from './save-to-profile';
 
 async function exportCurrent(type: PresetType, slot: number) {
   const s = getState();
@@ -122,10 +124,33 @@ function ChangesPop({type,slot,list,project,save}: {type:PresetType;slot:number;
   const label = `${list.length} change${list.length === 1 ? '' : 's'}`;
   return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}>
     <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}}/>
-    {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn-ghost" onClick={() => undoable('Revert all changes', () => list.forEach(revert))}>Revert all</button>
-      {project > 0 && <button type="button" className="btn primary" onClick={() => {setOpen(false);save();}}>Save to profile…</button>}</div>}
+    <SaveChanges type={type} slot={slot} project={project} review={() => {setOpen(false);save();}} revertAll={() => undoable('Revert all changes', () => list.forEach(revert))}/>
   </Popover.Content></Popover.Portal></Popover.Root>;
 
+}
+
+function SaveChanges({type, slot, project, review, revertAll}: {type: PresetType; slot: number; project: number; review(): void; revertAll(): void}) {
+  const m = useMemo(createProfileSave, []), snap = useMachine(m);
+  const inPlace = useStore((s) => savesInPlace(s, type, slot)), suggested = useStore((s) => newProfileName(s, type, slot));
+  const [name, setName] = useState(suggested);
+  useEffect(() => setName(suggested), [suggested]);
+  const nameError = useStore((s) => inPlace ? null : newProfileNameError(s, type, name));
+  const saving = snap.value === 'saving', error = snap.value === 'failed' ? snap.context.error : null;
+  const run = () => {
+    if (!m.can({type: 'SAVE'})) return;
+    m.send({type: 'SAVE'});
+    const request = m.get().context.request;
+    (inPlace ? saveToProfile(type, slot) : saveAsNewProfile(type, slot, name))
+      .then(() => m.send({type: 'SAVED', request}), (e) => m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}));
+  };
+  return <>
+    {project > 0 && !inPlace && <label className="pf-save-name"><span>Name</span><input className="text" value={name} disabled={saving} aria-invalid={!!nameError}
+      onChange={(e) => {setName(e.target.value); if (error) m.send({type: 'DISMISS'});}} onKeyDown={(e) => {if (e.key === 'Enter' && !nameError) run();}}/></label>}
+    {error && <p className="pf-save-error" role="alert">{error}</p>}
+    <div className="pf-changes-foot"><button type="button" className="btn-ghost" disabled={saving} onClick={revertAll}>Revert all</button>
+      {project > 0 && <><button type="button" className="link pf-review" disabled={saving} onClick={review}>Open in Profiles</button>
+        <button type="button" className="btn primary" disabled={saving || !!nameError} aria-busy={saving} onClick={run}>{saving && <span className="pf-spin" aria-hidden/>}{error ? 'Retry' : inPlace ? 'Save to profile' : 'Save as new profile'}</button></>}</div>
+  </>;
 }
 
 function usePresetActions(type: PresetType, slot: number) {

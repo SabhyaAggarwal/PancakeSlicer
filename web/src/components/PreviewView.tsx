@@ -144,9 +144,18 @@ export function PreviewView() {
   const compare = useCompareWanted();
   const setCompare = setCompareWanted;
 
+  const [epoch, setEpoch] = useState(0);
+  const [restoring, setRestoring] = useState(false);
+  const lostCount = useRef(0);
   useEffect(() => {
     const scene = new PreviewScene(host.current!);
     sceneRef.current = scene;
+    let retry = 0;
+    scene.onLost = () => {
+      setRestoring(true);
+      retry = window.setTimeout(() => setEpoch((n) => n + 1), Math.min(400 * 2 ** lostCount.current++, 6000));
+    };
+    const settled = window.setTimeout(() => { lostCount.current = 0; setRestoring(false); }, 1500);
     let lastBump = 0;
     if (SHOW_STATS) scene.onFrame = () => {
       if (performance.now() - lastBump > 500) {
@@ -155,15 +164,18 @@ export function PreviewView() {
       }
     };
     return () => {
+      clearTimeout(retry);
+      clearTimeout(settled);
+      scene.onLost = null;
       scene.dispose();
       sceneRef.current = null;
     };
-  }, []);
+  }, [epoch]);
 
   const machineEdits = useStore((s) => s.dirty.machine);
   const machine = useMemo(() => printerPreset(getState()), [printer, machines, machineEdits]);
-  useEffect(() => sceneRef.current?.setBed(machine), [machine]);
-  useEffect(() => sceneRef.current?.setShells(objects, ui.shells), [objects, ui.shells]);
+  useEffect(() => sceneRef.current?.setBed(machine), [machine, epoch]);
+  useEffect(() => sceneRef.current?.setShells(objects, ui.shells), [objects, ui.shells, epoch]);
 
   const colorCtx = (d: PreviewData) => colorContext(d, ui, ranges.current!);
   const recolor = (d: PreviewData) => {
@@ -282,13 +294,21 @@ export function PreviewView() {
   }, [data, data?.loaded, data?.done, jumpTick]);
   useEffect(() => {
     const scene = sceneRef.current;
+    if (epoch === 0 || !scene || !data?.header) return;
+    scene.setData(data);
+    recolor(data);
+    scene.sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [epoch]);
+  useEffect(() => {
+    const scene = sceneRef.current;
     if (!scene || !data) return;
     const [s0] = layerCount ? data.layerSpan(lo, hi) : [1];
     const s1 = topFirst + pos;
     drawRange.current = [s0, s1];
     scene.setDrawState({ range: [s0, s1], ...drawMasks(ui.vis, !!grid) }, pos < topMoves ? s1 - 1 : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status, grid]);
+  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status, grid, epoch]);
 
   (window as unknown as { __preview: unknown }).__preview = {
     scene: sceneRef.current,
@@ -357,7 +377,7 @@ export function PreviewView() {
       <ExplainLegend data={data} record={record} hasSurfaceGrid={hasGrid} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
     </Suspense>
   ), [data, record, hasGrid, ui, comparing, setCompare]);
-  useEffect(() => sceneRef.current?.setSurface(grid), [grid]);
+  useEffect(() => sceneRef.current?.setSurface(grid), [grid, epoch]);
   useEffect(() => {
     void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -415,7 +435,8 @@ export function PreviewView() {
           {tip.body && <div>{tip.body}</div>}
         </div>
       )}
-      {status && (
+      {restoring && <div className="preview-status" role="status"><span>Restoring the 3D view…</span></div>}
+      {status && !restoring && (
         <div className="preview-status" role="status">
           <span>{status}</span>
           {status === 'Not sliced yet' && <button type="button" className="btn-primary" onClick={() => void slice()}>Slice plate</button>}
