@@ -1,3 +1,4 @@
+import { splitFilamentConfig } from '../multinozzle/config';
 import type { Config, PresetType } from '../api/types';
 import type { State } from '../state/store';
 import { normalizeConfig } from '../config-values';
@@ -22,9 +23,9 @@ export function prepareProjectProfileImport(s:State,config:Config,slots:number,p
   };
   const machineKeys=scopeKeys('machine'),filamentKeys=scopeKeys('filament');
   for(const key of ['printer_model','printer_variant','nozzle_diameter','nonplanar_kinematics','nonplanar_rotary_axes'])machineKeys.add(key);
-  const take=(scope:PresetType,index=0):Config=>Object.fromEntries(Object.entries(saved).filter(([key])=>
+  const take=(scope:PresetType,index=0):Config=>Object.fromEntries(Object.entries(scope==='filament'?splitFilamentConfig(saved,index):saved).filter(([key])=>
     key!=='orca_web_profiles' && !PRESET_META.test(key) && !plateKeys.has(key) && (scope==='machine'?machineKeys.has(key):scope==='filament'?filamentKeys.has(key)&&!machineKeys.has(key):!machineKeys.has(key)&&!filamentKeys.has(key)))
-    .map(([key,value])=>[key,scope==='filament' && Array.isArray(value)?[value[Math.min(index,value.length-1)] ?? '']:value])) as Config;
+    ) as Config;
   const recoveries:ProfileRecovery[]=[];
   const capture=(type:PresetType,reference:string,values:Config):ProjectProfileSnapshot=>{
     const lookup=lookupProfile(s,type,reference),source=lookup.profile;

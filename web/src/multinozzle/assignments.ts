@@ -2,7 +2,7 @@ import type { Config } from '../api/types';
 import { effectiveConfig, getState, markStale, setState, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { listedPlates } from '../plater/plates';
-import { extruderCount, valueAt } from './config';
+import { extruderCount, valueAt, valuesOf } from './config';
 
 export const NOZZLE_MAP_KEYS = ['filament_map_mode', 'filament_map', 'filament_volume_map', 'filament_nozzle_map'] as const;
 export const VOLUME_TYPES: Record<string, number> = { Standard: 0, 'High Flow': 1, Hybrid: 2, 'TPU High Flow': 3, 'E3D High Flow': 5, 'Extra High Flow': 6 };
@@ -37,4 +37,19 @@ export function updateAssignments(config: Config) {
     projectPlates: listedPlates(s).map((p) => p.index === s.plateIndex ? { ...p, settings: { ...p.settings, ...config } } : p),
     job: markStale(s.job),
   })));
+}
+
+export function remapNozzleAssignments(config: Config, map: number[], kept?: number[]): Config {
+  const out = { ...config };
+  for (const key of ['filament_map', 'filament_volume_map', 'filament_nozzle_map']) {
+    if (config[key] === undefined) continue;
+    const values = valuesOf(config[key]);
+    if (kept) out[key] = kept.map((i) => valueAt(values, i, key === 'filament_volume_map' ? '0' : '1'));
+    else {
+      const next: string[] = Array.from({ length: Math.max(0, ...map) }, () => key === 'filament_volume_map' ? '0' : '1');
+      map.forEach((slot, old) => { if (slot > 0) next[slot - 1] = valueAt(values, old, next[slot - 1]); });
+      out[key] = next;
+    }
+  }
+  return out;
 }

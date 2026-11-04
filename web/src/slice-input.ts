@@ -1,7 +1,7 @@
 import { filamentVectors } from './multinozzle/config';
 import { nozzleAssignments } from './multinozzle/assignments';
 import type { Config, ConfigValue } from './api/types';
-import { currentFlush } from './flush-state';
+import { allFlush } from './flush-state';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
@@ -61,11 +61,11 @@ export function overrides(s = getState()): Config {
     for (const k of ['print_sequence', 'spiral_mode', 'first_layer_print_sequence', 'other_layers_print_sequence', 'other_layers_print_sequence_nums'])
       if (plate.settings[k] !== undefined) out[k] = plate.settings[k];
   if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
-    const { matrix, multiplier } = currentFlush(s);
+    const { matrix, multipliers } = allFlush(s);
     if (!s.project || s.slotColours.some((c) => c !== undefined))
       out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
     if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
-    if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
+    out.flush_multiplier = multipliers;
   }
   if (Object.keys(s.mixes).length || MIX_KEYS.some((k) => k in out)) {
     const per = (f: (m: Mix) => string) => s.filamentSlots.map((_, i) => (s.mixes[i] ? f(s.mixes[i]) : ''));

@@ -5,6 +5,7 @@ import { filamentColor } from './filamentColor';
 import { remapObject } from '../components/RemapFilaments';
 import { blend } from './mixColour';
 import type { PaintNode, Painting } from './paint';
+import { remapNozzleAssignments } from '../multinozzle/assignments';
 
 export const SLOTS_MAX = 32;
 export { blend };
@@ -19,12 +20,13 @@ export function broken(s: State, m: Mix) {
   return m.components.length < 2 || m.components.some((c) => c < 1 || c > n) || new Set(m.components.map((c) => filamentType(s, c))).size > 1;
 }
 
-function remapAll(st: State, map: number[]): Partial<State> {
+function remapAll(st: State, map: number[], kept?: number[]): Partial<State> {
   const each = (os: PlateObject[]) => os.map((o) => remapObject(o, map));
   const events = (es: State['events']) => es.flatMap((e) => (e.type !== 'change' ? [e] : map[Number(e.text) - 1] ? [{ ...e, text: String(map[Number(e.text) - 1]) }] : []));
   return {
     objects: each(st.objects), events: events(st.events),
-    projectPlates: st.projectPlates.map((p) => (p.index === st.plateIndex ? p : { ...p, objects: each(p.objects), events: p.events && events(p.events) })),
+    projectPlates: st.projectPlates.map((p) => ({ ...p, settings: remapNozzleAssignments(p.settings, map, kept),
+      ...(p.index === st.plateIndex ? {} : { objects: each(p.objects), events: p.events && events(p.events) }) })),
     job: markStale(st.job),
   };
 }
@@ -55,7 +57,7 @@ export function deleteMixes(slots: number[], into?: number, name = 'Delete mixed
     const id = (k: number) => kept.indexOf(k) + 1;
     const map = Array.from({ length: n }, (_, k) => (gone.has(k) ? (into ? id(into - 1) : 1) : id(k)));
     return {
-      ...remapAll(st, map),
+      ...remapAll(st, map, kept),
       filamentSlots: kept.map((k) => st.filamentSlots[k]), slotColours: kept.map((k) => st.slotColours[k]),
       mixes: Object.fromEntries(kept.flatMap((k, j) => (st.mixes[k] ? [[j, st.mixes[k]]] : []))),
     };
@@ -85,7 +87,7 @@ export function removeSlotAt(n: number): { moved: number; to: number; merged: { 
   undoable('Remove filament', () => setState((st) => {
     const pick = <T,>(a: T[]) => kept.map((k) => Array.from(a)[k]);
     return {
-      ...remapAll(st, map),
+      ...remapAll(st, map, kept),
       filamentSlots: pick(st.filamentSlots), slotColours: pick(st.slotColours),
       mixes: Object.fromEntries(remixed.filter(([k]) => !gone.has(k)).map(([k, m]) => [kept.indexOf(k), m])),
       projectPresets: st.projectPresets && { ...st.projectPresets, filaments: pick(st.projectPresets.filaments) },

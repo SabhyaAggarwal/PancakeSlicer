@@ -184,6 +184,9 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     const index = Number(values.plater_id);
     if (!Number.isInteger(index) || index < 1) continue;
     const settings = { ...values };
+    for (const [stored, native] of [['filament_maps', 'filament_map'], ['filament_volume_maps', 'filament_volume_map'], ['filament_nozzle_maps', 'filament_nozzle_map']]) {
+      if (settings[stored] !== undefined) { settings[native] = settings[stored]; delete settings[stored]; }
+    }
     if (settings.bed_type && settings.bed_type !== 'Default Plate') settings.curr_bed_type = settings.bed_type;
     delete settings.bed_type;
     for (const k of ['plater_id', 'plater_name', 'locked']) delete settings[k];

@@ -22,6 +22,20 @@ export function variantsOf(config: Config, type: PresetType): string[] {
   return valuesOf(config[`${prefix(type)}_extruder_variant`]);
 }
 
+export function installedVariant(config: Config, type: PresetType, machine: Config, extruder: number): number {
+  const name = `${valueAt(machine.extruder_type, extruder, 'Direct Drive')} ${valueAt(machine.nozzle_volume_type ?? machine.default_nozzle_volume_type, extruder, 'Standard')}`;
+  const variants = variantsOf(config, type);
+  const ids = valuesOf(config[type === 'machine' ? 'printer_extruder_id' : 'print_extruder_id']);
+  const index = variants.findIndex((v, i) => v === name && (type === 'filament' || Number(ids[i] ?? 1) === extruder + 1));
+  return index < 0 ? 0 : index;
+}
+
+export function splitFilamentConfig(config: Config, slot: number): Config {
+  const indices = valuesOf(config.filament_self_index).flatMap((id, i) => Number(id) === slot + 1 ? [i] : []);
+  return Object.fromEntries(Object.entries(config).map(([key, value]) => [key, !Array.isArray(value) ? value :
+    filament_options_with_variant.has(key) && indices.length ? indices.map((i) => valueAt(value, i)) : [valueAt(value, slot)]]));
+}
+
 export function variantIndex(config: Config, type: PresetType, selection: ExtruderSelection): number {
   const variants = variantsOf(config, type);
   if (type === 'filament') return Math.min(selection.variant, Math.max(0, variants.length - 1));
