@@ -78,7 +78,7 @@ await page.getByRole('tab', { name: /Dynamic$/ }).first().click({ timeout: 30_00
 await page.locator('.dyn-tab').first().waitFor();
 await page.waitForTimeout(600);
 const dyn = (await page.locator('.dyn-tab').first().boundingBox())!;
-await save('dynamic', (file) => page.screenshot({ path: file, clip: { x: dyn.x, y: dyn.y, width: dyn.width, height: Math.min(dyn.height, 440) } }));
+await save('dynamic', (file) => page.screenshot({ path: file, clip: { x: dyn.x, y: dyn.y, width: Math.min(dyn.width, 480), height: Math.min(dyn.height, 320) } }));
 
 for (const tab of await page.getByRole('tab').all()) {
   if (/Dynamic/.test(await tab.innerText())) continue;
