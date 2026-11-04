@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { roofPair } from './roof-shots.ts';
 
 const [base = 'http://127.0.0.1:27441/', out = 'docs/user-guide/img'] = process.argv.slice(2);
 const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? 'playwright-core');
@@ -27,7 +28,7 @@ if (!process.env.RESUME) {
 await page.getByRole('dialog', {name:'Setup', exact:true}).waitFor();
 await full('01-welcome');
 await page.getByRole('button', {name:'Take the tour', exact:true}).click();
-for(let i=1;i<=4;i++){ await full(`02-tour-${i}`); await page.getByRole('button',{name:'Next',exact:true}).click(); }
+for(let i=1;i<=3;i++){ await full(`02-tour-${i}`); await page.getByRole('button',{name:'Next',exact:true}).click(); }
 await page.getByRole('searchbox',{name:'Search printers'}).fill('A1 mini');
 await page.locator('.setup-model').filter({hasText:'A1 mini'}).first().click();
 await full('03-setup-printer');
@@ -154,26 +155,9 @@ await full('mobile-profiles');
 await page.setViewportSize({width:1440,height:900});
 await page.evaluate(()=>(window as any).__plater.setState({presetUx:null,tab:'prepare'}));
 await page.evaluate(async()=>{ await (await import('/src/projects/api.ts')).newProject(); });
-await page.getByRole('button',{name:'Knob',exact:true}).click();
+await page.getByRole('button',{name:'Benchy',exact:true}).click();
 await page.waitForFunction(()=>(window as any).__plater.getState().objects.length===1 && !(window as any).__plater.getState().loading);
-for (const [name, mode] of [['knob-flat', 'off'], ['knob-curved', 'curved_tops']] as const) {
-  await page.evaluate((m) => { const p = (window as any).__plater; p.setState((s: any) => ({ tab: 'prepare', dirty: { ...s.dirty, process: { ...s.dirty.process, nonplanar_mode: m } } })); }, mode);
-  const before = await state<string | null>('window.__plater.getState().job.id ?? null');
-  await page.getByRole('button', { name: /^Slice/ }).first().click();
-  await page.waitForFunction((id) => { const j = (window as any).__plater.getState().job; return j.id !== id && ['done', 'failed'].includes(j.state); }, before, { timeout: 300_000, polling: 500 });
-  if (await state<string>('window.__plater.getState().job.state') !== 'done') throw new Error(`${name}: slice failed: ${await state('window.__plater.getState().job.error')}`);
-  await page.evaluate(() => (window as any).__plater.setState({ tab: 'preview' }));
-  await page.waitForFunction(() => (window as any).__preview?.data?.done, null, { timeout: 120_000, polling: 300 });
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('camera-fit')));
-  await page.mouse.move(1430, 880);
-  await page.waitForTimeout(1500);
-  facts[name] = await page.evaluate(() => ({ time: document.querySelector('.lg-stat-v')?.textContent, curved: document.querySelector('.np-summary-line')?.textContent ?? null }));
-  await full(name+'-preview');
-  const canvas = page.locator('.preview-canvas canvas').first();
-  const box = (await canvas.boundingBox())!;
-  const side = Math.min(box.width, box.height) * 0.62;
-  await save(name, (file) => page.screenshot({ path: file, clip: { x: box.x + (box.width - side) / 2 + 60, y: box.y + (box.height - side) / 2, width: side, height: side } }));
-}
+for (const [k, v] of Object.entries(await roofPair(page, 'roof', save))) facts[`roof-${k}`] = v;
 
 writeFileSync(path.join(out, 'measurements.json'), JSON.stringify(facts,null,2)+'\n');
 rmSync(tmp,{recursive:true,force:true});
