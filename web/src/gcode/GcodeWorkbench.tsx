@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { GroupHead, isGroupOpen, useSettingsGroups } from '../components/SettingsGroup';
 import type { EditorView } from '@codemirror/view';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
@@ -43,6 +44,15 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
   const open = (k: string) => { setSelected(k); setDrilled(true); };
   const modified = (k: string) => k in dirty;
 
+  useSettingsGroups();
+  if (!fill && keys.length < 3) {
+    const id = `${type}/Custom G-code`, open = isGroupOpen(id, !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100);
+    return <section className="optgroup gcode-group" data-collapsed={open ? undefined : ''}>
+      <GroupHead id={id} title="Custom G-code" modified={keys.some(modified)} open={open} />
+      {open && keys.map((k) => <CompactHook key={k} k={k} label={shortLabel(k)} fullLabel={labels[k] || OPTIONS[k]?.label || k} value={value(k)} template={template(k)} modified={modified(k)} readOnly={readOnly} configKeys={configKeys}
+        onCommit={(t) => commit(k, t)} onReset={() => reset(k)} />)}
+    </section>;
+  }
   return <div className={`gcode-bench ${fill ? 'fill' : ''}`}><div className="gcode-grid" data-drilled={drilled || undefined}>
     <div className="gcode-hooks" role="listbox" aria-label="Custom G-code">
       {keys.map((k) => { const n = lines(value(k)); return <button key={k} type="button" role="option" aria-selected={k === key} className="gcode-hook" data-modified={modified(k) || undefined} aria-description={modified(k) ? 'Modified' : undefined} onClick={() => open(k)}>
@@ -65,4 +75,23 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
         onCommit={(t) => commit(key, t)} onView={setView} />
     </section>
   </div></div>;
+}
+
+function CompactHook({ k, label, fullLabel, value, template, modified, readOnly, configKeys, onCommit, onReset }: {
+  k: string; label: string; fullLabel: string; value: string; template: string; modified: boolean; readOnly?: boolean; configKeys: readonly string[]; onCommit(t: string): void; onReset(): void;
+}) {
+  const [view, setView] = useState<EditorView | null>(null), [diff, setDiff] = useState(false);
+  return <div className="gcode-hook-row" data-modified={modified || undefined}>
+    <span className="opt-label"><span className="opt-label-text">{label}</span></span>
+    <div className="gcode-field">
+      <div className="gcode-tools is-small" role="toolbar" aria-label="G-code tools">
+        {modified && !readOnly && <button type="button" className="reset-icon" aria-label="Reset to template" onClick={() => { onReset(); setDiff(false); }}><Svg d={ICONS.reset} /></button>}
+        <button type="button" className="icon-btn" aria-label="Compare with template" aria-pressed={diff} onClick={() => setDiff(!diff)}><Svg d={ICONS.diff} /></button>
+        <button type="button" className="icon-btn" aria-label="Copy" onClick={() => void navigator.clipboard?.writeText(view?.state.doc.toString() ?? value)}><Svg d={ICONS.copy} /></button>
+        <button type="button" className="icon-btn" aria-label="Find" onClick={() => { if (view) openSearchPanel(view); }}><Svg d={ICONS.find} /></button>
+      </div>
+      <GcodeEditor optionKey={k} label={fullLabel} value={value} template={template} diff={diff} readOnly={readOnly} configKeys={configKeys} empty="No G-code yet" compact
+        onCommit={onCommit} onView={setView} />
+    </div>
+  </div>;
 }

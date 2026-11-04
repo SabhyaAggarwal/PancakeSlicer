@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Choice } from '../components/kit';
 import { Dropdown } from '../components/Dropdown';
 import { OPTIONS } from '../options';
+import { Glyph } from '../components/Glyph';
 import { heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
 import { labelOf } from './PrintOverrides';
 
@@ -41,7 +42,7 @@ function FormulaLine({ f, readOnly, onFactor, onRemove }: { f: Formula; readOnly
     <span className="dyn-name">{f.name}</span><span className="dyn-eq">=</span>
     {f.basis === 'perLayer' ? <span className="dyn-expr">⌈ {input} mm ÷ layer height ⌉</span>
       : <span className="dyn-expr">{input} × {f.basis === 'nozzle' ? 'nozzle' : 'layer height'}</span>}
-    {!readOnly && <button type="button" className="reset-icon" aria-label={`Remove ${f.name}`} onClick={onRemove}>×</button>}
+    <span/>{!readOnly && <button type="button" className="reset-icon row-remove" aria-label="Remove formula" onClick={onRemove}><Glyph name="trash" size={14}/></button>}
   </li>;
 }
 

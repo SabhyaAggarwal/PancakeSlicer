@@ -5,12 +5,13 @@ import { bracketMatching } from '@codemirror/language';
 import { unifiedMergeView } from '@codemirror/merge';
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState } from '@codemirror/state';
-import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
+import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, placeholder } from '@codemirror/view';
 import { gcodeHighlight, gcodeLanguage } from './language';
 import { placeholderCompletion, placeholdersFor } from './placeholders';
 
-export function GcodeEditor({ optionKey, label, value, template, diff, readOnly, configKeys, onCommit, onView }: {
+export function GcodeEditor({ optionKey, label, value, template, diff, readOnly, configKeys, empty, compact, onCommit, onView }: {
   optionKey: string; label: string; value: string; template: string; diff: boolean; readOnly?: boolean;
+  empty?: string; compact?: boolean;
   configKeys: readonly string[];
   onCommit(text: string): void; onView?(view: EditorView | null): void;
 }) {
@@ -28,7 +29,7 @@ export function GcodeEditor({ optionKey, label, value, template, diff, readOnly,
       state: EditorState.create({
         doc: value,
         extensions: [
-          lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), history(), bracketMatching(), closeBrackets(),
+          lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(), ...(empty ? [placeholder(empty)] : []), history(), bracketMatching(), closeBrackets(),
           search({ top: true }), highlightSelectionMatches(), gcodeLanguage(known), gcodeHighlight,
           autocompletion({ override: [placeholderCompletion(placeholders)], icons: false }),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap]),
@@ -54,7 +55,7 @@ export function GcodeEditor({ optionKey, label, value, template, diff, readOnly,
   useEffect(() => { view.current?.dispatch({ effects: merge.reconfigure(diff ? unifiedMergeView({ original: template, mergeControls: false, gutter: true }) : []) }); }, [diff, template, merge]);
   useEffect(() => { view.current?.dispatch({ effects: editable.reconfigure(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []) }); }, [readOnly, editable]);
 
-  return <div ref={host} className="gcode-editor" />;
+  return <div ref={host} className={`gcode-editor ${compact ? 'is-compact' : ''}`} />;
 }
 
 export { openSearchPanel };

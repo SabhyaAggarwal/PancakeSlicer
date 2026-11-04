@@ -1,4 +1,5 @@
 import { Dropdown } from '../components/Dropdown';
+import { Glyph } from '../components/Glyph';
 import { useTabLoaded } from '../components/PresetDialogs';
 import { OPTIONS, splitKey, TABS } from '../options';
 import type { Config, ConfigValue } from '../api/types';
@@ -22,7 +23,7 @@ export function PrintOverrides({ value, readOnly, onChange }: { value: Config; r
     {keys.length > 0 && <table><tbody>{keys.map((k) => <tr key={k}>
       <td>{labelOf(k)}</td>
       <td><input className="text num" aria-label={labelOf(k)} disabled={readOnly} value={first(value[k])} onChange={(e) => set(k, e.target.value)}/><span className="po-unit">{OPTIONS[k]?.sidetext ?? ''}</span></td>
-      <td>{!readOnly && <button type="button" className="reset-icon" aria-label={`Remove ${labelOf(k)}`} onClick={() => remove(k)}>×</button>}</td>
+      <td className="po-remove">{!readOnly && <button type="button" className="reset-icon row-remove" aria-label="Remove override" onClick={() => remove(k)}><Glyph name="trash" size={14}/></button>}</td>
     </tr>)}</tbody></table>}
     {!readOnly && <Dropdown className="combo" aria-label="Add a print setting" value="" placeholder="Add a print setting" onValueChange={add}
       options={printKeys().filter((k) => !(k in value)).sort((a, b) => labelOf(a).localeCompare(labelOf(b))).map((k) => ({ value: k, label: labelOf(k) }))}/>}

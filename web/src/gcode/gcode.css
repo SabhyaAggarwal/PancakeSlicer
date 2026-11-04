@@ -51,3 +51,17 @@
   :where(.orca-parity) .gcode-back { display: inline-flex; }
 }
 @media (pointer: coarse) { :where(.orca-parity) .gcode-hook { min-height: 44px; } }
+
+:where(.orca-parity) .gcode-group { --gc-command: var(--accent-text); --gc-param: #8fc6f0; --gc-number: #e6c07b; --gc-comment: var(--ink-3); --gc-placeholder: #7fd6a8; --gc-unknown: var(--danger); --gc-control: #f0a3d0; --gc-operator: var(--ink-2); --gc-string: #e6c07b; }
+:where(.orca-parity) .gcode-hook-row { display: flex; flex-direction: column; gap: var(--s-2); padding: 1px var(--space-section, var(--s-5)) 1px var(--row-inset, var(--space-section, var(--s-5))); }
+:where(.orca-parity) .gcode-hook-row[data-modified] .opt-label-text { color: var(--changed); }
+:where(.orca-parity) .gcode-field { position: relative; min-width: 0; border: 1px solid var(--border-control); border-radius: var(--control-radius); background: var(--selector-bg); overflow: hidden; }
+:where(.orca-parity) .gcode-tools.is-small { position: absolute; top: 2px; right: 2px; z-index: 2; gap: 0; opacity: .75; }
+:where(.orca-parity) .gcode-field:hover .gcode-tools.is-small, :where(.orca-parity) .gcode-field:focus-within .gcode-tools.is-small { opacity: 1; }
+:where(.orca-parity) .gcode-tools.is-small :is(.icon-btn, .reset-icon) { width: 24px; height: 24px; min-width: 0; min-height: 0; background: var(--selector-bg); }
+:where(.orca-parity) .gcode-tools.is-small svg { width: 14px; height: 14px; }
+:where(.orca-parity) .gcode-editor.is-compact { flex: none; }
+:where(.orca-parity) .gcode-editor.is-compact .cm-editor { height: auto; min-height: 88px; max-height: 336px; background: var(--selector-bg); }
+:where(.orca-parity) .gcode-editor.is-compact .cm-scroller { overflow: auto; }
+:where(.orca-parity) .gcode-editor.is-compact .cm-gutters { background: var(--selector-bg); }
+:where(.orca-parity) .gcode-editor.is-compact .cm-placeholder { color: var(--ink-3); font-family: var(--font-ui); }

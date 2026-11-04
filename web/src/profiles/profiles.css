@@ -122,7 +122,7 @@
 :where(.orca-parity) .pk-skel-sub { width: 6em; max-width: 70%; height: 10px; margin-top: var(--s-2); }
 :where(.orca-parity) .dyn-tab { display: flex; flex-direction: column; gap: var(--s-5); min-height: 0; padding: var(--s-4) 0; }
 :where(.orca-parity) .dyn-formulas { display: grid; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
-:where(.orca-parity) .dyn-formula { display: grid; grid-template-columns: 160px auto max-content auto; justify-content: start; align-items: center; column-gap: var(--s-3); min-height: 32px; font: var(--t-body); }
+:where(.orca-parity) .dyn-formula { display: grid; grid-template-columns: 160px auto max-content 1fr auto; align-items: center; column-gap: var(--s-3); min-height: 32px; font: var(--t-body); }
 :where(.orca-parity) .dyn-eq { color: var(--muted); }
 :where(.orca-parity) .dyn-expr { display: flex; align-items: center; gap: var(--s-2); color: var(--muted); white-space: nowrap; }
 :where(.orca-parity) .dyn-factor { width: 72px; text-align: right; color: var(--ink); }
@@ -146,3 +146,7 @@
 :where(.orca-parity) .print-overrides .text.num { width: 96px; text-align: right; }
 :where(.orca-parity) .print-overrides .po-unit { margin-left: var(--s-2); font: var(--t-small); color: var(--muted); }
 :where(.orca-parity) .print-overrides .combo { justify-self: start; min-width: 220px; }
+:where(.orca-parity) :is(.dyn-formula, .print-overrides tr) .row-remove { opacity: 0; }
+:where(.orca-parity) :is(.dyn-formula, .print-overrides tr):is(:hover, :focus-within) .row-remove { opacity: 1; }
+@media (pointer: coarse), (hover: none) { :where(.orca-parity) :is(.dyn-formula, .print-overrides tr) .row-remove { opacity: 1; } }
+:where(.orca-parity) .print-overrides .po-remove { width: 1%; text-align: right; }

@@ -9,6 +9,7 @@ const GLYPH = {
   plus: 'M8 3.5v9M3.5 8h9',
   minus: 'M3.5 8h9',
   printer: 'M2.5 13.5h11M4 13.5v-10h8v10M4 6.5h8M7 6.5v3h2v-3M6.5 11.5h3',
+  trash: 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4',
   undo: 'M4.5 6.5h5.25a2.75 2.75 0 0 1 0 5.5H6.5M4.5 6.5 7 4M4.5 6.5 7 9',
   play: 'M5 3.5v9l7.5-4.5z',
   pause: 'M5.5 3.5v9M10.5 3.5v9',
