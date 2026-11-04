@@ -1,6 +1,6 @@
 import { SlotPicker } from './SlotChip';
 import { Caret } from './Caret';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Glyph } from './Glyph';
 import { requestAddSettings } from './add-settings-request';
 import { showSettings } from '../workspace-sheet';
@@ -86,8 +86,8 @@ const settingsCell = (n: number, name: string, pick: () => void) => (
   </span>
 );
 
-const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expanded, onToggle, renaming, result, meshError, canFix, meshPlates, global, plateStyle }: {
-  o: PlateObject; selected: Selected | null; linkedInstance: number | null | undefined; expanded: boolean;
+const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expanded, onToggle, renaming, result, meshError, canFix, meshPlates, global, plateStyle, rowIndex, onFocus }: {
+  onFocus(object: number | null): void; rowIndex: number; o: PlateObject; selected: Selected | null; linkedInstance: number | null | undefined; expanded: boolean;
   onToggle(object: number, expanded: boolean): void; renaming: number | null; result?: PlateResult;
   meshError: number; canFix: boolean; meshPlates: boolean; global: Config; plateStyle: ReturnType<typeof styleOf>;
 }) {
@@ -102,9 +102,9 @@ const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expan
     selected: objSelected && st.selected?.all ? st.selected : { object: o.id, instance: o.instances[0].id, allInstances: true } }));
   const style = o.project || !Object.keys(o.settings).length ? plateStyle : styleOf({ ...global, ...o.settings });
   return (
-    <div>
+    <div onFocusCapture={() => onFocus(o.id)} onBlurCapture={e => {if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onFocus(null);}}>
       <div
-        role="row"
+        role="row" aria-rowindex={rowIndex}
         className={`ol-row ${objSelected ? 'selected' : ''}${linked()}`}
         aria-selected={objSelected}
         {...linkProps(o.id)}
@@ -258,18 +258,65 @@ export const ObjectList = memo(function ObjectList() {
   const canFix = useStore((s) => !!s.features.mesh_repair);
   const meshPlates = useStore((s) => canAddPlate(s) && s.projectPlates.length > 1);
   const link = useHoverLink('canvas');
-  const list = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const box = list.current?.closest<HTMLElement>('.op-body'), row = list.current?.querySelector<HTMLElement>('.ol-row.selected');
-    if (!box || !row) return;
-    const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
-    if (r.top < b.top) box.scrollTop -= b.top - r.top;
-    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
-  }, [selected]);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
+  const [focused, setFocused] = useState<number | null>(null);
   const toggleOpen = useCallback((object: number, expanded: boolean) => setOpen(prior => ({...prior, [object]: expanded})), []);
-  const shown = objects.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()));
+  const shown = useMemo(() => objects.filter((o) => o.name.toLowerCase().includes(query.toLowerCase())), [objects, query]);
+  const list = useRef<HTMLDivElement>(null), grid = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState(() => ({top: 0, height: 400, row: matchMedia('(pointer: coarse)').matches ? 36 : 28}));
+  const refreshViewport = useCallback(() => {
+    const box = list.current?.closest<HTMLElement>('.op-body'), body = grid.current;
+    if (!box || !body) return;
+    const row = body.querySelector<HTMLElement>('.ol-row')?.getBoundingClientRect().height;
+    const next = {top: Math.max(0, box.getBoundingClientRect().top - body.getBoundingClientRect().top), height: box.clientHeight};
+    setViewport(prior => prior.top === next.top && prior.height === next.height && (!row || prior.row === row) ? prior : {...next, row: row || prior.row});
+  }, []);
+  useLayoutEffect(() => {
+    const box = list.current?.closest<HTMLElement>('.op-body');
+    if (!box) return;
+    let frame = 0;
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(() => {frame = 0; refreshViewport();}); };
+    const resize = new ResizeObserver(schedule);
+    resize.observe(box);
+    box.addEventListener('scroll', schedule, {passive: true});
+    const pointer = matchMedia('(pointer: coarse)');
+    pointer.addEventListener('change', schedule);
+    refreshViewport();
+    return () => {resize.disconnect(); box.removeEventListener('scroll', schedule); pointer.removeEventListener('change', schedule); cancelAnimationFrame(frame);};
+  }, [refreshViewport]);
+  const rows = useMemo(() => {
+    let count = 0;
+    return shown.map(o => {
+      const expanded = open[o.id] ?? (!!o.volumes?.length || !!o.ranges?.length);
+      const length = 1 + (expanded ? (o.volumes?.length ?? 0) + (o.ranges?.length ? o.ranges.length + 1 : 0) + (o.instances.length > 1 ? o.instances.length + 1 : 0) : 0);
+      const row = {o, expanded, index: count + 1, top: count * viewport.row, height: length * viewport.row};
+      count += length;
+      return row;
+    });
+  }, [shown, open, viewport.row]);
+  const totalHeight = rows.length ? rows[rows.length - 1].top + rows[rows.length - 1].height : 0;
+  const visible = rows.filter(r => r.o.id === focused || r.o.id === renaming || r.o.volumes?.some(v => v.id === renaming) ||
+    r.top + r.height >= viewport.top - viewport.row * 4 && r.top <= viewport.top + viewport.height + viewport.row * 4);
+  const bottom = visible.length ? visible[visible.length - 1] : undefined;
+  const revealed = useRef<Selected | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (revealed.current === selected) return;
+    const box = list.current?.closest<HTMLElement>('.op-body'), body = grid.current;
+    if (!box || !body) return;
+    const row = body.querySelector<HTMLElement>('.ol-row.selected');
+    if (row) {
+      const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
+      if (r.top < b.top) box.scrollTop -= b.top - r.top;
+      else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+      revealed.current = selected;
+    } else {
+      const target = selected && rows.find(r => r.o.id === selected.object);
+      if (target) box.scrollTop += target.top - (box.getBoundingClientRect().top - body.getBoundingClientRect().top);
+      else revealed.current = selected;
+    }
+    refreshViewport();
+  }, [selected, rows, viewport.top, refreshViewport]);
   const global = useStore(st => effectiveConfig(st, 'process'));
   const plateStyle = styleOf(global);
 
@@ -278,17 +325,25 @@ export const ObjectList = memo(function ObjectList() {
       {objects.length > 8 && (
         <div className="search-bar">
           <Icon name="search" size={16} />
-          <input placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input placeholder="Search" value={query} onChange={(e) => {
+            setQuery(e.target.value);
+            const box = list.current?.closest<HTMLElement>('.op-body');
+            if (box) box.scrollTop = 0;
+            setViewport(prior => ({...prior, top: 0}));
+          }} />
         </div>
       )}
-      <div className="ol-body" role="grid" aria-label="Objects" aria-multiselectable="true">
-        {shown.map((o) => <ObjectRows key={o.id} o={o}
+      <div className="ol-body" ref={grid} role="grid" aria-label="Objects" aria-multiselectable="true" aria-rowcount={totalHeight / viewport.row + (project && record?.objects ? record.objects.length + 1 : 0)}>
+        {visible.map(({o, expanded, index, top}, at) => <Fragment key={o.id}>
+          <div aria-hidden="true" style={{height: top - (at ? visible[at - 1].top + visible[at - 1].height : 0), flexShrink: 0}}/>
+          <ObjectRows o={o} rowIndex={index} onFocus={setFocused}
           selected={selected && (selected.object === o.id || o.instances.some(i => isSelected(selected, o.id, i.id))) ? selected : null}
           linkedInstance={link?.object === o.id ? link.instance ?? null : undefined}
-          expanded={open[o.id] ?? (!!o.volumes?.length || !!o.ranges?.length)} onToggle={toggleOpen}
+          expanded={expanded} onToggle={toggleOpen}
           renaming={renaming === o.id || o.volumes?.some(v => v.id === renaming) ? renaming : null}
           result={results.length > 1 ? results.find(r => r.objectId === o.id) : undefined}
-          meshError={meshErrors[o.id] ?? 0} canFix={canFix} meshPlates={meshPlates} global={global} plateStyle={plateStyle}/>)}
+          meshError={meshErrors[o.id] ?? 0} canFix={canFix} meshPlates={meshPlates} global={global} plateStyle={plateStyle}/></Fragment>)}
+        <div aria-hidden="true" style={{height: totalHeight - (bottom ? bottom.top + bottom.height : 0), flexShrink: 0}}/>
         {project && record?.objects && (
           <div className="ol-record">
             <div role="row" className="ol-row ol-group"><span role="gridcell">Sliced from {project.name}</span></div>

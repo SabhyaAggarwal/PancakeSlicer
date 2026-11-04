@@ -44,8 +44,9 @@ function FormulaLine({ f, readOnly, onFactor, onRemove }: { f: Formula; readOnly
   </li>;
 }
 
-export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnly, onChange }: {
+export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter }: {
   rows: ScaleRow[]; nozzle: number; height: number; minHeight?: number; maxHeight?: number; readOnly?: boolean; onChange(rows: ScaleRow[]): void;
+   fromPrinter?: { name: string; values: Record<string, unknown> };
 }) {
   const [split, setSplit] = useState<ReadonlySet<string>>(() => new Set());
   const [adding, setAdding] = useState<{ key: string; basis: ScaleBasis } | null>(null);
@@ -77,6 +78,10 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
           <button type="button" className="btn" disabled={!adding.key} onClick={add}>Add</button><button type="button" className="btn-ghost" onClick={() => setAdding(null)}>Cancel</button></>
         : <button type="button" className="btn-ghost" onClick={() => setAdding({ key: '', basis: 'nozzle' })}>+ Add formula</button>}</li>}
     </ul>
+    {fromPrinter && Object.keys(fromPrinter.values).length > 0 && <ul className="dyn-formulas dyn-printer" aria-label={`From ${fromPrinter.name}`}>
+      <li className="dyn-group">From {fromPrinter.name}</li>
+      {Object.entries(fromPrinter.values).map(([k, v]) => <li key={k} className="dyn-formula"><span className="dyn-name">{nameOf(k)}</span><span className="dyn-eq">=</span><span className="dyn-expr">{String(Array.isArray(v) ? v[0] : v)}{OPTIONS[k]?.sidetext ? ` ${OPTIONS[k]?.sidetext}` : ''}</span></li>)}
+    </ul>}
     <div className="dyn-table-scroll"><table className="dyn-table">
       <thead><tr><th>Layer</th>{formulas.map((f) => <th key={f.name} className="n">{f.name}</th>)}</tr></thead>
       {NOZZLES.map((n) => {

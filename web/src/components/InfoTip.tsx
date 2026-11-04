@@ -10,6 +10,6 @@ export function LabelTip({ label, full, children }: { label: ReactNode; full?: s
     <Popover.Portal><Popover.Content className="info-pop" side="bottom" align="start" sideOffset={4} collisionPadding={8} onKeyDown={(e) => e.stopPropagation()}>{children}</Popover.Content></Popover.Portal></Popover.Root>;
 }
 
-export function AutoTag() {
-  return <span className="auto-tag">Auto</span>;
+export function SourceGlyph({ text }: { text?: string }) {
+  return <span className="source-glyph" role="img" aria-label={text ?? 'Computed value'} data-truncated="true" data-full-text={text ?? 'Computed from the profile\'s formula'}>✦</span>;
 }

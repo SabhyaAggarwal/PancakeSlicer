@@ -7,7 +7,7 @@ import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Glyph } from './Glyph';
-import { AutoTag, LabelTip } from './InfoTip';
+import { LabelTip, SourceGlyph } from './InfoTip';
 import { Switch } from './fields';
 import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
@@ -74,7 +74,8 @@ export const Field = memo(function Field(props: {
   extra?: React.ReactNode;
   scope?: { target?: ChangeTarget };
   widget?: React.ReactNode;
-  source?: 'auto' | 'inherited' | 'set';
+  source?: 'auto' | 'inherited' | 'set' | 'printer';
+  sourceText?: string;
   onResetToBase?: (key: string) => void;
   mixed?: string;
 }) {
@@ -135,7 +136,7 @@ export const Field = memo(function Field(props: {
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">
-        {props.source === 'auto' && <AutoTag/>}
+        {(props.source === 'auto' || props.source === 'printer') && <SourceGlyph text={props.sourceText}/>}
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
           <button type="button" className="reset-icon" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => props.dirty || !props.onResetToBase ? reset(key) : props.onResetToBase(key)}>

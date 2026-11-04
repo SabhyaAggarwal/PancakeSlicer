@@ -21,10 +21,11 @@ import { resetSettingToBase, settingSources } from './bases';
 import { baseMenuItems } from './bases-ui';
 import { DEFAULT_SCALES, scaledValue, type ScaleRow } from './auto-rules';
 import { DynamicTab } from './DynamicTab';
+import { PrintOverrides } from './PrintOverrides';
 import { effectiveLayerHeight, type SettingOrigin } from './context';
 import { DynamicBadge } from '../components/DynamicBadge';
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
-export interface ProfileDraft { scales?: ScaleRow[]; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
+export interface ProfileDraft { scales?: ScaleRow[];  printOverrides?: Config; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
   const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
   const unchanged=[...keys].every(key=>sameValue(key,current.values[key],submitted.values[key]));
@@ -55,7 +56,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const setError = (message: string | null) => m.send(message ? {type: 'REJECT', error: message} : {type: 'DISMISS'});
   useEffect(() => {onSavingChange?.(saving);}, [saving]);
   useEffect(() => () => {if (m.get().value === 'saving' || m.get().value === 'renaming') onSavingChange?.(false);}, []);
-  const latest = useRef<ProfileDraft>({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged};
+  const latest = useRef<ProfileDraft>({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged,scales:draft?.scales,printOverrides:draft?.printOverrides};
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
   const resetToBase = useCallback((k: string) => void resetSettingToBase(type, name, k).catch((e) => toast(e instanceof Error ? e.message : String(e))), [type, name]);
@@ -66,17 +67,31 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const height = useStore((st) => effectiveLayerHeight(st) ?? 0.2);
   const heightLimits = useStore((st) => { const c = resolvePreset(st, 'machine', st.printer).config; return `${[c.min_layer_height].flat()[0] ?? ''},${[c.max_layer_height].flat()[0] ?? ''}`; });
   const [minHeight, maxHeight] = heightLimits.split(',').map((v) => Number(v) || undefined);
+  const savedOverrides = (source as {printOverrides?: Config} | undefined)?.printOverrides ?? {};
+  const overrides = type === 'machine' ? draft?.printOverrides ?? savedOverrides : {};
+  const overridesDirty = type === 'machine' && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
+  const setOverrides = useCallback((next: Config) => update(key, {...latest.current, printOverrides: next}), [key, update]);
   const setScales = useCallback((next: ScaleRow[]) => update(key, {...latest.current, scales: next}), [key, update]);
-  const shown = useMemo(() => scales.length ? {...values, ...Object.fromEntries(scales.map((r) => [r.key, scaledValue(r, {nozzle, layerHeight: height})]))} : values, [values, scales, nozzle, height]);
+  const makeDynamic = () => { const current = latest.current, next = {...current.values}, native = resolved.base?.config ?? {};
+    for (const r of DEFAULT_SCALES) { if (native[r.key] === undefined) delete next[r.key]; else next[r.key] = native[r.key]; }
+    update(key, {...current, values: next, scales: [...DEFAULT_SCALES]}); };
+  const printer = useStore((st) => findProfile(st, 'machine', st.printer));
+  const fromPrinter = type === 'process' ? (printer as {printOverrides?: Config} | undefined)?.printOverrides ?? {} : {};
+  const printerName = printer?.name ?? '';
+  const shown0 = useMemo(() => scales.length ? {...values, ...Object.fromEntries(scales.map((r) => [r.key, scaledValue(r, {nozzle, layerHeight: height})]))} : values, [values, scales, nozzle, height]);
+  const shown = useMemo(() => { const own = (source as {overlay?: Config} | undefined)?.overlay ?? {}, out = {...shown0}; for (const [k, v] of Object.entries(fromPrinter)) if (!(k in own) && !(k in changes)) out[k] = v; return out; }, [shown0, fromPrinter, source, changes]);
+  const sourceText = useMemo(() => ({...Object.fromEntries(scales.map((r) => [r.key, r.basis === 'nozzle' ? `${r.factor} × nozzle ${nozzle}` : r.basis === 'layer' ? `${r.factor} × layer height ${height}` : `⌈ ${r.factor} mm ÷ layer height ${height} ⌉`])), ...Object.fromEntries(Object.keys(fromPrinter).map((k) => [k, `Set by ${printerName}`]))}), [scales, nozzle, height, fromPrinter, printerName]);
   const sources = useMemo(() => {
     const base = settingSources(getState(), type, name);
     if (type !== 'process') return base;
-    const out: Record<string, SettingOrigin> = {};
+    const out: Record<string, SettingOrigin | 'printer'> = {};
     for (const [k, v] of Object.entries(base)) if (v !== 'auto') out[k] = v;
     for (const r of scales) out[r.key] = 'auto';
     for (const k of Object.keys(changes)) if (!scales.some((r) => r.key === k)) out[k] = 'set';
-    return out;
-  }, [type, name, users, scales, changes]);
+    const own = (source as {overlay?: Config} | undefined)?.overlay ?? {};
+    for (const k of Object.keys(fromPrinter)) if (!(k in own) && !(k in changes)) out[k] = 'printer';
+    return out as Record<string, SettingOrigin>;
+  }, [type, name, users, scales, changes, fromPrinter, source]);
   const setOrUnlink = useCallback((k: string, value: ConfigValue) => { const current = latest.current, rows = current.scales ?? savedScales; update(key, {...current, values: {...current.values, [k]: value}, ...(rows.some((r) => r.key === k) ? {scales: rows.filter((r) => r.key !== k)} : {})}); }, [key, update, savedScales]);
   const relink = useCallback((k: string): void => {
     const row = savedScales.find((r) => r.key === k) ?? DEFAULT_SCALES.find((r) => r.key === k);
@@ -84,8 +99,8 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     const current = latest.current, next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k];
     update(key, {...current, values: next, scales: [...(current.scales ?? savedScales).filter((r) => r.key !== k), row]});
   }, [type, key, update, savedScales, resetToBase]);
-  const editor: ProfileFields = useMemo(() => ({name, config: shown, baseline, changes, set: type === 'process' ? setOrUnlink : set, reset, mode: type === 'process' ? 'develop' : mode, sources, resetToBase: type === 'process' ? relink : resetToBase}), [name, shown, baseline, changes, set, setOrUnlink, reset, mode, type, sources, resetToBase, relink]);
-  const dirty = Object.keys(changes).length > 0 || applicabilityDirty || scalesDirty || !!draft?.staged;
+  const editor: ProfileFields = useMemo(() => ({name, config: shown, baseline, changes, set: type === 'process' ? setOrUnlink : set, reset, mode: type === 'process' ? 'develop' : mode, sources, sourceText, resetToBase: type === 'process' ? relink : resetToBase}), [name, shown, baseline, changes, set, setOrUnlink, reset, mode, type, sources, sourceText, resetToBase, relink]);
+  const dirty = Object.keys(changes).length > 0 || applicabilityDirty || scalesDirty || overridesDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
   const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
   const openOnWorksWith = useRef(!!source && worksWithNone(type, source.applicability)).current;
@@ -101,7 +116,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     const request = m.get().context.request;
     try {
       const auto = type === 'process' ? {...(currentSource as {auto?: object}).auto, schema: 3, scales: submitted.scales ?? savedScales} : undefined;
-      const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability, ...(auto ? {auto} : {})} as UserPreset;
+      const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability, ...(auto ? {auto} : {}), ...(type === 'machine' && (submitted.printOverrides || Object.keys(savedOverrides).length) ? {printOverrides: submitted.printOverrides ?? savedOverrides} : {})} as UserPreset;
       await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
       const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolvePreset(saved,type,profileKey(p));
       if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('The profile changed again while saving. Your edits are kept.');
@@ -149,9 +164,9 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     controls={<><button type="button" className={`btn pf-editor-save${dirty ? ' primary' : ''}`} disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
-        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(type === 'process' && source && !scales.length ? [{label: 'Make dynamic', disabled: saving, action: () => setScales([...DEFAULT_SCALES])}] : []), ...(source ? baseMenuItems(type, profileKey(source)).map((i) => ({...i, disabled: saving || dirty || i.disabled})) : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
-    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales}/>} : undefined) : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith type={type} profile={profileKey(source)} source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
-      : connections ? {label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>} : undefined}/></fieldset>
+        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(type === 'process' && source && !scales.length ? [{label: 'Make dynamic', disabled: saving, action: makeDynamic}] : []), ...(source ? baseMenuItems(type, profileKey(source)).map((i) => ({...i, disabled: saving || dirty || i.disabled})) : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
+    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales} fromPrinter={{name: printerName, values: fromPrinter}}/>} : undefined) : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith type={type} profile={profileKey(source)} source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
+      : [{label: 'Print overrides', icon: 'param_speed', modified: overridesDirty, content: <PrintOverrides value={overrides} readOnly={saving} onChange={setOverrides}/>}, ...(connections ? [{label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>}] : [])]}/></fieldset>
   </DetailPane>;
 }
 

@@ -4,7 +4,7 @@ import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url
 import hookUrl from '../samples/shelf_hook.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
-import { getState, subscribeStore, useStore } from '../state/store';
+import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
 import { FilamentPicker, PrinterPicker } from '../profiles/Pickers';
 import { startOver, useDevReset } from '../dev-reset';
 import { printerReady } from '../workspace-sheet';
@@ -67,16 +67,19 @@ function afterFirstVisit() {
   firstVisitObserver=stop;
 }
 
+const hasFilament = (s: ReturnType<typeof getState>) => !!s.filamentSlots[0] && (() => { const r = resolvePreset(s, 'filament', s.filamentSlots[0]); return !!r.name && !r.error; })();
+
 function Onboarding({ done }: { done(): void }) {
-  const [step, setStep] = useState<0 | 1>(0);
   const ready = useStore(printerReady);
+  const filament = useStore(hasFilament);
+  const [step, setStep] = useState<0 | 1>(ready ? 1 : 0);
   return (
     <div className="fr-onboard">
       <div className="fr-steps" aria-label={`Step ${step + 1} of 2`}><span className="on" /><span className={step ? 'on' : ''} /></div>
       {step === 0 ? <PrinterChoice /> : <div className="fr-printer"><label className="fr-label">Filament</label><FilamentPicker slot={0} /></div>}
       <div className="fr-onboard-foot">
         {step === 1 && <button type="button" className="btn-ghost" onClick={() => setStep(0)}>Back</button>}
-        <button type="button" className="btn-primary" disabled={!ready} onClick={() => { if (step === 0) setStep(1); else { savePreferences({ [SETUP_KEY]: '1' }); done(); } }}>{step === 0 ? 'Next' : 'Start printing'}</button>
+        <button type="button" className="btn-primary" disabled={step === 0 ? !ready : !filament} onClick={() => { if (step === 0) setStep(1); else { savePreferences({ [SETUP_KEY]: '1' }); done(); } }}>{step === 0 ? 'Next' : 'Start printing'}</button>
       </div>
     </div>
   );
@@ -91,7 +94,8 @@ export default function EmptyPlate() {
   const preferences=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot);
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
   const library=useStore(s=>s.profileLibraryLoad.state);
-  const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && !printer;
+  const filament=useStore(hasFilament);
+  const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && (!printer || !filament);
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
   const [onboarding,setOnboarding]=useState(false);
   useEffect(()=>{if(firstVisit)setOnboarding(true);},[firstVisit]);

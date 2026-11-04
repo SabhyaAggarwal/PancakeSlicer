@@ -109,7 +109,9 @@ export async function createProfileFromBase(type:PresetType,baseName:string,name
         const reuse=owned.find(p=>active.has(profileKey(p))) ?? owned.sort((a,b)=>profileKey(a).localeCompare(profileKey(b)))[0];
         if(reuse)return profileKey(reuse);
       }
-      return makeProfile(s,current,explicit || displayName(current),explicit && values ? {...current.config,...values} : {});
+      const made=makeProfile(s,current,explicit || displayName(current),explicit && values ? {...current.config,...values} : {});
+      const defaults=type==='machine' ? (current as {print_defaults?:Config}).print_defaults : undefined;
+      return defaults && Object.keys(defaults).length ? {...made,printOverrides:{...defaults}} as UserPreset : made;
     })};
     if(!explicit)pendingCreations.set(identity,entry);
   }

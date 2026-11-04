@@ -34,9 +34,10 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
-  sources?: Record<string, SettingSource>; resetToBase?(key: string): void }
+  sources?: Record<string, SettingSource>; sourceText?: Record<string, string>; resetToBase?(key: string): void }
+export interface Aux { label: string; icon?: string; content: React.ReactNode; modified?: boolean; initial?: boolean }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overrides, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields;
-  overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
+  overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: Aux | Aux[] }) {
   const { desc, error } = useTab(TAB_OF[type]);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -46,7 +47,9 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   };
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
-  const [auxiliaryOn,setAuxiliaryOn] = useState(!!auxiliary?.initial);
+  const auxes = auxiliary ? [auxiliary].flat() : [];
+  const [auxIdx, setAuxIdx] = useState<number | null>(() => { const i = auxes.findIndex((a) => a.initial); return i < 0 ? null : i; });
+  const aux = auxIdx !== null ? auxes[auxIdx] : undefined, auxiliaryOn = !!aux;
   const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
   const processConfig = useStore((s) => effectiveConfig(s, 'process'));
   const features = useStore((s) => s.features);
@@ -112,7 +115,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const strip = useRef<HTMLDivElement>(null);
-  const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
+  const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxes.map((a) => a.label).join('|')}`);
   const openByDefault = !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100;
   const body = useRef<HTMLDivElement>(null);
   const rowKeys = groups.flatMap((g) => g.lines.flatMap((l) => l.options)).join(',');
@@ -147,17 +150,17 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
-      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={strip} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
+      <Tabs.Root className="settings-pages" value={auxiliaryOn ? `aux:${auxIdx}` : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {const a = v.startsWith('aux:') ? Number(v.slice(4)) : null; setAuxIdx(a); if (a === null) setPageIdx(Number(v));}}><Tabs.List ref={strip} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => [breaks.includes(i) && <span key={`break-${i}`} className="tab-break" aria-hidden />, (
-          <Tabs.Trigger key={p.title} value={String(i)} aria-label={p.title} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
+          <Tabs.Trigger key={p.title} value={String(i)} aria-label={p.title} className={`page-tab ${p === page && !auxiliaryOn ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.icon && <Icon name={p.icon} size={16}/>}<span className="page-tab-label">{p.title}</span>
           </Tabs.Trigger>
         )])}
-        {auxiliary && breaks.includes(pages.length) && <span className="tab-break" aria-hidden />}
-        {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.icon && <Icon name={auxiliary.icon} size={16}/>}<span className="page-tab-label">{auxiliary.label}</span></Tabs.Trigger>}
+        {auxes.map((a, i) => [breaks.includes(pages.length + i) && <span key={`break-aux-${i}`} className="tab-break" aria-hidden />,
+          <Tabs.Trigger key={`aux-${i}`} value={`aux:${i}`} className={`page-tab ${auxIdx === i ? 'active' : ''} ${a.modified ? 'modified' : ''}`}>{a.icon && <Icon name={a.icon} size={16}/>}<span className="page-tab-label">{a.label}</span></Tabs.Trigger>])}
       </Tabs.List>
-      <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
-        {auxiliaryOn && auxiliary ? auxiliary.content : <><div className="page-flow">
+      <Tabs.Content forceMount value={auxiliaryOn ? `aux:${auxIdx}` : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
+        {aux ? aux.content : <><div className="page-flow">
         {type === 'machine' && !editor && <><NozzleField /><PlateTypeField /></>}
         {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
@@ -172,7 +175,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
-              source={source} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
+              source={source} sourceText={editor?.sourceText?.[key]} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
               disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}

@@ -8,6 +8,7 @@ import { FacetGroup, FacetsHead } from '../components/Facets';
 import { Caret } from '../components/Caret';
 import { selectCompatibility } from './compatibility';
 import { ManagerProfileRow } from './ManagerProfileRow';
+import { scalesOf } from './auto-rules';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
 import { changedKeys } from './model';
 import { applicabilityKey, worksWithNone } from './WorksWith';
@@ -55,7 +56,7 @@ const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 interface Group { key: string; label: string; sub?: string; rows: Item[]; children?: Group[] }
-const isDynamic = (p?: UserPreset) => (p as {auto?: {dynamic?: boolean}} | undefined)?.auto?.dynamic !== false && !!(p as {auto?: unknown} | undefined)?.auto;
+const isDynamic = (p?: UserPreset) => scalesOf(p).length > 0;
 const groupHas = (g: Group, match: (i: Item) => boolean): boolean => g.children ? g.children.some((c) => groupHas(c, match)) : g.rows.some(match);
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
 const sessionFolds = new Map<string, boolean>();
@@ -222,7 +223,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(commit && next!==listWidth)savePreferences({'orca.profileListWidth':next});
   };
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
-  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.scales || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
+  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.scales || draft.printOverrides || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
   const users = useStore(st => st.userPresets), dirty = useStore(st => st.dirty), filamentEdits = useStore(st => st.filamentEdits);
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);

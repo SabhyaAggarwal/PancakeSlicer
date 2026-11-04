@@ -137,3 +137,11 @@
 :where(.orca-parity) .dyn-table tr.is-current td { background: var(--selected); color: var(--selected-foreground); }
 :where(.orca-parity) .dyn-table td[data-clamped] { color: var(--changed); }
 @media (max-width: 599px) { :where(.orca-parity) .dyn-formula { grid-template-columns: 1fr auto; } :where(.orca-parity) .dyn-expr { grid-column: 1 / -1; } }
+:where(.orca-parity) .dyn-group { font: var(--t-small); font-weight: 600; color: var(--ink-3); }
+:where(.orca-parity) .dyn-printer .dyn-expr { color: var(--ink); }
+:where(.orca-parity) .print-overrides { display: grid; gap: var(--s-4); max-width: 640px; padding: var(--s-4) 0; }
+:where(.orca-parity) .print-overrides table { width: 100%; border-collapse: collapse; font: var(--t-body); }
+:where(.orca-parity) .print-overrides td { height: 32px; padding: 0 var(--s-3); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .print-overrides .text.num { width: 96px; text-align: right; }
+:where(.orca-parity) .print-overrides .po-unit { margin-left: var(--s-2); font: var(--t-small); color: var(--muted); }
+:where(.orca-parity) .print-overrides .combo { justify-self: start; min-width: 220px; }
