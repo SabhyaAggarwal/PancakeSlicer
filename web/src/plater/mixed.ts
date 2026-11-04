@@ -6,6 +6,7 @@ import { remapObject } from '../components/RemapFilaments';
 import { blend } from './mixColour';
 import type { PaintNode, Painting } from './paint';
 import { remapNozzleAssignments } from '../multinozzle/assignments';
+import { retainFlushSlots } from '../multinozzle/flush-mapping';
 
 export const SLOTS_MAX = 32;
 export { blend };
@@ -25,6 +26,7 @@ function remapAll(st: State, map: number[], kept?: number[]): Partial<State> {
   const events = (es: State['events']) => es.flatMap((e) => (e.type !== 'change' ? [e] : map[Number(e.text) - 1] ? [{ ...e, text: String(map[Number(e.text) - 1]) }] : []));
   return {
     objects: each(st.objects), events: events(st.events),
+    ...(kept ? { flush: { ...st.flush, matrix: retainFlushSlots(st.flush.matrix ?? st.projectMaterials?.matrix, st.filamentSlots.length, kept) } } : {}),
     projectPlates: st.projectPlates.map((p) => ({ ...p, settings: remapNozzleAssignments(p.settings, map, kept),
       ...(p.index === st.plateIndex ? {} : { objects: each(p.objects), events: p.events && events(p.events) }) })),
     job: markStale(st.job),
@@ -91,7 +93,6 @@ export function removeSlotAt(n: number): { moved: number; to: number; merged: { 
       filamentSlots: pick(st.filamentSlots), slotColours: pick(st.slotColours),
       mixes: Object.fromEntries(remixed.filter(([k]) => !gone.has(k)).map(([k, m]) => [kept.indexOf(k), m])),
       projectPresets: st.projectPresets && { ...st.projectPresets, filaments: pick(st.projectPresets.filaments) },
-      flush: { ...st.flush, matrix: null },
     };
   }));
   return { moved, to, merged };
@@ -117,7 +118,8 @@ export function removePhysical() {
     slotColours.splice(p - 1, 1);
     const mixes = Object.fromEntries(Object.entries(shifted(st.mixes, p, -1)).map(([i, m]) =>
       [i, { ...m, components: m.components.map((c) => (c === p ? 0 : c > p ? c - 1 : c)) }]));
-    return { ...remapAll(st, Array.from({ length: n }, (_, k) => (k === p - 1 ? 1 : k >= p ? k : k + 1))), filamentSlots, slotColours, mixes };
+    const kept = Array.from({ length: n }, (_, k) => k).filter((k) => k !== p - 1);
+    return { ...remapAll(st, Array.from({ length: n }, (_, k) => (k === p - 1 ? 1 : k >= p ? k : k + 1)), kept), filamentSlots, slotColours, mixes };
   }));
 }
 

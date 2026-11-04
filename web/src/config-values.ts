@@ -98,7 +98,7 @@ export function normalizeConfig(config: Config, native = false): Config {
 
 export function toolValue(key: string, value: ConfigValue): string {
   if (!Array.isArray(value)) return types[key] === 'String' ? escapeConfigString(scalar(value)) : scalar(value);
-  const parts = value.map(scalar);
+  const parts = types[key] === 'Percents' ? value.map(scalar).map((text) => text && !text.endsWith('%') ? `${text}%` : text) : value.map(scalar);
   if (types[key] === 'Strings' || !types[key]) return parts.map((text) =>
     (parts.length === 1 && text === '') || /[ \t;\\"\r\n]/.test(text)
       ? `"${escapeConfigString(text)}"` : text).join(';');

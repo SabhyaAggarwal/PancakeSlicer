@@ -21,7 +21,7 @@ const NUMERIC = new Set(['float', 'floats', 'int', 'ints', 'percent', 'percents'
 
 function elementOf(v: ConfigValue | undefined, idx: number, vector: boolean): ConfigValue | undefined {
   if (!vector) return v;
-  if (Array.isArray(v)) return v[Math.min(idx, v.length - 1)];
+  if (Array.isArray(v)) return v[idx] ?? v[0];
   return v;
 }
 
@@ -87,7 +87,7 @@ export const Field = memo(function Field(props: {
   const baseDef = OPTIONS[key];
   if (!baseDef) return null;
   const def: OptionDef = { ...baseDef, ...props.definition };
-  const vector = def.type.endsWith('s') && def.type !== 'points' && def.type !== 'points_groups' && def.type !== 'ints_groups';
+  const vector = def.type.endsWith('s') && (props.optKey.includes('#') || !['points', 'points_groups', 'ints_groups'].includes(def.type));
   const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
   const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
   const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
