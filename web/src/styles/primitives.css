@@ -47,6 +47,8 @@
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button):hover:not(:disabled) { --slant-bg: var(--slant-fill-hover); background: none; }
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button):active:not(:disabled) { --slant-bg: var(--slant-fill-pressed); background: none; }
 :where(.orca-parity) .seg.slant-seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { --slant-bg: var(--slant-fill-selected); background: none; }
+:where(.orca-parity) .seg.slant-seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on):is(:hover, :active):not(:disabled) { --slant-bg: var(--slant-fill-selected); }
+:where(.orca-parity) .chip:is([aria-pressed=true], [aria-checked=true], [data-state=on]):is(:hover, :active):not(:disabled) { border-color: var(--segment-active); background: var(--segment-active); color: var(--on-accent); }
 :where(.orca-parity) :is(.btn-primary, .btn.primary).slant { --slant-bg: var(--slant-fill-primary); --slant-line: var(--slant-fill-primary); padding: 0 var(--s-5); }
 :where(.orca-parity) :is(.btn-primary, .btn.primary).slant:hover:not(:disabled) { --slant-bg: var(--slant-fill-primary-hover); --slant-line: var(--slant-fill-primary-hover); }
 :where(.orca-parity) :is(.btn-primary, .btn.primary).slant:active:not(:disabled) { --slant-bg: var(--accent-pressed); --slant-line: var(--accent-pressed); }
@@ -73,3 +75,10 @@
 
 
 :where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+@media (pointer: coarse), (hover: none) {
+  :where(.orca-parity) .icon-btn { min-width: 44px; min-height: 44px; }
+  :where(.orca-parity) .seg > button, :where(.orca-parity) .seg.slant-seg > button { min-height: 44px; }
+  :where(.orca-parity) :is(.btn, .btn-primary, .btn-danger, .btn-ghost, .chip) { min-height: 44px; }
+  :where(.orca-parity) :is(input.text, textarea.text, .dropdown) { min-height: 44px; }
+}

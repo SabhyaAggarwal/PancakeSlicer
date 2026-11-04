@@ -181,3 +181,8 @@
 
 
 :where(.orca-parity) .pf-window .pf-group-rows > .pf-item[data-child] { padding-left: calc(12px + var(--s-2) - 7px + var(--s-5)); }
+@media (pointer: coarse), (hover: none) {
+  :where(.orca-parity) .pf-window :is(.pf-list-head, .pf-library, .pf-editor-heading) { height: auto; min-height: var(--pf-head); padding-block: var(--s-4); }
+  :where(.orca-parity) .pf-workspace-title { height: auto; min-height: 56px; }
+  :where(.orca-parity) .pf-workspace-title .seg > button { min-height: 44px; }
+}

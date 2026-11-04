@@ -1,3 +1,4 @@
+import { sessionId } from './session';
 let token = '';
 export type AccessNotice = { status: number; message: string };
 let notice: AccessNotice | null = null;
@@ -66,6 +67,7 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   const send = () => {
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Orca-Session', sessionId);
     return onUpload ? sendWithProgress(path, init, headers, onUpload) : fetch(path, { ...init, headers });
   };
   let response = await send();

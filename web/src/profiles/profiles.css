@@ -120,3 +120,20 @@
 :where(.orca-parity) .filament-colour-actions { flex-wrap: wrap; }
 :where(.orca-parity) .pk-skel-name { width: 9em; max-width: 100%; height: 12px; }
 :where(.orca-parity) .pk-skel-sub { width: 6em; max-width: 70%; height: 10px; margin-top: var(--s-2); }
+:where(.orca-parity) .dyn-tab { display: flex; flex-direction: column; gap: var(--s-5); min-height: 0; padding: var(--s-4) 0; }
+:where(.orca-parity) .dyn-formulas { display: grid; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+:where(.orca-parity) .dyn-formula { display: grid; grid-template-columns: 160px auto max-content auto; justify-content: start; align-items: center; column-gap: var(--s-3); min-height: 32px; font: var(--t-body); }
+:where(.orca-parity) .dyn-eq { color: var(--muted); }
+:where(.orca-parity) .dyn-expr { display: flex; align-items: center; gap: var(--s-2); color: var(--muted); white-space: nowrap; }
+:where(.orca-parity) .dyn-factor { width: 72px; text-align: right; color: var(--ink); }
+:where(.orca-parity) .dyn-add { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+:where(.orca-parity) .dyn-table-scroll { min-height: 0; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-1); }
+:where(.orca-parity) .dyn-table { width: 100%; border-collapse: collapse; font: var(--t-body); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .dyn-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); font: var(--t-small); font-weight: 600; color: var(--ink-3); white-space: normal; line-height: 14px; vertical-align: bottom; padding-block: var(--s-2); }
+:where(.orca-parity) .dyn-table :is(th, td) { height: 28px; padding: 0 var(--s-3); border-bottom: 1px solid var(--line); text-align: left; }
+:where(.orca-parity) .dyn-table .n { text-align: right; }
+:where(.orca-parity) .dyn-nozzle th { background: var(--chrome-raised); }
+:where(.orca-parity) .dyn-nozzle button { padding: 0; border: 0; background: none; color: var(--ink); font: var(--t-label); cursor: pointer; }
+:where(.orca-parity) .dyn-table tr.is-current td { background: var(--selected); color: var(--selected-foreground); }
+:where(.orca-parity) .dyn-table td[data-clamped] { color: var(--changed); }
+@media (max-width: 599px) { :where(.orca-parity) .dyn-formula { grid-template-columns: 1fr auto; } :where(.orca-parity) .dyn-expr { grid-column: 1 / -1; } }

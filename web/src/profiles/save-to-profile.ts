@@ -7,9 +7,15 @@ import { findProfile, profileKey } from './identity';
 import { saveProfile } from './model';
 import { acknowledgeProjectProfileChanges, captureProjectProfileChanges } from './project-draft';
 import { archiveProfiles, commitProfileRecords } from './transactions';
+import { scalesOf } from './auto-rules';
+import { effectiveProfileValues } from './context';
+import { engineName } from '../slice-input';
 
 const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
+
+export const autoKeysOf = (s: State, type: PresetType, slot: number): Set<string> =>
+  new Set(type === 'process' ? scalesOf(findProfile(s, type, selectedKey(s, type, slot))).map((r) => r.key) : []);
 
 export function savesInPlace(s: State, type: PresetType, slot: number): boolean {
   const p = findProfile(s, type, selectedKey(s, type, slot));
@@ -33,10 +39,12 @@ export async function saveToProfile(type: PresetType, slot = 0): Promise<void> {
   if (!s.api) throw new Error('Not connected. Your changes are kept.');
   const stage = captureProjectProfileChanges(type, slot), source = findProfile(s, type, stage.key), resolved = resolvePreset(s, type, stage.key);
   if (!source || !resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
-  const before = changesOf(s, type, slot), prior = structuredClone(source);
-  const values = { ...resolved.config, ...stage.deltas };
+  const before = changesOf(s, type, slot), prior = structuredClone(source), auto = autoKeysOf(s, type, slot);
+  const own = { ...stage, deltas: Object.fromEntries(Object.entries(stage.deltas).filter(([k]) => !auto.has(k))) };
+  if (!Object.keys(own.deltas).length) throw new Error('Only scaled values changed. Save them as a new profile.');
+  const values = { ...resolved.config, ...own.deltas };
   const record = { ...saveProfile(s, type, source.name, profileKey(source), values), id: profileKey(source), applicability: source.applicability };
-  await commitProfileRecords([record], { apply: (st) => acknowledgeProjectProfileChanges(st, stage, values) });
+  await commitProfileRecords([record], { apply: (st) => acknowledgeProjectProfileChanges(st, own, values) });
   toast(`Saved to ${source.name}`, { label: 'Undo', run: () => void commitProfileRecords([{ ...prior, revision: findProfile(getState(), type, stage.key)?.revision }])
     .then(() => restoreChanges(type, slot, stage.key, before), (e) => toast(message(e))) });
 }
@@ -61,7 +69,9 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
   if (!resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
   const deltas = Object.fromEntries(selectChanges(s, type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined).map((c) => [c.key, c.now]));
   const before = changesOf(s, type, slot);
-  const created = await createProfileFromBase(type, resolved.base.name, name.trim(), { ...resolved.config, ...deltas });
+  const dynamic = autoKeysOf(s, type, slot).size > 0;
+  const values = dynamic ? { ...effectiveProfileValues(s, type, key, slot), ...deltas } : { ...resolved.config, ...deltas };
+  const created = await createProfileFromBase(type, dynamic ? engineName(s, 'process', key) : resolved.base.name, name.trim(), values);
   switchPreset(type, slot, created, 'discard');
   toast(`Saved as ${name.trim()}`, { label: 'Undo', run: () => {
     switchPreset(type, slot, key, 'discard');

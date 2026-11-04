@@ -22,6 +22,7 @@
 :where(.orca-parity) .color-channel .text { width: 100%; }
 :where(.orca-parity) .color-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 :where(.orca-parity) .hint-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+:where(.orca-parity) [data-radix-popper-content-wrapper]:has(> .control-tooltip) { pointer-events: none; }
 :where(.orca-parity) .control-tooltip { z-index: 2100; max-width: min(280px, calc(100vw - 24px)); padding: 4px 8px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: anywhere; box-shadow: var(--shadow-pop); pointer-events: none; }
 :where(.orca-parity) .control-text { display: contents; }
 :where(.orca-parity) .control-number { display: flex; min-width: 0; width: 100%; }

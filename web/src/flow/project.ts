@@ -13,6 +13,7 @@ import type { createDraftJournal } from './project-journal';
 import { importing } from './import';
 import { writesDiscarded } from '../api/access';
 import { versionShown, versionView, versionWanted } from './version-view';
+import { followProjectLease, leaseRefused, leaseWritable } from './project-lease';
 
 export type { ProjectMeta } from '../persist/backend';
 export { newProject } from '../actions';
@@ -144,6 +145,7 @@ function save(id: string, m: Machine<ProjectStateName, ProjectEvent, ProjectCont
   queue = queue.then(async () => {
     await (await recoveryActions()).saveProjectSnapshot(recoveryRuntime, { id, document: doc, gen, version, revision, storage, receipt });
   }).catch((error: unknown) => {
+    if (leaseRefused(error, id)) { if (activeWrite(id, gen, version)) m.send({ type: 'EDIT' }); return; }
     const failure = projectFailure(error, id, revision);
     if (activeWrite(id, gen, version)) {
       m.send({ type: 'ERROR', error: failure.message, failure });
@@ -171,7 +173,7 @@ const recovered = [
 ] as const;
 const leave = { ERROR: failed, DRAFT: draftUpdate, RECOVERED: recovered, BLANK: 'blank', OPEN: 'opening', DELETED: 'deleted',
   MISSING: { target: 'missing', action: (_: ProjectContext, e: { id: string }) => ({ id: e.id, dirty: false }) } } as const;
-const writable = (c: ProjectContext) => !blocksAutosave(c.failure);
+const writable = (c: ProjectContext) => !blocksAutosave(c.failure) && leaseWritable();
 const notices = (unsaved: boolean) => ({ REMOTE: { target: 'conflict', action: (c: ProjectContext) => ({ failure: conflictFailure(c.id, c.revision), dirty: unsaved || c.dirty }) } }) as const;
 const savedPatch = (c: ProjectContext, e: Extract<ProjectEvent, { type: 'SAVED' }>): Partial<ProjectContext> => ({
   name: e.name, savedAt: e.savedAt, revision: e.revision, origin: 'saved', dirty: false, error: null, failure: null,
@@ -365,6 +367,8 @@ async function start(ready: Promise<unknown>) {
   if (typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel('orca.projects'); channel.onmessage = (e) => remote(e.data);
   }
+  followProjectLease(() => project.get().context.id || null, (f) => project.subscribe(f),
+    (from, id) => from === 'viewing' && !hasUnsavedProject() ? void openProject(id, { reload: true }) : project.send({ type: 'FLUSH' }));
   refreshList(); void refreshProjectDrafts();
   const unsaved: unknown = currentRoute().kind === 'blank' ? history.state?.[UNSAVED] : null;
   if (currentRoute().kind === 'blank' && observed && (observed.objects.length || observed.project)) {

@@ -1,6 +1,6 @@
 import type { State } from '../state/store';
 import { selectCompatibility } from './compatibility';
-import { chainAuto, effectiveProfileValues, profileChain } from './context';
+import { effectiveProfileValues, preferredHeight } from './context';
 import { captureProjectProfiles } from './project';
 import { methodAvailability } from './method-context';
 import { methodSelectionProblem } from './capabilities';
@@ -170,8 +170,8 @@ export function reconcilePrinterSelection(previous:State,incoming:State,{definit
   if(next.process!==previous.process && !summary.changes.some(change=>change.kind==='process'))summary.changes.push({kind:'process',from:resolveProfile(previous,'process',previous.process).name ?? previous.process,to:label('process',next.process),reason:'Restored printer print settings'});
   next.filamentSlots.forEach((key,slot)=>{if(key!==previous.filamentSlots[slot]&&!summary.changes.some(change=>change.kind==='filament'&&change.slot===slot))summary.changes.push({kind:'filament',slot,from:resolveProfile(previous,'filament',previous.filamentSlots[slot] ?? '').name ?? previous.filamentSlots[slot] ?? '',to:label('filament',key),reason:'Restored loaded filament'});});
   const contexts={...previous.projectProfileContexts,[previous.printer]:{projectPresets:previous.projectPresets,profileSnapshots:captureProjectProfiles(previous),process:previous.process,dirty:previous.dirty}};
-  const preferred=next.process!==previous.process ? chainAuto(profileChain(next,'process',resolveProfile(next,'process',next.process))) : {};
-  return{patch:{...(preferred.preferredHeight?{processVariant:{layerHeight:preferred.preferredHeight}}:{}),...(preferred.preferredSpeed?{speed:preferred.preferredSpeed}:{}),process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
+  const preferred=next.process!==previous.process ? preferredHeight(next,next.process) : undefined;
+  return{patch:{...(preferred?{processVariant:{layerHeight:preferred}}:{}),process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
 }
 export function selectionNotice(s:State,summary:ProfileTransitionSummary):string{
   const printer=resolveProfile(s,'machine',s.printer).name ?? s.printer;

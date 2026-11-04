@@ -222,7 +222,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(commit && next!==listWidth)savePreferences({'orca.profileListWidth':next});
   };
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
-  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
+  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.scales || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
   const users = useStore(st => st.userPresets), dirty = useStore(st => st.dirty), filamentEdits = useStore(st => st.filamentEdits);
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
@@ -518,7 +518,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>
         </nav>}
         <FacetsHead active={filtersActive} onClear={clearFilters}/>
-        {type === 'process' && <><FacetGroup label="Kind" options={[{value:'dynamic',label:'Dynamic'},{value:'fixed',label:'Fixed'}]} value={kindFilter} onChange={setKindFilter}/>
+        {type === 'process' && <><FacetGroup label="Kind" options={[{value:'dynamic',label:'Dynamic'},{value:'fixed',label:'Regular'}]} value={kindFilter} onChange={setKindFilter}/>
           <div className="facet-group" role="group" aria-label="Sort"><div className="facet-head">Sort</div><Segmented label="Sort" value={sortBy} options={[{id:'name',label:'Name'},{id:'kind',label:'Dynamic first'}]} onChange={v=>setSortBy(v as 'name'|'kind')}/></div></>}
         {!adding && type !== 'process' && <FacetGroup label="Bases" options={[...(list.some(i=>baseRoleOf(i.user)) ? [{value:'base',label:'Bases'}] : []),...(list.some(i=>i.user?.parentId) ? [{value:'based',label:'On a base'}] : [])]} value={baseFilter} onChange={setBaseFilter}/>}
         {type === 'filament' && <FacetGroup label="Material" options={[...facets.materials].sort((a,b)=>materialRank(a)-materialRank(b) || a.localeCompare(b)).map(value=>({value,label:value}))} value={materialFilter} onChange={next=>{setMaterialFilter(next);setMaterialDefault(false);}}/>}

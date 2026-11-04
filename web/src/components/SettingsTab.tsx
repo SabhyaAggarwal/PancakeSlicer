@@ -173,7 +173,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
               source={source} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
-              disabled={readOnly || isDeferred(key) || states[key]?.enabled === false || (type === 'process' && key === 'layer_height')}
+              disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
               overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}

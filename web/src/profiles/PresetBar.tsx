@@ -22,7 +22,7 @@ import { reviewProjectProfileChanges } from './project-draft';
 import { toast } from '../state/store';
 import { editing } from './editing';
 import { createProfileSave } from '../flow/profile-save';
-import { newProfileName, newProfileNameError, saveAsNewProfile, saveToProfile, savesInPlace } from './save-to-profile';
+import { autoKeysOf, newProfileName, newProfileNameError, saveAsNewProfile, saveToProfile, savesInPlace } from './save-to-profile';
 
 async function exportCurrent(type: PresetType, slot: number) {
   const s = getState();
@@ -124,19 +124,24 @@ function ChangesPop({type,slot,list,project,save}: {type:PresetType;slot:number;
   const label = `${list.length} change${list.length === 1 ? '' : 's'}`;
   return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}>
     <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}}/>
-    <SaveChanges type={type} slot={slot} project={project} review={() => {setOpen(false);save();}} revertAll={() => undoable('Revert all changes', () => list.forEach(revert))}/>
+    <SaveChanges type={type} slot={slot} project={project} list={list} review={() => {setOpen(false);save();}} revertAll={() => undoable('Revert all changes', () => list.forEach(revert))}/>
   </Popover.Content></Popover.Portal></Popover.Root>;
 
 }
 
-function SaveChanges({type, slot, project, review, revertAll}: {type: PresetType; slot: number; project: number; review(): void; revertAll(): void}) {
+function SaveChanges({type, slot, project, list, review, revertAll}: {type: PresetType; slot: number; project: number; list: Change[]; review(): void; revertAll(): void}) {
   const m = useMemo(createProfileSave, []), snap = useMachine(m);
-  const inPlace = useStore((s) => savesInPlace(s, type, slot)), suggested = useStore((s) => newProfileName(s, type, slot));
+  const auto = useStore((s) => [...autoKeysOf(s, type, slot)].join(',')), autoSet = new Set(auto ? auto.split(',') : []);
+  const projectList = list.filter((c) => c.scope === 'project' && c.owner.plate === undefined);
+  const plain = projectList.filter((c) => !autoSet.has(c.key)).length, scaled = projectList.length - plain;
+  const owned = useStore((s) => savesInPlace(s, type, slot)), inPlace = owned && plain > 0;
+  const suggested = useStore((s) => newProfileName(s, type, slot));
   const [name, setName] = useState(suggested);
   useEffect(() => setName(suggested), [suggested]);
-  const nameError = useStore((s) => inPlace ? null : newProfileNameError(s, type, name));
+  const nameError = useStore((s) => newProfileNameError(s, type, name));
   const saving = snap.value === 'saving', error = snap.value === 'failed' ? snap.context.error : null;
-  const run = () => {
+  const asNew = !owned || scaled > 0;
+  const run = (inPlace: boolean) => {
     if (!m.can({type: 'SAVE'})) return;
     m.send({type: 'SAVE'});
     const request = m.get().context.request;
@@ -144,12 +149,13 @@ function SaveChanges({type, slot, project, review, revertAll}: {type: PresetType
       .then(() => m.send({type: 'SAVED', request}), (e) => m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}));
   };
   return <>
-    {project > 0 && !inPlace && <label className="pf-save-name"><span>Name</span><input className="text" value={name} disabled={saving} aria-invalid={!!nameError}
-      onChange={(e) => {setName(e.target.value); if (error) m.send({type: 'DISMISS'});}} onKeyDown={(e) => {if (e.key === 'Enter' && !nameError) run();}}/></label>}
+    {project > 0 && asNew && <label className="pf-save-name"><span>Name</span><input className="text" value={name} disabled={saving} aria-invalid={!!nameError}
+      onChange={(e) => {setName(e.target.value); if (error) m.send({type: 'DISMISS'});}} onKeyDown={(e) => {if (e.key === 'Enter' && !nameError) run(false);}}/></label>}
     {error && <p className="pf-save-error" role="alert">{error}</p>}
     <div className="pf-changes-foot"><button type="button" className="btn-ghost" disabled={saving} onClick={revertAll}>Revert all</button>
       {project > 0 && <><button type="button" className="link pf-review" disabled={saving} onClick={review}>Open in Profiles</button>
-        <button type="button" className="btn primary" disabled={saving || !!nameError} aria-busy={saving} onClick={run}>{saving && <span className="pf-spin" aria-hidden/>}{error ? 'Retry' : inPlace ? 'Save to profile' : 'Save as new profile'}</button></>}</div>
+        {asNew && <button type="button" className={inPlace ? 'btn' : 'btn primary'} disabled={saving || !!nameError} aria-busy={saving} onClick={() => run(false)}>{saving && !inPlace && <span className="pf-spin" aria-hidden/>}{error && !inPlace ? 'Retry' : 'Save as new profile'}</button>}
+        {inPlace && <button type="button" className="btn primary" disabled={saving} aria-busy={saving} onClick={() => run(true)}>{saving && <span className="pf-spin" aria-hidden/>}{error ? 'Retry' : 'Save to profile'}</button>}</>}</div>
   </>;
 }
 

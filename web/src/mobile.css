@@ -74,7 +74,7 @@
   :where(.orca-parity) .app { --canvas-chip: 44px; }
   :where(.orca-parity) .prefs-row input.text { width: auto; height: auto; flex: 0 1 120px; min-width: 64px; }
 }
-@media (pointer: coarse) and (min-width: 900px) {
+@media (pointer: coarse) and (min-width: 1200px), (hover: none) and (min-width: 1200px) {
   :where(.orca-parity) .nav3d { display: none; }
   :where(.orca-parity) .nav-view-control { display: inline-grid; position: absolute; z-index: 7; left: 16px; bottom: 16px; }
 }
@@ -129,13 +129,22 @@
   :where(.orca-parity) .compact-topbar .tabbar { height: 48px; }
   :where(.orca-parity) .compact-topbar :is(.view-tab, .pt-box, .tabbar-actions > button, .menu-title) { min-height: 44px; }
   :where(.orca-parity) .compact-topbar .output-overflow { min-width: 44px; padding-inline: 8px; }
-  :where(.orca-parity) .canvas-toolbar :is(.icon-btn, .canvas-more) { width: auto; min-width: 44px; height: 44px; min-height: 44px; }
+  :where(.orca-parity) .compact-topbar .menu-title { min-width: 44px; }
+  :where(.orca-parity) .canvas-area .canvas-toolbar :is(.icon-btn, .canvas-more) { width: auto; min-width: 44px; height: 44px; min-height: 44px; }
   :where(.orca-parity) :is(.rail-fold, .rail-act, .preset-more, .plate-icon, .printer-live, .color-trigger, .info-tip) { min-width: 44px; min-height: 44px; }
   :where(.orca-parity) .rail-head { --rail-act: 44px; min-height: 44px; }
   :where(.orca-parity) :is(.check, .control-check, .orca-radio, .pf-radio, .orca-switch) { flex-shrink: 0; }
   :where(.orca-parity) :is(.select-row, .lg-opt, .lg-switch, .opt-check, .orca-check-label, .pf-facet-choice) { min-height: 44px; }
   :where(.orca-parity) :is(.pk-star, .pk-clear, .lg-collapse, .tool-fold) { min-width: 44px; min-height: 44px; }
-  :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-slider: 104px; --pv-bar-h: 52px; --pv-inset: 8px; --pv-top: 60px; --pv-cube: 8px; }
+  :where(.orca-parity) :is(.modal-close, .pf-close) { min-width: 44px; min-height: 44px; }
+  :where(.orca-parity) .canvas-area .notifications .notif-close { min-width: 44px; min-height: 44px; width: 44px; height: 44px; top: 0; right: 0; }
+  :where(.orca-parity) .canvas-area .notification { padding-right: 48px; min-height: 48px; }
+  :where(.orca-parity) .canvas-area .notification .notif-link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; padding-inline: 4px; }
+  :where(.orca-parity) .canvas-area .op-body .icon-btn { min-width: 44px; min-height: 44px; }
+  :where(.orca-parity) .canvas-area .ol-set-btn { min-width: 44px; min-height: 44px; }
+  :where(.orca-parity) .canvas-area .ol-set { width: 44px; }
+  :where(.orca-parity) .canvas-area .ol-row { min-height: 44px; }
+  :where(.orca-parity) .app .canvas-area[data-viewport=preview] { --pv-slider: 104px; --pv-bar-h: 52px; --pv-inset: 8px; --pv-top: 60px; --pv-cube: 8px; }
   :where(.orca-parity) .canvas-area .preview .layer-slider { width: 48px; background: var(--panel); }
   :where(.orca-parity) .canvas-area .preview .ls-thumb { width: 40px; height: 40px; margin: 0 0 -20px -20px; border: 10px solid var(--panel); box-shadow: none; }
   :where(.orca-parity) .canvas-area .preview .ls-thumb::before { inset: 0; }
@@ -149,11 +158,12 @@
   :where(.orca-parity) .canvas-area .preview .lg-head .lg-view { min-height: 44px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .ob-rate { min-width: 44px; min-height: 44px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .orca-range { min-height: 40px; }
-  :where(.orca-parity) .canvas-area .preview .order-bar .orca-range-thumb { width: 24px; height: 24px; }
+  :where(.orca-parity) .canvas-area .preview .order-bar .orca-range-thumb { width: 40px; height: 40px; border: 10px solid var(--panel); box-shadow: none; }
   :where(.orca-parity) .nav3d { display: none; }
 }
 @media (hover: none) {
   :where(.orca-parity) :is(.pf-row-check, .ol-row-actions, .pr-card-actions, .pt-pencil) { opacity: 1; visibility: visible; }
+  :where(.orca-parity) .ol-set-btn:not(.has) { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   :where(.orca-parity) .workspace-rail { transition: none; }

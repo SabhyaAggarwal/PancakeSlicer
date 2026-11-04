@@ -107,7 +107,7 @@ export function settingSources(s: State, type: PresetType, key: string): Record<
   if (!byProfile) sourceCache.set(s, (byProfile = new Map()));
   const id = `${type}:${key}`, hit = byProfile.get(id);
   if (hit) return hit;
-  const out = type === 'process' ? originsOf(profileChain(s, type, resolveProfile(s, type, key))) : {};
+  const out = type === 'process' ? originsOf(resolveProfile(s, type, key).user) : {};
   byProfile.set(id, out);
   return out;
 }

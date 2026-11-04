@@ -22,7 +22,6 @@ import { findProfile,profileKey } from '../profiles/identity';
 import type { PrinterConnections } from '../printers/connections';
 export { PRESET_META } from '../profiles/model';
 import { effectiveProfileValues, resolvedWithAuto } from '../profiles/context';
-import type { Speed } from '../profiles/auto-rules';
 import { selectCompatibility } from '../profiles/compatibility';
 export { isCompatible, selectCompatibility } from '../profiles/compatibility';
 
@@ -224,7 +223,6 @@ export interface State {
   slotColours: (string | undefined)[];
   mixes: Record<number, Mix>;
   processVariant: { layerHeight: number } | null;
-  speed: Speed;
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
@@ -323,7 +321,6 @@ let state: State = {
   slotColours: [],
   mixes: {},
   processVariant: null,
-  speed: 'balanced',
   projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
@@ -482,6 +479,7 @@ export function presetEdits(s: State, type: PresetType, slot = 0): Config {
 const settingName = (key: string) => `Change setting "${OPTIONS[key]?.label || key}"`;
 
 export function setOption(type: PresetType, key: string, value: ConfigValue, slot = 0) {
+  if (type === 'process' && key === 'layer_height') { const h = Number(Array.isArray(value) ? value[0] : value); if (h > 0) setLayerHeight(h); return; }
   undoable(settingName(key), () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot), [key]: value };
     const patch:Partial<State>={...(type==='filament' ? {filamentEdits:{...s.filamentEdits,[s.filamentSlots[slot]]:edits}} : {dirty:{...s.dirty,[type]:edits}}),job:markStale(s.job)};
@@ -492,11 +490,9 @@ export function setOption(type: PresetType, key: string, value: ConfigValue, slo
 export function setLayerHeight(layerHeight: number) {
   undoable('Layer height', () => setState((s) => ({ processVariant: { layerHeight }, job: markStale(s.job) })), 'process:layer_height');
 }
-export function setSpeed(speed: Speed) {
-  undoable('Speed', () => setState((s) => ({ speed, job: markStale(s.job) })), 'process:speed');
-}
 
 export function resetOption(type: PresetType, key: string, slot = 0) {
+  if (type === 'process' && key === 'layer_height') { undoable('Layer height', () => setState((s) => ({ processVariant: null, dirty: { ...s.dirty, process: Object.fromEntries(Object.entries(s.dirty.process).filter(([k]) => k !== 'layer_height')) }, job: markStale(s.job) })), 'process:layer_height'); return; }
   undoable(`Reset setting "${OPTIONS[key]?.label || key}"`, () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot) };
     delete edits[key];

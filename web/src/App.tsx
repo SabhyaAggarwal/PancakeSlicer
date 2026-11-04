@@ -27,6 +27,7 @@ const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ def
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
+const LeaseBar = lazy(() => import('./components/LeaseBar'));
 const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
 const Plater3D = lazy(() => Promise.all([import('./plater/Plater3D'), threeReady]).then(([m]) => m));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
@@ -267,6 +268,7 @@ export default function App() {
     <div className="app">
       <TopBar />
       <Suspense fallback={null}><SavedPreferencesNotice /></Suspense>
+      <Suspense fallback={null}><LeaseBar /></Suspense>
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>

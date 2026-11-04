@@ -1,8 +1,8 @@
 import type { ProjectProfileReferences } from './ownership';
 import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './model';
-import { autoValues, AUTO_KEYS, heightsFor, type Speed } from './auto-rules';
-import { chainApplicability, type AutoRecord, type ChainLink } from './chain';
+import { clampHeight, heightsFor, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
+import { chainApplicability, type ChainLink } from './chain';
 import { findProfile } from './identity';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
@@ -11,7 +11,6 @@ export interface ProfileContextState extends ProfileCatalog {
   projectPresets?: { machine: Config; process: Config; filaments: Config[] } | null;
   projectPlates?: { index: number; settings?: Config }[]; plateIndex?: number;
   processVariant?: { layerHeight: number } | null;
-  speed?: Speed;
 }
 const empty: Config = {};
 type EditCache = WeakMap<Config, Config>;
@@ -33,45 +32,38 @@ export function profileChain(s: ProfileContextState, type: PresetType, resolved:
   return links;
 }
 export const worksWithRuleOf = chainApplicability;
-export const chainAuto = (links: ChainLink[]): AutoRecord => ({
-  preferredHeight: [...links].reverse().find((l) => l.auto?.preferredHeight)?.auto?.preferredHeight,
-  preferredSpeed: [...links].reverse().find((l) => l.auto?.preferredSpeed)?.auto?.preferredSpeed,
-});
-export function effectiveLayerHeight(s: ProfileContextState): number {
-  return s.processVariant?.layerHeight ?? chainAuto(profileChain(s, 'process', resolveProfile(s, 'process', s.process))).preferredHeight ?? 0.2;
+export function preferredHeight(s: ProfileContextState, key: string): number | undefined {
+  const resolved = resolveProfile(s, 'process', key), auto = (resolved.user as { auto?: AutoRecord } | undefined)?.auto;
+  return auto?.preferredHeight ?? (number(resolved.config.layer_height) || undefined);
 }
-export function effectiveSpeed(s: ProfileContextState): Speed {
-  return s.speed ?? chainAuto(profileChain(s, 'process', resolveProfile(s, 'process', s.process))).preferredSpeed ?? 'balanced';
+export function effectiveLayerHeight(s: ProfileContextState): number {
+  const nozzle = number(effectiveProfileValues(s, 'machine', s.printer).nozzle_diameter);
+  return clampHeight(s.processVariant?.layerHeight ?? preferredHeight(s, s.process) ?? 0.2, nozzle);
 }
 export function availableHeights(s: ProfileContextState): number[] {
   const machine = effectiveProfileValues(s, 'machine', s.printer);
   return heightsFor(number(machine.nozzle_diameter), number(machine.min_layer_height), number(machine.max_layer_height));
 }
-export type SettingOrigin = 'set' | 'inherited' | 'auto';
-export function originsOf(links: ChainLink[]): Record<string, SettingOrigin> {
+export type SettingOrigin = 'set' | 'auto';
+export function originsOf(profile: { overlay?: Config; overrides?: Config } | undefined): Record<string, SettingOrigin> {
   const out: Record<string, SettingOrigin> = {};
-  for (const k of AUTO_KEYS) out[k] = 'auto';
-  links.forEach((l, i) => { for (const k of Object.keys(l.overlay)) if (k !== 'layer_height') out[k] = i === links.length - 1 ? 'set' : 'inherited'; });
+  for (const k of Object.keys(profile?.overlay ?? profile?.overrides ?? {})) out[k] = 'set';
+  for (const row of scalesOf(profile)) out[row.key] = 'auto';
   return out;
 }
 const autoCache = new WeakMap<Config, Map<string, Config>>();
 function withAuto(s: ProfileContextState, type: PresetType, resolved: ResolvedProfile, config: Config): Config {
   if (type !== 'process') return config;
-  const machine = effectiveProfileValues(s, 'machine', s.printer), links = profileChain(s, type, resolved);
-  const nozzle = number(machine.nozzle_diameter);
+  const scales = scalesOf(resolved.user), selected = resolved.key === resolveProfile(s, 'process', s.process).key;
+  if (!scales.length && !(selected && s.processVariant)) return config;
+  const nozzle = number(effectiveProfileValues(s, 'machine', s.printer).nozzle_diameter);
   if (!(nozzle > 0)) return config;
-  const volumetric = (s.filamentSlots ?? []).map((k, i) => number(effectiveProfileValues(s, 'filament', k, i).filament_max_volumetric_speed)).filter((v) => v > 0);
-  const preferred = chainAuto(links), layerHeight = s.processVariant?.layerHeight ?? preferred.preferredHeight ?? 0.2, speed = s.speed ?? preferred.preferredSpeed ?? 'balanced';
-  const inputs = { nozzle, layerHeight, speed, maxSpeed: number(machine.machine_max_speed_x), maxAccel: number(machine.machine_max_acceleration_extruding), maxVolumetric: volumetric.length ? Math.min(...volumetric) : undefined };
-  const id = JSON.stringify(inputs);
+  const layerHeight = selected ? effectiveLayerHeight(s) : clampHeight(preferredHeight(s, String(resolved.key)) ?? 0.2, nozzle);
+  const id = JSON.stringify([nozzle, layerHeight, scales]);
   let byInputs = autoCache.get(config);
   if (!byInputs) autoCache.set(config, (byInputs = new Map()));
   let value = byInputs.get(id);
-  if (!value) {
-    const computed = autoValues({ ...inputs, intent: config }), pinned = new Set(links.flatMap((l) => Object.keys(l.overlay)));
-    for (const k of pinned) if (k !== 'layer_height') delete computed[k];
-    byInputs.set(id, (value = { ...config, ...computed }));
-  }
+  if (!value) byInputs.set(id, (value = { ...config, ...scaleValues(scales, { nozzle, layerHeight }), layer_height: String(layerHeight) }));
   return value;
 }
 const resolvedAuto = new WeakMap<ResolvedProfile, Map<Config, ResolvedProfile>>();
@@ -86,7 +78,7 @@ export function resolvedWithAuto(s: ProfileContextState, type: PresetType, resol
 }
 export function resolveAuto(s: ProfileContextState, type: PresetType = 'process'): { config: Config; sources: Record<string, SettingOrigin> } {
   const key = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots?.[0] ?? '';
-  return { config: effectiveProfileValues(s, type, key), sources: originsOf(profileChain(s, type, resolveProfile(s, type, key))) };
+  return { config: effectiveProfileValues(s, type, key), sources: type === 'process' ? originsOf(resolveProfile(s, type, key).user) : {} };
 }
 
 export function effectiveProfileValues(s: ProfileContextState, type: PresetType, key: string, slot = 0): Config {
@@ -105,7 +97,8 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   let editsCache = plates.get(plate ?? empty); if (!editsCache) plates.set(plate ?? empty, (editsCache = new WeakMap()));
   const prior = editsCache.get(edits);
   if (prior) {snapshot.set(selection, prior); return prior;}
-  const value = {...config, ...project, ...plate, ...edits}; editsCache.set(edits,value); snapshot.set(selection,value); return value;
+  const chosen = type === 'process' && s.processVariant && key === s.process ? { layer_height: config.layer_height } : empty;
+  const value = {...config, ...project, ...plate, ...edits, ...chosen}; editsCache.set(edits,value); snapshot.set(selection,value); return value;
 }
 export interface ContextProfile extends ResolvedProfile { id?: string; revision: number; baseName?: string; baseVendor?: string; parentName?: string }
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');

@@ -28,6 +28,7 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
   };
   const start = (event: PointerEvent<HTMLButtonElement>) => {
     if (!phone || event.button !== 0) return;
+    suppressClick.current = false;
     drag.current = { id: event.pointerId, y: event.clientY, height: panel.current!.getBoundingClientRect().height, moved: false };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -52,6 +53,9 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
       const nearest = stops.reduce((best, value, i) => Math.abs(value - height) < Math.abs(stops[best] - height) ? i : best, 0);
       setSettingsSnap(snaps[nearest]);
       suppressClick.current = true;
+    } else if (event.type === 'pointerup' && event.pointerType === 'touch') {
+      setSettingsSnap(snaps[(snaps.indexOf(snap) + 1) % snaps.length]);
+      suppressClick.current = true;
     }
     panel.current?.style.removeProperty('--sheet-height');
     if (panel.current) delete panel.current.dataset.dragging;
@@ -67,7 +71,7 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
           event.preventDefault(); event.stopPropagation(); close();
         }
         if (modal && event.key === 'Tab' && !event.defaultPrevented) {
-          const controls = [...panel.current!.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(el => el.getClientRects().length && el.checkVisibility());
+          const controls = [...panel.current!.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
           const first = controls[0], last = controls[controls.length - 1];
           if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -76,8 +80,8 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
       {overlay && <header className="workspace-sheet-heading">
         <button ref={handle} type="button" className="workspace-sheet-handle" aria-label={phone ? `Settings, ${snap} height` : 'Settings'} aria-expanded={open} aria-controls="workspace-settings-body"
           onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end}
-          onClick={() => {
-            if (suppressClick.current) { suppressClick.current = false; return; }
+          onClick={event => {
+            if (event.detail !== 0 && suppressClick.current) { suppressClick.current = false; return; }
             if (phone) setSettingsSnap(snaps[(snaps.indexOf(snap) + 1) % snaps.length]);
           }}
           onKeyDown={event => {

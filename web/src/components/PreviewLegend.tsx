@@ -13,6 +13,7 @@ import type { PreviewScene } from '../preview/PreviewScene';
 import { canExtend, type PreviewUi } from './PreviewView';
 import { clearanceScale } from '../preview/clearance';
 import { BP } from '../breakpoints';
+import { phoneSheetQuery } from '../workspace-sheet';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
@@ -101,13 +102,14 @@ export const Legend = memo(function Legend(props: {
     if (!area) return;
     let band: number | null = null;
     const fit = () => {
-      const w = area.clientWidth, b = w >= BP.narrow ? 1 : 0;
+      const w = area.clientWidth, b = !phoneSheetQuery.matches && w >= BP.narrow ? 1 : 0;
       if (w && b !== band) { band = b; setOpen(b === 1); }
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(area);
-    return () => ro.disconnect();
+    phoneSheetQuery.addEventListener('change', fit);
+    return () => { ro.disconnect(); phoneSheetQuery.removeEventListener('change', fit); };
   }, []);
   useLayoutEffect(() => {
     const el = panel.current, views = props.scene?.views;

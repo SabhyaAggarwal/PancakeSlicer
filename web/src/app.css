@@ -442,6 +442,11 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 
 :where(.orca-parity) .saved-preferences-notice { display: flex; align-items: center; gap: var(--s-4); flex: none; min-height: var(--h-bar); padding: var(--s-2) var(--s-5); background: var(--danger-tint); border-bottom: 1px solid var(--line); color: var(--ink); font: var(--t-body); }
 :where(.orca-parity) .saved-preferences-notice > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+:where(.orca-parity) .lease-bar { display: flex; align-items: center; justify-content: center; gap: var(--s-4); flex: none; min-height: var(--h-bar); padding: var(--s-2) var(--s-5); background: var(--chrome-raised); border-bottom: 1px solid var(--line); color: var(--ink); font: var(--t-body); }
+:where(.orca-parity) .lease-bar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .lease-bar > button { flex: none; height: var(--h-compact); }
+:root[data-readonly] :where(.orca-parity) :is(.sidebar, .canvas-toolbar, .objects-outliner, .manip-panel, .empty-plate) { pointer-events: none; opacity: 0.55; }
+
 
 :where(.orca-parity) .rail-section { flex: none; padding: var(--s-3) 0; }
 :where(.orca-parity) .rail-skeleton { display: contents; }
