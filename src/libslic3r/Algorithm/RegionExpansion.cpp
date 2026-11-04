@@ -246,12 +246,17 @@ std::vector<WaveSeed> wave_seeds(
             continue;
         } else
         if (front == back && (front.z() < idx_boundary_end)) {
+            bool found = false;
             for (const ClipperZUtils::ZPoint &point : path) {
                 if (point.z() >= idx_boundary_end) {
                     front = point;
                     back = point;
+                    found = true;
+                    break;
                 }
             }
+            if (! found)
+                continue;
         }
 
         const Intersection *intersection = nullptr;
@@ -275,6 +280,8 @@ std::vector<WaveSeed> wave_seeds(
             out.push_back({ uint32_t(intersection->second - idx_boundary_end), uint32_t(intersection->first - 1), ClipperZUtils::from_zpath(path) });
         } else {
             assert(front == back && front.z() >= idx_boundary_end && front.z() < idx_src_end);
+            if (front != back || front.z() < idx_boundary_end || front.z() >= idx_src_end)
+                continue;
             if (aabb_tree.empty())
                 aabb_tree = build_aabb_tree_over_expolygons(boundary);
             int boundary_id = sample_in_expolygons(aabb_tree, boundary, Point(front.x(), front.y()));
@@ -282,7 +289,6 @@ std::vector<WaveSeed> wave_seeds(
             if (boundary_id >= 0)
                 out.push_back({ uint32_t(front.z() - idx_boundary_end), uint32_t(boundary_id), ClipperZUtils::from_zpath(path) });
         }
-        ++ iseed;
     }
 
     if (sorted)

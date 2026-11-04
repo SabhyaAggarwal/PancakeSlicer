@@ -37,6 +37,7 @@
 #include "libslic3r/Slicing.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Surface.hpp"
+#include "libslic3r/Tesselate.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
 
 #include <Eigen/Geometry>
@@ -80,6 +81,7 @@ constexpr double StepWeight     = 0.5;
 constexpr int    MinChunkLayers = 3;
 constexpr double RouteCutMargin = 0.05;
 constexpr double RouteUnderDelta = -0.15;
+constexpr double RouteClearMargin = 0.05;
 constexpr size_t MaxValidated   = 24;
 constexpr double SeamShare      = 0.05;
 
@@ -1079,6 +1081,41 @@ bool full_orientation(const PrintConfig &config)
     return layout_is_table(config.nonplanar_kinematics.value) && config.nonplanar_max_tilt.value > 90.;
 }
 
+indexed_triangle_set route_cut_enforcers(const PrintObject &object)
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ROUTE_SEAM_COVERED"); return v != nullptr && std::atoi(v) != 0; }();
+    const OneShotState *state = object.oneshot_state();
+    indexed_triangle_set out;
+    if (!on || state == nullptr || !state->route || !oneshot_requested(object))
+        return out;
+    const indexed_triangle_set mesh = slicing_frame_mesh(object);
+    for (const HalfSpace &c : state->route->chunks.front().clips) {
+        if (c.normal.head<2>().norm() < 1e-9)
+            continue;
+        const Eigen::Quaterniond to_plane = Eigen::Quaterniond::FromTwoVectors(c.normal, Vec3d::UnitZ());
+        indexed_triangle_set     turned   = mesh;
+        its_transform(turned, Transform3d(to_plane));
+        std::vector<float> zs;
+        for (double d : { 0., 0.4, 0.8, 1.2, 1.6 })
+            zs.push_back(float(c.offset - d));
+        const std::vector<ExPolygons> sections = slice_mesh_ex(turned, zs);
+        for (size_t k = 0; k < sections.size(); ++k)
+            for (const ExPolygon &section : sections[k]) {
+                ExPolygons inner = offset_ex(section, -scale_(RouteSeamEdge));
+                if (inner.empty())
+                    inner = offset_ex(section, -scale_(RouteSeamEdgeThin));
+                for (const Vec3d &p : triangulate_expolygons_3d(inner, zs[k])) {
+                    out.vertices.emplace_back((to_plane.inverse() * p).cast<float>());
+                    if (out.vertices.size() % 3 == 0) {
+                        const int n = int(out.vertices.size());
+                        out.indices.emplace_back(n - 3, n - 2, n - 1);
+                    }
+                }
+            }
+    }
+    return out;
+}
+
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object)
 {
     double               ground = 0.;
@@ -1519,6 +1556,12 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     }
     const bool   route = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None && oneshot_requested(object);
     const double under = route ? route_under_delta() : 0.;
+    const double land_r = route && route_clear_mode() >= 2 ? resolve_head_envelope(object.print()->config()).tip_flat_radius : 0.;
+    const double root_h = object.config().layer_height.value;
+    auto under_of = [&](const HalfSpace &c) {
+        const double rim = land_r * c.normal.head<2>().norm();
+        return land_r > 0. ? std::max(under, rim + RouteClearMargin - root_h) : under;
+    };
     LayerPtrs &layers = object.layers();
     {
         std::vector<ExPolygons> full, upper;
@@ -1568,7 +1611,7 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
             Polygon window { box.min, Point(box.max.x(), box.min.y()), box.max, Point(box.min.x(), box.max.y()) };
             for (const HalfSpace &c : clips) {
                 const Vec2d  n   = c.normal.head<2>();
-                const double rhs = c.offset - std::abs(c.normal.z()) * 0.5 * layer->height - (n.norm() < 1e-9 ? 0. : under) -
+                const double rhs = c.offset - std::abs(c.normal.z()) * 0.5 * layer->height - (n.norm() < 1e-9 ? 0. : under_of(c)) -
                                    c.normal.z() * layer->slice_z;
                 if (n.norm() < 1e-9) {
                     if (rhs < 0.)
@@ -1588,6 +1631,57 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     for (size_t layer_id = 0; layer_id < layers.size(); ++layer_id)
         layers[layer_id]->conformal_covered = emptied[layer_id] != 0;
     return plan;
+}
+
+int route_clear_mode()
+{
+    static const int mode = [] { const char *v = std::getenv("NP_ONESHOT_ROUTE_CLEAR"); return v != nullptr ? std::atoi(v) : 0; }();
+    return mode;
+}
+
+static double route_clear_band(const HalfSpace &plane, double land_r, double h)
+{
+    return land_r * plane.normal.head<2>().norm() + 0.5 * h + RouteClearMargin;
+}
+
+void clear_route_support(PrintObject &object, const MultiplanarPlan &plan)
+{
+    const bool route = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None && oneshot_requested(object);
+    if (route_clear_mode() < 1 || !route || plan.chunks.size() < 2 || object.support_layers().empty() || object.layers().empty())
+        return;
+    const std::vector<HalfSpace> &clips  = plan.chunks.front().clips;
+    const double                  land_r = resolve_head_envelope(object.print()->config()).tip_flat_radius;
+    const double                  h      = object.config().layer_height.value;
+    const Layer  *host = object.layers().front();
+    const double  raft = host->print_z - (host->slice_z + 0.5 * host->height);
+    size_t        cleared = 0;
+    for (SupportLayer *layer : object.support_layers()) {
+        BoundingBox box = get_extents(layer->support_islands);
+        box.merge(get_extents(layer->support_fills.polygons_covered_by_width()));
+        if (!box.defined)
+            continue;
+        box.offset(scale_(1.));
+        const Polygon frame { box.min, Point(box.max.x(), box.min.y()), box.max, Point(box.min.x(), box.max.y()) };
+        Polygon       keep  = frame;
+        for (const HalfSpace &c : clips) {
+            const Vec2d n = c.normal.head<2>();
+            if (n.norm() < 1e-9)
+                continue;
+            const double z = layer->print_z - raft - (c.normal.z() >= 0. ? 0. : layer->height);
+            keep           = clip_convex(keep, n, c.offset - route_clear_band(c, land_r, h) - c.normal.z() * z);
+            if (keep.empty())
+                break;
+        }
+        const ExPolygons cut = keep.empty() ? ExPolygons { ExPolygon(frame) } : diff_ex(Polygons { frame }, Polygons { keep });
+        if (cut.empty())
+            continue;
+        const double before = layer->support_fills.total_volume();
+        clip_extrusions(layer->support_fills, cut, get_extents(cut));
+        layer->support_islands = keep.empty() ? ExPolygons() : intersection_ex(layer->support_islands, Polygons { keep });
+        cleared += layer->support_fills.total_volume() < before ? 1 : 0;
+    }
+    BOOST_LOG_TRIVIAL(info) << "One-shot route clearance (NP_ONESHOT_ROUTE_CLEAR=" << route_clear_mode() << "): support cleared from " << cleared
+                            << " layers within the tilted head's band of " << clips.size() << " planes";
 }
 
 void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, ConformalResult &result)

@@ -42,6 +42,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Nonplanar/Multiplanar.hpp"
 
 #include "libslic3r/Geometry/Curves.hpp"
 #include "libslic3r/I18N.hpp"
@@ -741,6 +742,7 @@ void gather_enforcers_blockers(GlobalModelInfo &result, const PrintObject *po) {
       its_merge(result.blockers, blockers);
     }
   }
+  its_merge(result.enforcers, Nonplanar::route_cut_enforcers(*po));
 
   result.enforcers_tree = AABBTreeIndirect::build_aabb_tree_over_indexed_triangle_set(result.enforcers.vertices,
                                                                                       result.enforcers.indices);

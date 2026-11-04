@@ -3282,6 +3282,7 @@ void GCodeProcessor::reset()
     m_rotary_acceleration = {};
     m_rotary_jerk = {};
     m_native_road_id = UINT32_MAX;
+    m_wave_object = -1;
     m_nonplanar_patch_shell = 0xFF;
     m_nonplanar_patch = -1;
     m_nonplanar_band = -1;
@@ -3914,6 +3915,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             return pos == comment.npos ? missing : std::atoi(std::string(comment.substr(pos + key.size())).c_str());
         };
         m_result.nonplanar = true;
+        m_wave_object = value("wave=", -1);
         m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(value("shell=", 0), 0, 0xFE));
         m_nonplanar_patch       = static_cast<short>(std::clamp(value("patch=", -1), -1, 0x7FFF));
         m_nonplanar_band        = static_cast<signed char>(std::clamp(value("band=", -1), -1, 0x7F));
@@ -3923,6 +3925,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
     if (boost::starts_with(comment, "_NONPLANAR_END")) {
+        m_wave_object = -1;
         m_nonplanar_patch_shell = 0xFF;
         m_nonplanar_patch       = -1;
         m_nonplanar_band        = -1;
@@ -6726,6 +6729,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     state.nonplanar_patch_shell = m_nonplanar_patch_shell;
     state.nonplanar_band = m_nonplanar_band;
     state.nonplanar_patch = m_nonplanar_patch;
+    state.wave_object = m_wave_object;
     state.native_road_id = m_native_road_id;
 
     m_result.moves.push_back({

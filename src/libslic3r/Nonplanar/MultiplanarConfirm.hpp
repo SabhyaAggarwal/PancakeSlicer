@@ -15,6 +15,7 @@
 #include <vector>
 
 namespace Slic3r {
+class Print;
 class PrintObject;
 struct GCodeProcessorResult;
 }
@@ -86,6 +87,9 @@ struct MeasuredPrint
     bool     count_contacts = false;
     size_t   contacts       = 0;
 };
+double measured_control(const PrintObject &object, MeasuredPrint &measured);
+double net_support_mm3(const Print &print, const GCodeProcessorResult &result);
+const std::string &last_measured_failure();
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},
                      const std::string &keep_as = {}, bool verify = true, MeasuredPrint *measured = nullptr);
 

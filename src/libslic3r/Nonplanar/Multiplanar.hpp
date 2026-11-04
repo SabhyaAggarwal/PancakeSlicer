@@ -114,6 +114,8 @@ int printable_layers(const indexed_triangle_set &piece, const MultiplanarChunk &
 
 bool full_orientation(const PrintConfig &config);
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object);
+constexpr double RouteSeamEdge = 1.5, RouteSeamEdgeThin = 0.6;
+indexed_triangle_set route_cut_enforcers(const PrintObject &object);
 DynamicPrintConfig chunk_print_config(const PrintObject &object, bool support = false);
 bool chunk_support_requested();
 bool chunk_support_grounded();
@@ -134,5 +136,8 @@ MultiplanarPlan   object_multiplanar_plan(const PrintObject &object, const index
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
 
 void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, ConformalResult &result);
+
+int  route_clear_mode();
+void clear_route_support(PrintObject &object, const MultiplanarPlan &plan);
 
 }

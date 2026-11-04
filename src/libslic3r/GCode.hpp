@@ -9,6 +9,7 @@
 #include "GCodeWriter.hpp"
 #include "GCode/BeltKinematics.hpp"
 #include "Layer.hpp"
+#include "Nonplanar/CurvedTopsSchedule.hpp"
 #include "Point.hpp"
 #include "PlaceholderParser.hpp"
 #include "PrintConfig.hpp"
@@ -23,6 +24,7 @@
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/HeightField.hpp"
+#include "Nonplanar/Wave.hpp"
 #include "Nonplanar/ShellSeams.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/WipeTower.hpp"
@@ -48,6 +50,7 @@
 #include <cstdlib>
 #include <memory>
 #include <map>
+#include <unordered_map>
 #include <unordered_map>
 #include <optional>
 #include <set>
@@ -279,6 +282,7 @@ public:
     void            apply_print_config(const PrintConfig &print_config);
 
     std::string     travel_to(const Point& point, ExtrusionRole role, std::string comment, double z = DBL_MAX);
+    bool            needs_zmove(const Polyline &travel, double target_z);
     bool            needs_retraction(const Polyline& travel, ExtrusionRole role, LiftType& lift_type);
     std::string     retract(bool toolchange = false, bool is_last_retraction = false, LiftType lift_type = LiftType::NormalLift, bool apply_instantly = false, ExtrusionRole role = erNone);
     std::string     unretract(float extra_retract = 0.f) { return m_writer.unlift() + m_writer.unretract(extra_retract); }
@@ -525,6 +529,7 @@ protected:
 		const std::vector<const PrintInstance*>     	*ordering,
 		const size_t                     				 single_object_instance_idx);
 
+    std::string     extrude_curved_tops(const Print &print, const std::vector<ObjectByExtruder::Island::Region> &by_region);
     std::string     extrude_perimeters(const Print& print, const std::vector<ObjectByExtruder::Island::Region>& by_region, bool is_first_layer, bool is_infill_first, bool unsupported_loops_only = false);
     std::string     extrude_infill(const Print& print, const std::vector<ObjectByExtruder::Island::Region>& by_region, bool ironing);
     std::string     extrude_support(const ExtrusionEntityCollection& support_fills, const ExtrusionRole support_extrusion_role);
@@ -693,6 +698,7 @@ protected:
     std::unique_ptr<TableGuard>           m_table_guard;
     size_t                                m_table_clamped = 0;
     bool                                m_track_nonplanar_material{ false };
+    std::map<const PrintObject *, Nonplanar::WaveField> m_wave_fields;
     bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
     const Nonplanar::HeightField          *m_conformal_surface{ nullptr };
@@ -733,6 +739,39 @@ protected:
 
     Point3                              m_last_pos;
     bool                                m_last_pos_defined;
+
+    NonplanarHeightMap                  m_nonplanar_heights;
+    bool                                m_emitting_deferred{ false };
+    NonplanarClearanceModel             m_nonplanar_clearance;
+    bool                                m_nonplanar_printed_this_layer{ false };
+    std::unordered_map<size_t, size_t>  m_path_task_ids;
+    struct DeferredExtrusion {
+        int                                     slot;
+        int                                     base;
+        double                                  z;
+        size_t                                  source_layer;
+        double                                  source_layer_z;
+        std::shared_ptr<ExtrusionEntity>        entity;
+        std::string                             description;
+        double                                  speed;
+        const PrintRegion                      *region;
+        unsigned int                            extruder;
+    };
+    std::map<const PrintObject*, NonplanarDeferral>                              m_nonplanar_deferral;
+    std::map<std::pair<const PrintObject*, size_t>, std::vector<DeferredExtrusion>> m_deferred_extrusions;
+    const NonplanarDeferral            *m_deferral_plan { nullptr };
+    std::pair<const PrintObject*, size_t> m_deferral_key { nullptr, 0 };
+    size_t                              m_deferral_layer_id { 0 };
+    const PrintRegion                  *m_current_region { nullptr };
+    bool                                m_force_safe_travel { false };
+    bool                                m_force_safe_travel_once { false };
+    bool                                m_loop_seam_placed { false };
+    bool                                m_slope_compensating { false };
+    bool                                defer_planar_material(const ExtrusionEntity &entity, const std::string &description,
+                                                              double speed, std::string &gcode, std::vector<ExtrusionPath> *curved_current = nullptr);
+    void                                queue_advanced_conformal(const Print &print);
+    std::string                         emit_deferred_material(int slot, unsigned int extruder_id);
+    std::string                         emit_deferred_after_layer(const PrintObject &print_object, unsigned int extruder_id);
 
     std::unique_ptr<CoolingBuffer>      m_cooling_buffer;
     std::unique_ptr<SpiralVase>         m_spiral_vase;

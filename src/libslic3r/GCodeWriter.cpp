@@ -48,6 +48,15 @@ namespace Slic3r {
 
 bool GCodeWriter::full_gcode_comment = true;
 
+namespace {
+double capped_xy_travel_speed(double speed, const Vec3d &limits)
+{
+    for (int axis = 0; axis < 2; ++axis)
+        if (limits[axis] > 0.) speed = std::min(speed, limits[axis]);
+    return speed;
+}
+}
+
 bool GCodeWriter::must_skip_lift_now() const
 {
     return m_kinematics->suppress_lift_at_unknown_position() && ! this->is_current_position_clear();
@@ -810,6 +819,8 @@ std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &com
     }
     auto speed = this->point_on_first_layer(Vec3d(point_on_plate.x(), point_on_plate.y(), m_pos.z()))
         ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
+    if (m_z_travel_cap > 0.)
+        speed = capped_xy_travel_speed(speed, m_max_joint_speed);
     w.emit_f(speed * 60.0);
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     return w.string();
@@ -897,6 +908,10 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
     double final_travel_speed = this->uses_pointwise_travel_speed()
         ? travel_speed
         : this->config.travel_speed.get_at(m_cached_extruder_idx);
+    if (m_z_travel_cap > 0.) {
+        travel_speed = capped_xy_travel_speed(travel_speed, m_max_joint_speed);
+        final_travel_speed = capped_xy_travel_speed(final_travel_speed, m_max_joint_speed);
+    }
     if (const Vec3d delta = point - m_pos; max_speed_z > 0. && std::abs(delta.z()) > EPSILON)
         final_travel_speed = std::min(final_travel_speed, max_speed_z * delta.norm() / std::abs(delta.z()));
     if (max_speed > 0.)

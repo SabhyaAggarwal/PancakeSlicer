@@ -231,6 +231,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             unsigned char nonplanar_patch_shell{ 0xFF };
             signed char nonplanar_band{ -1 };
             short nonplanar_patch{ -1 };
+            int wave_object{ -1 };
             uint32_t native_road_id{ UINT32_MAX };
 
             bool operator==(const MoveState &other) const { return std::memcmp(this, &other, sizeof(MoveState)) == 0; }
@@ -262,7 +263,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
         };
         static_assert(sizeof(MoveVertex) <= 64, "The preview keeps one MoveVertex per move: put rarely changing values in MoveState.");
-        static_assert(sizeof(MoveState) == 36, "MoveState is compared and hashed bitwise: no padding.");
+        static_assert(sizeof(MoveState) == 40, "MoveState is compared and hashed bitwise: no padding.");
         using Moves = ChunkedVector<MoveVertex>;
 
         struct SliceWarning {
@@ -1082,6 +1083,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::array<float, 2>            m_rotary_jerk{};
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
         short                           m_nonplanar_patch{ -1 };
+        int                             m_wave_object{ -1 };
         signed char                     m_nonplanar_band{ -1 };
         uint32_t                        m_native_road_id{ UINT32_MAX };
         bool                            m_keep_tips{ false };

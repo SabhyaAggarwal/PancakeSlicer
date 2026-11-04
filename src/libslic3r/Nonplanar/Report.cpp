@@ -174,7 +174,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
 {
     NonplanarReport report;
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
-            return object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
+            return object->config().nonplanar_mode.value != NonplanarMode::CurvedTops && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
                    (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
         }))
         return report;
@@ -202,6 +202,31 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
                                      "sparse_infill_density", "wall_loops", "fuzzy_skin", "ironing_type" })
                 keys += std::string(keys.empty() ? "" : " ") + key + "=" + config.opt_serialize(key);
             out.regions.emplace_back(std::move(keys));
+        }
+        if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops) {
+            out.curved_tops = curved_tops_stats(*object);
+            out.curved_cone_tolerance = curved_tops_cone_tolerance(print);
+            out.top_patches = out.curved_tops.kept;
+            out.curved_top = out.curved_tops.footprint_mm2;
+            for (const auto &surface : object->nonplanar_surfaces()) {
+                ReportPatch &rp = report.patches.emplace_back();
+                rp.object = index;
+                rp.id = surface.stable_id;
+                rp.kind = int(PatchKind::Top);
+                rp.top = true;
+                rp.shells = object->config().nonplanar_curved_shells.value;
+                const ExPolygons footprint = surface.horizontal_projection();
+                const BoundingBox box = get_extents(footprint);
+                rp.center = unscale(box.center());
+                rp.area = area(footprint) * SCALING_FACTOR * SCALING_FACTOR;
+                rp.pattern = "rectilinear";
+                rp.summary = "Curved tops (3-axis)";
+                for (const auto &instance : object->instances()) {
+                    BoundingBox shifted = box;
+                    shifted.translate(instance.shift);
+                    rp.boxes.push_back(shifted);
+                }
+            }
         }
         for (const ConformalPatch &patch : conformal.patches) {
             const bool top = patch.kind == PatchKind::Top;
@@ -271,6 +296,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     const auto &report_clearance = result.clearance_report;
     report.verified     = report_clearance.ran;
     report.hits         = report_clearance.hit_moves;
+    report.body_hits    = report_clearance.hit_body_moves;
+    report.cone_grazes  = report_clearance.cone_graze_moves;
     report.machine_hits = report_clearance.machine_hit_moves;
     const size_t normal = size_t(PrintEstimatedStatistics::ETimeMode::Normal);
     report.time_s       = result.print_statistics.modes[normal].time;
@@ -301,7 +328,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
     json j;
     j["version"] = 1;
     j["head"]    = head;
-    j["clearance"] = verified ? json{ { "checked", true }, { "hits", hits }, { "machine_hits", machine_hits } } : json{ { "checked", false } };
+    j["clearance"] = verified ? json{ { "checked", true }, { "hits", hits }, { "body_hits", body_hits }, { "cone_graze_moves", cone_grazes }, { "machine_hits", machine_hits } } : json{ { "checked", false } };
     j["time_s"]        = time_s;
     j["curved_time_s"] = curved_time_s;
     json objects_json  = json::array();
@@ -312,6 +339,17 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                         { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top },
                         { "flat_top_mm2", o.flat_top }, { "curved_share", o.curved_share() }, { "support_free_mm2", o.support_free },
                         { "orientation", note != orientation.end() ? note->second : o.orientation }, { "warnings", o.warnings } };
+        if (o.mode == "curved_tops") {
+            jo["effective_cone_tolerance_mm"] = o.curved_cone_tolerance;
+            jo["curved_surfaces_kept"] = o.curved_tops.kept;
+            jo["curved_surfaces_candidates"] = o.curved_tops.candidates;
+            jo["curved_extrusion_length_mm"] = o.curved_tops.extrusion_mm;
+            jo["curved_footprint_mm2"] = o.curved_tops.footprint_mm2;
+            jo["curved_top_area_fraction"] = o.curved_tops.area_fraction;
+            jo["curved_top_area_denominator_mm2"] = o.curved_tops.upward_area_mm2;
+            jo["curved_top_area_denominator"] = "sum of XY-projected areas of all upward-facing mesh facets";
+            if (!o.curved_tops.planar_fallback_reason.empty()) jo["planar_fallback_reason"] = o.curved_tops.planar_fallback_reason;
+        }
         if (!o.oneshot.empty()) {
             jo["oneshot"] = json{ { "decision", o.oneshot }, { "student", o.oneshot_student }, { "polish_k", o.oneshot_polish_k } };
             if (o.oneshot_max_time_ratio_override > 0.)

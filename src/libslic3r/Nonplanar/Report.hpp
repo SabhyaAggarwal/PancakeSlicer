@@ -2,6 +2,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
+#include "CurvedTopsSurface.hpp"
 
 #include <cstddef>
 #include <map>
@@ -53,6 +54,8 @@ struct ReportObject
     std::string name;
     size_t      model_object_id = 0;
     std::string mode;
+    CurvedTopsStats curved_tops;
+    double curved_cone_tolerance = 0.05;
     std::string layer_source, layer_source_refused;
     size_t      top_patches   = 0;
     size_t      other_patches = 0;
@@ -79,6 +82,8 @@ struct NonplanarReport
     std::vector<ReportFallback> fallbacks;
     std::string head;
     bool        verified     = false;
+    size_t      cone_grazes  = 0;
+    size_t      body_hits    = 0;
     size_t      hits         = 0;
     size_t      machine_hits = 0;
     double      time_s        = 0.;

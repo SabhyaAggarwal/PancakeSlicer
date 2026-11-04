@@ -173,5 +173,6 @@ double low_plane_top_radius(const PrintObject &object, double layer_height);
 double low_plane_rim(const PrintObject &object);
 
 ConformalResult build_conformal_shells(PrintObject &object);
+void trim_walls_above_shells(PrintObject &object, const ConformalResult &result);
 
 }

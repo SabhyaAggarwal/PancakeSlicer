@@ -101,6 +101,23 @@ enum PrintHostType {
     htPrusaLink, htPrusaConnect, htOctoPrint, htDuet, htUltiMaker, htFlashAir, htAstroBox, htRepetier, htMKS, htESP3D, htCrealityPrint, htObico, htFlashforge, htSimplyPrint, htElegooLink, ht3DPrinterOS, htMoonraker
 };
 
+enum WaveOverhangSpacingMode {
+    wosmUniform,
+    wosmProgressive
+};
+
+enum WaveOverhangSeamMode {
+    woseAlternating,
+    woseAligned,
+    woseRandom
+};
+
+enum class WaveOverhangPattern : int {
+    Monotonic,
+    ZigZag,
+    Smart
+};
+
 enum AuthorizationType {
     atKeyPassword, atUserPassword
 };
@@ -240,7 +257,10 @@ enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
-enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot };
+enum class NonplanarWave : unsigned char { Off, Top, Whole, Infill };
+enum class NonplanarWavePattern : unsigned char { Waves, Ripple, Crosshatch };
+enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops };
+enum class NonplanarRegionSource : unsigned char { Auto, PaintOnly };
 enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };
 
 enum class SurfaceFillOrder {
@@ -738,7 +758,13 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarMode)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarWave)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarWavePattern)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarRegionSource)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarDeform)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(WaveOverhangSpacingMode)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(WaveOverhangSeamMode)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(WaveOverhangPattern)
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -1247,6 +1273,15 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
     ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
+    ((ConfigOptionFloat, nonplanar_curved_max_angle))
+    ((ConfigOptionFloat, nonplanar_curved_max_height))
+    ((ConfigOptionInt, nonplanar_curved_shells))
+    ((ConfigOptionFloat, nonplanar_curved_cone_tolerance))
+    ((ConfigOptionEnum<NonplanarWave>, nonplanar_wave))
+    ((ConfigOptionFloat, nonplanar_wave_amplitude))
+    ((ConfigOptionFloat, nonplanar_wave_wavelength))
+    ((ConfigOptionEnum<NonplanarWavePattern>, nonplanar_wave_pattern))
+    ((ConfigOptionFloat, nonplanar_wave_direction))
     ((ConfigOptionEnum<NonplanarDeform>, nonplanar_deform))
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
@@ -1261,6 +1296,8 @@ PRINT_CONFIG_CLASS_DEFINE(
 
 PRINT_CONFIG_CLASS_DEFINE(
     PrintRegionConfig,
+
+    ((ConfigOptionEnum<NonplanarRegionSource>, nonplanar_region_source))
 
     ((ConfigOptionInts,  print_extruder_id))
     ((ConfigOptionStrings,  print_extruder_variant))
@@ -1354,6 +1391,34 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool, unsupported_wall_last))
     ((ConfigOptionInt, outer_wall_filament_id))
     ((ConfigOptionInt, inner_wall_filament_id))
+    ((ConfigOptionBool,                 wave_overhangs))
+    ((ConfigOptionBool,                 wave_overhangs_instead_of_bridges))
+    ((ConfigOptionInt,                  wave_overhang_outer_perimeters))
+    ((ConfigOptionFloat,                wave_overhang_perimeter_overlap))
+    ((ConfigOptionFloat,                wave_overhang_minimum_width))
+    ((ConfigOptionEnum<WaveOverhangPattern>, wave_overhang_pattern))
+    ((ConfigOptionFloat,                wave_overhang_line_spacing))
+    ((ConfigOptionFloat,                wave_overhang_flow_mm3_per_mm))
+    ((ConfigOptionFloat,                wave_overhang_print_speed))
+    ((ConfigOptionFloat,                wave_overhang_perimeter_speed))
+    ((ConfigOptionInt,                       wave_overhang_floor_layers))
+    ((ConfigOptionBool,                      wave_overhang_floor_use_hilbert))
+    ((ConfigOptionInt,                       wave_overhang_floor_hilbert_layers))
+    ((ConfigOptionInt,                       wave_overhang_floor_hilbert_density))
+    ((ConfigOptionFloat,                     wave_overhang_floor_print_speed))
+    ((ConfigOptionFloat,                     wave_overhang_floor_perimeter_speed))
+    ((ConfigOptionInt,                       wave_overhang_floor_speed_ramp))
+    ((ConfigOptionFloat,                     wave_overhang_min_angle))
+    ((ConfigOptionEnum<WaveOverhangSpacingMode>, wave_overhang_spacing_mode))
+    ((ConfigOptionEnum<WaveOverhangSeamMode>,    wave_overhang_seam_mode))
+    ((ConfigOptionFloat,                     wave_overhang_min_length))
+    ((ConfigOptionInt,                       wave_overhang_max_iterations))
+    ((ConfigOptionFloat,                     wave_overhang_min_new_area))
+    ((ConfigOptionBool,                      wave_overhang_corner_taper_enable))
+    ((ConfigOptionFloat,                     wave_overhang_line_spacing_corner))
+    ((ConfigOptionFloat,                     wave_overhang_corner_taper_distance))
+    ((ConfigOptionFloat,                     wave_overhang_corner_angle_threshold))
+    ((ConfigOptionBool,                      support_remaining_areas_after_wave_overhangs))
     ((ConfigOptionFloatOrPercent, inner_wall_line_width))
     ((ConfigOptionFloatsNullable, inner_wall_speed))
     ((ConfigOptionInt, wall_loops))

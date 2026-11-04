@@ -17,6 +17,7 @@
 #include "libslic3r/libslic3r.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <tuple>
 #include <cmath>
 #include <cstdint>
@@ -859,13 +860,39 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
     };
     constexpr size_t SpliceLeft = 4;
 
+    static const double climb = [] {
+        const char *v = std::getenv("NP_B2_CLIMB");
+        return v != nullptr && *v != 0 ? std::atof(v) : -1.;
+    }();
+    auto lowest_bead = [](const ExtrusionPathConformal &p) {
+        coord_t z = std::numeric_limits<coord_t>::max();
+        for (size_t i = 0; i < p.polyline.points.size(); ++i)
+            if (i >= p.bead_height.size() || p.bead_height[i] > 0.f)
+                z = std::min(z, p.polyline.points[i].z());
+        return z;
+    };
+    std::vector<coord_t> low;
+    if (climb >= 0. && !hidden)
+        for (const ExtrusionPathConformal *p : todo)
+            low.push_back(lowest_bead(*p));
+
     Points3 route;
     for (size_t left = todo.size(); left > 0; --left) {
         ends.clear();
+        coord_t limit = std::numeric_limits<coord_t>::max();
+        if (!low.empty()) {
+            coord_t lowest = std::numeric_limits<coord_t>::max();
+            for (size_t i = 0; i < todo.size(); ++i)
+                if (!used[i])
+                    lowest = std::min(lowest, low[i]);
+            limit = lowest + coord_t(scale_(climb));
+        }
         for (size_t i = 0; i < todo.size(); ++i)
-            if (!used[i]) {
-                ends.push_back({ (todo[i]->first_point() - cursor).cast<double>().norm(), i, false });
-                if (todo[i]->can_reverse())
+            if (!used[i] && (low.empty() || low[i] <= limit)) {
+                const bool lower_last = !low.empty() && todo[i]->can_reverse() && todo[i]->polyline.points.back().z() < todo[i]->polyline.points.front().z();
+                if (!lower_last)
+                    ends.push_back({ (todo[i]->first_point() - cursor).cast<double>().norm(), i, false });
+                if (todo[i]->can_reverse() && (low.empty() || lower_last))
                     ends.push_back({ (todo[i]->last_point() - cursor).cast<double>().norm(), i, true });
             }
         const size_t head = std::min(ends.size(), Tries);

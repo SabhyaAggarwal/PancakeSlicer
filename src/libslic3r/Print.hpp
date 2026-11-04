@@ -28,6 +28,7 @@
 #include "GCode/ThumbnailData.hpp"
 #include "GCode/GCodeProcessor.hpp"
 #include "MultiMaterialSegmentation.hpp"
+#include "Nonplanar/CurvedTopsSurface.hpp"
 #include "BeltBrim.hpp"
 #include "BeltTransform.hpp"
 #include "ObjectID.hpp"
@@ -55,7 +56,8 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; struct OneShotState; class LayerField; }
+class PrintObject;
+namespace Nonplanar { struct RegionMaskCache; ExPolygons nonplanar_region_mask(const PrintObject &, size_t); ExPolygons nonplanar_paint_mask(const PrintObject &, size_t, const ExPolygons &); struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; struct OneShotState; class LayerField; }
 
 class SlicingErrors;
 
@@ -117,6 +119,7 @@ enum PrintObjectStep {
     posInfill, posIroning,
     posNonplanar,
     posContouring, posSupportMaterial, posSimplifyPath, posSimplifySupportPath,
+    posNonplanarProjection,
     posDetectOverhangsForLift,
     posSimplifyWall, posSimplifyInfill,
     posCount,
@@ -310,6 +313,12 @@ public:
     ConstLayerPtrsAdaptor        layers() const         { return ConstLayerPtrsAdaptor(&m_layers); }
     ConstSupportLayerPtrsAdaptor support_layers() const { return ConstSupportLayerPtrsAdaptor(&m_support_layers); }
     const Transform3d&           trafo() const          { return m_trafo; }
+    const NonplanarSurfaces&     nonplanar_surfaces() const { return m_nonplanar_surfaces; }
+    size_t curved_surface_candidates() const { return m_curved_candidates; }
+    size_t curved_surface_count() const { return m_nonplanar_surfaces.size(); }
+    double curved_footprint() const;
+    double curved_upward_area() const { return m_curved_upward_area; }
+
     Transform3d                  trafo_centered() const
         { Transform3d t = this->trafo(); t.pretranslate(Vec3d(- unscale<double>(m_center_offset.x()), - unscale<double>(m_center_offset.y()), 0)); return t; }
     Transform3d                  trafo_sliced() const;
@@ -345,6 +354,7 @@ public:
     static constexpr double OneShotWallBand = 0.001;
     void note_auto_fallback(const std::string &why);
     const std::string &auto_plain_reason() const { return m_auto_plain_reason; }
+    NonplanarMode      requested_nonplanar_mode() const { return m_requested_nonplanar_mode; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
@@ -460,6 +470,8 @@ public:
   private:
     friend class Print;
     friend class Nonplanar::ClearanceRepair;
+    friend ExPolygons Nonplanar::nonplanar_region_mask(const PrintObject &, size_t);
+    friend ExPolygons Nonplanar::nonplanar_paint_mask(const PrintObject &, size_t, const ExPolygons &);
 
 	PrintObject(Print* print, ModelObject* model_object, const Transform3d& trafo, PrintInstances&& instances);
 	~PrintObject();
@@ -492,6 +504,10 @@ private:
     std::vector<std::set<int>> detect_extruder_geometric_unprintables() const;
 
     void slice_volumes();
+    bool check_nonplanar_collisions(NonplanarSurface &surface);
+    void find_nonplanar_surfaces();
+    void detect_nonplanar_surfaces();
+    void project_nonplanar_surfaces();
     void belt_shift_layer_grid(double delta);
     size_t belt_truncate_layers_above(coordf_t z);
     void belt_restore_truncated_layers();
@@ -510,6 +526,9 @@ private:
     void bridge_over_infill();
     void clip_fill_surfaces();
     void discover_horizontal_shells();
+    void apply_wave_overhang_floor_layer_authority();
+    void apply_wave_overhang_bridge_suppression();
+    void tag_wave_overhang_perimeters();
     void combine_infill();
     void _generate_support_material();
     FillAdaptive::RegionOctrees prepare_adaptive_infill_data(
@@ -529,6 +548,7 @@ private:
     PrintObjectRegions                     *m_shared_regions { nullptr };
 
     SlicingParameters                       m_slicing_params;
+    std::shared_ptr<Nonplanar::RegionMaskCache> m_nonplanar_region_cache;
     LayerPtrs                               m_layers;
     LayerPtrs                               m_belt_truncated_layers;
     struct BeltDroppedFill {
@@ -547,11 +567,13 @@ private:
     bool m_auto_planar_pass = false;
     bool m_auto_floating_demoted = false;
     bool m_auto_floating_planar  = false;
+    double m_auto_curved_floating = -1.;
     bool m_auto_band_demoted     = false;
     bool m_auto_planar_exact     = false;
     bool m_auto_planar      = false;
     std::string m_auto_plain_reason;
     std::vector<double> m_auto_planar_top_acceleration;
+    NonplanarMode       m_requested_nonplanar_mode = NonplanarMode::Off;
     bool                 m_auto_support = false;
     bool                 m_auto_support_applied = false;
     SupportNecessaryType m_auto_support_need = NoNeedSupp;
@@ -574,6 +596,11 @@ private:
     std::string                                        m_native_summary;
 
     bool                    				m_typed_slices = false;
+    NonplanarSurfaces                       m_nonplanar_surfaces;
+    std::set<int>                          m_curved_planar_surfaces;
+    size_t                                 m_curved_candidates = 0;
+    double                                 m_curved_upward_area = 0.;
+
 
     FillAdaptive::RegionOctrees             m_adaptive_fill_octrees;
     std::vector<BoundingBox>                m_separated_body_bboxes;

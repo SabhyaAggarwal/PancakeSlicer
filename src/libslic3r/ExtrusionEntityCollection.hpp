@@ -38,9 +38,13 @@ public:
     ExtrusionEntityCollection& operator=(const ExtrusionEntityCollection &other);
     ExtrusionEntityCollection& operator=(ExtrusionEntityCollection &&other)
     {
-        this->entities = std::move(other.entities);
-        this->no_sort  = other.no_sort;
-        is_reverse     = other.is_reverse;
+        if (this != &other) {
+            this->clear();
+            this->entities = std::move(other.entities);
+            other.entities.clear();
+            this->no_sort  = other.no_sort;
+            is_reverse     = other.is_reverse;
+        }
         return *this;
     }
     ~ExtrusionEntityCollection() { clear(); }

@@ -48,12 +48,17 @@ void ExtrusionPath::simplify(double tolerance)
     if (this->z_contoured) {
         return;
     }
+    if (this->nonplanar_source)
+        tolerance = std::min(tolerance, double(scale_(0.03)));
     this->polyline.simplify(tolerance);
 }
 
 void ExtrusionPath::simplify_by_fitting_arc(double tolerance)
 {
-    if (this->z_contoured) {
+    if (this->z_contoured)
+        return;
+    if (this->nonplanar_source) {
+        this->simplify(tolerance);
         return;
     }
     this->polyline.simplify_by_fitting_arc(tolerance);
@@ -281,7 +286,37 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const
     ExtrusionPath p1(path.role(), path.mm3_per_mm, path.width, path.height);
     ExtrusionPath p2(path.role(), path.mm3_per_mm, path.width, path.height);
     p1.z_contoured = p2.z_contoured = path.z_contoured;
+    for (ExtrusionPath *piece : { &p1, &p2 }) {
+        piece->distance_to_top   = path.distance_to_top;
+        piece->nonplanar_source  = path.nonplanar_source;
+        piece->source_layer_id   = path.source_layer_id;
+        piece->source_surface_id = path.source_surface_id;
+        piece->source_path_id    = path.source_path_id;
+    }
     path.polyline.split_at(p, &p1.polyline, &p2.polyline);
+    if (path.nonplanar_source) {
+        auto interpolated_z = [&path](const Point3 &pt) {
+            const Vec2d q = pt.to_point().cast<double>();
+            double best = std::numeric_limits<double>::max();
+            coord_t z = pt.z();
+            for (size_t i = 1; i < path.polyline.points.size(); ++ i) {
+                const Point3 &a = path.polyline.points[i - 1], &b = path.polyline.points[i];
+                const Vec2d a2 = a.to_point().cast<double>(), d = b.to_point().cast<double>() - a2;
+                const double l2 = d.squaredNorm();
+                const double t = l2 > 0 ? std::clamp((q - a2).dot(d) / l2, 0., 1.) : 0.;
+                const double dist = (a2 + t * d - q).squaredNorm();
+                if (dist < best) {
+                    best = dist;
+                    z = coord_t(std::llround(double(a.z()) + t * double(b.z() - a.z())));
+                }
+            }
+            return z;
+        };
+        if (! p1.polyline.points.empty())
+            p1.polyline.points.back().z() = interpolated_z(p1.polyline.points.back());
+        if (! p2.polyline.points.empty())
+            p2.polyline.points.front().z() = interpolated_z(p2.polyline.points.front());
+    }
 
     if (this->paths.size() == 1) {
         if (!p1.polyline.is_valid()) {

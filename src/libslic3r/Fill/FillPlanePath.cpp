@@ -121,6 +121,14 @@ void FillPlanePath::_fill_surface_single(
         }
     }
 
+    if (params.extrusion_role == erIroning && dynamic_cast<FillArchimedeanChords*>(this) && polyline.size() > 1) {
+        const double start_radius = 3. * scaled<double>(this->spacing) / params.density;
+        auto first = std::find_if(polyline.points.begin(), polyline.points.end(),
+                                  [start_radius](const Point &p) { return p.cast<double>().squaredNorm() >= start_radius * start_radius; });
+        if (first != polyline.points.end())
+            polyline.points.erase(polyline.points.begin() + 1, first);
+    }
+
     Polylines polylines = {polyline};
 
     multiline_fill(polylines, params, spacing);

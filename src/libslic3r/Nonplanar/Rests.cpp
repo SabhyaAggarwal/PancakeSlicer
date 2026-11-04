@@ -25,9 +25,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <deque>
 #include <exception>
 #include <initializer_list>
 #include <limits>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -117,8 +120,13 @@ public:
             const Vec3d  p = a + (b - a) * ((k + 0.5) / n);
             const double s = along + l * (k + 0.5) / n;
             const Probe  probe{ p, ax, s, h, run };
-            if (checked && !this->rests(probe, h, w) && !(surface && this->spans(probe)))
+            if (checked && !this->rests(probe, h, w) && !(surface && this->spans(probe))) {
                 m_floating.push_back(m_samples.size());
+                static const bool dump = std::getenv("NP_FLOAT_DUMP") != nullptr;
+                if (dump)
+                    BOOST_LOG_TRIVIAL(warning) << "float " << ExtrusionEntity::role_to_string(role) << " " << p.x() << " " << p.y() << " "
+                                               << p.z() << " h " << h;
+            }
             this->add(Sample{ p.cast<float>(), float(s), float(w), float(l / n), run, is_support(role), role == erInternalInfill,
                               role == erSupportMaterialInterface || p.z() <= m_bed + 0.75 * m_layer });
         }
@@ -404,7 +412,9 @@ Floating planar_control_floating(const PrintObject &object, bool support)
     }
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
-    static thread_local std::pair<std::string, Floating> last;
+    constexpr size_t                                     CachedControls = 4;
+    static std::mutex                                    cache_mutex;
+    static std::deque<std::pair<std::string, Floating>> cache;
     std::string key;
     for (const DynamicPrintConfig *c : std::initializer_list<const DynamicPrintConfig *>{ &config, &copy->config.get() })
         for (const std::string &opt : c->keys())
@@ -417,8 +427,12 @@ Floating planar_control_floating(const PrintObject &object, bool support)
         key += std::to_string(int(volume->type()));
     }
     key.append(reinterpret_cast<const char *>(copy->instances.front()->get_matrix().data()), 16 * sizeof(double));
-    if (last.first == key)
-        return last.second;
+    {
+        const std::lock_guard<std::mutex> lock(cache_mutex);
+        for (const auto &[cached, floating] : cache)
+            if (cached == key)
+                return floating;
+    }
     if (measure_work_spent() || measure_deadline_passed())
         return { -1., -1. };
     Print print;
@@ -433,8 +447,12 @@ Floating planar_control_floating(const PrintObject &object, bool support)
     }
     if (print.objects().empty())
         return { -1., -1. };
-    last = { std::move(key), floating_road(*print.objects().front(), nullptr) };
-    return last.second;
+    const Floating                    measured = floating_road(*print.objects().front(), nullptr);
+    const std::lock_guard<std::mutex> lock(cache_mutex);
+    cache.emplace_back(std::move(key), measured);
+    if (cache.size() > CachedControls)
+        cache.pop_front();
+    return measured;
 }
 
 }

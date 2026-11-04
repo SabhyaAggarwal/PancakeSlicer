@@ -27,6 +27,7 @@
 #include "Layer.hpp"
 #include "Model.hpp"
 #include "Nonplanar/NativePrint.hpp"
+#include "Nonplanar/Wave.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/FieldOrder.hpp"
 #include "Nonplanar/AutoMode.hpp"
@@ -49,6 +50,7 @@
 #include "PrintConfig.hpp"
 #include "PrintBase.hpp"
 #include "ShortestPath.hpp"
+#include "AABBMesh.hpp"
 #include "libslic3r.h"
 #include "TriangleMeshSlicer.hpp"
 #include "TriangleMesh.hpp"
@@ -744,6 +746,7 @@ void PrintObject::slice()
         m_config.top_surface_acceleration.values = m_auto_planar_top_acceleration;
         m_auto_planar                 = false;
     }
+    m_requested_nonplanar_mode = m_auto_planar ? NonplanarMode::Auto : m_config.nonplanar_mode.value;
     if (m_config.nonplanar_mode.value == NonplanarMode::Off && !m_auto_floating_planar && Nonplanar::auto_rotary_requested(*this))
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
     if (m_auto_support_applied) {
@@ -759,7 +762,9 @@ void PrintObject::slice()
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
     }
-    bool oneshot = Nonplanar::oneshot_requested(*this);
+    if (Nonplanar::wave_enabled(*this))
+        m_config.nonplanar_mode.value = NonplanarMode::Off;
+    bool oneshot = !Nonplanar::wave_enabled(*this) && Nonplanar::oneshot_requested(*this);
     const int raft_before = m_config.raft_layers.value;
     if (m_oneshot && m_oneshot->plinth_applied) {
         m_config.raft_layers.value                = m_oneshot->plinth_user_layers;
@@ -782,6 +787,8 @@ void PrintObject::slice()
             for (const auto &[key, value] : Nonplanar::plinth_overrides(state.plinth_layers))
                 m_config.set_deserialize_strict(key, value);
         }
+    } else if (m_oneshot && m_oneshot->offer == Nonplanar::OneShotState::Offer::Planar) {
+        m_config.nonplanar_mode.value = NonplanarMode::Off;
     } else if (m_oneshot && m_oneshot->offer == Nonplanar::OneShotState::Offer::Auto && !m_auto_planar) {
         oneshot = false;
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
@@ -848,6 +855,8 @@ void PrintObject::slice()
         m_slicing_params.belt_floor_z_shift = z_shift_val;
     }
 
+    this->find_nonplanar_surfaces();
+    m_print->throw_if_canceled();
     int firstLayerReplacedBy = 0;
 
 #if 0
@@ -945,6 +954,137 @@ void PrintObject::slice()
         m_auto_support_need = this->is_support_necessary();
 
     this->set_done(posSlice);
+}
+
+void
+PrintObject::find_nonplanar_surfaces()
+{
+    if(m_config.nonplanar_mode.value != NonplanarMode::CurvedTops) {
+        BOOST_LOG_TRIVIAL(debug) << "Find nonplanar surfaces - disabled";
+        return;
+    }
+    if (m_print->config().nonplanar_kinematics.value != RotaryLayout::None || m_print->config().belt_printer.value)
+        throw Slic3r::SlicingError("Curved tops (3-axis) requires a fixed print head and a horizontal bed.");
+    for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id)
+        if (this->printing_region(region_id).config().zaa_enabled.value)
+            throw Slic3r::SlicingError(_u8L("Nonplanar layers and Z contouring cannot be used together. "
+                                            "Disable one of them for this object."));
+
+    BOOST_LOG_TRIVIAL(info) << "Find nonplanar surfaces - start";
+
+    m_nonplanar_surfaces.clear();
+    m_curved_upward_area = 0.;
+
+    const ModelVolumePtrs volumes = this->model_object()->volumes;
+    for (ModelVolumePtrs::const_iterator it = volumes.begin(); it != volumes.end(); ++ it) {
+        if (! (*it)->is_modifier()) {
+            TriangleMesh tmesh = (*it)->mesh();
+            tmesh.transform(this->trafo_centered() * (*it)->get_matrix(), true);
+            AABBMesh mesh(tmesh, true);
+            std::map<int, NonplanarFacet> facets;
+
+            for (int face_id = 0; face_id < mesh.indices().size(); ++ face_id) {
+                auto &face = mesh.indices(face_id);
+                Vec3d normal = mesh.normal_by_face_id(face_id);
+
+                if (normal.z() > 0.) {
+                    const its_triangle triangle = its_triangle_vertices(*mesh.get_triangle_mesh(), face_id);
+                    const Vec3d a = triangle[0].cast<double>(), b = triangle[1].cast<double>(), c = triangle[2].cast<double>();
+                    m_curved_upward_area += 0.5 * std::abs((b - a).cross(c - a).z());
+                }
+                if (normal.z() >= std::cos(m_config.nonplanar_curved_max_angle.value * 3.14159265/180.0)) {
+                    NonplanarFacet new_facet;
+                    new_facet.normal.x = normal.x();
+                    new_facet.normal.y = normal.y();
+                    new_facet.normal.z = normal.z();
+
+                    Vec3i32 neighbor = mesh.face_neighbor_index()[face_id];
+                    its_triangle vertex = its_triangle_vertices(*mesh.get_triangle_mesh(), face_id);
+                    for (int j=0; j<=2 ;j++) {
+                        new_facet.vertex[j].x = vertex[j].x();
+                        new_facet.vertex[j].y = vertex[j].y();
+                        new_facet.vertex[j].z = vertex[j].z();
+                        new_facet.neighbor[j] = neighbor[j];
+                    }
+                    new_facet.calculate_stats();
+                    facets[face_id] = new_facet;
+                }
+            }
+
+            NonplanarSurface nf = NonplanarSurface(facets);
+
+            NonplanarSurfaces volume_surfaces = nf.group_surfaces();
+
+#ifdef SLIC3R_DEBUG_SLICE_PROCESSING
+            for (size_t id = 0; id < volume_surfaces.size(); ++ id) {
+                auto& surface = volume_surfaces[id];
+                Surfaces surfaces;
+                surfaces_append(surfaces, surface.horizontal_projection(), SurfaceType::stTopNonplanar);
+                SurfaceCollection c(surfaces);
+                c.export_to_svg(debug_out_path("0_find_nonplanar_surface-%d-initial_layer%.2f.svg", id, surface.stats.min.z).c_str(), true);
+            }
+#endif
+
+            for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
+                if((*it).stats.max.z - (*it).stats.min.z < 0.03f) {
+                    BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface below 0.03 mm height variation";
+                    it = volume_surfaces.erase(it);
+                } else {
+                    it++;
+                }
+            }
+
+            for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
+                if((*it).check_max_printing_height(m_config.nonplanar_curved_max_height.value)) {
+                    BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to max printing height constraint";
+                    it = volume_surfaces.erase(it);
+                }else {
+                    it++;
+                }
+            }
+
+            for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
+                if((*it).check_surface_area()) {
+                    BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to print area too small";
+                    it = volume_surfaces.erase(it);
+                }else {
+                    it++;
+                }
+            }
+
+            for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
+                if(check_nonplanar_collisions((*it))) {
+                    BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to collision";
+                    it = volume_surfaces.erase(it);
+                } else {
+                    it++;
+                }
+            }
+
+            BOOST_LOG_TRIVIAL(info) << "Find nonplanar surfaces - found " << volume_surfaces.size() << " in " << (*it)->name;
+            m_nonplanar_surfaces.insert(m_nonplanar_surfaces.end(), volume_surfaces.begin(), volume_surfaces.end());
+
+            for (size_t id = 0; id < m_nonplanar_surfaces.size(); ++ id) {
+                auto& surface = m_nonplanar_surfaces[id];
+                BOOST_LOG_TRIVIAL(debug) << "Find nonplanar surfaces - surface" << id << " at Z [min=" << surface.stats.min.z << ", max=" << surface.stats.max.z << "]";
+
+#ifdef SLIC3R_DEBUG_SLICE_PROCESSING
+                Surfaces surfaces;
+                surfaces_append(surfaces, surface.horizontal_projection(), SurfaceType::stTopNonplanar);
+                SurfaceCollection c(surfaces);
+                c.export_to_svg(debug_out_path("0_find_nonplanar_surface-%d-final_layer%.2f.svg", id, surface.stats.min.z).c_str(), true);
+#endif
+            }
+        }
+    }
+
+    m_curved_candidates = m_nonplanar_surfaces.size();
+    for (size_t i = 0; i < m_nonplanar_surfaces.size(); ++i)
+        m_nonplanar_surfaces[i].stable_id = int(i);
+    m_nonplanar_surfaces.erase(std::remove_if(m_nonplanar_surfaces.begin(), m_nonplanar_surfaces.end(),
+        [this](const NonplanarSurface &surface) { return m_curved_planar_surfaces.count(surface.stable_id) != 0; }),
+        m_nonplanar_surfaces.end());
+    BOOST_LOG_TRIVIAL(info) << "Find nonplanar surfaces - end";
 }
 
 template<typename ThrowOnCancel>

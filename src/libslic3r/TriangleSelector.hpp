@@ -379,6 +379,7 @@ public:
         TriangleSplittingData seam;
         TriangleSplittingData mmu;
         TriangleSplittingData fuzzy;
+        TriangleSplittingData nonplanar;
     };
 
     static TriangleSplittingData remap_painting(

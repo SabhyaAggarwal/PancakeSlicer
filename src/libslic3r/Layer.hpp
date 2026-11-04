@@ -9,6 +9,7 @@
 #include "Flow.hpp"
 #include "SurfaceCollection.hpp"
 #include "ExtrusionEntityCollection.hpp"
+#include "Nonplanar/CurvedTopsSurface.hpp"
 #include <vector>
 #include <cstddef>
 #include <algorithm>
@@ -44,6 +45,9 @@ namespace sla {
     class IndexedMesh;
 };
 
+class NonplanarProjectionIndex;
+class PrintRegionConfig;
+
 class LayerRegion
 {
 public:
@@ -75,6 +79,18 @@ public:
     void    slices_to_fill_surfaces_clipped();
     void    prepare_fill_surfaces();
     void    make_perimeters(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap);
+    void    make_perimeters_generator(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap,
+                                      const PrintRegionConfig *config_override, bool planar_neighbours);
+
+    const NonplanarSurfaces& nonplanar_surfaces() const { return m_nonplanar_surfaces; }
+    void    append_nonplanar_surface(const NonplanarSurface& surface);
+    void    project_nonplanar_extrusion(ExtrusionEntityCollection* collection, const NonplanarProjectionIndex& index);
+    void    project_nonplanar_surfaces();
+    std::vector<ExtrusionPath> project_nonplanar_path(const ExtrusionPath& path, const NonplanarProjectionIndex& index);
+    void    remove_nonplanar_slices(SurfaceCollection topNonplanar);
+    void    clear_nonplanar_surfaces();
+    void    merge_nonplanar_shell_slices();
+    void    append_top_nonplanar_slices(SurfaceCollection topNonplanar);
     void    process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered);
     double  infill_area_threshold() const;
     void    trim_surfaces(const Polygons &trimming_polygons);
@@ -104,6 +120,9 @@ protected:
 private:
     Layer             *m_layer;
     const PrintRegion *m_region;
+
+    NonplanarSurfaces  m_nonplanar_surfaces;
+    bool               m_nonplanar_perimeters_projected { false };
 };
 
 class Layer
@@ -131,6 +150,8 @@ public:
     ExPolygons 				 lslices;
     ExPolygons 				 lslices_extrudable;
     std::vector<BoundingBox> lslices_bboxes;
+    std::vector<ExPolygons>  region_slices_before_nonplanar;
+    ExPolygons               lslices_before_nonplanar;
     std::vector<size_t>      lslices_separated_component_ids;
 
     ExPolygons              loverhangs;
@@ -139,6 +160,11 @@ public:
     std::vector<int>        conformal_patches_before;
     std::vector<int>        conformal_patches_after;
     bool                    conformal_covered { false };
+    Polygons                wave_overhang_floor_polygons;
+
+    Polygons                wave_overhang_covered_polygons;
+
+    Polygons                wave_overhang_shadow_polygons;
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }

@@ -113,6 +113,11 @@ public:
     bool                                            has_fuzzy_hole = false;
     std::vector<std::pair<FuzzySkinConfig, ExPolygons>> regions_by_fuzzify;
     std::optional<ExPolygons>                       fuzzy_supported_area;
+
+    Polygons                                        out_wave_overhang_floor_polygons;
+    bool                                            wave_overhangs { false };
+
+    Polygons                                        out_wave_overhang_covered_polygons;
     
     PerimeterGenerator(
         const SurfaceCollection*    slices,
@@ -155,7 +160,7 @@ public:
 private:
     std::vector<Polygons>     generate_lower_polygons_series(float width);
     void split_top_surfaces(const ExPolygons &orig_polygons, ExPolygons &top_fills, ExPolygons &non_top_polygons, ExPolygons &fill_clip) const;
-    void apply_extra_perimeters(ExPolygons& infill_area);
+    void apply_extra_perimeters(ExPolygons& infill_area, const ExPolygon& island_region);
     void process_no_bridge(Surfaces& all_surfaces, coord_t perimeter_spacing, coord_t ext_perimeter_width);
 
 private:
@@ -167,6 +172,7 @@ private:
     double      m_mm3_per_mm_overhang;
     double      m_ext_mm3_per_mm_smaller_width;
     Polygons    m_lower_slices_polygons;
+    size_t      m_island_loops_begin = 0;
 };
 
 }

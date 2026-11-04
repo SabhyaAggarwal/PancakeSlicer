@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -73,6 +74,12 @@ bool field_layers_considered(const PrintObject &object, bool planar_pass)
     const PrintObjectConfig &ocfg  = object.config();
     const PrintConfig       &pcfg  = object.print()->config();
     const ModelObject       &model = *object.model_object();
+    static const bool uniform = [] {
+        const char *v = std::getenv("NP_AUTO_UNIFORM");
+        return v != nullptr && *v != 0 && *v != '0';
+    }();
+    if (uniform)
+        return false;
     return (planar_pass || ocfg.nonplanar_mode.value == NonplanarMode::Auto) && pcfg.nonplanar_kinematics.value == RotaryLayout::None &&
            ocfg.raft_layers.value == 0 &&
            !(pcfg.enable_prime_tower.value && pcfg.filament_diameter.size() > 1) &&

@@ -31,6 +31,7 @@
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -437,6 +438,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     const double shell_slope = steep_node.empty() || count_slopes.empty() ? a.slope90 : percentile(count_slopes, 0.9);
     a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(shell_slope)) - 0.15)), AutoMinShells, MaxShells);
     a.shells = std::max(AutoMinShells, std::min({ a.shells, n_depth, planar_top_layers(config, h_c) }));
+    if (const char *v = std::getenv("NP_CT1_SHELLS"); v != nullptr && std::atoi(v) > 0)
+        a.shells = std::clamp(std::atoi(v), 1, MaxShells);
     patch.shells = a.shells;
     if (!is_auto(object.config()))
         return;

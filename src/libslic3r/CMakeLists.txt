@@ -119,12 +119,18 @@ set(lisbslic3r_sources
     ContourZ.cpp
     Nonplanar/AdaptiveBands.cpp
     Nonplanar/AdaptiveBands.hpp
+    Nonplanar/Wave.cpp
+    Nonplanar/Wave.hpp
     Nonplanar/AtomToolpath.cpp
     Nonplanar/AtomToolpath.hpp
     Nonplanar/LeanVase.cpp
     Nonplanar/LeanVase.hpp
     Nonplanar/AutoMode.cpp
     Nonplanar/AutoMode.hpp
+    Nonplanar/RegionDetect.cpp
+    Nonplanar/RegionDetect.hpp
+    Nonplanar/RegionMask.cpp
+    Nonplanar/RegionMask.hpp
     Nonplanar/AutoOrient.cpp
     Nonplanar/AutoOrient.hpp
     Nonplanar/BeadModel.cpp
@@ -262,6 +268,8 @@ set(lisbslic3r_sources
     ExtrusionEntityCollection.hpp
     ExtrusionEntity.cpp
     ExtrusionEntity.hpp
+    WaveOverhangs/WaveOverhangs.cpp
+    WaveOverhangs/WaveOverhangs.hpp
     ExtrusionSimulator.cpp
     ExtrusionSimulator.hpp
     FaceDetector.cpp
@@ -511,6 +519,14 @@ set(lisbslic3r_sources
     PerimeterGenerator.cpp
     PerimeterGenerator.hpp
     PlaceholderParser.cpp
+    Nonplanar/CurvedTopsFacet.hpp
+    Nonplanar/CurvedTopsFacet.cpp
+    Nonplanar/CurvedTopsSurface.hpp
+    Nonplanar/CurvedTopsSurface.cpp
+    Nonplanar/CurvedTopsSchedule.hpp
+    Nonplanar/CurvedTopsSchedule.cpp
+    Nonplanar/CurvedTopsOrder.hpp
+    Nonplanar/CurvedTopsOrder.cpp
     PlaceholderParser.hpp
     Platform.cpp
     Platform.hpp

@@ -1020,7 +1020,7 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
             placed = true;
             s      = e;
         }
-        static const double axis_blend = [] { const char *v = std::getenv("NP_NATIVE_AXIS_BLEND"); return v ? std::max(0., std::atof(v)) : 0.; }();
+        const double axis_blend = params.axis_blend;
         if (axis_blend > 0.)
             for (size_t i = 1; i < chained.size(); ++i) {
                 auto *a = static_cast<ExtrusionPathConformal *>(chained[i - 1]);

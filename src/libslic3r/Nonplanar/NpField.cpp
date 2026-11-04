@@ -90,6 +90,24 @@ NpField load_npfield(const std::string &path)
     f.solver      = text("solver");
     f.proxy_version = text("proxy_version");
     f.mesh_min    = vec3("mesh_min", false);
+    if (const NpyArray tops = read("layer_z", false); !tops.values.empty()) {
+        if (tops.shape.size() != 1)
+            fail(path, "'layer_z' must be one-dimensional");
+        for (size_t i = 0; i < tops.values.size(); ++i)
+            if (!std::isfinite(tops.values[i]) || tops.values[i] <= (i == 0 ? 0. : tops.values[i - 1]))
+                fail(path, "'layer_z' must be positive and increasing");
+        f.layer_tops = tops.values;
+    }
+    if (const NpyArray axis = read("axis", false); !axis.values.empty()) {
+        if (axis.shape.size() != 4 || axis.shape[0] != f.dims[0] || axis.shape[1] != f.dims[1] || axis.shape[2] != f.dims[2] || axis.shape[3] != 3)
+            fail(path, "'axis' must have the shape 'dims' x 3");
+        f.axis.resize(axis.values.size());
+        for (size_t i = 0; i < axis.values.size(); ++i) {
+            if (!std::isfinite(axis.values[i]))
+                fail(path, "'axis' holds a nonfinite value");
+            f.axis[i] = float(axis.values[i]);
+        }
+    }
     for (mz_uint i = 0; i < mz_zip_reader_get_num_files(&zip); ++i) {
         char name[256];
         mz_zip_reader_get_filename(&zip, i, name, sizeof(name));
@@ -247,6 +265,25 @@ double NpLayerField::phi(const Vec3d &p) const
         v += w * (double(m_field.phi[m_field.index(c[0] + a, c[1] + b, c[2] + e)]) - m_field.node(c[0] + a, c[1] + b, c[2] + e).z());
     }
     return p.z() + v;
+}
+
+std::optional<Vec3d> NpLayerField::given_axis(const Vec3d &p) const
+{
+    if (m_field.axis.empty())
+        return std::nullopt;
+    std::array<size_t, 3> c;
+    Vec3d                 t;
+    this->locate(p, c, t);
+    Vec3d v = Vec3d::Zero();
+    for (int q = 0; q < 8; ++q) {
+        const size_t a = q & 1, b = (q >> 1) & 1, e = (q >> 2) & 1;
+        const double w = (a ? t.x() : 1. - t.x()) * (b ? t.y() : 1. - t.y()) * (e ? t.z() : 1. - t.z());
+        const size_t i = 3 * m_field.index(c[0] + a, c[1] + b, c[2] + e);
+        v += w * Vec3d(m_field.axis[i], m_field.axis[i + 1], m_field.axis[i + 2]);
+    }
+    if (v.squaredNorm() < 1e-12)
+        return std::nullopt;
+    return v.normalized();
 }
 
 Vec3d NpLayerField::gradient(const Vec3d &p) const

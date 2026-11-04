@@ -31,6 +31,7 @@ struct NpField
     std::optional<Vec3d> mesh_min;
     std::vector<std::pair<std::string, double>> terms;
     std::vector<double> layer_tops;
+    std::vector<float> axis;
 
     size_t index(size_t i, size_t j, size_t k) const { return (i * dims[1] + j) * dims[2] + k; }
     Vec3d  node(size_t i, size_t j, size_t k) const { return origin + spacing.cwiseProduct(Vec3d(double(i), double(j), double(k))); }
@@ -52,6 +53,7 @@ public:
     double phi(const Vec3d &p) const override;
     Vec3d  gradient(const Vec3d &p) const override;
     double identity_below() const override { return m_identity_below; }
+    std::optional<Vec3d> given_axis(const Vec3d &p) const override;
     const NpField &file() const { return m_field; }
 
 private:

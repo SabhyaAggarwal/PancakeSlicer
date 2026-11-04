@@ -35,6 +35,8 @@
 #include <cassert>
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <cstdint>
 
 #include <boost/log/trivial.hpp>
 #include <boost/algorithm/clamp.hpp>
@@ -43,8 +45,72 @@
 #include "ExtrusionEntityCollection.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "SurfaceCollection.hpp"
+#include "WaveOverhangs/WaveOverhangs.hpp"
 
 namespace Slic3r {
+
+class NonplanarProjectionIndex {
+public:
+    using Ref = std::pair<size_t, int>;
+    explicit NonplanarProjectionIndex(const NonplanarSurfaces &surfaces)
+    {
+        for (size_t si = 0; si < surfaces.size(); ++si)
+            for (const auto &entry : surfaces[si].mesh) {
+                const auto &v = entry.second.vertex;
+                const double xmin = std::min({double(v[0].x), double(v[1].x), double(v[2].x)});
+                const double xmax = std::max({double(v[0].x), double(v[1].x), double(v[2].x)});
+                const double ymin = std::min({double(v[0].y), double(v[1].y), double(v[2].y)});
+                const double ymax = std::max({double(v[0].y), double(v[1].y), double(v[2].y)});
+                for (int ix = cell(xmin); ix <= cell(xmax); ++ix)
+                    for (int iy = cell(ymin); iy <= cell(ymax); ++iy)
+                        m_cells[key(ix, iy)].emplace_back(si, entry.first);
+            }
+    }
+
+    std::vector<Ref> query(double xmin, double ymin, double xmax, double ymax) const
+    {
+        std::vector<Ref> refs;
+        for (int ix = cell(xmin); ix <= cell(xmax); ++ix)
+            for (int iy = cell(ymin); iy <= cell(ymax); ++iy) {
+                const auto it = m_cells.find(key(ix, iy));
+                if (it != m_cells.end())
+                    refs.insert(refs.end(), it->second.begin(), it->second.end());
+            }
+        std::sort(refs.begin(), refs.end());
+        refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
+        return refs;
+    }
+
+private:
+    static int cell(double value) { return int(std::floor(value / 2.0)); }
+    static uint64_t key(int x, int y) {
+        return (uint64_t(uint32_t(x)) << 32) | uint32_t(y);
+    }
+    std::unordered_map<uint64_t, std::vector<Ref>> m_cells;
+};
+
+static void mark_nonplanar_provenance(ExtrusionEntity *entity, const Surface &surface, size_t layer_id)
+{
+    if (auto *path = dynamic_cast<ExtrusionPath*>(entity)) {
+        path->nonplanar_source = surface.is_nonplanar();
+        path->distance_to_top = surface.is_nonplanar() ? surface.distance_to_top : -1.f;
+        path->source_layer_id = surface.source_layer_id != size_t(-1) ? surface.source_layer_id : layer_id;
+        path->source_surface_id = surface.source_surface_id;
+        if (path->source_path_id == 0)
+            path->source_path_id = next_nonplanar_path_id();
+    } else if (auto *loop = dynamic_cast<ExtrusionLoop*>(entity)) {
+        for (ExtrusionPath &path : loop->paths)
+            mark_nonplanar_provenance(&path, surface, layer_id);
+    } else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(entity)) {
+        for (ExtrusionPath &path : multi->paths)
+            mark_nonplanar_provenance(&path, surface, layer_id);
+    } else if (auto *collection = dynamic_cast<ExtrusionEntityCollection*>(entity)) {
+        for (ExtrusionEntity *child : collection->entities)
+            mark_nonplanar_provenance(child, surface, layer_id);
+    }
+}
+
+
 
 Flow LayerRegion::flow(FlowRole role) const
 {
@@ -87,22 +153,75 @@ void LayerRegion::slices_to_fill_surfaces_clipped()
 {
     std::array<SurfacesPtr, size_t(stCount)> by_surface;
     for (Surface &surface : this->slices.surfaces)
-        by_surface[size_t(surface.surface_type)].emplace_back(&surface);
+        if (! surface.is_nonplanar())
+            by_surface[size_t(surface.surface_type)].emplace_back(&surface);
     this->fill_surfaces.surfaces.clear();
     for (size_t surface_type = 0; surface_type < size_t(stCount); ++ surface_type) {
         const SurfacesPtr &this_surfaces = by_surface[surface_type];
         if (! this_surfaces.empty())
             this->fill_surfaces.append(intersection_ex(this_surfaces, this->fill_expolygons), SurfaceType(surface_type));
     }
+    for (const Surface &surface : this->slices.surfaces)
+        if (surface.is_nonplanar())
+            this->fill_surfaces.append(intersection_ex(surface.expolygon, this->fill_expolygons), surface);
 }
 
 void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap)
 {
     this->perimeters.clear();
     this->thin_fills.clear();
+    m_nonplanar_perimeters_projected = false;
+
+    SurfaceCollection planar;
+    Surfaces          nonplanar;
+    for (const Surface &surface : slices.surfaces)
+        (surface.is_nonplanar() ? nonplanar : planar.surfaces).push_back(surface);
+    if (! nonplanar.empty()) {
+        const Surface planar_template(stInternal);
+        auto mark_new = [this](ExtrusionEntityCollection &collection, size_t begin, const Surface &surface) {
+            for (size_t i = begin; i < collection.entities.size(); ++ i)
+                mark_nonplanar_provenance(collection.entities[i], surface, this->layer()->id());
+        };
+        size_t perimeters_begin = this->perimeters.entities.size(), thin_begin = this->thin_fills.entities.size();
+        if (! planar.empty())
+            this->make_perimeters_generator(planar, compatible_regions, fill_surfaces, fill_no_overlap, nullptr, true);
+        mark_new(this->perimeters, perimeters_begin, planar_template);
+        mark_new(this->thin_fills, thin_begin, planar_template);
+        for (const Surface &surface : nonplanar) {
+            SurfaceCollection one;
+            one.surfaces.push_back(surface);
+            PrintRegionConfig shell_config = this->region().config();
+            if (surface.distance_to_top >= 0.f && surface.distance_to_top < 1e-4f)
+                shell_config.wall_loops.value = std::min(shell_config.wall_loops.value, 1);
+            perimeters_begin = this->perimeters.entities.size();
+            thin_begin       = this->thin_fills.entities.size();
+            this->make_perimeters_generator(one, compatible_regions, fill_surfaces, fill_no_overlap, &shell_config, false);
+            mark_new(this->perimeters, perimeters_begin, surface);
+            mark_new(this->thin_fills, thin_begin, surface);
+        }
+        return;
+    }
+    this->make_perimeters_generator(slices, compatible_regions, fill_surfaces, fill_no_overlap, nullptr, true);
+    const Surface planar_template(stInternal);
+    for (ExtrusionEntity *entity : this->perimeters.entities)
+        mark_nonplanar_provenance(entity, planar_template, this->layer()->id());
+    for (ExtrusionEntity *entity : this->thin_fills.entities)
+        mark_nonplanar_provenance(entity, planar_template, this->layer()->id());
+}
+
+void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap,
+                                            const PrintRegionConfig *config_override, bool planar_neighbours)
+{
 
     const PrintConfig       &print_config  = this->layer()->object()->print()->config();
-    const PrintRegionConfig &region_config = this->region().config();
+    const PrintRegionConfig &base_config   = config_override ? *config_override : this->region().config();
+    const bool               drop_overhang = !planar_neighbours && base_config.detect_overhang_wall.value;
+    PrintRegionConfig        no_overhang_config;
+    if (drop_overhang) {
+        no_overhang_config = base_config;
+        no_overhang_config.detect_overhang_wall.value = false;
+    }
+    const PrintRegionConfig &region_config = drop_overhang ? no_overhang_config : base_config;
     const PrintObjectConfig& object_config = this->layer()->object()->config();
     bool spiral_mode = print_config.spiral_mode &&
         (this->layer()->id() >= size_t(region_config.bottom_shell_layers.value) &&
@@ -132,11 +251,12 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         fill_no_overlap
     );
     
-    if (this->layer()->upper_layer != NULL)
+    g.wave_overhangs = WaveOverhangs::enabled(region_config, *this->layer()->object());
+    if (planar_neighbours && this->layer()->upper_layer != NULL)
         g.upper_slices = &this->layer()->upper_layer->lslices;
 
     int region_id = this->region().print_object_region_id();
-    if (this->layer()->upper_layer != NULL)
+    if (planar_neighbours && this->layer()->upper_layer != NULL)
         g.upper_slices_same_region = &this->layer()->upper_layer->get_region(region_id)->slices;
 
     g.layer_id              = (int)this->layer()->id();
@@ -158,6 +278,11 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         g.process_arachne();
     else
         g.process_classic();
+
+    if (! g.out_wave_overhang_floor_polygons.empty())
+        append(this->layer()->wave_overhang_floor_polygons, std::move(g.out_wave_overhang_floor_polygons));
+    if (! g.out_wave_overhang_covered_polygons.empty())
+        append(this->layer()->wave_overhang_covered_polygons, std::move(g.out_wave_overhang_covered_polygons));
 }
 
 #if 1
@@ -501,6 +626,15 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     static constexpr const size_t   max_nr_expansion_steps  = 5;
     const float closing_radius = 0.55f * 0.65f * 1.05f * this->flow(frSolidInfill).scaled_spacing();
 
+    Surfaces nonplanar_shells;
+    for (Surface &surface : this->fill_surfaces.surfaces)
+        if (surface.is_nonplanar())
+            nonplanar_shells.emplace_back(std::move(surface));
+    this->fill_surfaces.surfaces.erase(
+        std::remove_if(this->fill_surfaces.surfaces.begin(), this->fill_surfaces.surfaces.end(),
+            [](const Surface &surface) { return surface.is_nonplanar(); }),
+        this->fill_surfaces.surfaces.end());
+
     double     layer_thickness;
     ExPolygons shells = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, { stInternalSolid }, layer_thickness));
     ExPolygons sparse = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, {stInternal}, layer_thickness));
@@ -581,7 +715,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     unsigned zones_expolygons_count = 0;
     for (const ExpansionZone& zone : expansion_zones)
         zones_expolygons_count += zone.expolygons.size();
-    reserve_more(this->fill_surfaces.surfaces, zones_expolygons_count + bridges.size() + bottoms.size() + tops.size());
+    reserve_more(this->fill_surfaces.surfaces, zones_expolygons_count + bridges.size() + bottoms.size() + tops.size() + nonplanar_shells.size());
     {
         Surface solid_templ(stInternalSolid, {});
         solid_templ.thickness = layer_thickness;
@@ -595,6 +729,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     this->fill_surfaces.append(std::move(bridges.surfaces));
     this->fill_surfaces.append(std::move(bottoms));
     this->fill_surfaces.append(std::move(tops));
+    this->fill_surfaces.append(std::move(nonplanar_shells));
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     export_region_fill_surfaces_to_svg_debug("4_process_external_surfaces-final");
@@ -627,7 +762,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
         Polygons voids;
 
         double max_grid_area = -1;
-        if (this->layer()->lower_layer != nullptr)
+    if (planar_neighbours && this->layer()->lower_layer != nullptr)
             max_grid_area = this->layer()->lower_layer->get_sparse_infill_max_void_area();
         for (const Surface &surface : this->fill_surfaces.surfaces) {
             if (surface.is_top()) {
@@ -1024,6 +1159,292 @@ void LayerRegion::simplify_loop(ExtrusionLoop* loop)
         }
     }
 }
+
+
+void
+LayerRegion::append_nonplanar_surface(const NonplanarSurface& surface)
+{
+    for(auto & s : m_nonplanar_surfaces){
+        if (s == surface){
+            return;
+        }
+    }
+    m_nonplanar_surfaces.push_back(surface);
+}
+
+void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collection, const NonplanarProjectionIndex &index)
+{
+    ExtrusionEntitiesPtr output;
+    output.reserve(collection->entities.size());
+    for (ExtrusionEntity *entity : collection->entities) {
+        if (auto *path = dynamic_cast<ExtrusionPath*>(entity)) {
+            auto pieces = project_nonplanar_path(*path, index);
+            if (pieces.size() == 1) {
+                *path = std::move(pieces.front());
+                output.push_back(path);
+            } else {
+                for (auto &piece : pieces) output.push_back(new ExtrusionPath(std::move(piece)));
+                delete path;
+            }
+        } else if (auto *loop = dynamic_cast<ExtrusionLoop*>(entity)) {
+            ExtrusionPaths projected;
+            bool split = false;
+            for (const ExtrusionPath &path : loop->paths) {
+                auto pieces = project_nonplanar_path(path, index);
+                split |= pieces.size() != 1;
+                for (auto &piece : pieces) projected.emplace_back(std::move(piece));
+            }
+            if (split) {
+                for (auto &piece : projected) output.push_back(new ExtrusionPath(std::move(piece)));
+                delete loop;
+            } else {
+                loop->paths = std::move(projected);
+                output.push_back(loop);
+            }
+        } else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(entity)) {
+            ExtrusionPaths projected;
+            bool split = false;
+            for (const ExtrusionPath &path : multi->paths) {
+                auto pieces = project_nonplanar_path(path, index);
+                split |= pieces.size() != 1;
+                for (auto &piece : pieces) projected.emplace_back(std::move(piece));
+            }
+            if (split) {
+                for (auto &piece : projected) output.push_back(new ExtrusionPath(std::move(piece)));
+                delete multi;
+            } else {
+                multi->paths = std::move(projected);
+                output.push_back(multi);
+            }
+        } else if (auto *nested = dynamic_cast<ExtrusionEntityCollection*>(entity)) {
+            project_nonplanar_extrusion(nested, index);
+            output.push_back(nested);
+        } else {
+            output.push_back(entity);
+        }
+    }
+    collection->entities.swap(output);
+}
+
+static void check_nonplanar_projected(const ExtrusionEntity *entity, const Layer &layer)
+{
+    const size_t layer_id = layer.id();
+    auto check_path = [&layer, layer_id](const ExtrusionPath &path) {
+        if (! path.nonplanar_source)
+            return;
+        for (const Point3 &p : path.polyline.points)
+            if (p.z() <= 0)
+                throw_nonplanar_internal(nonplanar_location(layer.print_z, layer_id),
+                    "path " + std::to_string(path.source_path_id) + " was not projected onto its surface", layer.object()->id().id);
+    };
+    if (auto *path = dynamic_cast<const ExtrusionPath*>(entity))
+        check_path(*path);
+    else if (auto *loop = dynamic_cast<const ExtrusionLoop*>(entity))
+        for (const ExtrusionPath &path : loop->paths) check_path(path);
+    else if (auto *multi = dynamic_cast<const ExtrusionMultiPath*>(entity))
+        for (const ExtrusionPath &path : multi->paths) check_path(path);
+    else if (auto *collection = dynamic_cast<const ExtrusionEntityCollection*>(entity))
+        for (const ExtrusionEntity *child : collection->entities) check_nonplanar_projected(child, layer);
+}
+
+void LayerRegion::project_nonplanar_surfaces()
+{
+    if (m_nonplanar_surfaces.empty()) return;
+    const NonplanarProjectionIndex index(m_nonplanar_surfaces);
+    if (! m_nonplanar_perimeters_projected)
+        for (ExtrusionEntity *entity : perimeters.entities)
+            if (auto *collection = dynamic_cast<ExtrusionEntityCollection*>(entity))
+                project_nonplanar_extrusion(collection, index);
+    m_nonplanar_perimeters_projected = true;
+    for (ExtrusionEntity *entity : fills.entities)
+        if (auto *collection = dynamic_cast<ExtrusionEntityCollection*>(entity))
+            project_nonplanar_extrusion(collection, index);
+    check_nonplanar_projected(&perimeters, *this->layer());
+    check_nonplanar_projected(&fills, *this->layer());
+}
+
+static bool nonplanar_triangle_height(const NonplanarFacet &facet, double x, double y,
+                                      double margin, double &z, double &distance2)
+{
+    const auto &a = facet.vertex[0], &b = facet.vertex[1], &c = facet.vertex[2];
+    const double den = (b.y-a.y)*(c.x-a.x) - (b.x-a.x)*(c.y-a.y);
+    if (std::abs(den) < 1e-12) return false;
+    const double w1 = ((y-a.y)*(c.x-a.x) - (x-a.x)*(c.y-a.y)) / den;
+    const double w2 = ((b.y-a.y)*(x-a.x) - (b.x-a.x)*(y-a.y)) / den;
+    const double w0 = 1.0 - w1 - w2;
+    if (w0 >= -1e-7 && w1 >= -1e-7 && w2 >= -1e-7) {
+        z = w0*a.z + w1*b.z + w2*c.z;
+        distance2 = 0.0;
+        return true;
+    }
+    distance2 = std::numeric_limits<double>::max();
+    const auto *vertices = facet.vertex;
+    for (int i = 0; i < 3; ++i) {
+        const auto &p = vertices[i], &q = vertices[(i+1)%3];
+        const double dx = q.x-p.x, dy = q.y-p.y;
+        const double len2 = dx*dx + dy*dy;
+        if (len2 < 1e-12) continue;
+        const double t = std::max(0.0, std::min(1.0, ((x-p.x)*dx + (y-p.y)*dy)/len2));
+        const double ex = x-p.x-t*dx, ey = y-p.y-t*dy;
+        const double d2 = ex*ex + ey*ey;
+        if (d2 < distance2) {
+            distance2 = d2;
+            z = p.z + t*(q.z-p.z);
+        }
+    }
+    return distance2 <= margin*margin;
+}
+
+std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPath &source, const NonplanarProjectionIndex &index)
+{
+    if (!source.nonplanar_source || source.polyline.points.size() < 2)
+        return {source};
+
+    if (source.source_surface_id < 0 || source.distance_to_top < 0)
+        throw_nonplanar_internal(nonplanar_location(this->layer()->print_z, this->layer()->id()),
+            "path " + std::to_string(source.source_path_id) + " without target surface or shell offset", this->layer()->object()->id().id);
+    const double offset = source.distance_to_top;
+    const double margin = std::max(0.003, double(source.width) * 0.5 + 0.003);
+    const std::vector<NonplanarProjectionIndex::Ref> *candidates = nullptr;
+    auto sample = [&](double x, double y, int &owner, int &facet_id, double &height) {
+        double best = std::numeric_limits<double>::max();
+        owner = -1;
+        facet_id = -1;
+        for (const auto &[si, candidate_facet_id] : *candidates) {
+            const NonplanarSurface &surface = m_nonplanar_surfaces[si];
+            if (surface.stable_id != source.source_surface_id)
+                continue;
+            double z = 0.0, d2 = 0.0;
+            if (!nonplanar_triangle_height(surface.mesh.at(candidate_facet_id), x, y, margin, z, d2)) continue;
+            if (d2 < best) {
+                best = d2;
+                owner = int(si);
+                facet_id = candidate_facet_id;
+                height = z - offset;
+            }
+        }
+    };
+    auto sample_facet = [&](double x, double y, int owner, int facet_id, double &height) {
+        if (owner < 0 || size_t(owner) >= m_nonplanar_surfaces.size() || facet_id < 0)
+            return false;
+        const NonplanarSurface &surface = m_nonplanar_surfaces[size_t(owner)];
+        double z = 0.0, d2 = 0.0;
+        if (!nonplanar_triangle_height(surface.mesh.at(facet_id), x, y, margin, z, d2)) return false;
+        height = z - offset;
+        return true;
+    };
+    auto point_at = [&](const Point3 &a, const Point3 &b, double t, int owner, int facet_id, double inside_t) {
+        double use_t = t;
+        double x = unscale<double>(a.x()) + use_t*unscale<double>(b.x()-a.x());
+        double y = unscale<double>(a.y()) + use_t*unscale<double>(b.y()-a.y());
+        Point3 p(coord_t(scale_(x)), coord_t(scale_(y)), coord_t(0));
+        if (owner >= 0) {
+            double h = 0.0;
+            if (!sample_facet(x, y, owner, facet_id, h)) {
+                double outside_t = t, inside = inside_t;
+                for (int n = 0; n < 32; ++n) {
+                    const double candidate = 0.5 * (outside_t + inside);
+                    const double cx = unscale<double>(a.x()) + candidate*unscale<double>(b.x()-a.x());
+                    const double cy = unscale<double>(a.y()) + candidate*unscale<double>(b.y()-a.y());
+                    if (sample_facet(cx, cy, owner, facet_id, h))
+                        inside = candidate;
+                    else
+                        outside_t = candidate;
+                }
+                use_t = inside;
+                x = unscale<double>(a.x()) + use_t*unscale<double>(b.x()-a.x());
+                y = unscale<double>(a.y()) + use_t*unscale<double>(b.y()-a.y());
+                p = Point3(coord_t(scale_(x)), coord_t(scale_(y)), coord_t(0));
+                if (!sample_facet(x, y, owner, facet_id, h))
+                    throw_nonplanar_internal(nonplanar_location(this->layer()->print_z, this->layer()->id()),
+                        "no surface height at the boundary point X" + std::to_string(x) + " Y" + std::to_string(y), this->layer()->object()->id().id);
+            }
+            p.z() = coord_t(scale_(h));
+        }
+        return p;
+    };
+
+    std::vector<ExtrusionPath> result;
+    ExtrusionPath current(source);
+    current.polyline.points.clear();
+    int current_owner = -3;
+    auto flush = [&]() {
+        if (current.polyline.points.size() >= 2)
+            result.emplace_back(std::move(current));
+        current = ExtrusionPath(source);
+        current.polyline.points.clear();
+    };
+
+    for (size_t i = 1; i < source.polyline.points.size(); ++i) {
+        const Point3 &a = source.polyline.points[i-1], &b = source.polyline.points[i];
+        if (a == b) continue;
+        const double ax = unscale<double>(a.x()), ay = unscale<double>(a.y());
+        const double dx = unscale<double>(b.x()-a.x()), dy = unscale<double>(b.y()-a.y());
+        const auto nearby = index.query(std::min(ax, ax + dx) - margin, std::min(ay, ay + dy) - margin,
+                                        std::max(ax, ax + dx) + margin, std::max(ay, ay + dy) + margin);
+        candidates = &nearby;
+        std::vector<double> ts{0.0, 1.0};
+        for (const auto &[si, facet_id] : nearby) {
+                const auto &f = m_nonplanar_surfaces[si].mesh.at(facet_id);
+                for (int e = 0; e < 3; ++e) {
+                    const auto &v = f.vertex[e], &w = f.vertex[(e+1)%3];
+                    const double ex = w.x-v.x, ey = w.y-v.y;
+                    const double den = dx*ey-dy*ex;
+                    if (std::abs(den) < 1e-12) continue;
+                    const double cx = v.x-ax, cy = v.y-ay;
+                    const double t = (cx*ey-cy*ex)/den;
+                    const double u = (cx*dy-cy*dx)/den;
+                    if (t > 1e-8 && t < 1.0-1e-8 && u >= -1e-8 && u <= 1.0+1e-8)
+                        ts.push_back(t);
+                }
+        }
+        std::sort(ts.begin(), ts.end());
+        ts.erase(std::unique(ts.begin(), ts.end(), [](double u, double v) { return std::abs(u-v) < 1e-7; }), ts.end());
+        for (size_t j = 1; j < ts.size(); ++j) {
+            const double mid = 0.5*(ts[j-1]+ts[j]);
+            int owner = -1, facet_id = -1;
+            double height = 0.0;
+            sample(ax+mid*dx, ay+mid*dy, owner, facet_id, height);
+            if (owner < 0)
+                throw_nonplanar_internal(nonplanar_location(this->layer()->print_z, this->layer()->id()),
+                    "no facet of surface " + std::to_string(source.source_surface_id) + " under X" +
+                    std::to_string(ax+mid*dx) + " Y" + std::to_string(ay+mid*dy) +
+                    ", shell offset " + std::to_string(source.distance_to_top), this->layer()->object()->id().id);
+            Point3 p0 = point_at(a, b, ts[j-1], owner, facet_id, mid);
+            Point3 p1 = point_at(a, b, ts[j], owner, facet_id, mid);
+            if (p0 == p1) continue;
+            if (owner >= 0) {
+                const double xy = std::hypot(unscale<double>(p1.x() - p0.x()),
+                                             unscale<double>(p1.y() - p0.y()));
+                const double dz = std::abs(unscale<double>(p1.z() - p0.z()));
+                if (dz > std::tan(12.0 * M_PI / 180.0) * xy + 0.03)
+                    throw_nonplanar_too_steep(unscale<double>(std::max(p0.z(), p1.z())), this->layer()->id(),
+                        this->layer()->object()->config().nonplanar_curved_max_angle.value, this->layer()->object()->id().id,
+                        "projected segment X" + std::to_string(unscale<double>(p0.x())) + " Y" + std::to_string(unscale<double>(p0.y())) +
+                        " -> X" + std::to_string(unscale<double>(p1.x())) + " Y" + std::to_string(unscale<double>(p1.y())) +
+                        ", XY " + std::to_string(xy) + " mm, Z " + std::to_string(dz) + " mm, surface " + std::to_string(owner));
+            }
+            if (owner == current_owner && !current.polyline.points.empty() &&
+                current.polyline.points.back().to_point() == p0.to_point() &&
+                std::abs(current.polyline.points.back().z() - p0.z()) <= scale_(0.003))
+                p0 = current.polyline.points.back();
+            if (owner != current_owner || (!current.polyline.points.empty() &&
+                current.polyline.points.back() != p0)) {
+                flush();
+                current_owner = owner;
+                current.source_surface_id = owner >= 0 ? m_nonplanar_surfaces[size_t(owner)].stable_id : -1;
+                current.nonplanar_source = owner >= 0;
+                current.distance_to_top = owner >= 0 ? source.distance_to_top : -1.f;
+            }
+            if (current.polyline.points.empty()) current.polyline.points.push_back(p0);
+            if (current.polyline.points.back() != p1)
+                current.polyline.points.push_back(p1);
+        }
+    }
+    flush();
+    return result;
+}
+
 
 }
  

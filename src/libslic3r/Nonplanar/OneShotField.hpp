@@ -50,6 +50,9 @@ struct OneShotState
     int                            plinth_user_layers = 0;
     double                         plinth_user_expansion = 0., plinth_user_first_expansion = 0.;
     bool                           injected = false;
+    bool                           forced_arm = false;
+    std::string                    forced_why;
+    std::string                    route_cuts;
     double                         measured_ratio   = std::numeric_limits<double>::quiet_NaN();
     int                            measured_repicks = 0;
     bool                           measured_anchor  = false;
@@ -58,7 +61,7 @@ struct OneShotState
     double                         measure_work_left = std::numeric_limits<double>::quiet_NaN();
     double                         cap_scale        = 1.;
     std::string                    time_cut_note;
-    enum class Offer { Body, NormalSupport, Control, Auto };
+    enum class Offer { Body, NormalSupport, Control, Auto, Planar };
     Offer                          offer            = Offer::Body;
     double                         measured_floating = std::numeric_limits<double>::quiet_NaN();
     double                         control_floating  = std::numeric_limits<double>::quiet_NaN();
@@ -98,8 +101,11 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
 bool band_control(const PrintObject &object, OneShotState &state);
 bool control_past_cap(const PrintObject &object, OneShotState &state);
 bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating);
+bool planar_keeps_pick(const PrintObject &object, OneShotState &state, const Floating &floating, double net);
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating);
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time);
+
+bool route_forced(const std::string &cuts);
 
 double in_plane_spread(const NpField &field);
 

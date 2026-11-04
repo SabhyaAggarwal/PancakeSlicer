@@ -46,11 +46,48 @@
 #include "libslic3r/MultiMaterialSegmentation.hpp"
 #include "libslic3r/Slicing.hpp"
 #include "libslic3r/SurfaceCollection.hpp"
+#include "libslic3r/WaveOverhangs/WaveOverhangs.hpp"
 
 namespace Slic3r::FillAdaptive { struct Octree; }
 namespace Slic3r::FillLightning { class Generator; }
 
 namespace Slic3r {
+
+static void mark_fill_provenance(ExtrusionEntity *entity, const Surface &surface, size_t layer_id)
+{
+    auto mark = [&surface, layer_id](ExtrusionPath &path) {
+        path.nonplanar_source = surface.is_nonplanar();
+        path.distance_to_top = surface.is_nonplanar() ? surface.distance_to_top : -1.f;
+        path.source_layer_id = surface.source_layer_id != size_t(-1) ? surface.source_layer_id : layer_id;
+        path.source_surface_id = surface.source_surface_id;
+        if (path.source_path_id == 0)
+            path.source_path_id = next_nonplanar_path_id();
+    };
+    if (auto *path = dynamic_cast<ExtrusionPath*>(entity))
+        mark(*path);
+    else if (auto *loop = dynamic_cast<ExtrusionLoop*>(entity))
+        for (ExtrusionPath &path : loop->paths) mark(path);
+    else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(entity))
+        for (ExtrusionPath &path : multi->paths) mark(path);
+    else if (auto *collection = dynamic_cast<ExtrusionEntityCollection*>(entity))
+        for (ExtrusionEntity *child : collection->entities) mark_fill_provenance(child, surface, layer_id);
+}
+
+static void tag_wave_overhang_floor_recursive(ExtrusionEntity *ent, int8_t distance)
+{
+    if (!ent) return;
+    auto stamp = [distance](ExtrusionPath &p) {
+        p.wave_overhang_floor = true;
+        p.wave_overhang_floor_distance = distance;
+    };
+    if (auto *path = dynamic_cast<ExtrusionPath*>(ent))         { stamp(*path); }
+    else if (auto *loop = dynamic_cast<ExtrusionLoop*>(ent))    { for (ExtrusionPath &p : loop->paths) stamp(p); }
+    else if (auto *mp = dynamic_cast<ExtrusionMultiPath*>(ent)) { for (ExtrusionPath &p : mp->paths) stamp(p); }
+    else if (auto *coll = dynamic_cast<ExtrusionEntityCollection*>(ent)) {
+        for (ExtrusionEntity *child : coll->entities)
+            tag_wave_overhang_floor_recursive(child, distance);
+    }
+}
 
 double calculate_infill_rotation_angle(const PrintObject* object,
                                        size_t             layer_id,
@@ -253,6 +290,9 @@ struct SurfaceFillParams
 
     bool gyroid_optimized = false;
 
+	int 			nonplanar_surface_id = -1;
+	float 			nonplanar_shell_offset = -1.f;
+
     TpmsAdaptiveMode     tpms_adaptive          = TpmsAdaptiveMode::Disabled;
     float                tpms_interior_density  = 0.f;
     TpmsAdaptiveGradient tpms_adaptive_gradient = TpmsAdaptiveGradient::Linear;
@@ -263,6 +303,8 @@ struct SurfaceFillParams
     bool                   separated_infills{false};
 
     SurfaceFillOrder fill_order = SurfaceFillOrder::Default;
+    bool wave_overhang_floor = false;
+    int8_t wave_overhang_floor_distance = 0;
 
 	bool operator<(const SurfaceFillParams &rhs) const {
 #define RETURN_COMPARE_NON_EQUAL(KEY) if (this->KEY < rhs.KEY) return true; if (this->KEY > rhs.KEY) return false;
@@ -302,6 +344,10 @@ struct SurfaceFillParams
         RETURN_COMPARE_NON_EQUAL(center_of_surface_pattern);
         RETURN_COMPARE_NON_EQUAL(separated_infills);
 		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, fill_order);
+		RETURN_COMPARE_NON_EQUAL(nonplanar_surface_id);
+		RETURN_COMPARE_NON_EQUAL(nonplanar_shell_offset);
+		RETURN_COMPARE_NON_EQUAL_TYPED(unsigned, wave_overhang_floor);
+		RETURN_COMPARE_NON_EQUAL_TYPED(int, wave_overhang_floor_distance);
 
 		return false;
 	}
@@ -329,12 +375,16 @@ struct SurfaceFillParams
                 this->infill_overhang_angle   == rhs.infill_overhang_angle   &&
                 this->center_of_surface_pattern == rhs.center_of_surface_pattern &&
                 this->separated_infills       == rhs.separated_infills &&
-                this->gyroid_optimized        == rhs.gyroid_optimized        &&
+                this->gyroid_optimized        == rhs.gyroid_optimized &&
+                this->nonplanar_surface_id == rhs.nonplanar_surface_id &&
+                this->nonplanar_shell_offset == rhs.nonplanar_shell_offset        &&
                 this->tpms_adaptive           == rhs.tpms_adaptive           &&
                 this->tpms_interior_density   == rhs.tpms_interior_density   &&
                 this->tpms_adaptive_gradient  == rhs.tpms_adaptive_gradient  &&
                 this->smooth_factor           == rhs.smooth_factor           &&
-                this->fill_order              == rhs.fill_order;
+                this->fill_order              == rhs.fill_order &&
+                this->wave_overhang_floor     == rhs.wave_overhang_floor &&
+                this->wave_overhang_floor_distance == rhs.wave_overhang_floor_distance;
 	}
 };
 
@@ -842,7 +892,14 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                     params.infill_complete_top = region_config.infill_complete_top;
                 }
 
-                if (surface.is_solid()) {
+                if (surface.is_nonplanar()) {
+                    if (surface.surface_type == stTopNonplanar)
+                        params.pattern = (region_config.top_surface_pattern == ipMonotonic || region_config.top_surface_pattern == ipMonotonicLine) ?
+                            ipMonotonic : ipRectilinear;
+                    else
+                        params.pattern = region_config.internal_solid_infill_pattern.value;
+                    params.density = 100.f;
+                } else if (surface.is_solid()) {
                     if (surface.is_external() && !is_bridge) {
                         if (surface.is_top()) {
                             params.pattern = region_config.top_surface_pattern.value;
@@ -855,6 +912,36 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                     } else if (surface.is_solid_infill()) {
                         params.pattern = region_config.internal_solid_infill_pattern.value;
                         params.density = 100.f;
+                        if (WaveOverhangs::enabled(region_config, *layer.object())
+                            && region_config.wave_overhang_floor_use_hilbert.value
+                            && !layer.wave_overhang_shadow_polygons.empty()) {
+                            const int floor_layers       = std::max(0, region_config.wave_overhang_floor_layers.value);
+                            const int hilbert_layers_cfg = std::max(0, region_config.wave_overhang_floor_hilbert_layers.value);
+                            const int hilbert_cap = (hilbert_layers_cfg > 0)
+                                ? std::min(hilbert_layers_cfg, floor_layers)
+                                : floor_layers;
+                            if (hilbert_cap > 0) {
+                                int k = -1;
+                                const Layer *cur = &layer;
+                                for (int d = 1; d <= hilbert_cap; ++d) {
+                                    cur = cur->lower_layer;
+                                    if (!cur) break;
+                                    if (!cur->wave_overhang_floor_polygons.empty()) {
+                                        k = d;
+                                        break;
+                                    }
+                                }
+                                if (k >= 1 && k <= hilbert_cap) {
+                                    Polygons surf_polys = to_polygons(surface);
+                                    if (!intersection(surf_polys, layer.wave_overhang_shadow_polygons).empty()) {
+                                        params.pattern = ipHilbertCurve;
+                                        params.density = float(std::clamp(region_config.wave_overhang_floor_hilbert_density.value, 1, 100));
+                                        params.wave_overhang_floor = true;
+                                        params.wave_overhang_floor_distance = static_cast<int8_t>(std::min(k, 127));
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         if (region_config.top_surface_pattern == ipMonotonic || region_config.top_surface_pattern == ipMonotonicLine)
                             params.pattern = ipMonotonic;
@@ -925,6 +1012,16 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                     }
                 }
                 params.bridge_angle = float(surface.bridge_angle);
+                if (surface.is_nonplanar()) {
+                    if (surface.source_surface_id < 0 || surface.distance_to_top < 0)
+                        throw_nonplanar_internal(nonplanar_location(layer.print_z, layer.id()),
+                            "fill surface without target surface or shell offset", layer.object()->id().id);
+                    params.nonplanar_surface_id   = surface.source_surface_id;
+                    params.nonplanar_shell_offset = surface.distance_to_top;
+                } else {
+                    params.nonplanar_surface_id   = -1;
+                    params.nonplanar_shell_offset = -1.f;
+                }
 
                 float align_offset = 0.f;
                 if (region_config.align_infill_direction_to_model) {
@@ -1072,6 +1169,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 	        		break;
 	        	}
 	        if (internal_solid_fill == nullptr) {
+		        params.nonplanar_surface_id   = -1;
+		        params.nonplanar_shell_offset = -1.f;
 		        params.extruder 	 = layerm.region().extruder(frSolidInfill);
                 const auto top_pattern = layerm.region().config().top_surface_pattern;
                 if(top_pattern == ipMonotonic || top_pattern == ipMonotonicLine)
@@ -1293,6 +1392,8 @@ void Layer::make_fills(const FillAdaptive::RegionOctrees* fill_octrees, FillLigh
         }
 		if (surface_fill.params.pattern == ipGrid)
 			params.can_reverse = false;
+		auto &dst_entities = m_regions[surface_fill.region_id]->fills.entities;
+		const size_t wo_floor_dst_size_before = dst_entities.size();
 		for (ExPolygon& expoly : surface_fill.expolygons) {
 
             const int body = infill_body(*this, surface_fill, expoly);
@@ -1322,9 +1423,18 @@ void Layer::make_fills(const FillAdaptive::RegionOctrees* fill_octrees, FillLigh
                 if (f->layer_id > 0 && f->layer_id <= elefant_layers)
                     params.density = 1.0f - (1.0f - elefant_density) * (elefant_layers - (f->layer_id - 1)) / elefant_layers;
             }
+            ExtrusionEntitiesPtr &region_fills = m_regions[surface_fill.region_id]->fills.entities;
+            const size_t fills_begin = region_fills.size();
 			f->fill_surface_extrusion(&surface_fill.surface,
 				params,
-				m_regions[surface_fill.region_id]->fills.entities);
+				region_fills);
+            for (size_t i = fills_begin; i < region_fills.size(); ++ i)
+                mark_fill_provenance(region_fills[i], surface_fill.surface, this->id());
+		}
+		if (surface_fill.params.wave_overhang_floor) {
+			const int8_t dist = surface_fill.params.wave_overhang_floor_distance;
+			for (size_t i = wo_floor_dst_size_before; i < dst_entities.size(); ++i)
+				tag_wave_overhang_floor_recursive(dst_entities[i], dist);
 		}
     }
 
@@ -1559,6 +1669,7 @@ void Layer::make_ironing()
     FillParams 			fill_params;
     fill_params.density 	 = 1.;
     fill_params.monotonic    = true;
+    fill_params.extrusion_role = erIroning;
     InfillPattern         f_pattern = ipRectilinear;
     std::unique_ptr<Fill> f         = std::unique_ptr<Fill>(Fill::new_from_type(f_pattern));
     f->set_bounding_box(this->object()->bounding_box());
@@ -1576,6 +1687,7 @@ void Layer::make_ironing()
             f->layer_id = this->id();
             f->z        = this->print_z;
             f->overlap  = 0;
+            fill_params.fill_order = f_pattern == ipArchimedeanChords ? SurfaceFillOrder::Outward : SurfaceFillOrder::Default;
 		}
 
 		size_t j = i;

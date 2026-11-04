@@ -255,6 +255,54 @@ std::string file_sha256(const std::string &path)
     return std::string(hex, 64);
 }
 
+std::vector<std::pair<std::string, std::string>> arm_dir_files(const PrintObject &object, const std::string &ext)
+{
+    std::vector<std::pair<std::string, std::string>> out;
+    const char *dirs = std::getenv("NP_ONESHOT_ARM_OFFER");
+    if (dirs == nullptr || *dirs == 0)
+        return out;
+    const std::string stem = boost::filesystem::path(object.model_object()->name).stem().string();
+    std::stringstream list(dirs);
+    for (std::string dir; std::getline(list, dir, ',');)
+        if (const boost::filesystem::path file = boost::filesystem::path(dir) / (stem + ext); boost::filesystem::exists(file))
+            out.emplace_back(boost::filesystem::path(dir).filename().string(), file.string());
+    return out;
+}
+
+bool arm_forced(const std::string &arm)
+{
+    const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
+    return force != nullptr && std::string(force) == "{A:" + arm + "}";
+}
+
+bool pick_meters()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_PICK_METERS"); return v != nullptr && *v == '1'; }();
+    return on;
+}
+constexpr double PickPartTie   = 0.5;
+constexpr double PickPartShare = 0.05;
+constexpr double PickNetTie    = 0.02;
+constexpr double PickNetFloor  = 50.;
+constexpr double PickTimeTie  = 0.98;
+constexpr double PickTimeCap  = 1.5;
+struct Meters
+{
+    double part = std::numeric_limits<double>::quiet_NaN(), net = part, time = part;
+};
+Meters meters_of(const MeasuredPrint &m, double time) { return { std::max(0., m.floating.part), std::max(0., m.support_mm3), time }; }
+double part_band(const Meters &b) { return std::max(PickPartTie, PickPartShare * b.part); }
+double net_band(const Meters &b) { return std::max(PickNetTie * b.net, PickNetFloor); }
+bool meters_better(const Meters &a, const Meters &b)
+{
+    if (std::abs(a.part - b.part) > part_band(b))
+        return a.part < b.part;
+    if (std::abs(a.net - b.net) > net_band(b))
+        return a.net < b.net;
+    return a.time < PickTimeTie * b.time;
+}
+std::string meters_text(const Meters &m) { return Slic3r::format("PART %1$.1f mm, NET %2$.0f mm3, %3$.0f s", m.part, m.net, m.time); }
+
 std::string external_field(const std::string &object_name, const std::string &command)
 {
     static std::mutex                         mutex;
@@ -640,7 +688,8 @@ bool oneshot_requested(const PrintObject &object)
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
     const OneShotState *state = object.oneshot_state();
     return (mode ? mode->value : object.print()->default_object_config().nonplanar_mode.value) == NonplanarMode::OneShot &&
-           object.config().nonplanar_atom_toolpath.value.empty() && (state == nullptr || state->offer != OneShotState::Offer::Auto);
+           object.config().nonplanar_atom_toolpath.value.empty() &&
+           (state == nullptr || (state->offer != OneShotState::Offer::Auto && state->offer != OneShotState::Offer::Planar));
 }
 
 namespace {
@@ -709,6 +758,7 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
 
 bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts)
 {
+    state.forced_arm = false;
     std::vector<NpField> leans;
     for (auto it = cuts.begin(); it != cuts.end();)
         if (it->solver.rfind("lean offer ", 0) == 0) {
@@ -737,6 +787,7 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         const Injection body_only(state);
         t_body = measured_time(object, NonplanarMode::OneShot, {}, keep_as("body"), false, &mb);
     }
+    Meters best_m = meters_of(mb, t_body);
     const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
     const Floating control      = planar_control_floating(object, user_support);
     static const double F = [] { const char *v = std::getenv("NP_ONESHOT_FLOAT_W"); return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) : 0.; }();
@@ -752,9 +803,13 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         double        t_off;
         {
             const Injection lean_only(trial);
-            t_off = measured_time(object, NonplanarMode::OneShot, {}, keep_as("lean." + boost::filesystem::path(trial.solved->solver).filename().string()), false, &mo);
+            t_off = measured_time(object, NonplanarMode::OneShot, {}, keep_as("lean." + boost::filesystem::path(trial.solved->solver).filename().string()),
+                                  pick_meters(), &mo);
         }
         const NpField &o     = *trial.solved;
+        const std::string arm_prefix = "lean offer arm ";
+        const bool        forced     = o.solver.rfind(arm_prefix, 0) == 0 &&
+                             arm_forced(o.solver.substr(arm_prefix.size(), o.solver.find(',') - arm_prefix.size()));
         const double   S_off = term(o, "J_S"), T_off = term(o, "J_T"), J_off = term(o, "J");
         const double   sup_ratio = mb.support_mm3 > 0. && std::isfinite(mo.support_mm3) ? mo.support_mm3 / mb.support_mm3 : 1.;
         const double   S_meas = S_body * sup_ratio;
@@ -762,11 +817,13 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         std::string    why;
         if (!std::isfinite(t_off))
             why = "its measured slice failed";
-        else if (!(t_off <= 1.5 * t_ps))
+        else if (!forced && !(t_off <= 1.5 * t_ps))
             why = Slic3r::format("%1$.2f x planar + support", t_off / t_ps);
-        else if (control.part >= 0. && mo.floating.part > control.part + 1e-6)
+        else if (!forced && control.part >= 0. && mo.floating.part > control.part + 1e-6)
             why = Slic3r::format("part floating %1$.1f mm > the control's %2$.1f", mo.floating.part, control.part);
-        else if (!(J_meas < best_J))
+        else if (pick_meters() && !forced && !meters_better(meters_of(mo, t_off), best_m))
+            why = "not better on the meters (" + meters_text(meters_of(mo, t_off)) + " vs " + meters_text(best_m) + ")";
+        else if (!pick_meters() && !(J_meas < best_J) && !forced)
             why = Slic3r::format("measured J %1$.0f >= %2$.0f", J_meas, best_J);
         const std::string line = Slic3r::format("%1%: J %2$.0f (S %3$.1f -> measured %4$.1f, support %5$.0f vs the body's %6$.0f mm3; T %7$.0f -> measured "
                                                 "%8$.0f s vs the body's %9$.0f, p+s %10$.0f), measured J %11$.0f vs the body's %12$.0f, floating %13$.1f "
@@ -783,15 +840,18 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
             }
             if (std::isfinite(t_verified)) {
                 best   = trial.solved;
-                best_J = J_meas;
+                best_J = forced ? -std::numeric_limits<double>::infinity() : J_meas;
+                best_m = forced ? Meters { -1., -1., -1. } : meters_of(mo, t_off);
+                state.forced_arm = forced;
             } else
-                state.time_cut_note += " (its verified export hits)";
+                state.time_cut_note += last_measured_failure().empty() ? std::string(" (its verified export hits)") :
+                                                                         " (its verified export failed: " + last_measured_failure() + ")";
         }
     }
     if (!best)
         return false;
     state.solved = best;
-    state.z_only = false;
+    state.z_only = in_plane_spread(*best) < OneShotState::ZOnlySpread;
     state.time_cut_note += ", the lean adopted";
     return true;
 }
@@ -840,8 +900,8 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
 
 bool band_control(const PrintObject &object, OneShotState &state)
 {
-    if (state.offer == OneShotState::Offer::Control || state.offer == OneShotState::Offer::Auto || state.measured_anchor ||
-        state.route != nullptr)
+    if (pick_meters() || state.offer == OneShotState::Offer::Control || state.offer == OneShotState::Offer::Auto ||
+        state.offer == OneShotState::Offer::Planar || state.measured_anchor || state.route != nullptr)
         return false;
     const double band = object.wall_band(LayerChangeMax), total = object.wall_band();
     state.band_note = Slic3r::format(", wall band %1$.4f over one step (total %2$.4f)", band, total);
@@ -858,7 +918,7 @@ bool band_control(const PrintObject &object, OneShotState &state)
 bool control_past_cap(const PrintObject &object, OneShotState &state)
 {
     using Offer = OneShotState::Offer;
-    if (state.offer == Offer::Control || state.offer == Offer::Auto || !state.measured_anchor || !(state.measured_ratio > state.max_time_ratio()))
+    if (state.offer == Offer::Control || state.offer == Offer::Auto || state.offer == Offer::Planar || !state.measured_anchor || !(state.measured_ratio > state.max_time_ratio()))
         return false;
     state.offer = Offer::Control;
     ++state.measured_repicks;
@@ -871,12 +931,37 @@ bool control_past_cap(const PrintObject &object, OneShotState &state)
 constexpr double OneShotBodyBand   = 0.01;
 constexpr double OneShotBodySlower = 1.02;
 
+bool planar_keeps_pick(const PrintObject &object, OneShotState &state, const Floating &floating, double net)
+{
+    using Offer = OneShotState::Offer;
+    const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
+    if (!pick_meters() || state.injected || state.offer == Offer::Control || state.offer == Offer::Auto || state.offer == Offer::Planar ||
+        (force != nullptr && *force != 0))
+        return false;
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(object, state));
+    MeasuredPrint         control;
+    const double          t_control = measured_control(object, control);
+    if (!std::isfinite(t_control))
+        return false;
+    const Meters pick { std::max(0., floating.part), std::max(0., net), 0. }, planar = meters_of(control, t_control);
+    const bool   wins = planar.part - pick.part > part_band(planar) || planar.net - pick.net > net_band(planar);
+    state.band_note += ", against planar (" + meters_text(planar) + "): PART " + Slic3r::format("%1$.1f", pick.part) + " mm, NET " +
+                       Slic3r::format("%1$.0f", pick.net) + " mm3" + (wins ? " -> the pick" : " -> planar (no PART or NET win)");
+    if (wins)
+        return false;
+    state.offer = Offer::Planar;
+    ++state.measured_repicks;
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": no PART or NET win over planar: it prints planar";
+    return true;
+}
+
 bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating)
 {
     const MeasureDeadline deadline(measure_deadline(state));
     const MeasureWork     work(measure_work(object, state));
     using Offer = OneShotState::Offer;
-    if (state.offer == Offer::Control || state.offer == Offer::Auto || state.route != nullptr)
+    if (pick_meters() || state.offer == Offer::Control || state.offer == Offer::Auto || state.offer == Offer::Planar || state.route != nullptr)
         return false;
     std::string why;
     if (const double band = object.wall_band(); band > OneShotBodyBand)
@@ -1152,7 +1237,8 @@ std::string OneShotState::floating_decision() const
         return {};
     return Slic3r::format(", floating %1$.1f mm (control %2%) -> %3%", measured_floating,
                           std::isnan(control_floating) ? std::string("not sliced: under any bar") : Slic3r::format("%1$.1f", control_floating),
-                          offer == Offer::Control ? "control" : offer == Offer::NormalSupport ? "normal(auto) support" : offer == Offer::Auto ? "Auto" : "body");
+                          offer == Offer::Control ? "control" : offer == Offer::NormalSupport ? "normal(auto) support" : offer == Offer::Auto ? "Auto" :
+                          offer == Offer::Planar ? "planar" : "body");
 }
 
 NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
@@ -1419,6 +1505,20 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             }
         }
     }
+    if (time_cut && model.empty() && params.only_offer.empty())
+        for (const auto &[arm, path] : arm_dir_files(object, ".npf.npz")) {
+            if (boost::filesystem::exists(boost::filesystem::path(path).parent_path() /
+                                          (boost::filesystem::path(object.model_object()->name).stem().string() + ".route.json")))
+                continue;
+            try {
+                const std::string want = load_npfield(path).mesh_sha256, input = object.model_object()->input_file;
+                if (!want.empty() && !input.empty() && want != file_sha256(input))
+                    throw Slic3r::RuntimeError("its mesh_sha256 is not this object's input file's");
+                offer_file(path, "arm " + arm + ", sha256 " + file_sha256(path));
+            } catch (const std::exception &ex) {
+                BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": arm " << arm << " unused: " << ex.what();
+            }
+        }
     if (const char *command = std::getenv("NP_ONESHOT_FIELD_SOLVER"); time_cut && command != nullptr && *command != 0 && model.empty() &&
         params.only_offer.empty())
         if (const std::string path = external_field(object.model_object()->name, command); !path.empty()) {
@@ -1467,6 +1567,12 @@ double join_line_k()
     static const double k = [] { const char *v = std::getenv("NP_ONESHOT_JOIN_LINE"); return v != nullptr && *v != 0 ? std::atof(v) : 1.; }();
     return k;
 }
+bool arm_grade()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_ARM_GRADE"); return v != nullptr && *v == '1'; }();
+    return on;
+}
+
 bool force_joins(const std::string &cuts)
 {
     static const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
@@ -1480,6 +1586,14 @@ constexpr double FanStepFallback = 10.;
 constexpr double GradeAbove = 15.;
 constexpr double FanReach = 23.;
 constexpr double ChunkOverhangMax = 50.;
+double chunk_overhang_max()
+{
+    static const double cap = [] {
+        const char *v = std::getenv("NP_ONESHOT_CHUNK_OVERHANG_MAX");
+        return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) : ChunkOverhangMax;
+    }();
+    return cap;
+}
 constexpr int FanMinLayers = 3;
 
 bool on_clip(const std::array<Vec3d, 3> &t, const std::vector<HalfSpace> &clips)
@@ -1730,6 +1844,7 @@ MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_
     return spec_cut_plan(cuts, mesh, kinematics);
 }
 
+
 constexpr double LipMinZ = 12., LipAccept = 0.7, LipMinPlanar = 50., LipStep = 0.25;
 constexpr double LipTilts[] = { 30., 35., 40., 45., 55. };
 constexpr size_t LipPerTilt = 2;
@@ -1966,10 +2081,11 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     std::ostringstream         log;
     const std::vector<std::pair<double, SpecCut>> lips = lip_offers_requested() && (spec == nullptr || *spec == 0) ? lip_offer_cuts(mesh) :
                                                                                                                       std::vector<std::pair<double, SpecCut>>();
+    const std::vector<std::pair<std::string, std::string>> arms = arm_dir_files(object, ".route.json");
     for (size_t k = 0; k < lips.size(); ++k)
         log << Slic3r::format("lip cut L%1%: tilt %2$.0f, dir %3$.3f,%4$.3f,%5$.3f @ %6$.2f, J_vis %7$.1f; ", k, lips[k].first, lips[k].second.dir.x(),
                               lips[k].second.dir.y(), lips[k].second.dir.z(), lips[k].second.o, lips[k].second.jvis);
-    if (plan.cuts.empty() && lips.empty()) {
+    if (plan.cuts.empty() && lips.empty() && arms.empty()) {
         state.route_log = plan.work_stopped ? "routes: no tilted chunk within the planner's work budget" : "routes: no tilted chunk";
         return cap_refused;
     }
@@ -2060,6 +2176,8 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         double t_measured = std::numeric_limits<double>::quiet_NaN(), J_measured = std::numeric_limits<double>::quiet_NaN();
         int         plinth = 0;
         std::string bed_hit;
+        bool        arm = false;
+        std::string root_phi;
     };
     const size_t             K       = plan.cuts.size();
     const std::vector<int>   parents = multiplanar_cut_parents(plan);
@@ -2221,9 +2339,10 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     std::vector<Offer> offers;
     auto finish = [&](Offer o) {
         const bool chunk_supported = chunk_support || (o.plan.lip && object.config().enable_support.value);
-        if (o.why.empty() && !force_joins(o.cuts))
+        if (o.why.empty() && !force_joins(o.cuts) && (!o.arm || arm_grade()))
             if (const std::string graded = grade_joins(o.plan, mesh, *kinematics, h, fan_step); !graded.empty()) {
-                o.cuts += "g";
+                if (!o.arm)
+                    o.cuts += "g";
                 o.pieces += " (" + graded + ")";
             }
         if (!o.why.empty()) {
@@ -2241,14 +2360,14 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             o.seam += pt.seam;
             if (ci == 0)
                 continue;
-            if (pt.overhang > ChunkOverhangMax && !chunk_supported) {
+            if (pt.overhang > chunk_overhang_max() && !chunk_supported && !o.arm) {
                 o.why = Slic3r::format("chunk %1%: %2$.0f mm2 overhangs in its own layers (> %3$.0f), and a chunk prints no support", ci,
-                                       pt.overhang, ChunkOverhangMax);
+                                       pt.overhang, chunk_overhang_max());
                 cap_refused = cap_refused || o.cuts.back() == 'g';
                 break;
             }
             if (const double turn = Geometry::rad2deg(std::acos(std::clamp(o.plan.chunks[size_t(c.parent)].build_dir.dot(c.build_dir), -1., 1.)));
-                turn > JoinTurnMax && !(slab_joins_exempt() && face_slab(mesh, c, h)) && !force_joins(o.cuts)) {
+                turn > JoinTurnMax && !(slab_joins_exempt() && face_slab(mesh, c, h)) && !force_joins(o.cuts) && !o.arm) {
                 o.why = Slic3r::format("chunk %1%: its layers turn %2$.0f deg from its parent's (> %3$.0f): a visible join line", ci, turn, JoinTurnMax);
                 break;
             }
@@ -2374,17 +2493,46 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         }
         finish(std::move(o));
     }
+    for (const auto &[arm, file] : arms) {
+        Offer o;
+        o.cuts = "{A:" + arm + "}";
+        o.arm  = true;
+        try {
+            const nlohmann::json spec = nlohmann::json::parse(std::ifstream(file));
+            const std::string    want = spec.value("mesh_sha256", std::string()), input = object.model_object()->input_file;
+            if (!want.empty() && !input.empty() && want != file_sha256(input))
+                throw Slic3r::RuntimeError("its mesh_sha256 is not this object's input file's");
+            o.plan = route_spec_plan(file, mesh, *kinematics);
+            if (o.plan.cuts.empty()) {
+                log << "offer " << o.cuts << ": planar (" << spec.value("label", std::string("no cuts")) << "), the body; ";
+                continue;
+            }
+            const std::string source = !spec.contains("source") ? std::string("no source") :
+                                       spec.at("source").is_string() ? spec.at("source").get<std::string>() : spec.at("source").dump();
+            o.pieces += " (arm " + arm + ", " + source + ", sha256 " + file_sha256(file) + ")";
+            if (const char *v = std::getenv("NP_ONESHOT_ARM_ROOT_PHI"); v != nullptr && *v == '1')
+                if (const boost::filesystem::path phi = boost::filesystem::path(file).parent_path() /
+                                                        (boost::filesystem::path(object.model_object()->name).stem().string() + ".npf.npz");
+                    boost::filesystem::exists(phi))
+                    o.root_phi = phi.string();
+        } catch (const std::exception &ex) {
+            log << "offer " << o.cuts << ": " << ex.what() << "; ";
+            continue;
+        }
+        finish(std::move(o));
+    }
     const double screen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
-    const char          *force  = std::getenv("NP_ONESHOT_ROUTE_FORCE");
-    auto                 forced = [force](const Offer &o) { return force != nullptr && o.cuts == force; };
+    auto                 forced = [](const Offer &o) { return route_forced(o.cuts); };
     std::vector<Offer *> order;
     for (Offer &o : offers)
-        if (o.why.empty() && (o.J < RouteScreenBand * J0 || forced(o)))
+        if (o.why.empty() && (o.J < RouteScreenBand * J0 || forced(o) || o.arm))
             order.push_back(&o);
     std::sort(order.begin(), order.end(), [&forced](const Offer *a, const Offer *b) {
         return forced(*a) != forced(*b) ? forced(*a) : a->J < b->J;
     });
     double       t_body = std::numeric_limits<double>::quiet_NaN(), t_ps = t_body;
+    MeasuredPrint                          body_measured;
+    std::vector<std::pair<Meters, Offer *>> metered;
     const char  *keep_dir = std::getenv("NP_ONESHOT_ROUTE_KEEP");
     auto         keep_as  = [&](const std::string &what) {
         return keep_dir != nullptr && *keep_dir != 0 ? (boost::filesystem::path(keep_dir) / (name + "." + what + ".gcode")).string() : std::string();
@@ -2393,15 +2541,31 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     double       J_chosen = J0;
     int          measured = 0;
     std::vector<std::pair<double, Offer *>> priced_offers;
-    int lip_measured = 0;
+    int lip_measured = 0, arm_measured = 0;
     for (Offer *o : order) {
         const bool lip = o->cuts.rfind("{L", 0) == 0;
-        if (lip ? lip_measured == LipMeasured : measured == RouteMeasured) {
+        if (o->arm)
+            ++arm_measured;
+        else if (lip ? lip_measured == LipMeasured : measured == RouteMeasured) {
             o->why = "unmeasured (the measuring budget)";
             continue;
+        } else
+            ++(lip ? lip_measured : measured);
+        if (!o->root_phi.empty()) {
+            try {
+                BoundingBoxf3 box;
+                for (const stl_vertex &v : mesh.vertices)
+                    box.merge(v.cast<double>());
+                NpField given = load_npfield_for(o->root_phi, box, plate_offset(object));
+                if (given.layer_tops.empty() && !(in_plane_spread(given) < OneShotState::ZOnlySpread))
+                    throw Slic3r::RuntimeError("it is not z-only and carries no layer tops, and a route's root prints planar layers");
+                o->root = std::make_shared<const NpField>(std::move(given));
+                log << "offer " << o->cuts << ": its root prints the arm's field; ";
+            } catch (const std::exception &ex) {
+                log << "offer " << o->cuts << ": the arm's field for its root unused (" << ex.what() << "); ";
+            }
         }
-        ++(lip ? lip_measured : measured);
-        {
+        if (!o->root) {
             const std::vector<HalfSpace> &rclips = o->plan.chunks.front().clips;
             const indexed_triangle_set    rmesh  = clip_mesh(mesh, rclips);
             std::string                   root_student;
@@ -2428,7 +2592,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         }
         if (std::isnan(t_body)) {
             const Injection body_only(state);
-            t_body = measured_time(object, NonplanarMode::OneShot, {}, keep_as("body"), false);
+            t_body = measured_time(object, NonplanarMode::OneShot, {}, keep_as("body"), false, &body_measured);
             t_ps   = measured_time(object, NonplanarMode::Off,
                                    {},
                                    keep_as("ps"), false);
@@ -2437,18 +2601,20 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         offered.route        = std::make_shared<const MultiplanarPlan>(o->plan);
         if (o->root)
             offered.solved = o->root;
-        double t_route;
+        double        t_route;
+        MeasuredPrint route_measured;
         {
             const Injection route(offered);
-            t_route = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides, keep_as("route" + o->cuts), false);
+            t_route = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides, keep_as("route" + o->cuts),
+                                    pick_meters(), &route_measured);
         }
         if (!std::isfinite(t_route)) {
-            o->why = "its measured slice failed (a chunk floats, or no slice)";
+            o->why = pick_meters() ? "its verified slice failed or hits" : "its measured slice failed (a chunk floats, or no slice)";
             continue;
         }
-        if (!(t_route <= RouteTimeCap * t_ps)) {
+        if (const double cap = pick_meters() ? PickTimeCap : RouteTimeCap; !(t_route <= cap * t_ps) && !forced(*o)) {
             cap_refused = true;
-            o->why = Slic3r::format("measured %1$.0f s > %2$.3f x planar + support %3$.0f s", t_route, RouteTimeCap, t_ps);
+            o->why = Slic3r::format("measured %1$.0f s > %2$.3f x planar + support %3$.0f s", t_route, cap, t_ps);
             continue;
         }
         const double J = o->J - W.time * (o->T + o->T_motion) + W.time * T0 * t_route / t_body;
@@ -2456,10 +2622,29 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         o->J_measured  = J;
         log << "offer " << o->cuts << (o->plinth > 0 ? Slic3r::format(" on a %1%-layer plinth", o->plinth) : std::string()) << " measured " << std::lround(t_route) << " s (body " << std::lround(t_body) << ", p+s " << std::lround(t_ps)
             << "), J " << std::lround(J) << "; ";
+        if (pick_meters()) {
+            const Meters m = meters_of(route_measured, t_route);
+            log << "(" << meters_text(m) << ") ";
+            metered.emplace_back(m, o);
+            continue;
+        }
         if (J < J0 || forced(*o))
             priced_offers.emplace_back(forced(*o) ? -Inf : J, o);
         else
             o->why = Slic3r::format("measured J %1$.0f >= the body's", J);
+    }
+    if (pick_meters() && !metered.empty()) {
+        Meters best = meters_of(body_measured, t_body);
+        log << "body (" << meters_text(best) << "); ";
+        for (const auto &[m, o] : metered)
+            if (forced(*o) || ((chosen == nullptr || !forced(*chosen)) && meters_better(m, best))) {
+                chosen   = o;
+                best     = forced(*o) ? Meters { -1., -1., -1. } : m;
+                J_chosen = o->J_measured;
+            }
+        for (const auto &[m, o] : metered)
+            if (o != chosen)
+                o->why = "not the best on the meters (" + meters_text(m) + ")";
     }
     std::sort(priced_offers.begin(), priced_offers.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     for (const auto &[J, o] : priced_offers) {
@@ -2470,14 +2655,15 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         double t_verified;
         {
             const Injection route(offered);
-            t_verified = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides, keep_as("route" + o->cuts), true);
+            t_verified = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides,
+                                       keep_as("route" + o->cuts + ".verified"), true);
         }
         if (std::isfinite(t_verified)) {
             chosen   = o;
             J_chosen = std::isfinite(J) ? J : o->J;
             break;
         }
-        o->why = "its verified export hits";
+        o->why = last_measured_failure().empty() ? std::string("its verified export hits") : "its verified export failed: " + last_measured_failure();
     }
     for (const auto &[J, o] : priced_offers)
         if (o != chosen && o->why.empty())
@@ -2500,12 +2686,15 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             out << o.cuts << '\t' << o.plan.chunks.size() - 1 << '\t' << o.J << '\t' << o.J_ceil << '\t' << o.T << '\t' << o.T_motion << '\t'
                 << o.seam << '\t' << o.t_measured << '\t' << o.J_measured << '\t' << (&o == chosen) << '\t' << o.why << '\t' << o.pieces << '\n';
     }
+    for (const Offer &o : offers)
+        if (forced(o) && &o != chosen)
+            state.forced_why = o.cuts + ": " + (o.why.empty() ? std::string("not picked") : o.why);
     NpField f = chosen != nullptr && chosen->root ? *chosen->root : body;
     f.terms.emplace_back("stat_route_offers", double(offers.size()));
     f.terms.emplace_back("stat_route_chosen", chosen ? double(chosen->plan.chunks.size() - 1) : 0.);
     f.terms.emplace_back("stat_route_J", J_chosen);
     f.terms.emplace_back("stat_route_seconds", total_s);
-    f.terms.emplace_back("stat_route_measured", double(measured + lip_measured));
+    f.terms.emplace_back("stat_route_measured", double(measured + lip_measured + arm_measured));
     if (std::isfinite(t_ps))
         f.terms.emplace_back("stat_route_ps_time_s", t_ps);
     if (chosen) {
@@ -2515,6 +2704,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                                             chosen->plinth > 0 ? Slic3r::format(" on a %1%-layer raft that lifts it clear of the bed", chosen->plinth) : std::string());
         state.route        = std::move(route);
         state.plinth_layers = chosen->plinth;
+        state.route_cuts    = chosen->cuts;
     }
     state.solved = std::make_shared<const NpField>(std::move(f));
     BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": " << state.route_log;
@@ -2523,7 +2713,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
 
 }
 
-void choose_route(PrintObject &object, OneShotState &state)
+namespace {
+
+void choose_route_any(PrintObject &object, OneShotState &state)
 {
     const double step = std::clamp(object.config().nonplanar_oneshot_fan_step.value, 1., 45.);
     if (!choose_route_once(object, state, step) || state.route != nullptr || step >= FanStepFallback)
@@ -2532,6 +2724,36 @@ void choose_route(PrintObject &object, OneShotState &state)
     choose_route_once(object, state, FanStepFallback);
     state.route_log = Slic3r::format("joins in %1$.0f deg steps put the routes past the time cap or the overhang cap (%2%): planned again in %3$.0f deg steps; ",
                                      step, fine_log, FanStepFallback) + state.route_log;
+}
+
+}
+
+bool route_forced(const std::string &cuts)
+{
+    const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
+    return force != nullptr && *force != 0 && (cuts == force || cuts == std::string(force) + "g");
+}
+
+void choose_route(PrintObject &object, OneShotState &state)
+{
+    if (state.forced_arm) {
+        state.route_log = "routes: none, a forced arm prints as given";
+        return;
+    }
+    state.route_cuts.clear();
+    state.forced_why.clear();
+    choose_route_any(object, state);
+    if (const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE"); force != nullptr && std::string(force).rfind("{A:", 0) == 0 && state.route_cuts != force) {
+        const std::string arm  = std::string(force).substr(3, std::string(force).size() - 4);
+        const size_t      lean = state.time_cut_note.find("lean offer arm " + arm + ",");
+        const std::string why  = !state.forced_why.empty() ? state.forced_why :
+                                 lean != std::string::npos ? state.time_cut_note.substr(lean, state.time_cut_note.find(", lean offer ", lean + 1) - lean) :
+                                                             std::string("no such offer");
+        throw SlicingError(Slic3r::format("FORCED ARM NOT ADOPTED: %1% did not print (%2%)", force, why));
+    }
+    if (const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE"); force != nullptr && *force != 0 && !route_forced(state.route_cuts))
+        throw SlicingError(Slic3r::format("FORCED ROUTE NOT ADOPTED: %1% did not print (%2%)", force,
+                                          state.forced_why.empty() ? std::string("no such offer") : state.forced_why));
 }
 
 }

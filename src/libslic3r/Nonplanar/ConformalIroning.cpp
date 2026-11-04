@@ -87,7 +87,7 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
         return out;
 
     std::vector<Polylines> linked;
-    if (cfg.ironing_pattern.value == ipConcentric) {
+    if (cfg.ironing_pattern.value == ipConcentric || cfg.ironing_pattern.value == ipArchimedeanChords) {
         ShellFill spiral;
         spiral.spiral = true;
         spiral.helix  = spiral_top_enabled(cfg, object.config()) && helix_worthwhile(patch.surface, area);

@@ -16,6 +16,8 @@ struct ConformalResult;
 
 bool native_requested();
 
+double native_axis_key(const char *name, double rotary_default, bool rotary);
+
 bool generate_planar_native_support(PrintObject &object);
 
 std::shared_ptr<const LayerField> native_field(PrintObject &object);

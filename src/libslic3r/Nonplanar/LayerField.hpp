@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace Slic3r::Nonplanar {
 
@@ -39,6 +40,8 @@ public:
     }
 
     virtual double identity_below() const { return 0.; }
+
+    virtual std::optional<Vec3d> given_axis(const Vec3d &) const { return std::nullopt; }
 
     virtual double max_slope_near(const Vec2d & , double ) const { return -1.; }
 };

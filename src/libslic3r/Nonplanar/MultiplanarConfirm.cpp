@@ -164,10 +164,13 @@ void append_beads(const GCodeProcessorResult &result, const PrintConfig &config,
     }
 }
 
+thread_local std::string measured_failure;
+
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
                       bool verify = true, MeasuredPrint *measured = nullptr)
 {
+    measured_failure.clear();
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
     config.apply(object.printing_region(0).config(), true);
@@ -219,7 +222,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         const Transform3d &m = copy->instances.front()->get_matrix();
         key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
         const std::lock_guard<std::mutex> lock(planar_mutex);
-        if (const auto it = planar_memo.find(key); it != planar_memo.end()) {
+        if (const auto it = planar_memo.find(key); measured == nullptr && it != planar_memo.end()) {
             it->second.second = ++planar_tick;
             beads             = it->second.first.second;
             return it->second.first.first;
@@ -255,10 +258,12 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         print.export_gcode(gcode.string(), &result, nullptr);
     } catch (const std::exception &ex) {
         BOOST_LOG_TRIVIAL(warning) << "Multiplanar check: a measured slice failed: " << ex.what();
+        measured_failure = ex.what();
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
     }
     if (measure_deadline_passed()) {
+        measured_failure = "the measuring deadline passed";
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -269,15 +274,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
         if (measured->count_contacts && result.nonplanar)
             measured->contacts = ClearanceRepair::curved_contacts(print, result);
-        {
-            const double d    = print.config().filament_diameter.get_at(0);
-            double       fil  = 0.;
-            for (const auto &mv : result.moves)
-                if ((mv.type == EMoveType::Extrude || mv.type == EMoveType::Retract || mv.type == EMoveType::Unretract) &&
-                    is_support(mv.extrusion_role) && !mv.internal_only && !mv.timing_only)
-                    fil += double(mv.delta_extruder);
-            measured->support_mm3 = fil * M_PI * 0.25 * d * d;
-        }
+        measured->support_mm3 = net_support_mm3(print, result);
     }
     if (!keep_as.empty())
         boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);
@@ -675,6 +672,17 @@ ChunkCheck check_chunks(const PrintObject &object)
 
 }
 
+double net_support_mm3(const Print &print, const GCodeProcessorResult &result)
+{
+    const double d   = print.config().filament_diameter.get_at(0);
+    double       fil = 0.;
+    for (const auto &mv : result.moves)
+        if ((mv.type == EMoveType::Extrude || mv.type == EMoveType::Retract || mv.type == EMoveType::Unretract) &&
+            is_support(mv.extrusion_role) && !mv.internal_only && !mv.timing_only)
+            fil += double(mv.delta_extruder);
+    return fil * M_PI * 0.25 * d * d;
+}
+
 bool rotary_measurement_too_slow(double estimated_time)
 {
     return rotary_measurement_depth > 0 && estimated_time >= rotary_measurement_time_cap;
@@ -792,6 +800,8 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
     return why.str();
 }
 
+const std::string &last_measured_failure() { return measured_failure; }
+
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,
                      const std::string &keep_as, bool verify, MeasuredPrint *measured)
 {
@@ -804,6 +814,13 @@ double measured_time(const PrintObject &object, NonplanarMode mode, const std::v
         measured->rms = rounded_normal_rms(mesh.its, beads);
     }
     return time;
+}
+
+double measured_control(const PrintObject &object, MeasuredPrint &measured)
+{
+    std::vector<Bead> beads;
+    measured.time = measured_slice(object, NonplanarMode::Off, beads, {}, {}, false, &measured);
+    return measured.time;
 }
 
 double export_normal_rms(const PrintObject &object, const GCodeProcessorResult &result)

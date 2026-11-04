@@ -35,6 +35,8 @@ public:
 
 private:
     bool oneshot_step(GCodeProcessorResult &result);
+    bool curved_tops_step(GCodeProcessorResult &result);
+    int m_curved_pass = 0;
     bool contact_guard(const GCodeProcessorResult &result, size_t contacts = 0);
 
     struct Planned
@@ -50,6 +52,9 @@ private:
     size_t                   m_first_hits = 0;
     size_t                   m_last_hits  = 0;
     double                   m_last_min   = 0.;
+    std::map<const PrintObject *, double> m_first_floating;
+    size_t                   m_best_hits    = 0;
+    int                      m_stale_passes = 0;
     std::vector<Planned>     m_planned;
     std::vector<PrintObject *> m_repick;
     std::map<const PrintObject *, int> m_repicks;

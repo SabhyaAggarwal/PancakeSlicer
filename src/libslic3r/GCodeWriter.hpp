@@ -110,6 +110,7 @@ public:
     std::string unretract(float extra_retract = 0.f);
     std::string eager_lift(const LiftType type);
     std::string lazy_lift(LiftType lift_type = LiftType::NormalLift, bool spiral_vase = false);
+    void        cancel_lazy_lift() { m_to_lift = 0.; m_lifted = 0.; }
     std::string unlift();
     const Vec3d& get_position() const { return m_pos; }
     Vec3d&       get_position() { return m_pos; }

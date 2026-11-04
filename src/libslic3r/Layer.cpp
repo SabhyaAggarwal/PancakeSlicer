@@ -436,6 +436,63 @@ size_t Layer::get_extruder_id(unsigned int filament_id) const
     return m_object->print()->get_extruder_id(filament_id);
 }
 
+void
+LayerRegion::remove_nonplanar_slices(SurfaceCollection topNonplanar) {
+    Surfaces planar;
+    Surfaces kept_nonplanar;
+    for (const Surface &s : this->slices.surfaces)
+        (s.is_nonplanar() ? kept_nonplanar : planar).push_back(s);
+
+    Polygons removed = to_polygons(topNonplanar.surfaces);
+    polygons_append(removed, to_polygons(kept_nonplanar));
+
+    this->slices.clear();
+    this->slices.append(diff_ex(union_ex(planar), removed, ApplySafetyOffset::No), stInternal);
+    this->slices.append(std::move(kept_nonplanar));
+}
+
+void
+LayerRegion::merge_nonplanar_shell_slices() {
+    Surfaces out;
+    Surfaces nonplanar;
+    for (Surface &s : this->slices.surfaces)
+        (s.is_nonplanar() ? nonplanar : out).emplace_back(std::move(s));
+    std::stable_sort(nonplanar.begin(), nonplanar.end(), [](const Surface &l, const Surface &r) {
+        if (l.source_surface_id != r.source_surface_id)
+            return l.source_surface_id < r.source_surface_id;
+        return l.distance_to_top < r.distance_to_top;
+    });
+    for (size_t i = 0; i < nonplanar.size();) {
+        size_t j = i + 1;
+        while (j < nonplanar.size() && nonplanar[j].same_nonplanar_shell(nonplanar[i]))
+            ++ j;
+        if (j == i + 1) {
+            out.emplace_back(std::move(nonplanar[i]));
+        } else {
+            Polygons polygons;
+            for (size_t k = i; k < j; ++ k)
+                polygons_append(polygons, to_polygons(nonplanar[k].expolygon));
+            Surface templ(nonplanar[i], ExPolygon());
+            for (size_t k = i; k < j; ++ k)
+                if (nonplanar[k].surface_type == stTopNonplanar)
+                    templ.surface_type = stTopNonplanar;
+            surfaces_append(out, union_safety_offset_ex(polygons), templ);
+        }
+        i = j;
+    }
+    this->slices.surfaces = std::move(out);
+}
+
+void
+LayerRegion::clear_nonplanar_surfaces() {
+    m_nonplanar_surfaces.clear();
+}
+
+void
+LayerRegion::append_top_nonplanar_slices(SurfaceCollection topNonplanar) {
+    this->slices.append(std::move(topNonplanar));
+}
+
 BoundingBox get_extents(const LayerRegion &layer_region)
 {
     BoundingBox bbox;

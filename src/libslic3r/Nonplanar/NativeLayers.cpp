@@ -13,9 +13,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <map>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -366,7 +368,9 @@ Vec3d tool_axis(const LayerField &field, const Vec3d &p, double tilt_cap)
 {
     if (tilt_cap <= 0.)
         return Vec3d::UnitZ();
-    Vec3d g = field.gradient(p);
+    static const bool given = [] { const char *v = std::getenv("NP_FIELD_AXIS"); return v != nullptr && *v == '1'; }();
+    const std::optional<Vec3d> axis = given ? field.given_axis(p) : std::nullopt;
+    Vec3d                      g    = axis ? *axis : field.gradient(p);
     if (g.squaredNorm() < 1e-24)
         return Vec3d::UnitZ();
     g.normalize();

@@ -75,6 +75,7 @@
 #include "libslic3r/MultiMaterialSegmentation.hpp"
 #include "libslic3r/Support/SupportParameters.hpp"
 #include "libslic3r/SurfaceCollection.hpp"
+#include "libslic3r/WaveOverhangs/WaveOverhangs.hpp"
 
 namespace Slic3r {
 
@@ -1863,6 +1864,20 @@ SupportGeneratorLayersPtr PrintObjectSupportMaterial::top_contact_layers(
                     , iRun
 #endif
                 );
+
+                if (!overhangs_per_layers[layer_id].empty() && !layer.wave_overhang_covered_polygons.empty()) {
+                    bool wave_support_gate = false;
+                    for (size_t ri = 0; ri < object.num_printing_regions(); ++ri) {
+                        const PrintRegionConfig &rc = object.printing_region(ri).config();
+                        if (WaveOverhangs::enabled(rc, object) && rc.support_remaining_areas_after_wave_overhangs.value) {
+                            wave_support_gate = true;
+                            break;
+                        }
+                    }
+                    if (wave_support_gate) {
+                        overhangs_per_layers[layer_id] = diff_ex(overhangs_per_layers[layer_id], layer.wave_overhang_covered_polygons);
+                    }
+                }
 
                 if (object.print()->canceled())
                     break;

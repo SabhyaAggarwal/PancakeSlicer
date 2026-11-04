@@ -1383,7 +1383,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     const size_t explain_move = explain_env != nullptr ? size_t(std::strtoull(explain_env, nullptr, 10)) : size_t(-1);
     const bool measure_planar = bar && std::getenv("NP_VERIFY_UPRIGHT_PLANAR") != nullptr && std::string(std::getenv("NP_VERIFY_UPRIGHT_PLANAR")) == "1";
     BeadGrid beads(result, rotary);
-    struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf; size_t tolerated = 0, land_strict = 0; };
+    struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf; size_t tolerated = 0, land_strict = 0, cone_grazes = 0; };
     Nonplanar::HeadEnvelope tilted_head = params.head;
     if (bar) tilted_head.tip_allowance = { land_r, LandContactMax };
     if (measure_planar) tilted_head.tip_allowance = {};
@@ -1475,6 +1475,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             const bool strict = !extruding && !straight_lift && !lands_on_extrusion && patch_shell == 0xFF;
             const size_t bead_limit = rotary ? bead_grid.size() : c.beads;
             bool tolerated = false;
+            bool cone_graze = false;
             if (scratch) scratch->tolerated = false;
             Vec3d sample_start = rotary ? kinematics.forward(last_joints).tip : a;
             bool  nozzle_contact = false;
@@ -1555,8 +1556,10 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                                     cone_gap = fine, component = fine_component, cone_struck = t_last_struck;
                             }
                         }
-                        if (bar && cone_gap < 0. && -cone_gap <= params.cone_tolerance)
+                        if (bar && cone_gap < 0. && -cone_gap <= params.cone_tolerance) {
+                            cone_graze = true;
                             cone_gap = 0.;
+                        }
                         if (cone_gap < best)
                             hit_struck = cone_struck;
                         record(cone_gap, component, p1, ClearanceHitClass::Cone);
@@ -1602,6 +1605,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 hit.component = land_component, hit.tip = land_tip, hit.cls = ClearanceHitClass::Land;
             const double clearance = std::min(best, best_land + land_allow);
             report.per_move[c.move] = float(clearance);
+            if (cone_graze) ++hits->cone_grazes;
             if (!(move.extrusion_role == erCustom && (c.move < first_print || c.move > last_print)))
                 hits->min_clearance = std::min(hits->min_clearance, clearance);
             if (clearance < -ContactTolerance) {
@@ -1734,6 +1738,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     for (Hits &run : hits) {
         report.min_clearance = std::min(report.min_clearance, run.min_clearance);
         report.tolerated_moves += run.tolerated;
+        report.cone_graze_moves += run.cone_grazes;
         report.land_strict_moves += run.land_strict;
         for (ClearanceHit &hit : run.hits) {
             const size_t i = hit.move_id;

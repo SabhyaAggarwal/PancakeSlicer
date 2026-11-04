@@ -13,6 +13,7 @@
 #include <iterator>
 #include <math.h>
 
+#include "libslic3r/WaveOverhangs/WaveOverhangs.hpp"
 #include "libslic3r/Nonplanar/Multiplanar.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
@@ -1115,6 +1116,21 @@ void TreeSupport::detect_overhangs(bool check_support_necessity )
             m_object->remove_bridges_from_contacts(lower_layer, layer, extrusion_width_scaled, &layer->loverhangs, max_bridge_length, break_bridge);
         }
 
+        if (!layer->wave_overhang_covered_polygons.empty()) {
+            bool wave_support_gate = false;
+            for (size_t ri = 0; ri < m_object->num_printing_regions(); ++ri) {
+                const PrintRegionConfig &rc = m_object->printing_region(ri).config();
+                if (WaveOverhangs::enabled(rc, *m_object) && rc.support_remaining_areas_after_wave_overhangs.value) {
+                    wave_support_gate = true;
+                    break;
+                }
+            }
+            if (wave_support_gate) {
+                layer->loverhangs   = diff_ex(layer->loverhangs,   layer->wave_overhang_covered_polygons);
+                layer->cantilevers  = diff_ex(layer->cantilevers,  layer->wave_overhang_covered_polygons);
+            }
+        }
+
 		int nDetected = layer->loverhangs.size();
         if (layer_nr < enforcers.size() && lower_layer) {
             ExPolygons enforced_overhangs   = intersection_ex(diff_ex(layer->lslices_extrudable, lower_layer->lslices_extrudable), enforcers[layer_nr]);
@@ -1124,6 +1140,19 @@ void TreeSupport::detect_overhangs(bool check_support_necessity )
             }
         }
         int nEnforced = layer->loverhangs.size();
+
+        if (!sharp_tail_overhangs.empty() && !layer->wave_overhang_covered_polygons.empty()) {
+            bool wave_support_gate = false;
+            for (size_t ri = 0; ri < m_object->num_printing_regions(); ++ri) {
+                const PrintRegionConfig &rc = m_object->printing_region(ri).config();
+                if (WaveOverhangs::enabled(rc, *m_object) && rc.support_remaining_areas_after_wave_overhangs.value) {
+                    wave_support_gate = true;
+                    break;
+                }
+            }
+            if (wave_support_gate)
+                sharp_tail_overhangs = diff_ex(sharp_tail_overhangs, layer->wave_overhang_covered_polygons);
+        }
 
         append(layer->loverhangs, sharp_tail_overhangs);
 

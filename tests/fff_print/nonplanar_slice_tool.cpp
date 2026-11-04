@@ -55,12 +55,15 @@
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Nonplanar/RegionDetect.hpp"
 #include "libslic3r/Nonplanar/Multiplanar.hpp"
 #include "libslic3r/Nonplanar/NpField.hpp"
 #include "libslic3r/Nonplanar/OrientationField.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
+#include "libslic3r/PresetCacheFormat.hpp"
+#include <cereal/archives/binary.hpp>
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Semver.hpp"
@@ -141,8 +144,10 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
+    std::string detect_regions;
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, planned_out, verify_gcode, field_file, dump_field, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets;
+                tip_out, planned_out, verify_gcode, field_file, dump_field, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets,
+                preset_cache;
     bool        progress = false;
     bool        moves_extended = false;
     bool        allow_mixed_temperatures = false;
@@ -225,13 +230,14 @@ Model read_input(const std::string &file)
 {
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
+                 "       --detect-regions OUT.json MODEL [--printer NAME --vendor VENDOR] (no slicing)\n"
                  "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--field-file FIELD.npz] [--dump-field FIELD.npz]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only | --orient-scores] [--floating] [--save-3mf PROJECT.3mf]\n"
                  "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H | file:PATH] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
-                 "       [--moves-out FILE [--moves-extended]] [--progress] [--calib-params key=value,...]\n"
+                 "       [--moves-out FILE [--moves-extended]] [--progress] [--calib-params key=value,...] [--preset-cache DIR]\n"
                  "       (plate JSON objects take \"plate\": N; a plate JSON of several plates slices with --plate-index N)\n"
                  "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
                  "       (plate JSON volumes take \"type\": \"seam\" and \"seam_mode\": center|left|right|enforced|blocked|neutral)\n"
@@ -459,6 +465,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--project-out") a.project_out = next();
         else if (arg == "--head-out") a.head_out = next();
         else if (arg == "--gcode-3mf") a.gcode_3mf = next();
+        else if (arg == "--preset-cache") a.preset_cache = next();
         else if (arg == "--explain") a.explain = true;
         else if (arg == "--atom") {
             const std::string path = next();
@@ -487,6 +494,7 @@ Args parse_args(int argc, char **argv)
         }
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--project") a.project = next();
+        else if (arg == "--detect-regions") a.detect_regions = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
         else if (arg == "--tip-out") a.tip_out = next();
         else if (arg == "--planned-out") a.planned_out = next();
@@ -634,6 +642,10 @@ Args parse_args(int argc, char **argv)
         if (a.model.empty()) usage("--orient-scores needs a model");
         return a;
     }
+    if (!a.detect_regions.empty()) {
+        if (a.model.empty()) usage("--detect-regions OUT.json needs a model");
+        return a;
+    }
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty() && a.wipe_tower_only.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
@@ -673,6 +685,64 @@ std::string find_preset_file(const Args &a, const char *kind, const std::string 
     throw std::runtime_error(std::string(kind) + " preset \"" + name + "\" not found under " + dirs.front().string());
 }
 
+fs::path preset_cache_file(const Args &a, const std::string &key)
+{
+    uint64_t hash = 1469598103934665603ull;
+    for (const unsigned char c : key)
+        hash = (hash ^ c) * 1099511628211ull;
+    char name[32];
+    std::snprintf(name, sizeof(name), "%016llx.bin", static_cast<unsigned long long>(hash));
+    return fs::path(a.preset_cache) / name;
+}
+
+bool read_cached_preset(const fs::path &file, const std::string &key, DynamicPrintConfig &config, std::string &filament_id)
+{
+    boost::nowide::ifstream in(file.string(), std::ios::binary);
+    if (!in)
+        return false;
+    try {
+        cereal::BinaryInputArchive ar(in);
+        std::string stored_key, stored_id;
+        ar(stored_key);
+        if (stored_key != key)
+            return false;
+        ar(stored_id);
+        CacheDictionary dict;
+        dict.load(ar);
+        DynamicPrintConfig stored;
+        load_config(ar, stored, dict);
+        config      = std::move(stored);
+        filament_id = std::move(stored_id);
+        return true;
+    } catch (const std::exception &) {
+        return false;
+    }
+}
+
+void write_cached_preset(const fs::path &file, const std::string &key, const DynamicPrintConfig &config, const std::string &filament_id)
+{
+    boost::system::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    const fs::path tmp = file.parent_path() / fs::unique_path(file.filename().string() + ".%%%%%%%%.tmp");
+    try {
+        {
+            boost::nowide::ofstream out(tmp.string(), std::ios::binary);
+            cereal::BinaryOutputArchive ar(out);
+            CacheDictionary dict;
+            dict.collect(config);
+            ar(key, filament_id);
+            dict.save(ar);
+            save_config(ar, config, dict);
+        }
+        DynamicPrintConfig back;
+        std::string        back_id;
+        if (read_cached_preset(tmp, key, back, back_id) && back == config && back_id == filament_id)
+            fs::rename(tmp, file, ec);
+    } catch (const std::exception &) {
+    }
+    fs::remove(tmp, ec);
+}
+
 DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind, Preset::Type type, const std::string &name)
 {
     DynamicPrintConfig config;
@@ -687,9 +757,15 @@ DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind
             preset_name = fs::path(name).stem().string();
         filament_id = key_values[BBL_JSON_KEY_FILAMENT_ID];
     } else {
-        const std::string file = find_preset_file(a, kind, name);
-        if (!bundle.resolve_preset_config(config, type, file, ForwardCompatibilitySubstitutionRule::EnableSilent, error, true, &filament_id))
-            throw std::runtime_error("cannot resolve " + file + ": " + error);
+        const std::string key   = a.vendor + "\n" + kind + "\n" + std::to_string(int(type)) + "\n" + name;
+        const fs::path    entry = a.preset_cache.empty() ? fs::path() : preset_cache_file(a, key);
+        if (entry.empty() || !read_cached_preset(entry, key, config, filament_id)) {
+            const std::string file = find_preset_file(a, kind, name);
+            if (!bundle.resolve_preset_config(config, type, file, ForwardCompatibilitySubstitutionRule::EnableSilent, error, true, &filament_id))
+                throw std::runtime_error("cannot resolve " + file + ": " + error);
+            if (!entry.empty())
+                write_cached_preset(entry, key, config, filament_id);
+        }
     }
     if (type == Preset::TYPE_PRINTER)
         config.set_key_value("printer_settings_id", new ConfigOptionString(preset_name));
@@ -1382,6 +1458,7 @@ void apply_plate_paint(ModelVolume &volume, const nlohmann::json &paint, const s
         FacetsAnnotation &facets = kind == "support" ? volume.supported_facets :
                                    kind == "seam"    ? volume.seam_facets :
                                    kind == "fuzzy"   ? volume.fuzzy_skin_facets :
+                                   kind == "nonplanar" ? volume.nonplanar_facets :
                                    kind == "color"   ? volume.mmu_segmentation_facets :
                                                        throw std::runtime_error(where + ": unknown paint " + kind);
         if (!map.is_object())
@@ -2226,6 +2303,7 @@ Model load_project(const std::string &path)
         if (kind == "seam") main->seam_facets.set(selector);
         else if (kind == "support") main->supported_facets.set(selector);
         else if (kind == "fuzzy") main->fuzzy_skin_facets.set(selector);
+        else if (kind == "nonplanar") main->nonplanar_facets.set(selector);
         else if (kind == "color") main->mmu_segmentation_facets.set(selector);
         else throw std::runtime_error("unknown paint " + kind);
     }
@@ -2985,7 +3063,7 @@ void explode_3mf(const Args &args)
             }
             for (const auto &[kind, facets] : std::vector<std::pair<std::string, const FacetsAnnotation *>>{
                 {"support", &volume->supported_facets}, {"seam", &volume->seam_facets}, {"color", &volume->mmu_segmentation_facets},
-                {"fuzzy", &volume->fuzzy_skin_facets}})
+                {"fuzzy", &volume->fuzzy_skin_facets}, {"nonplanar", &volume->nonplanar_facets}})
                 for (const auto &triangle : facets->get_data().triangles_to_split)
                     row["paint"][kind][std::to_string(triangle.triangle_idx)] = facets->get_triangle_as_string(triangle.triangle_idx);
             entry["volumes"].push_back(std::move(row));
@@ -3063,6 +3141,36 @@ int main(int argc, char **argv)
         set_data_dir(datadir.string());
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
+        if (!args.detect_regions.empty()) {
+            PrintConfig printer_config;
+            if (!args.printer.empty()) {
+                PresetBundle bundle;
+                printer_config.apply(resolve(bundle, args, "machine", Preset::TYPE_PRINTER, args.printer), true);
+            } else printer_config.nonplanar_head.value = "bambu-a1-mini";
+            for (const auto &[key, value] : args.overrides)
+                if (printer_config.has(key)) printer_config.set_deserialize_strict(key, value);
+            const auto head = Nonplanar::resolve_head_envelope(printer_config);
+            Model model = read_input(args.model);
+            nlohmann::json report = {{"schema", "orca.nonplanar.regions.v1"}, {"head", head.id},
+                                     {"model", args.model}, {"regions", nlohmann::json::array()}};
+            for (size_t oi = 0; oi < model.objects.size(); ++oi) {
+                const ModelObject &object = *model.objects[oi];
+                const Transform3d instance = object.instances.empty() ? Transform3d::Identity() : object.instances.front()->get_matrix();
+                for (size_t vi = 0; vi < object.volumes.size(); ++vi) {
+                    const ModelVolume &volume = *object.volumes[vi];
+                    if (!volume.is_model_part()) continue;
+                    for (const auto &r : Nonplanar::detect_nonplanar_regions(volume, instance * volume.get_matrix(), head))
+                        report["regions"].push_back({{"object", oi}, {"volume", vi}, {"kind", Nonplanar::region_kind_name(r.kind)},
+                            {"area", r.area}, {"slope", {r.min_slope, r.max_slope}}, {"span", r.height_span}, {"z_range", {r.min_z, r.max_z}},
+                            {"centroid", {r.centroid.x(), r.centroid.y(), r.centroid.z()}}, {"facets", r.facets}});
+                }
+            }
+            boost::nowide::ofstream out(args.detect_regions, std::ios::binary);
+            out << report.dump(2) << "\n";
+            if (!out) throw std::runtime_error("cannot write " + args.detect_regions);
+            std::cout << "detected_regions " << report["regions"].size() << "\n";
+            return 0;
+        }
         if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
         if (args.text_fonts) { std::cout << nlohmann::json({{"fonts", emboss_fonts(args)}}).dump() << "\n"; return 0; }
         if (args.mesh_operation == "text") { text_mesh(args); return 0; }
@@ -3080,16 +3188,25 @@ int main(int argc, char **argv)
             ClearanceParams params;
             params.head        = Nonplanar::resolve_head_envelope(full);
             params.contact_bar = true;
+            if (full.nonplanar_mode.value == NonplanarMode::CurvedTops) {
+                params.cone_tolerance = full.nonplanar_curved_cone_tolerance.value;
+                if (const char *value = std::getenv("NP_CONTACT_CONE_TOL"); value != nullptr)
+                    params.cone_tolerance = std::clamp(std::atof(value), 0., 0.13);
+            }
             GCodeProcessorResult &result = processor.result();
             result.clearance_report = verify_clearance(result, params, *make_tool_kinematics(full));
             const ClearanceReport &report = result.clearance_report;
             if (!args.moves_out.empty())
                 write_moves(args.moves_out, result, args.filaments, nlohmann::json::object(), args.moves_extended);
-            std::cout << "clearance_hit_moves " << report.hit_moves << "\nclearance_land_strict_moves " << report.land_strict_moves
+            std::cout << "clearance_hit_moves " << report.hit_moves
+                      << "\nclearance_machine_hit_moves " << report.machine_hit_moves
+                      << "\nclearance_tolerated_moves " << report.tolerated_moves
+                      << "\nclearance_land_strict_moves " << report.land_strict_moves
                       << "\nclearance_min_mm " << report.min_clearance << "\n";
             for (const ClearanceHit &hit : report.worst)
                 std::cout << "clearance_hit line " << hit.gcode_line << " move " << hit.move_id << " " << hit.component << " "
                           << hit.penetration << " mm\n";
+            std::cout << "clearance_cone_graze_moves " << report.cone_graze_moves << "\n";
             std::cout << "clearance_hit_classes land " << report.hit_land_moves << " cone " << report.hit_cone_moves << " body "
                       << report.hit_body_moves << " travel " << report.hit_travel_moves << " extrusion " << report.hit_extrusion_moves << "\n";
             if (const char *lines = std::getenv("NP_VERIFY_LINES")) {
@@ -3696,6 +3813,9 @@ int main(int argc, char **argv)
             ClearanceParams params;
             params.head               = Nonplanar::resolve_head_envelope(print.config());
             params.contact_bar        = true;
+            if (std::any_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
+                    return object->config().nonplanar_mode.value == NonplanarMode::CurvedTops;
+                })) params.cone_tolerance = curved_tops_cone_tolerance(print);
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }
         if (!args.moves_out.empty() && args.moves_extended)
@@ -3751,6 +3871,7 @@ int main(int argc, char **argv)
         if (clearance.ran) {
             std::cout << "clearance_hit_moves " << clearance.hit_moves << "\n"
                       << "clearance_machine_hit_moves " << clearance.machine_hit_moves << "\n"
+                      << "clearance_cone_graze_moves " << clearance.cone_graze_moves << "\n"
                       << "clearance_tolerated_moves " << clearance.tolerated_moves << "\n"
                       << "clearance_land_strict_moves " << clearance.land_strict_moves << "\n"
                       << "clearance_min_mm " << clearance.min_clearance << "\n";
@@ -3768,6 +3889,8 @@ int main(int argc, char **argv)
                 text["clearance_hit_moves"] = text_value(clearance.hit_moves);
                 text["clearance_machine_hit_moves"] = text_value(clearance.machine_hit_moves);
                 text["clearance_tolerated_moves"]   = text_value(clearance.tolerated_moves);
+                text["clearance_cone_graze_moves"] = text_value(clearance.cone_graze_moves);
+                text["clearance_body_hit_moves"] = text_value(clearance.hit_body_moves);
                 text["clearance_min_mm"] = text_value(clearance.min_clearance);
                 if (!clearance.worst.empty()) {
                     const auto &hit = clearance.worst.front();
@@ -3776,10 +3899,6 @@ int main(int argc, char **argv)
                 if (!clearance.omissions.empty()) text["clearance_omission"] = clearance.omissions.front();
             }
             if (!args.gcode_3mf.empty()) text["gcode_3mf"] = args.gcode_3mf;
-        }
-        if (! args.gcode_3mf.empty()) {
-            write_gcode_3mf(args, model, print, config, result, source_plate.get());
-            std::cout << "gcode_3mf " << args.gcode_3mf << "\n";
         }
         const Nonplanar::NonplanarReport report = result.nonplanar_report.objects.empty() ? Nonplanar::make_report(print, result, true) :
                                                                                            result.nonplanar_report;
@@ -3867,6 +3986,12 @@ int main(int argc, char **argv)
             record["status"] = "sliced";
             write_slice_json(args.json, record);
             progress("json", 100);
+        }
+        if (! args.gcode_3mf.empty()) {
+            progress("package", 0);
+            write_gcode_3mf(args, model, print, config, result, source_plate.get());
+            std::cout << "gcode_3mf " << args.gcode_3mf << "\n";
+            progress("package", 100);
         }
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";

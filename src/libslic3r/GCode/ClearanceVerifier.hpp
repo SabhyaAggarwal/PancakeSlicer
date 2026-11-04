@@ -84,6 +84,7 @@ struct ClearanceReport
     size_t hit_moves = 0;
     size_t machine_hit_moves = 0;
     size_t tolerated_moves = 0;
+    size_t cone_graze_moves = 0;
     size_t land_strict_moves = 0;
     size_t hit_land_moves = 0, hit_cone_moves = 0, hit_body_moves = 0, hit_travel_moves = 0, hit_extrusion_moves = 0;
     double min_clearance = std::numeric_limits<double>::infinity();

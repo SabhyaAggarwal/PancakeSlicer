@@ -128,6 +128,13 @@ bool native_requested()
     return v != nullptr && *v != 0 && *v != '0';
 }
 
+double native_axis_key(const char *name, double rotary_default, bool rotary)
+{
+    if (const char *v = std::getenv(name))
+        return std::max(0., std::atof(v));
+    return rotary ? rotary_default : 0.;
+}
+
 std::shared_ptr<const LayerField> native_field(PrintObject &object)
 {
     const NonplanarMode mode = object.config().nonplanar_mode.value;
@@ -977,8 +984,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                 if (off > max_lag)
                     axes[i] = (Eigen::Quaterniond::Identity().slerp(1. - max_lag / off, Eigen::Quaterniond::FromTwoVectors(a, e)) * a).cast<float>();
             }
-            static const double axis_tube = [] { const char *v = std::getenv("NP_NATIVE_AXIS_TUBE"); return v ? Geometry::deg2rad(std::max(0., std::atof(v))) : 0.; }();
-            static const double axis_smooth = [] { const char *v = std::getenv("NP_NATIVE_AXIS_SMOOTH"); return v ? std::max(0., std::atof(v)) : 0.; }();
+            const double axis_tube = Geometry::deg2rad(native_axis_key("NP_NATIVE_AXIS_TUBE", 0., kinematics->rotary_count() > 0));
+            const double axis_smooth = native_axis_key("NP_NATIVE_AXIS_SMOOTH", 5., kinematics->rotary_count() > 0);
             if (axis_smooth > 0. && !upright)
                 axes = Native::smooth_axes(tips, exact, axis_smooth, max_lag);
             if (axis_tube > 0. && !upright) {
@@ -1010,6 +1017,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     op.max_tilt   = std::max(0., tilt_budget(*kinematics) - Geometry::deg2rad(1.));
     op.lean_max   = 0.;
     op.planar_support = native_planar_support() && object.config().enable_support.value;
+    op.axis_blend     = native_axis_key("NP_NATIVE_AXIS_BLEND", 10., kinematics->rotary_count() > 0);
     op.layer_top.assign(tops.begin() + 1, tops.begin() + std::ptrdiff_t(n));
     op.layer_height.resize(n - 1);
     for (size_t k = 1; k < n; ++k)
