@@ -2,7 +2,7 @@ import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { bedArea } from '../actions';
 import { responseError } from '../api/access';
-import { plateSignature } from '../slice-input';
+import { engineName, plateSignature } from '../slice-input';
 import { undoable } from '../state/history';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type Instance, type PlateObject, type Volume } from '../state/store';
 import { bakeStl, centred, instanceBox, instanceMatrix, loadMesh, nearestFreeSpot, objectMatrix } from './geometry';
@@ -38,7 +38,7 @@ export async function performCut() {
     await attachFiles(fd, [{ name: 'cut.stl', blob: await bakeStl(o) }]);
     fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
     fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
-    fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+    fd.append('process', engineName(s, 'process', s.process) || s.process);
     for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
     const response = await postJob(fd);
     if (!response.ok) throw await responseError(response);

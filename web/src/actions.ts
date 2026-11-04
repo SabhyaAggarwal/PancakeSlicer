@@ -31,7 +31,7 @@ import {
 import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
-import { selectionNotice } from './profiles/material-library';
+import { capturePrinterMaterials, selectionNotice } from './profiles/material-library';
 import { chainAuto, profileChain } from './profiles/context';
 import { resolveProfile } from './profiles/model';
 import { loadPreviewView } from './components/preview-loader';
@@ -76,10 +76,11 @@ export function switchPreset(type: PresetType, slot: number, name: string, edits
   const result=undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
     () => applyPresetSwitch(type, slot, name, edits));
   const summary=getState().lastProfileTransition;
-  if(type==='machine' && historyVersion()!==before && summary && (summary.changes.length || summary.needsSelection)){
+  const changed=summary?.changes.filter(c=>c.from) ?? [];
+  if(type==='machine' && historyVersion()!==before && summary && (changed.length || summary.needsSelection)){
     const undoTransition=captureUndo();
     const replaced=selectionNotice(getState(),summary);
-    toast(replaced || summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · '),{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}},undefined,replaced?'warning':undefined);
+    toast(replaced || changed.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · '),{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}},undefined,replaced?'warning':undefined);
   }
   return result;
 }
@@ -118,7 +119,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
       delete filamentEdits[name];
       projectPresets = { machine: {}, process: {}, ...projectPresets, filaments };
     } else if (projectPresets) projectPresets = { ...projectPresets, process: {} };
-    return {
+    const patch: Partial<State> = {
       dirty: type === 'process' ? { ...st.dirty, process: carried } : st.dirty,
       filamentEdits,
       projectPresets,
@@ -127,6 +128,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
         slotColours: st.mixes[slot] ? st.slotColours : st.slotColours.map((c, i) => (i === slot ? undefined : c)) }),
       job: markStale(st.job),
     };
+    return st.profileLibraryLoad.state === 'ready' ? { ...patch, printerLibrary: capturePrinterMaterials({ ...st, ...patch }) } : patch;
   });
   return { kept, dropped };
 }

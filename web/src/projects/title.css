@@ -1,11 +1,11 @@
-:where(.orca-parity) .project-title { width: 100%; min-width: 0; height: var(--h-compact); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(136px, 1fr); align-items: center; column-gap: var(--s-2); }
+:where(.orca-parity) .project-title { width: 100%; min-width: 0; height: var(--h-compact); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(136px, 1fr); align-items: baseline; column-gap: var(--s-2); }
 :where(.orca-parity) .pt-folder { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: var(--t-body); }
-:where(.orca-parity) .pt-end { justify-self: start; min-width: 0; display: flex; align-items: center; }
+:where(.orca-parity) .pt-end { justify-self: start; min-width: 0; display: flex; align-items: baseline; }
 
 :where(.orca-parity) .pt-box { box-sizing: border-box; height: var(--h-compact); max-width: min(40vw, 100%); min-width: 0; padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font: var(--t-body); }
-:where(.orca-parity) .pt-name { display: inline-flex; align-items: center; gap: var(--s-2); cursor: text; }
+:where(.orca-parity) .pt-name { display: inline-flex; align-items: baseline; gap: var(--s-2); padding-block: 3px; line-height: 20px; cursor: text; }
 :where(.orca-parity) .pt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:where(.orca-parity) .pt-pencil { flex: none; color: var(--ink-3); opacity: 0; transition: opacity .12s; }
+:where(.orca-parity) .pt-pencil { flex: none; position: relative; top: 0.16em; color: var(--ink-3); opacity: 0; transition: opacity .12s; }
 :where(.orca-parity) .pt-name:hover, :where(.orca-parity) .pt-editing { background: var(--control-bg); }
 :where(.orca-parity) .pt-name:hover .pt-pencil, :where(.orca-parity) .pt-name:focus-visible .pt-pencil { opacity: 1; }
 :where(.orca-parity) .pt-name:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -13,9 +13,10 @@
 :where(.orca-parity) .pt-editing::after { content: attr(data-value); grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; padding-right: 16px; }
 :where(.orca-parity) .pt-input { grid-area: 1 / 1; width: 100%; min-width: 4ch; height: 20px; padding: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
 
-:where(.orca-parity) .pt-status { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-compact); padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink-3); font: var(--t-small); line-height: 20px; white-space: nowrap; }
+:where(.orca-parity) .pt-status { box-sizing: border-box; display: inline-flex; align-items: baseline; gap: var(--s-2); height: var(--h-compact); padding: 3px var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink-3); font: var(--t-small); line-height: 20px; white-space: nowrap; }
 :where(.orca-parity) button.pt-status { cursor: pointer; }
 :where(.orca-parity) .pt-status svg { flex: none; display: block; }
+:where(.orca-parity) .pt-status > :is(svg, .pt-saving) { position: relative; top: 0.32em; }
 :where(.orca-parity) button.pt-status:hover, :where(.orca-parity) .pt-status[aria-expanded=true] { background: var(--control-bg); color: var(--ink-2); }
 :where(.orca-parity) .pt-status:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .pt-status[data-tone=danger] { color: var(--danger); }

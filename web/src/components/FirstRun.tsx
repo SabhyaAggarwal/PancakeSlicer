@@ -67,7 +67,7 @@ function afterFirstVisit() {
   firstVisitObserver=stop;
 }
 
-function Onboarding() {
+function Onboarding({ done }: { done(): void }) {
   const [step, setStep] = useState<0 | 1>(0);
   const ready = useStore(printerReady);
   return (
@@ -76,7 +76,7 @@ function Onboarding() {
       {step === 0 ? <PrinterChoice /> : <div className="fr-printer"><label className="fr-label">Filament</label><FilamentPicker slot={0} /></div>}
       <div className="fr-onboard-foot">
         {step === 1 && <button type="button" className="btn-ghost" onClick={() => setStep(0)}>Back</button>}
-        <button type="button" className="btn-primary" disabled={!ready} onClick={() => step === 0 ? setStep(1) : savePreferences({ [SETUP_KEY]: '1' })}>{step === 0 ? 'Next' : 'Start printing'}</button>
+        <button type="button" className="btn-primary" disabled={!ready} onClick={() => { if (step === 0) setStep(1); else { savePreferences({ [SETUP_KEY]: '1' }); done(); } }}>{step === 0 ? 'Next' : 'Start printing'}</button>
       </div>
     </div>
   );
@@ -93,10 +93,13 @@ export default function EmptyPlate() {
   const library=useStore(s=>s.profileLibraryLoad.state);
   const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && !printer;
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
+  const [onboarding,setOnboarding]=useState(false);
+  useEffect(()=>{if(firstVisit)setOnboarding(true);},[firstVisit]);
+  const walking=firstVisit||onboarding;
   return (
     <div className="empty-plate">
-      <div className="fr-card">{firstVisit ? <Onboarding /> : <DropZone />}</div>
-      {!firstVisit && <StartOver />}
+      <div className="fr-card">{walking ? <Onboarding done={() => setOnboarding(false)} /> : <DropZone />}</div>
+      {!walking && <StartOver />}
     </div>
   );
 }

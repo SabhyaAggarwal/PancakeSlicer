@@ -285,7 +285,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
     const speeds:Record<string,string>={quality:'Quality',balanced:'Balanced',fast:'Fast'};
     const mine=rows.filter(i=>i.user && i.user.kind !== 'master').map(i=>({...i,fullName:i.name,note:'',meta:speeds[(i.user as {auto?:{preferredSpeed?:string}}).auto?.preferredSpeed ?? '']}));
-    return [{key:'mine',label:'My profiles',rows:colourFamilies(sortRows(mine))}];
+    return [{key:'mine',label:'My profiles',rows:sortRows(mine)}];
   },[matching,query,type,machines,printerFilter,printer]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
   const [folds,setFolds]=useState<ReadonlyMap<string,boolean>>(()=>new Map(sessionFolds)),[searchFolds,setSearchFolds]=useState<ReadonlySet<string>>(new Set());
@@ -434,13 +434,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       catch(error){windowOps.send({type:'COPY_FAILED',error:error instanceof Error?error.message:String(error)});}
     });
   };
-  const duplicate=async(source:UserPreset,independent=false)=>{
+  const duplicate=async(source:UserPreset)=>{
     if(busy || !libraryReady)return;
     if(pendingCopy){if(pendingCopy.source.id===source.id)await retryCopy();else setBulkError(`Finish or discard the copy of ${pendingCopy.source.name} first.`);return;}
-    const copyName=await promptDialog(`${independent ? 'Duplicate as independent copy' : 'Duplicate'} ${NOUNS[type][0]}`,`${source.name} copy`);
+    const copyName=await promptDialog(`Duplicate ${NOUNS[type][0]}`,`${source.name} copy`);
     if(!copyName || windowOps.get().context.copy || windowOps.get().value !== 'idle')return;
     if(getState().userPresets.some(p=>p.type === source.type && !p.archived && p.name === copyName)){setBulkError(`${copyName} already exists.`);return;}
-    windowOps.send({type:'COPY',source,name:copyName,creation:profileCopyCreation(source,copyName,independent)});
+    windowOps.send({type:'COPY',source,name:copyName,creation:profileCopyCreation(source,copyName)});
     await retryCopy();
   };
   const discardCopy=()=>{if(windowOps.can({type:'DISCARD'}))windowOps.send({type:'DISCARD'});};
@@ -486,7 +486,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
   const editKey=!adding && item?.user ? item.key : undefined,editUser=editKey ? item?.user : undefined,draft=editKey ? drafts[JSON.stringify([type,editKey])] : undefined;
-  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={editorSaving} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} onDuplicateIndependent={editUser.kind === 'master' || type !== 'process' ? undefined : () => void handlers.current.duplicate(editUser,true)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
+  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={editorSaving} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
   const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void handlers.current.addVariant(variant,colour)}/> : null,[adding,item,type,busy]);
   const bulk=selected.length > 1 && !adding, selectionKey=selected.join('\n');
   const canCompare=bulk && selected.length <= 4 && selectedItems.length === selected.length, comparing=canCompare && compareHidden !== selectionKey;

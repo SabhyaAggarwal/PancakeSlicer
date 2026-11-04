@@ -9,3 +9,8 @@ export function LabelTip({ label, full, children }: { label: ReactNode; full?: s
   return <Popover.Root><Popover.Trigger asChild><button type="button" className="opt-label-text label-tip" data-full-text={full}>{label}</button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="info-pop" side="bottom" align="start" sideOffset={4} collisionPadding={8} onKeyDown={(e) => e.stopPropagation()}>{children}</Popover.Content></Popover.Portal></Popover.Root>;
 }
+
+export function AutoTag({ reason, onRule }: { reason?: string; onRule?: (anchor: HTMLElement) => void }) {
+  if (!onRule) return <span className="auto-tag" data-truncated={reason ? 'true' : undefined} data-full-text={reason}>Auto</span>;
+  return <button type="button" className="auto-tag is-button" aria-label="How Auto chooses this value" onClick={(e) => onRule(e.currentTarget)}>Auto</button>;
+}

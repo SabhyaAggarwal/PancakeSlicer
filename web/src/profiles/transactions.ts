@@ -90,7 +90,7 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
     return key!;
   }).finally(()=>{flight=undefined;})};
 }
-export function profileCopyCreation(source:UserPreset,name:string,independent=false):ProfileCreation{
+export function profileCopyCreation(source:UserPreset,name:string):ProfileCreation{
   const captured=structuredClone(source),service=getState().api;
   return profileCreation(s=>{
     if(!captured.id || !name.trim())throw new Error('Choose a saved profile identity and enter a name for its copy.');
@@ -98,8 +98,7 @@ export function profileCopyCreation(source:UserPreset,name:string,independent=fa
     const current=findProfile(s,captured.type,captured.id);
     if(!current || !equal(stored(current),stored(captured)))throw conflict('The saved source changed before copying. Review it before creating a new copy.');
     if(s.userPresets.some(p=>p.type===captured.type && p.name===name))throw new Error('A profile already uses this name. Choose another name.');
-    const linked=captured.type==='process' && !independent ? {parentId:captured.id,overlay:{},overrides:{},baseline:{}} : {};
-    return {...captured,...linked,id:`profile:${crypto.randomUUID()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
+    return {...captured,id:`profile:${crypto.randomUUID()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
       provenance:{source:'profile',sourceId:captured.id,sourceName:captured.name,sourceRevision:captured.revision,operationId:crypto.randomUUID()}};
   });
 }

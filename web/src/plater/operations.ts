@@ -2,7 +2,7 @@ import { beginBusy } from '../state/busy';
 import { Box3, Matrix4, Vector3, type BufferGeometry } from 'three';
 import { arrangeSettings } from './arrangeSettings';
 import { flushReady } from '../flush-state';
-import { firstLayer, overrides, plateSignature } from '../slice-input';
+import { engineName, firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { responseError } from '../api/access';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject, type State, type Volume } from '../state/store';
@@ -23,7 +23,7 @@ export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-sc
   await flushReady();
   fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
-  fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+  fd.append('process', engineName(s, 'process', s.process) || s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
   fd.append('overrides', JSON.stringify({ ...overrides(s),
     ...Object.fromEntries(Object.entries(o.settings).map(([key, value]) => [key, jobValue(key, value)])),
@@ -153,7 +153,7 @@ export async function plateForm(s: State, operation: string): Promise<FormData> 
   fd.append('plate', JSON.stringify(plate));
   fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
-  fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+  fd.append('process', engineName(s, 'process', s.process) || s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
   fd.append('overrides', JSON.stringify(overrides(s)));
   return fd;

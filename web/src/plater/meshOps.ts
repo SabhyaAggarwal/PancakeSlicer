@@ -4,6 +4,7 @@ import { responseError } from '../api/access';
 import { getState, logNotice, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
+import { engineName } from '../slice-input';
 import { attachFiles, postJob } from '../api/blobs';
 
 export async function toolJob(operation: string, fields: Record<string, string>, files: [Blob, string][]) {
@@ -14,7 +15,7 @@ export async function toolJob(operation: string, fields: Record<string, string>,
   for (const [k, v] of Object.entries(fields)) fd.append(k, v);
   fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
-  fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+  fd.append('process', engineName(s, 'process', s.process) || s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
   await attachFiles(fd, files.map(([blob, name]) => ({ name, blob })));
   const response = await postJob(fd);

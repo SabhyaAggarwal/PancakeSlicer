@@ -133,6 +133,11 @@ function autoBase(s: ProfileCatalog): SystemPreset | undefined {
   }
   return base;
 }
+export function autoEnginePreset(s: ProfileCatalog, printerConfig: Config, printerBaseName: string): SystemPreset | undefined {
+  const wanted = String(Array.isArray(printerConfig.default_print_profile) ? printerConfig.default_print_profile[0] : printerConfig.default_print_profile ?? '');
+  return s.processes.find((p) => wanted && p.name === wanted)
+    ?? s.processes.find((p) => /^0\.20mm Standard/.test(p.name) && p.compatible_printers?.includes(printerBaseName)) ?? autoBase(s);
+}
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
   const lookup = isCatalogKey(name) ? {profile: undefined, ambiguous: false} : lookupProfile(s, type, name), user = lookup.profile;
   const identity = user ? profileKey(user) : name;

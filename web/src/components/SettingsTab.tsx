@@ -34,7 +34,7 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
-  sources?: Record<string, SettingSource>; autoReasons?: Record<string, string>; resetToBase?(key: string): void }
+  sources?: Record<string, SettingSource>; autoReasons?: Record<string, string>; autoText?: Record<string, string>; onRule?(key: string, anchor: HTMLElement): void; resetToBase?(key: string): void }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overrides, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields;
   overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
@@ -83,7 +83,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const states = useMemo(() => desc ? optionState(desc, env) : {}, [desc, env]);
   const fieldVisible = (k: string, line: TabLine) => {
     const key = splitKey(k)[0], rank = lineMode(line, k);
-    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (overrides ? overrides.keys.has(key) : type !== 'process' || !(TOP_METHOD_KEYS.has(key) || key === 'layer_height')) && isMethodSettingSupported(key,config,availability);
+    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (overrides ? overrides.keys.has(key) : type !== 'process' || !TOP_METHOD_KEYS.has(key)) && isMethodSettingSupported(key,config,availability);
   };
   const focusKey = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus.key : null));
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
@@ -171,8 +171,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
-              source={source} autoReason={editor?.autoReasons?.[key]} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
-              disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
+              source={source} autoReason={editor?.autoReasons?.[key]} autoRule={editor?.autoText?.[key]} onAutoRule={editor?.onRule ? (el) => editor.onRule!(key, el) : undefined} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
+              disabled={readOnly || isDeferred(key) || states[key]?.enabled === false || (type === 'process' && key === 'layer_height')}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
               overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}

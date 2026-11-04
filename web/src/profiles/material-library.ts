@@ -175,7 +175,7 @@ export function reconcilePrinterSelection(previous:State,incoming:State,{definit
 }
 export function selectionNotice(s:State,summary:ProfileTransitionSummary):string{
   const printer=resolveProfile(s,'machine',s.printer).name ?? s.printer;
-  return summary.changes.filter(c=>c.to && c.reason!=='Restored loaded filament' && c.reason!=='Restored printer print settings')
+  return summary.changes.filter(c=>c.to && c.from && c.reason!=='Restored loaded filament' && c.reason!=='Restored printer print settings')
     .map(c=>`${c.kind==='process'?'Print settings':s.filamentSlots.length>1?`Slot ${(c.slot??0)+1} filament`:'Filament'} changed to ${c.to}: ${c.from} isn't compatible with ${printer}`)
     .concat(summary.needsSelection?[`Choose ${summary.changes.some(c=>c.kind==='process'&&!c.to)?'print settings':'a filament'} compatible with ${printer}`]:[]).join(' · ');
 }

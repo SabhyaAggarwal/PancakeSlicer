@@ -7,6 +7,7 @@ import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
 import { profileContext } from './profiles/context';
 import { AUTO_KEYS } from './profiles/auto-rules';
+import { autoEnginePreset } from './profiles/model';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
 function eventArg(e: LayerEvent): string {
@@ -31,7 +32,7 @@ export function overrides(s = getState()): Config {
   } : {};
   const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
     const { base, user } = resolvePreset(s, type, name);
-    const auto = type === 'process' ? Object.fromEntries(AUTO_KEYS.flatMap((k) => { const v = effectiveConfig(s, 'process')[k]; return v === undefined ? [] : [[k, v]]; })) : {};
+    const auto = type === 'process' ? Object.fromEntries([...AUTO_KEYS, 'nonplanar_mode', 'nonplanar_wave'].flatMap((k) => { const v = effectiveConfig(s, 'process')[k]; return v === undefined ? [] : [[k, v]]; })) : {};
     Object.assign(out, base?.imported ? base.config : {}, auto, user?.overrides ?? {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
@@ -103,10 +104,17 @@ export function calibOverrides(s = getState(), kind = ''): Config {
   return out;
 }
 
+export function engineName(s: State, type: 'machine' | 'process' | 'filament', name: string): string {
+  const resolved = resolvePreset(s, type, name);
+  if (type === 'process' && (resolved.source as { auto?: unknown } | undefined)?.auto) {
+    const printer = resolvePreset(s, 'machine', s.printer), preset = autoEnginePreset(s, printer.config, printer.base?.name ?? '');
+    return preset?.engine_base ?? preset?.name ?? resolved.engineName ?? '';
+  }
+  return resolved.engineName ?? '';
+}
+
 export function jobFields(s: State, saving = false) {
-  const sys = (type: 'machine' | 'process' | 'filament', n: string) => {
-    return resolvePreset(s,type,n).engineName ?? '';
-  };
+  const sys = (type: 'machine' | 'process' | 'filament', n: string) => engineName(s, type, n);
   const context=profileContext(s);
   const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)}} : undefined;
   return {

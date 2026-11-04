@@ -7,7 +7,7 @@ import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Glyph } from './Glyph';
-import { LabelTip } from './InfoTip';
+import { AutoTag, LabelTip } from './InfoTip';
 import { Switch } from './fields';
 import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
@@ -76,6 +76,8 @@ export const Field = memo(function Field(props: {
   widget?: React.ReactNode;
   source?: 'auto' | 'inherited' | 'set';
   autoReason?: string;
+  autoRule?: string;
+  onAutoRule?: (anchor: HTMLElement) => void;
   onResetToBase?: (key: string) => void;
   mixed?: string;
 }) {
@@ -135,8 +137,11 @@ export const Field = memo(function Field(props: {
         </LabelId.Provider>
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
+      {props.source === 'auto' && props.autoRule && (props.onAutoRule
+        ? <button type="button" className="auto-rule is-button" data-full-text={props.autoRule} onClick={(e) => props.onAutoRule!(e.currentTarget)}>{props.autoRule}</button>
+        : <span className="auto-rule" data-full-text={props.autoRule}>{props.autoRule}</span>)}
       <span className="opt-undo">
-        {props.source === 'auto' && <span className="auto-tag" data-truncated={props.autoReason ? 'true' : undefined} data-full-text={props.autoReason}>Auto</span>}
+        {props.source === 'auto' && <AutoTag reason={props.autoReason} onRule={props.onAutoRule}/>}
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
           <button type="button" className="reset-icon" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => props.dirty || !props.onResetToBase ? reset(key) : props.onResetToBase(key)}>
