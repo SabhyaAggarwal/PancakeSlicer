@@ -111,6 +111,11 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		return m
 	}
 	set(machine.Config, "catalog")
+	if v, ok := machine.Config["default_nozzle_volume_type"]; ok {
+		if _, set := machine.Config["nozzle_volume_type"]; !set {
+			out.Config["nozzle_volume_type"], out.Sources["nozzle_volume_type"] = v, "catalog"
+		}
+	}
 	set(printer.Machine, "printer")
 	set(process.Config, "catalog")
 	set(print.Intent, "print")
