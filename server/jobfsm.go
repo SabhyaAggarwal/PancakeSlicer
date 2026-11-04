@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -310,7 +311,11 @@ func (m *JobManager) restoreJobs() error {
 			f.Close()
 		}
 		m.jobs[j.ID] = j
-		if !j.state.Finished() {
+		if j.state == StateQueued {
+			ctx, cancel := context.WithCancel(context.Background())
+			j.cancel = cancel
+			m.pending = append(m.pending, &queuedJob{job: j, ctx: ctx, cancel: cancel})
+		} else if !j.state.Finished() {
 			j.setState(StateInterrupted, "server restarted before completion")
 		}
 		if j.IdempotencyKey != "" {

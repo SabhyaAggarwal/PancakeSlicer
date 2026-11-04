@@ -70,6 +70,8 @@ type JobRequest struct {
 	CalibHead              string                                `json:"calib_head,omitempty"`
 	Edits                  bool                                  `json:"edits,omitempty"`
 	Priority               string                                `json:"priority,omitempty"`
+	Session                string                                `json:"session,omitempty"`
+	SliceGroup             string                                `json:"slice_group,omitempty"`
 	PreviewBudget          float64                               `json:"preview_budget,omitempty"`
 }
 
@@ -344,6 +346,8 @@ func outputBase(r JobRequest) string {
 }
 
 type JobManager struct {
+	served        map[string]uint64
+	serveSeq      uint64
 	cfg           Config
 	pending       []*queuedJob
 	active        int
@@ -383,6 +387,9 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 	if err := m.restoreJobs(); err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
+	m.dispatchLocked()
+	m.mu.Unlock()
 	go m.reap()
 	if jobResultWarm != nil {
 		go jobResultWarm(m)
@@ -451,7 +458,24 @@ func (m *JobManager) Start(j *Job) error {
 	if m.cfg.Metrics {
 		m.submitted++
 	}
+	var superseded []*Job
+	if g := j.Request.SliceGroup; g != "" && !batchJob(j) {
+		for _, o := range m.jobs {
+			if o != j && o.Request.SliceGroup == g && o.Request.Session == j.Request.Session && !batchJob(o) {
+				if _, queued := m.cancelLocked(o, "superseded"); queued {
+					superseded = append(superseded, o)
+				}
+			}
+		}
+	}
 	m.dispatchLocked()
+	if len(superseded) > 0 {
+		go func() {
+			for _, o := range superseded {
+				m.completed(o)
+			}
+		}()
+	}
 	return nil
 }
 
@@ -463,14 +487,25 @@ func (m *JobManager) Get(id string) *Job {
 
 func (m *JobManager) Cancel(j *Job) bool {
 	m.mu.Lock()
+	ok, queued := m.cancelLocked(j, "cancelled")
+	if queued {
+		m.dispatchLocked()
+	}
+	m.mu.Unlock()
+	if queued {
+		m.completed(j)
+	}
+	return ok
+}
+
+func (m *JobManager) cancelLocked(j *Job, reason string) (ok, queued bool) {
 	j.mu.Lock()
 	if j.state.Finished() || j.state == StateCanceling {
 		j.mu.Unlock()
-		m.mu.Unlock()
-		return false
+		return false, false
 	}
-	queued := j.state == StateQueued
-	j.stopReason = "cancelled"
+	queued = j.state == StateQueued
+	j.stopReason = reason
 	j.setStateLocked(StateCanceling, j.stopReason)
 	if j.cancel != nil {
 		j.cancel()
@@ -486,13 +521,8 @@ func (m *JobManager) Cancel(j *Job) bool {
 				break
 			}
 		}
-		m.dispatchLocked()
 	}
-	m.mu.Unlock()
-	if queued {
-		m.completed(j)
-	}
-	return true
+	return true, queued
 }
 
 func (m *JobManager) Remove(j *Job) error {
@@ -537,13 +567,10 @@ func (m *JobManager) Shutdown() {
 	close(m.stop)
 	for _, j := range m.jobs {
 		j.mu.Lock()
-		if !j.state.Finished() {
+		if !j.state.Finished() && j.state != StateQueued {
 			j.stopReason = "server shutting down"
 			if j.cancel != nil {
 				j.cancel()
-			}
-			if j.state == StateQueued {
-				j.setStateLocked(StateInterrupted, j.stopReason)
 			}
 		}
 		j.mu.Unlock()

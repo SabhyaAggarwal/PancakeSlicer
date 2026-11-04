@@ -25,7 +25,7 @@ type queuedJob struct {
 func batchJob(j *Job) bool { return j.Request.Priority == "low" || j.Request.Priority == "batch" }
 
 func (m *JobManager) dispatchLocked() {
-	sort.SliceStable(m.pending, func(a, b int) bool { return !batchJob(m.pending[a].job) && batchJob(m.pending[b].job) })
+	m.queueOrderLocked()
 	for !m.closing && m.active < m.cfg.MaxJobs && len(m.pending) > 0 {
 		q := m.pending[0]
 		m.pending = m.pending[1:]
@@ -38,6 +38,11 @@ func (m *JobManager) dispatchLocked() {
 			q.cancel()
 			continue
 		}
+		if m.served == nil {
+			m.served = map[string]uint64{}
+		}
+		m.serveSeq++
+		m.served[queueSession(j)] = m.serveSeq
 		m.active++
 		m.wg.Add(1)
 		go func() {
@@ -67,6 +72,43 @@ func (m *JobManager) dispatchLocked() {
 		}
 		j.mu.Unlock()
 	}
+}
+
+func queueSession(j *Job) string {
+	if j.Request.Session != "" {
+		return "s:" + j.Request.Session
+	}
+	return "ip:" + j.Client
+}
+
+func (m *JobManager) queueOrderLocked() {
+	key := queueSession
+	running := map[string]int{}
+	for _, j := range m.jobs {
+		j.mu.Lock()
+		st := j.state
+		j.mu.Unlock()
+		if st == StatePreparing || st == StateSlicing || st == StateCanceling {
+			running[key(j)]++
+		}
+	}
+	sort.SliceStable(m.pending, func(a, b int) bool { return m.pending[a].job.Created.Before(m.pending[b].job.Created) })
+	rank, seen := map[*queuedJob]int{}, map[string]int{}
+	for _, q := range m.pending {
+		k := key(q.job)
+		rank[q] = running[k] + seen[k]
+		seen[k]++
+	}
+	sort.SliceStable(m.pending, func(a, b int) bool {
+		qa, qb := m.pending[a], m.pending[b]
+		if batchJob(qa.job) != batchJob(qb.job) {
+			return !batchJob(qa.job)
+		}
+		if rank[qa] != rank[qb] {
+			return rank[qa] < rank[qb]
+		}
+		return m.served[key(qa.job)] < m.served[key(qb.job)]
+	})
 }
 
 var jobMemoryLimit func(*exec.Cmd) error

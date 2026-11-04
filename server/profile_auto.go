@@ -67,11 +67,11 @@ var starterProfiles = []struct {
 	intent   map[string]string
 	auto     autoProfile
 }{
-	{"everyday", "Everyday", map[string]string{}, autoProfile{Schema: 3, Scales: defaultScales}},
-	{"strong", "Strong", map[string]string{"wall_loops": "4", "sparse_infill_density": "25%"}, autoProfile{Schema: 3, Scales: defaultScales}},
-	{"fine-detail", "Fine detail", map[string]string{"outer_wall_speed": "120", "inner_wall_speed": "200", "top_surface_speed": "150"},
+	{"everyday", "Everyday", map[string]string{"nonplanar_mode": "curved_tops"}, autoProfile{Schema: 3, Scales: defaultScales}},
+	{"strong", "Strong", map[string]string{"nonplanar_mode": "curved_tops", "wall_loops": "4", "sparse_infill_density": "25%"}, autoProfile{Schema: 3, Scales: defaultScales}},
+	{"fine-detail", "Fine detail", map[string]string{"nonplanar_mode": "curved_tops", "outer_wall_speed": "120", "inner_wall_speed": "200", "top_surface_speed": "150"},
 		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.12)}},
-	{"draft", "Draft", map[string]string{"sparse_infill_density": "10%", "outer_wall_speed": "250", "inner_wall_speed": "350", "sparse_infill_speed": "350", "internal_solid_infill_speed": "300"},
+	{"draft", "Draft", map[string]string{"nonplanar_mode": "off", "sparse_infill_density": "10%", "outer_wall_speed": "250", "inner_wall_speed": "350", "sparse_infill_speed": "350", "internal_solid_infill_speed": "300"},
 		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.28)}},
 }
 

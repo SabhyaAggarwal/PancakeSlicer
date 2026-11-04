@@ -263,6 +263,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	if v := r.Header.Get(sessionHeader); len(v) <= 256 {
+		req.Session = v
+	}
+	if v := r.Header.Get("X-Slice-Group"); len(v) <= 256 {
+		req.SliceGroup = v
+	}
 	var resolved *sliceConfig
 	if raw := r.FormValue("library"); raw != "" {
 		var in resolveRequest

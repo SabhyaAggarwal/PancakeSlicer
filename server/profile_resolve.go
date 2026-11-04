@@ -142,6 +142,13 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		}
 	}
 	set(in.Project, "project")
+	switch firstConfigText(out.Config["nonplanar_mode"]) {
+	case "auto", "manual", "oneshot", "":
+		if out.Sources["nonplanar_mode"] == "catalog" || out.Sources["nonplanar_mode"] == "" {
+			out.Sources["nonplanar_mode"] = "print"
+		}
+		out.Config["nonplanar_mode"] = json.RawMessage(`"curved_tops"`)
+	}
 	return out, nil
 }
 
@@ -160,6 +167,17 @@ func (s *Server) postResolve(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 422, "resolve_failed", err.Error(), "choose_profiles", 0)
 		return
 	}
+	dictionary := optionData
+	if s.cfg.Options != nil {
+		dictionary = s.cfg.Options.plain
+	}
+	vectors := vectorOptions(dictionary)
+	for k, v := range out.Config {
+		var text string
+		if vectors[k] && json.Unmarshal(v, &text) == nil {
+			out.Config[k], _ = json.Marshal(strings.Split(text, ","))
+		}
+	}
 	writeJSON(w, 200, out)
 }
 
@@ -172,4 +190,19 @@ func (s *Server) libraryV4Profiles() (map[string]*v4Record, error) {
 		return nil, err
 	}
 	return v4Profiles(e.Document)
+}
+
+func vectorOptions(dictionary []byte) map[string]bool {
+	var defs map[string]struct {
+		Type string `json:"type"`
+	}
+	json.Unmarshal(dictionary, &defs)
+	out := map[string]bool{}
+	for key, def := range defs {
+		switch strings.TrimPrefix(def.Type, "co") {
+		case "Floats", "Ints", "Bools", "Percents", "FloatsOrPercents", "Points":
+			out[key] = true
+		}
+	}
+	return out
 }
