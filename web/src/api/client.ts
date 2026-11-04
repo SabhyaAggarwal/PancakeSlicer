@@ -7,6 +7,7 @@ import { expandCatalog } from './compact-catalog';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
 import type { Config, JobRequest, JobStatus, PresetCatalog, ProgressEvent } from './types';
+import { canonicalModeConfig } from '../nonplanar-mode';
 
 export interface Api {
   mock: boolean;
@@ -71,15 +72,18 @@ const realApi: Api = {
     if (!printer) throw new Error('Choose a printer first.');
     if (!print) throw new Error('Choose print settings first.');
     if (!filaments.length || filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
-    fd.append('library', JSON.stringify({ ...req.library, project: req.overrides }));
+    fd.append('library', JSON.stringify({ ...req.library, project: canonicalModeConfig(req.overrides) }));
     if (req.plate_index !== undefined) fd.append('plate_index', String(req.plate_index));
-    if (req.plate) fd.append('plate', JSON.stringify(req.plate));
+    if (req.plate) fd.append('plate', JSON.stringify({ ...req.plate, objects: req.plate.objects.map((o) => ({ ...o,
+      ...(o.settings ? { settings: canonicalModeConfig(o.settings) } : {}),
+      ...(o.volumes ? { volumes: o.volumes.map((v) => v.settings ? { ...v, settings: canonicalModeConfig(v.settings) } : v) } : {}),
+      ...(o.ranges ? { ranges: o.ranges.map((r) => ({ ...r, settings: canonicalModeConfig(r.settings) })) } : {}) })) }));
     if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
     if (req.priority) fd.append('priority', req.priority);
-    if (req.project_settings) fd.append('project_settings', JSON.stringify(req.project_settings));
-    if (req.project_edits) fd.append('project_edits', JSON.stringify(req.project_edits));
+    if (req.project_settings) fd.append('project_settings', JSON.stringify(canonicalModeConfig(req.project_settings)));
+    if (req.project_edits) fd.append('project_edits', JSON.stringify(req.project_edits.map((e) => 'settings' in e && e.settings ? { ...e, settings: canonicalModeConfig(e.settings) } : e)));
     if (req.force_planar) fd.append('force_planar', '1');
     if (req.floating) fd.append('floating', '1');
     if (req.allow_mixed_temperatures) fd.append('allow_mixed_temperatures', '1');
@@ -133,6 +137,13 @@ const realApi: Api = {
           if (/"state"\s*:\s*"(done|failed|canceled)"/.test(e.data)) void finish();
           return;
         }
+        case 'queue':
+          try {
+            const position = Number(JSON.parse(e.data).queue_position);
+            if (position > 0) on.progress({ stage: 'queued', pct: 0, queuePosition: position });
+          } catch {
+          }
+          return;
         case 'log':
           try {
             const j = JSON.parse(e.data);

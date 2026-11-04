@@ -133,7 +133,7 @@ export const overlayFits = (ov: InstanceOverlay, o: PlateObject) => ov.shape ===
 const toolHasPreview = () => toolFeatures.patch_preview === true;
 
 function wanted(s: State) {
-  return !!s.api && !s.api.mock && s.tab === 'prepare' && s.objects.length > 0 && !s.project && styleOf(effectiveConfig(s, 'process')) === 'auto';
+  return !!s.api && !s.api.mock && s.tab === 'prepare' && s.objects.length > 0 && !s.project && styleOf(effectiveConfig(s, 'process')) === 'smooth';
 }
 
 const kept = new Map<string, PatchPreview>();

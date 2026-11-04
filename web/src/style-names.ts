@@ -1,10 +1,10 @@
 import type { Config, ConfigValue } from './api/types';
-import { OPTIONS } from './options';
+import { canonicalMode } from './nonplanar-mode';
 
-export type StyleId = 'auto' | 'standard' | 'smooth' | 'zaa' | 'multiplanar' | 'field';
+export type StyleId = 'standard' | 'smooth' | 'zaa' | 'multiplanar' | 'field';
 
 export const STYLE_NAMES: Record<StyleId | 'custom', string> = {
-  auto: 'Auto', standard: 'Standard', smooth: 'Smooth tops', zaa: 'Z contour',
+  standard: 'Standard', smooth: 'Curved tops', zaa: 'Z contour',
   multiplanar: 'Tilted chunks', field: 'Rotary curved layers', custom: 'Custom',
 };
 
@@ -12,14 +12,11 @@ const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(asText(v));
 
 export function styleOf(c: Config): StyleId | 'custom' {
-  const mode = asText(c.nonplanar_mode) || 'off';
+  const mode = canonicalMode(asText(c.nonplanar_mode) || 'off');
   const zaa = on(c.zaa_enabled);
   if (mode === 'off') return zaa ? 'zaa' : 'standard';
   if (zaa) return 'custom';
-  if (mode === 'auto') {
-    const deform = asText(c.nonplanar_deform) || String(OPTIONS.nonplanar_deform?.default ?? 'auto');
-    return deform === 'auto' ? 'auto' : deform === 'off' ? 'smooth' : 'custom';
-  }
+  if (mode === 'curved_tops') return 'smooth';
   if (mode === 'multiplanar' || mode === 'field') return mode;
   return 'custom';
 }

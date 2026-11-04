@@ -8,6 +8,7 @@ import { getState, setState } from '../state/store';
 import { toolArtifactManifest } from '../api/client';
 import type { ProfileFields } from './SettingsTab';
 import { Field } from './Field';
+import { canonicalMode } from '../nonplanar-mode';
 import './process-settings.css';
 
 const shortReason = (m: MethodAvailability) => m.recovery === 'update_engine' ? (toolArtifactManifest ? 'Not in this engine build' : 'Engine still starting')
@@ -18,7 +19,7 @@ const openMethodChoice = (key: string) => {
   const trigger = document.querySelector<HTMLElement>(`.opt-line[data-opt="${key}"] .dropdown`);
   trigger?.focus(); trigger?.click();
 };
-export const canonicalMode = (mode: string) => ['auto', 'manual', 'oneshot'].includes(mode) ? 'curved_tops' : mode;
+export { canonicalMode } from '../nonplanar-mode';
 const OFFERED_MODES = ['off', 'curved_tops'], ROTARY_MODES = ['multiplanar', 'field'];
 const MODE_LABELS: Record<string, string> = { off: 'Flat layers', curved_tops: 'Curved tops' };
 const MODE_HELP: Record<string, string> = {

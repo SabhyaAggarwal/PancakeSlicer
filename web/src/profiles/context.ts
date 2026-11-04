@@ -4,6 +4,7 @@ import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './mod
 import { clampHeight, heightsFor, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
 import { chainApplicability, type ChainLink } from './chain';
 import { findProfile } from './identity';
+import { canonicalModeConfig } from '../nonplanar-mode';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
   printer: string; process: string; filamentSlots?: string[];
@@ -115,7 +116,7 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   const prior = editsCache.get(edits);
   if (prior) {snapshot.set(selection, prior); return prior;}
   const chosen = type === 'process' && s.processVariant && key === s.process ? { layer_height: config.layer_height } : empty;
-  const value = {...config, ...project, ...plate, ...edits, ...chosen}; editsCache.set(edits,value); snapshot.set(selection,value); return value;
+  const merged = {...config, ...project, ...plate, ...edits, ...chosen}, value = type === 'process' ? canonicalModeConfig(merged) : merged; editsCache.set(edits,value); snapshot.set(selection,value); return value;
 }
 export interface ContextProfile extends ResolvedProfile { id?: string; revision: number; baseName?: string; baseVendor?: string; parentName?: string }
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');

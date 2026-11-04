@@ -19,9 +19,8 @@ export interface Style {
 }
 
 export const STYLES: Style[] = [
-  { id: 'auto', name: STYLE_NAMES.auto, tip: 'Chooses per part.', icon: 'layers', keys: { nonplanar_mode: 'auto', nonplanar_deform: 'auto', zaa_enabled: '0' } },
   { id: 'standard', name: STYLE_NAMES.standard, label: 'Flat', tip: 'Flat layers, like any slicer.', icon: 'standard', keys: { nonplanar_mode: 'off', zaa_enabled: '0' } },
-  { id: 'smooth', name: STYLE_NAMES.smooth, label: 'Smooth', tip: 'Top layers follow the surface.', icon: 'smooth', keys: { nonplanar_mode: 'auto', nonplanar_deform: 'off', zaa_enabled: '0' } },
+  { id: 'smooth', name: STYLE_NAMES.smooth, label: 'Curved', tip: 'Top layers follow the surface.', icon: 'smooth', keys: { nonplanar_mode: 'curved_tops', zaa_enabled: '0' } },
   { id: 'zaa', name: STYLE_NAMES.zaa, tip: 'Flat layers, top lines follow the surface.', icon: 'zaa', keys: { nonplanar_mode: 'off', zaa_enabled: '1' } },
   { id: 'multiplanar', name: STYLE_NAMES.multiplanar, tip: 'Overhangs printed upright.', icon: 'chunks', keys: { nonplanar_mode: 'multiplanar', zaa_enabled: '0' }, rotary: true },
   { id: 'field', name: STYLE_NAMES.field, label: 'Rotary layers', tip: 'Every layer curved, the table keeps it level.', icon: 'rotary', keys: { nonplanar_mode: 'field', zaa_enabled: '0' }, rotary: true },
