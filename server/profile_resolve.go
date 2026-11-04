@@ -17,9 +17,10 @@ type resolveRequest struct {
 	Project     map[string]json.RawMessage `json:"project,omitempty"`
 }
 type sliceConfig struct {
-	Config  map[string]json.RawMessage `json:"config"`
-	Sources map[string]string          `json:"sources"`
-	Engine  struct {
+	Config          map[string]json.RawMessage `json:"config"`
+	Sources         map[string]string          `json:"sources"`
+	engineOverrides map[string]bool
+	Engine          struct {
 		Vendor    string   `json:"vendor"`
 		Printer   string   `json:"printer"`
 		Process   string   `json:"process"`
@@ -96,7 +97,7 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	if process == nil {
 		return nil, errors.New("the catalog has no print settings for " + printer.Model)
 	}
-	out := &sliceConfig{Config: map[string]json.RawMessage{}, Sources: map[string]string{}}
+	out := &sliceConfig{Config: map[string]json.RawMessage{}, Sources: map[string]string{}, engineOverrides: map[string]bool{}}
 	out.Engine.Vendor, out.Engine.Printer, out.Engine.Process = vendor.Vendor, machine.Name, process.Name
 	set := func(values map[string]json.RawMessage, source string) {
 		for k, v := range values {
@@ -114,6 +115,7 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	if v, ok := machine.Config["default_nozzle_volume_type"]; ok {
 		if _, set := machine.Config["nozzle_volume_type"]; !set {
 			out.Config["nozzle_volume_type"], out.Sources["nozzle_volume_type"] = v, "catalog"
+			out.engineOverrides["nozzle_volume_type"] = true
 		}
 	}
 	set(printer.Machine, "printer")
@@ -130,6 +132,8 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	set(text(scaleValues(print.Scales, printer.Nozzle, height)), "scale")
 	set(text(map[string]string{"layer_height": strconv.FormatFloat(height, 'f', -1, 64)}), "print")
 	set(printer.PrintOverrides, "printer override")
+	filamentConfigs := make([]map[string]json.RawMessage, 0, len(in.Filaments))
+	filamentOwned := map[string]bool{}
 	for i, id := range in.Filaments {
 		f := profiles[id]
 		if f == nil || f.Type != "filament" || !f.live() {
@@ -141,9 +145,35 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 			return nil, errors.New("the catalog has no " + family + " filament for " + printer.Vendor)
 		}
 		out.Engine.Filaments = append(out.Engine.Filaments, variant.Name)
-		if i == 0 {
-			set(variant.Config, "catalog")
-			set(f.Settings, "filament")
+		config := map[string]json.RawMessage{}
+		for k, v := range variant.Config {
+			config[k] = v
+		}
+		for k, v := range f.Settings {
+			config[k], filamentOwned[k] = v, true
+		}
+		if f.Colour != "" {
+			config["filament_colour"], _ = json.Marshal([]string{f.Colour})
+			filamentOwned["filament_colour"] = true
+		}
+		filamentConfigs = append(filamentConfigs, config)
+	}
+	dictionary := optionData
+	if s.cfg.Options != nil {
+		dictionary = s.cfg.Options.plain
+	}
+	filamentConfig, err := assembleFilamentConfig(filamentConfigs, dictionary)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range filamentConfig {
+		source := "catalog"
+		if filamentOwned[k] {
+			source = "filament"
+		}
+		out.Config[k], out.Sources[k] = v, source
+		if len(v) > 0 && v[0] == '[' {
+			out.engineOverrides[k] = true
 		}
 	}
 	set(in.Project, "project")

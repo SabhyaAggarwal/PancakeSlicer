@@ -8,7 +8,7 @@ export const extruderLabel = (index: number, count: number, bambu: boolean) => b
 
 export function valueAt(value: ConfigValue | undefined, index: number, fallback = ''): string {
   const values = valuesOf(value);
-  return values[Math.min(index, values.length - 1)] ?? fallback;
+  return values[index] ?? values[0] ?? fallback;
 }
 
 export function replaceAt(value: ConfigValue | undefined, index: number, next: string, size = index + 1): string[] {

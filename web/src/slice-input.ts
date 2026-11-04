@@ -32,8 +32,9 @@ export function overrides(s = getState()): Config {
   const slots = s.filamentSlots.map((key, i) => ({ ...s.projectPresets?.filaments[i], ...s.filamentEdits[key] }));
   const edited = new Set(s.filamentSlots.length > 1 ? s.filamentSlots.flatMap((_, i) => Object.keys(effectiveConfig(s, 'filament', i))) : slots.flatMap((c) => Object.keys(c)));
   if (edited.size) {
-    const configs = s.filamentSlots.map((_, i) => { const c = effectiveConfig(s, 'filament', i); return Object.fromEntries([...edited].flatMap((k) => c[k] === undefined ? [] : [[k, c[k]]])); });
-    Object.assign(out, filamentVectors(configs, Object.fromEntries([...edited].flatMap((key) => OPTIONS[key]?.default === undefined ? [] : [[key, OPTIONS[key].default as ConfigValue]]))));
+    const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
+    const assembled = filamentVectors(configs, Object.fromEntries([...edited].flatMap((key) => OPTIONS[key]?.default === undefined ? [] : [[key, OPTIONS[key].default as ConfigValue]])));
+    Object.assign(out, Object.fromEntries(Object.entries(assembled).filter(([key]) => edited.has(key) || key === 'filament_self_index' || key === 'filament_extruder_variant')));
   }
   delete out.layer_height;
   Object.assign(out, nozzleAssignments(s));

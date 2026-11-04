@@ -510,7 +510,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	if raw := r.FormValue("overrides"); resolved != nil {
 		values := map[string]json.RawMessage{}
 		for k, v := range resolved.Config {
-			if resolved.Sources[k] != "catalog" && !hiddenSetting.MatchString(k) {
+			if (resolved.Sources[k] != "catalog" || resolved.engineOverrides[k]) && !hiddenSetting.MatchString(k) {
 				values[k] = v
 			}
 		}
