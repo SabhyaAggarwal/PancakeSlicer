@@ -1,9 +1,6 @@
 package main
 
-import (
-	"encoding/json"
-	"slices"
-)
+import "encoding/json"
 
 type jobProfileIDs struct {
 	Schema    int      `json:"schema"`
@@ -15,10 +12,6 @@ type jobProfileIDs struct {
 		Process   uint64   `json:"process"`
 		Filaments []uint64 `json:"filaments"`
 	} `json:"revisions"`
-	Variants struct {
-		Process   *dynamicContext   `json:"process,omitempty"`
-		Filaments []*dynamicContext `json:"filaments,omitempty"`
-	} `json:"variants"`
 }
 
 func (s *Server) savedProfileBindings() (map[string]map[string]json.RawMessage, error) {
@@ -87,7 +80,8 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 		if anchor == "" {
 			anchor = stringValue(p["inherits"])
 		}
-		if anchor == "" || anchor != selected.native {
+		_, auto := p["auto"]
+		if anchor == "" || anchor != selected.native && !auto {
 			return problem("profile_anchor_mismatch", "repair_profile", "Repair the profile's native base before slicing; an owned ID or label cannot replace its engine profile name.", selected.kind, selected.native, selected.slot)
 		}
 		chain, chainCode := baseChain(profiles, selected.id)
@@ -105,22 +99,6 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 			}
 			if !ok {
 				return problem("profile_not_enabled", "edit_applicability", "This profile's Works with rule does not include this printer, nozzle or filament. Edit Works with or choose another profile.", selected.kind, selected.native, selected.slot)
-			}
-		}
-		if d := chainDynamic(chain, selected.kind); d != nil && selected.kind != "machine" {
-			var variant *dynamicContext
-			if selected.kind == "process" {
-				variant = ids.Variants.Process
-			} else if selected.slot-1 < len(ids.Variants.Filaments) {
-				variant = ids.Variants.Filaments[selected.slot-1]
-			}
-			available := variant != nil && variant.PrinterModel == printer.Model && sameMm(variant.Nozzle, printer.Nozzle)
-			if available && selected.kind == "process" {
-				variant.PrinterID = ids.Printer
-				available = slices.ContainsFunc(d.availableHeights(chainRule(chain, "process"), *variant), func(h float64) bool { return sameMm(h, variant.LayerHeight) })
-			}
-			if !available {
-				return problem("profile_variant_unavailable", "choose_layer_height", "This layer height or nozzle isn't available in this profile for the selected printer. Choose another layer height.", selected.kind, selected.native, selected.slot)
 			}
 		}
 		snapshots[selected.id] = p

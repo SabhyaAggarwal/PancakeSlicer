@@ -104,5 +104,8 @@ func compactPresets(v *VendorPresets) compactVendor {
 		return packed
 	}
 	out.Machines, out.Processes, out.Filaments = kind(v.Machines), kind(v.Processes), kind(v.Filaments)
+	for i := range out.Processes {
+		out.Processes[i].Internal = true
+	}
 	return out
 }

@@ -61,7 +61,6 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 		}
 		health["status"], health["queued"], health["running"] = "ok", q, n
 		health["profile_library_schema"] = 1
-		health["profile_recovery_schema"] = 1
 		health["workspace_schema"] = 1
 		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
@@ -106,11 +105,12 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	if options == nil {
 		options = cacheResponse(optionData)
 	}
-	registerOptions(mux, options)
+	registerOptions(mux, options, devResetEnabled())
+	if devResetEnabled() {
+		mux.HandleFunc("POST /api/dev/reset", s.devReset)
+	}
 	mux.HandleFunc("GET /api/profile-library", s.getProfileLibrary)
 	mux.HandleFunc("PUT /api/profile-library", s.putProfileLibrary)
-	mux.HandleFunc("GET /api/profile-library/recovery", s.getProfileRecovery)
-	mux.HandleFunc("POST /api/profile-library/recovery", s.postProfileRecovery)
 	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
 	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)

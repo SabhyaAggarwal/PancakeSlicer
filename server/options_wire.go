@@ -10,7 +10,7 @@ import (
 
 const optionsWireSchema = "orca.options.v2"
 
-func registerOptions(mux *http.ServeMux, dump *cachedResponse) {
+func registerOptions(mux *http.ServeMux, dump *cachedResponse, devReset bool) {
 	var defs map[string]map[string]json.RawMessage
 	if err := json.Unmarshal(dump.plain, &defs); err != nil {
 		panic("option dictionary: " + err.Error())
@@ -26,7 +26,11 @@ func registerOptions(mux *http.ServeMux, dump *cachedResponse) {
 	tipsBody, _ := json.Marshal(tips)
 	sum := sha256.Sum256(tipsBody)
 	version := hex.EncodeToString(sum[:6])
-	body, err := cacheJSON(map[string]any{"schema": optionsWireSchema, "tooltips": "/api/options/tooltips?v=" + version, "options": defs})
+	wire := map[string]any{"schema": optionsWireSchema, "tooltips": "/api/options/tooltips?v=" + version, "options": defs}
+	if devReset {
+		wire["devReset"] = true
+	}
+	body, err := cacheJSON(wire)
 	if err != nil {
 		panic("option dictionary: " + err.Error())
 	}

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,67 +31,9 @@ func NewProfileLibraryStore(dir string) (*ProfileLibraryStore, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	if err := s.migrateWorksWith(); err != nil {
-		return nil, err
-	}
-	s.logLegacyProblems()
 	return s, nil
 }
 
-func (s *ProfileLibraryStore) logLegacyProblems() {
-	envelope, err := s.readLibrary()
-	if err != nil {
-		return
-	}
-	source, err := s.scanLegacyProfiles(envelope)
-	if err != nil {
-		log.Printf("earlier profiles: %v", err)
-		return
-	}
-	for _, problem := range source.Problems {
-		log.Printf("earlier profile file unreadable: %s", problem)
-	}
-}
-
-func (s *ProfileLibraryStore) migrateWorksWith() error {
-	envelope, err := s.readLibrary()
-	if err != nil {
-		return err
-	}
-	var profiles []map[string]json.RawMessage
-	if json.Unmarshal(envelope.Document["profiles"], &profiles) != nil {
-		return nil
-	}
-	changed := 0
-	for _, p := range profiles {
-		if raw, ok := p["applicability"]; ok {
-			if rule, old := worksWithFromSchema1(raw); old {
-				if rule == nil {
-					delete(p, "applicability")
-				} else {
-					p["applicability"] = rule
-				}
-				changed++
-			}
-		}
-	}
-	if changed == 0 {
-		return nil
-	}
-	if err := s.backup(time.Now().UTC().Format("20060102T150405Z"), "works-with-2", &legacySource{}); err != nil {
-		return err
-	}
-	envelope.Document["profiles"], _ = json.Marshal(profiles)
-	envelope.Document["revision"] = json.RawMessage(fmt.Sprint(libraryRevision(envelope.Document) + 1))
-	encoded, err := json.Marshal(envelope)
-	if err == nil {
-		err = s.writeLibrary(encoded)
-	}
-	if err == nil {
-		log.Printf("profile library: rewrote %d Works with associations as schema 2 rules", changed)
-	}
-	return err
-}
 func validProfileType(t string) bool { return t == "machine" || t == "process" || t == "filament" }
 func validProfileName(name string) error {
 	if name == "" || len(name) > 200 || strings.TrimSpace(name) != name {
@@ -108,16 +49,13 @@ func validProfileName(name string) error {
 
 type profileLibraryDocument map[string]json.RawMessage
 type libraryReceipt struct {
-	Digest   string          `json:"digest"`
-	Revision uint64          `json:"revision"`
-	Result   *recoveryResult `json:"result,omitempty"`
+	Digest   string `json:"digest"`
+	Revision uint64 `json:"revision"`
 }
 
 type libraryEnvelope struct {
-	Document   profileLibraryDocument     `json:"document"`
-	Operations map[string]libraryReceipt  `json:"operations"`
-	Legacy     map[string]string          `json:"legacy,omitempty"`
-	Adoptions  map[string]json.RawMessage `json:"adoptions,omitempty"`
+	Document   profileLibraryDocument    `json:"document"`
+	Operations map[string]libraryReceipt `json:"operations"`
 }
 type libraryInventory struct {
 	Complete        bool   `json:"complete"`
@@ -150,13 +88,10 @@ func libraryRevision(doc profileLibraryDocument) uint64 {
 	json.Unmarshal(doc["revision"], &revision)
 	return revision
 }
-func emptyProfileLibrary() profileLibraryDocument {
-	return profileLibraryDocument{"schema": json.RawMessage(`1`), "revision": json.RawMessage(`0`), "profiles": json.RawMessage(`[]`), "printers": json.RawMessage(`{"schema":1,"revision":0,"setups":{}}`)}
-}
 func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	raw, err := os.ReadFile(filepath.Join(s.dir, "profile-library.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return &libraryEnvelope{Document: emptyProfileLibrary(), Operations: map[string]libraryReceipt{}, Legacy: map[string]string{}}, nil
+		return &libraryEnvelope{Document: seededLibrary(""), Operations: map[string]libraryReceipt{}}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -167,9 +102,6 @@ func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	}
 	if envelope.Document == nil || envelope.Operations == nil {
 		return nil, errors.New("invalid stored profile library")
-	}
-	if envelope.Legacy == nil {
-		envelope.Legacy = map[string]string{}
 	}
 	return &envelope, nil
 }
@@ -223,6 +155,12 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 		if kind := stringValue(p["kind"]); kind != "profile" && kind != "master" {
 			return nil, errors.New("unknown profile kind")
 		}
+		if p["dynamic"] != nil || p["mergedInto"] != nil {
+			return nil, fmt.Errorf("%s: dynamic layers and merges no longer exist", name)
+		}
+		if err := validateAuto(p, typ, stringValue(p["kind"])); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
 		var profileRevision uint64
 		var anchor struct {
 			Name    string `json:"name"`
@@ -237,19 +175,11 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
-		if raw, ok := p["dynamic"]; ok {
-			if _, err := parseDynamic(raw, typ); err != nil {
-				return nil, fmt.Errorf("%s: %w", name, err)
-			}
-		}
 		if raw, ok := p["parentId"]; ok && !strings.HasPrefix(stringValue(raw), "profile:") {
 			return nil, errors.New("parentId names a profile: ID")
 		}
 		if raw, ok := p["baseRole"]; ok && stringValue(raw) != "base" && stringValue(raw) != "base-only" {
 			return nil, errors.New("baseRole is base or base-only")
-		}
-		if raw, ok := p["mergedInto"]; ok && !strings.HasPrefix(stringValue(raw), "profile:") {
-			return nil, errors.New("mergedInto names the dynamic profile's ID")
 		}
 		if raw, ok := p["archived"]; ok {
 			var archive struct {
@@ -301,7 +231,6 @@ func libraryReferences(doc profileLibraryDocument, profiles map[string]map[strin
 				add(pid, id+" Works with")
 			}
 		}
-		add(stringValue(p["mergedInto"]), id+" merged into")
 	}
 	var printers struct {
 		Setups map[string]struct {
@@ -515,27 +444,6 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 503, "library_unavailable", "The stored profile library needs recovery; no changes were written.", "repair_profiles", revision)
 		return
 	}
-	convert := false
-	for id, old := range previous {
-		p := next[id]
-		if p == nil {
-			continue
-		}
-		if _, was := old["dynamic"]; was {
-			if _, still := p["dynamic"]; !still {
-				libraryFailure(w, 409, "profile_kind_locked", "A dynamic profile cannot become a normal profile. Use Split into normal profiles.", "reload", revision)
-				return
-			}
-		} else if _, now := p["dynamic"]; now {
-			convert = true
-		}
-		if _, merged := p["mergedInto"]; merged && old["mergedInto"] == nil {
-			convert = true
-		}
-		if stringValue(p["parentId"]) != stringValue(old["parentId"]) || stringValue(p["baseRole"]) != stringValue(old["baseRole"]) {
-			convert = true
-		}
-	}
 	if status, code, message := baseChainProblem(next, previous); code != "" {
 		libraryFailure(w, status, code, message, "edit_base", revision)
 		return
@@ -543,12 +451,6 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	if name := s.worksWithNone(next, previous); name != "" {
 		libraryFailure(w, 422, "profile_works_with_none", "A profile must work with at least one printer: "+name, "edit_applicability", revision)
 		return
-	}
-	if convert {
-		if err := s.library.backup(request.OperationID, "convert", &legacySource{}); err != nil {
-			libraryFailure(w, 507, "library_write_failed", "Profiles could not be backed up before converting. Free storage and retry.", "retry_storage", revision)
-			return
-		}
 	}
 	var workspace *workspaceData
 	for id := range previous {

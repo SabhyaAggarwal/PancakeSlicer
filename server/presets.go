@@ -28,6 +28,7 @@ type Preset struct {
 	NotSupportBedType    []string                   `json:"not_support_bed_type,omitempty"`
 	DefaultMaterials     []string                   `json:"default_materials,omitempty"`
 	NativeSupportCapable bool                       `json:"native_support_capable,omitempty"`
+	Internal             bool                       `json:"internal,omitempty"`
 }
 type VendorPresets struct {
 	Vendor                         string   `json:"vendor"`
