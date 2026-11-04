@@ -193,10 +193,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	library, err := NewProfileLibraryStore(cfg.DataDir)
-	if err != nil {
-		log.Fatal(err)
-	}
 	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
 	if cfg.Features.DumpPresets {
 		presets.tool = &cfg
@@ -209,7 +205,7 @@ func main() {
 			log.Printf("cannot preload %s presets: %v", vendor, err)
 		}
 	}
-	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets, library), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
+	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

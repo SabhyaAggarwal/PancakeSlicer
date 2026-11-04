@@ -31,7 +31,6 @@ type Server struct {
 	cfg       Config
 	jobs      *JobManager
 	presets   *PresetIndex
-	library   *ProfileLibraryStore
 	libraryV4 *libraryStore
 	workspace *workspaceStore
 	sends     *SendManager
@@ -41,8 +40,8 @@ type Server struct {
 	fontsErr  error
 }
 
-func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *ProfileLibraryStore) http.Handler {
-	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, libraryV4: &libraryStore{dir: c.DataDir}, sends: NewSendManager(c.PrinterStore)}
+func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
+	s := &Server{cfg: c, jobs: jobs, presets: presets, libraryV4: &libraryStore{dir: c.DataDir}, sends: NewSendManager(c.PrinterStore)}
 	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
@@ -61,7 +60,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		health["status"], health["queued"], health["running"] = "ok", q, n
-		health["profile_library_schema"] = 1
+		health["library_schema"] = 4
 		health["workspace_schema"] = 1
 		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
@@ -114,8 +113,6 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	if devResetEnabled() {
 		mux.HandleFunc("POST /api/dev/reset", s.devReset)
 	}
-	mux.HandleFunc("GET /api/profile-library", s.getProfileLibrary)
-	mux.HandleFunc("PUT /api/profile-library", s.putProfileLibrary)
 	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
 	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
@@ -284,13 +281,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Vendor, req.Printer, req.Process, req.Filaments = resolved.Engine.Vendor, resolved.Engine.Printer, resolved.Engine.Process, resolved.Engine.Filaments
-	}
-	if raw := r.FormValue("profile_ids"); raw != "" {
-		req.ProfileIDs = &jobProfileIDs{}
-		if json.Unmarshal([]byte(raw), req.ProfileIDs) != nil {
-			fail(w, 400, "profile_ids must contain the saved profile IDs and revisions")
-			return
-		}
+		req.Library = &in
 	}
 	switch op := r.FormValue("operation"); op {
 	case "", "orient":
@@ -832,10 +823,6 @@ func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started
 		problem.write(w)
 		return
 	}
-	if problem := s.validateProfileBindings(&req); problem != nil {
-		problem.write(w)
-		return
-	}
 	if problem := s.validateJobMethods(j, req, vendor); problem != nil {
 		writeJSON(w, 409, problem)
 		return
@@ -1357,12 +1344,6 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 	req := j.Request
 	vendor, problem := s.resolveJobProfiles(&req)
 	if problem != nil {
-		s.jobs.releaseUpload(j)
-		os.RemoveAll(j.Dir)
-		problem.write(w)
-		return
-	}
-	if problem := s.validateProfileBindings(&req); problem != nil {
 		s.jobs.releaseUpload(j)
 		os.RemoveAll(j.Dir)
 		problem.write(w)

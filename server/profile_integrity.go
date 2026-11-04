@@ -123,7 +123,7 @@ func (s *Server) resolveJobProfiles(req *JobRequest) (*VendorPresets, *profilePr
 				req.SubmittedFilaments = slices.Clone(req.Filaments)
 			}
 			req.Filaments[i] = variant
-		} else if req.ProfileIDs == nil {
+		} else if req.Library == nil {
 			return nil, incompatible("filament", name, i+1)
 		}
 	}
@@ -131,14 +131,13 @@ func (s *Server) resolveJobProfiles(req *JobRequest) (*VendorPresets, *profilePr
 }
 
 type submittedConfig struct {
-	ProfileIDs      *jobProfileIDs                        `json:"profile_ids,omitempty"`
-	ProfileSnapshot map[string]map[string]json.RawMessage `json:"profile_snapshot,omitempty"`
-	Schema          int                                   `json:"schema"`
-	Vendor          string                                `json:"vendor"`
-	Printer         string                                `json:"printer"`
-	Process         string                                `json:"process"`
-	Filaments       []string                              `json:"filaments"`
-	Profiles        struct {
+	Library   *resolveRequest `json:"library,omitempty"`
+	Schema    int             `json:"schema"`
+	Vendor    string          `json:"vendor"`
+	Printer   string          `json:"printer"`
+	Process   string          `json:"process"`
+	Filaments []string        `json:"filaments"`
+	Profiles  struct {
 		Printer   *Preset   `json:"printer"`
 		Process   *Preset   `json:"process"`
 		Filaments []*Preset `json:"filaments"`
@@ -152,7 +151,7 @@ type submittedConfig struct {
 
 func (s *Server) captureSubmission(j *Job, req *JobRequest, vendor *VendorPresets) error {
 	snapshot := &submittedConfig{Schema: 1, Vendor: req.Vendor, Printer: req.Printer, Process: req.Process, Filaments: append([]string{}, req.Filaments...), Overrides: append([][2]string{}, req.Overrides...), ProjectSettings: append([][2]string{}, req.ProjectSettings...), InputConfigSHA256: map[string]string{}, Artifact: map[string]any{}}
-	snapshot.ProfileIDs, snapshot.ProfileSnapshot = req.ProfileIDs, req.ProfileSnapshot
+	snapshot.Library = req.Library
 	snapshot.Profiles.Printer, snapshot.Profiles.Process = vendor.machines[req.Printer], vendor.processes[req.Process]
 	for _, name := range req.Filaments {
 		snapshot.Profiles.Filaments = append(snapshot.Profiles.Filaments, vendor.filaments[name])

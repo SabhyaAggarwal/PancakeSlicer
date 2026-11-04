@@ -92,7 +92,7 @@ func (s *Server) resetAll(epoch string) error {
 	if err != nil {
 		return err
 	}
-	for _, dir := range []string{"profile-backups", "user-presets", "nonplanar"} {
+	for _, dir := range []string{"profile-backups", "user-presets", "nonplanar", "profile-library.json"} {
 		if err := os.RemoveAll(filepath.Join(s.cfg.DataDir, dir)); err != nil {
 			return err
 		}
@@ -100,12 +100,7 @@ func (s *Server) resetAll(epoch string) error {
 	if err := s.libraryV4.reset(epoch); err != nil {
 		return err
 	}
-	l := s.library
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	raw, _ := json.Marshal(libraryEnvelope{Document: seededLibrary(epoch), Operations: map[string]libraryReceipt{}})
-	l.response = nil
-	return l.writeLibrary(raw)
+	return nil
 }
 
 func (m *JobManager) removeAll() {

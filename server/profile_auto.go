@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 )
 
@@ -55,11 +54,6 @@ func validateAuto(p map[string]json.RawMessage, typ string) error {
 	return nil
 }
 
-func isDynamic(p map[string]json.RawMessage) bool {
-	var a autoProfile
-	return json.Unmarshal(p["auto"], &a) == nil && len(a.Scales) > 0
-}
-
 var defaultScales = profileRules.DefaultScales
 
 var starterProfiles = []struct {
@@ -78,85 +72,8 @@ var starterProfiles = []struct {
 var starterIntent = map[string]string{"wall_loops": "2", "sparse_infill_density": "15%", "sparse_infill_pattern": "grid",
 	"seam_position": "aligned", "support_type": "tree(auto)", "support_style": "default"}
 
-func seededLibrary(epoch string) profileLibraryDocument {
-	profiles := []map[string]any{}
-	for _, s := range starterProfiles {
-		overlay := map[string]string{}
-		for k, v := range starterIntent {
-			overlay[k] = v
-		}
-		for k, v := range s.intent {
-			overlay[k] = v
-		}
-		profiles = append(profiles, map[string]any{"id": "profile:starter-" + s.id, "type": "process", "kind": "profile", "name": s.name, "revision": 1,
-			"base": map[string]string{"name": "Auto", "version": "auto:1", "engineName": "Auto"}, "baseline": map[string]string{}, "overlay": overlay, "auto": s.auto})
-	}
-	doc := profileLibraryDocument{"schema": json.RawMessage(`1`), "revision": json.RawMessage(`1`), "printers": json.RawMessage(`{"schema":1,"revision":0,"setups":{}}`)}
-	doc["profiles"], _ = json.Marshal(profiles)
-	if epoch != "" {
-		doc["epoch"], _ = json.Marshal(epoch)
-	}
-	return doc
-}
-
 func init() {
-	if _, err := libraryProfiles(seededLibrary("")); err != nil {
+	if _, err := v4Profiles(seededLibraryV4("")); err != nil {
 		panic(fmt.Sprint("starter profiles: ", err))
 	}
-}
-
-func upgradeAutos(doc profileLibraryDocument) int {
-	var profiles []map[string]json.RawMessage
-	if json.Unmarshal(doc["profiles"], &profiles) != nil {
-		return 0
-	}
-	changed := 0
-	for _, p := range profiles {
-		raw, ok := p["auto"]
-		if !ok || stringValue(p["type"]) != "process" {
-			continue
-		}
-		var old struct {
-			Schema          int      `json:"schema"`
-			Dynamic         *bool    `json:"dynamic"`
-			PreferredHeight *float64 `json:"preferredHeight"`
-		}
-		if json.Unmarshal(raw, &old) != nil || old.Schema == 3 {
-			continue
-		}
-		changed++
-		if old.Schema == 2 && old.Dynamic != nil && !*old.Dynamic {
-			delete(p, "auto")
-			continue
-		}
-		next := autoProfile{Schema: 3, Scales: defaultScales}
-		if h := old.PreferredHeight; h != nil && *h >= 0.04 && *h <= 1.2 {
-			next.PreferredHeight = h
-		}
-		p["auto"], _ = json.Marshal(next)
-	}
-	if changed > 0 {
-		doc["profiles"], _ = json.Marshal(profiles)
-	}
-	return changed
-}
-
-func (s *ProfileLibraryStore) upgradeStoredAutos() error {
-	envelope, err := s.readLibrary()
-	if err != nil {
-		return err
-	}
-	n := upgradeAutos(envelope.Document)
-	if n == 0 {
-		return nil
-	}
-	envelope.Document["revision"] = json.RawMessage(fmt.Sprint(libraryRevision(envelope.Document) + 1))
-	encoded, err := json.Marshal(envelope)
-	if err == nil {
-		err = s.writeLibrary(encoded)
-	}
-	if err == nil {
-		log.Printf("profile library: rewrote %d print profiles' auto as schema 3", n)
-	}
-	return err
 }
