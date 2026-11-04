@@ -8010,7 +8010,9 @@ std::string GCode::extrude_curved_tops(const Print &print, const std::vector<Obj
 
 void GCode::queue_advanced_conformal(const Print &print)
 {
-    for (const auto &[object, plan] : m_nonplanar_deferral) {
+    for (const auto &entry : m_nonplanar_deferral) {
+        const auto *object = entry.first;
+        const auto &plan = entry.second;
         if (plan.advanced_paths == 0)
             continue;
         for (const Layer *layer : object->layers()) {
@@ -10610,7 +10612,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 "height step at G-code X" + std::to_string(to.x()) + " Y" + std::to_string(to.y()) + " Z" + std::to_string(to.z()) +
                 " (task " + std::to_string(path.source_path_id) + ")");
     };
-    if ((m_config.nonplanar_mode.value == NonplanarMode::CurvedTops)) {
+    if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops) {
         const size_t task_id = m_path_task_ids.emplace(path.source_path_id, m_path_task_ids.size()).first->second;
         gcode += ";PATH_TASK id=" + std::to_string(task_id) +
                  " conformal=" + std::to_string(path.nonplanar_source ? 1 : 0) +
@@ -11968,7 +11970,7 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
 {
     std::string gcode;
 
-    if ((m_config.nonplanar_mode.value == NonplanarMode::CurvedTops))
+    if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops)
         lift_type = LiftType::NormalLift;
 
     if (m_writer.filament() == nullptr)
