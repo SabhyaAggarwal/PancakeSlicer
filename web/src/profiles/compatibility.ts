@@ -40,6 +40,7 @@ export function selectNativeCompatibility(s: ProfileContextState, type: PresetTy
   if (failure) return failure;
   if (!context) return allowed();
   if (type === 'process' && (profile.source as { auto?: unknown } | undefined)?.auto) return allowed();
+  if (type === 'filament' && profile.source && profile.source.kind !== 'master') return allowed();
   const config = {...profile.config};
   if (config.compatible_printers === undefined && !profile.base?.compatible_evaluated && profile.base?.compatible_printers)
     config.compatible_printers = profile.base.compatible_printers;
@@ -49,9 +50,6 @@ export function selectNativeCompatibility(s: ProfileContextState, type: PresetTy
   const overridden = !!profile.source && ['compatible_printers','compatible_printers_condition'].some(key => key in (profile.source!.overlay ?? profile.source!.overrides) || key in (profile.source!.metadata ?? {}));
   if (!raw.length && !expression && !overridden && profile.base?.compatible_evaluated
     && !profile.base.compatible_printers?.includes(context.printer.baseName ?? '')) return denied('A printer-specific material takes precedence');
-  if (type === 'filament') {
-    return nativeConstraint(config,'prints',context.process);
-  }
   return printers;
 }
 export function selectCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {

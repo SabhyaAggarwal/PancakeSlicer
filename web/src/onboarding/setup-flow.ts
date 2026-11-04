@@ -1,7 +1,7 @@
 import { createMachine, useMachine } from '../flow/fsm';
 
 export type SetupStep = 'closed' | 'welcome' | 'tour' | 'printer' | 'profiles' | 'connect' | 'filaments' | 'applying' | 'done';
-export const TOUR_PAGES = 3;
+export const TOUR_PAGES = 4;
 interface SetupContext { page: number; error: string | null }
 type SetupEvent = { type: 'OPEN' } | { type: 'CLOSE' } | { type: 'NEXT' } | { type: 'BACK' } | { type: 'SKIP' } | { type: 'APPLY' }
   | { type: 'APPLIED' } | { type: 'FAILED'; error: string };

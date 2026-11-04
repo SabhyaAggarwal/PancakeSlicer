@@ -10,8 +10,11 @@ import { selectCompatibility } from '../profiles/compatibility';
 import { archiveProfiles } from '../profiles/transactions';
 import { profileKey } from '../profiles/identity';
 import { nozzleOf } from '../profiles/machines';
-import { saveConnection, testConnection, type ConnectionEdit, type ConnectionKind, type ConnectionTest } from '../printers/connections';
+import { discoverPrinters, saveConnection, testConnection, type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered } from '../printers/connections';
 import { setup, TOUR_PAGES, useSetup } from './setup-flow';
+import { FacetGroup, FacetsHead } from '../components/Facets';
+import { Check } from '../components/Check';
+import { materialRank } from '../profiles/Pickers';
 import './setup.css';
 
 const send = setup.send;
@@ -50,7 +53,7 @@ function Frame({ step, children, foot }: { step: string; children: ReactNode; fo
     <div className="setup" role="dialog" aria-modal="true" aria-label="Setup">
       <div className="setup-panel">
         <header className="setup-head">
-          <img src="/logo.svg" width={24} height={24} alt="" />
+          <img src="/logo-48.png" width={24} height={24} alt="" />
           {at >= 0 && <div className="setup-dots" aria-label={`Step ${at + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <span key={s} className={i <= at ? 'on' : ''} />)}</div>}
           <button type="button" className="icon-btn setup-close" aria-label="Close setup" onClick={() => send({ type: 'CLOSE' })}><Glyph name="close" /></button>
         </header>
@@ -66,18 +69,39 @@ const Next = ({ disabled, label = 'Next', onClick }: { disabled?: boolean; label
 
 function Welcome() {
   return <Frame step="welcome" foot={<><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip to setup</button><span className="setup-grow" /><Next label="Take the tour" /></>}>
-    <div className="setup-hero"><img src="/logo.svg" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
+    <div className="setup-hero"><img src="/logo-256.png" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
   </Frame>;
 }
-const TOUR: { title: string; art: ReactNode }[] = [
-  { title: 'Curved tops', art: <svg viewBox="0 0 320 140" className="setup-art" aria-hidden><g fill="none" strokeWidth="6" strokeLinecap="round">
-    <path d="M20 110h20v-12h20v-12h20v-10h20v-6h20" stroke="var(--ink-3)" /><path d="M180 110c30 0 50-44 120-44" stroke="var(--accent)" /></g>
-    <text x="70" y="132" textAnchor="middle">Flat layers</text><text x="240" y="132" textAnchor="middle">Curved</text></svg> },
-  { title: 'One profile for any nozzle and height', art: <svg viewBox="0 0 320 140" className="setup-art" aria-hidden><g strokeWidth="3" fill="none">
-    <rect x="20" y="50" width="80" height="40" rx="6" stroke="var(--accent)" fill="var(--accent-tint)" />
-    {[20, 60, 100].map((y, i) => <g key={y}><path d={`M100 70 C150 70 150 ${y + 15} 200 ${y + 15}`} stroke="var(--line-strong)" /><rect x="200" y={y} width="100" height="30" rx="5" stroke="var(--line-strong)" /><text x="250" y={y + 20} textAnchor="middle">{['0.2 nozzle · 0.08', '0.4 nozzle · 0.20', '0.6 nozzle · 0.30'][i]}</text></g>)}</g>
-    <text x="60" y="75" textAnchor="middle">Everyday</text></svg> },
-  { title: 'Slice in the browser, print over the network', art: <svg viewBox="0 0 320 140" className="setup-art" aria-hidden><g strokeWidth="3" fill="none" stroke="var(--line-strong)">
+const Render = ({ src, left, right }: { src: string; left: string; right: string }) => (
+  <figure className="setup-render"><img src={src} alt={`${left} and ${right}`} loading="lazy" /><figcaption><span>{left}</span><span>{right}</span></figcaption></figure>);
+const TOUR: { title: string; text: string[]; art: ReactNode }[] = [
+  { title: 'Curved tops', text: [
+    'Most slicers print every layer flat, so sloped and domed tops show stair-steps.',
+    'PancakeSlicer can print the top layers as curves that follow the surface, on your normal printer, with no extra axes.',
+    'Tops come out smooth, often faster than printing finer layers. Overhangs can print without supports, too.'],
+    art: <div className="setup-renders"><Render src="/tour/curved-tops.webp" left="Flat layers" right="Curved top" /><Render src="/tour/overhangs.webp" left="With supports" right="Without" /></div> },
+  { title: 'Tune what matters. The rest is automatic.', text: [
+    'You set the things you care about: walls, infill, supports, ironing, how the top looks.',
+    'Everything that just follows from your nozzle and layer height, like line widths, layer counts and support gaps, is worked out for you. So one profile, Everyday, prints right on any nozzle at any layer height, with no copy per setup like other slicers need.',
+    'Values worked out for you show ✦; type over any of them if you want.'],
+    art: <div className="setup-compare">
+      <div className="setup-compare-col"><span className="setup-k">Normal presets</span>{['0.20 mm · 0.4 nozzle', '0.30 mm · 0.6 nozzle', '0.12 mm · 0.4 nozzle'].map((t) => <span key={t} className="setup-preset">{t}</span>)}</div>
+      <span className="setup-compare-arrow" aria-hidden>→</span>
+      <div className="setup-compare-col"><span className="setup-k">Dynamic</span><span className="setup-preset on">Everyday<small>any nozzle · any height</small></span></div>
+    </div> },
+  { title: 'Values from your printer', text: [
+    'Speeds, accelerations and a few machine quirks like elephant-foot compensation come from your printer, so the same profile runs right on an A1 mini or an X1C.',
+    'Anything set by a formula or your printer shows ✦. Hover it to see where it comes from, type to override, and ↺ to go back.'],
+    art: <div className="setup-sample" aria-hidden>
+      <div className="setup-sample-row"><span>Line width</span><span className="setup-sample-v">0.45 mm <b>✦</b></span></div>
+      <div className="setup-sample-row"><span>Outer wall speed</span><span className="setup-sample-v">200 mm/s <b>✦</b></span></div>
+      <div className="setup-sample-row set"><span>Wall loops</span><span className="setup-sample-v">3 <b>↺</b></span></div>
+    </div> },
+  { title: 'Your workflow', text: [
+    'Projects are saved on the server, so you can open them on any device.',
+    'One tab edits a project at a time; another shows it read-only with Take control.',
+    'Slice in the browser and send the result to your printer over the network.'],
+    art: <svg viewBox="0 0 320 140" className="setup-art" aria-hidden><g strokeWidth="3" fill="none" stroke="var(--line-strong)">
     <rect x="30" y="30" width="90" height="64" rx="6" /><path d="M60 110h30M75 94v16" /><path d="M130 62h60" stroke="var(--accent)" strokeDasharray="6 6" />
     <rect x="200" y="22" width="90" height="90" rx="6" /><path d="M215 92h60M245 40v40" /></g>
     <text x="75" y="130" textAnchor="middle">Browser</text><text x="245" y="130" textAnchor="middle">Printer</text></svg> },
@@ -86,7 +110,7 @@ function Tour({ page }: { page: number }) {
   const t = TOUR[page];
   return <Frame step="tour" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip</button><span className="setup-grow" />
     <span className="setup-count">{page + 1}/{TOUR_PAGES}</span><Next /></>}>
-    <div className="setup-tour"><h2>{t.title}</h2>{t.art}</div>
+    <div className="setup-tour"><div className="setup-tour-art">{t.art}</div><div className="setup-tour-text"><h2>{t.title}</h2>{t.text.map((x) => <p key={x}>{x}</p>)}</div></div>
   </Frame>;
 }
 
@@ -147,6 +171,13 @@ const KINDS: [ConnectionKind, string][] = [['bambu-lan', 'Bambu LAN'], ['moonrak
 function Connect() {
   const [edit, setEdit] = useState<ConnectionEdit>(choices.connection ?? { kind: 'bambu-lan', name: 'Printer' });
   const [test, setTest] = useState<ConnectionTest | 'testing' | null>(null);
+  const [found, setFound] = useState<Discovered[] | 'looking' | string | null>(null);
+  const discover = async () => {
+    setFound('looking');
+    try { const r = await discoverPrinters(); setFound(r.printers.length ? r.printers : 'No printers found on this network'); }
+    catch (e) { setFound(e instanceof Error ? e.message : String(e)); }
+  };
+  const use = (d: Discovered) => { setEdit((e) => ({ ...e, kind: d.kind, name: d.name ?? e.name, host: d.host, url: d.url, serial: d.serial, model: d.model })); setTest(null); };
   const set = (patch: Partial<ConnectionEdit>) => { setEdit((e) => ({ ...e, ...patch })); setTest(null); };
   const field = (key: keyof ConnectionEdit, label: string, type = 'text') => <label className="setup-field"><span className="setup-k">{label}</span>
     <input className="text" type={type} value={String(edit[key] ?? '')} onChange={(e) => set({ [key]: e.target.value })} /></label>;
@@ -155,6 +186,13 @@ function Connect() {
   const next = () => { choices = { ...choices, connection: filled ? edit : null }; send({ type: 'NEXT' }); };
   return <Frame step="connect" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => { choices = { ...choices, connection: null }; send({ type: 'SKIP' }); }}>Skip</button><span className="setup-grow" /><Next disabled={!filled} onClick={next} /></>}>
     <h2>Connect your printer</h2>
+    <div className="setup-row">
+      <button type="button" className="btn" disabled={found === 'looking'} onClick={() => void discover()}>{found === 'looking' ? 'Looking…' : 'Find printers'}</button>
+      {typeof found === 'string' && found !== 'looking' && <span className="setup-count">{found}</span>}
+    </div>
+    {Array.isArray(found) && <div className="setup-found">{found.map((d, i) => (
+      <button key={`${d.host ?? d.url}-${i}`} type="button" className="setup-chip" aria-pressed={!!d.host && d.host === edit.host || !!d.url && d.url === edit.url} onClick={() => use(d)}>
+        {d.name ?? d.model ?? d.host ?? d.url} <span className="setup-n">{d.host ?? d.url}</span></button>))}</div>}
     <div className="setup-chips" role="radiogroup" aria-label="Connection">{KINDS.map(([k, l]) =>
       <button key={k} type="button" role="radio" aria-checked={edit.kind === k} className="setup-chip" onClick={() => set({ kind: k })}>{l}</button>)}</div>
     <div className="setup-form">
@@ -169,6 +207,7 @@ function Connect() {
 }
 
 interface FilamentRow { key: string; name: string; brand: string; material: string }
+const baseMaterial = (m: string) => { const b = m.toUpperCase().split(/[-+ ]/)[0].replace(/\d+$/, ''); return b || m; };
 function Filaments({ error }: { error: string | null }) {
   const filaments = useStore((s) => s.filaments);
   const printer = choices.model ? (choices.model.presets.find((p) => nozzleOf(p) === choices.nozzles[0]) ?? choices.model.presets[0]) : undefined;
@@ -180,31 +219,46 @@ function Filaments({ error }: { error: string | null }) {
     return (fit.length ? fit : all).filter((r) => !seen.has(r.name) && !!seen.add(r.name)).sort((a, b) => a.name.localeCompare(b.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filaments]);
-  const brands = useMemo(() => [...new Set(rows.map((r) => r.brand))].sort(), [rows]);
   const home = choices.model ? choices.model.vendorName.split(' ')[0] : '';
-  const [brand, setBrand] = useState<string | null>(brands.find((b) => b.startsWith(home)) ?? null);
+  const counted = (values: string[]) => [...values.reduce((m, v) => m.set(v, (m.get(v) ?? 0) + 1), new Map<string, number>())].map(([value, count]) => ({ value, label: value, count }));
+  const brandOptions = useMemo(() => counted(rows.map((r) => r.brand)).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
+  const materialOptions = useMemo(() => counted(rows.map((r) => baseMaterial(r.material))).sort((a, b) => materialRank(a.value) - materialRank(b.value) || a.value.localeCompare(b.value)), [rows]);
+  const [brands, setBrands] = useState<string[]>(() => { const b = brandOptions.find((o) => home && o.value.startsWith(home)); return b ? [b.value] : []; });
+  const [materials, setMaterials] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [on, setOn] = useState<Set<string>>(() => choices.filaments ?? new Set(['PLA', 'PETG'].map((m) => {
-    const of = (brandRows: FilamentRow[]) => brandRows.filter((r) => r.material === m).sort((a, b) => a.name.length - b.name.length)[0];
+    const of = (brandRows: FilamentRow[]) => brandRows.filter((r) => r.material === m).sort((a, b) => Number(/basic/i.test(b.name)) - Number(/basic/i.test(a.name)) || a.name.length - b.name.length)[0];
     return (home && of(rows.filter((r) => r.brand.startsWith(home)))) || of(rows.filter((r) => /^generic\b/i.test(r.name)));
   }).filter((r): r is FilamentRow => !!r).map((r) => r.key)));
   const q = search.trim().toLowerCase();
-  const shown = rows.filter((r) => q ? `${r.brand} ${r.name} ${r.material}`.toLowerCase().includes(q) : !brand || r.brand === brand);
-  const materials = [...new Set(shown.map((r) => r.material))].sort();
-  const group = (m: string) => shown.filter((r) => r.material === m).map((r) => r.key);
+  const shown = rows.filter((r) => (!brands.length || brands.includes(r.brand)) && (!materials.length || materials.includes(baseMaterial(r.material)))
+    && (!q || `${r.brand} ${r.name} ${r.material}`.toLowerCase().includes(q)));
+  const picked = shown.filter((r) => on.has(r.key)).length;
   const setMany = (keys: string[], value: boolean) => setOn((s) => { const n = new Set(s); keys.forEach((k) => value ? n.add(k) : n.delete(k)); return n; });
-  const flip = (k: string) => setMany([k], !on.has(k));
   const apply = () => { choices = { ...choices, filaments: on }; send({ type: 'APPLY' }); void applyChoices(); };
+  const active = brands.length + materials.length;
   return <Frame step="filaments" foot={<><Back /><span className="setup-grow" />{error && <span className="setup-test bad">{error}</span>}<span className="setup-count">{on.size} selected</span><Next label="Done" disabled={!on.size} onClick={apply} /></>}>
     <h2>Your filaments</h2>
-    <input className="text setup-search" type="search" placeholder="Search filaments" aria-label="Search filaments" value={search} onChange={(e) => setSearch(e.target.value)} />
-    {!q && <div className="setup-chips" aria-label="Brand"><button type="button" className="setup-chip" aria-pressed={brand === null} onClick={() => setBrand(null)}>All</button>
-      {brands.map((b) => <button key={b} type="button" className="setup-chip" aria-pressed={brand === b} onClick={() => setBrand(b)}>{b}</button>)}</div>}
-    <div className="setup-groups">{materials.map((m) => { const keys = group(m), all = keys.every((k) => on.has(k)); return (
-      <button key={m} type="button" className="setup-chip" aria-pressed={all} onClick={() => setMany(keys, !all)}>{all ? '✓ ' : ''}All {brand && !q ? `${brand} ` : ''}{m} <span className="setup-n">{keys.length}</span></button>); })}</div>
-    <div className="setup-grid">{shown.map((r) => (
-      <label key={r.key} className="setup-check"><input type="checkbox" checked={on.has(r.key)} onChange={() => flip(r.key)} /><span>{r.name}</span><span className="setup-n">{r.material}</span></label>
-    ))}</div>
+    <div className={`setup-filaments${filtersOpen ? ' filters-open' : ''}`}>
+      <aside className="facets setup-facets" aria-label="Filters">
+        <FacetsHead active={active} onClear={() => { setBrands([]); setMaterials([]); }} />
+        <FacetGroup label="Brand" options={brandOptions} value={brands} onChange={setBrands} />
+        <FacetGroup label="Material" options={materialOptions} value={materials} onChange={setMaterials} />
+        <button type="button" className="btn setup-show" onClick={() => { setFiltersOpen(false); requestAnimationFrame(() => document.querySelector<HTMLElement>('.setup-filters-btn')?.focus()); }}>Show {shown.length}</button>
+      </aside>
+      <section className="setup-results" aria-label="Filaments">
+        <div className="setup-results-tools">
+          <button type="button" className="btn setup-filters-btn" onClick={() => setFiltersOpen(true)}><Glyph name="filter" />{active ? `Filters · ${active}` : 'Filters'}</button>
+          <input className="text setup-search" type="search" placeholder="Search filaments" aria-label="Search filaments" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <label className="setup-check setup-all"><Check checked={picked === 0 ? false : picked === shown.length ? true : 'indeterminate'} disabled={!shown.length}
+          onCheckedChange={() => setMany(shown.map((r) => r.key), picked < shown.length)} /><span>Select all shown</span><span className="setup-n">{shown.length}</span></label>
+        <div className="setup-grid">{shown.map((r) => (
+          <label key={r.key} className="setup-check"><Check checked={on.has(r.key)} onCheckedChange={(v) => setMany([r.key], v)} /><span>{r.name}</span><span className="setup-n">{r.material}</span></label>
+        ))}{!shown.length && <span className="setup-count">No filaments match</span>}</div>
+      </section>
+    </div>
   </Frame>;
 }
 
@@ -228,8 +282,15 @@ async function applyChoices() {
     }
     if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Connection not saved: ${e instanceof Error ? e.message : e}`));
     let firstFilament: string | null = null;
-    for (const key of filaments ?? []) {
-      const made = await createProfileFromBase('filament', key);
+    const base = model?.presets.find((p) => Math.abs(nozzleOf(p) - nozzles[0]) < 1e-6)?.name;
+    const names = (p: SystemPreset) => [p.config.compatible_printers].flat().map(String);
+    const now = getState(), stem = (name: string) => name.replace(/\s*@.*$/, '');
+    const picked = new Set([...(filaments ?? [])].map((key) => stem(profilesFor(now, 'filament').find((p) => catalogKey(p) === key)?.name ?? key)));
+    for (const name of picked) {
+      const variants = profilesFor(getState(), 'filament').filter((p) => stem(p.name) === name);
+      const fit = (base && variants.find((p) => names(p).includes(base))) || variants.find((p) => !names(p).filter(Boolean).length && selectCompatibility(getState(), 'filament', catalogKey(p)).ok);
+      if (!fit) continue;
+      const made = await createProfileFromBase('filament', catalogKey(fit));
       firstFilament ??= made;
     }
     if (firstFilament) requestPreset('filament', 0, firstFilament);
@@ -240,12 +301,37 @@ async function applyChoices() {
 function Done() {
   const finish = () => { savePreferences({ 'orca.setup': '1' }); setState({ tab: 'prepare' }); send({ type: 'CLOSE' }); };
   return <Frame step="done" foot={<><Back /><span className="setup-grow" /><Next label="Start printing" onClick={finish} /></>}>
-    <div className="setup-hero"><img src="/logo.svg" width={96} height={96} alt="" /><h1>Ready</h1></div>
+    <div className="setup-hero"><img src="/logo-256.png" width={96} height={96} alt="" /><h1>Ready</h1></div>
   </Frame>;
 }
 
 export default function Setup() {
   const { value, context } = useSetup();
+  useEffect(() => {
+    if (value === 'closed') return;
+    const before = document.activeElement as HTMLElement | null;
+    const panel = () => document.querySelector<HTMLElement>('.setup');
+    const behind = [...(panel()?.parentElement?.children ?? [])].filter((el): el is HTMLElement => el instanceof HTMLElement && !el.classList.contains('setup') && !el.inert);
+    behind.forEach((el) => { el.inert = true; });
+    const trap = (e: KeyboardEvent) => {
+      const root = panel();
+      if (e.key !== 'Tab' || !root) return;
+      const all = [...root.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),[tabindex]:not([tabindex="-1"]),a[href]')].filter((el) => el.offsetParent !== null);
+      if (!all.length) return;
+      const firstEl = all[0], lastEl = all[all.length - 1], at = document.activeElement;
+      if (!root.contains(at)) { e.preventDefault(); firstEl.focus(); }
+      else if (e.shiftKey && at === firstEl) { e.preventDefault(); lastEl.focus(); }
+      else if (!e.shiftKey && at === lastEl) { e.preventDefault(); firstEl.focus(); }
+    };
+    document.addEventListener('keydown', trap, true);
+    return () => { document.removeEventListener('keydown', trap, true); behind.forEach((el) => { el.inert = false; }); before?.focus?.(); };
+  }, [value === 'closed']);
+  useEffect(() => {
+    if (value === 'closed') return;
+    const root = document.querySelector<HTMLElement>('.setup');
+    const visible = (el: HTMLElement) => el.offsetParent !== null;
+    ([...(root?.querySelectorAll<HTMLElement>('.setup-body input, .setup-body button') ?? [])].find(visible) ?? root?.querySelector<HTMLElement>('.setup-foot .btn-primary'))?.focus();
+  }, [value, context.page]);
   useEffect(() => {
     if (value === 'closed') return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && value !== 'applying') send({ type: 'CLOSE' }); };
