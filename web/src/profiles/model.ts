@@ -117,7 +117,7 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
     libraries.set(signature, (values = new Map()));
     if (libraries.size > 8) libraries.delete(libraries.keys().next().value!);
   }
-  const key = `${type}:${name}`, cached = values.get(key);
+  const key = type === 'process' ? `${type}:${name}@${(s as { printer?: string }).printer ?? ''}` : `${type}:${name}`, cached = values.get(key);
   if (cached) return cached;
   const resolved = resolveAncestors(s, type, name, new Set());
   if (resolved.base || resolved.user) values.set(key, resolved);
@@ -134,8 +134,9 @@ function autoBase(s: ProfileCatalog): SystemPreset | undefined {
   return base;
 }
 export function autoEnginePreset(s: ProfileCatalog, printerConfig: Config, printerBaseName: string): SystemPreset | undefined {
+  const standard = (s.machines.find((m) => m.name === printerBaseName) as { standard_process?: string } | undefined)?.standard_process;
   const wanted = String(Array.isArray(printerConfig.default_print_profile) ? printerConfig.default_print_profile[0] : printerConfig.default_print_profile ?? '');
-  return s.processes.find((p) => wanted && p.name === wanted)
+  return s.processes.find((p) => standard && p.name === standard) ?? s.processes.find((p) => wanted && p.name === wanted)
     ?? s.processes.find((p) => /^0\.20mm Standard/.test(p.name) && p.compatible_printers?.includes(printerBaseName)) ?? autoBase(s);
 }
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
@@ -154,8 +155,9 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   if (parent?.issue && parent.status !== 'archived' || parentName && !parent?.source)
     return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
-  const auto = type === 'process' && !!(user as { auto?: unknown }).auto;
-  const found = auto ? { base: autoBase(s), ambiguous: false } : findCatalogBase(s, type, user.base ?? user.inherits);
+  const auto = type === 'process' && (!!(user as { auto?: unknown }).auto || user.base?.name === 'Auto');
+  const printer = auto && (s as { printer?: string }).printer ? resolveProfile(s, 'machine', (s as { printer?: string }).printer!).base : undefined;
+  const found = auto ? { base: (printer && autoEnginePreset(s, printer.config, printer.name)) || autoBase(s), ambiguous: false } : findCatalogBase(s, type, user.base ?? user.inherits);
   const base = found.base ?? (!user.base ? parent?.base : undefined);
   if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
   if (parent?.base && parent.base !== base)

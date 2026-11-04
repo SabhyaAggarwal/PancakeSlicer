@@ -37,8 +37,7 @@ const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map
 const CHOICE_HINTS: Record<string, Record<string, string>> = {
   nonplanar_mode: {
     off: 'Standard: flat layers, like any slicer.',
-    auto: 'Auto: chooses per part between curved tops, whole-part curved layers and flat.',
-    manual: 'Custom: the curved-layer settings below, exactly as set.',
+    curved_tops: 'Curved tops: the top layers follow the surface; the rest stays flat.',
     multiplanar: 'Tilted chunks: the bed tilts so each chunk prints its overhangs upright.',
     field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
   },

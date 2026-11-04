@@ -67,12 +67,11 @@ const realApi: Api = {
   async submit(req, signal, onUpload) {
     const fd = new FormData();
     await attachFiles(fd, req.files, signal, onUpload);
-    if(req.profile_ids)fd.append('profile_ids',JSON.stringify(req.profile_ids));
-    fd.append('vendor', req.vendor);
-    fd.append('printer', req.printer);
-    fd.append('process', req.process);
-    for (const f of req.filaments) fd.append('filament[]', f);
-    fd.append('overrides', JSON.stringify(req.overrides));
+    const { printer, print, filaments } = req.library;
+    if (!printer) throw new Error('Choose a printer first.');
+    if (!print) throw new Error('Choose print settings first.');
+    if (!filaments.length || filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
+    fd.append('library', JSON.stringify({ ...req.library, project: req.overrides }));
     if (req.plate_index !== undefined) fd.append('plate_index', String(req.plate_index));
     if (req.plate) fd.append('plate', JSON.stringify(req.plate));
     if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));

@@ -1,14 +1,13 @@
 import { filamentVectors } from './multinozzle/config';
 import { nozzleAssignments } from './multinozzle/assignments';
-import type { Config, ConfigValue } from './api/types';
+import type { Config, ConfigValue, JobLibrary } from './api/types';
 import { allFlush } from './flush-state';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
-import { profileContext } from './profiles/context';
-import { originsOf, printerOverrides } from './profiles/context';
+import { effectiveLayerHeight, originsOf, printerOverrides } from './profiles/context';
 import { autoEnginePreset } from './profiles/model';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
@@ -112,16 +111,14 @@ export function engineName(s: State, type: 'machine' | 'process' | 'filament', n
   return resolved.engineName ?? '';
 }
 
+export function jobLibrary(s: State): JobLibrary {
+  const id = (type: 'machine' | 'process' | 'filament', key: string) => resolvePreset(s, type, key).source?.id ?? '';
+  return { printer: id('machine', s.printer), print: id('process', s.process), filaments: s.filamentSlots.map((f) => id('filament', f)), layerHeight: effectiveLayerHeight(s) };
+}
+
 export function jobFields(s: State, saving = false) {
-  const sys = (type: 'machine' | 'process' | 'filament', n: string) => engineName(s, type, n);
-  const context=profileContext(s);
-  const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)}} : undefined;
   return {
-    ...(profile_ids ? {profile_ids} : {}),
-    vendor: printerPreset(s)?.vendor ?? 'BBL',
-    printer: sys('machine', s.printer),
-    process: sys('process', s.process),
-    filaments: s.filamentSlots.map((f) => sys('filament', f)),
+    library: jobLibrary(s),
     ...(s.project && s.projectPlates.length > 1 ? { plate_index: s.plateIndex } : {}),
     ...(s.project ? { project_instances: projectInstances(s) } : {}),
     ...(s.project && canEditProject() && projectEdits(s).edits.length ? { project_edits: projectEdits(s).edits } : {}),

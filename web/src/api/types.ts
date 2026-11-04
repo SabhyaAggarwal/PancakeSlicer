@@ -101,20 +101,10 @@ export interface PlateJson {
   plates?: { index: number; name: string; settings: Record<string, string>; locked?: boolean }[];
 }
 
-export interface JobProfileIds {
-  schema: 1;
-  printer: string;
-  process: string;
-  filaments: string[];
-  revisions: {printer: number; process: number; filaments: number[]};
-}
+export interface JobLibrary { printer: string; filaments: string[]; print: string; layerHeight?: number }
 export interface JobRequest {
-  profile_ids?: JobProfileIds;
+  library: JobLibrary;
   files: { name: string; blob: Blob }[];
-  vendor: string;
-  printer: string;
-  process: string;
-  filaments: string[];
   overrides: Config;
   plate?: PlateJson;
   plate_index?: number;

@@ -1,22 +1,106 @@
 import { mutation, responseError } from '../api/access';
+import type { Config, ProfileOverlay } from '../api/types';
 import type { ProfileLibraryDocument, ProfileLibraryWrite, ProfileLibraryWriteResult } from '../profiles/ownership';
-const validate = (doc: ProfileLibraryDocument) => {
-  if (!doc || doc.schema !== 1 || !Number.isInteger(doc.revision) || doc.revision < 0 || !Array.isArray(doc.profiles)
-    || doc.printers?.schema !== 1 || !doc.printers.setups || doc.epoch !== undefined && typeof doc.epoch !== 'string') throw new Error('The profile library is invalid.');
-  return doc;
+import type { ScaleRow } from '../profiles/auto-rules';
+
+type Type = 'printer' | 'filament' | 'print';
+interface V4Record {
+  id: string; type: Type; name: string; revision: number; archived?: { at: number; operationId: string };
+  vendor?: string; model?: string; nozzle?: number; machine?: Config; printOverrides?: Config;
+  family?: string; brand?: string; material?: string; colour?: string; settings?: Config; fits?: { models?: string[]; nozzles?: number[] };
+  intent?: Config; scales?: ScaleRow[]; preferredHeight?: number;
+}
+interface V4Document { schema: 4; revision: number; epoch?: string; profiles: V4Record[]; setups: ProfileLibraryDocument['printers']['setups'] }
+interface PrinterModel { id: string; machines?: Record<string, string> }
+interface Family { id: string; brand?: string; material?: string; variants?: Record<string, string>; fallback?: string }
+
+const AUTO = { name: 'Auto', engineName: 'Auto', version: 'auto:1' };
+const v3Type = { printer: 'machine', filament: 'filament', print: 'process' } as const;
+const v4Type = { machine: 'printer', filament: 'filament', process: 'print' } as const;
+const first = (v: Config[string] | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
+
+let printerCatalog: Promise<{ id: string; models: PrinterModel[] }[]> | undefined;
+const families = new Map<string, Promise<Family[]>>();
+const json = async <T,>(path: string): Promise<T> => {
+  const response = await fetch(path, { cache: 'no-cache' });
+  if (!response.ok) throw await responseError(response);
+  return response.json();
 };
-export async function readProfileLibrary(_mock=false):Promise<ProfileLibraryDocument> {
-  const response=await fetch('/api/profile-library',{cache:'no-cache'});
-  if(!response.ok){
-    const error=await responseError(response);
-    if(error.code==='legacy_profiles_pending')error.message='The profile service is out of date. Update and restart it, then reload.';
-    throw error;
+const vendors = () => (printerCatalog ??= json<{ vendors: { id: string; models: PrinterModel[] }[] }>('/api/printer-catalog').then((c) => c.vendors)
+  .catch((e) => { printerCatalog = undefined; throw e; }));
+const familiesOf = (vendor: string) => {
+  let read = families.get(vendor);
+  if (!read) families.set(vendor, (read = json<{ families: Family[] }>(`/api/filament-catalog?vendor=${encodeURIComponent(vendor)}`).then((c) => c.families)
+    .catch((e) => { families.delete(vendor); throw e; })));
+  return read;
+};
+const nozzleKey = (n: number) => String(n);
+const machineName = async (vendor: string, model: string, nozzle: number) =>
+  (await vendors()).find((v) => v.id === vendor)?.models.find((m) => m.id === model)?.machines?.[nozzleKey(nozzle)];
+
+async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
+  const printers = doc.profiles.filter((p) => p.type === 'printer');
+  const machines = new Map(await Promise.all(printers.map(async (p) => [p.id, await machineName(p.vendor ?? '', p.model ?? '', p.nozzle ?? 0)] as const)));
+  const home = printers.find((p) => !p.archived && machines.get(p.id)) ?? printers.find((p) => machines.get(p.id));
+  const profiles = await Promise.all(doc.profiles.map(async (r): Promise<ProfileOverlay> => {
+    const common = { id: r.id, name: r.name, revision: r.revision, kind: 'profile' as const, type: v3Type[r.type], ...(r.archived ? { archived: r.archived } : {}) };
+    if (r.type === 'printer') {
+      const name = machines.get(r.id) ?? `${r.model} ${r.nozzle} nozzle`;
+      return { ...common, base: { name, engineName: name, version: '', vendor: r.vendor }, overlay: { ...r.machine },
+        ...(r.printOverrides ? { printOverrides: { ...r.printOverrides } } : {}) } as ProfileOverlay;
+    }
+    if (r.type === 'filament') {
+      const vendor = (r.family ?? '').split('/')[0], family = (await familiesOf(vendor).catch(() => [])).find((f) => f.id === r.family);
+      const name = (home && family?.variants?.[machines.get(home.id)!]) ?? family?.fallback ?? Object.values(family?.variants ?? {})[0] ?? r.family ?? '';
+      const overlay = { ...r.settings, ...(r.colour ? { filament_colour: [r.colour] } : {}) };
+      const applicability = r.fits ? { schema: 2, ...(r.fits.models?.length ? { printers: { models: r.fits.models } } : {}), ...(r.fits.nozzles?.length ? { nozzle: { sizes: r.fits.nozzles } } : {}) } : undefined;
+      return { ...common, base: { name, engineName: name, version: '', vendor }, overlay, ...(applicability ? { applicability } : {}), metadata: { family: r.family ?? '' } } as ProfileOverlay;
+    }
+    const auto = r.scales?.length || r.preferredHeight ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}) } } : {};
+    return { ...common, base: AUTO, overlay: { ...r.intent }, ...auto } as ProfileOverlay;
+  }));
+  return { schema: 1, revision: doc.revision, ...(doc.epoch ? { epoch: doc.epoch } : {}), profiles, printers: { schema: 1, revision: doc.revision, setups: doc.setups ?? {} } };
+}
+
+async function toV4(p: ProfileOverlay): Promise<V4Record> {
+  const type = v4Type[p.type], extra = p as ProfileOverlay & { printOverrides?: Config; auto?: { scales?: ScaleRow[]; preferredHeight?: number } };
+  const base: V4Record = { id: p.id!, type, name: p.name.replace(/\s+@.*$/, '').trim() || p.name, revision: p.revision ?? 0, ...(p.archived ? { archived: p.archived } : {}) };
+  const overlay = { ...p.overlay };
+  if (type === 'printer') {
+    const name = p.base.name, catalog = await vendors();
+    for (const v of catalog) for (const m of v.models) for (const [nozzle, machine] of Object.entries(m.machines ?? {}))
+      if (machine === name) return { ...base, vendor: v.id, model: m.id, nozzle: Number(nozzle), ...(Object.keys(overlay).length ? { machine: overlay } : {}),
+        ...(extra.printOverrides && Object.keys(extra.printOverrides).length ? { printOverrides: extra.printOverrides } : {}) };
+    const model = first(overlay.printer_model), nozzle = Number(first(overlay.nozzle_diameter));
+    return { ...base, vendor: p.base.vendor ?? '', model, nozzle, ...(Object.keys(overlay).length ? { machine: overlay } : {}) };
   }
-  return validate(await response.json());
+  if (type === 'filament') {
+    const vendor = p.base.vendor ?? 'BBL', list = await familiesOf(vendor).catch(() => []);
+    const family = String(p.metadata?.family ?? '') || list.find((f) => f.fallback === p.base.name || Object.values(f.variants ?? {}).includes(p.base.name))?.id || `${vendor}/${p.base.name.replace(/\s+@.*$/, '')}`;
+    const known = list.find((f) => f.id === family), colour = first(overlay.filament_colour);
+    delete overlay.filament_colour;
+    const rule = (p as { applicability?: { printers?: { models?: string[] }; nozzle?: { sizes?: number[] } } }).applicability;
+    const fits = rule?.printers?.models?.length || rule?.nozzle?.sizes?.length ? { ...(rule.printers?.models?.length ? { models: rule.printers.models } : {}), ...(rule.nozzle?.sizes?.length ? { nozzles: rule.nozzle.sizes } : {}) } : undefined;
+    return { ...base, family, ...(known?.brand ? { brand: known.brand } : {}), ...(known?.material ? { material: known.material } : {}), ...(colour ? { colour } : {}),
+      ...(Object.keys(overlay).length ? { settings: overlay } : {}), ...(fits ? { fits } : {}) };
+  }
+  return { ...base, ...(Object.keys(overlay).length ? { intent: overlay } : {}), ...(extra.auto?.scales?.length ? { scales: extra.auto.scales } : {}),
+    ...(extra.auto?.preferredHeight ? { preferredHeight: extra.auto.preferredHeight } : {}) };
+}
+
+export async function readProfileLibrary(_mock = false): Promise<ProfileLibraryDocument> {
+  const response = await fetch('/api/library', { cache: 'no-cache' });
+  if (!response.ok) throw await responseError(response);
+  const doc = await response.json() as V4Document;
+  if (!doc || doc.schema !== 4 || !Number.isInteger(doc.revision) || !Array.isArray(doc.profiles)) throw new Error('The profile library is invalid.');
+  return fromV4(doc);
 }
 export async function persistProfileLibrary(write: ProfileLibraryWrite, _mock = false): Promise<ProfileLibraryWriteResult> {
-  validate(write.document);
-  const response = await mutation('/api/profile-library',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(write)});
+  const { document } = write;
+  const v4: V4Document = { schema: 4, revision: document.revision, ...(document.epoch ? { epoch: document.epoch } : {}),
+    profiles: await Promise.all(document.profiles.filter((p) => p.id).map(toV4)), setups: document.printers.setups };
+  const response = await mutation('/api/library', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ operationId: write.operationId, expectedRevision: write.expectedRevision, document: v4 }) });
   if (!response.ok) throw await responseError(response);
   return response.json();
 }

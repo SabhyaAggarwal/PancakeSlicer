@@ -223,8 +223,8 @@ async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THRE
 }
 async function meshStep(s: ReturnType<typeof getState>, f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
   if (!s.api) throw new Error(`${f.name}: importing STEP requires the slicing service`);
-  const { vendor, printer, process, filaments } = jobFields(s, true);
-  const id = await s.api.submit({ vendor, printer, process, filaments, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] }, signal);
+  const { library } = jobFields(s, true);
+  const id = await s.api.submit({ library, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] }, signal);
   if (signal?.aborted) { void s.api.cancel(id).catch(() => {}); throw new DOMException('Import canceled', 'AbortError'); }
   await new Promise<void>((resolve, reject) => {
     let unsubscribe = () => {};
@@ -510,8 +510,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
   const r = await jobRequest();
   return {
     files: r.files.map((f) => `${f.name} (${f.blob.size} bytes)`),
-    vendor: r.vendor, printer: r.printer, process: r.process, 'filament[]': r.filaments,
-    overrides: JSON.stringify(r.overrides), plate: r.plate && JSON.stringify(r.plate), project_instances: r.project_instances,
+    library: JSON.stringify({ ...r.library, project: r.overrides }), plate: r.plate && JSON.stringify(r.plate), project_instances: r.project_instances,
     events: r.events.length ? JSON.stringify(r.events) : undefined, output: r.output,
   };
 };
@@ -629,8 +628,8 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
   const generation = ++sliceGeneration, document = documentGeneration(), projectId = projectFlow.get().context.id, plate = s.plateIndex;
   const current = () => generation === sliceGeneration && document === documentGeneration() && projectId === projectFlow.get().context.id && plate === getState().plateIndex;
   const signature = plateSignature(s);
-  const { vendor, printer, process, filaments, output } = jobFields(s);
-  const request = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
+  const { library, output } = jobFields(s);
+  const request = calib ? { library, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
     : await plateJob(s).catch((e: unknown) => String(e));
   if (!current() || request === null) return;
   if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
