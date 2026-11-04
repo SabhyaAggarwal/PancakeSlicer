@@ -58,7 +58,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const resetToBase = useCallback((k: string) => void resetSettingToBase(type, name, k).catch((e) => toast(e instanceof Error ? e.message : String(e))), [type, name]);
   const nozzle = useStore((st) => st.machines.length ? String(Array.isArray(resolvePreset(st, 'machine', st.printer).config.nozzle_diameter) ? (resolvePreset(st, 'machine', st.printer).config.nozzle_diameter as unknown[])[0] : resolvePreset(st, 'machine', st.printer).config.nozzle_diameter ?? '') : ''), height = useStore((st) => st.processVariant?.layerHeight), speed = useStore((st) => st.speed);
   const autoReasons = useMemo(() => type !== 'process' ? undefined : Object.fromEntries(AUTO_KEYS.map((k) => [k, `Computed from the ${nozzle || 'printer'} mm nozzle${height ? `, ${height.toFixed(2)} mm layers` : ''}, the filament and ${speed} speed`])), [type, nozzle, height, speed]);
-  const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode, sources: settingSources(getState(), type, name), autoReasons, resetToBase}), [name, values, baseline, changes, set, reset, mode, users, type, resetToBase, autoReasons]);
+  const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode: type === 'process' ? 'develop' : mode, sources: settingSources(getState(), type, name), autoReasons, resetToBase}), [name, values, baseline, changes, set, reset, mode, users, type, resetToBase, autoReasons]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
   const noPrinter = applicabilityDirty && worksWithNone(type, applicability);

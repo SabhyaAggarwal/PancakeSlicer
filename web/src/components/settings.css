@@ -173,10 +173,8 @@
 :where(.orca-parity) .opt-undo:has(> .auto-tag) { justify-content: flex-start; overflow: visible; }
 :where(.orca-parity) .auto-tag { flex: none; padding: 0 5px; white-space: nowrap; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink-3); font: 400 12px/14px var(--font-ui); cursor: default; }
 
-:where(.orca-parity) .opt-line > .auto-rule { grid-column: 2; grid-row: 2; min-width: 0; margin-top: -2px; padding: 0; border: 0; background: none; overflow: hidden; color: var(--ink-3); font: 400 12px/14px var(--font-ui); text-align: left; white-space: nowrap; text-overflow: ellipsis; }
-:where(.orca-parity) .auto-rule.is-button { cursor: pointer; }
-:where(.orca-parity) .auto-rule.is-button:hover { color: var(--ink); }
-:where(.orca-parity) .auto-rule:focus-visible, :where(.orca-parity) .auto-tag.is-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-:where(.orca-parity) .auto-tag.is-button { cursor: pointer; background: none; }
-:where(.orca-parity) .auto-tag.is-button:hover { color: var(--ink); border-color: var(--ink-3); }
 :where(.orca-parity) .dynamic-badge { display: inline-block; margin-left: 0.3em; color: var(--accent-text); font-size: 0.9em; line-height: 1; vertical-align: baseline; }
+
+@media (pointer: coarse), (hover: none) {
+  :where(.orca-parity) .label-tip { display: flex; align-items: center; min-height: 44px; }
+}

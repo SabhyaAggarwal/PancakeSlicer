@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Check } from '../components/Check';
 import { Glyph } from '../components/Glyph';
+import { DynamicBadge } from '../components/DynamicBadge';
 import type { UserPreset } from '../api/types';
 import { BaseBadge } from './bases-ui';
 import type { SelectionEvent } from './selection';
@@ -17,6 +18,7 @@ export interface ManagerProfileRowItem {
   cover?: string | null;
   swatch?:string|null;
   lead?: string;
+  dynamic?: boolean;
   flag?: string;
   method?: string;
   user?: UserPreset;
@@ -55,7 +57,7 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     {item.swatch !== undefined && (item.swatch ? <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch}}/> : <span role="gridcell" className="pf-row-swatch" aria-label="No color"/>)}
     {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover ? <img src={item.cover} alt="" width={52} height={52} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/> : <Glyph name="printer" size={28}/>}</span>}
     {item.lead !== undefined && <span role="gridcell" className="pf-row-lead">{item.lead}</span>}
-    <span role="gridcell" className="pf-row-label"><span className="pf-item-name" {...(item.lead !== undefined && item.fullName && item.fullName !== item.name ? {'data-truncated': 'true', 'data-full-text': item.fullName} : {})}>{head && <span className="pf-name-head">{head}</span>}<span className="pf-name-tail">{tail}</span></span><BaseBadge profile={item.user}/>
+    <span role="gridcell" className="pf-row-label"><span className="pf-item-name" {...(item.lead !== undefined && item.fullName && item.fullName !== item.name ? {'data-truncated': 'true', 'data-full-text': item.fullName} : {})}>{head && <span className="pf-name-head">{head}</span>}<span className="pf-name-tail">{tail}</span></span>{item.dynamic && <DynamicBadge/>}<BaseBadge profile={item.user}/>
       {item.meta && <span className="pf-item-meta">{item.meta}</span>}{item.note && <span className="pf-item-note">{item.note}</span>}</span>
     {item.flag && <span role="gridcell" className="pf-row-flag">{item.flag}</span>}
     {item.method && <span role="gridcell" className="pf-row-method" aria-label={item.method} data-truncated="true" data-full-text={item.method}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden><path d={METHOD[item.method] ?? METHOD.Flat}/></svg></span>}

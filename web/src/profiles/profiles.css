@@ -23,7 +23,7 @@
 :where(.orca-parity) .pf-change-to { font: var(--t-small); }
 :where(.orca-parity) .pf-change > .reset-icon { margin: 0 var(--s-1); opacity: 0; }
 :where(.orca-parity) .pf-change:is(:hover, :focus-within) > .reset-icon { opacity: 1; }
-@media (pointer: coarse) { :where(.orca-parity) .pf-change > .reset-icon { opacity: 1; } }
+@media (pointer: coarse), (hover: none) { :where(.orca-parity) .pf-change > .reset-icon { opacity: 1; } }
 :where(.orca-parity) .pf-changes-foot { flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-top: 1px solid var(--line); }
 :where(.orca-parity) .pf-changes-foot > :is(.btn, .btn-ghost) { min-height: 28px; padding: 0 var(--s-3); }
 :where(.orca-parity) .pf-changes-foot > .pf-review { margin-right: auto; order: -1; font: var(--t-small); }
@@ -109,7 +109,7 @@
 :where(.orca-parity) .ww-printers > li.is-excluded :is(.ww-printer-name, .ww-printer-detail) { color: var(--ink-3); text-decoration: line-through; }
 :where(.orca-parity) .ww-exclude { flex: none; margin-left: auto; color: var(--muted); opacity: 0; }
 :where(.orca-parity) .ww-printers > li:is(:hover, :focus-within) .ww-exclude, :where(.orca-parity) .ww-printers > li.is-excluded .ww-exclude { opacity: 1; }
-@media (pointer: coarse) { :where(.orca-parity) .ww-exclude { opacity: 1; } }
+@media (pointer: coarse), (hover: none) { :where(.orca-parity) .ww-exclude { opacity: 1; } }
 :where(.orca-parity) .works-with-used { flex: none; font: var(--t-small); color: var(--muted); }
 :where(.orca-parity) .works-with-none { color: var(--warn); }
 

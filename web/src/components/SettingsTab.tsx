@@ -34,7 +34,7 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
-  sources?: Record<string, SettingSource>; autoReasons?: Record<string, string>; autoText?: Record<string, string>; onRule?(key: string, anchor: HTMLElement): void; resetToBase?(key: string): void }
+  sources?: Record<string, SettingSource>; resetToBase?(key: string): void }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overrides, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields;
   overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
@@ -115,13 +115,14 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
   const openByDefault = !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100;
   const body = useRef<HTMLDivElement>(null);
+  const rowKeys = groups.flatMap((g) => g.lines.flatMap((l) => l.options)).join(',');
   useLayoutEffect(() => {
     const flow = editor ? body.current?.querySelector<HTMLElement>('.page-flow') : null;
     if (!flow) return;
     const natural = (l: Element) => [...l.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0);
     const widest = Math.max(0, ...[...flow.querySelectorAll('.opt-line:not(.full) > .opt-label')].map(natural), ...[...flow.querySelectorAll('.option-row > .opt-label')].map((l) => natural(l) + 80));
     flow.style.setProperty('--label-w', `${Math.min(240, Math.ceil(widest) + 4)}px`);
-  }, [editor, pageIdx, auxiliaryOn, desc, uiMode, groupsVersion]);
+  }, [!!editor, rowKeys, auxiliaryOn, groupsVersion]);
   useEffect(() => {
     if (!focus || !desc) return;
     const i = pages.findIndex((p) => p.title === focus.page);
@@ -171,7 +172,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
-              source={source} autoReason={editor?.autoReasons?.[key]} autoRule={editor?.autoText?.[key]} onAutoRule={editor?.onRule ? (el) => editor.onRule!(key, el) : undefined} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
+              source={source} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
               disabled={readOnly || isDeferred(key) || states[key]?.enabled === false || (type === 'process' && key === 'layer_height')}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}

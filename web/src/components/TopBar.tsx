@@ -9,6 +9,9 @@ import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from
 import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory, undo, undoName, undoNames, undoSteps } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { startOver, useDevReset } from '../dev-reset';
+import { promptDialog } from './Ask';
+import { renameProject } from '../projects/api';
+import { useProject } from '../flow/project';
 import { Icon } from './Icon';
 import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
@@ -86,7 +89,13 @@ export function TopBar() {
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
   const devReset = useDevReset();
-  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
+  const projectId = useProject((p) => p.context.id), projectState = useProject((p) => p.value);
+  const renameHere = async () => {
+    const next = await promptDialog('Rename project', name ?? 'Untitled');
+    if (!next || next === name) return;
+    if (projectId && projectState !== 'blank') void renameProject(projectId, next); else setState({ projectName: next });
+  };
+  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -183,7 +192,7 @@ export function TabBar() {
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
-  const tier = useTier(), wide = tier === 'wide', folded = tier === 'narrow' || tier === 'phone';
+  const tier = useTier(), wide = tier === 'wide', coarse = window.matchMedia('(pointer: coarse)').matches, folded = tier === 'narrow' || tier === 'phone' || (tier === 'medium' && coarse);
   const ready = job.state === 'done' && !job.stale && exportEnabled && !folded;
   const sliceClass = `${ready ? 'btn' : 'btn-primary'} slant${busy ? ' slicing' : ''}`, exportClass = `${ready ? 'btn-primary' : 'btn'} slant`;
   const progress = busy ? { '--p': `${Math.round(job.pct)}%` } as CSSProperties : undefined;

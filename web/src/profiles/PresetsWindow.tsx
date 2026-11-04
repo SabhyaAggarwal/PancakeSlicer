@@ -55,6 +55,7 @@ const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 interface Group { key: string; label: string; sub?: string; rows: Item[]; children?: Group[] }
+const isDynamic = (p?: UserPreset) => (p as {auto?: {dynamic?: boolean}} | undefined)?.auto?.dynamic !== false && !!(p as {auto?: unknown} | undefined)?.auto;
 const groupHas = (g: Group, match: (i: Item) => boolean): boolean => g.children ? g.children.some((c) => groupHas(c, match)) : g.rows.some(match);
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
 const sessionFolds = new Map<string, boolean>();
@@ -205,7 +206,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   useEffect(()=>{if(!request)return;setAdding(!!add);pickerAdd.current=add ? initialType : null;},[request]);
   useEffect(()=>{if(drill && mobilePane!=='list')mobileBack.current?.focus();},[mobilePane]);
   const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add);
-  const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]), [baseFilter,setBaseFilter]=useState<string[]>([]);
+  const [kindFilter,setKindFilter] = useState<string[]>([]), [sortBy,setSortBy] = useState<'name'|'kind'>('name'), [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]), [baseFilter,setBaseFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
   const resultsPane = useRef<HTMLElement>(null);
   const drag = useRef<{id:number;x:number;width:number}|null>(null);
@@ -245,10 +246,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const hasContext=type !== 'machine' && (printerFilter.length || modelFilter.length || nozzleFilter.length);
     const contexts=hasContext ? printerFilter.length ? printerFilter : machines.filter(p=>(!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || '')) && (!nozzleFilter.length || nozzleFilter.includes(first(p.config.nozzle_diameter)))).map(p=>p.name) : [];
     const materials=search.trim() && materialDefault ? [] : materialFilter;
-    const out=list.filter(i=>{const variants=i.variants ?? [i];return (!baseFilter.length || baseFilter.some(f=>f === 'base' ? !!baseRoleOf(i.user) : !!i.user?.parentId)) && (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
+    const out=list.filter(i=>{const variants=i.variants ?? [i];return (type !== 'process' || !kindFilter.length || kindFilter.includes(isDynamic(i.user) ? 'dynamic' : 'fixed')) && (!baseFilter.length || baseFilter.some(f=>f === 'base' ? !!baseRoleOf(i.user) : !!i.user?.parentId)) && (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
     const pinned=reveal.key && !out.some(i=>i.key === reveal.key) ? list.find(i=>i.key === reveal.key) : undefined;
     return pinned ? [...out,pinned] : out;
-  },[list,type,baseFilter,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits,reveal.key]);
+  },[list,type,kindFilter,baseFilter,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits,reveal.key]);
   const query=search.trim().toLocaleLowerCase();
   const compatibleModels=(i:Item)=>{
     const found=new Map<string,{label:string;sub:string;nozzles:Set<string>}>();
@@ -283,16 +284,15 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
     if(type !== 'process')return [...bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other').sort(([a],[b])=>type === 'filament' ? materialRank(a)-materialRank(b) || byLabel(a,b) : 0)
       .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
-    const speeds:Record<string,string>={quality:'Quality',balanced:'Balanced',fast:'Fast'};
-    const mine=rows.filter(i=>i.user && i.user.kind !== 'master').map(i=>({...i,fullName:i.name,note:'',meta:speeds[(i.user as {auto?:{preferredSpeed?:string}}).auto?.preferredSpeed ?? '']}));
-    return [{key:'mine',label:'My profiles',rows:sortRows(mine)}];
-  },[matching,query,type,machines,printerFilter,printer]);
+    const mine=rows.filter(i=>i.user && i.user.kind !== 'master').map(i=>({...i,fullName:i.name,note:'',meta:undefined,dynamic:isDynamic(i.user)}));
+    return [{key:'mine',label:'My profiles',rows:sortBy === 'kind' ? mine.sort((a,b)=>Number(!!b.dynamic)-Number(!!a.dynamic) || a.name.localeCompare(b.name)) : sortRows(mine)}];
+  },[matching,query,type,machines,printerFilter,printer,sortBy]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
   const [folds,setFolds]=useState<ReadonlyMap<string,boolean>>(()=>new Map(sessionFolds)),[searchFolds,setSearchFolds]=useState<ReadonlySet<string>>(new Set());
   useEffect(()=>setSearchFolds(new Set()),[query]);
   const setFold=(key:string,open:boolean)=>{sessionFolds.set(key,open);setFolds(prior=>new Map(prior).set(key,open));};
-  const filtersActive=baseFilter.length+vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
-  const clearFilters=()=>{setBaseFilter([]);setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);setMaterialDefault(false);};
+  const filtersActive=kindFilter.length+baseFilter.length+vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
+  const clearFilters=()=>{setKindFilter([]);setBaseFilter([]);setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);setMaterialDefault(false);};
   const defaulted=useRef('');
   useEffect(()=>{
     if(!adding){defaulted.current='';return;}
@@ -513,17 +513,19 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} data-library={adding ? 'master' : 'mine'} data-type={type} data-mobile-pane={mobilePane} style={renderedListWidth === null ? undefined : {'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
       <div className="pf-mobile-navigation"><button ref={mobileBack} type="button" className="btn-ghost pf-back" onClick={backToList}><Glyph name="back"/>Back</button>{mobilePane==='filters' ? <strong>Filters</strong> : <SettingsDetail compact/>}</div>
       <aside id={`${id}-filters`} className="pf-facets facets" aria-label="Library and filters">
-        <nav className="pf-library" aria-label="Library">
+        {type !== 'process' && <nav className="pf-library" aria-label="Library">
           <button type="button" className="pf-library-item" aria-current={!adding ? 'page' : undefined} onClick={()=>showLibrary(false)}>My {nouns[1]}</button>
-          {type !== 'process' && <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>}
-        </nav>
+          <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>
+        </nav>}
         <FacetsHead active={filtersActive} onClear={clearFilters}/>
-        {!adding && <FacetGroup label="Bases" options={[...(list.some(i=>baseRoleOf(i.user)) ? [{value:'base',label:'Bases'}] : []),...(list.some(i=>i.user?.parentId) ? [{value:'based',label:'On a base'}] : [])]} value={baseFilter} onChange={setBaseFilter}/>}
+        {type === 'process' && <><FacetGroup label="Kind" options={[{value:'dynamic',label:'Dynamic'},{value:'fixed',label:'Fixed'}]} value={kindFilter} onChange={setKindFilter}/>
+          <div className="facet-group" role="group" aria-label="Sort"><div className="facet-head">Sort</div><Segmented label="Sort" value={sortBy} options={[{id:'name',label:'Name'},{id:'kind',label:'Dynamic first'}]} onChange={v=>setSortBy(v as 'name'|'kind')}/></div></>}
+        {!adding && type !== 'process' && <FacetGroup label="Bases" options={[...(list.some(i=>baseRoleOf(i.user)) ? [{value:'base',label:'Bases'}] : []),...(list.some(i=>i.user?.parentId) ? [{value:'based',label:'On a base'}] : [])]} value={baseFilter} onChange={setBaseFilter}/>}
         {type === 'filament' && <FacetGroup label="Material" options={[...facets.materials].sort((a,b)=>materialRank(a)-materialRank(b) || a.localeCompare(b)).map(value=>({value,label:value}))} value={materialFilter} onChange={next=>{setMaterialFilter(next);setMaterialDefault(false);}}/>}
-        <FacetGroup label="Brand" options={facets.vendors.map(value=>({value,label:type === 'filament' ? value : vendorLabel({},value)}))} value={vendorFilter} onChange={setVendorFilter}/>
-        {type !== 'filament' && <FacetGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
-        {type !== 'filament' && <FacetGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
-        {type !== 'machine' && <FacetGroup label={type === 'filament' ? 'Works with' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
+        {type !== 'process' && <FacetGroup label="Brand" options={facets.vendors.map(value=>({value,label:type === 'filament' ? value : vendorLabel({},value)}))} value={vendorFilter} onChange={setVendorFilter}/>}
+        {type === 'machine' && <FacetGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
+        {type === 'machine' && <FacetGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
+        {type === 'filament' && <FacetGroup label="Works with" options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
         <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
       <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>

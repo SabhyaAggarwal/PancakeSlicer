@@ -90,7 +90,7 @@
 :where(.orca-parity) .pf-row-flag { flex: none; margin-left: auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
 :where(.orca-parity) .pf-row-flag ~ :is(.pf-row-method, .pf-row-used) { margin-left: var(--s-3); }
 :where(.orca-parity) .pf-item.is-on :is(.pf-row-lead, .pf-row-method) { color: inherit; }
-@media (pointer: coarse) { :where(.orca-parity) .pf-list { --pf-row: 44px; } }
+@media (pointer: coarse), (hover: none) { :where(.orca-parity) .pf-list { --pf-row: 44px; } :where(.orca-parity) .pf-group[data-depth='0'] > .pf-group-head .pf-group-toggle { min-height: 44px; } }
 :where(.orca-parity) .pf-profile-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-7) var(--s-4); color: var(--muted); text-align: center; }
 
 :where(.orca-parity) .pf-resizer { position: relative; z-index: 3; cursor: col-resize; background: var(--line); touch-action: none; }
@@ -120,7 +120,7 @@
 :where(.orca-parity) .pf-editor-name > strong[data-renamable] { cursor: text; }
 :where(.orca-parity) .pf-editor-name > .pf-rename { opacity: 0; }
 :where(.orca-parity) .pf-editor-name:is(:hover, :focus-within) > .pf-rename { opacity: 1; }
-@media (pointer: coarse) { :where(.orca-parity) .pf-editor-name > .pf-rename { opacity: 1; } }
+@media (pointer: coarse), (hover: none) { :where(.orca-parity) .pf-editor-name > .pf-rename { opacity: 1; } }
 :where(.orca-parity) .pf-name-input { box-sizing: border-box; width: 100%; min-width: 0; height: 24px; margin: 0 -5px; padding: 0 4px; border: 1px solid var(--focus); border-radius: var(--r-1); background: var(--sunken); color: var(--text); font: var(--t-title); outline: 0; }
 :where(.orca-parity) .pf-name-input[aria-invalid=true] { border-color: var(--danger); }
 :where(.orca-parity) .pf-editor-summary.pf-name-error { color: var(--danger); }
@@ -179,6 +179,5 @@
 :where(.orca-parity) .pf-conflict-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); }
 :where(.orca-parity) .pf-conflict-more { color: var(--muted); }
 
-:where(.orca-parity) .pf-window .pf-split[data-type=process] { grid-template-columns: var(--profile-list-width, clamp(300px, 34cqw, 440px)) 1px minmax(0, 1fr); grid-template-areas: 'list resizer detail'; }
-:where(.orca-parity) .pf-window .pf-split[data-type=process] > .pf-facets { display: none; }
+
 :where(.orca-parity) .pf-window .pf-group-rows > .pf-item[data-child] { padding-left: calc(12px + var(--s-2) - 7px + var(--s-5)); }
