@@ -24,7 +24,6 @@ type methodRules struct {
 		Hardware  string `json:"hardware"`
 		Feature   string `json:"feature"`
 		Readiness string `json:"readiness"`
-		Auto      bool   `json:"auto"`
 	} `json:"methods"`
 }
 
@@ -123,8 +122,6 @@ func (s *Server) methodDecisions(printer map[string]any) []methodDecision {
 			case rule.Readiness != "" && (!ready || !af[rule.Readiness] || rule.Target == "wave" && !slices.Contains(waveModes, rule.ID)):
 				d.Reason = "This method is not ready in the current engine bundle."
 				d.Recovery = "update_engine"
-			case rule.Auto:
-				d.Reason = "Auto needs an engine guarantee that every route fits this printer."
 			}
 		}
 		if d.Reason != "" {

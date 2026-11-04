@@ -11,14 +11,14 @@ export interface MethodContext {
   printer: { known: boolean; config: Config; axes?: readonly string[] };
   effectiveConfig?: Config;
   engine: { features: Readonly<Record<string, unknown>>; artifact_manifest?: MethodArtifact;
-    modeValues?: readonly string[]; autoRoutes?: readonly string[] };
+    modeValues?: readonly string[] };
 }
 export type MethodRecovery = 'change_method' | 'repair_printer' | 'update_engine';
 export interface MethodAvailability {
   id: string; target: 'mode' | 'wave'; supported: boolean; reason?: string; recovery?: MethodRecovery;
 }
 export interface MethodAvailabilityResult {
-  methods: MethodAvailability[]; allowedModes: string[]; allowedWaveModes: string[]; autoRoutes: string[];
+  methods: MethodAvailability[]; allowedModes: string[]; allowedWaveModes: string[];
   printer: { known: boolean; kinematics: string; axes: number; nozzleKnown: boolean; rotary: boolean };
 }
 export interface MethodProblem { code: 'mode_incompatible'; method: string; reason: string; recovery: MethodRecovery }
@@ -52,13 +52,8 @@ export function deriveMethodAvailability(context: MethodContext): MethodAvailabi
     }
     return { id: rule.id, target: rule.target as 'mode' | 'wave', supported: !reason, ...(reason ? { reason, recovery } : {}) };
   });
-  const auto = methods.find(m => m.id === 'auto' && m.target === 'mode')!;
-  const routes = [...engine.autoRoutes ?? []];
-  if (auto.supported && (!routes.length || routes.some(route => route === 'auto' || !methods.some(m => m.target === 'mode' && m.id === route && m.supported)))) {
-    Object.assign(auto, { supported: false, reason: 'Auto needs an engine guarantee that every route fits this printer.', recovery: 'change_method' });
-  }
   return { methods, allowedModes: methods.filter(m => m.target === 'mode' && m.supported).map(m => m.id),
-    allowedWaveModes: methods.filter(m => m.target === 'wave' && m.supported).map(m => m.id), autoRoutes: auto.supported ? routes : [],
+    allowedWaveModes: methods.filter(m => m.target === 'wave' && m.supported).map(m => m.id),
     printer: { known, kinematics, axes, nozzleKnown: nozzle, rotary } };
 }
 export function methodSelectionProblem(result: MethodAvailabilityResult, config: Config): MethodProblem | undefined {
