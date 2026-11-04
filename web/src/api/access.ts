@@ -68,7 +68,7 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);
     headers.set('X-Orca-Session', sessionId);
-    return onUpload ? sendWithProgress(path, init, headers, onUpload) : fetch(path, { ...init, headers });
+    return onUpload && import.meta.env.MODE !== 'demo' ? sendWithProgress(path, init, headers, onUpload) : fetch(path, { ...init, headers });
   };
   let response = await send();
   if ((response.status === 429 || response.status === 503) && retry) {

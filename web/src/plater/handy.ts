@@ -22,7 +22,7 @@ export async function importFetched(label: string, sources: [url: string, name: 
     const files = await Promise.all(sources.map(async ([url, name]) => {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`${label}: ${r.status} ${r.statusText}`);
-      return new File([await r.blob()], name);
+      return new File([await r.blob()], import.meta.env.MODE === 'demo' ? name.replace(/\.(drc|3mf)$/i, '.stl') : name);
     }));
     if (generation !== documentGeneration()) return;
     await importFiles(files, true);

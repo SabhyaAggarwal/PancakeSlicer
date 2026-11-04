@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { demoBuild } from './demo-build.ts';
 import { bundleReport } from './bundle-report.ts';
 import { optionAssets } from './option-assets.ts';
 import { mockAssets } from './mock-assets.ts';
@@ -11,9 +12,9 @@ import { buildStartup, devStartup } from './dev-startup.ts';
 import { devBuildSwitch } from './dev-build-switch.ts';
 import { fileURLToPath } from 'node:url';
 
-export default defineConfig({
-  plugins: [devCompression(), devBuildSwitch(), devStartup(), buildStartup(), react(), orcaAssets(), optionAssets(), bambuChecks(), mockAssets(), bundleReport(), licenceNotices()],
-  worker: { format: 'es', plugins: () => [optionAssets(false), licenceNotices(false)] },
+export default defineConfig(({ mode }) => ({
+  plugins: [...(mode === 'demo' ? [demoBuild()] : []), devCompression(), devBuildSwitch(), devStartup(), buildStartup(), react(), orcaAssets(), optionAssets(), bambuChecks(), mockAssets(), bundleReport(), licenceNotices()],
+  worker: { format: 'es', plugins: () => [...(mode === 'demo' ? [demoBuild()] : []), optionAssets(false), licenceNotices(false)] },
   server: {
     port: 20120,
     strictPort: true,
@@ -25,6 +26,7 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: mode === 'demo' ? 'dist-demo' : 'dist',
     target: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
     cssTarget: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
     chunkSizeWarningLimit: 700,
@@ -40,4 +42,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

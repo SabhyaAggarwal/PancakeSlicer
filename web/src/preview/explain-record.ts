@@ -118,6 +118,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const base = recordConfig(inputs);
   const patches = (((record.results ?? {}) as Rec).patches ?? []) as Patch[];
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];
+  const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number }[];
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
     const name = String(o.name ?? '');
@@ -129,7 +130,9 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   for (const [name, o] of byName) {
     if (o.mode === 'off') continue;
     const style = styleName({ ...base, nonplanar_mode: o.mode, ...(o.deform ? { nonplanar_deform: o.deform } : {}) });
-    const mine = patches.filter((p) => p.object_id != null && o.ids.has(p.object_id));
+    let mine = patches.filter((p) => p.object_id != null && o.ids.has(p.object_id));
+    const native = mine.length ? undefined : reported.find((r) => r.name === name);
+    if (native) mine = native.patches ?? [];
     const footprints = (kinds: string[]) => {
       const seen = new Set<number>();
       let total = 0;
@@ -145,7 +148,8 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     const ledge = footprints(['overhang', 'bridge']);
     const flat = mine.filter((p) => p.kind === 'fallback' && !overhangTag(p.reason_tags?.length ? p.reason_tags : ['untagged']) && (num(p.area_mm2) ?? 0) >= 0.05)
       .reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
-    const pct = top >= 1 ? Math.min(flat > 0 ? 99 : 100, Math.max(1, Math.round((100 * top) / (top + flat)))) : 0;
+    const share = native && Number.isFinite(native.curved_top_area_fraction) ? native.curved_top_area_fraction! : top / (top + flat);
+    const pct = top >= 1 ? Math.min(flat > 0 || share < 1 ? 99 : 100, Math.max(1, Math.round(100 * share))) : 0;
     let fact: string;
     if (o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) fact = 'Whole part in curved layers';
     else if (ledge >= 1 && ledge > top) fact = 'No support under ledge';

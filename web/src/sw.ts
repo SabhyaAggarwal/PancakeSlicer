@@ -1,6 +1,7 @@
 const SCRIPT = '/orca-sw.js';
 
 export function registerServiceWorker(): void {
+  if (import.meta.env.MODE === 'demo') return;
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
   const param = new URLSearchParams(location.search).get('sw');
   try {

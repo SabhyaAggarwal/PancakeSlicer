@@ -697,6 +697,7 @@ function exportBlocker(s: State) {
 }
 
 export async function download() {
+  if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
   const s = getState();
   if (!s.api || !canExport(s) || !s.job.id) return void (s.api && toast(exportBlocker(s)));
   const task = output.begin('exporting');
@@ -730,6 +731,7 @@ export const toolbarOperation = (operation: 'orient' | 'split' | 'split-parts', 
   import('./plater/operations').then((m) => m.run(operation, all));
 
 export async function saveProject(as = false) {
+  if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
   const saving = await import('./saveProject');
   return saving.saveProject(as);
 }

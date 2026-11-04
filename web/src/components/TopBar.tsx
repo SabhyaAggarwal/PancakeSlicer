@@ -1,3 +1,4 @@
+import { DEMO, DOCS_URL } from '../demo/config';
 import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
@@ -170,7 +171,8 @@ export function TopBar() {
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
     </div>
-    {mock && <span className="mock-badge">Demo</span>}
+    {DEMO ? <a className="mock-badge demo-chip" href={DOCS_URL} target="_blank" rel="noopener noreferrer" title="PancakeSlicer documentation">Demo</a> : mock && <span className="mock-badge">Demo</span>}
+    {DEMO && <DemoResultNotice/>}
     {tab !== 'projects' && <TabBar/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
   </header>;
@@ -248,4 +250,9 @@ export function TabBar() {
       </div>
     </div>
   );
+}
+
+function DemoResultNotice() {
+  const done = useStore(s => s.job.state === 'done' && s.tab !== 'projects');
+  return done ? <span className="demo-result-notice" role="status">Demo: showing pre-sliced result</span> : null;
 }

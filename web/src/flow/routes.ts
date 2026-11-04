@@ -1,6 +1,6 @@
 import { createMachine } from './fsm';
 export type ProjectRoute = { kind: 'blank' } | { kind: 'projects' } | { kind: 'project'; id: string } | { kind: 'missing' };
-const hashed = () => location.protocol === 'file:';
+const hashed = () => location.protocol === 'file:' || import.meta.env.MODE === 'demo';
 export const projectHref = (id: string) => `${hashed() ? '#' : ''}/p/${encodeURIComponent(id)}`;
 export const projectsHref = () => `${hashed() ? '#' : ''}/projects`;
 function parseRoute(): ProjectRoute {

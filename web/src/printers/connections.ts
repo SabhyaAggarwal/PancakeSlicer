@@ -37,6 +37,10 @@ export const unassigned = (c: PrinterConnections) => c.connections.filter((x) =>
 
 let source: EventSource | null = null;
 export function followConnections() {
+  if (import.meta.env.MODE === 'demo') {
+    setState({ printerConnections: { enabled: true, live: true, connections: [], status: {}, transfers: [] } });
+    return;
+  }
   if (source || getState().api?.mock) return;
   source = new EventSource('/api/printer-connections/events');
   source.addEventListener('state', (e) => {

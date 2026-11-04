@@ -1,0 +1,7 @@
+.demo-chip { text-decoration: none; flex-shrink: 0; }
+.demo-result-notice { font-size: 11px; color: var(--text-muted, #b1abb0); white-space: nowrap; margin-inline: 6px; }
+@media (max-width: 1199px) { .demo-result-notice { position: absolute; top: 55px; right: 10px; z-index: 3; padding: 3px 7px; border-radius: 4px; background: var(--bg-panel, #292627); pointer-events: none; } }
+:where(.orca-parity) .compact-topbar .demo-chip { display: inline-flex; align-items: center; cursor: pointer; }
+@media (max-width: 899px) {
+  :where(.orca-parity) .compact-topbar .demo-chip { padding-inline: 4px; font-size: 10px; }
+}
