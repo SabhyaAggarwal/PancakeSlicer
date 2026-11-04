@@ -8,7 +8,7 @@ import { initialiseSavedPreferences } from './saved-preferences';
 void initialiseSavedPreferences().catch(() => {});
 
 void loadTab('process').catch(() => {});
-void startProjects(init()).catch(() => {}).finally(() => { void import('./profiles/catalog-startup').then(m=>m.startUnrelatedCatalogs()).catch(()=>{}); });
+void startProjects(init()).catch(() => {});
 
 
 createRoot(document.getElementById('root')!).render(

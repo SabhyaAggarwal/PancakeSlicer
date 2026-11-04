@@ -73,7 +73,7 @@ export const Field = memo(function Field(props: {
   extra?: React.ReactNode;
   scope?: { target?: ChangeTarget };
   widget?: React.ReactNode;
-  source?: 'auto' | 'inherited' | 'set' | 'printer';
+  source?: 'auto' | 'set' | 'printer';
   sourceText?: string;
   onResetToBase?: (key: string) => void;
   mixed?: string;

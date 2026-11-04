@@ -50,6 +50,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
 }
 function publishAcknowledgement(ack:Acknowledgement,apply?:(s:State)=>Partial<State>){
   const ids=new Set(ack.records.map(profileKey));
+  if(ids.size)void import('./catalog-startup').then(m=>m.ensureLibraryPresets());
   setState(s=>({...apply?.(s),profileLibraryRevision:Math.max(s.profileLibraryRevision,ack.document.revision),job:markStale(s.job),
     userPresets:!ids.size?s.userPresets:[...s.userPresets.filter(p=>!ids.has(profileKey(p))),...ack.records.map(p=>{const current=findProfile(s,p.type,profileKey(p));return current && ((current.revision ?? 0)>(p.revision ?? 0) || equal(stored(current),stored(p)))?current:p;})]}));
 }

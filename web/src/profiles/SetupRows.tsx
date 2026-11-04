@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { OPTIONS } from '../options';
-import { getState, markStale, printerPreset, setState, toast, useStore } from '../state/store';
+import { getState, printerPreset, setState, toast, useStore } from '../state/store';
 import { undo, undoable } from '../state/history';
 import { flushModified } from '../flush-state';
 import { Dropdown } from '../components/Dropdown';
@@ -41,13 +41,11 @@ export function PlateTypeField() {
 }
 
 export function addFilament() {
-  const s = getState();
-  if (Object.keys(s.mixes).length) return void import('../plater/mixed').then((m) => m.addPhysical());
-  undoable('Add filament', () => setState((st) => ({ filamentSlots: [...st.filamentSlots, st.filamentSlots[st.filamentSlots.length - 1] ?? ''] })));
+  void import('../plater/mixed').then((m) => m.addPhysical()).catch((error) => toast(String(error)));
 }
 
 export function addSlot(name: string) {
-  undoable('Add filament', () => setState((st) => ({ filamentSlots: [...st.filamentSlots, name], job: markStale(st.job) })));
+  void import('../plater/mixed').then((m) => m.addPhysical(undefined, name)).catch((error) => toast(String(error)));
 }
 
 export function removeSlot(i: number) {

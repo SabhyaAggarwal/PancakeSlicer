@@ -6,7 +6,8 @@ import { remapObject } from '../components/RemapFilaments';
 import { blend } from './mixColour';
 import type { PaintNode, Painting } from './paint';
 import { remapNozzleAssignments } from '../multinozzle/assignments';
-import { retainFlushSlots } from '../multinozzle/flush-mapping';
+import { insertFlushSlots, retainFlushSlots } from '../multinozzle/flush-mapping';
+import { allFlush, flushReady } from '../flush-state';
 
 export const SLOTS_MAX = 32;
 export { blend };
@@ -36,11 +37,13 @@ function remapAll(st: State, map: number[], kept?: number[]): Partial<State> {
 const shifted = (mixes: Record<number, Mix>, from: number, by: number) =>
   Object.fromEntries(Object.entries(mixes).map(([i, m]) => [Number(i) >= from ? Number(i) + by : Number(i), m]));
 
-export function addMix(m: Mix) {
+export async function addMix(m: Mix) {
+  await flushReady();
   undoable('Add mixed filament', () => setState((st) => {
     const i = st.filamentSlots.length, slotColours = [...st.slotColours];
     slotColours[i] = mixColour(st, m);
-    return { filamentSlots: [...st.filamentSlots, st.filamentSlots[m.components[0] - 1] ?? st.filamentSlots[0]], slotColours, mixes: { ...st.mixes, [i]: m }, job: markStale(st.job) };
+    const next = { filamentSlots: [...st.filamentSlots, st.filamentSlots[m.components[0] - 1] ?? st.filamentSlots[0]], slotColours, mixes: { ...st.mixes, [i]: m }, job: markStale(st.job) };
+    return { ...next, ...insertedFlush(st, next, [...st.filamentSlots.map((_, k) => k), -1]) };
   }));
 }
 
@@ -98,14 +101,25 @@ export function removeSlotAt(n: number): { moved: number; to: number; merged: { 
   return { moved, to, merged };
 }
 
-export function addPhysical(colour?: string) {
+function insertedFlush(st: State, changes: Partial<State>, previous: number[]): Partial<State> {
+  const matrix = st.flush.matrix ?? st.projectMaterials?.matrix;
+  const n = st.filamentSlots.length;
+  if (!matrix?.length || !n || matrix.length % (n * n)) return {};
+  const next = { ...st, ...changes, flush: { ...st.flush, matrix: null }, projectMaterials: st.projectMaterials && { ...st.projectMaterials, matrix: null } };
+  return { flush: { ...st.flush, matrix: insertFlushSlots(matrix, n, previous, allFlush(next).matrix) } };
+}
+
+export async function addPhysical(colour?: string, name?: string) {
+  await flushReady();
   undoable('Add filament', () => setState((st) => {
     const p = physicalCount(st), n = st.filamentSlots.length;
     const filamentSlots = [...st.filamentSlots], slotColours = [...st.slotColours];
     while (slotColours.length < n) slotColours.push(undefined);
-    filamentSlots.splice(p, 0, st.filamentSlots[p - 1]);
+    filamentSlots.splice(p, 0, name ?? st.filamentSlots[p - 1] ?? '');
     slotColours.splice(p, 0, colour);
-    return { ...remapAll(st, Array.from({ length: n }, (_, k) => (k >= p ? k + 2 : k + 1))), filamentSlots, slotColours, mixes: shifted(st.mixes, p, 1) };
+    const next = { filamentSlots, slotColours, mixes: shifted(st.mixes, p, 1) };
+    const previous = Array.from({ length: n + 1 }, (_, k) => k === p ? -1 : k > p ? k - 1 : k);
+    return { ...remapAll(st, Array.from({ length: n }, (_, k) => (k >= p ? k + 2 : k + 1))), ...next, ...insertedFlush(st, next, previous) };
   }));
 }
 

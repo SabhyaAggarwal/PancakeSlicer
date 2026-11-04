@@ -11,8 +11,21 @@ import (
 )
 
 type BambuJobMapping struct {
-	Filaments []int `json:"filament_map"`
-	Volumes   []int `json:"filament_volume_map"`
+	Filaments         []int                 `json:"filament_map"`
+	Volumes           []int                 `json:"filament_volume_map"`
+	HasFilamentSwitch *bool                 `json:"has_filament_switch,omitempty"`
+	Materials         []BambuSlicedMaterial `json:"materials"`
+}
+
+type BambuSlicedMaterial struct {
+	Slot     int     `json:"slot" xml:"id,attr"`
+	Type     string  `json:"type" xml:"type,attr"`
+	Color    string  `json:"color" xml:"color,attr"`
+	ID       string  `json:"id" xml:"tray_info_idx,attr"`
+	Flow     string  `json:"flow" xml:"volume_type,attr"`
+	Diameter float64 `json:"diameter" xml:"nozzle_diameter,attr"`
+	Object   bool    `json:"object" xml:"used_for_object,attr"`
+	Support  bool    `json:"support" xml:"used_for_support,attr"`
 }
 
 func readBambuJobMapping(path string) (*BambuJobMapping, error) {
@@ -21,8 +34,9 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 		return nil, err
 	}
 	defer z.Close()
+	out := &BambuJobMapping{}
 	for _, file := range z.File {
-		if file.Name != "Metadata/model_settings.config" {
+		if file.Name != "Metadata/model_settings.config" && file.Name != "Metadata/slice_info.config" {
 			continue
 		}
 		r, err := file.Open()
@@ -36,6 +50,7 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 					Key   string `xml:"key,attr"`
 					Value string `xml:"value,attr"`
 				} `xml:"metadata"`
+				Filaments []BambuSlicedMaterial `xml:"filament"`
 			} `xml:"plate"`
 		}
 		if err := xml.NewDecoder(io.LimitReader(r, 4<<20)).Decode(&config); err != nil {
@@ -44,7 +59,19 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 		if len(config.Plates) != 1 {
 			return nil, errors.New("expected one sliced plate")
 		}
-		out := &BambuJobMapping{}
+		if file.Name == "Metadata/slice_info.config" {
+			out.Materials = config.Plates[0].Filaments
+			for _, row := range config.Plates[0].Metadata {
+				if row.Key == "has_filament_switcher" {
+					value, err := strconv.ParseBool(row.Value)
+					if err != nil {
+						return nil, err
+					}
+					out.HasFilamentSwitch = &value
+				}
+			}
+			continue
+		}
 		for _, row := range config.Plates[0].Metadata {
 			var target *[]int
 			switch row.Key {
@@ -63,12 +90,11 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 				*target = append(*target, value)
 			}
 		}
-		if len(out.Filaments) == 0 {
-			return nil, errors.New("slice has no resolved filament assignment")
-		}
-		return out, nil
 	}
-	return nil, errors.New("slice has no plate settings")
+	if len(out.Filaments) == 0 {
+		return nil, errors.New("slice has no resolved filament assignment")
+	}
+	return out, nil
 }
 
 func (s *Server) bambuJobMapping(w http.ResponseWriter, r *http.Request) {

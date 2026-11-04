@@ -2,14 +2,13 @@ import type { PresetType } from '../api/types';
 import { switchPreset } from '../actions';
 import { selectChanges } from '../state/changes';
 import { getState, presetEdits, resolvePreset, setState, toast, type State } from '../state/store';
+import type { UserPreset } from '../api/types';
 import { createProfileFromBase } from './catalog';
 import { findProfile, profileKey } from './identity';
 import { saveProfile } from './model';
 import { acknowledgeProjectProfileChanges, captureProjectProfileChanges } from './project-draft';
-import { archiveProfiles, commitProfileRecords } from './transactions';
+import { archiveProfiles, commitProfileRecords, profileCreation } from './transactions';
 import { scalesOf } from './auto-rules';
-import { effectiveProfileValues } from './context';
-import { engineName } from '../slice-input';
 
 const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -68,10 +67,11 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
   const key = selectedKey(s, type, slot), resolved = resolvePreset(s, type, key);
   if (!resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
   const deltas = Object.fromEntries(selectChanges(s, type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined).map((c) => [c.key, c.now]));
-  const before = changesOf(s, type, slot);
-  const dynamic = autoKeysOf(s, type, slot).size > 0;
-  const values = dynamic ? { ...effectiveProfileValues(s, type, key, slot), ...deltas } : { ...resolved.config, ...deltas };
-  const created = await createProfileFromBase(type, dynamic ? engineName(s, 'process', key) : resolved.base.name, name.trim(), values);
+  const before = changesOf(s, type, slot), source = findProfile(s, type, key);
+  const created = source ? await profileCreation(() => ({ ...structuredClone(source), id: `profile:${crypto.randomUUID()}`, kind: 'profile', name: name.trim(),
+    revision: 0, aliases: [], archived: undefined, overlay: { ...source.overlay, ...deltas }, overrides: { ...source.overlay, ...deltas },
+    ...(type === 'process' ? { auto: { ...(source as { auto?: object }).auto, schema: 3, scales: scalesOf(source).filter((r) => !(r.key in deltas)) } } : {}) }) as UserPreset).commit()
+    : await createProfileFromBase(type, resolved.base.name, name.trim(), { ...resolved.config, ...deltas });
   switchPreset(type, slot, created, 'discard');
   toast(`Saved as ${name.trim()}`, { label: 'Undo', run: () => {
     switchPreset(type, slot, key, 'discard');

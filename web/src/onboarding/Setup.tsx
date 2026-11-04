@@ -22,24 +22,26 @@ const first = (v: unknown) => String([v].flat()[0] ?? '');
 const VENDOR_NAMES: Record<string, string> = { BBL: 'Bambu Lab' };
 const vendorName = (id: string, name = id) => VENDOR_NAMES[id] ?? name;
 
-interface PrinterModel { id: string; vendor: string; vendorName: string; model: string; cover?: string; nozzles: number[]; presets: SystemPreset[] }
+interface PrinterModel { id: string; vendor: string; vendorName: string; model: string; cover?: string; nozzles: number[]; machines: Record<string, string>; presets: SystemPreset[] }
 interface Choices { model: PrinterModel | null; nozzles: number[]; profiles: Set<string> | null; connection: ConnectionEdit | null; filaments: Set<string> | null }
 let choices: Choices = { model: null, nozzles: [], profiles: null, connection: null, filaments: null };
 
-interface CatalogBody { vendors: { id: string; name: string; models: { id: string; name: string; cover?: string; nozzles: string[] }[] }[] }
+interface CatalogBody { vendors: { id: string; name: string; models: { id: string; name: string; cover?: string; nozzles: string[]; machines?: Record<string, string> }[] }[] }
 let catalogRead: Promise<PrinterModel[]> | null = null;
 function printerCatalog(): Promise<PrinterModel[]> {
   return catalogRead ??= fetch('/api/printer-catalog').then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json() as Promise<CatalogBody>; })
     .then((b) => b.vendors.flatMap((v) => v.models.map((m) => ({ id: `${v.id}|${m.id}`, vendor: v.id, vendorName: vendorName(v.id, v.name), model: m.name, cover: m.cover,
-      nozzles: m.nozzles.map(Number).filter((n) => n > 0), presets: [] }))))
+      nozzles: m.nozzles.map(Number).filter((n) => n > 0), machines: m.machines ?? {}, presets: [] }))))
     .catch((e) => { catalogRead = null; throw e; });
 }
-async function loadModel(m: PrinterModel): Promise<SystemPreset[]> {
+async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPreset[]> {
   const mine = () => getState().machines.filter((p) => p.vendor === m.vendor && (p.model ? p.model === m.model : /^(.*?)\s+[\d.]+\s*nozzle$/i.exec(p.name)?.[1] === m.model));
-  if (!mine().length) {
+  if (!nozzles.every((n) => mine().some((p) => Math.abs(nozzleOf(p) - n) < 1e-6))) {
     const api = getState().api;
     if (!api) throw new Error('The slicing service is not connected.');
-    const cat = await api.presets(m.vendor, [m.model]);
+    const names = nozzles.map((n) => m.machines[String(n)] ?? Object.entries(m.machines).find(([k]) => Number(k) === n)?.[1]).filter((x): x is string => !!x);
+    if (!names.length) throw new Error(`No ${m.model} preset for ${nozzles.join(', ')} mm.`);
+    const cat = await api.presets(m.vendor, [], undefined, names);
     const union = (current: SystemPreset[], incoming: SystemPreset[]) => { const keys = new Set(current.map(catalogKey)); return [...current, ...incoming.filter((p) => !keys.has(catalogKey(p)))]; };
     setState((st) => ({ machines: union(st.machines, cat.machines), processes: union(st.processes, cat.processes), filaments: union(st.filaments, cat.filaments) }));
   }
@@ -72,45 +74,33 @@ function Welcome() {
     <div className="setup-hero"><img src="/logo-256.png" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
   </Frame>;
 }
-const Render = ({ src, left, right }: { src: string; left: string; right: string }) => (
-  <figure className="setup-render"><img src={src} alt={`${left} and ${right}`} loading="lazy" /><figcaption><span>{left}</span><span>{right}</span></figcaption></figure>);
-const TOUR: { title: string; text: string[]; art: ReactNode }[] = [
-  { title: 'Curved tops', text: [
-    'Most slicers print every layer flat, so sloped and domed tops show stair-steps.',
-    'PancakeSlicer can print the top layers as curves that follow the surface, on your normal printer, with no extra axes.',
-    'Tops come out smooth, often faster than printing finer layers. Overhangs can print without supports, too.'],
-    art: <div className="setup-renders"><Render src="/tour/curved-tops.webp" left="Flat layers" right="Curved top" /><Render src="/tour/overhangs.webp" left="With supports" right="Without" /></div> },
-  { title: 'Tune what matters. The rest is automatic.', text: [
-    'You set the things you care about: walls, infill, supports, ironing, how the top looks.',
-    'Everything that just follows from your nozzle and layer height, like line widths, layer counts and support gaps, is worked out for you. So one profile, Everyday, prints right on any nozzle at any layer height, with no copy per setup like other slicers need.',
-    'Values worked out for you show ✦; type over any of them if you want.'],
-    art: <div className="setup-compare">
-      <div className="setup-compare-col"><span className="setup-k">Normal presets</span>{['0.20 mm · 0.4 nozzle', '0.30 mm · 0.6 nozzle', '0.12 mm · 0.4 nozzle'].map((t) => <span key={t} className="setup-preset">{t}</span>)}</div>
-      <span className="setup-compare-arrow" aria-hidden>→</span>
-      <div className="setup-compare-col"><span className="setup-k">Dynamic</span><span className="setup-preset on">Everyday<small>any nozzle · any height</small></span></div>
-    </div> },
-  { title: 'Values from your printer', text: [
-    'Speeds, accelerations and a few machine quirks like elephant-foot compensation come from your printer, so the same profile runs right on an A1 mini or an X1C.',
-    'Anything set by a formula or your printer shows ✦. Hover it to see where it comes from, type to override, and ↺ to go back.'],
-    art: <div className="setup-sample" aria-hidden>
-      <div className="setup-sample-row"><span>Line width</span><span className="setup-sample-v">0.45 mm <b>✦</b></span></div>
-      <div className="setup-sample-row"><span>Outer wall speed</span><span className="setup-sample-v">200 mm/s <b>✦</b></span></div>
-      <div className="setup-sample-row set"><span>Wall loops</span><span className="setup-sample-v">3 <b>↺</b></span></div>
-    </div> },
-  { title: 'Your workflow', text: [
-    'Projects are saved on the server, so you can open them on any device.',
-    'One tab edits a project at a time; another shows it read-only with Take control.',
-    'Slice in the browser and send the result to your printer over the network.'],
-    art: <svg viewBox="0 0 320 140" className="setup-art" aria-hidden><g strokeWidth="3" fill="none" stroke="var(--line-strong)">
-    <rect x="30" y="30" width="90" height="64" rx="6" /><path d="M60 110h30M75 94v16" /><path d="M130 62h60" stroke="var(--accent)" strokeDasharray="6 6" />
-    <rect x="200" y="22" width="90" height="90" rx="6" /><path d="M215 92h60M245 40v40" /></g>
-    <text x="75" y="130" textAnchor="middle">Browser</text><text x="245" y="130" textAnchor="middle">Printer</text></svg> },
+interface TourFacts { 'curved-flat'?: { time?: string }; 'curved-tops'?: { time?: string } }
+let tourFacts: Promise<TourFacts> | null = null;
+const Shot = ({ src, caption }: { src: string; caption: string }) => (
+  <figure className="setup-shot"><img src={src} alt={caption} /><figcaption>{caption}</figcaption></figure>);
+type Point = string | [label: string, text: string];
+const TOUR: { title: string; points: Point[]; art: (f: TourFacts) => ReactNode }[] = [
+  { title: 'Curved tops', points: [],
+    art: (f) => <><Shot src="/tour/curved-flat.webp" caption={`Flat layers${f['curved-flat']?.time ? ` · ${f['curved-flat'].time}` : ''}`} />
+      <Shot src="/tour/curved-tops.webp" caption={`Curved tops${f['curved-tops']?.time ? ` · ${f['curved-tops'].time}` : ''}`} /></> },
+  { title: 'Tune what matters. The rest is automatic.', points: [
+    ['You tune', 'walls, infill, supports, ironing, how the top looks.'],
+    ['Automatic', 'anything that follows from your nozzle and layer height (line widths, layer counts, support gaps), and anything your printer needs (speeds, accelerations, elephant-foot), because each printer carries its own values.'],
+    ['One set of profiles', 'the same Everyday works on every nozzle, layer height and printer, with no copies to keep in sync. Values worked out for you show ✦; type over any of them. Prefer the classic way? Normal profiles still work.']],
+    art: () => <Shot src="/tour/dynamic.webp" caption="Everyday: formulas worked out for the nozzle and layer height" /> },
+  { title: 'Your workflow', points: [],
+    art: () => <div className="setup-stack"><Shot src="/tour/take-control.webp" caption="Open in another tab" /><Shot src="/tour/projects.webp" caption="Projects, on any device" /></div> },
 ];
 function Tour({ page }: { page: number }) {
   const t = TOUR[page];
+  const [facts, setFacts] = useState<TourFacts>({});
+  useEffect(() => { void (tourFacts ??= fetch('/tour/tour.json').then((r) => r.ok ? r.json() : {}).catch(() => ({}))).then(setFacts); }, []);
   return <Frame step="tour" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip</button><span className="setup-grow" />
     <span className="setup-count">{page + 1}/{TOUR_PAGES}</span><Next /></>}>
-    <div className="setup-tour"><div className="setup-tour-art">{t.art}</div><div className="setup-tour-text"><h2>{t.title}</h2>{t.text.map((x) => <p key={x}>{x}</p>)}</div></div>
+    <div className="setup-tour">
+      <div className="setup-tour-art">{t.art(facts)}</div>
+      <div className="setup-tour-text"><h2>{t.title}</h2>{t.points.map((x) => typeof x === 'string' ? <p key={x}>{x}</p> : <p key={x[0]}><b>{x[0]}:</b> {x[1]}</p>)}</div>
+    </div>
   </Frame>;
 }
 
@@ -131,7 +121,7 @@ function Printer() {
   const next = async () => {
     if (!model) return;
     setBusy(true);
-    try { choices = { ...choices, model: { ...model, presets: await loadModel(model) }, nozzles }; send({ type: 'NEXT' }); }
+    try { choices = { ...choices, model: { ...model, presets: await loadModel(model, nozzles) }, nozzles }; send({ type: 'NEXT' }); }
     catch (e) { setFailed(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };

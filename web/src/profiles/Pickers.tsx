@@ -6,7 +6,7 @@ import { requestPreset } from '../components/PresetCombo';
 import { filamentColor } from '../plater/filamentColor';
 import { addSlot } from './SetupRows';
 import { FilamentColourMenu } from './FilamentColourMenu';
-import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
+import { listProfiles, type PickerEntry } from './pickerSource';
 import { pickerStatus } from '../printers/connections';
 import { profileKey } from './identity';
 import { worksWithNone } from './WorksWith';
@@ -56,13 +56,15 @@ export const sameStateGroups = (key: string, build: () => PickerGroup[]) => (): 
   const value = build(); listCache.set(key, { at, value }); return value;
 };
 
-function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
+const addFilament: PickerAction = { label: 'Add filament', run: () => setState({ presetUx: { kind: 'presets', type: 'filament', add: true } }) };
+
+function filamentGroups(slot: number | null): PickerGroup[] {
   const s = getState();
-  let entries = catalog ? listCatalog('filament') : listProfiles('filament');
-  const hidden = catalog || slot === null ? undefined : currentEntry('filament', s.filamentSlots[slot], entries);
+  let entries = listProfiles('filament');
+  const hidden = slot === null ? undefined : currentEntry('filament', s.filamentSlots[slot], entries);
   if (hidden) entries = [...entries, hidden];
   const others = new Map<string, { n: number; colour: string }[]>();
-  if (!catalog) s.filamentSlots.forEach((name, i) => { if (i !== slot && name) others.set(name, [...(others.get(name) ?? []), { n: i + 1, colour: filamentColor(s, i + 1) }]); });
+  s.filamentSlots.forEach((name, i) => { if (i !== slot && name) others.set(name, [...(others.get(name) ?? []), { n: i + 1, colour: filamentColor(s, i + 1) }]); });
   const item = (e: PickerEntry): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
     const label = e.mine ? e.name : b.name;
@@ -84,7 +86,7 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   if (loaded.length > 1) groups.push({ id: 'loaded', title: 'Loaded', items: [...loaded].sort((a, b) => a.slots![0].n - b.slots![0].n), filter: true });
   for (const type of [...types.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)))
     groups.push({ id: `t:${type}`, title: type, items: types.get(type)!.sort((a, b) => a.facet!.localeCompare(b.facet!) || a.label.localeCompare(b.label)) });
-  return catalog ? groups : [...groups, ...noPrinterGroup('filament')];
+  return [...groups, ...noPrinterGroup('filament')];
 }
 
 export function FilamentPicker({ slot }: { slot: number }) {
@@ -98,8 +100,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
     <span className="pk-slot">
       <FilamentColourMenu slot={slot}/>
       <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetHeads groups={sameStateGroups(`filament:${slot}`, () => filamentGroups(slot))}
-        catalog={{ label: 'Add filament', groups: sameStateGroups(`filament-catalog:${slot}`, () => filamentGroups(slot, true)), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
-        onPick={(id) => pickOrOpen('filament', id, (id) => id !== name && requestPreset('filament', slot, id))} footer={[presets('filament', name)]}>
+        onPick={(id) => pickOrOpen('filament', id, (id) => id !== name && requestPreset('filament', slot, id))} footer={[addFilament, presets('filament', name)]}>
         {pending ? <PickerSkeleton/> : <><span className="pk-type">{first(c.filament_type) || '—'}</span>
         <span className="pk-brand">{b.brand}</span>
         <span className="pk-name">{label}</span></>}
@@ -111,8 +112,8 @@ export function FilamentPicker({ slot }: { slot: number }) {
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
-    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetHeads groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => pickOrOpen('filament', id, addSlot)}
-      footer={[presets('filament')]}>
+    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetHeads groups={sameStateGroups('filament:add', () => filamentGroups(null))} onPick={(id) => addSlot(id)}
+      footer={[addFilament, presets('filament')]}>
       Add
     </Picker>
   );

@@ -88,7 +88,8 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const sliced = useSlicedMapping(jobId, bambu && jobReady && multiNozzle);
   const filaments = useMemo(() => (JSON.parse(filamentKey) as SendFilament[]).map((filament, i) => {
     const nozzle = sliced?.mapping?.filament_map[i];
-    return nozzle && nozzle > 0 ? { ...filament, extruder: nozzle - 1 } : filament;
+    const material = sliced?.mapping?.materials.find((row) => row.slot === i + 1);
+    return { ...filament, ...material, hasFilamentSwitch: sliced?.mapping?.has_filament_switch, ...(nozzle && nozzle > 0 ? { extruder: nozzle - 1 } : {}) };
   }), [filamentKey, sliced?.mapping]);
   const liveTrays = status?.online ? status.trays : undefined;
   const [readTraysList, setReadTrays] = useState<Tray[] | null>(null);

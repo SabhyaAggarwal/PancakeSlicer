@@ -9,7 +9,6 @@ import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
 import { effectiveLayerHeight } from './profiles/context';
 import { canonicalModeConfig } from './nonplanar-mode';
-import { autoEnginePreset } from './profiles/model';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
 function eventArg(e: LayerEvent): string {
@@ -94,15 +93,6 @@ export function calibOverrides(s = getState(), kind = ''): Config {
   if (!kind.startsWith('nonplanar-')) out.nonplanar_mode = 'off';
   for (const k of Object.keys(out)) if (OPTIONS[k]) out[k] = jobValue(k, out[k]); else delete out[k];
   return out;
-}
-
-export function engineName(s: State, type: 'machine' | 'process' | 'filament', name: string): string {
-  const resolved = resolvePreset(s, type, name);
-  if (type === 'process' && (resolved.source as { auto?: unknown } | undefined)?.auto) {
-    const printer = resolvePreset(s, 'machine', s.printer), preset = autoEnginePreset(s, printer.config, printer.base?.name ?? '');
-    return preset?.engine_base ?? preset?.name ?? resolved.engineName ?? '';
-  }
-  return resolved.engineName ?? '';
 }
 
 export function jobLibrary(s: State): JobLibrary {

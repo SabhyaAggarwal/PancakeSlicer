@@ -48,10 +48,10 @@ export function preprintMaterialChecks(machine: Config, status: PrinterStatus | 
   return filaments.flatMap((f, i) => {
     const tray = trays.find((t) => t.id === mapping[i]);
     const extruder = count === 1 ? 0 : f.extruder ?? tray?.extruder;
-    const flow = extruder === undefined ? undefined : valueAt(machine.nozzle_volume_type ?? machine.default_nozzle_volume_type, extruder, 'Standard');
-    const diameter = extruder === undefined ? undefined : Number(valueAt(machine.nozzle_diameter, extruder));
-    const rows = materialChecks({ model: valueAt(machine.printer_model, 0), name: f.name ?? f.type, type: f.type, vendor: f.vendor ?? '', id: f.id,
-      slot: tray && !isExternalTray(tray.id) ? 'ams' : 'ext', extruder, flow, diameter });
+    const flow = f.flow ?? (extruder === undefined ? undefined : valueAt(machine.nozzle_volume_type ?? machine.default_nozzle_volume_type, extruder, 'Standard'));
+    const diameter = f.diameter ?? (extruder === undefined ? undefined : Number(valueAt(machine.nozzle_diameter, extruder)));
+    const rows = materialChecks({ model: valueAt(machine.printer_model, 0), name: tray?.name || f.name?.replace(/^Bambu (?:Lab )?/, '') || f.type, type: f.type, vendor: f.vendor ?? '', id: f.id,
+      slot: tray && !isExternalTray(tray.id) ? 'ams' : 'ext', extruder, flow, diameter, hasFilamentSwitch: f.hasFilamentSwitch, object: f.object, support: f.support });
     if (extruder !== undefined) {
       const label = extruderLabel(extruder, count, true), level = ((f.compatibility ?? 0) >>> (extruder * 3)) & 7;
       if (!((f.printable ?? 3) & (1 << extruder)) || level === 1) rows.push({ message: `${f.name ?? f.type} is not supported by ${label.toLowerCase()}.`, blocked: true });
