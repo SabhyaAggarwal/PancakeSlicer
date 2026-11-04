@@ -19,6 +19,19 @@ type NozzleStatus struct {
 }
 
 type bambuDevice struct {
+	Airduct *struct {
+		ModeCur  int `json:"modeCur"`
+		ModeList []struct {
+			ID      int   `json:"modeId"`
+			Control []int `json:"ctrl"`
+		} `json:"modeList"`
+		Parts []struct {
+			ID       int    `json:"id"`
+			Function int    `json:"func"`
+			State    int    `json:"state"`
+			Range    uint32 `json:"range"`
+		} `json:"parts"`
+	} `json:"airduct"`
 	Nozzle *struct {
 		Exist int `json:"exist"`
 		Info  []struct {
@@ -95,6 +108,16 @@ func (b *bambuReport) nozzles() []NozzleStatus {
 
 func (b *bambuReport) fans() map[string]float64 {
 	out := map[string]float64{}
+	if b.Device != nil && b.Device.Airduct != nil {
+		for _, part := range b.Device.Airduct.Parts {
+			if part.ID&15 == 0 {
+				if name := bambuFanName(part.Function); name != "" {
+					out[name] = float64(part.State & 255)
+				}
+			}
+		}
+		return out
+	}
 	if b.FanGear != nil {
 		for i, name := range []string{"part", "auxiliary", "chamber"} {
 			out[name] = math.Round(float64((*b.FanGear>>(8*i))&255) * 100 / 255)

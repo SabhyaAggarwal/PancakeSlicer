@@ -28,6 +28,7 @@ type PrinterStatus struct {
 	Chamber   *Temp              `json:"chamber,omitempty"`
 	Nozzles   []NozzleStatus     `json:"nozzles,omitempty"`
 	Fans      map[string]float64 `json:"fans,omitempty"`
+	Controls  *BambuControls     `json:"controls,omitempty"`
 	Trays     []AMSTray          `json:"trays,omitempty"`
 	At        time.Time          `json:"at"`
 }

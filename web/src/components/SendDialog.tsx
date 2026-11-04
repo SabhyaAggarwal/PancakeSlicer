@@ -1,4 +1,6 @@
 import { preprintMaterialChecks } from '../multinozzle/material-checks';
+import { DeviceControls } from '../multinozzle/DeviceControls';
+import { useSlicedMapping } from '../multinozzle/sliced-mapping';
 import { preprintWarnings } from '../multinozzle/preprint';
 import { autoMap, availableTrays, physicalMapping, trayLabel, type SendFilament } from '../multinozzle/ams';
 import { assignedExtruder, nozzleAssignments } from '../multinozzle/assignments';
@@ -82,7 +84,12 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
       printable: Number(valueAt(config.filament_printable, 0, '3')), compatibility: Number(valueAt(config.filament_extruder_compatibility, 0, '0')),
       ...(extruderCount(effectiveConfig(s, 'machine')) > 1 && String(nozzleAssignments(s).filament_map_mode ?? '').includes('Manual') ? { extruder: assignedExtruder(s, i) } : {}) };
   })));
-  const filaments = useMemo(() => JSON.parse(filamentKey) as SendFilament[], [filamentKey]);
+  const multiNozzle = extruderCount(machineConfig) > 1;
+  const sliced = useSlicedMapping(jobId, bambu && jobReady && multiNozzle);
+  const filaments = useMemo(() => (JSON.parse(filamentKey) as SendFilament[]).map((filament, i) => {
+    const nozzle = sliced?.mapping?.filament_map[i];
+    return nozzle && nozzle > 0 ? { ...filament, extruder: nozzle - 1 } : filament;
+  }), [filamentKey, sliced?.mapping]);
   const liveTrays = status?.online ? status.trays : undefined;
   const [readTraysList, setReadTrays] = useState<Tray[] | null>(null);
   const trays = liveTrays ?? readTraysList;
@@ -133,11 +140,13 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const failed = !!error || mine?.state === 'failed' || mine?.state === 'cancelled';
   const running = status?.online && (status.state === 'printing' || status.state === 'paused');
   const blocked = !jobId || !jobReady ? 'Slice the plate first.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
-  const needsMap = bambu && (trays ? filaments.some((f, i) => !availableTrays(f, trays).some((t) => t.id === shown[i])) : !single || extruderCount(machineConfig) > 1);
+  const needsNozzleMap = bambu && multiNozzle && (!sliced?.mapping || sliced.mapping.filament_map.length !== filaments.length);
+  const needsMap = needsNozzleMap || bambu && (trays ? filaments.some((f, i) => !availableTrays(f, trays).some((t) => t.id === shown[i])) : !single || multiNozzle);
   return <>
     <ModalBody className="send-body">
       {head}
       <div className="send-meta">Plate {plateIndex} · {exportFilename()}</div>
+      {jobReady && needsNozzleMap && <div className={sliced?.error ? 'warning-text' : 'send-meta'} role={sliced?.error ? 'alert' : 'status'}>{sliced?.error ?? 'Reading sliced nozzle assignment…'}</div>}
       {blocked && <div className="warning-text">{blocked}</div>}
       {bambu && fits && (
         <div className="send-options">
@@ -173,6 +182,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
         </div>
       )}
       {statusText && <div role={failed ? 'alert' : 'status'} className={failed ? 'warning-text' : 'hint-text'}>{sentence(statusText)}</div>}
+      {bambu && <DeviceControls key={printer} printer={printer} status={status} />}
       {running && (
         <div className="send-live" aria-label="Printer status">
           <div className="send-live-row">

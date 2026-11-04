@@ -652,28 +652,32 @@ type bambuExternalTray struct {
 }
 
 type bambuReport struct {
-	State          string          `json:"gcode_state"`
-	Percent        *float64        `json:"mc_percent"`
-	Remaining      *int            `json:"mc_remaining_time"`
-	Layer          *int            `json:"layer_num"`
-	Layers         *int            `json:"total_layer_num"`
-	Nozzle         *float64        `json:"nozzle_temper"`
-	NozzleSet      *float64        `json:"nozzle_target_temper"`
-	Bed            *float64        `json:"bed_temper"`
-	BedSet         *float64        `json:"bed_target_temper"`
-	Chamber        *float64        `json:"chamber_temper"`
-	ChamberSet     *float64        `json:"ctt"`
-	Device         *bambuDevice    `json:"device"`
-	NozzleDiameter json.RawMessage `json:"nozzle_diameter"`
-	NozzleType     string          `json:"nozzle_type"`
-	Flag3          *uint32         `json:"flag3"`
-	FanGear        *uint32         `json:"fan_gear"`
-	PartFan        json.RawMessage `json:"cooling_fan_speed"`
-	AuxFan         json.RawMessage `json:"big_fan1_speed"`
-	ChamberFan     json.RawMessage `json:"big_fan2_speed"`
-	Subtask        string          `json:"subtask_name"`
-	Error          int64           `json:"print_error"`
-	AMS            *struct {
+	State               string          `json:"gcode_state"`
+	Percent             *float64        `json:"mc_percent"`
+	Remaining           *int            `json:"mc_remaining_time"`
+	Layer               *int            `json:"layer_num"`
+	Layers              *int            `json:"total_layer_num"`
+	Nozzle              *float64        `json:"nozzle_temper"`
+	NozzleSet           *float64        `json:"nozzle_target_temper"`
+	Bed                 *float64        `json:"bed_temper"`
+	BedSet              *float64        `json:"bed_target_temper"`
+	Chamber             *float64        `json:"chamber_temper"`
+	ChamberSet          *float64        `json:"ctt"`
+	ChamberEditable     bool            `json:"support_chamber_temp_edit"`
+	ChamberRange        []int           `json:"support_chamber_temp_edit_range"`
+	AuxSupported        *bool           `json:"support_aux_fan"`
+	ChamberFanSupported *bool           `json:"support_chamber_fan"`
+	Device              *bambuDevice    `json:"device"`
+	NozzleDiameter      json.RawMessage `json:"nozzle_diameter"`
+	NozzleType          string          `json:"nozzle_type"`
+	Flag3               *uint32         `json:"flag3"`
+	FanGear             *uint32         `json:"fan_gear"`
+	PartFan             json.RawMessage `json:"cooling_fan_speed"`
+	AuxFan              json.RawMessage `json:"big_fan1_speed"`
+	ChamberFan          json.RawMessage `json:"big_fan2_speed"`
+	Subtask             string          `json:"subtask_name"`
+	Error               int64           `json:"print_error"`
+	AMS                 *struct {
 		AMS []struct {
 			ID   string `json:"id"`
 			Info string `json:"info"`
@@ -750,6 +754,7 @@ func (b *bambuReport) trays() []AMSTray {
 
 func (b *bambuReport) status() PrinterStatus {
 	st := PrinterStatus{Online: true, Detail: b.State, File: b.Subtask, Layer: b.Layer, Layers: b.Layers, Trays: b.trays(), Nozzles: b.nozzles(), Fans: b.fans()}
+	st.Controls = b.controls()
 	st.State = map[string]string{"IDLE": "idle", "PREPARE": "busy", "SLICING": "busy", "RUNNING": "printing", "PAUSE": "paused", "FINISH": "finished", "FAILED": "failed"}[b.State]
 	if st.State == "" {
 		st.State = "busy"
@@ -865,13 +870,19 @@ func monitorBambu(ctx context.Context, p *PrinterConfig, secret string, publish 
 }
 
 func controlBambu(ctx context.Context, p *PrinterConfig, secret, action string) error {
+	return bambuCommand(ctx, p, secret, map[string]any{"command": action, "param": ""})
+}
+
+func bambuCommand(ctx context.Context, p *PrinterConfig, secret string, command map[string]any) error {
 	conn, r, err := mqttSession(ctx, p, secret)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
-	if err := mqttPublish(conn, p, map[string]any{"print": map[string]any{"sequence_id": sequence, "command": action, "param": ""}}); err != nil {
+	command["sequence_id"] = sequence
+	action, _ := command["command"].(string)
+	if err := mqttPublish(conn, p, map[string]any{"print": command}); err != nil {
 		return err
 	}
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -898,8 +909,8 @@ func controlBambu(ctx context.Context, p *PrinterConfig, secret, action string) 
 			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
 				return errors.New("the printer refused the command: turn on LAN Only and Developer Mode on the printer")
 			}
-			if m.Result != "" && !strings.EqualFold(m.Result, "success") {
-				return fmt.Errorf("the printer refused %s: %s", action, cmpOr(m.Reason, m.Result))
+			if m.ErrCode != 0 || m.Result != "" && !strings.EqualFold(m.Result, "success") {
+				return fmt.Errorf("the printer refused %s: %s (code %d)", action, cmpOr(m.Reason, m.Result), m.ErrCode)
 			}
 			return nil
 		}

@@ -16,6 +16,7 @@ export interface PrinterStatus {
   state: 'connecting' | 'idle' | 'printing' | 'paused' | 'finished' | 'failed' | 'busy' | 'error' | 'offline';
   detail?: string; file?: string; progress?: number; remaining_s?: number; layer?: number; layers?: number;
   nozzle?: Temp; bed?: Temp; chamber?: Temp; nozzles?: NozzleStatus[]; fans?: Record<string, number>; trays?: Tray[]; at: string;
+  controls?: { fans?: Record<string, { index: number; min: number; max: number; modern?: boolean }>; chamber?: { min: number; max: number } };
 }
 export interface PrinterConnections {
   enabled: boolean;
@@ -73,6 +74,7 @@ export const adoptConnection = (printer: string, id: string, name: string) => ca
 export const testConnection = (printer: string, edit: ConnectionEdit) => call<ConnectionTest>('/api/printer-connections/test', json('POST', { ...edit, printer }));
 export const discoverPrinters = () => call<{ printers: Discovered[]; notes: string[] }>('/api/printer-connections/discover', json('POST'));
 export const controlPrinter = (printer: string, action: 'stop' | 'pause' | 'resume') => call<void>(path(printer, '/control'), json('POST', { action }));
+export const controlDevice = (printer: string, command: { control: 'fan' | 'chamber'; fan?: string; value: number }) => call<void>(path(printer, '/device'), json('POST', command));
 export const readTrays = (printer: string) => call<{ trays: Tray[] }>(path(printer, '/ams'), json('POST')).then((r) => r.trays ?? []);
 
 export const LEGACY_HOST_KEYS = ['host_type', 'print_host', 'printhost_apikey', 'printhost_port', 'printhost_user', 'printhost_password', 'printhost_authorization_type'];
