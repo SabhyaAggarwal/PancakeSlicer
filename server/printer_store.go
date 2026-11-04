@@ -128,21 +128,7 @@ func (st *printerStore) save() error {
 	return writeFileAtomic(filepath.Join(st.dir, "connections.json"), b)
 }
 
-func writeFileAtomic(path string, b []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
-}
+func writeFileAtomic(path string, b []byte) error { return durableWrite(path, b) }
 
 func newSendID() string {
 	id := make([]byte, 8)

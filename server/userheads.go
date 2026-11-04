@@ -64,19 +64,7 @@ func (s *Server) saveUserHead(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err.Error())
 		return
 	}
-	tmp, err := os.CreateTemp(dir, ".put-*")
-	if err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	_, werr := tmp.Write(b)
-	if err := errors.Join(werr, tmp.Close()); err != nil {
-		os.Remove(tmp.Name())
-		fail(w, 500, err.Error())
-		return
-	}
-	defer os.Remove(tmp.Name())
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, head.ID+".json")); err != nil {
+	if err := durableWrite(filepath.Join(dir, head.ID+".json"), b); err != nil {
 		fail(w, 500, err.Error())
 		return
 	}

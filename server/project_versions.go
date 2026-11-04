@@ -376,6 +376,9 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			return
 		}
 		j := s.jobs.Get(in.Job)
+		if j != nil {
+			j.AwaitFinished(r.Context())
+		}
 		if j == nil || !sliceJob(j) {
 			workspaceFailure(w, 409, "slice_unavailable", "The slice is not finished or no longer exists.", "slice_again", 0)
 			return

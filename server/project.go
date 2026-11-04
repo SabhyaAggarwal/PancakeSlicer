@@ -228,6 +228,9 @@ func rewriteProject(path string, match func(name string) bool, edit func(data []
 	if closeErr := dst.Close(); err == nil {
 		err = closeErr
 	}
+	if err == nil {
+		err = tmp.Sync()
+	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
@@ -237,7 +240,10 @@ func rewriteProject(path string, match func(name string) bool, edit func(data []
 	if err = src.Close(); err != nil {
 		return false, err
 	}
-	return found, os.Rename(name, path)
+	if err = os.Rename(name, path); err != nil {
+		return false, err
+	}
+	return found, syncWorkspaceDirectory(filepath.Dir(path))
 }
 
 func savedProjectInstances(path string) ([]projectInstance, error) {
