@@ -15,12 +15,13 @@ import (
 )
 
 type catalogModel struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Family  string   `json:"family,omitempty"`
-	Cover   string   `json:"cover,omitempty"`
-	Nozzles []string `json:"nozzles"`
-	Bed     string   `json:"bed,omitempty"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Family   string            `json:"family,omitempty"`
+	Cover    string            `json:"cover,omitempty"`
+	Nozzles  []string          `json:"nozzles"`
+	Bed      string            `json:"bed,omitempty"`
+	Machines map[string]string `json:"machines"`
 }
 type catalogVendor struct {
 	ID     string         `json:"id"`
@@ -88,6 +89,7 @@ func buildPrinterCatalog(root string) ([]catalogVendor, error) {
 				m.Cover = "/api/printer-catalog/covers/" + url.PathEscape(id) + "/" + url.PathEscape(model.Name)
 			}
 			m.Bed = bedOf(machines, model.Name)
+			m.Machines = machinesByNozzle(machines, model.Name)
 			vendor.Models = append(vendor.Models, m)
 		}
 		if len(vendor.Models) > 0 {
@@ -159,4 +161,26 @@ func (s *Server) printerCatalogRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		http.ServeFile(w, r, filepath.Join(root, vendor, model+"_cover.png"))
 	})
+}
+
+func machinesByNozzle(machines map[string]rawPreset, model string) map[string]string {
+	out := map[string]string{}
+	for name, p := range machines {
+		if stringValue(p["instantiation"]) == "false" {
+			continue
+		}
+		config := resolvedConfig(machines, name)
+		if firstConfigText(config["printer_model"]) != model {
+			continue
+		}
+		n, err := strconv.ParseFloat(firstConfigText(config["nozzle_diameter"]), 64)
+		if err != nil {
+			continue
+		}
+		key := strconv.FormatFloat(n, 'f', -1, 64)
+		if cur, ok := out[key]; !ok || name < cur {
+			out[key] = name
+		}
+	}
+	return out
 }

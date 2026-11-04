@@ -104,6 +104,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("GET /api/presets", s.listPresets)
 	s.printerCatalogRoutes(mux)
 	mux.HandleFunc("GET /api/filament-catalog", s.filamentCatalog)
+	s.migrateLibraryV4()
 	s.libraryRoutes(mux)
 	mux.HandleFunc("POST /api/resolve", s.postResolve)
 	options := c.Options

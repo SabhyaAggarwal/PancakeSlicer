@@ -8,12 +8,14 @@ import (
 )
 
 type filamentFamily struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Brand    string   `json:"brand,omitempty"`
-	Material string   `json:"material,omitempty"`
-	Colour   string   `json:"colour,omitempty"`
-	Models   []string `json:"models"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Brand    string            `json:"brand,omitempty"`
+	Material string            `json:"material,omitempty"`
+	Colour   string            `json:"colour,omitempty"`
+	Models   []string          `json:"models"`
+	Variants map[string]string `json:"variants"`
+	Fallback string            `json:"fallback"`
 }
 
 func filamentFamilyOf(name string) string { family, _, _ := strings.Cut(name, " @"); return family }
@@ -42,6 +44,16 @@ func filamentFamilies(v *VendorPresets) []filamentFamily {
 	}
 	out := make([]filamentFamily, 0, len(order))
 	for _, name := range order {
+		fam := byName[name]
+		fam.Variants = map[string]string{}
+		for _, m := range v.Machines {
+			if f := familyVariant(v, name, m.Name); f != nil && profileCompatible(f, m.Name, "", false) {
+				fam.Variants[m.Name] = f.Name
+			}
+		}
+		if f := familyVariant(v, name, ""); f != nil {
+			fam.Fallback = f.Name
+		}
 		slices.Sort(byName[name].Models)
 		out = append(out, *byName[name])
 	}
