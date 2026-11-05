@@ -308,7 +308,7 @@ CurvedTopBudgetReport ClearanceRepair::curved_budget_report(const Print &print, 
     auto report = repair != nullptr && repair->m_curved_budget ? repair->m_curved_budget->report(object) : CurvedTopBudgetReport{};
     report.time_budget_percent = object.config().nonplanar_time_budget.value;
     if (report.reason.empty() && !object.m_curved_budget_reason.empty())
-        report.reason = "curved tops remain planar after an earlier firmware time budget rejection";
+        report.reason = object.m_curved_budget_reason;
     return report;
 }
 
@@ -1013,8 +1013,13 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
             std::ostringstream budget;
             budget << decision.time_budget_percent;
+            const auto patch = std::find_if(decision.patches.begin(), decision.patches.end(),
+                [id](const CurvedTopBudgetPatch &p) { return p.id == id; });
+            const bool quality = patch != decision.patches.end() && patch->samples > 0 &&
+                patch->curved_rms_mm > patch->planar_rms_mm + 1e-9;
             m_guard_warnings.push_back(object->model_object()->name + ": curved top " + std::to_string(id) +
-                " prints planar to keep firmware time within " + budget.str() + "% of the planar profile.");
+                (quality ? " prints planar because its predicted top RMS is worse than the planar profile." :
+                 " prints planar to keep firmware time within " + budget.str() + "% of the planar profile."));
         }
         for (PrintObject *object : m_print.objects()) {
             const auto decision = m_curved_budget->report(*object);

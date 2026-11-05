@@ -204,17 +204,27 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 }
             }
         }
-        int worst = -1; double worst_score = -1.;
+        int worst = -1, worst_quality = -1;
+        double worst_score = -1., worst_quality_loss = 0.;
         for (const auto &[id, p] : patches) {
             const double score = p.samples > 0 && p.rms_gain_mm > 0. ? p.cost_s / p.rms_gain_mm : Inf;
             BOOST_LOG_TRIVIAL(info) << std::setprecision(12) << "Curved top budget patch: " << object.model_object()->name
                 << " id " << id << " cost_s " << p.cost_s << " rms_gain_mm " << p.rms_gain_mm << " score " << score;
             if (score > worst_score) { worst = id; worst_score = score; }
+            const double quality_loss = p.samples * (p.curved_rms_mm * p.curved_rms_mm -
+                                                     p.planar_rms_mm * p.planar_rms_mm);
+            if (measured && p.samples > 0 && p.curved_rms_mm > p.planar_rms_mm + 1e-9 &&
+                quality_loss > worst_quality_loss) {
+                worst_quality = id;
+                worst_quality_loss = quality_loss;
+            }
         }
-        if (!report.within_budget && worst >= 0) {
-            patches[worst].dropped = true;
-            rejected.emplace_back(&object, worst);
-            report.reason = measured ? "curved patch exceeds the process firmware time budget" :
+        const int drop = worst_quality >= 0 ? worst_quality : !report.within_budget ? worst : -1;
+        if (drop >= 0) {
+            patches[drop].dropped = true;
+            rejected.emplace_back(&object, drop);
+            report.reason = worst_quality >= 0 ? "curved patch top RMS exceeds the planar control" :
+                measured ? "curved patch exceeds the process firmware time budget" :
                 report.reason.empty() ? "firmware time could not be measured" : report.reason;
         }
         std::map<int, CurvedTopBudgetPatch> records;
@@ -224,7 +234,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         for (const auto &[id, p] : records) report.patches.push_back(p);
         BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top budget: " << object.model_object()->name << " firmware " << report.candidate_s
             << " s planar " << report.planar_s << " s cap " << report.limit_s << " s drop "
-            << (!report.within_budget ? worst : -1) << " score " << worst_score;
+            << drop << " score " << worst_score << " reason " << report.reason;
     }
     return rejected;
 }

@@ -365,7 +365,8 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                     {"whole_top_rms_gain_mm", p.samples ? json(p.rms_gain_mm) : json(nullptr)},
                     {"cost_per_rms_gain", p.samples && p.rms_gain_mm > 0. ? json(p.cost_s / p.rms_gain_mm) : json(nullptr)},
                     {"samples", p.samples}, {"dropped", p.dropped},
-                    {"reason", p.dropped ? (budget.measured ? "firmware_time_budget" : "firmware_time_unmeasured") : "retained"}});
+                    {"reason", p.dropped ? (p.samples && p.curved_rms_mm > p.planar_rms_mm + 1e-9 ? "top_rms_worse_than_planar" :
+                        budget.measured ? "firmware_time_budget" : "firmware_time_unmeasured") : "retained"}});
                 jo["curved_top_budget"] = {{"measured", budget.measured}, {"within_budget", budget.measured ? json(budget.within_budget) : json(nullptr)},
                     {"planar_fw_s", budget.measured ? json(budget.planar_s) : json(nullptr)},
                     {"candidate_fw_s", budget.measured ? json(budget.candidate_s) : json(nullptr)},
