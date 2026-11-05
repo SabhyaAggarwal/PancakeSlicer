@@ -902,7 +902,8 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                 } else if (surface.is_solid()) {
                     if (surface.is_external() && !is_bridge) {
                         if (surface.is_top()) {
-                            params.pattern = region_config.top_surface_pattern.value;
+                            params.pattern = region_config.zaa_enabled && region_config.zaa_mid_layer_slice ? ipConcentric :
+                                                                                                             region_config.top_surface_pattern.value;
                             params.density = float(region_config.top_surface_density);
                             if (params.density <= 0.0f) continue;
                         } else {

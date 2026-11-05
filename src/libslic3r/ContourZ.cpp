@@ -7,6 +7,7 @@
 #include "Line.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
 #include "Point.hpp"
 #include "Print.hpp"
 #include "SLA/IndexedMesh.hpp"
@@ -15,10 +16,14 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdint>
+#include <functional>
 #include <initializer_list>
+#include <limits>
 #include <math.h>
 #include <string>
 #include <typeinfo>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 #include "Config.hpp"
@@ -79,6 +84,9 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 	coordf_t height = layer->height;
 
 	double minimize_perimeter_height_angle = zaa_active ? config.zaa_minimize_perimeter_height.value : 0.;
+	const bool mid_layer = rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice && !region->layer()->object()->auto_z_contouring();
+	if (mid_layer)
+		minimize_perimeter_height_angle = 0.;
 
 	Pointf3s contoured_points;
 	bool was_contoured = false;
@@ -122,6 +130,8 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 				min_down = -(height + 0.1);
 			} else if (banded && !zaa_active && path.role() == erTopSolidInfill && hit_up.is_hit() &&
 			           hit_up.normal().z() > std::cos(M_PI / 18.)) {
+				max_up = 0.5 * height;
+			} else if (mid_layer && path.role() == erTopSolidInfill) {
 				max_up = 0.5 * height;
 			}
 
@@ -330,6 +340,240 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
     collection.entities = std::move(out);
 }
 
+namespace {
+constexpr double OrderStep = 0.2, OrderTol = 0.025;
+thread_local double t_reach = 0.65;
+
+void densify(Points3 &pts)
+{
+    if (pts.size() < 2)
+        return;
+    const coord_t step = scaled<coord_t>(OrderStep);
+    Points3 dense;
+    for (size_t i = 0; i + 1 < pts.size(); ++i) {
+        const Vec3d a = pts[i].cast<double>(), b = pts[i + 1].cast<double>();
+        const int n = std::max(1, int(std::ceil((b - a).head<2>().norm() / double(step))));
+        for (int k = 0; k < n; ++k) {
+            const Vec3d q = a + (b - a) * (double(k) / n);
+            dense.emplace_back(coord_t(std::lround(q.x())), coord_t(std::lround(q.y())), coord_t(std::lround(q.z())));
+        }
+    }
+    dense.push_back(pts.back());
+    pts = std::move(dense);
+}
+
+struct HeightGrid
+{
+    coord_t reach = scaled<coord_t>(t_reach);
+    std::unordered_map<int64_t, Points3> cells;
+    int64_t key(coord_t x, coord_t y) const { return (int64_t(x / reach) << 32) ^ int64_t(uint32_t(y / reach)); }
+    void add(const Point3 &p) { cells[key(p.x(), p.y())].push_back(p); }
+    template<class Visit> void near(const Point3 &p, Visit &&visit) const
+    {
+        for (coord_t dx = -1; dx <= 1; ++dx)
+            for (coord_t dy = -1; dy <= 1; ++dy)
+                if (auto it = cells.find(key(p.x() + dx * reach, p.y() + dy * reach)); it != cells.end())
+                    for (const Point3 &q : it->second)
+                        if (Vec2d(double(q.x() - p.x()), double(q.y() - p.y())).squaredNorm() <= double(reach) * double(reach))
+                            visit(q);
+    }
+    coord_t highest(const Point3 &p) const
+    {
+        coord_t z = std::numeric_limits<coord_t>::min();
+        near(p, [&z](const Point3 &q) { z = std::max(z, q.z()); });
+        return z;
+    }
+};
+
+void collect_paths(ExtrusionEntity &e, std::vector<ExtrusionPath *> &out)
+{
+    if (auto *c = dynamic_cast<ExtrusionEntityCollection *>(&e)) {
+        for (ExtrusionEntity *x : c->entities)
+            collect_paths(*x, out);
+    } else if (auto *loop = dynamic_cast<ExtrusionLoop *>(&e)) {
+        for (ExtrusionPath &p : loop->paths)
+            out.push_back(&p);
+    } else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(&e)) {
+        for (ExtrusionPath &p : multi->paths)
+            out.push_back(&p);
+    } else if (auto *path = dynamic_cast<ExtrusionPath *>(&e))
+        out.push_back(path);
+}
+
+bool has_top(const ExtrusionEntity &e)
+{
+    if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(&e))
+        return std::any_of(c->entities.begin(), c->entities.end(), [](const ExtrusionEntity *x) { return has_top(*x); });
+    return e.role() == erTopSolidInfill;
+}
+
+coord_t lowest_top(ExtrusionEntity &e)
+{
+    std::vector<ExtrusionPath *> paths;
+    collect_paths(e, paths);
+    coord_t z = std::numeric_limits<coord_t>::max();
+    for (const ExtrusionPath *p : paths)
+        if (p->role() == erTopSolidInfill)
+            for (const Point3 &q : p->polyline.points)
+                z = std::min(z, q.z());
+    return z;
+}
+
+void order_lines(ExtrusionEntityCollection &collection)
+{
+    std::vector<ExtrusionPath *> lines;
+    for (ExtrusionEntity *e : collection.entities) {
+        auto *path = dynamic_cast<ExtrusionPath *>(e);
+        if (path == nullptr || typeid(*path) != typeid(ExtrusionPath) || path->role() != erTopSolidInfill || path->polyline.points.size() < 2)
+            return;
+        lines.push_back(path);
+    }
+    if (lines.size() < 2)
+        return;
+    const coord_t tol = scaled<coord_t>(OrderTol);
+    HeightGrid grid;
+    std::unordered_map<int64_t, std::vector<std::pair<Point3, int>>> owners;
+    for (int i = 0; i < int(lines.size()); ++i)
+        for (const Point3 &p : lines[i]->polyline.points)
+            owners[grid.key(p.x(), p.y())].emplace_back(p, i);
+    std::vector<std::vector<int>> after(lines.size());
+    std::vector<int> pending(lines.size(), 0);
+    for (int i = 0; i < int(lines.size()); ++i) {
+        std::vector<char> seen(lines.size(), 0);
+        for (const Point3 &p : lines[i]->polyline.points)
+            for (coord_t dx = -1; dx <= 1; ++dx)
+                for (coord_t dy = -1; dy <= 1; ++dy)
+                    if (auto it = owners.find(grid.key(p.x() + dx * grid.reach, p.y() + dy * grid.reach)); it != owners.end())
+                        for (const auto &[q, j] : it->second)
+                            if (j != i && !seen[j] && q.z() - p.z() > tol &&
+                                Vec2d(double(q.x() - p.x()), double(q.y() - p.y())).squaredNorm() <= double(grid.reach) * double(grid.reach)) {
+                                seen[j] = 1;
+                                after[i].push_back(j);
+                                ++pending[j];
+                            }
+    }
+    std::vector<char> done(lines.size(), 0);
+    ExtrusionEntitiesPtr out;
+    Point here = lines.front()->first_point();
+    for (size_t n = 0; n < lines.size(); ++n) {
+        int best = -1; bool best_rev = false; double best_d = 0.;
+        for (int pass = 0; pass < 2 && best < 0; ++pass)
+            for (int i = 0; i < int(lines.size()); ++i) {
+                if (done[i] || (pass == 0 && pending[i] > 0))
+                    continue;
+                const double ds = (lines[i]->first_point() - here).cast<double>().norm(), de = (lines[i]->last_point() - here).cast<double>().norm();
+                const double d = (pass == 0 ? 0. : 1e12 * pending[i]) + std::min(ds, de);
+                if (best < 0 || d < best_d)
+                    best = i, best_d = d, best_rev = de < ds;
+            }
+        done[best] = 1;
+        for (int j : after[best])
+            --pending[j];
+        ExtrusionPath &line = *lines[best];
+        if (best_rev && line.can_reverse())
+            line.reverse();
+        if (line.polyline.points.front().z() > line.polyline.points.back().z() + tol && line.can_reverse())
+            line.reverse();
+        here = line.last_point();
+        out.push_back(&line);
+    }
+    collection.entities = std::move(out);
+    collection.no_sort  = true;
+}
+
+bool order_tops(ExtrusionEntityCollection &collection, bool root)
+{
+    bool any = false;
+    for (ExtrusionEntity *e : collection.entities)
+        if (auto *nested = dynamic_cast<ExtrusionEntityCollection *>(e))
+            any |= order_tops(*nested, false);
+        else
+            any |= e->role() == erTopSolidInfill;
+    if (!any)
+        return false;
+    order_lines(collection);
+    std::vector<std::pair<coord_t, ExtrusionEntity *>> tops;
+    ExtrusionEntitiesPtr out;
+    for (ExtrusionEntity *e : collection.entities)
+        if (dynamic_cast<ExtrusionEntityCollection *>(e) != nullptr && has_top(*e))
+            tops.emplace_back(lowest_top(*e), e);
+        else
+            out.push_back(e);
+    std::stable_sort(tops.begin(), tops.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    for (const auto &t : tops)
+        out.push_back(t.second);
+    collection.entities = std::move(out);
+    if (!root)
+        collection.no_sort = true;
+    return true;
+}
+
+void clamp_tops(ExtrusionEntityCollection &collection, HeightGrid &printed)
+{
+    const coord_t tol = scaled<coord_t>(OrderTol);
+    for (ExtrusionEntity *e : collection.entities) {
+        if (auto *nested = dynamic_cast<ExtrusionEntityCollection *>(e)) {
+            clamp_tops(*nested, printed);
+            continue;
+        }
+        std::vector<ExtrusionPath *> paths;
+        collect_paths(*e, paths);
+        for (ExtrusionPath *line : paths) {
+            if (line->role() != erTopSolidInfill)
+                continue;
+            densify(line->polyline.points);
+            for (Point3 &p : line->polyline.points)
+                if (const coord_t over = printed.highest(p); over != std::numeric_limits<coord_t>::min() && over - p.z() > tol) {
+                    p.z() = over - tol;
+                    line->z_contoured = true;
+                }
+            HeightGrid own;
+            for (const Point3 &p : line->polyline.points)
+                own.add(p);
+            const bool loop = dynamic_cast<ExtrusionLoop *>(e) != nullptr ||
+                (line->polyline.points.front() - line->polyline.points.back()).cast<double>().head<2>().norm() < scale_(line->width);
+            for (size_t i = loop ? 0 : line->polyline.points.size() - 1; i < line->polyline.points.size(); ++i)
+                if (Point3 &end = line->polyline.points[i]; own.highest(end) - end.z() > tol) {
+                    end.z() = own.highest(end) - tol;
+                    line->z_contoured = true;
+                }
+            for (const Point3 &p : line->polyline.points)
+                printed.add(p);
+        }
+    }
+}
+
+void lift_wall_dips(ExtrusionEntityCollection &perimeters)
+{
+    const coord_t tol = scaled<coord_t>(OrderTol);
+    std::function<void(ExtrusionEntity &)> visit = [&](ExtrusionEntity &e) {
+        if (auto *c = dynamic_cast<ExtrusionEntityCollection *>(&e)) {
+            for (ExtrusionEntity *x : c->entities)
+                visit(*x);
+            return;
+        }
+        std::vector<ExtrusionPath *> paths;
+        collect_paths(e, paths);
+        if (std::none_of(paths.begin(), paths.end(), [](const ExtrusionPath *p) { return p->z_contoured; }))
+            return;
+        HeightGrid grid;
+        for (ExtrusionPath *p : paths) {
+            if (p->z_contoured)
+                densify(p->polyline.points);
+            for (const Point3 &q : p->polyline.points)
+                grid.add(q);
+        }
+        for (ExtrusionPath *p : paths)
+            for (Point3 &q : p->polyline.points)
+                if (const coord_t over = grid.highest(q); over - q.z() > tol) {
+                    q.z() = over - tol;
+                    p->z_contoured = true;
+                }
+    };
+    visit(perimeters);
+}
+}
+
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
 	ExPolygons shell_area;
@@ -385,6 +629,23 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 
         handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erIroning, erPerimeter, erExternalPerimeter, erMixed}, shell_area);
         handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, shell_area);
+        if (config.zaa_mid_layer_slice && !object.auto_z_contouring()) {
+            t_reach = Nonplanar::resolve_head_envelope(object.print()->config()).tip_flat_radius + 0.34;
+            lift_wall_dips(region->perimeters);
+            HeightGrid printed;
+            std::vector<ExtrusionPath *> earlier;
+            collect_paths(region->perimeters, earlier);
+            collect_paths(region->fills, earlier);
+            for (ExtrusionPath *p : earlier)
+                if (p->role() != erTopSolidInfill) {
+                    Points3 pts = p->polyline.points;
+                    densify(pts);
+                    for (const Point3 &q : pts)
+                        printed.add(q);
+                }
+            if (order_tops(region->fills, true))
+                clamp_tops(region->fills, printed);
+        }
     }
 }
 }

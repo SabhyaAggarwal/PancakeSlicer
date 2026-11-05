@@ -1,10 +1,13 @@
 // Curved tops port of fich-l / OrcaSlicer-Nonplanar v0.1 (AGPL-3.0).
 #include "CurvedTopsSurface.hpp"
+#include "Repair.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/libslic3r.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -295,9 +298,11 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
                     it->second.second = std::max(it->second.second, z);
                 }
             }
-            for (size_t i = 1; i < path->polyline.points.size(); ++i)
+            for (size_t i = 1; i < path->polyline.points.size(); ++i) {
                 road_lengths[path->source_surface_id] +=
                     (path->polyline.points[i].cast<double>() - path->polyline.points[i - 1].cast<double>()).norm() * SCALING_FACTOR;
+
+            }
         } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&entity)) {
             for (const auto &path : loop->paths) visit(path);
         } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&entity)) {
@@ -318,14 +323,11 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
             out.extrusion_mm += road_lengths[id];
         }
     out.kept = used.size();
-    for (const auto &surface : object.nonplanar_surfaces())
-        if (used.count(surface.stable_id))
-            for (const auto &[id, facet] : surface.mesh) {
-                const Vec3d a(facet.vertex[0].x, facet.vertex[0].y, facet.vertex[0].z);
-                const Vec3d b(facet.vertex[1].x, facet.vertex[1].y, facet.vertex[1].z);
-                const Vec3d c(facet.vertex[2].x, facet.vertex[2].y, facet.vertex[2].z);
-                out.footprint_mm2 += 0.5 * std::abs((b - a).cross(c - a).z());
-            }
+    if (const auto *hints = object.nonplanar_repair())
+        for (int id : used) {
+            const auto found = hints->curved_top_areas.find(id);
+            if (found != hints->curved_top_areas.end()) out.footprint_mm2 += found->second;
+        }
     out.area_fraction = out.upward_area_mm2 > 0. ? std::clamp(out.footprint_mm2 / out.upward_area_mm2, 0., 1.) : 0.;
     if (out.kept == 0)
         out.planar_fallback_reason = out.candidates == 0 ? "no nonflat top surface meets the angle, height, area and access limits" :

@@ -413,6 +413,16 @@ struct GlobalModelInfo {
 
 Polygons extract_perimeter_polygons(const Layer *layer, std::vector<const LayerRegion*> &corresponding_regions_out,
                                    bool has_precise_seam_modifiers) {
+  const auto projected = [](const ExtrusionEntity &entity) {
+    if (const auto *path = dynamic_cast<const ExtrusionPath *>(&entity))
+      return path->nonplanar_source;
+    const ExtrusionPaths *paths = nullptr;
+    if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&entity))
+      paths = &loop->paths;
+    else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&entity))
+      paths = &multi->paths;
+    return paths != nullptr && std::any_of(paths->begin(), paths->end(), [](const ExtrusionPath &path) { return path.nonplanar_source; });
+  };
   Polygons polygons;
   for (const LayerRegion *layer_region : layer->regions()) {
     for (const ExtrusionEntity *ex_entity : layer_region->perimeters.entities) {
@@ -427,6 +437,8 @@ Polygons extract_perimeter_polygons(const Layer *layer, std::vector<const LayerR
             }
           }
 
+          if (projected(*perimeter))
+            continue;
           if (role == ExtrusionRole::erExternalPerimeter) {
             Points p;
             perimeter->collect_points(p);
@@ -436,11 +448,17 @@ Polygons extract_perimeter_polygons(const Layer *layer, std::vector<const LayerR
         }
         if (polygons.empty()) {
           Points p;
-          ex_entity->collect_points(p);
+          for (const ExtrusionEntity *perimeter : static_cast<const ExtrusionEntityCollection *>(ex_entity)->entities)
+            if (!projected(*perimeter))
+              perimeter->collect_points(p);
+          if (p.empty())
+            continue;
           polygons.emplace_back(std::move(p));
           corresponding_regions_out.push_back(layer_region);
         }
       } else {
+        if (projected(*ex_entity))
+          continue;
         Points p;
         ex_entity->collect_points(p);
         polygons.emplace_back(std::move(p));

@@ -3440,6 +3440,11 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
     std::map<size_t, std::vector<std::string>> curved_access_warnings;
     std::unique_ptr<GCode> gcode;
     for (;;) {
+        if (repair.restore_planar_remainders()) {
+            repair.apply();
+            this->process();
+            continue;
+        }
         if (m_config.belt_printer.value)
             gcode = std::make_unique<BeltGCode>();
         else
@@ -3463,8 +3468,12 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
                         BOOST_LOG_TRIVIAL(warning) << warning;
                         changed = true;
                     }
-                if (changed)
-                    object->invalidate_step(posSlice);
+                if (changed) {
+                    auto &surfaces = object->m_nonplanar_surfaces;
+                    surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(), [object](const NonplanarSurface &surface) {
+                        return object->m_curved_planar_surfaces.count(surface.stable_id) != 0; }), surfaces.end());
+                    object->invalidate_step(posPerimeters);
+                }
             }
             if (!changed)
                 throw;

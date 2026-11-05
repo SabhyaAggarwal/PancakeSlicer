@@ -1,3 +1,4 @@
+#include "libslic3r/Nonplanar/CurvedTopsScaffold.hpp"
 #include "ClearanceRepair.hpp"
 #include "Point.hpp"
 #include <cstddef>
@@ -952,6 +953,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             PrintObject *owner = nullptr;
             int surface_id = -1;
             double best = std::numeric_limits<double>::infinity();
+            Vec2d owner_shift = Vec2d::Zero();
             const Vec3d tip = tip_of(result, i);
             for (PrintObject *object : m_print.objects()) {
                 if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops) continue;
@@ -964,14 +966,37 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                         double score = dx * dx + dy * dy + dz * dz;
                         if (result.state(move).nonplanar_patch == surface.stable_id &&
                             result.state(move).nonplanar_patch_shell != 0xFF && dx < 1. && dy < 1.) score = -1.;
-                        if (score < best && dx < params.head.reach() && dy < params.head.reach() && dz < 8.)
+                        if (score < best && dx < params.head.reach() && dy < params.head.reach() && dz < 8.) {
                             best = score, owner = object, surface_id = surface.stable_id;
+                            owner_shift = unscale(instance.shift);
+                        }
                     }
                 }
             }
-            if (owner != nullptr && owner->m_curved_planar_surfaces.insert(surface_id).second &&
-                std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end())
-                m_repick.push_back(owner);
+            if (owner == nullptr) continue;
+            if (m_curved_pass < 2) {
+                double radius = 2.5 * (m_curved_pass + 1);
+                for (const HeadBox &box : params.head.boxes)
+                    if (box.nozzle && !box.infinite_x && !box.infinite_y &&
+                        box.min.z() <= -double(report.per_move[i]) + EPSILON)
+                        radius = std::max(radius, 2.5 * (m_curved_pass + 1) +
+                            std::max({-box.min.x(), box.max.x(), -box.min.y(), box.max.y()}));
+                if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
+                auto &discs = owner->m_nonplanar_repair->planar;
+                const Vec3d from = tip_of(result, i == 0 ? i : i - 1);
+                const int samples = std::max(1, int(std::ceil((tip - from).head<2>().norm() / (0.5 * radius))));
+                for (int k = 0; k <= samples; ++k) {
+                    const Vec3d p = from + (double(k) / samples) * (tip - from);
+                    const Vec2d xy = p.head<2>() - owner_shift;
+                    if (std::none_of(discs.begin(), discs.end(), [&](const RepairHints::Disc &disc) {
+                            return disc.radius >= radius && (disc.p - xy).norm() < 0.5 * radius &&
+                                std::abs(disc.z - p.z()) < radius;
+                        }))
+                        discs.push_back({xy, radius, p.z()});
+                }
+            } else
+                owner->m_curved_planar_surfaces.insert(surface_id);
+            if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
         }
         if (m_repick.empty())
             throw Slic3r::SlicingError("Curved tops: a head clearance hit cannot be attributed to an active curved surface; export blocked.");
@@ -980,29 +1005,27 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 const std::string warning = object->model_object()->name + ": Curved tops printed planar: every curved surface was struck by the head clearance check.";
                 m_guard_warnings.push_back(warning);
                 BOOST_LOG_TRIVIAL(warning) << warning;
+            } else if (m_curved_pass < 2) {
+                const std::string warning = object->model_object()->name +
+                    ": Curved tops returned the head-strike neighbourhood to planar layers and retained the remaining cap for clearance verification.";
+                m_guard_warnings.push_back(warning);
+                BOOST_LOG_TRIVIAL(warning) << warning;
             }
         ++m_curved_pass;
     }
-    for (PrintObject *object : m_print.objects()) {
-        if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops ||
-            object->m_curved_planar_surfaces.empty() || object->nonplanar_surfaces().empty() ||
-            curved_tops_stats(*object).kept != 0)
-            continue;
-        bool changed = false;
-        for (const auto &surface : object->nonplanar_surfaces())
-            changed |= object->m_curved_planar_surfaces.insert(surface.stable_id).second;
-        if (changed) {
-            if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end())
-                m_repick.push_back(object);
-            const std::string warning = object->model_object()->name +
-                ": Curved tops printed planar: no curved top remains; restored the original planar body.";
-            m_guard_warnings.push_back(warning);
-            BOOST_LOG_TRIVIAL(warning) << warning;
-        }
-    }
+    restore_planar_remainders();
     if (report.hit_moves == 0 && m_repick.empty()) {
         if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
         for (const auto &[object, id] : m_curved_budget->reject(m_print, result)) {
+            if (id == CurvedTopsBudget::Walls) {
+                object->m_sublayer_walls_off = true;
+                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+                const bool air = m_curved_budget->report(*object).reason == "half-height walls add road over air";
+                m_guard_warnings.push_back(object->model_object()->name + (air ?
+                    ": half-height walls print as single beads, where half-beads would lie over air." :
+                    ": half-height walls print as single beads to keep firmware time within the time budget of the planar profile."));
+                continue;
+            }
             if (!object->m_curved_planar_surfaces.insert(id).second) continue;
             const auto decision = m_curved_budget->report(*object);
             if (std::all_of(decision.patches.begin(), decision.patches.end(),
@@ -1033,11 +1056,49 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
     return true;
 }
 
+bool ClearanceRepair::restore_planar_remainders()
+{
+    bool restored = false;
+    for (PrintObject *object : m_print.objects()) {
+        if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops ||
+            object->m_curved_planar_surfaces.empty() || object->nonplanar_surfaces().empty() ||
+            curved_tops_stats(*object).kept != 0)
+            continue;
+        bool changed = false;
+        for (const auto &surface : object->nonplanar_surfaces())
+            changed |= object->m_curved_planar_surfaces.insert(surface.stable_id).second;
+        if (changed) {
+            restored = true;
+            if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end())
+                m_repick.push_back(object);
+            const std::string warning = object->model_object()->name +
+                ": Curved tops printed planar: no curved top remains; restored the original planar body.";
+            m_guard_warnings.push_back(warning);
+            BOOST_LOG_TRIVIAL(warning) << warning;
+        }
+    }
+    return restored;
+}
+
 bool ClearanceRepair::apply()
 {
     if (!m_repick.empty()) {
-        for (PrintObject *object : m_repick)
-            object->invalidate_step(posSlice);
+        for (PrintObject *object : m_repick) {
+            if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops) {
+                auto &surfaces = object->m_nonplanar_surfaces;
+                surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(), [object](const NonplanarSurface &surface) {
+                    return object->m_curved_planar_surfaces.count(surface.stable_id) != 0; }), surfaces.end());
+                const auto scaffold = object->m_nonplanar_repair ? object->m_nonplanar_repair->curved_scaffold : nullptr;
+                if (scaffold && scaffold->owner == object && !scaffold->regions.empty() &&
+                    !object->need_z_contouring() && !m_print.m_pipeline_plugin_active) {
+                    scaffold->restore();
+                    object->invalidate_steps({posNonplanarProjection, posNonplanar, posContouring});
+                    m_print.invalidate_step(psGCodeExport);
+                } else
+                    object->invalidate_step(posPerimeters);
+            } else
+                object->invalidate_step(posSlice);
+        }
         m_repick.clear();
         return true;
     }

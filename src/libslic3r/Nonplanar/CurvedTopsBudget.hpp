@@ -30,6 +30,7 @@ class CurvedTopsBudget {
 public:
     CurvedTopsBudget();
     ~CurvedTopsBudget();
+    static constexpr int Walls = -2;
     std::vector<std::pair<PrintObject *, int>> reject(Print &print, const GCodeProcessorResult &result);
     CurvedTopBudgetReport report(const PrintObject &object) const;
 private:

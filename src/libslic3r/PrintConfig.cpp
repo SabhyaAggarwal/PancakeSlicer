@@ -5118,6 +5118,15 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.05));
 
+    def = this->add("zaa_mid_layer_slice", coBool);
+    def->label    = L("Slice at mid-layer");
+    def->category = L("Quality");
+    def->tooltip  = L("Slice each layer at its middle, as without Z contouring, and move top surface lines up or down by up "
+                      "to half a layer onto the surface. Walls and steep faces then print as flat layers do, instead of "
+                      "from a slice near the bottom of the layer. Default: off.");
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_top_shells", coInt);
     def->label    = L("Curved top shells");
     def->category = L("Quality");
@@ -5249,12 +5258,12 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_sublayer_walls", coBool);
     def->label    = L("Half-height outer walls");
     def->category = L("Quality");
-    def->tooltip  = L("In Auto, print the outer wall as two lines of half the layer height where the face is steeper than "
+    def->tooltip  = L("In Auto, Off and Curved tops (3-axis), print the outer wall as two lines of half the layer height where the face is steeper than "
                       "25 degrees, vertical walls included, each at the outline of its own half of the layer, so the wall "
                       "shows half the layer's ridges and a slope half its stair. The lower line prints at the end of the "
                       "layer below. Slopes near 45 degrees are taken first, until the extra lines would add about 40 % "
                       "of the part's estimated extrusion time; on typical parts every outer wall fits, for 5 to 20 % more "
-                      "print time. Curved tops and planar layers are not affected.");
+                      "print time. Walls already raised onto a top by Z contouring keep their single line.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 

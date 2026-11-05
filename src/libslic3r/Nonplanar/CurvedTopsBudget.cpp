@@ -1,6 +1,7 @@
 #include "CurvedTopsBudget.hpp"
 #include "FirmwareTime.hpp"
 #include "MultiplanarConfirm.hpp"
+#include "Rests.hpp"
 #include "TopSurfaceGrid.hpp"
 #include "CurvedTopsSurface.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -37,6 +38,7 @@ struct Control {
     std::map<int, double> planar_times;
     double seconds = 0., object_seconds = 0., outside_seconds = 0.;
     CurvedTopBudgetReport report;
+    double air = -1.;
     bool attempted = false, valid = false;
 };
 int cell_at(const TopSurfaceGrid &grid, const Vec2d &p)
@@ -81,6 +83,7 @@ void build_control(Control &control, Print &print, const PrintObject &object)
     GCodeProcessorResult planar;
     const double measured = measured_planar_export(object, planar, file.string());
     if (!(std::isfinite(measured) && measured > 0.)) { control.report.reason = "planar control could not be measured"; return; }
+    control.air = floating_road(planar, object).air;
     const FirmwareTime fw = firmware_time(file.string(), print.config(), print.is_BBL_printer(), [&print] {
         if (print.canceled()) throw CanceledException();
     });
@@ -125,8 +128,11 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
 {
     std::vector<std::pair<PrintObject *, int>> rejected;
     if (!firmware_time_supported(print.config(), print.is_BBL_printer())) return rejected;
-    if (std::none_of(print.objects().begin(), print.objects().end(), [](const PrintObject *o) {
-        return o->config().nonplanar_mode.value == NonplanarMode::CurvedTops && curved_tops_stats(*o).kept > 0;
+    const auto priced = [](const PrintObject &o) {
+        return curved_tops_stats(o).kept > 0 || (o.sublayer_walls_active() && !o.sublayer_walls_off());
+    };
+    if (std::none_of(print.objects().begin(), print.objects().end(), [&priced](const PrintObject *o) {
+        return o->config().nonplanar_mode.value == NonplanarMode::CurvedTops && priced(*o);
     }) && m_impl->controls.empty()) return rejected;
     const FirmwareTime fw = firmware_time(result.filename, print.config(), print.is_BBL_printer(), [&print] {
         if (print.canceled()) throw CanceledException();
@@ -143,7 +149,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         PrintObject &object = *print.get_object(oi);
         if (object.config().nonplanar_mode.value != NonplanarMode::CurvedTops || object.instances().empty()) continue;
         auto old = m_impl->controls.find(&object);
-        if (old == m_impl->controls.end() && curved_tops_stats(object).kept == 0) continue;
+        if (old == m_impl->controls.end() && !priced(object)) continue;
         Control &c = m_impl->controls[&object];
         if (!c.attempted) build_control(c, print, object);
         auto &report = c.report;
@@ -170,6 +176,25 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         for (const auto &[id, height] : heights)
             if (height.second - height.first >= .03 - .001) active.insert(id);
         if (!fw.valid) for (const auto &surface : object.nonplanar_surfaces()) active.insert(surface.stable_id);
+        if (object.sublayer_walls_active() && !object.sublayer_walls_off() && c.air >= 0. && print.objects().size() == 1 &&
+            object.instances().size() == 1) {
+            const double air = floating_road(result, object).air;
+            if (air > c.air + 0.05) {
+                rejected.emplace_back(&object, Walls);
+                report.reason = "half-height walls add road over air";
+                BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top budget: " << object.model_object()->name
+                    << " road over air " << air << " mm, planar " << c.air << " mm: half-height walls off";
+                continue;
+            }
+        }
+        if (measured && !report.within_budget && object.sublayer_walls_active() && !object.sublayer_walls_off()) {
+            rejected.emplace_back(&object, Walls);
+            report.reason = "half-height walls exceed the firmware time budget";
+            BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top budget: " << object.model_object()->name
+                << " firmware " << report.candidate_s << " s planar " << report.planar_s << " s cap " << report.limit_s
+                << " s: half-height walls off";
+            continue;
+        }
         if (active.empty()) continue;
         std::map<int, CurvedTopBudgetPatch> patches;
         for (int id : active) { auto &p = patches[id]; p.id = id; }

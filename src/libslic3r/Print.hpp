@@ -346,6 +346,9 @@ public:
     TriangleMesh                 object_frame_mesh(double &ground_offset) const;
     const Nonplanar::ConformalResult& conformal() const;
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
+    bool sublayer_walls_active() const { return m_sublayer_walls_active; }
+    bool sublayer_walls_off() const { return m_sublayer_walls_off; }
+    void set_sublayer_walls_active(bool active) { m_sublayer_walls_active = active; }
     bool auto_planar_pass() const { return m_auto_planar_pass; }
     bool auto_floating_demoted() const { return m_auto_floating_demoted; }
     bool auto_band_demoted() const { return m_auto_band_demoted; }
@@ -599,6 +602,8 @@ private:
     NonplanarSurfaces                       m_nonplanar_surfaces;
     std::set<int>                          m_curved_planar_surfaces;
     std::string                            m_curved_budget_reason;
+    bool                                   m_sublayer_walls_active = false;
+    bool                                   m_sublayer_walls_off = false;
     size_t                                 m_curved_candidates = 0;
     double                                 m_curved_upward_area = 0.;
 

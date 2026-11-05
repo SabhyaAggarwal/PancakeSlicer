@@ -31,6 +31,8 @@
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/PlanarClip.hpp"
+#include "Nonplanar/Repair.hpp"
+#include "Nonplanar/CurvedTopsScaffold.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/RotaryRouter.hpp"
@@ -992,17 +994,27 @@ const Nonplanar::ConformalResult& PrintObject::conformal() const
     return m_conformal ? *m_conformal : empty;
 }
 
-bool PrintObject::need_z_contouring() const
+static bool contours_paths(const PrintObject &object, const Print &print)
 {
-    size_t num_regions = this->num_printing_regions();
-    const bool open_vase = m_print->config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(*this);
-    for (size_t region_id = 0; region_id < num_regions; region_id++) {
-        const auto &config = this->printing_region(region_id).config();
-        if (config.zaa_enabled || (!open_vase && Nonplanar::top_shells_enabled(config, this->config()) &&
-                                   Nonplanar::effective_fallback(config, this->config()) != NonplanarFallback::Planar))
+    const bool open_vase = print.config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(object);
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); region_id++) {
+        const auto &config = object.printing_region(region_id).config();
+        if (config.zaa_enabled || (!open_vase && Nonplanar::top_shells_enabled(config, object.config()) &&
+                                   Nonplanar::effective_fallback(config, object.config()) != NonplanarFallback::Planar))
             return true;
     }
+    return false;
+}
 
+bool PrintObject::need_z_contouring() const
+{
+    if (contours_paths(*this, *m_print))
+        return true;
+    const NonplanarMode mode = m_config.nonplanar_mode.value;
+    if (mode == NonplanarMode::Off || mode == NonplanarMode::CurvedTops)
+        for (size_t region_id = 0; region_id < this->num_printing_regions(); region_id++)
+            if (this->printing_region(region_id).config().nonplanar_sublayer_walls.value)
+                return true;
     return false;
 }
 
@@ -1015,6 +1027,7 @@ void PrintObject::contour_z()
     m_print->set_status(40, L("Z contouring"));
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - start";
 
+    if (contours_paths(*this, *m_print)) {
     double           ground_offset = 0.;
     TriangleMesh     mesh          = this->object_frame_mesh(ground_offset);
     sla::IndexedMesh imesh(mesh);
@@ -1037,6 +1050,7 @@ void PrintObject::contour_z()
             }
         }
     );
+    }
     m_print->throw_if_canceled();
     Nonplanar::split_sublayer_walls(*this);
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - end";
@@ -1766,6 +1780,10 @@ bool PrintObject::invalidate_state_by_config_options(
         m_curved_planar_surfaces.clear();
         steps.emplace_back(posSlice);
     }
+    if (m_sublayer_walls_off) {
+        m_sublayer_walls_off = false;
+        steps.emplace_back(posPerimeters);
+    }
     if (m_auto_support_applied && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {
             return key == "enable_support" || key == "support_type" || key == "support_style" || key == "support_critical_regions_only";
         })) {
@@ -2273,6 +2291,9 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
 
     if (step == posSlice || step == posPrepareInfill || step == posNonplanar)
         m_nonplanar_region_cache->clear();
+    if ((step == posSlice || step == posPerimeters || step == posPrepareInfill || step == posInfill || step == posIroning) &&
+        m_nonplanar_repair)
+        m_nonplanar_repair->curved_scaffold.reset();
 	bool invalidated = Inherited::invalidate_step(step);
 
     if (step == posPerimeters) {
@@ -2821,7 +2842,23 @@ PrintObject::detect_nonplanar_surfaces()
         const PrintRegion &region = this->printing_region(region_id);
 
         for (const auto& nonplanar_surface: this->nonplanar_surfaces()) {
-            const ExPolygons projection = nonplanar_surface.horizontal_projection();
+            ExPolygons raw_projection = nonplanar_surface.horizontal_projection();
+            if (const auto *repair = nonplanar_repair(); repair != nullptr) {
+                Polygons struck;
+                for (const auto &disc : repair->planar) {
+                    if (std::isfinite(disc.z) && (disc.z + disc.radius < nonplanar_surface.stats.min.z ||
+                        disc.z - disc.radius > nonplanar_surface.stats.max.z))
+                        continue;
+                    Polygon circle = make_circle(scale_(disc.radius), scale_(0.01));
+                    circle.translate(Point::new_scale(disc.p));
+                    struck.emplace_back(std::move(circle));
+                }
+                raw_projection = diff_ex(raw_projection, struck, ApplySafetyOffset::No);
+            }
+            const float boundary_radius = 2.f * region.flow(*this, frExternalPerimeter,
+                m_config.layer_height.value, false).scaled_width();
+            const ExPolygons projection = intersection_ex(raw_projection,
+                opening_ex(raw_projection, boundary_radius, jtRound, scale_(0.01)), ApplySafetyOffset::No);
             float distance_to_top = 0.0f;
             const int curved_shells = std::min(1, m_config.nonplanar_curved_shells.value);
             for (int shell_thickness = 0; curved_shells > shell_thickness; ++shell_thickness){
@@ -3001,6 +3038,9 @@ PrintObject::project_nonplanar_surfaces()
     };
     std::vector<std::unique_ptr<ShellLayer>> shells;
     std::vector<std::vector<ExPolygons>> replaced(m_layers.size());
+    Polygons patch_polygons;
+    std::map<int, Polygons> top_footprints;
+    std::map<int, float> top_insets;
     for (size_t i = 0; i < m_layers.size(); ++i) {
         Layer &layer = *m_layers[i];
         auto shell = std::make_unique<ShellLayer>(layer, this);
@@ -3009,7 +3049,16 @@ PrintObject::project_nonplanar_surfaces()
             LayerRegion &target = *shell->add_region(&region.region());
             Surfaces remaining;
             for (const Surface &surface : region.slices.surfaces)
-                (surface.is_nonplanar() ? target.slices.surfaces : remaining).push_back(surface);
+                if (surface.is_nonplanar()) {
+                    target.slices.surfaces.push_back(surface);
+                    polygons_append(patch_polygons, to_polygons(surface.expolygon));
+                    if (surface.distance_to_top >= 0.f && surface.distance_to_top < 0.001f) {
+                        polygons_append(top_footprints[surface.source_surface_id], to_polygons(surface.expolygon));
+                        top_insets[surface.source_surface_id] = std::max(top_insets[surface.source_surface_id],
+                            float(0.5 * region.flow(frExternalPerimeter).scaled_width()));
+                    }
+                } else
+                    remaining.push_back(surface);
             for (const NonplanarSurface &surface : region.nonplanar_surfaces())
                 target.append_nonplanar_surface(surface);
             replaced[i].push_back(diff_ex(planar[i].slices[r], remaining, ApplySafetyOffset::No));
@@ -3034,15 +3083,28 @@ PrintObject::project_nonplanar_surfaces()
                 region->project_nonplanar_surfaces();
         }
     });
-    Polygons patch_polygons;
-    for (const NonplanarSurface &surface : this->nonplanar_surfaces())
-        polygons_append(patch_polygons, to_polygons(surface.horizontal_projection()));
     const ExPolygons patch_footprint = union_ex(patch_polygons);
+    if (!m_nonplanar_repair) m_nonplanar_repair = std::make_shared<Nonplanar::RepairHints>();
+    m_nonplanar_repair->curved_top_areas.clear();
+    for (const auto &[id, polygons] : top_footprints)
+        m_nonplanar_repair->curved_top_areas[id] = area(offset_ex(union_ex(polygons), -top_insets[id])) *
+            SCALING_FACTOR * SCALING_FACTOR;
+    const std::array<std::uint64_t, 3> generation{{this->step_state_with_timestamp(posPerimeters).timestamp,
+        this->step_state_with_timestamp(posInfill).timestamp, this->step_state_with_timestamp(posIroning).timestamp}};
+    if (!m_nonplanar_repair->curved_scaffold || m_nonplanar_repair->curved_scaffold->owner != this ||
+        m_nonplanar_repair->curved_scaffold->generation != generation) {
+        m_nonplanar_repair->curved_scaffold = std::make_shared<Nonplanar::CurvedTopsScaffold>();
+        m_nonplanar_repair->curved_scaffold->owner = this;
+        m_nonplanar_repair->curved_scaffold->generation = generation;
+    }
     for (size_t i = 0; i < m_layers.size(); ++i)
         for (size_t r = 0; r < m_layers[i]->region_count(); ++r) {
             LayerRegion &region = *m_layers[i]->get_region(int(r));
             const ExPolygons area = intersection_ex(replaced[i][r], offset_ex(patch_footprint,
                 -float(0.5 * region.flow(frTopSolidInfill).scaled_width())), ApplySafetyOffset::No);
+            const LayerRegion &source_shell = *shells[i]->get_region(int(r));
+            if (!area.empty() || source_shell.has_extrusions())
+                m_nonplanar_repair->curved_scaffold->remember(region);
             if (!area.empty()) {
                 const BoundingBox box = get_extents(area);
                 Nonplanar::clip_planar_remainder(region.perimeters, area, box);
@@ -3053,6 +3115,14 @@ PrintObject::project_nonplanar_surfaces()
             region.perimeters.append(std::move(shell.perimeters.entities));
             region.fills.append(std::move(shell.fills.entities));
         }
+    auto &scaffold = *m_nonplanar_repair->curved_scaffold;
+    if (scaffold.restored) {
+        for (const auto &saved : scaffold.regions) {
+            saved.region->simplify_wall_extrusion_entity();
+            saved.region->simplify_infill_extrusion_entity();
+        }
+        scaffold.restored = false;
+    }
     set_done(posNonplanarProjection);
 }
 void PrintObject::apply_wave_overhang_floor_layer_authority()

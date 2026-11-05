@@ -184,6 +184,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     config.set_deserialize_strict("nonplanar_mode", mode == NonplanarMode::Auto ? "auto" :
                                   mode == NonplanarMode::Multiplanar ? "multiplanar" :
                                   mode == NonplanarMode::OneShot ? "oneshot" : "off");
+    if (mode == NonplanarMode::Off)
+        config.set_deserialize_strict("nonplanar_sublayer_walls", "0");
     if (mode == NonplanarMode::Multiplanar) {
         config.set_deserialize_strict("nonplanar_top_shells", "0");
         config.set_deserialize_strict("nonplanar_bottom_shells", "0");
@@ -192,6 +194,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     ModelObject *copy = model.add_object(*object.model_object());
     DynamicPrintConfig &copy_config = const_cast<DynamicPrintConfig &>(copy->config.get());
     copy_config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(mode));
+    if (mode == NonplanarMode::Off && copy_config.has("nonplanar_sublayer_walls"))
+        copy_config.set_deserialize_strict("nonplanar_sublayer_walls", "0");
     if (oneshot_plinth_applied(object) && mode != NonplanarMode::OneShot)
         for (const auto &[key, value] : plinth_overrides(0)) {
             config.set_deserialize_strict(key, value);

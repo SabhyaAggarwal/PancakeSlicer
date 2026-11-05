@@ -33,6 +33,8 @@ public:
 
     static size_t curved_contacts(const Print &print, const GCodeProcessorResult &result);
 
+    bool restore_planar_remainders();
+
     bool apply();
 
     bool plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head, bool bar = false);

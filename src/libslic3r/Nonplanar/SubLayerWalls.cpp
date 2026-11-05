@@ -2,6 +2,7 @@
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
+#include "CurvedTopsSurface.hpp"
 
 #include "libslic3r/AABBTreeLines.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -25,6 +26,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -39,9 +41,7 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 constexpr double SampleStep  = 0.5;
-constexpr double MinTilt     = 25.;
 constexpr double MaxTilt     = 90.;
-constexpr double BestTilt    = 47.5;
 constexpr double MaxShift    = 0.25;
 constexpr double MinRun      = 2.;
 constexpr double MaxGap      = 1.;
@@ -52,6 +52,7 @@ constexpr double PatchClear  = 3.;
 constexpr double MinLayer    = 0.12;
 constexpr double Simplify    = 0.005;
 constexpr double TimeBudget  = 0.40;
+constexpr double Taper       = 2.;
 constexpr double Overhead    = 1.3;
 
 struct Sample
@@ -64,6 +65,13 @@ struct Sample
     bool   sloped = false;
     double s = 0.;
 };
+
+double taper(const std::vector<Sample> &samples, size_t first, size_t last, size_t k)
+{
+    if (first == 0 && last + 1 >= samples.size())
+        return 1.;
+    return std::clamp(std::min(samples[k].s - samples[first].s, samples[last].s - samples[k].s) / Taper, 0., 1.);
+}
 
 struct Run
 {
@@ -90,13 +98,9 @@ struct LayerWalls
     AABBTreeLines::LinesDistancer<Line> holes;
 };
 
-using Admitted = std::array<std::array<bool, 91>, 2>;
-
-size_t tilt_bin(const Sample &smp) { return size_t(std::clamp(int(std::lround(smp.tilt)), 0, 90)); }
-
 bool candidate(const ExtrusionPath &path)
 {
-    return (path.role() == erExternalPerimeter || path.role() == erOverhangPerimeter) && !path.z_contoured &&
+    return path.role() == erExternalPerimeter && !path.z_contoured &&
            !path.is_force_no_extrusion() && path.polyline.points.size() >= 2 && path.mm3_per_mm > 0. &&
            typeid(path) == typeid(ExtrusionPath);
 }
@@ -203,14 +207,37 @@ void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, c
         smp.tilt  = Geometry::rad2deg(std::atan2(0.5 * h, std::abs(step)));
         smp.lo    = std::clamp(lo, -cap, cap);
         smp.hi    = std::clamp(hi, -cap, cap);
-        smp.valid = smp.tilt >= MinTilt && smp.tilt <= MaxTilt;
+        smp.valid = smp.tilt >= 0. && smp.tilt <= MaxTilt && step >= -0.01;
     }
     const Point middle = pts[pts.size() / 2].to_point();
     w.hole = !lw.holes.get_lines().empty() &&
              std::abs(lw.holes.distance_from_lines<true>(middle)) <= std::abs(lw.outline.distance_from_lines<true>(middle)) + SCALED_EPSILON;
 }
 
-std::vector<Run> runs_of(std::vector<Sample> &samples)
+bool concave(const std::vector<Sample> &samples, size_t k)
+{
+    if (k == 0 || k + 1 >= samples.size())
+        return false;
+    const Vec2d a = samples[k].p - samples[k - 1].p, b = samples[k + 1].p - samples[k].p;
+    return a.norm() > 1e-6 && b.norm() > 1e-6 && a.dot(b) < std::cos(Geometry::deg2rad(30.)) * a.norm() * b.norm() &&
+           b.dot(samples[k - 1].n) > 0.;
+}
+
+size_t settle(const std::vector<Sample> &samples, size_t end, int dir, double share)
+{
+    size_t at = end;
+    for (size_t k = end; k < samples.size() && std::abs(samples[k].s - samples[end].s) <= Taper; k += dir) {
+        if (concave(samples, k))
+            return k;
+        if (at == end && std::abs(samples[k].s - samples[end].s) >= share * Taper)
+            at = k;
+        if (k == 0 && dir < 0)
+            break;
+    }
+    return at;
+}
+
+std::vector<Run> runs_of(std::vector<Sample> &samples, size_t layer_id)
 {
     std::vector<Run> out;
     if (samples.size() < 2)
@@ -241,12 +268,20 @@ std::vector<Run> runs_of(std::vector<Sample> &samples)
                 samples[k].sloped = true;
             }
         }
+    const double share = std::fmod(double(layer_id + 1) * 0.6180339887498949, 1.);
     for (const auto &[i, j] : runs(true)) {
-        if (samples[j].s - samples[i].s < MinRun)
+        const size_t first = i > 0 ? settle(samples, i, 1, share) : i;
+        const size_t last  = j + 1 < samples.size() ? settle(samples, j, -1, share) : j;
+        if (first >= last || samples[last].s - samples[first].s < MinRun)
             for (size_t k = i; k <= j; ++k)
                 samples[k].sloped = false;
-        else
-            out.push_back(Run{ i, j, {}, false });
+        else {
+            for (size_t k = i; k < first; ++k)
+                samples[k].sloped = false;
+            for (size_t k = last + 1; k <= j; ++k)
+                samples[k].sloped = false;
+            out.push_back(Run{ first, last, {}, false });
+        }
     }
     return out;
 }
@@ -319,14 +354,14 @@ std::pair<double, double> estimated_times(const PrintObject &object)
     return { total, outer };
 }
 
-Admitted admitted_tilts(const PrintObject &object, const std::vector<LayerWalls> &layers)
+bool admitted(const PrintObject &object, const std::vector<LayerWalls> &layers)
 {
-    std::array<std::array<double, 91>, 2> length{};
+    double length = 0.;
     for (const LayerWalls &lw : layers)
         for (const Wall &w : lw.walls)
             for (size_t i = 0; i + 1 < w.samples.size(); ++i)
-                if (const Sample &smp = w.samples[i]; smp.valid)
-                    length[w.hole][tilt_bin(smp)] += w.samples[i + 1].s - smp.s;
+                if (w.samples[i].valid)
+                    length += w.samples[i + 1].s - w.samples[i].s;
     const auto [total, outer] = estimated_times(object);
     double outer_length = 0.;
     for (const Layer *layer : object.layers())
@@ -334,28 +369,12 @@ Admitted admitted_tilts(const PrintObject &object, const std::vector<LayerWalls>
             for (const ExtrusionEntity *ee : region->perimeters.flatten().entities)
                 if (ee->role() == erExternalPerimeter)
                     outer_length += unscale<double>(ee->length());
-    Admitted admitted{};
     if (outer <= 0. || outer_length <= 0.)
-        return admitted;
-    const double v_outer = outer_length / outer;
-    std::vector<int> order;
-    for (int bin = int(MinTilt); bin <= int(MaxTilt); ++bin)
-        order.push_back(bin);
-    std::stable_sort(order.begin(), order.end(), [](int a, int b) { return std::abs(a - BestTilt) < std::abs(b - BestTilt); });
-    const double budget = TimeBudget * total;
-    double       spent  = 0.;
-    for (const bool hole : { false, true })
-        for (int bin : order) {
-            const double cost = Overhead * length[hole][size_t(bin)] / v_outer;
-            if (spent + cost > budget)
-                break;
-            spent += cost;
-            admitted[hole][size_t(bin)] = true;
-        }
-    BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " estimated " << total << " s, outer walls "
-                            << outer_length / std::max(v_outer, 1e-9) << " s at " << v_outer << " mm/s, half-beads " << spent
-                            << " s of a " << budget << " s budget";
-    return admitted;
+        return false;
+    const double cost = Overhead * length * outer / outer_length;
+    BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " estimated " << total << " s, half-beads "
+                            << cost << " s of a " << TimeBudget * total << " s budget";
+    return cost <= TimeBudget * total;
 }
 
 void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
@@ -372,7 +391,7 @@ void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
         const size_t last = std::min(j + 1, samples.size() - 1);
         Polyline3    pl;
         for (size_t k = i; k <= last; ++k) {
-            const Point q = Point::new_scale(samples[k].p + (samples[i].sloped && samples[k].sloped ? samples[k].hi : 0.) * samples[k].n);
+            const Point q = Point::new_scale(samples[k].p + (samples[i].sloped && samples[k].sloped ? samples[k].hi * taper(samples, i, j, k) : 0.) * samples[k].n);
             pl.points.emplace_back(q.x(), q.y(), coord_t(0));
         }
         pl.simplify(scale_(Simplify));
@@ -421,7 +440,12 @@ ExPolygons curved_passes(const PrintObject &object, const Layer &layer, const La
 
 void split_sublayer_walls(PrintObject &object)
 {
-    if (object.config().nonplanar_mode.value != NonplanarMode::Auto || object.object_extruders().size() > 1)
+    object.set_sublayer_walls_active(false);
+    const NonplanarMode mode = object.config().nonplanar_mode.value;
+    if ((mode != NonplanarMode::Auto && mode != NonplanarMode::Off && mode != NonplanarMode::CurvedTops) ||
+        object.object_extruders().size() > 1 || object.sublayer_walls_off())
+        return;
+    if (mode == NonplanarMode::CurvedTops && !object.nonplanar_surfaces().empty())
         return;
     const LayerPtrs &layers = object.layers();
     if (std::none_of(layers.begin(), layers.end(), [](const Layer *l) { return enabled(*l); }))
@@ -455,7 +479,8 @@ void split_sublayer_walls(PrintObject &object)
         }
     });
 
-    const Admitted      admitted = admitted_tilts(object, walls);
+    if (!admitted(object, walls))
+        return;
     std::vector<double> stepped(layers.size(), 0.);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
@@ -472,7 +497,7 @@ void split_sublayer_walls(PrintObject &object)
                 const double step = 0.5 * double(wall_path(w).width) + 0.5 * layers[k]->height - StepMargin;
                 for (size_t i = 0; i < w.samples.size(); ++i) {
                     Sample &smp = w.samples[i];
-                    smp.sloped  = smp.valid && admitted[w.hole][tilt_bin(smp)];
+                    smp.sloped  = smp.valid;
                     if (const Point q = Point::new_scale(smp.p); smp.sloped && passes_box.contains(q))
                         smp.sloped = std::none_of(passes.begin(), passes.end(), [&q](const ExPolygon &e) { return e.contains(q); });
                     if (smp.sloped && !host.get_lines().empty() &&
@@ -481,13 +506,13 @@ void split_sublayer_walls(PrintObject &object)
                         stepped[k] += i + 1 < w.samples.size() ? w.samples[i + 1].s - smp.s : 0.;
                     }
                 }
-                w.runs = runs_of(w.samples);
+                w.runs = runs_of(w.samples, k);
                 const coord_t up = coord_t(scale_(0.5 * layers[k]->height));
                 for (Run &run : w.runs) {
                     bool beyond = false;
                     for (size_t i = run.first; i <= std::min(run.last + 1, w.samples.size() - 1) && !beyond; ++i) {
                         const Sample &smp = w.samples[i];
-                        const Point   q   = Point::new_scale(smp.p + (smp.sloped ? smp.lo : 0.) * smp.n);
+                        const Point   q   = Point::new_scale(smp.p + (smp.sloped ? smp.lo * taper(w.samples, run.first, run.last, i) : 0.) * smp.n);
                         if (!host.get_lines().empty() && unscale<double>(host.distance_from_lines<false>(q)) > step) {
                             if (i > run.last)
                                 break;
@@ -509,6 +534,7 @@ void split_sublayer_walls(PrintObject &object)
         BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " step guard keeps " << mm
                                 << " mm of wall on the single bead";
 
+    std::atomic<bool> split{ false };
     tbb::parallel_for(tbb::blocked_range<size_t>(1, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
             if (walls[k].walls.empty())
@@ -563,6 +589,7 @@ void split_sublayer_walls(PrintObject &object)
                     bead.z_contoured = true;
                     best->raised.emplace_back(std::move(bead));
                     run.attached = true;
+                    split = true;
                 }
         }
     });
@@ -603,6 +630,7 @@ void split_sublayer_walls(PrintObject &object)
             }
         }
     });
+    object.set_sublayer_walls_active(split);
 }
 
 }

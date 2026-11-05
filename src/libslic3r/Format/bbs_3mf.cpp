@@ -28,6 +28,7 @@
 
 #include "bbs_3mf.hpp"
 
+#include <atomic>
 #include <boost/assert/source_location.hpp>
 #include <ios>
 #include <iterator>
@@ -5284,17 +5285,19 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         }
         boost::system::error_code ec;
         std::string filename = store_params.path;
-        boost::filesystem::remove(filename + ".tmp", ec);
+        static std::atomic<unsigned> tmp_counter{0};
+        const std::string filename_tmp = filename + "." + std::to_string(get_current_pid()) + "." + std::to_string(tmp_counter++) + ".tmp";
+        boost::filesystem::remove(filename_tmp, ec);
 
-        bool result = _save_model_to_file(filename + ".tmp", *store_params.model, store_params.plate_data_list, store_params.project_presets, store_params.config,
+        bool result = _save_model_to_file(filename_tmp, *store_params.model, store_params.plate_data_list, store_params.project_presets, store_params.config,
                                           store_params.thumbnail_data, store_params.no_light_thumbnail_data, store_params.top_thumbnail_data, store_params.pick_thumbnail_data,
                                           store_params.proFn,
             store_params.calibration_thumbnail_data, store_params.id_bboxes, store_params.project, store_params.export_plate_idx);
         if (result) {
-            boost::filesystem::rename(filename + ".tmp", filename, ec);
+            boost::filesystem::rename(filename_tmp, filename, ec);
             if (ec) {
                 add_error("Failed to rename file: " + ec.message());
-                boost::filesystem::remove(filename + ".tmp", ec);
+                boost::filesystem::remove(filename_tmp, ec);
                 return false;
             }
             if (!(store_params.strategy & SaveStrategy::Silence))

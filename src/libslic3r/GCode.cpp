@@ -1,3 +1,4 @@
+#include <atomic>
 #include <fstream>
 #include "ArcFitter.hpp"
 #include "BoundingBox.hpp"
@@ -8,6 +9,7 @@
 #include "GCode/ClearanceRepair.hpp"
 #include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/CurvedTopsOrder.hpp"
+#include "Nonplanar/CurvedTopsSurface.hpp"
 #include "Nonplanar/Repair.hpp"
 #include "Nonplanar/Wave.hpp"
 #include "GCode/ClearanceVerifier.hpp"
@@ -2732,8 +2734,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         BOOST_LOG_TRIVIAL(error) << "[WARNING]: the parent path " + folder.string() +" is not there, create it!" << std::endl;
     }
 
-    std::string path_tmp(path);
-    path_tmp += ".tmp";
+    static std::atomic<unsigned> tmp_counter{0};
+    const std::string path_tmp = std::string(path) + "." + std::to_string(get_current_pid()) + "." + std::to_string(tmp_counter++) + ".tmp";
 
     m_processor.initialize(path_tmp);
     m_processor.set_print(print);
@@ -4021,6 +4023,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 [](const auto &diag) { return diag.fallback_reason == "planar_patch"; });
             for (const LayerRegion *layerm : top->regions()) {
                 const PrintRegionConfig &rcfg = layerm->region().config();
+                if (rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice)
+                    max_height_z = std::max(max_height_z, std::ceil((top->print_z + 0.5 * top->height + 0.03) * 100. - EPSILON) / 100.);
                 if (Nonplanar::zaa_fallback(rcfg, object->config()) ||
                     (Nonplanar::top_shells_enabled(rcfg, object->config()) &&
                      Nonplanar::effective_fallback(rcfg, object->config()) == NonplanarFallback::None))
@@ -7849,6 +7853,46 @@ std::string GCode::extrude_loop(const ExtrusionLoop&                       loop_
     return gcode;
 }
 
+void GCode::start_at_upper_seam(const Layer &layer, ExtrusionPath &run) const
+{
+    Points3 &pts = run.polyline.points;
+    if (layer.upper_layer == nullptr || pts.size() < 4 ||
+        (pts.front().to_point() - pts.back().to_point()).cast<double>().norm() > scale_(2. * run.width))
+        return;
+    const Point            start = pts.front().to_point();
+    const ExtrusionLoop   *nearest = nullptr;
+    double                 nearest_d = std::numeric_limits<double>::max();
+    std::vector<const ExtrusionEntity *> stack;
+    for (const LayerRegion *layerm : layer.upper_layer->regions())
+        stack.insert(stack.end(), layerm->perimeters.entities.begin(), layerm->perimeters.entities.end());
+    while (!stack.empty()) {
+        const ExtrusionEntity *ee = stack.back();
+        stack.pop_back();
+        if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(ee))
+            stack.insert(stack.end(), c->entities.begin(), c->entities.end());
+        else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(ee);
+                 loop != nullptr && loop->role() == erExternalPerimeter)
+            for (const Line &l : loop->polygon().lines())
+                if (const double d = l.distance_to(start); d < nearest_d)
+                    nearest_d = d, nearest = loop;
+    }
+    if (nearest == nullptr || nearest_d > scale_(2. * run.width))
+        return;
+    ExtrusionLoop upper = *nearest;
+    float         overhang = 0.f;
+    m_seam_placer.place_seam(layer.upper_layer, upper, start, overhang);
+    const Point seam = upper.first_point();
+    size_t      at   = 0;
+    for (size_t i = 1; i < pts.size(); ++i)
+        if ((pts[i].to_point() - seam).cast<double>().squaredNorm() < (pts[at].to_point() - seam).cast<double>().squaredNorm())
+            at = i;
+    if (at == 0 || at + 1 == pts.size())
+        return;
+    Points3 rotated(pts.begin() + at, pts.end());
+    rotated.insert(rotated.end(), pts.begin(), pts.begin() + at + 1);
+    pts = std::move(rotated);
+}
+
 std::string GCode::extrude_raised_walls(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
                                         size_t single_object_instance_idx)
 {
@@ -7906,6 +7950,7 @@ std::string GCode::extrude_raised_walls(const Print &print, const std::vector<La
                     ExtrusionPath run = *raised[best];
                     if (flip)
                         run.reverse();
+                    this->start_at_upper_seam(*layer, run);
                     gcode += this->extrude_path(run, "sub-layer wall", -1.);
                 }
                 if (!m_writer.is_object_start_str_empty())
@@ -8061,6 +8106,9 @@ void GCode::queue_advanced_conformal(const Print &print)
     }
 }
 
+static bool           scales_contoured_flow(const ExtrusionPath &path, const Layer *layer);
+static ExtrusionPaths absolute_contoured(const ExtrusionPath &path, double layer_z, bool scale_flow);
+
 bool GCode::defer_planar_material(const ExtrusionEntity &entity, const std::string &description, double speed, std::string &gcode,
                                   std::vector<ExtrusionPath> *curved_current)
 {
@@ -8095,24 +8143,38 @@ bool GCode::defer_planar_material(const ExtrusionEntity &entity, const std::stri
     const double layer_z = this->layer()->print_z;
     auto queue = [&](std::shared_ptr<ExtrusionEntity> unit, int unit_slot) {
         double zmin = std::numeric_limits<double>::max();
-        auto at_height = [&](ExtrusionPath &path) {
-            if (! path.nonplanar_source)
-                for (Point3 &p : path.polyline.points)
-                    p.z() = scaled<coord_t>(layer_z);
-            for (const Point3 &p : path.polyline.points)
-                zmin = std::min(zmin, unscale<double>(p.z()));
+        auto at_height = [&](ExtrusionPaths &paths) {
+            ExtrusionPaths out;
+            for (ExtrusionPath &path : paths) {
+                if (path.z_contoured)
+                    append(out, absolute_contoured(path, layer_z, scales_contoured_flow(path, m_layer)));
+                else {
+                    if (! path.nonplanar_source)
+                        for (Point3 &p : path.polyline.points)
+                            p.z() = scaled<coord_t>(layer_z);
+                    out.emplace_back(std::move(path));
+                }
+            }
+            for (const ExtrusionPath &path : out)
+                for (const Point3 &p : path.polyline.points)
+                    zmin = std::min(zmin, unscale<double>(p.z()));
+            paths = std::move(out);
         };
+        if (auto *path = dynamic_cast<ExtrusionPath*>(unit.get()); path != nullptr && path->z_contoured)
+            unit = std::make_shared<ExtrusionMultiPath>(*path);
         if (auto *loop = dynamic_cast<ExtrusionLoop*>(unit.get())) {
             float seam_overhang = std::numeric_limits<float>::lowest();
             if (! m_config.spiral_mode && description == "perimeter")
                 m_seam_placer.place_seam(m_layer, *loop, this->last_pos(), seam_overhang);
             else
                 loop->split_at(this->last_pos(), false);
-            for (ExtrusionPath &path : loop->paths) at_height(path);
+            at_height(loop->paths);
         } else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(unit.get())) {
-            for (ExtrusionPath &path : multi->paths) at_height(path);
+            at_height(multi->paths);
         } else if (auto *path = dynamic_cast<ExtrusionPath*>(unit.get())) {
-            at_height(*path);
+            ExtrusionPaths one{ std::move(*path) };
+            at_height(one);
+            *path = std::move(one.front());
         }
         m_deferred_extrusions[m_deferral_key].push_back({ unit_slot, base, zmin, m_deferral_layer_id, layer_z, std::move(unit),
             description, speed, m_current_region, m_writer.filament() ? m_writer.filament()->id() : 0u });
@@ -8339,8 +8401,23 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                     begin = end;
                 }
                 } else {
+                std::vector<const ExtrusionEntity *> tops;
+                if (m_config.zaa_enabled && m_config.zaa_mid_layer_slice) {
+                    std::function<bool(const ExtrusionEntity &)> has_top = [&has_top](const ExtrusionEntity &e) {
+                        if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(&e))
+                            return std::any_of(c->entities.begin(), c->entities.end(), [&has_top](const ExtrusionEntity *x) { return has_top(*x); });
+                        return e.role() == erTopSolidInfill;
+                    };
+                    const auto split = std::stable_partition(extrusions.begin(), extrusions.end(), [&has_top](const ExtrusionEntity *e) { return !has_top(*e); });
+                    tops.assign(split, extrusions.end());
+                    extrusions.erase(split, extrusions.end());
+                }
+                for (int pass = 0; pass < 2; ++pass) {
                 reversed.clear();
-                chain_and_reorder_extrusion_entities(extrusions, m_last_pos.to_point(), reversed);
+                if (pass == 1)
+                    extrusions = std::move(tops);
+                else
+                    chain_and_reorder_extrusion_entities(extrusions, m_last_pos.to_point(), reversed);
                 auto next_reversed = reversed.begin();
                 for (const ExtrusionEntity *fill : extrusions) {
                     ExtrusionEntity *own_copy = next_reversed != reversed.end() && next_reversed->get() == fill ? (next_reversed++)->get() : nullptr;
@@ -8353,6 +8430,7 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                             gcode += this->extrude_entity(*ee, extrusion_name);
                     } else
                         gcode += this->extrude_entity(*fill, extrusion_name);
+                }
                 }
                 }
             }
@@ -9828,6 +9906,34 @@ static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, cons
     }
 }
 
+static ExtrusionPaths absolute_contoured(const ExtrusionPath &path, double layer_z, bool scale_flow)
+{
+    ExtrusionPaths out;
+    const Points3 &pts = path.polyline.points;
+    const double   height = path.height, nominal = Nonplanar::bead_area(path.width, height);
+    auto           at = [&](const Vec3d &q) {
+        return Point3(coord_t(std::lround(q.x())), coord_t(std::lround(q.y())), scaled<coord_t>(layer_z) + coord_t(std::lround(q.z())));
+    };
+    for (size_t k = 0; k + 1 < pts.size(); ++k) {
+        const Vec3d  from = pts[k].cast<double>(), to = pts[k + 1].cast<double>();
+        const double dz   = std::abs(unscale<double>(to.z() - from.z()));
+        const int    n    = scale_flow && dz > 0.25 * height ?
+                                std::clamp(int(std::ceil(dz / (0.25 * height) - EPSILON)), 1, std::max(1, int(unscale<double>((to - from).head<2>().norm()) / 0.1))) : 1;
+        for (int i = 1; i <= n; ++i) {
+            const Vec3d  a     = from + (to - from) * (double(i - 1) / n);
+            const Vec3d  b     = i == n ? to : from + (to - from) * (double(i) / n);
+            const double ratio = scale_flow && nominal > 0. ?
+                std::max(0., Nonplanar::bead_area(path.width, height + 0.5 * unscale<double>(a.z() + b.z()))) / nominal : 1.;
+            ExtrusionPath piece(path);
+            piece.polyline.points = { at(a), at(b) };
+            piece.mm3_per_mm      = path.mm3_per_mm * ratio;
+            piece.z_contoured     = false;
+            out.emplace_back(std::move(piece));
+        }
+    }
+    return out;
+}
+
 double GCode::conformal_max_speed_z() const
 {
     return m_writer.max_speed_z() > 0. ? m_writer.max_speed_z() :
@@ -10606,12 +10712,13 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         constexpr double max_gradient = 0.21255656167002213;
         constexpr double quantized_z_delta = 0.001;
         constexpr double quantized_xy_delta = 0.0014142135623730951;
-        const double physical_xy = std::max(0.0, dxy - quantized_xy_delta);
+        const double source_xy_upper_bound = dxy + quantized_xy_delta;
         if ((dxy < quantized_xy_delta && dz > quantized_z_delta) ||
-            (dxy >= quantized_xy_delta && dz > max_gradient * physical_xy + quantized_z_delta))
+            (dxy >= quantized_xy_delta && dz > max_gradient * source_xy_upper_bound + quantized_z_delta))
             throw_nonplanar_too_steep(to.z(), m_layer != nullptr ? m_layer->id() : 0, m_config.nonplanar_curved_max_angle.value,
                 m_layer != nullptr ? m_layer->object()->id().id : 0,
-                "height step at G-code X" + std::to_string(to.x()) + " Y" + std::to_string(to.y()) + " Z" + std::to_string(to.z()) +
+                "height step from G-code X" + std::to_string(from.x()) + " Y" + std::to_string(from.y()) + " Z" + std::to_string(from.z()) +
+                " to X" + std::to_string(to.x()) + " Y" + std::to_string(to.y()) + " Z" + std::to_string(to.z()) +
                 " (task " + std::to_string(path.source_path_id) + ")");
     };
     if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops) {
@@ -11758,6 +11865,22 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
     if (native_curved && m_nonplanar_ceiling > 0. &&
         travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)))
         needs_retraction = true;
+
+    const bool half_height_walls = native_curved && m_layer->object()->sublayer_walls_active() &&
+        !m_layer->object()->sublayer_walls_off();
+    if (native_curved && !needs_retraction &&
+        (half_height_walls || (!nonplanar_continuation &&
+        travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)) &&
+        std::any_of(m_layer->object()->nonplanar_surfaces().begin(), m_layer->object()->nonplanar_surfaces().end(),
+            [this](const NonplanarSurface &surface) {
+                return surface.stats.min.z - m_layer->height <= m_layer->slice_z && m_layer->slice_z <= surface.stats.max.z;
+            })))) {
+        const Vec3d from = m_writer.get_position();
+        const Vec2d xy = this->point_to_gcode(travel.points.back());
+        const double z = std::max(from.z(), target_z);
+        needs_retraction = travel.size() != 2 ||
+            !m_nonplanar_heights.supports_travel(Vec3d(from.x(), from.y(), z), Vec3d(xy.x(), xy.y(), z), 0.4);
+    }
 
     bool native_keep_primed = false;
     double primed_slope_lift = -1.;

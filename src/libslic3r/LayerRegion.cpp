@@ -1307,12 +1307,11 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
             "path " + std::to_string(source.source_path_id) + " without target surface or shell offset", this->layer()->object()->id().id);
     const double offset = source.distance_to_top;
     const double margin = std::max(0.003, double(source.width) * 0.5 + 0.003);
-    const std::vector<NonplanarProjectionIndex::Ref> *candidates = nullptr;
     auto sample = [&](double x, double y, int &owner, int &facet_id, double &height) {
         double best = std::numeric_limits<double>::max();
         owner = -1;
         facet_id = -1;
-        for (const auto &[si, candidate_facet_id] : *candidates) {
+        for (const auto &[si, candidate_facet_id] : index.query(x - margin, y - margin, x + margin, y + margin)) {
             const NonplanarSurface &surface = m_nonplanar_surfaces[si];
             if (surface.stable_id != source.source_surface_id)
                 continue;
@@ -1323,6 +1322,7 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
                 owner = int(si);
                 facet_id = candidate_facet_id;
                 height = z - offset;
+                if (d2 == 0.) break;
             }
         }
     };
@@ -1384,7 +1384,6 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
         const double dx = unscale<double>(b.x()-a.x()), dy = unscale<double>(b.y()-a.y());
         const auto nearby = index.query(std::min(ax, ax + dx) - margin, std::min(ay, ay + dy) - margin,
                                         std::max(ax, ax + dx) + margin, std::max(ay, ay + dy) + margin);
-        candidates = &nearby;
         std::vector<double> ts{0.0, 1.0};
         for (const auto &[si, facet_id] : nearby) {
                 const auto &f = m_nonplanar_surfaces[si].mesh.at(facet_id);

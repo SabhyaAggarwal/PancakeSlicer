@@ -1509,6 +1509,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool, zaa_dont_alternate_fill_direction))
     ((ConfigOptionFloat, zaa_min_z))
     ((ConfigOptionFloat, zaa_minimize_perimeter_height))
+    ((ConfigOptionBool, zaa_mid_layer_slice))
 
     ((ConfigOptionInt,                       nonplanar_top_shells))
     ((ConfigOptionInt,                       nonplanar_bottom_shells))
