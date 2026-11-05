@@ -98,9 +98,8 @@
   :where(.orca-parity) .workspace-sheet-caret { display: block; width: 7px; height: 7px; margin-left: auto; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(225deg); }
   :where(.orca-parity) [data-snap=full] .workspace-sheet-caret { transform: rotate(45deg); }
   :where(.orca-parity) .compact-topbar .title-zone { justify-content: flex-start; padding: 0 var(--s-1); }
-  :where(.orca-parity) .compact-topbar .project-title { grid-template-columns: minmax(0, max-content) auto; justify-content: start; column-gap: 0; }
-  :where(.orca-parity) .compact-topbar .pt-folder, :where(.orca-parity) .compact-topbar .pt-pencil { display: none; }
-  :where(.orca-parity) .compact-topbar .pt-box { padding-inline: var(--s-1); }
+  :where(.orca-parity) .compact-topbar .project-title { grid-template-columns: auto; justify-content: start; column-gap: 0; }
+  :where(.orca-parity) .compact-topbar :is(.pt-folder, .pt-box) { display: none; }
   :where(.orca-parity) .compact-topbar .view-tab > span { display: inline; }
   :where(.orca-parity) .compact-topbar .view-tab > img { display: none; }
   :where(.orca-parity) .compact-topbar .view-switch > .view-tab { padding-inline: 10px; min-width: 70px; font-size: 13px; }

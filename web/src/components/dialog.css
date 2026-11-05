@@ -34,6 +34,10 @@
 
 :where(.orca-parity) .modal-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-3) var(--s-5); margin: 0; }
 :where(.orca-parity) .modal-grid > dt { color: var(--ink-3); }
+:where(.orca-parity) .about-head { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-5); }
+:where(.orca-parity) .about-head > div { display: flex; flex-direction: column; }
+:where(.orca-parity) .about-head span { color: var(--ink-3); font: var(--t-small); }
+:where(.orca-parity) .about-links { display: flex; gap: var(--s-4); }
 :where(.orca-parity) .modal-grid > dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 
 :where(.orca-parity) .modal-split { display: flex; flex-direction: row; align-items: flex-start; gap: var(--s-6); }

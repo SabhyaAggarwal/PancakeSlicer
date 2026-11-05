@@ -3,7 +3,7 @@ import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
-import { lazy, Suspense, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
@@ -15,6 +15,8 @@ import { openSetup } from '../onboarding/setup-flow';
 import { renameProject } from '../projects/api';
 import { useProject } from '../flow/project';
 import { toggleHistory } from '../projects/versions';
+import { openUpdate, startUpdateChecks, useUpdate } from '../update-check';
+import { APP_VERSION, buildLine, useBuildInfo } from '../build-info';
 import { Icon } from './Icon';
 import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
@@ -92,13 +94,15 @@ export function TopBar() {
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
   const devReset = useDevReset();
+  const update = useUpdate(), build = useBuildInfo(), barTier = useTier(), narrowBar = barTier === 'narrow' || barTier === 'phone';
+  useEffect(() => startUpdateChecks(devReset), [devReset]);
   const projectId = useProject((p) => p.context.id), projectState = useProject((p) => p.value);
   const renameHere = async () => {
     const next = await promptDialog('Rename project', name ?? 'Untitled');
     if (!next || next === name) return;
     if (projectId && projectState !== 'blank') void renameProject(projectId, next); else setState({ projectName: next });
   };
-  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [...(narrowBar ? [{label:`PancakeSlicer v${APP_VERSION}`,header:true} as MenuItem] : []),...(update ? [{label:`Update available: v${update.version}`,action:()=>openUpdate(update)} as MenuItem] : []),{label:'About PancakeSlicer',action:()=>setState({appDialog:'about'})},'sep',{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -163,13 +167,13 @@ export function TopBar() {
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup', action: openSetup, tip: 'Printer, profiles, connection and filaments' },
-          'sep',
-          { label: 'About PancakeSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}];
   return <header className="topbar compact-topbar">
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo-48.png" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
+    <span className="app-version" data-truncated="true" data-full-text={buildLine(build)}>v{APP_VERSION}</span>
+    {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><Glyph name="update"/><span>Update</span></button>}
     </div>
     {DEMO ? <a className="mock-badge demo-chip" href={DOCS_URL} target="_blank" rel="noopener noreferrer" title="PancakeSlicer documentation">Demo</a> : mock && <span className="mock-badge">Demo</span>}
     {DEMO && <DemoResultNotice/>}

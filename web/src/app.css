@@ -429,6 +429,12 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }
 :where(.orca-parity) .compact-topbar { height: 40px; min-height: 40px; flex-wrap: nowrap; gap: 8px; padding: 0 8px; }
 :where(.orca-parity) .app-menu-button { display: grid; grid-auto-flow: column; place-items: center; gap: 2px; min-width: 28px; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; flex: none; cursor: pointer; }
+:where(.orca-parity) .app-version { padding: 0 var(--s-2); color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: default; }
+:where(.orca-parity) .update-pill { display: inline-flex; align-items: center; gap: var(--s-1); height: 22px; padding: 0 var(--s-3) 0 var(--s-2); border: 0; border-radius: 11px; background: var(--accent); color: var(--on-accent); font: var(--t-small); font-weight: 600; white-space: nowrap; cursor: pointer; }
+:where(.orca-parity) .update-pill:hover { filter: brightness(1.08); }
+:where(.orca-parity) .update-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 899.98px) { :where(.orca-parity) .app-version { display: none; } }
+@media (max-width: 599.98px) { :where(.orca-parity) .topbar button.update-pill { width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; justify-content: center; border-radius: 50%; } :where(.orca-parity) .update-pill > span { display: none; } }
 :where(.orca-parity) .app-menu-button > .app-menu-caret { display: none; }
 :where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 1 calc(var(--workspace-rail-width) - 16px); min-width: 0; }
 :where(.orca-parity) .compact-topbar .tabbar { height: 32px; min-height: 0; border: 0; padding: 0; display: flex; flex: 1 1 auto; min-width: 0; gap: 8px; align-items: center; justify-content: flex-start; background: transparent; }

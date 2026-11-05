@@ -18,6 +18,7 @@ const GLYPH = {
   layers: 'M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3',
   code: 'M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3l-2 10',
   close: 'M4 4l8 8M12 4l-8 8',
+  update: 'M14.5 8a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0zM8 11.25v-6.5M5.25 7.5 8 4.75l2.75 2.75',
 } as const;
 export type GlyphName = keyof typeof GLYPH;
 

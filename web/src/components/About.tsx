@@ -1,41 +1,34 @@
-import { useEffect, useState } from 'react';
+import { APP_VERSION, DOCS_URL, GITHUB_URL, reloadBuildInfo, shortSha, useBuildInfo, type BuildInfo } from '../build-info';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
-export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
+const link = (href: string, text: string) => <a className="link" href={href} target="_blank" rel="noreferrer">{text}</a>;
 
-export function AboutContent({ about }: { about: BuildAbout }) {
-  const link = (href: string, text: string) => <a className="link" href={href} target="_blank" rel="noreferrer">{text}</a>;
+export function AboutContent({ info }: { info: BuildInfo }) {
+  const { about } = info;
+  // This version's source when the service names one, else the repository (AGPL-3.0 §13).
+  const source = (about?.source_configured && about.source_url) || GITHUB_URL;
   return <dl className="modal-grid">
-    <dt>Version</dt><dd data-truncated="true" data-full-text={about.revision}>{about.version}</dd>
-    {about.image && <><dt>Image</dt><dd>{about.image}</dd></>}
-    <dt>Licence</dt><dd>{link('https://www.gnu.org/licenses/agpl-3.0.html', about.license)}</dd>
-    <dt>Source</dt><dd>{about.source_configured ? link(about.source_url, 'Source code of this version') : <span role="alert">Not configured (required by AGPL-3.0 §13)</span>}</dd>
-    <dt>Licences</dt><dd>{link('/third-party-licences.txt', 'Third-party licences')}</dd>
+    {about && <><dt>Build</dt><dd data-truncated="true" data-full-text={about.revision}>{shortSha(about.revision)}</dd></>}
+    {info.engine && <><dt>Engine</dt><dd data-truncated="true" data-full-text={info.engineSha}>{info.engine}{info.engineSha ? ` ${shortSha(info.engineSha)}` : ''}</dd></>}
+    {about?.image && <><dt>Image</dt><dd>{about.image}</dd></>}
+    <dt>Links</dt><dd className="about-links">{link(GITHUB_URL, 'GitHub')}{link(DOCS_URL, 'User guide')}</dd>
+    <dt>Licence</dt><dd>{link('https://www.gnu.org/licenses/agpl-3.0.html', about?.license || 'AGPL-3.0')} · {link('/third-party-licences.txt', 'Third-party licences')}</dd>
+    {source && <><dt>Source</dt><dd>{link(source, source.replace(/^https?:\/\//, ''))}</dd></>}
   </dl>;
 }
 
 export default function About({ close }: { close: () => void }) {
-  const [about, setAbout] = useState<BuildAbout | null>(null);
-  const [error, setError] = useState('');
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    setError('');
-    fetch('/api/about', { signal: controller.signal }).then(async (response) => {
-      if (!response.ok) throw new Error(`Server returned ${response.status}`);
-      setAbout(await response.json() as BuildAbout);
-    }).catch((e: unknown) => {
-      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Service unavailable');
-    });
-    return () => controller.abort();
-  }, [attempt]);
+  const info = useBuildInfo();
   return <Modal size="m" label="About PancakeSlicer" onClose={close}>
-    <ModalTitle title="PancakeSlicer" onClose={close} />
+    <ModalTitle title="About PancakeSlicer" onClose={close} />
     <ModalBody>
-      {about ? <AboutContent about={about} /> : error ? <p role="alert">Version information did not load: {error}</p> : <p role="status">Loading…</p>}
+      <div className="about-head"><img src="/logo-256.png" width={56} height={56} alt="" /><div><strong>PancakeSlicer</strong><span>v{APP_VERSION}</span></div></div>
+      <AboutContent info={info} />
+      {info.state === 'loading' && <p role="status">Loading…</p>}
+      {info.state === 'failed' && <p role="alert">Build details did not load from the slicing service.</p>}
     </ModalBody>
     <ModalFooter>
-      {error && <button type="button" className="btn" onClick={() => setAttempt(attempt + 1)}>Retry</button>}
+      {info.state === 'failed' && <button type="button" className="btn" onClick={reloadBuildInfo}>Retry</button>}
       <button type="button" className="btn-primary" onClick={close}>Close</button>
     </ModalFooter>
   </Modal>;
