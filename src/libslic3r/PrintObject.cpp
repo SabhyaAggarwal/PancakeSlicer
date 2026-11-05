@@ -2819,6 +2819,7 @@ PrintObject::detect_nonplanar_surfaces()
         const PrintRegion &region = this->printing_region(region_id);
 
         for (const auto& nonplanar_surface: this->nonplanar_surfaces()) {
+            const ExPolygons projection = nonplanar_surface.horizontal_projection();
             float distance_to_top = 0.0f;
             for (int shell_thickness = 0; m_config.nonplanar_curved_shells.value > shell_thickness; ++shell_thickness){
                 for (LayerPtrs::reverse_iterator home_layer_it = this->m_layers.rbegin(); home_layer_it != this->m_layers.rend(); ++home_layer_it){
@@ -2844,7 +2845,7 @@ PrintObject::detect_nonplanar_surfaces()
                             Surfaces upper_surfaces = upper_layerm.slices.surfaces;
                             topNonplanar.append(
                                 intersection_ex(
-                                    nonplanar_surface.horizontal_projection(),
+                                    projection,
                                     union_ex(
                                         diff_ex(
                                             layerm_slices_surfaces,
@@ -2865,7 +2866,7 @@ PrintObject::detect_nonplanar_surfaces()
                             if (upper_nonplanar.size() > 0)
                                 topNonplanar.append(
                                     intersection_ex(
-                                        nonplanar_surface.horizontal_projection(),
+                                        projection,
                                         to_expolygons(upper_nonplanar.surfaces),
                                         ApplySafetyOffset::No),
                                     (shell_thickness == 0 ? stTopNonplanar : stInternalSolidNonplanar),
@@ -2875,7 +2876,7 @@ PrintObject::detect_nonplanar_surfaces()
                         else {
                             topNonplanar.append(
                                 intersection_ex(
-                                    nonplanar_surface.horizontal_projection(),
+                                    projection,
                                     union_ex(to_expolygons(layerm_slices_surfaces)),
                                     ApplySafetyOffset::No),
                                 (shell_thickness == 0 ? stTopNonplanar : stInternalSolidNonplanar),

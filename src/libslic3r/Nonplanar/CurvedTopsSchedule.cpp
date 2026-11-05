@@ -19,9 +19,11 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <set>
@@ -197,6 +199,16 @@ std::string describe(const Sample &s, const char *what)
 }
 
 }
+struct UnitKeyHash
+{
+    template<class T> static void mix(size_t &h, const T &v) { h ^= std::hash<T>{}(v) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); }
+    template<class... Ts> size_t operator()(const std::tuple<Ts...> &t) const
+    {
+        size_t h = 0;
+        std::apply([&h](const Ts &...v) { (mix(h, v), ...); }, t);
+        return h;
+    }
+};
 
 NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const NonplanarClearanceModel &model)
 {
@@ -610,6 +622,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     std::vector<Slot> raw_limit, old_limit;
     bool reset_raw = false;
     std::vector<std::vector<int>> raw, old_raw, old_members;
+    std::vector<std::vector<std::pair<int, int>>> unit_runs, old_unit_runs;
     std::vector<char> raw_known, pending, old_known, changed;
     std::vector<int> old_unit_of;
     size_t refined_units = 0;
@@ -620,6 +633,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         throw_if_canceled();
         if (rebuild_units || verify_dependents) {
             old_members = std::move(members);
+            old_unit_runs = std::move(unit_runs);
             old_raw     = std::move(raw);
             old_known   = std::move(raw_known);
             old_limit = std::move(raw_limit);
@@ -628,11 +642,18 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 if (pending[o])
                     old_known[o] = 0;
             old_unit_of = unit_of;
-            std::map<std::tuple<int, int, long, int>, int> shells;
-            std::map<const void*, int> entities;
-            std::map<std::tuple<long, int, long>, int> chunks;
+            std::unordered_map<std::tuple<int, int, long, int>, int, UnitKeyHash> shells;
+            std::unordered_map<const void*, int> entities;
+            std::unordered_map<std::tuple<long, int, long>, int, UnitKeyHash> chunks;
             long edge_run = 0;
             int next = 0;
+            std::vector<std::array<int, 3>> runs;
+            auto add_run = [&runs](int u, int begin, int end) {
+                if (!runs.empty() && runs.back()[0] == u && runs.back()[2] == begin)
+                    runs.back()[2] = end;
+                else
+                    runs.push_back({u, begin, end});
+            };
             for (const auto &[first, last] : spans) {
                 const Sampled &src = sampled[size_t(all[first].path)];
                 if (!path_has_edge[size_t(all[first].path)]) {
@@ -641,6 +662,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             std::lround(src.path->distance_to_top * 1000.f), earliest[first]), next).first->second
                         : entities.try_emplace(src.entity, next).first->second;
                     std::fill(unit_of.begin() + first, unit_of.begin() + last, u);
+                    add_run(u, int(first), int(last));
                     if (u == next) ++next;
                     continue;
                 }
@@ -651,6 +673,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     if (i > 0 && edge_level[i] == 0 && edge_level[i - 1] == 0 &&
                         all[i].path == all[i - 1].path && earliest[i] == earliest[i - 1]) {
                         unit_of[i] = unit_of[i - 1];
+                        add_run(unit_of[i], int(i), int(i) + 1);
                         continue;
                     }
                     if (edge_level[i] > 0) {
@@ -663,6 +686,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     } else {
                         unit_of[i] = entities.try_emplace(src.entity, next).first->second;
                     }
+                    add_run(unit_of[i], int(i), int(i) + 1);
                     if (unit_of[i] == next)
                         ++ next;
                 }
@@ -675,16 +699,23 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             unit_zmax.assign(size_t(next), -std::numeric_limits<double>::max());
             unit_base.assign(size_t(next), 0);
             changed.assign(size_t(next), 1);
+            size_t covered = 0;
+            for (const auto &r : runs) covered += size_t(r[2] - r[1]);
+            if (covered != unit_of.size() || (!runs.empty() && runs.back()[2] != int(unit_of.size()))) {
+                runs.clear();
+                for (size_t i = 0; i < unit_of.size(); ++i) add_run(unit_of[i], int(i), int(i) + 1);
+            }
             std::vector<size_t> counts(size_t(next), 0), first(size_t(next), 0);
-            for (size_t i = 0; i < unit_of.size(); ++i) {
-                const size_t u = size_t(unit_of[i]);
-                if (counts[u]++ == 0) first[u] = i;
+            unit_runs.assign(size_t(next), {});
+            for (const auto &[u, begin, end] : runs) {
+                if (counts[size_t(u)] == 0) first[size_t(u)] = size_t(begin);
+                counts[size_t(u)] += size_t(end - begin);
+                unit_runs[size_t(u)].emplace_back(begin, end);
             }
             std::vector<int> new_of(old_members.size(), -1);
             for (int u = 0; u < next; ++u) {
                 const int o = old_unit_of[first[size_t(u)]];
-                if (attempt > 0 && counts[size_t(u)] == old_members[size_t(o)].size() &&
-                    std::all_of(old_members[size_t(o)].begin(), old_members[size_t(o)].end(), [&](int t) { return unit_of[size_t(t)] == u; })) {
+                if (attempt > 0 && counts[size_t(u)] == old_members[size_t(o)].size() && unit_runs[size_t(u)] == old_unit_runs[size_t(o)]) {
                     members[size_t(u)] = std::move(old_members[size_t(o)]);
                     unit_zmin[size_t(u)] = old_zmin[size_t(o)];
                     unit_zmax[size_t(u)] = old_zmax[size_t(o)];
@@ -693,8 +724,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 } else
                     members[size_t(u)].reserve(counts[size_t(u)]);
             }
-            for (size_t i = 0; i < unit_of.size(); ++i)
-                if (changed[size_t(unit_of[i])]) members[size_t(unit_of[i])].push_back(int(i));
+            for (const auto &[u, begin, end] : runs)
+                if (changed[size_t(u)])
+                    for (int i = begin; i < end; ++i) members[size_t(u)].push_back(i);
             for (size_t u = 0; u < members.size(); ++u) {
                 const size_t last = size_t(members[u].back());
                 unit_base[u] = base[last];
@@ -744,7 +776,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             g.unit = new_of[size_t(g.unit)];
                     }
                     if (!rebuild) {
-                        std::sort(groups.begin(), groups.end(), [](const CellGroup &a, const CellGroup &b) { return a.unit < b.unit; });
+                        auto by_unit = [](const CellGroup &a, const CellGroup &b) { return a.unit < b.unit; };
+                        if (!std::is_sorted(groups.begin(), groups.end(), by_unit))
+                            std::sort(groups.begin(), groups.end(), by_unit);
                         continue;
                     }
                     std::sort(samples.begin() + begin, samples.begin() + end, less);
