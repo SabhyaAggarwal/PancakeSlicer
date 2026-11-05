@@ -30,6 +30,7 @@
 #include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
+#include "Nonplanar/PlanarClip.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/RotaryRouter.hpp"
@@ -498,8 +499,6 @@ void PrintObject::make_perimeters()
         m_typed_slices = false;
     }
 
-    this->detect_nonplanar_surfaces();
-    m_print->throw_if_canceled();
     for (Layer *layer : m_layers) {
         layer->wave_overhang_floor_polygons.clear();
         layer->wave_overhang_covered_polygons.clear();
@@ -724,8 +723,6 @@ void PrintObject::infill()
         );
         m_print->throw_if_canceled();
         BOOST_LOG_TRIVIAL(debug) << "Filling layers in parallel - end";
-        this->project_nonplanar_surfaces();
-        m_print->throw_if_canceled();
         this->set_done(posInfill);
     }
 }
@@ -753,6 +750,8 @@ void PrintObject::nonplanar_shells()
 {
     if (!this->set_started(posNonplanar))
         return;
+    if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops)
+        this->project_nonplanar_surfaces();
     const bool imported = !m_config.nonplanar_atom_toolpath.value.empty();
     bool       enabled  = false;
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
@@ -2266,6 +2265,10 @@ bool PrintObject::invalidate_state_by_config_options(
 
 bool PrintObject::invalidate_step(PrintObjectStep step)
 {
+    if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops &&
+        step >= posPrepareInfill && step <= posNonplanar && is_step_done(posNonplanarProjection))
+        step = posPerimeters;
+
     if (step == posSlice || step == posPrepareInfill || step == posNonplanar)
         m_nonplanar_region_cache->clear();
 	bool invalidated = Inherited::invalidate_step(step);
@@ -2970,34 +2973,82 @@ PrintObject::detect_nonplanar_surfaces()
 void
 PrintObject::project_nonplanar_surfaces()
 {
-    if(m_config.nonplanar_mode.value != NonplanarMode::CurvedTops) return;
-
-    if (is_step_done(posNonplanarProjection)) return;
+    if (m_config.nonplanar_mode.value != NonplanarMode::CurvedTops || is_step_done(posNonplanarProjection))
+        return;
     set_started(posNonplanarProjection);
 
-	for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id) {
-        BOOST_LOG_TRIVIAL(debug) << "Processing nonplanar surfaces for region " << region_id << " in parallel - start";
-        tbb::parallel_for(
-            tbb::blocked_range<size_t>(0, m_layers.size()),
-            [this, region_id](const tbb::blocked_range<size_t>& range) {
-                PRINT_OBJECT_TIME_LIMIT_MILLIS(PRINT_OBJECT_TIME_LIMIT_DEFAULT);
-                for (size_t idx_layer = range.begin(); idx_layer < range.end(); ++ idx_layer) {
-                    m_print->throw_if_canceled();
-                    LayerRegion *layerm = m_layers[idx_layer]->m_regions[region_id];
-
-                    BOOST_LOG_TRIVIAL(trace) << "Processing nonplanar surfaces for region " << region_id << " and layer " << \
-                       idx_layer << " (z = " << layerm->layer()->print_z << ")";
-
-                    layerm->project_nonplanar_surfaces();
-#ifdef SLIC3R_DEBUG_SLICE_PROCESSING
-                    layerm->export_region_fill_surfaces_to_svg_debug("11_project_nonplanar_surfaces-final");
-#endif
-                }
-            });
+    struct PlanarLayer {
+        std::vector<Surfaces> slices;
+        ExPolygons outlines;
+        std::vector<BoundingBox> boxes;
+    };
+    std::vector<PlanarLayer> planar(m_layers.size());
+    for (size_t i = 0; i < m_layers.size(); ++i) {
+        Layer &layer = *m_layers[i];
+        planar[i].outlines = layer.lslices;
+        planar[i].boxes = layer.lslices_bboxes;
+        for (const LayerRegion *region : layer.regions())
+            planar[i].slices.push_back(region->slices.surfaces);
     }
-
-    BOOST_LOG_TRIVIAL(debug) << "Processing nonplanar surfaces - end";
-
+    this->detect_nonplanar_surfaces();
+    struct ShellLayer : Layer {
+        ShellLayer(const Layer &source, PrintObject *object) :
+            Layer(source.id(), object, source.height, source.print_z, source.slice_z) {}
+    };
+    std::vector<std::unique_ptr<ShellLayer>> shells;
+    std::vector<std::vector<ExPolygons>> replaced(m_layers.size());
+    for (size_t i = 0; i < m_layers.size(); ++i) {
+        Layer &layer = *m_layers[i];
+        auto shell = std::make_unique<ShellLayer>(layer, this);
+        for (size_t r = 0; r < layer.region_count(); ++r) {
+            LayerRegion &region = *layer.get_region(int(r));
+            LayerRegion &target = *shell->add_region(&region.region());
+            Surfaces remaining;
+            for (const Surface &surface : region.slices.surfaces)
+                (surface.is_nonplanar() ? target.slices.surfaces : remaining).push_back(surface);
+            for (const NonplanarSurface &surface : region.nonplanar_surfaces())
+                target.append_nonplanar_surface(surface);
+            replaced[i].push_back(diff_ex(planar[i].slices[r], remaining, ApplySafetyOffset::No));
+            region.slices.surfaces = std::move(planar[i].slices[r]);
+        }
+        layer.lslices = std::move(planar[i].outlines);
+        layer.lslices_bboxes = std::move(planar[i].boxes);
+        shell->make_slices();
+        shells.emplace_back(std::move(shell));
+    }
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, shells.size()), [this, &shells](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            m_print->throw_if_canceled();
+            Layer &shell = *shells[i];
+            if (shell.empty())
+                continue;
+            shell.make_perimeters();
+            for (LayerRegion *region : shell.regions())
+                region->slices_to_fill_surfaces_clipped();
+            shell.make_fills(&m_adaptive_fill_octrees, m_lightning_generator.get());
+            for (LayerRegion *region : shell.regions())
+                region->project_nonplanar_surfaces();
+        }
+    });
+    Polygons patch_polygons;
+    for (const NonplanarSurface &surface : this->nonplanar_surfaces())
+        polygons_append(patch_polygons, to_polygons(surface.horizontal_projection()));
+    const ExPolygons patch_footprint = union_ex(patch_polygons);
+    for (size_t i = 0; i < m_layers.size(); ++i)
+        for (size_t r = 0; r < m_layers[i]->region_count(); ++r) {
+            LayerRegion &region = *m_layers[i]->get_region(int(r));
+            const ExPolygons area = intersection_ex(replaced[i][r], offset_ex(patch_footprint,
+                -float(0.5 * region.flow(frTopSolidInfill).scaled_width())), ApplySafetyOffset::No);
+            if (!area.empty()) {
+                const BoundingBox box = get_extents(area);
+                Nonplanar::clip_planar_remainder(region.perimeters, area, box);
+                Nonplanar::clip_planar_remainder(region.fills, area, box);
+                Nonplanar::clip_planar_remainder(region.thin_fills, area, box);
+            }
+            LayerRegion &shell = *shells[i]->get_region(int(r));
+            region.perimeters.append(std::move(shell.perimeters.entities));
+            region.fills.append(std::move(shell.fills.entities));
+        }
     set_done(posNonplanarProjection);
 }
 void PrintObject::apply_wave_overhang_floor_layer_authority()

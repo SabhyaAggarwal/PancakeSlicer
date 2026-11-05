@@ -16,6 +16,7 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/Nonplanar/PatchTools.hpp"
+#include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/format.hpp"
@@ -6654,6 +6655,7 @@ void GCodeProcessor::set_print(Print* print)
         return object->config().nonplanar_mode.value != NonplanarMode::Off;
     });
     m_marlin_junctions = print != nullptr && (Nonplanar::requests_conformal_shells(*print) ||
+                                              Nonplanar::curved_planar_measurement() ||
                                               std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject *object) {
                                                   return object->config().nonplanar_mode.value == NonplanarMode::CurvedTops;
                                               }) ||

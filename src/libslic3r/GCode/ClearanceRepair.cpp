@@ -16,6 +16,7 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
+#include "libslic3r/Nonplanar/CurvedTopsSurface.hpp"
 #include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
@@ -924,6 +925,14 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
     BOOST_LOG_TRIVIAL(warning) << "Curved tops clearance pass " << m_curved_pass << ": " << report.hit_moves
                                << " hits, " << report.hit_body_moves << " body hits, " << report.cone_graze_moves << " grazes";
     if (report.hit_moves > 0) {
+        for (const ClearanceHit &hit : report.worst) {
+            const auto &move = result.moves[hit.move_id];
+            BOOST_LOG_TRIVIAL(debug) << "Curved tops contact: line " << hit.gcode_line
+                << " move " << int(move.type) << " role " << int(move.extrusion_role)
+                << " shell " << int(result.state(move).nonplanar_patch_shell)
+                << " component " << hit.component << " depth " << hit.penetration
+                << " tip " << hit.tip.x() << "," << hit.tip.y() << "," << hit.tip.z();
+        }
         if (m_curved_pass >= 3)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after three surface repair passes; export blocked.");
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
@@ -962,6 +971,23 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 BOOST_LOG_TRIVIAL(warning) << warning;
             }
         ++m_curved_pass;
+    }
+    for (PrintObject *object : m_print.objects()) {
+        if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops ||
+            object->m_curved_planar_surfaces.empty() || object->nonplanar_surfaces().empty() ||
+            curved_tops_stats(*object).kept != 0)
+            continue;
+        bool changed = false;
+        for (const auto &surface : object->nonplanar_surfaces())
+            changed |= object->m_curved_planar_surfaces.insert(surface.stable_id).second;
+        if (changed) {
+            if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end())
+                m_repick.push_back(object);
+            const std::string warning = object->model_object()->name +
+                ": Curved tops printed planar: head repair left no curved top; restored the original planar body.";
+            m_guard_warnings.push_back(warning);
+            BOOST_LOG_TRIVIAL(warning) << warning;
+        }
     }
     for (const auto &warning : m_guard_warnings)
         m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);

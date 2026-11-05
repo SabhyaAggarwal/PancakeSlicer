@@ -137,7 +137,7 @@ SlicingParameters SlicingParameters::create_from_config(
     const bool organic_support = object_config.enable_support.value && is_tree(object_config.support_type.value) &&
         (object_config.support_style.value == smsTreeOrganic || object_config.support_style.value == smsDefault);
     const NonplanarMode mode = object_config.nonplanar_mode.value;
-    if ((mode == NonplanarMode::Off || mode == NonplanarMode::Auto) && !print_config.spiral_mode.value && !organic_support &&
+    if ((mode == NonplanarMode::Off || mode == NonplanarMode::Auto || mode == NonplanarMode::CurvedTops) && !print_config.spiral_mode.value && !organic_support &&
         !(print_config.enable_prime_tower.value && print_config.filament_diameter.values.size() > 1)) {
         if (mode == NonplanarMode::Auto) {
             params.shell_top_nz = std::cos(std::atan(params.layer_height / (0.75 * print_config.nozzle_diameter.get_at(0))));
@@ -146,7 +146,7 @@ SlicingParameters SlicingParameters::create_from_config(
         }
         params.road_width = 1.05 * print_config.nozzle_diameter.get_at(0);
         params.surface_error = object_config.adaptive_layer_height_error.value;
-        if (object_config.overhang_layer_contact.value > 0. && mode == NonplanarMode::Off)
+        if (object_config.overhang_layer_contact.value > 0. && (mode == NonplanarMode::Off || mode == NonplanarMode::CurvedTops))
             params.overhang_reach = (1. - 0.01 * object_config.overhang_layer_contact.value) * params.road_width;
     }
 

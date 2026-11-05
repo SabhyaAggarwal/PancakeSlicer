@@ -1,11 +1,14 @@
 // Curved tops port of fich-l / OrcaSlicer-Nonplanar v0.1 (AGPL-3.0).
 #include "CurvedTopsSchedule.hpp"
+#include "CurvedTopsAccess.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/libslic3r.h"
 #include "CurvedTopsSurface.hpp"
 #include "HeadEnvelope.hpp"
 #include <map>
@@ -19,9 +22,14 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
+#include <limits>
 #include <set>
 #include <sstream>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace Slic3r {
 
@@ -157,6 +165,13 @@ public:
                     f(*it);
             }
     }
+    template<typename F> void visit_cells(double x, double y, double radius, F &&f) const {
+        const int ix0 = std::max(index(x - radius), m_x0), ix1 = std::min(index(x + radius), m_x0 + m_nx - 1);
+        const int iy0 = std::max(index(y - radius), m_y0), iy1 = std::min(index(y + radius), m_y0 + m_ny - 1);
+        for (int ix = ix0; ix <= ix1; ++ ix)
+            for (int iy = iy0; iy <= iy1; ++ iy)
+                f(slot(ix, iy));
+    }
     int    index(double v) const { return int(std::floor(v / m_cell)); }
     int    cell_slot(int ix, int iy) const {
         return ix < m_x0 || iy < m_y0 || ix >= m_x0 + m_nx || iy >= m_y0 + m_ny ? -1 : int(slot(ix, iy));
@@ -289,8 +304,10 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     all.insert(all.end(), conformal.begin(), conformal.end());
     std::vector<int> base(all.size());
     int max_layer = 0;
+    double max_half_width = 0.;
     for (size_t i = 0; i < all.size(); ++ i) {
         base[i] = all[i].slot;
+        max_half_width = std::max(max_half_width, all[i].half_width);
         max_layer = std::max(max_layer, all[i].layer);
         zmax = std::max(zmax, all[i].z);
     }
@@ -302,9 +319,14 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         sx_min = i == 0 ? all[i].x : std::min(sx_min, all[i].x); sx_max = i == 0 ? all[i].x : std::max(sx_max, all[i].x);
         sy_min = i == 0 ? all[i].y : std::min(sy_min, all[i].y); sy_max = i == 0 ? all[i].y : std::max(sy_max, all[i].y);
     }
-    Grid grid(0.5, sx_min, sy_min, sx_max, sy_max);
-    for (int i = 0; i < int(all.size()); ++ i)
+    constexpr double fine_cell = 0.5;
+    Grid grid(fine_cell, sx_min, sy_min, sx_max, sy_max);
+    std::vector<double> fine_zmax(grid.cell_count(), -std::numeric_limits<double>::max());
+    for (int i = 0; i < int(all.size()); ++i) {
         grid.insert(i, all[i].x, all[i].y);
+        const size_t cell = size_t(grid.cell_slot(grid.index(all[i].x), grid.index(all[i].y)));
+        fine_zmax[cell] = std::max(fine_zmax[cell], all[i].z);
+    }
     auto z_of = [&all](int i) { return all[size_t(i)].z; };
     grid.sort_cells(z_of);
     double block_dz_min = std::numeric_limits<double>::max();
@@ -330,8 +352,28 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     std::vector<NonplanarClearanceModel::Box> boxes_by_bottom(model.boxes.begin(), model.boxes.end());
     std::stable_sort(boxes_by_bottom.begin(), boxes_by_bottom.end(),
         [](const NonplanarClearanceModel::Box &a, const NonplanarClearanceModel::Box &b) { return a.bottom < b.bottom; });
-    auto reach = [&](int t) {
-        return zmax - all[t].z > threshold ? ring_reach + 0.5 + model.sample_step : 0.;
+    const double full_ring_reach = ring_reach + 0.5 + model.sample_step;
+    std::vector<double> local_top(grid.cell_count(), -std::numeric_limits<double>::max());
+    for (int ix = grid.x0(); ix <= grid.x1(); ++ix)
+        for (int iy = grid.y0(); iy <= grid.y1(); ++iy) {
+            const size_t cell = size_t(grid.cell_slot(ix, iy));
+            if (fine_zmax[cell] == -std::numeric_limits<double>::max()) continue;
+            grid.visit_cells((ix + 0.5) * fine_cell, (iy + 0.5) * fine_cell, full_ring_reach + 0.5 * fine_cell + 1e-6,
+                [&](size_t k) { local_top[cell] = std::max(local_top[cell], fine_zmax[k]); });
+        }
+    auto reach = [&](int t, double material_top = std::numeric_limits<double>::max()) {
+        const Sample &tool = all[size_t(t)];
+        if (std::min(zmax, material_top) - tool.z <= threshold) return 0.;
+        const double full = full_ring_reach;
+        const size_t cell = size_t(grid.cell_slot(grid.index(tool.x), grid.index(tool.y)));
+        const double dz = std::min(local_top[cell], material_top) - tool.z;
+        if (!boxes_by_bottom.empty() && dz > boxes_by_bottom.front().bottom - model.safety_mm) return full;
+        const double pad = std::max(0.5 + model.sample_step,
+            max_half_width + model.bead_margin + model.safety_mm + model.sample_step);
+        double radius = 0.;
+        for (const auto &ring : m_model.ring_list)
+            if (dz > ring.bottom - model.safety_mm) radius = std::max(radius, ring.radius + pad);
+        return std::min(full, radius);
     };
     double box_x_min = 0., box_x_max = 0., box_y_min = 0., box_y_max = 0.;
     for (const NonplanarClearanceModel::Box &b : model.boxes) {
@@ -394,7 +436,23 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         }
     };
     compute_earliest();
+    std::vector<std::pair<size_t, size_t>> spans;
+    std::vector<char> path_has_edge(sampled.size(), 0);
+    auto make_spans = [&]() {
+        spans.clear();
+        for (size_t i = 0; i < all.size();) {
+            size_t j = i + 1;
+            while (j < all.size() && all[j].path == all[i].path && earliest[j] == earliest[i]) ++j;
+            spans.emplace_back(i, j);
+            i = j;
+        }
+    };
+    make_spans();
+    const bool verify_dependents = std::getenv("NONPLANAR_PLAN_VERIFY") != nullptr;
     std::vector<int> unit_of(all.size());
+    std::vector<double> unit_zmin, unit_zmax;
+    std::vector<std::vector<int>> members;
+    std::vector<BoundingBoxf3> unit_bounds;
     auto visit_followers = [&](int t, auto &&wanted, auto &&found, bool with_boxes = true) {
         const Sample &s0 = all[size_t(t)];
         auto check = [&](int m) {
@@ -417,14 +475,17 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     struct CellGroup { int unit; double zmax; int begin, end; };
     std::vector<std::vector<CellGroup>> cell_groups(coarse.cell_count());
     std::vector<int> cell_samples;
-    auto collect_box_dependents = [&](int t, int u, std::vector<int> &out, const std::vector<char> *only, std::vector<int> &marker) {
+    std::vector<std::vector<CellGroup>> fine_groups(grid.cell_count());
+    std::vector<int> fine_samples;
+
+    auto collect_box_dependents = [&](int t, int u, std::vector<int> &out, const std::vector<char> *only, double material_top, std::vector<int> &marker) {
         if (model.boxes.empty())
             return;
         const Sample &s0 = all[size_t(t)];
         double lowest_floor = std::numeric_limits<double>::max();
         for (const NonplanarClearanceModel::Box &b : model.boxes)
             lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
-        if (zmax <= lowest_floor)
+        if (material_top <= lowest_floor)
             return;
         for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
              cx <= std::min(std::floor((s0.x + box_x_max + 0.5) / coarse_cell), double(coarse.x1())); cx += 1.)
@@ -433,8 +494,12 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 const int key = coarse_key((cx + 0.5) * coarse_cell, (cy + 0.5) * coarse_cell);
                 if (key < 0 || cell_groups[size_t(key)].empty() || coarse_zmax[size_t(key)] <= lowest_floor)
                     continue;
+                const size_t stamp = unit_zmin.size() + fine_groups.size() + size_t(key);
+                if (!verify_dependents && marker[stamp] == u) continue;
+                const double unit_floor = unit_zmin[size_t(u)] + boxes_by_bottom.front().bottom - model.safety_mm;
+                bool complete = true;
                 for (const CellGroup &g : cell_groups[size_t(key)]) {
-                    if (g.unit == u || marker[size_t(g.unit)] == u || g.zmax <= lowest_floor ||
+                    if (g.unit == u || marker[size_t(g.unit)] == u || g.zmax <= unit_floor ||
                         (only != nullptr && ! (*only)[size_t(g.unit)]))
                         continue;
                     bool covered = false;
@@ -447,26 +512,56 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             break;
                         }
                     }
-                    if (! covered)
-                        continue;
+                    if (! covered) { complete = false; continue; }
                     for (int k = g.begin; k < g.end && all[size_t(cell_samples[size_t(k)])].z > s0.z + block_dz_min; ++ k)
                         if (cell_samples[size_t(k)] != t && blocks(all[size_t(cell_samples[size_t(k)])], s0)) {
                             marker[size_t(g.unit)] = u;
                             out.push_back(g.unit);
                             break;
                         }
+                    complete &= marker[size_t(g.unit)] == u;
                 }
+                if (complete && !verify_dependents) marker[stamp] = u;
             }
     };
     auto visit_unit_followers = [&](int t, int unit, auto &&extra, auto &&found) {
         const Sample &s0 = all[size_t(t)];
+        BoundingBoxf3 &bounds = unit_bounds[size_t(unit)];
+        if (!bounds.defined)
+            for (int m : members[size_t(unit)])
+                bounds.merge(Vec3d(all[size_t(m)].x, all[size_t(m)].y, all[size_t(m)].z));
+        const double dx = std::max({bounds.min.x() - s0.x, s0.x - bounds.max.x(), 0.});
+        const double dy = std::max({bounds.min.y() - s0.y, s0.y - bounds.max.y(), 0.});
+        const double dz = bounds.max.z() - s0.z;
+        const double grow = max_half_width + model.bead_margin + model.safety_mm + model.sample_step;
+        bool possible = dz > 0.1 && bounds.min.z() - s0.z < 0.35 && dx * dx + dy * dy < sqr(max_half_width + 1e-6);
+        for (const auto &ring : m_model.ring_list)
+            possible |= dz > ring.bottom - model.safety_mm && dx * dx + dy * dy < sqr(ring.radius + grow + 1e-6);
+        for (const auto &box : model.boxes)
+            possible |= dz > box.bottom - model.safety_mm &&
+                bounds.max.x() > s0.x + box.x_min - grow - 1e-6 && bounds.min.x() < s0.x + box.x_max + grow + 1e-6 &&
+                bounds.max.y() > s0.y + box.y_min - grow - 1e-6 && bounds.min.y() < s0.y + box.y_max + grow + 1e-6;
+        if (!possible) return;
         auto check = [&](int m) {
             if (m != t && unit_of[size_t(m)] == unit && extra(m) && blocks(all[size_t(m)], s0))
                 found(m);
         };
+        auto visit_group = [&](const std::vector<CellGroup> &groups, const std::vector<int> &samples,
+                               double z_lo, double z_hi, auto &&f) {
+            const auto g = std::lower_bound(groups.begin(), groups.end(), unit,
+                [](const CellGroup &a, int u) { return a.unit < u; });
+            if (g == groups.end() || g->unit != unit || g->zmax <= z_lo) return;
+            for (int k = g->begin; k < g->end; ++k) {
+                const int m = samples[size_t(k)];
+                if (all[size_t(m)].z <= z_lo) break;
+                if (all[size_t(m)].z < z_hi) f(m);
+            }
+        };
         const double r = reach(t);
-        if (r > 0)
-            grid.visit_z(s0.x, s0.y, r, s0.z + block_dz_min, std::numeric_limits<double>::max(), z_of, check);
+        if (r > 0.)
+            grid.visit_cells(s0.x, s0.y, r, [&](size_t cell) {
+                visit_group(fine_groups[cell], fine_samples, s0.z + block_dz_min, std::numeric_limits<double>::max(), check);
+            });
         if (! model.boxes.empty()) {
             double lowest_floor = std::numeric_limits<double>::max();
             for (const NonplanarClearanceModel::Box &b : model.boxes)
@@ -492,41 +587,43 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         }
                         if (! covered)
                             continue;
-                        const std::vector<CellGroup> &groups = cell_groups[size_t(k)];
-                        const auto g = std::lower_bound(groups.begin(), groups.end(), unit,
-                            [](const CellGroup &a, int u) { return a.unit < u; });
-                        if (g == groups.end() || g->unit != unit)
-                            continue;
-                        for (int q = g->begin; q < g->end && all[size_t(cell_samples[size_t(q)])].z > s0.z + block_dz_min; ++ q)
-                            check(cell_samples[size_t(q)]);
+                        visit_group(cell_groups[size_t(k)], cell_samples, s0.z + block_dz_min,
+                                    std::numeric_limits<double>::max(), check);
                     }
         }
-        grid.visit_z(s0.x, s0.y, 2. * s0.half_width, s0.z + 0.1 - 1e-6, s0.z + 0.35 + 1e-6, z_of, [&](int r2) {
-            const Sample &s1 = all[size_t(r2)];
-            if (r2 != t && unit_of[size_t(r2)] == unit && extra(r2) && s1.z - s0.z > 0.1 && s1.z - s0.z < 0.35 &&
-                std::hypot(s1.x - s0.x, s1.y - s0.y) < 0.5 * (s1.half_width + s0.half_width))
-                found(r2);
+        grid.visit_cells(s0.x, s0.y, 2. * s0.half_width, [&](size_t cell) {
+            visit_group(fine_groups[cell], fine_samples, s0.z + 0.1 - 1e-6, s0.z + 0.35 + 1e-6, [&](int m) {
+                const Sample &s1 = all[size_t(m)];
+                if (m != t && extra(m) && s1.z - s0.z > 0.1 && s1.z - s0.z < 0.35 &&
+                    std::hypot(s1.x - s0.x, s1.y - s0.y) < 0.5 * (s1.half_width + s0.half_width))
+                    found(m);
+            });
         });
     };
     std::vector<int> unit_slot, unit_base;
-    std::vector<std::vector<int>> members;
     std::vector<std::vector<int>> dependents;
     std::vector<char> dependents_known;
     std::vector<std::string> conflicts;
     int conflict_a = -1, conflict_b = -1;
-    const bool verify_dependents = std::getenv("NONPLANAR_PLAN_VERIFY") != nullptr;
+    using Slot = std::pair<int, int>;
+    const Slot before_all {-1, -1}, after_all {std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
+    std::vector<Slot> raw_limit, old_limit;
+    bool reset_raw = false;
     std::vector<std::vector<int>> raw, old_raw, old_members;
     std::vector<char> raw_known, pending, old_known, changed;
     std::vector<int> old_unit_of;
     size_t refined_units = 0;
     std::set<std::pair<int, int>> dropped;
     size_t dropped_edges = 0;
+    bool rebuild_units = true;
     for (int attempt = 0;; ++ attempt) {
         throw_if_canceled();
-        {
+        if (rebuild_units || verify_dependents) {
             old_members = std::move(members);
             old_raw     = std::move(raw);
             old_known   = std::move(raw_known);
+            old_limit = std::move(raw_limit);
+            if (reset_raw) { std::fill(old_known.begin(), old_known.end(), 0); reset_raw = false; }
             for (size_t o = 0; o < old_known.size(); ++ o)
                 if (pending[o])
                     old_known[o] = 0;
@@ -536,68 +633,133 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             std::map<std::tuple<long, int, long>, int> chunks;
             long edge_run = 0;
             int next = 0;
-            for (size_t i = 0; i < all.size(); ++ i) {
-                const Sampled &src = sampled[size_t(all[i].path)];
-                if (edge_level[i] > 0 && ! (i > 0 && all[i - 1].path == all[i].path && edge_level[i - 1] > 0))
-                    ++ edge_run;
-                if (edge_level[i] > 0) {
-                    const auto key = std::make_tuple(edge_run, edge_level[i], long(all[i].s / chunk_length(edge_level[i])));
-                    unit_of[i] = chunks.try_emplace(key, next).first->second;
-                } else if (src.path->nonplanar_source) {
-                    const auto key = std::make_tuple(src.layer, src.path->source_surface_id,
-                        std::lround(src.path->distance_to_top * 1000.f), earliest[i]);
-                    unit_of[i] = shells.try_emplace(key, next).first->second;
-                } else {
-                    unit_of[i] = entities.try_emplace(src.entity, next).first->second;
+            for (const auto &[first, last] : spans) {
+                const Sampled &src = sampled[size_t(all[first].path)];
+                if (!path_has_edge[size_t(all[first].path)]) {
+                    const int u = src.path->nonplanar_source
+                        ? shells.try_emplace(std::make_tuple(src.layer, src.path->source_surface_id,
+                            std::lround(src.path->distance_to_top * 1000.f), earliest[first]), next).first->second
+                        : entities.try_emplace(src.entity, next).first->second;
+                    std::fill(unit_of.begin() + first, unit_of.begin() + last, u);
+                    if (u == next) ++next;
+                    continue;
                 }
-                if (unit_of[i] == next)
-                    ++ next;
+                for (size_t i = first; i < last; ++i) {
+                    const Sampled &src = sampled[size_t(all[i].path)];
+                    if (edge_level[i] > 0 && ! (i > 0 && all[i - 1].path == all[i].path && edge_level[i - 1] > 0))
+                        ++ edge_run;
+                    if (i > 0 && edge_level[i] == 0 && edge_level[i - 1] == 0 &&
+                        all[i].path == all[i - 1].path && earliest[i] == earliest[i - 1]) {
+                        unit_of[i] = unit_of[i - 1];
+                        continue;
+                    }
+                    if (edge_level[i] > 0) {
+                        const auto key = std::make_tuple(edge_run, edge_level[i], long(all[i].s / chunk_length(edge_level[i])));
+                        unit_of[i] = chunks.try_emplace(key, next).first->second;
+                    } else if (src.path->nonplanar_source) {
+                        const auto key = std::make_tuple(src.layer, src.path->source_surface_id,
+                            std::lround(src.path->distance_to_top * 1000.f), earliest[i]);
+                        unit_of[i] = shells.try_emplace(key, next).first->second;
+                    } else {
+                        unit_of[i] = entities.try_emplace(src.entity, next).first->second;
+                    }
+                    if (unit_of[i] == next)
+                        ++ next;
+                }
             }
             members.assign(size_t(next), {});
             unit_slot.assign(size_t(next), 0);
+            const auto old_zmin = std::move(unit_zmin);
+            const auto old_zmax = std::move(unit_zmax);
+            unit_zmin.assign(size_t(next), std::numeric_limits<double>::max());
+            unit_zmax.assign(size_t(next), -std::numeric_limits<double>::max());
             unit_base.assign(size_t(next), 0);
-            for (size_t i = 0; i < all.size(); ++ i) {
-                members[size_t(unit_of[i])].push_back(int(i));
-                unit_base[size_t(unit_of[i])] = base[i];
-                unit_slot[size_t(unit_of[i])] = earliest[i];
-                all[i].slot = earliest[i];
+            changed.assign(size_t(next), 1);
+            std::vector<size_t> counts(size_t(next), 0), first(size_t(next), 0);
+            for (size_t i = 0; i < unit_of.size(); ++i) {
+                const size_t u = size_t(unit_of[i]);
+                if (counts[u]++ == 0) first[u] = i;
+            }
+            std::vector<int> new_of(old_members.size(), -1);
+            for (int u = 0; u < next; ++u) {
+                const int o = old_unit_of[first[size_t(u)]];
+                if (attempt > 0 && counts[size_t(u)] == old_members[size_t(o)].size() &&
+                    std::all_of(old_members[size_t(o)].begin(), old_members[size_t(o)].end(), [&](int t) { return unit_of[size_t(t)] == u; })) {
+                    members[size_t(u)] = std::move(old_members[size_t(o)]);
+                    unit_zmin[size_t(u)] = old_zmin[size_t(o)];
+                    unit_zmax[size_t(u)] = old_zmax[size_t(o)];
+                    new_of[size_t(o)] = u;
+                    changed[size_t(u)] = 0;
+                } else
+                    members[size_t(u)].reserve(counts[size_t(u)]);
+            }
+            for (size_t i = 0; i < unit_of.size(); ++i)
+                if (changed[size_t(unit_of[i])]) members[size_t(unit_of[i])].push_back(int(i));
+            for (size_t u = 0; u < members.size(); ++u) {
+                const size_t last = size_t(members[u].back());
+                unit_base[u] = base[last];
+                unit_slot[u] = earliest[last];
             }
             dependents.assign(size_t(next), {});
             dependents_known.assign(size_t(next), 0);
-            collected_for.assign(size_t(next), -1);
-            for (std::vector<CellGroup> &groups : cell_groups)
-                groups.clear();
-            {
-                std::vector<std::tuple<int, int, double, int>> order;
-                order.reserve(all.size());
-                for (size_t i = 0; i < all.size(); ++ i)
-                    order.emplace_back(coarse_key(all[i].x, all[i].y), unit_of[i], - all[i].z, int(i));
-                std::sort(order.begin(), order.end());
-                cell_samples.resize(order.size());
-                for (size_t k = 0; k < order.size(); ++ k) {
-                    cell_samples[k] = std::get<3>(order[k]);
-                    const double z = all[size_t(cell_samples[k])].z;
-                    std::vector<CellGroup> &groups = cell_groups[std::get<0>(order[k])];
-                    if (k > 0 && std::get<0>(order[k - 1]) == std::get<0>(order[k]) && std::get<1>(order[k - 1]) == std::get<1>(order[k])) {
-                        groups.back().zmax = std::max(groups.back().zmax, z);
-                        groups.back().end  = int(k) + 1;
-                    } else
-                        groups.push_back({ std::get<1>(order[k]), z, int(k), int(k) + 1 });
-                }
-            }
+            collected_for.assign(size_t(next) + fine_groups.size() + cell_groups.size(), -1);
             raw.assign(size_t(next), {});
             raw_known.assign(size_t(next), 0);
+            raw_limit.assign(size_t(next), before_all);
             pending.assign(size_t(next), 0);
-            changed.assign(size_t(next), 1);
-            std::vector<int> new_of(old_members.size(), -1);
-            if (attempt > 0)
-                for (int u = 0; u < next; ++ u) {
-                    const int o = old_unit_of[size_t(members[size_t(u)].front())];
-                    if (old_members[size_t(o)] == members[size_t(u)]) {
-                        new_of[size_t(o)] = u;
-                        changed[size_t(u)] = 0;
+            unit_bounds.assign(size_t(next), {});
+            for (int u = 0; u < next; ++u)
+                if (changed[size_t(u)])
+                    for (int t : members[size_t(u)]) {
+                        unit_zmin[size_t(u)] = std::min(unit_zmin[size_t(u)], all[size_t(t)].z);
+                        unit_zmax[size_t(u)] = std::max(unit_zmax[size_t(u)], all[size_t(t)].z);
+                    }
+            auto group_cells = [&](const Grid &index, std::vector<std::vector<CellGroup>> &cells, std::vector<int> &samples) {
+                auto less = [&](int a, int b) {
+                    if (unit_of[size_t(a)] != unit_of[size_t(b)]) return unit_of[size_t(a)] < unit_of[size_t(b)];
+                    return all[size_t(a)].z != all[size_t(b)].z ? all[size_t(a)].z > all[size_t(b)].z : a < b;
+                };
+                if (samples.empty()) {
+                    std::vector<std::vector<int>> by_cell(index.cell_count());
+                    for (size_t i = 0; i < all.size(); ++i)
+                        by_cell[size_t(index.cell_slot(index.index(all[i].x), index.index(all[i].y)))].push_back(int(i));
+                    samples.reserve(all.size());
+                    for (size_t k = 0; k < cells.size(); ++k) {
+                        const int begin = int(samples.size());
+                        samples.insert(samples.end(), by_cell[k].begin(), by_cell[k].end());
+                        if (begin < int(samples.size()))
+                            cells[k].push_back({-1, 0., begin, int(samples.size())});
                     }
                 }
+                for (auto &groups : cells) {
+                    if (groups.empty()) continue;
+                    bool rebuild = false;
+                    int begin = int(samples.size()), end = 0;
+                    for (CellGroup &g : groups) {
+                        begin = std::min(begin, g.begin);
+                        end = std::max(end, g.end);
+                        if (g.unit < 0 || size_t(g.unit) >= new_of.size() || new_of[size_t(g.unit)] < 0)
+                            rebuild = true;
+                        else
+                            g.unit = new_of[size_t(g.unit)];
+                    }
+                    if (!rebuild) {
+                        std::sort(groups.begin(), groups.end(), [](const CellGroup &a, const CellGroup &b) { return a.unit < b.unit; });
+                        continue;
+                    }
+                    std::sort(samples.begin() + begin, samples.begin() + end, less);
+                    groups.clear();
+                    for (int k = begin; k < end; ++k) {
+                        const int m = samples[size_t(k)], u = unit_of[size_t(m)];
+                        if (!groups.empty() && groups.back().unit == u)
+                            groups.back().end = k + 1;
+                        else
+                            groups.push_back({u, all[size_t(m)].z, k, k + 1});
+                    }
+                }
+            };
+            group_cells(coarse, cell_groups, cell_samples);
+            group_cells(grid, fine_groups, fine_samples);
             for (int u = 0; u < next; ++ u) {
                 if (changed[size_t(u)])
                     continue;
@@ -612,30 +774,124 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 }
                 std::sort(raw[size_t(u)].begin(), raw[size_t(u)].end());
                 raw_known[size_t(u)] = 1;
+                raw_limit[size_t(u)] = old_limit[size_t(o)];
+                pending[size_t(u)] = 1;
             }
+        } else {
+            for (size_t u = 0; u < members.size(); ++u) {
+                unit_slot[u] = earliest[size_t(members[u].back())];
+                dependents[u].clear();
+            }
+            std::fill(dependents_known.begin(), dependents_known.end(), 0);
+            std::fill(collected_for.begin(), collected_for.end(), -1);
         }
-        auto collect_samples = [&](int u, bool only_changed, const int *first, const int *last, std::vector<int> &out, std::vector<int> &marker) {
+        rebuild_units = false;
+        auto collect_samples = [&](int u, const std::vector<char> *only, double material_top, const int *first, const int *last, std::vector<int> &out, std::vector<int> &marker) {
             for (const int *t = first; t != last; ++ t) {
-                visit_followers(*t,
-                    [&](int m) { const int v = unit_of[size_t(m)]; return v != u && marker[size_t(v)] != u && (! only_changed || changed[size_t(v)]); },
-                    [&](int m) { const int v = unit_of[size_t(m)]; if (marker[size_t(v)] != u) { marker[size_t(v)] = u; out.push_back(v); } },
-                    false);
-                collect_box_dependents(*t, u, out, only_changed ? &changed : nullptr, marker);
+                if (verify_dependents) {
+                    visit_followers(*t,
+                        [&](int m) { const int v = unit_of[size_t(m)]; return v != u && marker[size_t(v)] != u && (only == nullptr || (*only)[size_t(v)]); },
+                        [&](int m) { const int v = unit_of[size_t(m)]; if (marker[size_t(v)] != u) { marker[size_t(v)] = u; out.push_back(v); } },
+                        false);
+                } else {
+                    const Sample &s0 = all[size_t(*t)];
+                    auto collect = [&](double radius, double z_lo, double z_hi, bool stacked) {
+                        if (radius <= 0.) return;
+                        grid.visit_cells(s0.x, s0.y, radius, [&](size_t cell) {
+                            const size_t stamp = members.size() + cell;
+                            if (marker[stamp] == u) return;
+                            bool complete = true;
+                            const double floor = unit_zmin[size_t(u)] + std::min(block_dz_min, 0.1 - 1e-6);
+                            for (const CellGroup &g : fine_groups[cell]) {
+                                if (g.unit == u || marker[size_t(g.unit)] == u || g.zmax <= floor ||
+                                    (only != nullptr && !(*only)[size_t(g.unit)]))
+                                    continue;
+                                for (int k = g.begin; k < g.end; ++k) {
+                                    const int m = fine_samples[size_t(k)];
+                                    const Sample &s1 = all[size_t(m)];
+                                    if (s1.z <= z_lo) break;
+                                    if (s1.z >= z_hi) continue;
+                                    const bool follows = stacked
+                                        ? s1.z - s0.z > 0.1 && s1.z - s0.z < 0.35 &&
+                                          std::hypot(s1.x - s0.x, s1.y - s0.y) < 0.5 * (s1.half_width + s0.half_width)
+                                        : blocks(s1, s0);
+                                    if (follows) {
+                                        marker[size_t(g.unit)] = u;
+                                        out.push_back(g.unit);
+                                        break;
+                                    }
+                                }
+                                complete &= marker[size_t(g.unit)] == u;
+                            }
+                            if (complete) marker[stamp] = u;
+                        });
+                    };
+                    collect(reach(*t, material_top), s0.z + block_dz_min, std::numeric_limits<double>::max(), false);
+                    collect(2. * s0.half_width, s0.z + 0.1 - 1e-6, s0.z + 0.35 + 1e-6, true);
+                }
+                collect_box_dependents(*t, u, out, only, material_top, marker);
             }
         };
         tbb::enumerable_thread_specific<std::pair<std::vector<int>, std::vector<int>>> workers(
-            [&]() { return std::make_pair(std::vector<int>(members.size(), -1), std::vector<int>()); });
-        auto collect_dependents = [&](int u, bool only_changed, std::vector<int> &out) {
-            const std::vector<int> &samples = members[size_t(u)];
+            [&]() { return std::make_pair(std::vector<int>(collected_for.size(), -1), std::vector<int>()); });
+        auto collect_dependents = [&](int u, bool only_changed, Slot from, Slot to, std::vector<int> &out) {
+            std::vector<char> eligible(members.size(), 0);
+            double material_top = -std::numeric_limits<double>::max();
+            for (size_t v = 0; v < members.size(); ++v) {
+                const Slot key {earliest[size_t(members[v].back())], unit_base[v]};
+                if (int(v) != u && key > from && key <= to && (!only_changed || changed[v])) {
+                    eligible[v] = 1;
+                    material_top = std::max(material_top, unit_zmax[v]);
+                }
+            }
+            if (material_top == -std::numeric_limits<double>::max()) return;
+            for (int v : out) collected_for[size_t(v)] = u;
+            std::fill(collected_for.begin() + members.size(), collected_for.end(), -1);
+            std::vector<int> affected;
+            if (only_changed && !verify_dependents && members[size_t(u)].size() >= 256) {
+                auto query = [&](const Vec2d &lo, const Vec2d &hi, double top) {
+                    if (top < unit_zmin[size_t(u)]) return;
+                    const Vec2d center = 0.5 * (lo + hi);
+                    const double radius = 0.5 * (hi - lo).maxCoeff() + 1e-6;
+                    grid.visit_z(center.x(), center.y(), radius, unit_zmin[size_t(u)] - 1e-6, top + 1e-6, z_of, [&](int t) {
+                        const Sample &q = all[size_t(t)];
+                        if (unit_of[size_t(t)] == u && q.x >= lo.x() - 1e-6 && q.x <= hi.x() + 1e-6 &&
+                            q.y >= lo.y() - 1e-6 && q.y <= hi.y() + 1e-6)
+                            affected.push_back(t);
+                    });
+                };
+                const double grow = max_half_width + model.bead_margin + model.safety_mm + model.sample_step;
+                for (size_t v = 0; v < changed.size(); ++v) {
+                    if (!eligible[v] || collected_for[v] == u) continue;
+                    BoundingBoxf3 &box = unit_bounds[v];
+                    if (!box.defined)
+                        for (int m : members[v]) box.merge(Vec3d(all[size_t(m)].x, all[size_t(m)].y, all[size_t(m)].z));
+                    for (const auto &ring : m_model.ring_list) {
+                        const Vec2d pad = Vec2d::Constant(ring.radius + grow);
+                        query(box.min.head<2>() - pad, box.max.head<2>() + pad, box.max.z() - ring.bottom + model.safety_mm);
+                    }
+                    for (const auto &body : model.boxes)
+                        query(box.min.head<2>() - Vec2d(body.x_max + grow, body.y_max + grow),
+                              box.max.head<2>() - Vec2d(body.x_min - grow, body.y_min - grow), box.max.z() - body.bottom + model.safety_mm);
+                    const Vec2d pad = Vec2d::Constant(max_half_width);
+                    query(box.min.head<2>() - pad, box.max.head<2>() + pad, box.max.z() - 0.1);
+                }
+                std::sort(affected.begin(), affected.end());
+                affected.erase(std::unique(affected.begin(), affected.end()), affected.end());
+            }
+            const std::vector<int> &samples = only_changed && !verify_dependents && members[size_t(u)].size() >= 256
+                ? affected : members[size_t(u)];
             if (samples.size() < 256 || verify_dependents) {
-                collect_samples(u, only_changed, samples.data(), samples.data() + samples.size(), out, collected_for);
+                collect_samples(u, &eligible, material_top, samples.data(), samples.data() + samples.size(), out, collected_for);
                 return;
             }
-            for (auto &w : workers)
+            for (auto &w : workers) {
                 w.second.clear();
+                std::fill(w.first.begin() + members.size(), w.first.end(), -1);
+            }
             tbb::parallel_for(tbb::blocked_range<size_t>(0, samples.size(), 64), [&](const tbb::blocked_range<size_t> &range) {
                 auto &[marker, found] = workers.local();
-                collect_samples(u, only_changed, samples.data() + range.begin(), samples.data() + range.end(), found, marker);
+                collect_samples(u, &eligible, material_top, samples.data() + range.begin(), samples.data() + range.end(), found, marker);
             });
             for (auto &w : workers)
                 for (int v : w.second)
@@ -645,32 +901,38 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     }
         };
         auto dependents_of = [&](int u) -> const std::vector<int>& {
-            if (! dependents_known[size_t(u)]) {
+            const Slot needed = verify_dependents ? after_all : Slot {unit_slot[size_t(u)], unit_base[size_t(u)]};
+            if (!dependents_known[size_t(u)] || needed > raw_limit[size_t(u)]) {
                 std::vector<int> &list = raw[size_t(u)];
                 const bool carried = raw_known[size_t(u)];
-                if (! carried) {
-                    collect_dependents(u, false, list);
-                    std::sort(list.begin(), list.end());
+                if (!carried) {
+                    collect_dependents(u, false, before_all, needed, list);
                     raw_known[size_t(u)] = 1;
-                } else if (pending[size_t(u)]) {
-                    for (int v : list)
-                        collected_for[size_t(v)] = u;
-                    collect_dependents(u, true, list);
-                    std::sort(list.begin(), list.end());
-                    pending[size_t(u)] = 0;
+                    raw_limit[size_t(u)] = needed;
+                } else {
+                    if (pending[size_t(u)]) {
+                        collect_dependents(u, true, before_all, raw_limit[size_t(u)], list);
+                        pending[size_t(u)] = 0;
+                    }
+                    if (needed > raw_limit[size_t(u)]) {
+                        collect_dependents(u, false, raw_limit[size_t(u)], needed, list);
+                        raw_limit[size_t(u)] = needed;
+                    }
                 }
+                std::sort(list.begin(), list.end());
                 if (carried && verify_dependents) {
                     std::vector<int> saved = collected_for, fresh;
                     std::fill(collected_for.begin(), collected_for.end(), -1);
-                    collect_dependents(u, false, fresh);
+                    collect_dependents(u, false, before_all, after_all, fresh);
                     std::sort(fresh.begin(), fresh.end());
                     collected_for = std::move(saved);
                     if (fresh != list)
                         throw Slic3r::RuntimeError("Nonplanar deposition order: carried dependents differ from a fresh computation (attempt " +
                                                    std::to_string(attempt + 1) + ", unit " + std::to_string(u) + ")");
                 }
+                dependents[size_t(u)].clear();
                 for (int v : list)
-                    if (! dropped.count({ members[size_t(u)].front(), members[size_t(v)].front() }))
+                    if (!dropped.count({members[size_t(u)].front(), members[size_t(v)].front()}))
                         dependents[size_t(u)].push_back(v);
                 dependents_known[size_t(u)] = 1;
             }
@@ -790,7 +1052,11 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             }
             if (lower_shell) {
                 banded = true;
+                reset_raw = true;
+                rebuild_units = true;
                 compute_earliest();
+                make_spans();
+                std::fill(path_has_edge.begin(), path_has_edge.end(), 0);
                 std::fill(edge_level.begin(), edge_level.end(), 0);
                 dropped.clear();
                 refined_units = 0;
@@ -818,6 +1084,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         ++ edge_level[size_t(t)];
                     progress = true;
                     ++ refined_units;
+                    rebuild_units = true;
                 }
                 continue;
             }
@@ -842,6 +1109,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 for (int m : involved)
                     if (all[size_t(m)].path == all[size_t(t)].path && std::abs(all[size_t(m)].s - all[size_t(t)].s) < scaled<double>(edge_band)) {
                         edge_level[size_t(t)] = 1;
+                        path_has_edge[size_t(all[size_t(t)].path)] = 1;
                         marked = true;
                         break;
                     }
@@ -849,6 +1117,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             if (marked) {
                 progress = true;
                 ++ refined_units;
+                rebuild_units = true;
             }
         }
         if (! progress) {
@@ -956,6 +1225,16 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         char hint[160];
         std::snprintf(hint, sizeof(hint), " Lower \"Maximum nonplanar angle\" to %g° or less and slice again.", nonplanar_suggested_angle(angle));
         message += hint;
+        std::vector<int> surfaces;
+        for (int sample : {conflict_a, conflict_b})
+            if (sample >= 0) {
+                const ExtrusionPath &path = *sampled[size_t(all[size_t(sample)].path)].path;
+                if (path.nonplanar_source && path.source_surface_id >= 0 &&
+                    std::find(surfaces.begin(), surfaces.end(), path.source_surface_id) == surfaces.end())
+                    surfaces.push_back(path.source_surface_id);
+            }
+        if (!surfaces.empty())
+            throw CurvedTopsAccessError(message, object.id().id, std::move(surfaces));
         throw Slic3r::SlicingError(message, object.id().id);
     }
 

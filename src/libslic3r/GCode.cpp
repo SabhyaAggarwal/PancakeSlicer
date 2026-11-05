@@ -10878,7 +10878,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         speed = filament_max_volumetric_speed / _mm3_per_mm;
 
     constexpr double nonplanar_max_top_surface_speed = 50.;
-    if (path.role() == erTopSolidInfill && (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops))
+    if (path.role() == erTopSolidInfill && path.nonplanar_source &&
+        m_config.nonplanar_mode.value == NonplanarMode::CurvedTops)
         speed = std::min(speed, nonplanar_max_top_surface_speed);
     const int _layer = this->effective_layer_index_for_point(path_point_mm);
     const bool belt_band_tags   = m_enable_cooling_markers && m_config.belt_printer.value;
@@ -11768,9 +11769,9 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         for (const Point &p : travel.points) xy.emplace_back(this->point_to_gcode(p));
         const double base = std::max(m_writer.get_position().z(), target_z);
         double safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance, base);
-        if (safe > base + EPSILON || m_force_safe_travel)
+        if (m_force_safe_travel)
             safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance,
-                base + (needs_retraction || m_force_safe_travel ? hop : 0.));
+                base + hop);
         m_writer.cancel_lazy_lift();
         if (safe > m_writer.get_position().z() + EPSILON || m_need_change_layer_lift_z || !m_writer.is_current_position_clear())
             gcode += m_writer.travel_to_z(safe, "lift over curved tops", true,

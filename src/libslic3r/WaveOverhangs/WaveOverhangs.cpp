@@ -18,13 +18,15 @@
 #include "Line.hpp"
 #include "Polyline.hpp"
 #include "Print.hpp"
+#include "PrintConfig.hpp"
 #include "libslic3r.h"
 
 namespace Slic3r::WaveOverhangs {
 
 bool enabled(const PrintRegionConfig &region, const PrintObject &object)
 {
-    return region.wave_overhangs.value && object.requested_nonplanar_mode() != NonplanarMode::Off;
+    const NonplanarMode mode = object.requested_nonplanar_mode();
+    return region.wave_overhangs.value && mode != NonplanarMode::Off && mode != NonplanarMode::CurvedTops;
 }
 
 namespace detail {

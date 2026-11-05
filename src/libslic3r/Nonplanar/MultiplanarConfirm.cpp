@@ -19,6 +19,7 @@
 #include "libslic3r/GCode/ClearanceRepair.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Point.hpp"
@@ -136,6 +137,12 @@ thread_local unsigned rotary_measurement_depth = 0;
 thread_local NonplanarMode rotary_measurement_mode = NonplanarMode::Off;
 thread_local double rotary_measurement_time_cap = std::numeric_limits<double>::infinity();
 thread_local bool rotary_measurement_unchecked = false;
+thread_local bool curved_planar_pricing = false;
+class ControlPrint final : public Print
+{
+public:
+    void invalidate_export() { this->invalidate_step(psGCodeExport); }
+};
 struct RotaryMeasurement
 {
     const NonplanarMode previous = rotary_measurement_mode;
@@ -168,7 +175,7 @@ thread_local std::string measured_failure;
 
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
-                      bool verify = true, MeasuredPrint *measured = nullptr)
+                      bool verify = true, MeasuredPrint *measured = nullptr, GCodeProcessorResult *emitted = nullptr)
 {
     measured_failure.clear();
     DynamicPrintConfig config = object.print()->full_print_config();
@@ -197,13 +204,13 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
             copy_config.set_deserialize_strict(key, value);
     }
     copy->clear_instances();
-    copy->add_instance(*object.model_object()->instances.front());
+    copy->add_instance(emitted != nullptr ? *object.instances().front().model_instance : *object.model_object()->instances.front());
     static std::mutex                                                          planar_mutex;
     static std::map<std::string, std::pair<std::pair<double, std::vector<Bead>>, size_t>> planar_memo;
     static size_t                                                              planar_tick = 0;
     constexpr size_t                                                           PlanarMemo  = 32;
     std::string key;
-    if (mode == NonplanarMode::Off) {
+    if (mode == NonplanarMode::Off && emitted == nullptr) {
         auto planar_reads = [](const std::string &opt) { return opt.rfind("nonplanar_", 0) != 0 || opt == "nonplanar_kinematics"; };
         for (const std::string &opt : config.keys())
             if (planar_reads(opt))
@@ -222,7 +229,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         const Transform3d &m = copy->instances.front()->get_matrix();
         key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
         const std::lock_guard<std::mutex> lock(planar_mutex);
-        if (const auto it = planar_memo.find(key); measured == nullptr && it != planar_memo.end()) {
+        if (const auto it = planar_memo.find(key); measured == nullptr && emitted == nullptr && it != planar_memo.end()) {
             it->second.second = ++planar_tick;
             beads             = it->second.first.second;
             return it->second.first.first;
@@ -238,8 +245,9 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         return std::numeric_limits<double>::quiet_NaN();
     }
     const auto           t_slice = MeasureClock::now();
-    Print                print;
+    ControlPrint         print;
     GCodeProcessorResult result;
+    double profile_time = std::numeric_limits<double>::quiet_NaN();
     const boost::filesystem::path gcode = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("np-mf-%%%%-%%%%.gcode");
     boost::system::error_code     ec;
     try {
@@ -253,9 +261,24 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
             ~Restore() { rotary_measurement_unchecked = value; }
         } restore { unchecked };
         print.apply(model, config);
+        if (emitted != nullptr)
+            print.is_BBL_printer() = object.print()->is_BBL_printer();
         print.set_status_silent();
         print.process();
         print.export_gcode(gcode.string(), &result, nullptr);
+        if (emitted != nullptr) {
+            profile_time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+            struct Pricing
+            {
+                bool previous = curved_planar_pricing;
+                Pricing() { curved_planar_pricing = true; }
+                ~Pricing() { curved_planar_pricing = previous; }
+            } pricing;
+            print.invalidate_export();
+            print.export_gcode(gcode.string(), &result, nullptr);
+            BOOST_LOG_TRIVIAL(info) << "Curved top planar control: profile " << profile_time << " s, firmware planner "
+                << result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time << " s";
+        }
     } catch (const std::exception &ex) {
         BOOST_LOG_TRIVIAL(warning) << "Multiplanar check: a measured slice failed: " << ex.what();
         measured_failure = ex.what();
@@ -279,15 +302,16 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     if (!keep_as.empty())
         boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);
     boost::filesystem::remove(gcode, ec);
-    append_beads(result, print.config(), beads);
-    const double time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+    if (emitted == nullptr)
+        append_beads(result, print.config(), beads);
+    const double time = emitted != nullptr ? profile_time : result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
     if (measure_work_left != nullptr && std::isfinite(time))
         *measure_work_left -= time;
     BOOST_LOG_TRIVIAL(info) << "One-shot measurement: " << (mode == NonplanarMode::Off ? "off" : mode == NonplanarMode::Auto ? "auto" :
                                                          mode == NonplanarMode::OneShot ? "oneshot" : "multiplanar")
                             << " slice, estimated " << time << " s, " << std::chrono::duration<double>(MeasureClock::now() - t_slice).count()
                             << " s wall, work left " << (measure_work_left != nullptr ? *measure_work_left : -1.);
-    if (mode == NonplanarMode::Off) {
+    if (mode == NonplanarMode::Off && emitted == nullptr) {
         const std::lock_guard<std::mutex> lock(planar_mutex);
         if (planar_memo.size() >= PlanarMemo) {
             std::vector<std::pair<size_t, std::string>> age;
@@ -299,6 +323,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         }
         planar_memo[std::move(key)] = { { time, beads }, ++planar_tick };
     }
+    if (emitted != nullptr)
+        *emitted = std::move(result);
     return time;
 }
 
@@ -689,6 +715,7 @@ bool rotary_measurement_too_slow(double estimated_time)
 }
 
 bool rotary_measurement_unverified() { return rotary_measurement_depth > 0 && rotary_measurement_unchecked; }
+bool curved_planar_measurement() { return curved_planar_pricing; }
 
 bool rotary_auto_measurement()
 {
@@ -801,6 +828,25 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
 }
 
 const std::string &last_measured_failure() { return measured_failure; }
+
+double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result)
+{
+    struct PlannedMoves
+    {
+        decltype(GCodeWriter::planned_moves) previous = GCodeWriter::planned_moves;
+        PlannedMoves() { GCodeWriter::planned_moves = nullptr; }
+        ~PlannedMoves() { GCodeWriter::planned_moves = previous; }
+    } planned;
+    struct PrinterTags
+    {
+        bool previous = GCodeProcessor::s_IsBBLPrinter;
+        ~PrinterTags() { GCodeProcessor::s_IsBBLPrinter = previous; }
+    } tags;
+    std::vector<Bead> beads;
+    const double profile_time = measured_slice(object, NonplanarMode::Off, beads, {}, {}, false, nullptr, &result);
+    if (object.print()->canceled()) throw CanceledException();
+    return profile_time;
+}
 
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,
                      const std::string &keep_as, bool verify, MeasuredPrint *measured)

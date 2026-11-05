@@ -897,7 +897,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                         params.pattern = (region_config.top_surface_pattern == ipMonotonic || region_config.top_surface_pattern == ipMonotonicLine) ?
                             ipMonotonic : ipRectilinear;
                     else
-                        params.pattern = region_config.internal_solid_infill_pattern.value;
+                        params.pattern = ipConcentric;
                     params.density = 100.f;
                 } else if (surface.is_solid()) {
                     if (surface.is_external() && !is_bridge) {

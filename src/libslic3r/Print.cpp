@@ -78,6 +78,7 @@
 #include "BeltTransform.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/ClearanceRepair.hpp"
+#include "Nonplanar/CurvedTopsAccess.hpp"
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/Report.hpp"
@@ -3436,6 +3437,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
     this->set_status(80, message);
 
     Nonplanar::ClearanceRepair repair(*this);
+    std::map<size_t, std::vector<std::string>> curved_access_warnings;
     std::unique_ptr<GCode> gcode;
     for (;;) {
         if (m_config.belt_printer.value)
@@ -3448,6 +3450,26 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
         try {
             gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
+        } catch (const CurvedTopsAccessError &error) {
+            bool changed = false;
+            for (PrintObject *object : m_objects) {
+                if (object->id().id != error.objectId() || object->config().nonplanar_mode.value != NonplanarMode::CurvedTops)
+                    continue;
+                for (int surface : error.surfaces)
+                    if (object->m_curved_planar_surfaces.insert(surface).second) {
+                        const std::string warning = object->model_object()->name + ": curved top surface " +
+                            std::to_string(surface) + " prints planar because no collision-free deposition order exists beside the body.";
+                        curved_access_warnings[object->id().id].push_back(warning);
+                        BOOST_LOG_TRIVIAL(warning) << warning;
+                        changed = true;
+                    }
+                if (changed)
+                    object->invalidate_step(posSlice);
+            }
+            if (!changed)
+                throw;
+            this->process();
+            continue;
         } catch (const std::bad_alloc &) {
             if (std::none_of(m_objects.begin(), m_objects.end(), [](const PrintObject *object) { return Nonplanar::oneshot_requested(*object); }))
                 throw;
@@ -3462,6 +3484,11 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         result->conflict_result = m_conflict_result;
         result->nozzle_group_result = this->get_layered_nozzle_group_result();
         result->nonplanar_report = Nonplanar::make_report(*this, *result);
+        for (size_t i = 0; i < m_objects.size() && i < result->nonplanar_report.objects.size(); ++i) {
+            const auto warnings = curved_access_warnings.find(m_objects[i]->id().id);
+            if (warnings != curved_access_warnings.end())
+                append(result->nonplanar_report.objects[i].warnings, warnings->second);
+        }
     }
     return path.c_str();
 }

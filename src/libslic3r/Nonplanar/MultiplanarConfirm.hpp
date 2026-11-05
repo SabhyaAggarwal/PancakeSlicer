@@ -28,6 +28,7 @@ double steep_top_share(const indexed_triangle_set &mesh);
 double thin_top_share(const indexed_triangle_set &mesh, double thickness);
 
 bool rotary_auto_measurement();
+bool curved_planar_measurement();
 bool rotary_measurement_unverified();
 bool rotary_measurement_too_slow(double estimated_time);
 
@@ -88,6 +89,7 @@ struct MeasuredPrint
     size_t   contacts       = 0;
 };
 double measured_control(const PrintObject &object, MeasuredPrint &measured);
+double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result);
 double net_support_mm3(const Print &print, const GCodeProcessorResult &result);
 const std::string &last_measured_failure();
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},

@@ -1,4 +1,5 @@
 #include "PatchTools.hpp"
+#include "PlanarClip.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Fill/FillBase.hpp"
@@ -967,7 +968,8 @@ int AreaEdges::classify(const Points &points) const
 
 namespace {
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edges, const BoundingBox &area_bbox, const ExPolygons *seam)
+void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edges, const BoundingBox &area_bbox,
+                     const ExPolygons *seam, bool keep_short)
 {
     const ExPolygons &area = edges.area();
     ExtrusionEntitiesPtr out;
@@ -976,7 +978,7 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
     std::vector<std::pair<size_t, size_t>> cut_from;
     for (ExtrusionEntity *ee : collection.entities) {
         if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
-            clip_extrusions(*sub, edges, area_bbox, seam);
+            clip_extrusions(*sub, edges, area_bbox, seam, keep_short);
             if (sub->entities.empty())
                 delete ee;
             else
@@ -1022,7 +1024,8 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
             }
             cut = true;
             for (Polyline &pl : diff_pl(src, area))
-                if (pl.is_valid() && pl.length() >= scale_(2. * path.width) && (seam == nullptr || !diff_pl(Polylines{ pl }, *seam).empty()))
+                if (pl.is_valid() && (keep_short || pl.length() >= scale_(2. * path.width)) &&
+                    (seam == nullptr || !diff_pl(Polylines{ pl }, *seam).empty()))
                     pieces.entities.emplace_back(new ExtrusionPath(Polyline3(pl), path));
         };
         if (single != nullptr)
@@ -1061,7 +1064,12 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
 
 void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox, const ExPolygons *seam)
 {
-    clip_extrusions(collection, AreaEdges(area), area_bbox, seam);
+    clip_extrusions(collection, AreaEdges(area), area_bbox, seam, false);
+}
+
+void clip_planar_remainder(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox)
+{
+    clip_extrusions(collection, AreaEdges(area), area_bbox, nullptr, true);
 }
 
 void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside)
