@@ -2,16 +2,19 @@ import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSav
 import { useEffect, useSyncExternalStore } from 'react';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
+import carUrl from '../samples/sports_car_3d.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
 import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
 import { startOver, useDevReset } from '../dev-reset';
 import { openSetup } from '../onboarding/setup-flow';
+import { applySurface, type SurfaceId } from '../intent/surface';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
-const SAMPLES = [
+const SAMPLES: { url: string; file: string; label: string; surface?: SurfaceId }[] = [
+  { url: carUrl, file: 'sports_car.stl', label: 'Sports car', surface: 'smooth' },
   { url: handyUrl('3DBenchy.drc'), file: '3DBenchy.drc', label: 'Benchy' },
   { url: knobUrl, file: 'knob.stl', label: 'Knob' },
   { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook' },
@@ -33,7 +36,7 @@ function DropZone() {
       <div className="fr-samples">
         <span>or try</span>
         {SAMPLES.map((s) => (
-          <button key={s.file} type="button" className="fr-sample" onClick={() => void importFetched(s.label, [[s.url, s.file]])}>
+          <button key={s.file} type="button" className="fr-sample" onClick={() => void importFetched(s.label, [[s.url, s.file]]).then(() => { if (s.surface && getState().objects.length) applySurface(s.surface); })}>
             {s.label}
           </button>
         ))}

@@ -51,3 +51,11 @@ export function writeSurface(id: SurfaceId) {
 export function applySurface(id: SurfaceId) {
   undoable(`Surface: ${SURFACE_NAMES[id]}`, () => writeSurface(id));
 }
+
+export function keepCurvedTop(extraPercent: number) {
+  undoable('Keep curved top', () => {
+    writeSurface('smooth');
+    const needed = Math.ceil(extraPercent) + 5;
+    if (OPTIONS.nonplanar_time_budget && needed > 40) takeValue('process', 'nonplanar_time_budget', `${needed}%`);
+  });
+}

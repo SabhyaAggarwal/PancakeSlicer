@@ -269,6 +269,19 @@ export function readReport(record: Rec | undefined) {
   };
 }
 
+export function droppedCurvedTop(record: Rec | undefined): number | null {
+  type Budget = { measured?: boolean; planar_fw_s?: number | null; patches?: { dropped?: boolean; time_cost_s?: number | null }[] };
+  const objects = (((record?.nonplanar_report ?? {}) as Rec).objects ?? []) as { curved_top_budget?: Budget }[];
+  let planar = 0, cost = 0;
+  for (const { curved_top_budget: b } of objects) {
+    const dropped = b?.measured ? (b.patches ?? []).filter((p) => p.dropped && Number.isFinite(Number(p.time_cost_s))) : [];
+    if (!dropped.length || !(Number(b!.planar_fw_s) > 0)) continue;
+    planar += Number(b!.planar_fw_s);
+    cost += dropped.reduce((sum, p) => sum + Math.max(0, Number(p.time_cost_s)), 0);
+  }
+  return planar > 0 ? Math.max(1, Math.round((100 * cost) / planar)) : null;
+}
+
 export function nativeSurfaceSummary(record: Rec): string | null {
   const report = record.nonplanar_report as { objects?: {
     mode?: string; curved_top_area_fraction?: number; curved_top_area_denominator_mm2?: number;

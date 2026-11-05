@@ -122,6 +122,7 @@
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-layer { display: none; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-rate { grid-column: 3; grid-row: 2; }
   :where(.orca-parity) .canvas-area .preview .order-bar > .ob-seg { grid-column: 4; grid-row: 2; }
+  :where(.orca-parity) .canvas-area .preview .order-bar > button.ob-budget { grid-column: 1 / -1; grid-row: 3; justify-self: start; height: 32px; min-height: 32px; margin: 0 4px 4px; border-radius: 16px; }
   :where(.orca-parity) .canvas-area .preview .order-bar .ob-gcode { display: none; }
   :where(.orca-parity) .canvas-area .preview .tool-position { max-width: calc(100% - 80px); }
   :where(.orca-parity) .canvas-area .preview .tool-axes { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }

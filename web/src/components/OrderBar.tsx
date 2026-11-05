@@ -1,6 +1,9 @@
 import { Range } from './Range';
 import { pauseViewer, playViewer, scrubViewer } from '../flow/viewer';
 import { useStore } from '../state/store';
+import { droppedCurvedTop } from '../preview/explain-record';
+import { keepCurvedTop } from '../intent/surface';
+import { slice } from '../actions';
 import { Dropdown } from './Dropdown';
 import { Glyph } from './Glyph';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
@@ -105,6 +108,7 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
   const step = (d: number) => seek(Math.max(1, Math.min(last, at + d)));
   const k = layerOfMove(data, at);
   const total = e[e.length - 1] ?? 0;
+  const skipped = useStore((st) => st.job.state === 'done' && !st.job.stale ? droppedCurvedTop(st.job.status?.record as Record<string, unknown> | undefined) : null);
   return (
     <div ref={bar} className="order-bar" role="group" aria-label="Playback">
       <span className="ob-transport">
@@ -119,6 +123,8 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
       <span className="ob-time" aria-label="Total time">{shortTime(total)}</span>
       <span className="ob-layer">Layer {k == null ? '–' : k + 1}/{data.layers.length}</span>
       <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
+      {skipped != null && <button type="button" className="ob-budget" onClick={() => { keepCurvedTop(skipped); void slice(); }}
+        aria-label={`Curved top skipped to stay within the time budget. Keep it: +${skipped} % time`}>Curved top skipped · +{skipped} %<span className="ob-budget-unit"> time</span></button>}
       <span className="ob-seg">
         <button type="button" className="ob-btn ob-one" aria-label="Show one layer (L)" aria-pressed={oneLayer} onClick={onOneLayer}><Glyph name="layers" /></button>
         <button type="button" className="ob-btn ob-gcode" aria-label="G-code viewer (C)" aria-pressed={gcodeOpen} onClick={onGcode}><Glyph name="code" /></button>
