@@ -35,6 +35,7 @@ export function surfaceValues(id: SurfaceId): Config {
   return {
     nonplanar_mode: id === 'smooth' ? 'curved_tops' : 'off',
     nonplanar_deform: 'off', zaa_enabled: '0',
+    ...(OPTIONS.nonplanar_time_budget ? { nonplanar_time_budget: id === 'smooth' ? '40%' : '15%' } : {}),
     ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'whole' : 'off' } : {}),
   };
 }
