@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,8 +61,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		health["status"], health["queued"], health["running"] = "ok", q, n
-		health["library_schema"] = 4
-		health["workspace_schema"] = 1
+		health["library_schema"] = schemas.Library
+		health["workspace_schema"] = schemas.Workspace
 		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
 		if jobResultStats != nil {
@@ -1388,6 +1389,7 @@ var qualifiedNativeSources = map[string]bool{
 	"9cd5d2ead539ddbad800f93b1ebcf0a2083cf9a9": true,
 	"27172da519bc367ff55778aa59d27a1212588962": true,
 	"71a6dbaf505c675c6938a6a7d7f7e74185ad574b": true,
+	"8e8655f026f1b2791d46b5d6fb73f0bc11261c99": true,
 }
 
 var engineTransitions = map[HealthState]map[HealthState]bool{
@@ -1533,16 +1535,19 @@ func newEngineHealth(c Config) *engineHealth {
 	h.setArtifact(HealthUnqualified)
 	raw, err := os.ReadFile(manifestPath)
 	var manifest struct {
-		Backend        string          `json:"backend"`
-		Source         string          `json:"source_sha"`
-		Available      bool            `json:"available"`
-		Preview        bool            `json:"preview_ready"`
-		PrintQualified bool            `json:"print_qualified"`
-		Binary         string          `json:"binary_sha256"`
-		Resources      string          `json:"resources_sha256"`
-		Curved         bool            `json:"validated_curved_benchy_clearance"`
-		Wave           bool            `json:"validated_wave_export"`
-		Features       map[string]bool `json:"features"`
+		Schema          int               `json:"schema"`
+		PublicationMain string            `json:"publication_main_sha"`
+		Platform        *artifactPlatform `json:"platform"`
+		Backend         string            `json:"backend"`
+		Source          string            `json:"source_sha"`
+		Available       bool              `json:"available"`
+		Preview         bool              `json:"preview_ready"`
+		PrintQualified  bool              `json:"print_qualified"`
+		Binary          string            `json:"binary_sha256"`
+		Resources       string            `json:"resources_sha256"`
+		Curved          bool              `json:"validated_curved_benchy_clearance"`
+		Wave            bool              `json:"validated_wave_export"`
+		Features        map[string]bool   `json:"features"`
 	}
 	if err != nil || json.Unmarshal(raw, &manifest) != nil {
 		h.reason = "artifact manifest unreadable"
@@ -1557,11 +1562,13 @@ func newEngineHealth(c Config) *engineHealth {
 		return h
 	}
 	var proof struct {
-		Ready     bool   `json:"ready"`
-		Source    string `json:"source_sha"`
-		Binary    string `json:"binary_sha256"`
-		Resources string `json:"resources_sha256"`
-		Manifest  string `json:"manifest_sha256"`
+		Ready           bool              `json:"ready"`
+		PublicationMain string            `json:"publication_main_sha"`
+		Platform        *artifactPlatform `json:"platform"`
+		Source          string            `json:"source_sha"`
+		Binary          string            `json:"binary_sha256"`
+		Resources       string            `json:"resources_sha256"`
+		Manifest        string            `json:"manifest_sha256"`
 	}
 	proofPath := c.ArtifactQualification
 	if proofPath == "" {
@@ -1572,8 +1579,18 @@ func newEngineHealth(c Config) *engineHealth {
 	qualified := proofErr == nil && json.Unmarshal(proofRaw, &proof) == nil && proof.Ready &&
 		qualifiedNativeSources[manifest.Source] && proof.Source == manifest.Source &&
 		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
+	if qualified && manifest.Schema >= 3 && (manifest.Platform == nil || *manifest.Platform != runningPlatform() ||
+		proof.Platform == nil || *proof.Platform != *manifest.Platform || manifest.PublicationMain == "" || proof.PublicationMain != manifest.PublicationMain) {
+		qualified = false
+		h.reason = "platform mismatch"
+	}
+	outputs, failed := nativeOutputHashes(raw)
+	if qualified && failed > 0 {
+		qualified = false
+		h.reason = "a reference output is missing, failed its audit or has clearance hits"
+	}
 	if qualified {
-		h.outputs = nativeOutputHashes(raw)
+		h.outputs = outputs
 		h.setArtifact(HealthQualified)
 	}
 	wave := qualified && manifest.Preview && manifest.Wave && manifest.Features["nonplanar_wave"]
@@ -1581,12 +1598,25 @@ func newEngineHealth(c Config) *engineHealth {
 	if wave {
 		modes = append(modes, "whole")
 	}
-	h.manifest = map[string]any{"backend": manifest.Backend, "source_sha": manifest.Source,
+	h.manifest = map[string]any{"backend": manifest.Backend, "source_sha": manifest.Source, "publication_main_sha": manifest.PublicationMain, "platform": manifest.Platform,
 		"validated": manifest.Preview, "preview_ready": manifest.Preview, "print_qualified": qualified,
 		"binary_sha256": binary, "resources_sha256": resources, "wave_modes": modes,
 		"features":            map[string]bool{"curved_tops": manifest.Preview && manifest.Curved, "nonplanar_wave": wave},
 		"qualification_scope": "exact audited reference outputs"}
 	return h
+}
+
+type artifactPlatform struct {
+	OS   string `json:"os"`
+	Arch string `json:"arch"`
+}
+
+func runningPlatform() artifactPlatform {
+	arch := runtime.GOARCH
+	if arch == "amd64" {
+		arch = "x86_64"
+	}
+	return artifactPlatform{OS: runtime.GOOS, Arch: arch}
 }
 
 func (h *engineHealth) snapshot(tool string) map[string]any {

@@ -87,6 +87,7 @@ interface BundleIdentity {
   server_binary_sha256: string;
   native_manifest_sha256: string;
   native_qualification_sha256: string;
+  schemas: Record<string, number>;
 }
 
 async function fileHash(file: string) {
@@ -109,7 +110,9 @@ async function bundleIdentity(web: string, engine: string): Promise<BundleIdenti
     if (!/^[a-f0-9]{64}$/.test(expected[key]) || await fileHash(path.join(engine, name)) !== expected[key]) throw new Error('A bundled payload differs from its component stamp.');
   }
   if (!/^[a-f0-9]{64}$/.test(expected.native_resources_sha256)) throw new Error('Bundled resource identity is missing.');
-  return expected;
+  const schemas = JSON.parse(fs.readFileSync(path.join(engine, 'schemas.json'), 'utf8')) as Record<string, number>;
+  if (!Object.keys(schemas).length || !Object.values(schemas).every((v) => Number.isInteger(v) && v > 0)) throw new Error('Bundled server schemas are missing.');
+  return { ...expected, schemas };
 }
 
 function healthy(nonce: string, expected: BundleIdentity): Promise<boolean> {
@@ -128,7 +131,7 @@ function healthy(nonce: string, expected: BundleIdentity): Promise<boolean> {
           const health = JSON.parse(body);
           const artifact = health.artifact_manifest;
           resolve(health.desktop_ready_nonce === nonce && health.server_revision === expected.server_source
-            && ['profile_library_schema', 'profile_recovery_schema', 'workspace_schema'].every((key) => health[key] === 1)
+            && Object.entries(expected.schemas).every(([key, value]) => health[key] === value)
             && artifact?.source_sha === expected.native_source && artifact.binary_sha256 === expected.native_binary_sha256
             && artifact.resources_sha256 === expected.native_resources_sha256);
         } catch { resolve(false); }

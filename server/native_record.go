@@ -9,12 +9,19 @@ import (
 	"strings"
 )
 
-func nativeOutputHashes(raw []byte) map[string]bool {
+func nativeOutputHashes(raw []byte) (hashes map[string]bool, failed int) {
 	var manifest map[string]json.RawMessage
 	json.Unmarshal(raw, &manifest)
-	hashes := map[string]bool{}
+	var schema int
+	json.Unmarshal(manifest["schema"], &schema)
+	hashes = map[string]bool{}
 	for _, name := range []string{"benchy", "dome", "wave"} {
 		var proof struct {
+			Hits     *int `json:"clearance_hit_moves"`
+			Verifier *struct {
+				Hits        *int `json:"hit_moves"`
+				MachineHits *int `json:"machine_hit_moves"`
+			} `json:"verifier"`
 			Native  bool   `json:"native_qualified"`
 			Audited bool   `json:"full_audit_qualified"`
 			Passed  int    `json:"audit_checks_passed"`
@@ -22,16 +29,24 @@ func nativeOutputHashes(raw []byte) map[string]bool {
 			Gcode   string `json:"gcode_sha256"`
 			Package string `json:"native_package_sha256"`
 		}
-		if json.Unmarshal(manifest[name], &proof) != nil || !proof.Native || !proof.Audited || proof.Total == 0 || proof.Passed != proof.Total {
+		digest := func(h string) bool { b, err := hex.DecodeString(h); return err == nil && len(b) == 32 }
+		zero := func(n *int) bool { return n != nil && *n == 0 }
+		passed := json.Unmarshal(manifest[name], &proof) == nil && proof.Native && proof.Audited && proof.Total > 0 && proof.Passed == proof.Total
+		if schema >= 3 && !(passed && digest(proof.Gcode) && digest(proof.Package) && zero(proof.Hits) && proof.Verifier != nil &&
+			zero(proof.Verifier.Hits) && zero(proof.Verifier.MachineHits)) {
+			failed++
+			continue
+		}
+		if !passed {
 			continue
 		}
 		for _, hash := range []string{proof.Gcode, proof.Package} {
-			if b, err := hex.DecodeString(hash); err == nil && len(b) == 32 {
+			if digest(hash) {
 				hashes[hash] = true
 			}
 		}
 	}
-	return hashes
+	return hashes, failed
 }
 
 func nativeWaveResults(path string) []map[string]any {

@@ -26,6 +26,7 @@ if [[ $what == engine || $what == all ]]; then
   (cd "$source_root/server" && GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X main.buildRevision=$rev -X main.buildImage=orca-desktop-$os-$arch-tool-${sha:0:10}" \
     -o "$engine/orca-webapp-server" .)
+  cp "$source_root/server/schemas.json" "$engine/schemas.json"
   cp "$tool" "$engine/nonplanar_slice_tool"
   chmod 755 "$engine/nonplanar_slice_tool"
   if [[ -n ${FROZEN_RESOURCES:-} ]]; then
