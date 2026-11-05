@@ -1759,6 +1759,7 @@ bool PrintObject::invalidate_state_by_config_options(
     if (opt_keys.empty())
         return false;
 
+    m_curved_budget_reason.clear();
     std::vector<PrintObjectStep> steps;
     bool invalidated = false;
     if (!m_curved_planar_surfaces.empty()) {
@@ -2219,6 +2220,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_finish_flow"
             || opt_key == "nonplanar_tilt_flow"
             || opt_key == "nonplanar_top_speed_factor"
+            || opt_key == "nonplanar_time_budget"
             || opt_key == "nonplanar_top_fan_boost"
             || opt_key == "bottom_solid_infill_flow_ratio"
             || opt_key == "outer_wall_flow_ratio"

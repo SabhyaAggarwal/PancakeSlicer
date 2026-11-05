@@ -523,6 +523,10 @@ set(lisbslic3r_sources
     Nonplanar/CurvedTopsFacet.cpp
     Nonplanar/CurvedTopsSurface.hpp
     Nonplanar/CurvedTopsSurface.cpp
+    Nonplanar/CurvedTopsBudget.hpp
+    Nonplanar/CurvedTopsBudget.cpp
+    Nonplanar/FirmwareTime.hpp
+    Nonplanar/FirmwareTime.cpp
     Nonplanar/CurvedTopsSchedule.hpp
     Nonplanar/CurvedTopsSchedule.cpp
     Nonplanar/CurvedTopsOrder.hpp

@@ -5546,6 +5546,18 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
+    def = this->add("nonplanar_time_budget", coPercent);
+    def->label = L("Curved top time budget");
+    def->category = L("Quality");
+    def->tooltip = L("Maximum firmware time increase over the same part printed planar at the profile's layer height. "
+                      "Curved components with the least surface improvement per added second return to planar until the budget is met. "
+                      "Default: 15. Unit: percent.");
+    def->sidetext = L("%");
+    def->min = 0;
+    def->max = 1000;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(15));
+
     def = this->add("nonplanar_curved_max_angle", coFloat);
     def->label = L("Maximum curved top angle");
     def->category = L("Quality");

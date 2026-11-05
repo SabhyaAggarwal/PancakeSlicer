@@ -175,7 +175,7 @@ thread_local std::string measured_failure;
 
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
-                      bool verify = true, MeasuredPrint *measured = nullptr, GCodeProcessorResult *emitted = nullptr)
+                      bool verify = true, MeasuredPrint *measured = nullptr, GCodeProcessorResult *emitted = nullptr, bool common_pricing = true)
 {
     measured_failure.clear();
     DynamicPrintConfig config = object.print()->full_print_config();
@@ -266,8 +266,9 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         print.set_status_silent();
         print.process();
         print.export_gcode(gcode.string(), &result, nullptr);
-        if (emitted != nullptr) {
+        if (emitted != nullptr)
             profile_time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+        if (emitted != nullptr && common_pricing) {
             struct Pricing
             {
                 bool previous = curved_planar_pricing;
@@ -829,7 +830,7 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
 
 const std::string &last_measured_failure() { return measured_failure; }
 
-double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result)
+static double planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as, bool common_pricing)
 {
     struct PlannedMoves
     {
@@ -843,9 +844,19 @@ double measured_planar_export(const PrintObject &object, GCodeProcessorResult &r
         ~PrinterTags() { GCodeProcessor::s_IsBBLPrinter = previous; }
     } tags;
     std::vector<Bead> beads;
-    const double profile_time = measured_slice(object, NonplanarMode::Off, beads, {}, {}, false, nullptr, &result);
+    const double profile_time = measured_slice(object, NonplanarMode::Off, beads, {}, keep_as, false, nullptr, &result, common_pricing);
     if (object.print()->canceled()) throw CanceledException();
     return profile_time;
+}
+
+double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result)
+{
+    return planar_export(object, result, {}, true);
+}
+
+double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as)
+{
+    return planar_export(object, result, keep_as, false);
 }
 
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,

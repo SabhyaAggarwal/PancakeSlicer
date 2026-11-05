@@ -17,6 +17,7 @@
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/CurvedTopsSurface.hpp"
+#include "libslic3r/Nonplanar/CurvedTopsBudget.hpp"
 #include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
@@ -300,6 +301,16 @@ ClearanceRepair::ClearanceRepair(Print &print) : m_print(print)
 }
 
 ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
+
+CurvedTopBudgetReport ClearanceRepair::curved_budget_report(const Print &print, const PrintObject &object)
+{
+    const auto *repair = print.m_clearance_repair;
+    auto report = repair != nullptr && repair->m_curved_budget ? repair->m_curved_budget->report(object) : CurvedTopBudgetReport{};
+    report.time_budget_percent = object.config().nonplanar_time_budget.value;
+    if (report.reason.empty() && !object.m_curved_budget_reason.empty())
+        report.reason = "curved tops remain planar after an earlier firmware time budget rejection";
+    return report;
+}
 
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
@@ -984,9 +995,30 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end())
                 m_repick.push_back(object);
             const std::string warning = object->model_object()->name +
-                ": Curved tops printed planar: head repair left no curved top; restored the original planar body.";
+                ": Curved tops printed planar: no curved top remains; restored the original planar body.";
             m_guard_warnings.push_back(warning);
             BOOST_LOG_TRIVIAL(warning) << warning;
+        }
+    }
+    if (report.hit_moves == 0 && m_repick.empty()) {
+        if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
+        for (const auto &[object, id] : m_curved_budget->reject(m_print, result)) {
+            if (!object->m_curved_planar_surfaces.insert(id).second) continue;
+            const auto decision = m_curved_budget->report(*object);
+            if (std::all_of(decision.patches.begin(), decision.patches.end(),
+                            [](const CurvedTopBudgetPatch &patch) { return patch.dropped; })) {
+                for (const auto &surface : object->nonplanar_surfaces())
+                    object->m_curved_planar_surfaces.insert(surface.stable_id);
+            }
+            if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+            std::ostringstream budget;
+            budget << decision.time_budget_percent;
+            m_guard_warnings.push_back(object->model_object()->name + ": curved top " + std::to_string(id) +
+                " prints planar to keep firmware time within " + budget.str() + "% of the planar profile.");
+        }
+        for (PrintObject *object : m_print.objects()) {
+            const auto decision = m_curved_budget->report(*object);
+            if (!decision.reason.empty()) object->m_curved_budget_reason = decision.reason;
         }
     }
     for (const auto &warning : m_guard_warnings)

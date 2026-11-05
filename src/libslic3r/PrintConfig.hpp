@@ -1273,6 +1273,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
     ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
+    ((ConfigOptionPercent, nonplanar_time_budget))
     ((ConfigOptionFloat, nonplanar_curved_max_angle))
     ((ConfigOptionFloat, nonplanar_curved_max_height))
     ((ConfigOptionInt, nonplanar_curved_shells))

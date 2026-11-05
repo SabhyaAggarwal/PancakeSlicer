@@ -598,6 +598,7 @@ private:
     bool                    				m_typed_slices = false;
     NonplanarSurfaces                       m_nonplanar_surfaces;
     std::set<int>                          m_curved_planar_surfaces;
+    std::string                            m_curved_budget_reason;
     size_t                                 m_curved_candidates = 0;
     double                                 m_curved_upward_area = 0.;
 

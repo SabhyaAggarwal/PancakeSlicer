@@ -2,6 +2,7 @@
 #include "libslic3r/Nonplanar/Repair.hpp"
 #include <cstddef>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,6 +16,8 @@ struct ClearanceReport;
 namespace Nonplanar {
 
 struct HeadEnvelope;
+class CurvedTopsBudget;
+struct CurvedTopBudgetReport;
 
 class ClearanceRepair
 {
@@ -25,6 +28,8 @@ public:
     ClearanceRepair &operator=(const ClearanceRepair &) = delete;
 
     static void check_export(Print &print, GCodeProcessorResult &result);
+
+    static CurvedTopBudgetReport curved_budget_report(const Print &print, const PrintObject &object);
 
     static size_t curved_contacts(const Print &print, const GCodeProcessorResult &result);
 
@@ -37,6 +42,7 @@ private:
     bool oneshot_step(GCodeProcessorResult &result);
     bool curved_tops_step(GCodeProcessorResult &result);
     int m_curved_pass = 0;
+    std::unique_ptr<CurvedTopsBudget> m_curved_budget;
     bool contact_guard(const GCodeProcessorResult &result, size_t contacts = 0);
 
     struct Planned

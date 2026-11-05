@@ -20,6 +20,7 @@
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
@@ -205,6 +206,9 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         }
         if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops) {
             out.curved_tops = curved_tops_stats(*object);
+            out.curved_budget = ClearanceRepair::curved_budget_report(print, *object);
+            if (out.curved_tops.kept == 0 && !out.curved_budget.reason.empty())
+                out.curved_tops.planar_fallback_reason = out.curved_budget.reason;
             out.curved_cone_tolerance = curved_tops_cone_tolerance(print);
             out.top_patches = out.curved_tops.kept;
             out.curved_top = out.curved_tops.footprint_mm2;
@@ -349,6 +353,29 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
             jo["curved_top_area_denominator_mm2"] = o.curved_tops.upward_area_mm2;
             jo["curved_top_area_denominator"] = "sum of XY-projected areas of all upward-facing mesh facets";
             if (!o.curved_tops.planar_fallback_reason.empty()) jo["planar_fallback_reason"] = o.curved_tops.planar_fallback_reason;
+            const auto &budget = o.curved_budget;
+            if (budget.measured || !budget.patches.empty() || !budget.reason.empty()) {
+                json patches = json::array();
+                for (const auto &p : budget.patches) patches.push_back({
+                    {"id", p.id}, {"planar_s", budget.measured ? json(p.planar_s) : json(nullptr)},
+                    {"curved_s", budget.measured ? json(p.curved_s) : json(nullptr)},
+                    {"time_cost_s", budget.measured ? json(p.cost_s) : json(nullptr)},
+                    {"planar_rms_mm", p.samples ? json(p.planar_rms_mm) : json(nullptr)},
+                    {"curved_rms_mm", p.samples ? json(p.curved_rms_mm) : json(nullptr)},
+                    {"whole_top_rms_gain_mm", p.samples ? json(p.rms_gain_mm) : json(nullptr)},
+                    {"cost_per_rms_gain", p.samples && p.rms_gain_mm > 0. ? json(p.cost_s / p.rms_gain_mm) : json(nullptr)},
+                    {"samples", p.samples}, {"dropped", p.dropped},
+                    {"reason", p.dropped ? (budget.measured ? "firmware_time_budget" : "firmware_time_unmeasured") : "retained"}});
+                jo["curved_top_budget"] = {{"measured", budget.measured}, {"within_budget", budget.measured ? json(budget.within_budget) : json(nullptr)},
+                    {"planar_fw_s", budget.measured ? json(budget.planar_s) : json(nullptr)},
+                    {"candidate_fw_s", budget.measured ? json(budget.candidate_s) : json(nullptr)},
+                    {"admission_limit_s", budget.measured ? json(budget.limit_s) : json(nullptr)},
+                    {"maximum_time_increase_percent", budget.time_budget_percent},
+                    {"admission_time_ratio", 1. + .01 * budget.time_budget_percent},
+                    {"time_model", "firmware_sim 3-axis Marlin/Bambu/RRF replay"},
+                    {"time_scope", "whole program for one instance; object motion plus shared outside time for multiple instances"},
+                    {"reason", budget.reason}, {"patches", std::move(patches)}};
+            }
         }
         if (!o.oneshot.empty()) {
             jo["oneshot"] = json{ { "decision", o.oneshot }, { "student", o.oneshot_student }, { "polish_k", o.oneshot_polish_k } };

@@ -3,6 +3,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
 #include "CurvedTopsSurface.hpp"
+#include "CurvedTopsBudget.hpp"
 
 #include <cstddef>
 #include <map>
@@ -55,6 +56,7 @@ struct ReportObject
     size_t      model_object_id = 0;
     std::string mode;
     CurvedTopsStats curved_tops;
+    CurvedTopBudgetReport curved_budget;
     double curved_cone_tolerance = 0.05;
     std::string layer_source, layer_source_refused;
     size_t      top_patches   = 0;
@@ -72,7 +74,10 @@ struct ReportObject
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
 
-    double curved_share() const { return curved_top + planar_top > 0. ? curved_top / (curved_top + planar_top) : 1.; }
+    double curved_share() const {
+        if (mode == "curved_tops") return curved_tops.area_fraction;
+        return curved_top + planar_top > 0. ? curved_top / (curved_top + planar_top) : 1.;
+    }
 };
 
 struct NonplanarReport
@@ -88,7 +93,13 @@ struct NonplanarReport
     size_t      machine_hits = 0;
     double      time_s        = 0.;
     double      curved_time_s = 0.;
-    bool empty() const { return patches.empty() && fallbacks.empty(); }
+    bool empty() const {
+        if (!patches.empty() || !fallbacks.empty()) return false;
+        for (const auto &object : objects)
+            if (object.mode == "curved_tops" && (object.curved_budget.measured ||
+                !object.curved_budget.patches.empty() || !object.curved_budget.reason.empty())) return false;
+        return true;
+    }
     const ReportPatch *find_patch(int id, const Point &pos) const;
     std::string to_json(const std::map<size_t, std::string> &orientation = {}) const;
 };

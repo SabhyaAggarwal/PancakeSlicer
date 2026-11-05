@@ -90,6 +90,7 @@ struct MeasuredPrint
 };
 double measured_control(const PrintObject &object, MeasuredPrint &measured);
 double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result);
+double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as);
 double net_support_mm3(const Print &print, const GCodeProcessorResult &result);
 const std::string &last_measured_failure();
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},
