@@ -281,7 +281,7 @@ public:
     void            set_layer_count(unsigned int value) { m_layer_count = value; }
     void            apply_print_config(const PrintConfig &print_config);
 
-    std::string     travel_to(const Point& point, ExtrusionRole role, std::string comment, double z = DBL_MAX);
+    std::string     travel_to(const Point& point, ExtrusionRole role, std::string comment, double z = DBL_MAX, const ExtrusionPath *native_target = nullptr);
     bool            needs_zmove(const Polyline &travel, double target_z);
     bool            needs_retraction(const Polyline& travel, ExtrusionRole role, LiftType& lift_type);
     std::string     retract(bool toolchange = false, bool is_last_retraction = false, LiftType lift_type = LiftType::NormalLift, bool apply_instantly = false, ExtrusionRole role = erNone);
@@ -744,6 +744,7 @@ protected:
     bool                                m_emitting_deferred{ false };
     NonplanarClearanceModel             m_nonplanar_clearance;
     bool                                m_nonplanar_printed_this_layer{ false };
+    bool                                m_last_native_curved{ false };
     std::unordered_map<size_t, size_t>  m_path_task_ids;
     struct DeferredExtrusion {
         int                                     slot;

@@ -2821,7 +2821,8 @@ PrintObject::detect_nonplanar_surfaces()
         for (const auto& nonplanar_surface: this->nonplanar_surfaces()) {
             const ExPolygons projection = nonplanar_surface.horizontal_projection();
             float distance_to_top = 0.0f;
-            for (int shell_thickness = 0; m_config.nonplanar_curved_shells.value > shell_thickness; ++shell_thickness){
+            const int curved_shells = std::min(1, m_config.nonplanar_curved_shells.value);
+            for (int shell_thickness = 0; curved_shells > shell_thickness; ++shell_thickness){
                 for (LayerPtrs::reverse_iterator home_layer_it = this->m_layers.rbegin(); home_layer_it != this->m_layers.rend(); ++home_layer_it){
                     Layer* home_layer        = *home_layer_it;
                     LayerRegion &home_layerm = *home_layer->m_regions[region_id];

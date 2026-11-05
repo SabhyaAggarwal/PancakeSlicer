@@ -1317,7 +1317,7 @@ void NonplanarHeightMap::clear()
 
 void NonplanarHeightMap::allocate()
 {
-    for (auto [grid, cell] : { std::make_pair(&m_fine, 0.25), std::make_pair(&m_mid, 0.5), std::make_pair(&m_coarse, 2.) }) {
+    for (auto [grid, cell] : { std::make_pair(&m_fine, 0.1), std::make_pair(&m_mid, 0.5), std::make_pair(&m_coarse, 2.) }) {
         grid->cell = cell;
         grid->n    = int(std::lround(extent / cell));
         grid->h.assign(size_t(grid->n) * size_t(grid->n), -1e9f);
@@ -1438,6 +1438,92 @@ double NonplanarHeightMap::travel_height(const std::vector<Vec2d> &path, const N
         }
     }
     return z;
+}
+
+bool NonplanarHeightMap::supports_travel(const Vec3d &from, const Vec3d &to, double max_gap) const
+{
+    if (m_fine.h.empty())
+        return false;
+    const int steps = std::max(1, int(std::ceil((to - from).head<2>().norm() / m_fine.cell)));
+    for (int k = 0; k <= steps; ++k) {
+        const Vec3d p = from + (to - from) * (double(k) / steps);
+        int ix, iy;
+        if (!m_fine.index(p.x(), p.y(), ix, iy) || m_fine.at(ix, iy) < p.z() - max_gap)
+            return false;
+    }
+    return true;
+}
+
+double NonplanarHeightMap::travel_lift(const Vec3d &from, const Vec3d &to, const NonplanarClearanceModel &model) const
+{
+    if (m_fine.h.empty() || m_max_z + model.safety_mm <= std::min(from.z(), to.z()))
+        return 0.;
+    const Vec2d a = from.head<2>(), b = to.head<2>(), d = b - a;
+    const double length2 = d.squaredNorm(), dz = to.z() - from.z();
+    if (length2 < EPSILON * EPSILON)
+        return this->travel_height({a}, model, std::min(from.z(), to.z())) - std::min(from.z(), to.z());
+    double lift = 0.;
+    auto height = [&](double lo, double hi) { return from.z() + dz * (dz < 0. ? hi : lo); };
+    auto require = [&](double material, double bottom, double tool_z) {
+        lift = std::max(lift, material - bottom + model.safety_mm - tool_z);
+    };
+    const double half_diagonal = m_fine.cell * std::sqrt(0.5);
+    const double reach = model.nozzle.back().radius + half_diagonal;
+    for (const auto &[pa, pb] : pieces({a, b}, 2.)) {
+        int ix0, iy0, ix1, iy1;
+        m_fine.index(std::min(pa.x(), pb.x()) - reach, std::min(pa.y(), pb.y()) - reach, ix0, iy0);
+        m_fine.index(std::max(pa.x(), pb.x()) + reach, std::max(pa.y(), pb.y()) + reach, ix1, iy1);
+        for (int iy = std::max(iy0, 0); iy <= std::min(iy1, m_fine.n - 1); ++iy)
+            for (int ix = std::max(ix0, 0); ix <= std::min(ix1, m_fine.n - 1); ++ix) {
+                const double h = m_fine.at(ix, iy);
+                if (h + model.safety_mm <= std::min(from.z(), to.z()) + lift)
+                    continue;
+                const Vec2d c(origin + (ix + 0.5) * m_fine.cell, origin + (iy + 0.5) * m_fine.cell);
+                const Vec2d delta = c - a;
+                const double centre = delta.dot(d) / length2;
+                const double perpendicular2 = std::max(0., delta.squaredNorm() - sqr(delta.dot(d)) / length2);
+                for (size_t i = 0; i < model.nozzle.size(); ++i) {
+                    const auto &ring = model.nozzle[i];
+                    const double radius = ring.radius + half_diagonal;
+                    if (perpendicular2 > radius * radius)
+                        continue;
+                    const double span = std::sqrt((radius * radius - perpendicular2) / length2);
+                    const double lo = std::max(0., centre - span), hi = std::min(1., centre + span);
+                    if (lo <= hi)
+                        require(h, i == 0 ? 0. : ring.bottom, height(lo, hi));
+                }
+            }
+    }
+    for (const auto &box : model.boxes) {
+        if (m_max_z - box.bottom + model.safety_mm <= std::min(from.z(), to.z()) + lift)
+            continue;
+        const bool large = box.x_max - box.x_min > 20.;
+        const Grid &grid = large ? m_coarse : m_mid;
+        for (const auto &[pa, pb] : pieces({a, b}, large ? 4. : 1.)) {
+            int ix0, iy0, ix1, iy1;
+            grid.index(std::min(pa.x(), pb.x()) + box.x_min, std::min(pa.y(), pb.y()) + box.y_min, ix0, iy0);
+            grid.index(std::max(pa.x(), pb.x()) + box.x_max, std::max(pa.y(), pb.y()) + box.y_max, ix1, iy1);
+            for (int iy = std::max(iy0, 0); iy <= std::min(iy1, grid.n - 1); ++iy)
+                for (int ix = std::max(ix0, 0); ix <= std::min(ix1, grid.n - 1); ++ix) {
+                    double lo = 0., hi = 1.;
+                    const Vec2d cell_min(origin + ix * grid.cell, origin + iy * grid.cell);
+                    const Vec2d lower = cell_min - Vec2d(box.x_max, box.y_max);
+                    const Vec2d upper = cell_min + Vec2d::Constant(grid.cell) - Vec2d(box.x_min, box.y_min);
+                    for (int axis = 0; axis < 2; ++axis) {
+                        if (std::abs(d[axis]) < EPSILON) {
+                            if (a[axis] < lower[axis] || a[axis] > upper[axis]) hi = -1.;
+                        } else {
+                            const double t0 = (lower[axis] - a[axis]) / d[axis], t1 = (upper[axis] - a[axis]) / d[axis];
+                            lo = std::max(lo, std::min(t0, t1));
+                            hi = std::min(hi, std::max(t0, t1));
+                        }
+                    }
+                    if (lo <= hi)
+                        require(grid.at(ix, iy), box.bottom, height(lo, hi));
+                }
+        }
+    }
+    return lift;
 }
 
 }

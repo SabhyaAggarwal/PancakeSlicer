@@ -3312,6 +3312,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     }
 
     m_nonplanar_ceiling = 0.;
+    m_last_native_curved = false;
     m_writer.set_z_travel_cap(0.);
     m_material_columns.reset();
     m_track_nonplanar_material = Nonplanar::wave_enabled(print);
@@ -7537,6 +7538,7 @@ std::string GCode::change_layer(coordf_t print_z)
 {
     std::string gcode;
     m_nonplanar_printed_this_layer = false;
+    m_last_native_curved = false;
     if (m_layer_count > 0)
         gcode += m_writer.update_progress(++ m_layer_index, m_layer_count);
     coordf_t z = print_z + m_config.z_offset.value;
@@ -10668,7 +10670,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             gcode += m_writer.travel_to_z(over, "lift over contoured surface", true, this->conformal_max_speed_z());
             gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", over);
         } else
-            gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z);
+            gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z, z_absolute && path.nonplanar_source ? &path : nullptr);
 
         if (!z_absolute && !slope_need_z_travel && (_last_pos_undefined || m_need_change_layer_lift_z)) {
             const std::string z_sync_comment = _last_pos_undefined ?
@@ -10877,10 +10879,6 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     if (speed == 0)
         speed = filament_max_volumetric_speed / _mm3_per_mm;
 
-    constexpr double nonplanar_max_top_surface_speed = 50.;
-    if (path.role() == erTopSolidInfill && path.nonplanar_source &&
-        m_config.nonplanar_mode.value == NonplanarMode::CurvedTops)
-        speed = std::min(speed, nonplanar_max_top_surface_speed);
     const int _layer = this->effective_layer_index_for_point(path_point_mm);
     const bool belt_band_tags   = m_enable_cooling_markers && m_config.belt_printer.value;
     const int  belt_band_layers = belt_band_tags ? m_config.close_fan_the_first_x_layers.get_at(m_writer.filament()->id()) : 0;
@@ -11238,18 +11236,43 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path)) {
                 this->emit_conformal_moves(gcode, *conformal, e_per_mm, speed, comment, description);
             } else if (z_absolute) {
-                Vec3d prev3 = absolute_point(path.polyline.points.front());
-                for (size_t i = 1; i < path.polyline.points.size(); ++ i) {
-                    const Vec3d p3 = absolute_point(path.polyline.points[i]);
+                std::vector<Vec3d> points;
+                points.reserve(path.polyline.points.size());
+                for (const Point3 &p : path.polyline.points)
+                    points.emplace_back(absolute_point(p));
+                auto lowest = [](const ConfigOptionFloats &opt) {
+                    double limit = 0.;
+                    for (double value : opt.values)
+                        if (value > 0.) limit = limit > 0. ? std::min(limit, value) : value;
+                    return limit;
+                };
+                auto min_positive = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
+                const GCodeFlavor flavor = m_config.gcode_flavor.value;
+                const bool emitted = flavor == gcfKlipper || (m_config.emit_machine_limits_to_gcode.value &&
+                    (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware));
+                Nonplanar::MotionLimits limits;
+                limits.max_v_xy = min_positive(lowest(m_config.machine_max_speed_x), lowest(m_config.machine_max_speed_y));
+                limits.max_v_z = min_positive(this->conformal_max_speed_z(), (emitted ? 0.99 : 0.8) * lowest(m_config.machine_max_speed_z));
+                limits.max_a_z = lowest(m_config.machine_max_acceleration_z);
+                limits.max_a_xy = min_positive(lowest(m_config.machine_max_acceleration_x), lowest(m_config.machine_max_acceleration_y));
+                limits.max_jerk_xy = min_positive(lowest(m_config.machine_max_jerk_x), lowest(m_config.machine_max_jerk_y));
+                limits.max_jerk_z = lowest(m_config.machine_max_jerk_z);
+                if (flavor == gcfKlipper && limits.max_a_xy > 0.)
+                    limits.junction_deviation = sqr(limits.max_jerk_xy) * (std::sqrt(2.) - 1.) / limits.max_a_xy;
+                else if (flavor == gcfMarlinFirmware && !m_config.machine_max_junction_deviation.values.empty())
+                    limits.junction_deviation = m_config.machine_max_junction_deviation.values.front();
+                limits.segment_rate = 0.99 * this->conformal_segment_rate();
+                const std::vector<double> feeds = Nonplanar::limit_feedrates(points, F / 60., limits);
+                Vec3d prev3 = points.front();
+                for (size_t i = 1; i < points.size(); ++i) {
+                    const Vec3d &p3 = points[i];
                     check_nonplanar_step(prev3, p3);
                     const double line_length = (p3 - prev3).norm();
                     if (line_length < EPSILON)
                         continue;
-                    const double dz = std::abs(p3.z() - prev3.z());
-                    const double z_limit = this->conformal_max_speed_z();
-                    double feed = dz > EPSILON && z_limit > 0. ? std::min(F, z_limit * 60. * line_length / dz) : F;
-                    if (const double rate = this->conformal_segment_rate(); rate > 0.)
-                        feed = std::min(feed, 60. * rate * line_length);
+                    double feed = 60. * feeds[i - 1];
+                    if (limits.segment_rate > 0.)
+                        feed = std::min(feed, 60. * limits.segment_rate * line_length);
                     m_writer.set_speed(gcode, feed);
                     const double charged_length = (p3 - prev3).head<2>().norm();
                     gcode += m_writer.extrude_to_xyz(p3, e_per_mm * charged_length,
@@ -11509,6 +11532,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     }
     if (path.nonplanar_source) gcode += ";_NONPLANAR_END\n";
     m_nonplanar_printed_this_layer |= path.nonplanar_source;
+    m_last_native_curved = z_absolute && path.nonplanar_source && !path.is_force_no_extrusion();
     if (m_material_columns && dynamic_cast<const ExtrusionPathConformal *>(&path) == nullptr) {
         const auto to_writer = [this, &path, z_absolute](const Point3 &p) {
             const Vec2d xy = this->point_to_gcode(p.to_point());
@@ -11638,13 +11662,13 @@ std::string GCode::_encode_label_ids_to_base64(std::vector<size_t> ids)
     return encodeBase64(bitset);
 }
 
-std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string comment, double z )
+std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string comment, double z , const ExtrusionPath *native_target )
 {
     const bool native_curved = m_config.nonplanar_mode.value == NonplanarMode::CurvedTops && this->layer() != nullptr;
-    auto native_travel_speed = [this](const Vec3d &to, double limit) {
-        const auto printed = [](const Vec3d &p) {
-            return Vec3d(GCodeFormatter::quantize_xyzf(p.x()), GCodeFormatter::quantize_xyzf(p.y()), GCodeFormatter::quantize_xyzf(p.z()));
-        };
+    const auto printed = [](const Vec3d &p) {
+        return Vec3d(GCodeFormatter::quantize_xyzf(p.x()), GCodeFormatter::quantize_xyzf(p.y()), GCodeFormatter::quantize_xyzf(p.z()));
+    };
+    auto native_travel_speed = [this, &printed](const Vec3d &to, double limit) {
         const double length = (printed(to) - printed(m_writer.get_position())).norm();
         const double rate = this->conformal_segment_rate();
         return length > EPSILON && rate > 0. ? std::min(limit, 0.99 * rate * length) : limit;
@@ -11735,6 +11759,30 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)))
         needs_retraction = true;
 
+    bool native_keep_primed = false;
+    double primed_slope_lift = -1.;
+    constexpr double primed_support_gap = 0.4;
+    if (native_curved && native_target && m_last_native_curved && needs_retraction && !m_force_safe_travel &&
+        !m_need_change_layer_lift_z && travel.size() == 2 &&
+        (travel.length() < scale_(2.) || (travel.length() < scale_(5.) && native_target->polyline.length() < scale_(5.))) &&
+        role == erTopSolidInfill && m_last_processor_extrusion_role == erTopSolidInfill) {
+        const Vec3d from = m_writer.get_position();
+        const Vec2d xy = this->point_to_gcode(travel.points.back());
+        const double safe = m_nonplanar_heights.travel_height({from.head<2>(), xy}, m_nonplanar_clearance, std::max(from.z(), target_z));
+        native_keep_primed = m_nonplanar_heights.supports_travel(Vec3d(from.x(), from.y(), safe), Vec3d(xy.x(), xy.y(), safe), primed_support_gap);
+        if (!native_keep_primed && nonplanar_lift && m_writer.is_current_position_clear() && std::abs(from.z() - target_z) > 0.03) {
+            const Vec3d a = printed(from), b = printed(Vec3d(xy.x(), xy.y(), target_z));
+            const double lift = std::ceil((m_nonplanar_heights.travel_lift(a, b, m_nonplanar_clearance) + 0.000001) * 1000.) / 1000.;
+            if (2. * lift < 2. * safe - a.z() - b.z() &&
+                m_nonplanar_heights.supports_travel(a + Vec3d(0., 0., lift), b + Vec3d(0., 0., lift), primed_support_gap)) {
+                native_keep_primed = true;
+                primed_slope_lift = lift;
+            }
+        }
+        if (native_keep_primed)
+            needs_retraction = false;
+    }
+
     m_avoid_crossing_perimeters.reset_once_modifiers();
 
     const bool travel_clear = nonplanar_travel &&
@@ -11772,13 +11820,27 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         if (m_force_safe_travel)
             safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance,
                 base + hop);
+        bool sloped = false;
+        double lift = 0.;
+        if (travel.size() == 2 && !m_force_safe_travel && !m_need_change_layer_lift_z && m_writer.is_current_position_clear() &&
+            std::abs(target_z - m_writer.get_position().z()) > 0.03) {
+            const Vec3d from = printed(m_writer.get_position());
+            const Vec3d to = printed(Vec3d(xy.back().x(), xy.back().y(), target_z));
+            lift = primed_slope_lift >= 0. ? primed_slope_lift :
+                std::ceil((m_nonplanar_heights.travel_lift(from, to, m_nonplanar_clearance) + 0.000001) * 1000.) / 1000.;
+            sloped = primed_slope_lift >= 0. || 2. * lift < 2. * safe - from.z() - to.z();
+            if (sloped && native_keep_primed)
+                sloped = m_nonplanar_heights.supports_travel(from + Vec3d(0., 0., lift), to + Vec3d(0., 0., lift), primed_support_gap);
+            if (sloped)
+                safe = from.z() + lift;
+        }
         m_writer.cancel_lazy_lift();
         if (safe > m_writer.get_position().z() + EPSILON || m_need_change_layer_lift_z || !m_writer.is_current_position_clear())
             gcode += m_writer.travel_to_z(safe, "lift over curved tops", true,
                 native_travel_speed(Vec3d(m_writer.get_position().x(), m_writer.get_position().y(), safe), this->conformal_max_speed_z()));
         for (size_t i = 1; i < travel.size(); ++i) {
             const Vec2d xy_to = this->point_to_gcode(travel.points[i]);
-            const Vec3d to(xy_to.x(), xy_to.y(), safe);
+            const Vec3d to(xy_to.x(), xy_to.y(), sloped ? target_z + lift : safe);
             gcode += m_writer.travel_to_xyz(to, comment, true, this->conformal_max_speed_z(),
                 native_travel_speed(to, NOZZLE_CONFIG(travel_speed)));
         }

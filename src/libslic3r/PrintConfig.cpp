@@ -5567,9 +5567,9 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloat(5));
 
     def = this->add("nonplanar_curved_shells", coInt);
-    def->label = L("Curved top shells");
+    def->label = L("Maximum curved top shells");
     def->category = L("Quality");
-    def->tooltip = L("Number of shells projected onto each selected surface, including its visible top shell. Default: 3. Unit: layers.");
+    def->tooltip = L("Upper limit on shells projected onto each selected surface. Curved tops retains the profile's planar solid-top thickness and projects one visible finishing shell. Default upper limit: 3. Unit: layers.");
     def->sidetext = L("layers");
     def->min = 1;
     def->max = 20;

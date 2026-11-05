@@ -214,7 +214,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
                 rp.id = surface.stable_id;
                 rp.kind = int(PatchKind::Top);
                 rp.top = true;
-                rp.shells = object->config().nonplanar_curved_shells.value;
+                rp.shells = std::min(1, object->config().nonplanar_curved_shells.value);
                 const ExPolygons footprint = surface.horizontal_projection();
                 const BoundingBox box = get_extents(footprint);
                 rp.center = unscale(box.center());

@@ -3,6 +3,7 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Polyline.hpp"
 
 #include <map>
@@ -57,6 +58,8 @@ public:
     void   clear();
     void   deposit(const Vec2d &a, const Vec2d &b, double z, double half_width);
     double travel_height(const std::vector<Vec2d> &path, const NonplanarClearanceModel &model, double min_z) const;
+    double travel_lift(const Vec3d &from, const Vec3d &to, const NonplanarClearanceModel &model) const;
+    bool supports_travel(const Vec3d &from, const Vec3d &to, double max_gap) const;
 
 private:
     struct Grid {
