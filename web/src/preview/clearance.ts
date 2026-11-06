@@ -1,9 +1,12 @@
+
+
 import { loadHead } from '../heads';
 
 let scale = { margin: 0.3, floor: 1 };
 let loaded = '';
 
 export const clearanceScale = () => scale;
+
 
 export async function loadClearanceScale(record: Record<string, unknown> | undefined): Promise<boolean> {
   const report = record?.nonplanar_report as { head?: unknown } | undefined;

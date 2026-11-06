@@ -38,6 +38,9 @@ bool is_png(const ReadBuf &rb)
     static const constexpr int PNG_SIG_BYTES = 8;
 
 #if PNG_LIBPNG_VER_MINOR <= 2
+
+
+
     png_byte buf[PNG_SIG_BYTES];
     auto inbuf = static_cast<const std::uint8_t *>(rb.buf);
     std::copy(inbuf, inbuf + PNG_SIG_BYTES, buf);
@@ -48,16 +51,27 @@ bool is_png(const ReadBuf &rb)
     return rb.sz >= PNG_SIG_BYTES && !png_sig_cmp(buf, 0, PNG_SIG_BYTES);
 }
 
+
+
 static void png_read_callback(png_struct *png_ptr,
                               png_bytep   outBytes,
                               png_size_t  byteCountToRead)
 {
+
     auto reader = static_cast<IStream *>(png_get_io_ptr(png_ptr));
+
+
 
     if (!reader || !reader->is_ok() ||
         reader->read(static_cast<std::uint8_t *>(outBytes), byteCountToRead) != byteCountToRead)
         png_error(png_ptr, "PNG data is truncated");
 }
+
+
+
+
+
+
 
 static bool png_read_header_guarded(png_struct *png, png_info *info, IStream *in_buf, int sig_bytes)
 {
@@ -65,10 +79,12 @@ static bool png_read_header_guarded(png_struct *png, png_info *info, IStream *in
         return false;
 
     png_set_read_fn(png, static_cast<void *>(in_buf), png_read_callback);
+
     png_set_sig_bytes(png, sig_bytes);
     png_read_info(png, info);
     return true;
 }
+
 
 static bool png_read_rows_guarded(png_struct *png, png_info *info, png_bytep dst, size_t rows, size_t rowbytes,
                                   bool bottom_up, bool read_end)
@@ -115,7 +131,7 @@ bool decode_png(IStream &in_buf, ImageGreyscale &out_img)
     out_img.buf.resize(out_img.rows * out_img.cols);
 
     return png_read_rows_guarded(dsc.png, dsc.info, static_cast<png_bytep>(out_img.buf.data()), out_img.rows,
-                                 out_img.cols,  false,  false);
+                                 out_img.cols,   false,   false);
 }
 
 bool decode_colored_png(IStream &in_buf, ImageColorscale &out_img)
@@ -178,7 +194,7 @@ bool decode_colored_png(IStream &in_buf, ImageColorscale &out_img)
     BOOST_LOG_TRIVIAL(info) << boost::format("filter_type %1%, compression_type %2%, interlace_type %3%, rowbytes %4%")%filter_type %compression_type %interlace_type %rowbytes;
 
     if (!png_read_rows_guarded(dsc.png, dsc.info, static_cast<png_bytep>(out_img.buf.data()), out_img.rows, rowbytes,
-                                true,  true)) {
+                                 true,   true)) {
         BOOST_LOG_TRIVIAL(error) << "decode_colored_png: corrupt or truncated PNG data";
         return false;
     }
@@ -196,9 +212,14 @@ bool decode_colored_png(const ReadBuf &in_buf, ImageColorscale &out_img)
 }
 
 
+
+
+
+
 static bool write_rgb_or_gray_to_file(const char *file_name_utf8, size_t width, size_t height, int png_color_type, const uint8_t *data)
 {
     bool         result       = false;
+
 
     png_structp  png_ptr      = nullptr;
     png_infop    info_ptr     = nullptr;
@@ -222,10 +243,12 @@ static bool write_rgb_or_gray_to_file(const char *file_name_utf8, size_t width, 
         goto png_create_info_struct_failed;
     }
 
+
     if (setjmp(png_jmpbuf(png_ptr))) {
         BOOST_LOG_TRIVIAL(error) << "write_png_file: setjmp() failed";
         goto png_failure;
     }
+
 
     png_set_IHDR(png_ptr,
         info_ptr,
@@ -236,6 +259,7 @@ static bool write_rgb_or_gray_to_file(const char *file_name_utf8, size_t width, 
         PNG_INTERLACE_NONE,
         PNG_COMPRESSION_TYPE_DEFAULT,
         PNG_FILTER_TYPE_DEFAULT);
+
 
     row_pointers = reinterpret_cast<png_byte**>(::png_malloc(png_ptr, height * sizeof(png_byte*)));
     {
@@ -248,6 +272,7 @@ static bool write_rgb_or_gray_to_file(const char *file_name_utf8, size_t width, 
             memcpy(row, data + line_width * y, line_width);
         }
     }
+
 
     png_init_io(png_ptr, fp);
     png_set_rows(png_ptr, info_ptr, row_pointers);
@@ -299,6 +324,9 @@ bool write_gray_to_file(const std::string &file_name_utf8, size_t width, size_t 
     assert(width * height == data_gray.size());
     return write_gray_to_file(file_name_utf8.c_str(), width, height, data_gray.data());
 }
+
+
+
 
 static bool write_rgb_or_gray_to_file_scaled(const char *file_name_utf8, size_t width, size_t height, int png_color_type, const uint8_t *data, size_t scale)
 {

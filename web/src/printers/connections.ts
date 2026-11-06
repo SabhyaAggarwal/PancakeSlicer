@@ -1,3 +1,6 @@
+
+
+
 import { mutation, responseError } from '../api/access';
 import { getState, setState } from '../state/store';
 import type { Transfer } from '../flow/transfer';
@@ -19,7 +22,9 @@ export interface PrinterStatus {
   controls?: { fans?: Record<string, { index: number; min: number; max: number; modern?: boolean }>; chamber?: { min: number; max: number } };
 }
 export interface PrinterConnections {
+
   enabled: boolean;
+
   live: boolean;
   connections: PrinterConnection[];
   status: Record<string, PrinterStatus>;
@@ -30,12 +35,14 @@ export const KIND_LABEL: Record<ConnectionKind, string> = {
   'bambu-lan': 'Bambu Lab (LAN)', 'bambu-connect': 'Bambu Connect', moonraker: 'Klipper (Moonraker)',
   octoprint: 'OctoPrint', prusalink: 'PrusaLink', duet: 'Duet (RepRapFirmware)',
 };
+
 export const connectionOutput = (kind: ConnectionKind) => (kind === 'bambu-lan' || kind === 'bambu-connect' ? 'gcode.3mf' : 'gcode');
 
 export const connectionOf = (c: PrinterConnections, printer: string) => c.connections.find((x) => x.printer === printer);
 export const unassigned = (c: PrinterConnections) => c.connections.filter((x) => !x.printer);
 
 let source: EventSource | null = null;
+
 export function followConnections() {
   if (import.meta.env.MODE === 'demo') {
     setState({ printerConnections: { enabled: true, live: true, connections: [], status: {}, transfers: [] } });
@@ -62,6 +69,7 @@ async function call<T>(url: string, init: RequestInit): Promise<T> {
   return (r.status === 204 ? undefined : await r.json()) as T;
 }
 
+
 export interface ConnectionEdit {
   kind: ConnectionKind; name: string; host?: string; serial?: string; access_code?: string; model?: string;
   url?: string; auth?: string; username?: string; key?: string; clear_key?: boolean;
@@ -81,7 +89,9 @@ export const controlPrinter = (printer: string, action: 'stop' | 'pause' | 'resu
 export const controlDevice = (printer: string, command: { control: 'fan' | 'chamber'; fan?: string; value: number }) => call<void>(path(printer, '/device'), json('POST', command));
 export const readTrays = (printer: string) => call<{ trays: Tray[] }>(path(printer, '/ams'), json('POST')).then((r) => r.trays ?? []);
 
+
 export const LEGACY_HOST_KEYS = ['host_type', 'print_host', 'printhost_apikey', 'printhost_port', 'printhost_user', 'printhost_password', 'printhost_authorization_type'];
+
 export async function migrateLegacyHost(printer: string, name: string, config: Record<string, unknown>): Promise<string | null> {
   const legacy = Object.fromEntries(LEGACY_HOST_KEYS.flatMap((k) => (config[k] == null || config[k] === '' ? [] : [[k, String([config[k]].flat()[0])]])));
   if (!legacy.print_host) return null;
@@ -89,6 +99,7 @@ export async function migrateLegacyHost(printer: string, name: string, config: R
   if (r.ok) return null;
   return `${name}: ${(await responseError(r)).message}`;
 }
+
 
 export function statusLine(st: PrinterStatus | undefined): string {
   if (!st) return '';
@@ -102,12 +113,15 @@ export function statusLine(st: PrinterStatus | undefined): string {
   if ((st.state === 'error' || st.state === 'failed') && st.detail && st.detail.toLowerCase() !== st.state) parts.push(st.detail);
   return parts.join(' · ');
 }
+
+
 export type StatusTone = 'online' | 'printing' | 'paused' | 'error' | 'offline';
 export function statusTone(st: PrinterStatus | undefined): StatusTone {
   if (!st?.online) return 'offline';
   if (st.state === 'failed' || st.state === 'error') return 'error';
   return st.state === 'paused' ? 'paused' : st.state === 'printing' || st.state === 'busy' ? 'printing' : 'online';
 }
+
 export function pickerStatus(c: PrinterConnections, printer: string): { label: string; tone: StatusTone } | undefined {
   const connection = connectionOf(c, printer);
   if (!connection) return undefined;

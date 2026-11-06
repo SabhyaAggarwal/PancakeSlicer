@@ -55,6 +55,8 @@ size_t snap_bottom_to_flat(TriSoup &geometry, float bottom_z, double tol)
     if (tri_count == 0 || tol <= 0.0)
         return 0;
 
+
+
     QuantizedPointMap weld(WELD_GRID_DECIMATION, std::min(vert_count, size_t(1) << 22));
     std::vector<int>  vid(vert_count);
     int               unique = 0;
@@ -63,6 +65,7 @@ size_t snap_bottom_to_flat(TriSoup &geometry, float bottom_z, double tol)
         if (weld.inserted())
             ++unique;
     }
+
     std::vector<uint32_t> start(size_t(unique) + 1, 0);
     for (size_t i = 0; i < vert_count; ++i)
         ++start[size_t(vid[i]) + 1];
@@ -79,6 +82,7 @@ size_t snap_bottom_to_flat(TriSoup &geometry, float bottom_z, double tol)
         const float z = geometry.pos[inc[start[id]]].z();
         if (z == bottom_z || std::abs(double(z) - double(bottom_z)) > tol)
             continue;
+
 
         bool ok = true;
         for (uint32_t k = start[id]; k < start[id + 1] && ok; ++k) {
@@ -132,8 +136,14 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
     const auto     report = [&](const char *stage, double f) {
         return !on_progress || on_progress(stage, f);
     };
+
+
     auto       clock_now = [] { return std::chrono::steady_clock::now(); };
     auto       t_stage   = clock_now();
+
+
+
+
     const auto lap = [&](const char *stage, const TriSoup &geometry, const std::string &detail = {}) {
         const double ms = std::chrono::duration<double, std::milli>(clock_now() - t_stage).count();
         BOOST_LOG_TRIVIAL(info) << "TextureBake " << stage << ": " << ms << " ms, "
@@ -150,8 +160,10 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
     if (debug != nullptr)
         debug->capture("input", input, 0.0, "as handed to the pipeline");
     t_stage = clock_now();
+
+
     SubdivideResult sub = subdivide(
-        input, settings.refine_length, face_excluded,  false, settings.safety_cap,
+        input, settings.refine_length, face_excluded,   false, settings.safety_cap,
         [&](double f, size_t, double) { return report("subdivide", f); }, settings.paint_within);
     result.safety_cap_hit = sub.safety_cap_hit;
     lap("subdivide", sub.geometry);
@@ -159,6 +171,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         result.canceled = true;
         return result;
     }
+
 
     if (settings.regularize) {
         RegularizeOptions ropts = settings.regularize_opts;
@@ -172,6 +185,8 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
             return result;
         }
         if (reg.collapse_count > 0) {
+
+
             std::vector<uint8_t> excl;
             if (!reg.geometry.exclude_weight.empty()) {
                 excl.assign(reg.geometry.triangle_count(), 0);
@@ -183,6 +198,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
                             [&](double f, size_t, double) { return report("re-subdivide", f); },
                             settings.paint_within);
             result.safety_cap_hit = result.safety_cap_hit || sub.safety_cap_hit;
+
             std::vector<int> composed(sub.face_parent_id.size());
             for (size_t i = 0; i < composed.size(); ++i) {
                 const int mid = sub.face_parent_id[i];
@@ -196,6 +212,10 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
             sub.face_parent_id = std::move(reg.face_parent_id);
         }
     }
+
+
+
+
 
     if (settings.painted) {
         const size_t         nf     = sub.geometry.triangle_count();
@@ -228,6 +248,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         }
     }
 
+
     if (settings.relocate) {
         std::vector<uint8_t> locked;
         if (settings.preserve_untextured && !sub.geometry.exclude_weight.empty()) {
@@ -242,6 +263,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         lap("relocate", sub.geometry,
             "moved " + std::to_string(rel.moved) + ", rejected " + std::to_string(rel.rejected));
     }
+
 
     if (settings.flip_edges) {
         std::vector<uint8_t> locked;
@@ -268,21 +290,34 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         return result;
     }
 
+
+
+
+
+
+
+
     if (color_sample) {
         const size_t nf = displaced.triangle_count();
         result.face_color.assign(nf, -1);
         const bool have_w = !displaced.exclude_weight.empty();
         tbb::parallel_for(tbb::blocked_range<size_t>(0, nf), [&](const tbb::blocked_range<size_t> &r) {
             for (size_t t = r.begin(); t < r.end(); ++t) {
+
+
                 if (have_w && (displaced.exclude_weight[t * 3] + displaced.exclude_weight[t * 3 + 1] +
                                displaced.exclude_weight[t * 3 + 2]) / 3.f > 0.99f)
                     continue;
                 const Vec3f &a = displaced.pos[t * 3], &b = displaced.pos[t * 3 + 1], &c = displaced.pos[t * 3 + 2];
                 const int    sampled = color_sample((a + b + c) / 3.f, displaced.nrm[t * 3]);
+
+
+
                 result.face_color[t] = (sampled >= 0) ? sampled : FACE_NO_COLOUR;
             }
         });
     }
+
 
     std::vector<int>   parent                   = std::move(sub.face_parent_id);
     const size_t       displaced_before_decimate = displaced.triangle_count();
@@ -292,17 +327,34 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         {
             if (settings.preserve_untextured && !displaced.exclude_weight.empty()) {
                 locked.assign(displaced.triangle_count(), 0);
+
+
+
                 for (size_t t = 0; t < locked.size(); ++t)
                     locked[t] = (displaced.exclude_weight[t * 3] + displaced.exclude_weight[t * 3 + 1] +
                                  displaced.exclude_weight[t * 3 + 2]) / 3.f > 0.99f ? 1 : 0;
+
+
+
                 preserved = size_t(std::count(locked.begin(), locked.end(), uint8_t(1)));
             }
         }
+
+
+
+
         const size_t target = settings.max_triangles + preserved;
         const bool   over_budget = displaced.triangle_count() > target;
+
+
+
+
+
         const bool harvest_only = !over_budget && settings.harvest_flat && displaced.triangle_count() > 0;
         std::vector<int> &face_color = result.face_color;
         if (over_budget || harvest_only) {
+
+
             const size_t before = displaced.triangle_count();
             DecimateResult dec = decimate(displaced, over_budget ? target : before, settings.harvest_flat,
                                           settings.harvest_tol, locked,
@@ -324,6 +376,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         }
     }
 
+
     {
         const bool clamped = settings.clamp_below_plate || settings.displace.bottom_angle_limit > 0.f;
         if (clamped)
@@ -334,6 +387,7 @@ PipelineResult run_pipeline(const TriSoup &input, const HeightSampleFn &sample,
         if (clamped || settings.bottom_snap_tol > 0.0)
             lap("bottom clamp + snap", displaced, std::to_string(snapped) + " triangles snapped flat");
     }
+
 
     if (mode == PipelineMode::Export && parent.empty()) {
         displaced = resolve_t_junctions(displaced, {}, &result.face_color);

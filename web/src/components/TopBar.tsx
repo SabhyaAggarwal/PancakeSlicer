@@ -3,6 +3,8 @@ import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
+
+
 import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
@@ -37,6 +39,7 @@ const exportStl = (multi: boolean) => import('../exportStl').then((m) => m.expor
 
 const ArchiveDialog = lazy(() => import('./ArchiveDialog'));
 
+
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
 export function TopBar() {
@@ -63,6 +66,8 @@ export function TopBar() {
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, ''));
+
+
   const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, () => !!visibleToolpaths());
   const tab = useStore((st) => st.tab);
   const exportName = name;
@@ -87,6 +92,7 @@ export function TopBar() {
           ...(hasPrinters ? [{ label: 'Send...', action: () => setState({ appDialog: 'send' }), disabled: !exportEnabled, tip: 'Upload the sliced file to a printer' }] : []),
           { label: 'Export all objects as one STL...', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs...', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
+
           ...(exportDrc ? [{ label: 'Export all objects as one DRC...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
           ...(generic3mf ? [{ label: 'Export Generic 3MF...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
           { label: 'Export toolpaths as OBJ...', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
@@ -96,6 +102,7 @@ export function TopBar() {
   const devReset = useDevReset();
   const update = useUpdate(), build = useBuildInfo(), barTier = useTier(), narrowBar = barTier === 'narrow' || barTier === 'phone';
   useEffect(() => startUpdateChecks(devReset), [devReset]);
+
   const projectId = useProject((p) => p.context.id), projectState = useProject((p) => p.value);
   const renameHere = async () => {
     const next = await promptDialog('Rename project', name ?? 'Untitled');
@@ -106,6 +113,7 @@ export function TopBar() {
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
+
             ...redoNames().reverse().map((name, i, all): MenuItem => ({ label: `Redo ${name}`, action: () => redoSteps(all.length - i) })),
             ...(undoLabel && redoLabel ? ['sep' as const] : []),
             ...undoNames().map((name, i): MenuItem => ({ label: `Undo ${name}`, action: () => undoSteps(i + 1) })),
@@ -162,7 +170,7 @@ export function TopBar() {
           { label: 'VFA', action: () => setState({ calibDialog: 'vfa' }), tip: 'VFA' },
           { label: 'Non-planar', action: () => setState({ calibDialog: 'nonplanar' }), tip: 'Non-planar calibration' },
           'sep',
-          { label: 'Calibration Guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
+          { label: 'Calibration Guide', action: () => window.open('/help/calibration.html', '_blank', 'noopener'), tip: 'Calibration Guide' },
         ]} as MenuItem] : []), {label: 'Help', sub: [
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
@@ -172,15 +180,18 @@ export function TopBar() {
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo-48.png" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
+    {                                                                                                                         }
     <span className="app-version" data-truncated="true" data-full-text={buildLine(build)}>v{APP_VERSION}</span>
     {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><Glyph name="update"/><span>Update</span></button>}
     </div>
     {DEMO ? <a className="mock-badge demo-chip" href={DOCS_URL} target="_blank" rel="noopener noreferrer" title="PancakeSlicer documentation">Demo</a> : mock && <span className="mock-badge">Demo</span>}
     {DEMO && <DemoResultNotice/>}
+    {                                                                                 }
     {tab !== 'projects' && <TabBar/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
   </header>;
 }
+
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
   return <span className="side-options"><MenuButton className="btn slant side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
@@ -201,7 +212,12 @@ export function TabBar() {
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
+
+
+
   const tier = useTier(), wide = tier === 'wide', coarse = window.matchMedia('(pointer: coarse)').matches, folded = tier === 'narrow' || tier === 'phone' || (tier === 'medium' && coarse);
+
+
   const ready = job.state === 'done' && !job.stale && exportEnabled && !folded;
   const sliceClass = `${ready ? 'btn' : 'btn-primary'} slant${busy ? ' slicing' : ''}`, exportClass = `${ready ? 'btn-primary' : 'btn'} slant`;
   const progress = busy ? { '--p': `${Math.round(job.pct)}%` } as CSSProperties : undefined;
@@ -210,11 +226,13 @@ export function TabBar() {
   const more: MenuEntry[] = [
     ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
     ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
+
     ...(tier === 'phone' && saved ? [{label: 'Version history', action: toggleHistory} satisfies MenuEntry] : []),
     ...(!wide && plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : []),
   ];
   return (
     <div className="tabbar">
+      {                                                                                                                    }
       <div className="seg slant-seg view-switch" role="group" aria-label="View">
         <button type="button" aria-label="Prepare" aria-pressed={tab === 'prepare'} className="view-tab" onClick={() => setState({ tab: 'prepare' })}>
           <Icon name="tab_3d_active" size={16} />
@@ -225,6 +243,7 @@ export function TabBar() {
           <span>Preview</span>
         </button>
       </div>
+      {                                                                                         }
       <div className="title-zone"><ProjectTitle/></div>
       <div className="tabbar-actions">
         {allSlice ? (

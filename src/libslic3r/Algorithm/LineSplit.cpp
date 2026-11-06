@@ -16,12 +16,15 @@
 #include <vector>
 #include <utility>
 
+
+
 namespace Slic3r {
 namespace Algorithm {
 
 #ifdef DEBUG_SPLIT_LINE
 static std::atomic<std::uint32_t> g_dbg_id = 0;
 #endif
+
 
 static constexpr auto CLIP_IDX = std::numeric_limits<coord_t>::max();
 
@@ -53,20 +56,23 @@ static Point to_point(const ClipperZUtils::ZPoint& p) { return {p.x(), p.y()}; }
 
 using SplitNode = std::vector<ClipperZUtils::ZPath*>;
 
+
 static bool point_on_line(const Point& p, const Line& l)
 {
+
     const Vec2crd d1 = l.b - l.a;
     const Vec2crd d2 = p - l.a;
-    if (d1.x() * d2.y() != d1.y() * d2.x()) { 
+    if (d1.x() * d2.y() != d1.y() * d2.x()) {
         return false;
     }
+
 
     if (l.a.x() != l.b.x())
         return (p.x() > l.a.x()) == (p.x() < l.b.x());
     else
         return (p.y() > l.a.y()) == (p.y() < l.b.y());
 }
- 
+
 SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& clip, bool closed)
 {
     assert(path.size() > 1);
@@ -87,7 +93,9 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
 #endif
 
     ClipperZUtils::ZPaths intersections;
+
     {
+
         ClipperZUtils::ZPaths clip_path;
         for (const auto& exp : clip) {
             clip_path.emplace_back(ClipperZUtils::to_zpath<false>(exp.contour.points, CLIP_IDX));
@@ -126,8 +134,12 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
     }
 #endif
 
+
     std::vector<SplitNode> split_chain;
     {
+
+
+
         AABBTreeLines::LinesDistancer<Line> aabb_tree;
         const auto                          resolve_clip_point = [&path, &aabb_tree](ClipperZUtils::ZPoint& zp) {
             if (!is_clip(zp)) {
@@ -147,6 +159,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
             const auto possible_edges = aabb_tree.all_lines_in_radius(p, SCALED_EPSILON);
             assert(!possible_edges.empty());
             for (const size_t l : possible_edges) {
+
                 const Line line(to_point(path[l]), to_point(path[l + 1]));
                 if (p == line.a) {
                     zp.z() = path[l].z();
@@ -162,6 +175,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
                 }
             }
             if (is_clip(zp)) {
+
                 zp.z() = -(path[possible_edges[0]].z() + 1);
             }
         };
@@ -169,25 +183,34 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
         split_chain.assign(path.size(), {});
         for (ClipperZUtils::ZPath& segment : intersections) {
             assert(segment.size() >= 2);
+
             std::for_each(segment.begin(), segment.end(), resolve_clip_point);
+
 
             std::sort(segment.begin(), segment.end(), [&path](const ClipperZUtils::ZPoint& a, const ClipperZUtils::ZPoint& b) -> bool {
                 if (is_new(a) && is_new(b) && a.z() == b.z()) {
+
                     const auto src = to_point(path[-a.z() - 1]);
                     return (to_point(a) - src).squaredNorm() < (to_point(b) - src).squaredNorm();
                 }
                 const auto a_idx = to_src_idx(a);
                 const auto b_idx = to_src_idx(b);
                 if (a_idx == b_idx) {
+
                     return is_src(a);
                 } else {
                     return a_idx < b_idx;
                 }
             });
 
+
             ClipperZUtils::ZPoint& front = segment.front();
             const ClipperZUtils::ZPoint* previous_src_point = nullptr;
             if (is_src(front)) {
+
+
+
+
                 auto& node = split_chain[front.z()];
                 node.insert(node.begin(), &segment);
 
@@ -196,6 +219,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
                 const auto id = -front.z() - 1;
                 const ClipperZUtils::ZPoint& src_p = path[id];
                 const auto dist2 = (front - src_p).block<2, 1>(0,0).squaredNorm();
+
                 auto& node = split_chain[id];
                 auto it = std::find_if(node.begin(), node.end(), [dist2, &src_p](const ClipperZUtils::ZPath* p) {
                     const ClipperZUtils::ZPoint& p_front = p->front();
@@ -206,6 +230,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
                     const auto dist2_2 = (p_front - src_p).block<2, 1>(0, 0).squaredNorm();
                     return dist2_2 > dist2;
                 });
+
                 node.insert(it, &segment);
 
                 previous_src_point = &src_p;
@@ -213,16 +238,19 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
                 assert(false);
             }
 
+
             for (ClipperZUtils::ZPoint& p : segment) {
                 assert(!is_new(p) || p == front || p == segment.back());
                 if (is_src(p)) {
                     previous_src_point = &p;
                 } else if (is_clip(p)) {
+
                     p.z() = -(previous_src_point->z() + 1);
                 }
             }
         }
     }
+
 
     SplittedLine result;
     size_t       idx  = 0;
@@ -235,6 +263,8 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
         } else {
             if (!is_src(node.front()->front())) {
                 if (result.empty() || result.back().get_src_index() != to_src_idx(p)) {
+
+
                     result.emplace_back(to_point(p), false, idx);
                 }
             }
@@ -245,6 +275,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
                 }
                 result.back().clipped = false;
             }
+
 
             const auto back = result.back().src_idx;
             if (back < 0) {
@@ -262,7 +293,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
         }
     }
 
-    
+
 #ifdef DEBUG_SPLIT_LINE
     {
         ::Slic3r::SVG svg(debug_out_path("do_split_line_%d_result.svg", dbg_id).c_str(), dbg_bbox);
@@ -280,6 +311,7 @@ SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& c
 #endif
 
     if (closed) {
+
         result.pop_back();
     }
 

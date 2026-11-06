@@ -30,6 +30,7 @@ double segment_distance(const Vec2d &a, const Vec2d &b, const Vec2d &c, const Ve
     return std::min({ point_segment(a, c, d), point_segment(b, c, d), point_segment(c, a, b), point_segment(d, a, b) });
 }
 
+
 double max_land_depth(const MaterialColumns &columns, const HeadEnvelope &land, const Vec3d &a, const Vec3d &b)
 {
     double     depth = -std::numeric_limits<double>::infinity();
@@ -38,6 +39,9 @@ double max_land_depth(const MaterialColumns &columns, const HeadEnvelope &land, 
         depth = std::max(depth, -columns.swept_clearance(a + (b - a) * (double(k) / steps), a + (b - a) * (double(k + 1) / steps), land));
     return depth;
 }
+
+
+
 
 Vec3d off_bead(const MaterialColumns &columns, const HeadEnvelope &land, const Vec3d &tip, double hop)
 {
@@ -145,8 +149,12 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
 {
     SurfaceTravel out;
     const double  c   = params.clearance;
+
+
     const Vec3d dep = from_on_bead ? off_bead(columns, params.land, from, c) : from;
     const Vec3d arr = to_on_bead ? off_bead(columns, params.land, to, c) : to;
+
+
 
     const Vec2d  A = dep.head<2>(), B = arr.head<2>();
     const double L = (B - A).norm();
@@ -169,6 +177,7 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
         for (double k : { 0.15, 0.3 })
             for (double side : { -1., 1. }) {
                 const Vec2d              w = mid + side * k * L * perp;
+
                 if (params.bed.defined && !params.bed.contains(w))
                     continue;
                 const std::vector<Vec2d> r{ A, w, B };
@@ -182,6 +191,8 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
             }
     }
 
+
+
     std::vector<Vec2d> xy{ route.front() };
     for (size_t i = 0; i + 1 < route.size(); ++i) {
         const int n = std::max(1, int(std::ceil((route[i + 1] - route[i]).norm() / params.sample)));
@@ -194,6 +205,8 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
     for (size_t i = 0; i + 1 < n; ++i) {
         const Vec2d  d = xy[i + 1] - xy[i];
         const double l = d.norm();
+
+
         const double slope = l > EPSILON ? material_gradient(columns, 0.5 * (xy[i] + xy[i + 1])).dot(d / l) : 0.;
         const double hop   = c * std::clamp(1. - 0.5 * slope, 0.6, 1.6);
         if (!params.nozzle.boxes.empty()) {
@@ -208,16 +221,22 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
         z[i]     = std::max(z[i], req[i]);
         z[i + 1] = std::max(z[i + 1], req[i]);
     }
+
+
     const double floor = std::min({ dep.z(), arr.z(), params.floor });
     for (size_t i = 0; i + 1 < n; ++i)
         if (!std::isfinite(base[i])) {
             z[i]     = std::max(z[i], floor);
             z[i + 1] = std::max(z[i + 1], floor);
         }
+
+
     for (double &v : z)
         v = std::max({ v, params.min_z, c });
     z.front() = std::max(z.front(), dep.z());
     z.back()  = std::max(z.back(), arr.z());
+
+
     for (size_t i = 1; i < n; ++i)
         z[i] = std::max(z[i], z[i - 1] - params.max_grade * (xy[i] - xy[i - 1]).norm());
     for (size_t i = n - 1; i > 0; --i)
@@ -226,6 +245,7 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
         for (double v : z)
             if (v > params.ceiling + EPSILON)
                 throw RuntimeError("Non-planar travel cannot clear printed material within the printer height. Reduce the model height or move the objects apart.");
+
 
     out.max_hop = std::max(dep.z() - from.z(), arr.z() - to.z());
     for (size_t i = 0; i + 1 < n; ++i)
@@ -239,6 +259,7 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
     if ((dep - from).norm() > EPSILON)
         push(dep);
     push(Vec3d(xy.front().x(), xy.front().y(), z.front()));
+
     for (size_t i = 1; i + 1 < n; ++i) {
         const Vec3d p(xy[i].x(), xy[i].y(), z[i]);
         const Vec3d prev = out.points.empty() ? dep : out.points.back();

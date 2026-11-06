@@ -1,26 +1,26 @@
-# https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html
+
 if (MSVC_VERSION EQUAL 1800)
-# 1800      = VS 12.0 (v120 toolset)
+
     set(DEP_VS_VER "12")
     set(DEP_BOOST_TOOLSET "msvc-12.0")
 elseif (MSVC_VERSION EQUAL 1900)
-# 1900      = VS 14.0 (v140 toolset)    
+
     set(DEP_VS_VER "14")
     set(DEP_BOOST_TOOLSET "msvc-14.0")
 elseif (MSVC_VERSION LESS 1920)
-# 1910-1919 = VS 15.0 (v141 toolset)
+
     set(DEP_VS_VER "15")
     set(DEP_BOOST_TOOLSET "msvc-14.1")
 elseif (MSVC_VERSION LESS 1930)
-# 1920-1929 = VS 16.0 (v142 toolset)
+
     set(DEP_VS_VER "16")
     set(DEP_BOOST_TOOLSET "msvc-14.2")
 elseif (MSVC_VERSION LESS 1950)
-# 1930-1949 = VS 17.0 (v143 toolset)
+
     set(DEP_VS_VER "17")
     set(DEP_BOOST_TOOLSET "msvc-14.3")
 elseif (MSVC_VERSION LESS 1960)
-# 1950-1959 = VS 18.0 (v145 toolset)
+
     set(DEP_VS_VER "18")
     set(DEP_BOOST_TOOLSET "msvc-14.5")
 else ()
@@ -42,10 +42,10 @@ else ()
     message(FATAL_ERROR "Unsupported OS architecture: ${DEPS_ARCH}")
 endif ()
 
-# Draco's tools and NLopt's testopt compile sources that are also in their
-# static library. MSBuild passes the library before the objects and lld-link
-# resolves as it goes, so the library's copy wins and the object then reads as
-# a duplicate. Nothing uses those executables, so let lld keep the first one.
+
+
+
+
 set(DEP_LLD_FORCE_MULTIPLE "")
 if (CMAKE_GENERATOR MATCHES "Visual Studio" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(DEP_LLD_FORCE_MULTIPLE "-DCMAKE_EXE_LINKER_FLAGS:STRING=${CMAKE_EXE_LINKER_FLAGS} /FORCE:MULTIPLE")

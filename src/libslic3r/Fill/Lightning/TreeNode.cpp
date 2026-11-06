@@ -41,7 +41,7 @@ bool Node::hasOffspring(const NodeSPtr& to_be_checked) const
         return true;
 
     for (auto& child_ptr : m_children)
-        if (child_ptr->hasOffspring(to_be_checked)) 
+        if (child_ptr->hasOffspring(to_be_checked))
             return true;
 
     return false;
@@ -57,6 +57,7 @@ NodeSPtr Node::addChild(const Point& child_loc)
 NodeSPtr Node::addChild(NodeSPtr& new_child)
 {
     assert(new_child != shared_from_this());
+
     m_children.push_back(new_child);
     new_child->m_parent = shared_from_this();
     new_child->m_is_root = false;
@@ -78,6 +79,8 @@ void Node::propagateToNextLayer(
         next_trees.push_back(tree_below);
 }
 
+
+
 void Node::visitBranches(const std::function<void(const Point&, const Point&)>& visitor) const
 {
     for (const auto& node : m_children) {
@@ -86,6 +89,7 @@ void Node::visitBranches(const std::function<void(const Point&, const Point&)>& 
         node->visitBranches(visitor);
     }
 }
+
 
 void Node::visitNodes(const std::function<void(NodeSPtr)>& visitor)
 {
@@ -96,7 +100,7 @@ void Node::visitNodes(const std::function<void(NodeSPtr)>& visitor)
     }
 }
 
-Node::Node(const Point& p, const std::optional<Point>& last_grounding_location ) : 
+Node::Node(const Point& p, const std::optional<Point>& last_grounding_location  ) :
     m_is_root(true), m_p(p), m_last_grounding_location(last_grounding_location)
 {}
 
@@ -162,8 +166,10 @@ bool lineSegmentPolygonsIntersection(const Point& a, const Point& b, const EdgeG
 {
     struct Visitor {
         bool operator()(coord_t iy, coord_t ix) {
+
             auto cell_data_range = grid.cell_data_range(iy, ix);
             for (auto it_contour_and_segment = cell_data_range.first; it_contour_and_segment != cell_data_range.second; ++it_contour_and_segment) {
+
                 auto segment = grid.segment(*it_contour_and_segment);
                 if (Vec2d ip; Geometry::segment_segment_intersection(segment.first.cast<double>(), segment.second.cast<double>(), this->line_a, this->line_b, ip))
                     if (double d = (this->intersection_pt - this->line_b).squaredNorm(); d < d2min) {
@@ -171,6 +177,7 @@ bool lineSegmentPolygonsIntersection(const Point& a, const Point& b, const EdgeG
                         this->intersection_pt = ip;
                     }
             }
+
             return true;
         }
 
@@ -195,10 +202,12 @@ bool Node::realign(const Polygons& outlines, const EdgeGrid::Grid& outline_locat
         return false;
 
     if (inside(outlines, m_p)) {
+
         Point coll;
         bool reground_me = false;
         m_children.erase(std::remove_if(m_children.begin(), m_children.end(), [&](const NodeSPtr &child) {
             bool connect_branch = child->realign(outlines, outline_locator, rerooted_parts);
+
             if (connect_branch && lineSegmentPolygonsIntersection(child->m_p, m_p, outline_locator, coll, outline_locator.resolution() * 2)) {
                 child->m_last_grounding_location.reset();
                 child->m_parent.reset();
@@ -213,6 +222,7 @@ bool Node::realign(const Polygons& outlines, const EdgeGrid::Grid& outline_locat
             m_last_grounding_location.reset();
         return true;
     }
+
 
     for (auto& child : m_children)
         if (child->realign(outlines, outline_locator, rerooted_parts)) {
@@ -308,6 +318,7 @@ Node::RectilinearJunction Node::straighten(
     }
 }
 
+
 coord_t Node::prune(const coord_t& pruning_distance)
 {
     if (pruning_distance <= 0)
@@ -326,11 +337,13 @@ coord_t Node::prune(const coord_t& pruning_distance)
             const Point b = child->getLocation();
             const Point ba = a - b;
             const auto ab_len = coord_t(ba.cast<double>().norm());
-            if (dist_pruned_child + ab_len <= pruning_distance) { 
+            if (dist_pruned_child + ab_len <= pruning_distance) {
+
                 assert(child->m_children.empty() && "when pruning away a node all it's children must already have been pruned away");
                 max_distance_pruned = std::max(max_distance_pruned, dist_pruned_child + ab_len);
                 child_it = m_children.erase(child_it);
             } else {
+
                 const Point n = b + (ba.cast<double>().normalized() * (pruning_distance - dist_pruned_child)).cast<coord_t>();
                 assert(std::abs((n - b).cast<double>().norm() + dist_pruned_child - pruning_distance) < 10 && "total pruned distance must be equal to the pruning_distance");
                 max_distance_pruned = std::max(max_distance_pruned, pruning_distance);
@@ -347,6 +360,9 @@ void Node::convertToPolylines(Polylines &output, const coord_t line_overlap) con
 {
     Polylines result;
     result.emplace_back();
+
+
+
     std::mt19937_64 rng { uint64_t(PointHash{}(m_p)) };
     convertToPolylines(0, result, rng);
     removeJunctionOverlap(result, line_overlap);

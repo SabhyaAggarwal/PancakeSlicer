@@ -5,6 +5,7 @@ import { resolveProfile } from '../profiles/model';
 import { getState } from '../state/store';
 
 export interface DemoResolveInput { printer: string; print: string; filaments: string[]; layerHeight?: number; project?: Config }
+
 export async function resolveDemo(input: DemoResolveInput) {
   if (!input.printer || !input.print || !input.filaments?.length) throw new Error('Choose a printer, print profile and filament.');
   const context = { ...getState(), printer: input.printer, process: input.print, filamentSlots: input.filaments,

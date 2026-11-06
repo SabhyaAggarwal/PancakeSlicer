@@ -15,13 +15,37 @@ namespace Slic3r {
 class PrintObject;
 class PrintConfig;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 struct NonplanarDeferral
 {
+
+
+
     struct PathPlan {
         Point  first, second, before_last, last;
         double length;
+
+
+
         std::vector<std::pair<double, int>> breaks;
     };
+
     std::vector<std::map<size_t, std::vector<PathPlan>>> layers;
     size_t conformal_samples { 0 };
     size_t planar_samples    { 0 };
@@ -29,9 +53,11 @@ struct NonplanarDeferral
     size_t deferred_paths    { 0 };
     size_t cut_paths         { 0 };
     size_t refined_units     { 0 };
+
     size_t advanced_paths    { 0 };
 
     bool empty() const { return deferred_paths == 0 && advanced_paths == 0; }
+
     const PathPlan* find(size_t layer_id, size_t source_path_id, const Polyline3 &polyline, bool &reversed) const;
 };
 
@@ -47,18 +73,34 @@ struct NonplanarClearanceModel
     std::vector<Ring> nozzle;
     std::vector<Box> boxes;
     std::vector<Ring> rings() const { return nozzle; }
+
     static NonplanarClearanceModel from_print(const PrintConfig &config, double height = 0.2);
 };
 
+
 NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const NonplanarClearanceModel &model);
+
+
+
+
+
+
+
 
 class NonplanarHeightMap
 {
 public:
     void   clear();
+
     void   deposit(const Vec2d &a, const Vec2d &b, double z, double half_width);
+
+
+
     double travel_height(const std::vector<Vec2d> &path, const NonplanarClearanceModel &model, double min_z) const;
+
+
     double travel_lift(const Vec3d &from, const Vec3d &to, const NonplanarClearanceModel &model) const;
+
     bool supports_travel(const Vec3d &from, const Vec3d &to, double max_gap) const;
 
 private:

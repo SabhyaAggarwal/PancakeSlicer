@@ -1,3 +1,6 @@
+
+
+
 import { createElement, lazy, type ComponentType } from 'react';
 
 export function preloadable<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
@@ -8,6 +11,7 @@ export function preloadable<P extends object>(load: () => Promise<{ default: Com
   const View = (props: P) => createElement(loaded ?? Lazy, props);
   return Object.assign(View, { preload });
 }
+
 
 export function whenIdle(task: () => void, timeout = 3000) {
   if ('requestIdleCallback' in window) requestIdleCallback(() => task(), { timeout });

@@ -4,6 +4,7 @@
 #include <string>
 
 namespace Slic3r {
+
 class PrusaFileParser
 {
 public:
@@ -26,10 +27,23 @@ private:
     XML_Parser m_parser;
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
     enum {
         support_points_format_version = 1
     };
-    
+
     enum {
         drain_holes_format_version = 1
     };
@@ -39,7 +53,10 @@ private:
     class DynamicPrintConfig;
     struct ThumbnailData;
 
+
     extern bool load_3mf(const char* path, DynamicPrintConfig& config, ConfigSubstitutionContext& config_substitutions, Model* model, bool check_version);
+
+
 
     extern bool store_3mf(const char* path, Model* model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data = nullptr, bool zip64 = true);
 

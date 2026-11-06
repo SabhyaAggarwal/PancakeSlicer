@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import type { Config, ConfigValue, SystemPreset } from '../api/types';
 import { toolValue } from '../config-values';
 import { OPTIONS } from '../options';
@@ -8,12 +14,15 @@ export type GoalId = 'balanced' | 'strong' | 'fine' | 'fast';
 export const GOAL_IDS: GoalId[] = ['balanced', 'strong', 'fine', 'fast'];
 export const GOAL_NAMES: Record<GoalId, string> = { balanced: 'Balanced', strong: 'Strong', fine: 'Fine', fast: 'Fast' };
 
+
 export interface Delta { key: string; from: ConfigValue; to: ConfigValue; source: string }
 export interface Goal { id: GoalId; name: string; deltas: Delta[] }
 export interface Goals { base: string; goals: Record<GoalId, Goal> }
+
 export interface GoalMatch { id: GoalId; edits: string[]; goals: Goals }
 
 const isStyleKey = (k: string) => /^(nonplanar_|zaa_)/.test(k);
+
 const IGNORED = /^(compatible_printers(_condition)?|compatible_prints(_condition)?|print_settings_id|inherits|default_\w+|print_compatible_printers|filament_settings_id|printer_settings_id|notes|setting_id)$/;
 const counts = (k: string) => !isStyleKey(k) && !PRESET_META.test(k) && !IGNORED.test(k);
 
@@ -23,11 +32,14 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 const dflt = (k: string) => (OPTIONS[k]?.default as ConfigValue | undefined) ?? '';
 export const same = (k: string, a: ConfigValue | undefined, b: ConfigValue | undefined) => toolValue(k, a ?? dflt(k)) === toolValue(k, b ?? dflt(k));
 
+
+
 const FROM_PRESET: Record<Exclude<GoalId, 'balanced'>, string[]> = {
   strong: ['wall_loops', 'sparse_infill_density', 'sparse_infill_pattern', 'top_shell_layers', 'bottom_shell_layers'],
   fine: ['layer_height', 'top_shell_layers', 'bottom_shell_layers'],
   fast: ['layer_height', 'top_shell_layers', 'bottom_shell_layers'],
 };
+
 
 function baseProcess(s: State, list: SystemPreset[]): string {
   const machine = resolvePreset(s, 'machine', s.printer).base;
@@ -35,6 +47,7 @@ function baseProcess(s: State, list: SystemPreset[]): string {
   if (list.some((p) => p.name === def)) return def;
   return resolvePreset(s, 'process', s.process).base?.name ?? s.process;
 }
+
 
 function nearest(list: SystemPreset[], lo: number, hi: number, target: number, prefer: RegExp) {
   return list.filter((p) => { const h = num(p.config.layer_height); return h > lo + 1e-6 && h <= hi + 1e-6; })
@@ -48,6 +61,7 @@ function fromPreset(id: Exclude<GoalId, 'balanced'>, base: Config, p: SystemPres
     .map((k) => ({ key: k, from: base[k] ?? dflt(k), to: p.config[k], source: p.name }));
 }
 
+
 function shells(base: Config, lh: number, source: string): Delta[] {
   const lh0 = num(base.layer_height) || 0.2;
   const out: Delta[] = [];
@@ -60,6 +74,7 @@ function shells(base: Config, lh: number, source: string): Delta[] {
 
 const RULE = 'rule';
 const cache = new WeakMap<SystemPreset[], Map<string, Goals>>();
+
 
 export function deriveGoals(s: State): Goals {
   const list = compatible(s, 'process', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
@@ -85,6 +100,7 @@ export function deriveGoals(s: State): Goals {
     const lh = Math.min(r2(lh0 * 1.4), r2(nozzle * 0.7));
     fast = lh > lh0 ? [{ key: 'layer_height', from: base.layer_height ?? dflt('layer_height'), to: String(lh), source: RULE }, ...shells(base, lh, RULE)] : [];
   }
+
   if (num(base.sparse_infill_density) > 10) fast.push({ key: 'sparse_infill_density', from: base.sparse_infill_density, to: '10%', source: RULE });
 
   const strongP = list.find((p) => /Strength/.test(p.name) && Math.abs(num(p.config.layer_height) - lh0) < 1e-6);
@@ -102,6 +118,7 @@ export function deriveGoals(s: State): Goals {
   return out;
 }
 
+
 function goalEdits(s: State, g: Goal): Config {
   const keep = Object.fromEntries(Object.entries(s.dirty.process).filter(([k]) => isStyleKey(k)));
   for (const d of g.deltas) keep[d.key] = d.to;
@@ -110,6 +127,7 @@ function goalEdits(s: State, g: Goal): Config {
 
 let matchKey: unknown[] = [];
 let matchOut: GoalMatch | null = null;
+
 export function goalMatch(s: State): GoalMatch {
   const plate = s.projectPlates.find((p) => p.index === s.plateIndex)?.settings;
   const key = [s.processes, s.printer, s.process, s.dirty.process, s.projectPresets, plate, s.userPresets];
@@ -130,10 +148,12 @@ export function goalMatch(s: State): GoalMatch {
   return best!;
 }
 
+
 export function goalLabel(m: GoalMatch) {
   const n = m.edits.length;
   return n ? `${GOAL_NAMES[m.id]} + ${n} edit${n === 1 ? '' : 's'}` : GOAL_NAMES[m.id];
 }
+
 
 export function goalPatch(s: State, id: GoalId): Pick<State, 'process' | 'dirty' | 'projectPresets'> {
   const goals = deriveGoals(s);
@@ -141,9 +161,11 @@ export function goalPatch(s: State, id: GoalId): Pick<State, 'process' | 'dirty'
   return { process: goals.base, dirty: { ...s.dirty, process: goalEdits(s, goals.goals[id]) }, projectPresets: project };
 }
 
+
 export function applyGoal(id: GoalId) {
   undoable(`Goal: ${GOAL_NAMES[id]}`, () => setState((s) => goalPatch(s, id)));
 }
+
 
 export function goalSetKeys(s: State): Record<string, Delta & { goal: string }> {
   const m = goalMatch(s);
@@ -151,6 +173,8 @@ export function goalSetKeys(s: State): Record<string, Delta & { goal: string }> 
   for (const d of m.goals.goals[m.id].deltas) if (!m.edits.includes(d.key)) out[d.key] = { ...d, goal: GOAL_NAMES[m.id] };
   return out;
 }
+
+
 
 let last: { printer: string; id: GoalId; exact: boolean } | null = null;
 subscribeStore(() => {

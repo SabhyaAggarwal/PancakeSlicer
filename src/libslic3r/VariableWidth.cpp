@@ -26,12 +26,15 @@ ExtrusionMultiPath thick_polyline_to_multi_path(const ThickPolyline& thick_polyl
 
         const coordf_t line_len = line.length();
         if (line_len < SCALED_EPSILON) {
+
             if (!path.empty())
                 path.polyline.points.back() = Point3(line.b);
             else if (i + 1 < (int)lines.size())
                 lines[i + 1].a = line.a;
             else if (!multi_path.paths.empty())
                 multi_path.paths.back().polyline.points.back() = Point3(line.b);
+
+
             continue;
         }
 
@@ -58,6 +61,7 @@ ExtrusionMultiPath thick_polyline_to_multi_path(const ThickPolyline& thick_polyl
                 assert(width.size() == segments*2);
             }
 
+
             lines.erase(lines.begin() + i);
             for (size_t j = 0; j < segments; ++j) {
                 ThickLine new_line(pp[j], pp[j+1]);
@@ -75,6 +79,8 @@ ExtrusionMultiPath thick_polyline_to_multi_path(const ThickPolyline& thick_polyl
         if (path.polyline.points.empty()) {
             path.polyline.append(Point3(line.a));
             path.polyline.append(Point3(line.b));
+
+
             #ifdef SLIC3R_DEBUG
             printf("  filling %f gap\n", flow.width);
             #endif
@@ -85,8 +91,11 @@ ExtrusionMultiPath thick_polyline_to_multi_path(const ThickPolyline& thick_polyl
             assert(path.width >= EPSILON);
             thickness_delta = scaled<double>(fabs(path.width - new_flow.width()));
             if (thickness_delta <= merge_tolerance) {
+
+
                 path.polyline.append(Point3(line.b));
             } else {
+
                 multi_path.paths.emplace_back(std::move(path));
                 path = ExtrusionPath(role);
                 -- i;
@@ -97,6 +106,7 @@ ExtrusionMultiPath thick_polyline_to_multi_path(const ThickPolyline& thick_polyl
         multi_path.paths.emplace_back(std::move(path));
     return multi_path;
 }
+
 
 static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& thick_polyline, ExtrusionRole role, const Flow& flow, const float tolerance)
 {
@@ -119,7 +129,9 @@ static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& t
         if (line_len < SCALED_EPSILON) continue;
 
         double thickness_delta = std::max(fabs(max_width - line.b_width), fabs(min_width - line.b_width));
+
         if (thickness_delta > tolerance) {
+
             if (start_index != i){
                 path = ExtrusionPath(role);
                 double length = lines[start_index].length();
@@ -145,6 +157,7 @@ static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& t
             max_width = line.a_width;
             min_width = line.a_width;
 
+
             thickness_delta = fabs(line.a_width - line.b_width);
             if (thickness_delta > tolerance){
                 const unsigned int segments = (unsigned int)ceil(thickness_delta / tolerance);
@@ -168,6 +181,7 @@ static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& t
                     assert(width.size() == segments * 2);
                 }
 
+
                 lines.erase(lines.begin() + i);
                 for (size_t j = 0; j < segments; ++j) {
                     ThickLine new_line(pp[j], pp[j + 1]);
@@ -179,11 +193,13 @@ static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& t
                 continue;
             }
         }
+
         else {
             max_width = std::max(max_width, std::max(line.a_width, line.b_width));
             min_width = std::min(min_width, std::min(line.a_width, line.b_width));
         }
     }
+
     size_t final_size = lines.size();
     if (start_index < final_size) {
         path = ExtrusionPath(role);
@@ -211,9 +227,13 @@ static ExtrusionPaths thick_polyline_to_extrusion_paths_2(const ThickPolyline& t
 
 void variable_width(const ThickPolylines& polylines, ExtrusionRole role, const Flow& flow, std::vector<ExtrusionEntity*>& out)
 {
+
+
+
     const float tolerance = float(scale_(0.05));
     for (const ThickPolyline& p : polylines) {
         ExtrusionPaths paths = thick_polyline_to_extrusion_paths_2(p, role, flow, tolerance);
+
         if (!paths.empty()) {
             if (paths.front().first_point() == paths.back().last_point())
                 out.emplace_back(new ExtrusionLoop(std::move(paths)));

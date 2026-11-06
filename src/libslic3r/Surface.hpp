@@ -14,18 +14,31 @@
 namespace Slic3r {
 
 enum SurfaceType {
+
     stTop,
+
     stBottom,
+
     stBottomBridge,
+
     stInternalAfterExternalBridge,
+
     stInternal,
+
     stInternalSolid,
+
     stInternalBridge,
+
     stSecondInternalBridge,
+
+
     stInternalVoid,
+
     stPerimeter,
+
     stTopNonplanar,
     stInternalSolidNonplanar,
+
     stCount,
 };
 
@@ -38,9 +51,14 @@ public:
     unsigned short  thickness_layers;
     double          bridge_angle;
     unsigned short  extra_perimeters;
+
+
+
     float           distance_to_top   { -1 };
     size_t          source_layer_id   { size_t(-1) };
     int             source_surface_id { -1 };
+
+
 
     bool same_nonplanar_shell(const Surface &rhs) const {
         return this->is_nonplanar() == rhs.is_nonplanar() &&
@@ -118,6 +136,7 @@ public:
 	double area() 		 const { return this->expolygon.area(); }
     bool   empty() 		 const { return expolygon.empty(); }
     void   clear() 			   { expolygon.clear(); }
+
 
 	bool   is_top()      const { return this->surface_type == stTop || this->surface_type == stTopNonplanar; }
 	bool   is_bottom()   const { return this->surface_type == stBottom || this->surface_type == stBottomBridge; }
@@ -202,6 +221,8 @@ inline ExPolygons to_expolygons(const SurfacesPtr &src)
     return expolygons;
 }
 
+
+
 inline size_t number_polygons(const Surfaces &surfaces)
 {
     size_t n_polygons = 0;
@@ -216,6 +237,7 @@ inline size_t number_polygons(const SurfacesPtr &surfaces)
         n_polygons += (*it)->expolygon.holes.size() + 1;
     return n_polygons;
 }
+
 
 inline void polygons_append(Polygons &dst, const Surfaces &src)
 {
@@ -236,6 +258,7 @@ inline void polygons_append(Polygons &dst, Surfaces &&src)
     }
 }
 
+
 inline void polygons_append(Polygons &dst, const SurfacesPtr &src)
 {
     dst.reserve(dst.size() + number_polygons(src));
@@ -244,6 +267,19 @@ inline void polygons_append(Polygons &dst, const SurfacesPtr &src)
         dst.insert(dst.end(), (*it)->expolygon.holes.begin(), (*it)->expolygon.holes.end());
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 inline void surfaces_append(Surfaces &dst, const ExPolygons &src, SurfaceType surfaceType)
 {

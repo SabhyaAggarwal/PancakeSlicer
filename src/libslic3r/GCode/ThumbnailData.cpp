@@ -21,6 +21,7 @@ void ThumbnailData::set(unsigned int w, unsigned int h)
     {
         width = w;
         height = h;
+
         pixels.clear();
         pixels = std::vector<unsigned char>(width * height * 4, 255);
     }
@@ -37,6 +38,9 @@ bool ThumbnailData::is_valid() const
 {
     return (width != 0) && (height != 0) && ((unsigned int)pixels.size() == 4 * width * height);
 }
+
+
+
 
 ThumbnailData render_thumbnail(const indexed_triangle_set &mesh, unsigned width, unsigned height, bool top, const std::string &colour)
 {

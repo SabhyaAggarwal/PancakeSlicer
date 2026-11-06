@@ -251,6 +251,7 @@ func (s *Server) libraryRoutes(mux *http.ServeMux) {
 			libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
 			return
 		}
+
 		previous, _ := v4Profiles(e.Document)
 		setups := string(in.Document["setups"])
 		for id, p := range previous {

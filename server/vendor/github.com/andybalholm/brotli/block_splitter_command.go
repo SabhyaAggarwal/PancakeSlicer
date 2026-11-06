@@ -51,9 +51,6 @@ func refineEntropyCodesCommand(data []uint16, length uint, stride uint, num_hist
 	}
 }
 
-/* Assigns a block id from the range [0, num_histograms) to each data element
-   in data[0..length) and fills in block_id[0..length) with the assigned values.
-   Returns the number of blocks, i.e. one plus the number of block switches. */
 func findBlocksCommand(data []uint16, length uint, block_switch_bitcost float64, num_histograms uint, histograms []histogramCommand, insert_cost []float64, cost []float64, switch_signal []byte, block_id []byte) uint {
 	var data_size uint = histogramDataSizeCommand()
 	var bitmaplen uint = (num_histograms + 7) >> 3
@@ -90,12 +87,6 @@ func findBlocksCommand(data []uint16, length uint, block_switch_bitcost float64,
 		switch_signal[i] = 0
 	}
 
-	/* After each iteration of this loop, cost[k] will contain the difference
-	   between the minimum cost of arriving at the current byte position using
-	   entropy code k, and the minimum cost of arriving at the current byte
-	   position. This difference is capped at the block switch cost, and if it
-	   reaches block switch cost, it means that when we trace back from the last
-	   position, we need to switch here. */
 	for i = 0; i < length; i++ {
 		var byte_ix uint = i
 		var ix uint = byte_ix * bitmaplen
@@ -104,7 +95,7 @@ func findBlocksCommand(data []uint16, length uint, block_switch_bitcost float64,
 		var block_switch_cost float64 = block_switch_bitcost
 		var k uint
 		for k = 0; k < num_histograms; k++ {
-			/* We are coding the symbol in data[byte_ix] with entropy code k. */
+
 			cost[k] += insert_cost[insert_cost_ix+k]
 
 			if cost[k] < min_cost {
@@ -113,7 +104,6 @@ func findBlocksCommand(data []uint16, length uint, block_switch_bitcost float64,
 			}
 		}
 
-		/* More blocks for the beginning. */
 		if byte_ix < 2000 {
 			block_switch_cost *= 0.77 + 0.07*float64(byte_ix)/2000
 		}
@@ -125,7 +115,7 @@ func findBlocksCommand(data []uint16, length uint, block_switch_bitcost float64,
 				cost[k] = block_switch_cost
 				assert(k>>3 < bitmaplen)
 				switch_signal[ix+(k>>3)] |= mask
-				/* Trace back from the last position and switch at the marked places. */
+
 			}
 		}
 	}
@@ -396,7 +386,6 @@ func splitByteVectorCommand(data []uint16, literals_per_histogram uint, max_hist
 
 	histograms = make([]histogramCommand, num_histograms)
 
-	/* Find good entropy codes. */
 	initialEntropyCodesCommand(data, length, sampling_stride_length, num_histograms, histograms)
 
 	refineEntropyCodesCommand(data, length, sampling_stride_length, num_histograms, histograms)
@@ -414,7 +403,6 @@ func splitByteVectorCommand(data []uint16, literals_per_histogram uint, max_hist
 		} else {
 			iters = 10
 		}
-		/* Find a good path through literals with the good entropy codes. */
 
 		var i uint
 		for i = 0; i < iters; i++ {

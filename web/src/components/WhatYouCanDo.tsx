@@ -1,15 +1,18 @@
-import page from '../../../docs/webapp/WHAT_YOU_CAN_DO.md?raw';
+
+
+import page from '../../../docs/user-guide/features.md?raw';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
 import './what-you-can-do.css';
 
-const images = import.meta.glob<string>('../../../docs/webapp/images/what-you-can-do/*.webp', { eager: true, query: '?url', import: 'default' });
+const images = import.meta.glob<string>('../../../docs/user-guide/images/what-you-can-do/*.webp', { eager: true, query: '?url', import: 'default' });
+
 
 const items = page.split(/\n\s*\n/).slice(1).reduce<{ title: string; text: string; shots: [string, string][] }[]>((list, block) => {
   const item = /^\*\*(.+?)\*\*\s*(.*)$/s.exec(block.trim());
   if (item) list.push({ title: item[1].replace(/\.$/, ''), text: item[2], shots: [] });
   else for (const m of block.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g))
-    list[list.length - 1]?.shots.push([m[1], images[`../../../docs/webapp/${m[2]}`]]);
+    list[list.length - 1]?.shots.push([m[1], images[`../../../docs/user-guide/${m[2]}`]]);
   return list;
 }, []);
 
@@ -17,6 +20,7 @@ export default function WhatYouCanDo({ close }: { close(): void }) {
   const [i, setI] = useState(0);
   const it = items[i];
   const go = (n: number) => setI((n + items.length) % items.length);
+
   const rail = useRef<HTMLOListElement>(null);
   useEffect(() => { if (rail.current?.contains(document.activeElement)) rail.current.querySelector<HTMLElement>('.active')?.focus(); }, [i]);
   return (

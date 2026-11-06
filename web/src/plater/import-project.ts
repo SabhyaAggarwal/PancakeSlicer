@@ -5,10 +5,18 @@ import { getState, setState } from '../state/store';
 import { prepareProjectProfileImport } from '../profiles/project-import';
 import { readMixes } from './mixed';
 
+
+
+
+
 export function adoptProject(config:Config,slots:number,plateKeys:Set<string>) {
   const mixed=[config.filament_is_mixed].flat().some(v=>['1','true'].includes(String(v)));
   setState({...prepareProjectProfileImport(getState(),config,slots,plateKeys),...(mixed?{mixes:readMixes(config)}:{})});
 }
+
+
+
+
 
 export function centreGeometryOnly(bed: {x:number;y:number}[]) {
   const box = new THREE.Box3();

@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import * as THREE from 'three';
 import { TEX_WIDTH, type PreviewData } from './data';
 import { BLOCK, MoveType } from './format';
@@ -146,6 +152,7 @@ in vec3 color;
 out vec4 frag;
 void main() { frag = vec4(color, 1.0); }`;
 
+
 const OPTION_VS = `#version 300 es
 precision highp float;
 precision highp int;
@@ -195,6 +202,7 @@ function compile(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgr
   return p;
 }
 
+
 const f32 = new Float32Array(1);
 const u32 = new Uint32Array(f32.buffer);
 function half(v: number): number {
@@ -213,9 +221,13 @@ function half(v: number): number {
 export interface DrawState {
   range: [number, number];
   roleMask: number;
+
   typeMask: number;
+
   optionMask: number;
+
   focusMask?: number;
+
   diffColor?: [number, number, number];
 }
 
@@ -274,6 +286,7 @@ export class SegmentRenderer {
     for (const n of ['light_top_dir', 'view_matrix', 'projection_matrix', 'position_tex', 'attr_tex', 'color_tex', 'option_tex', 'range', 'type_mask'])
       this.ou[n] = gl.getUniformLocation(this.optProg, n);
 
+
     this.vao = gl.createVertexArray()!;
     gl.bindVertexArray(this.vao);
     const vb = gl.createBuffer();
@@ -286,6 +299,7 @@ export class SegmentRenderer {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array([0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, 0, 5, 6, 0, 6, 1, 5, 4, 7, 5, 7, 6]), gl.STATIC_DRAW);
 
+
     this.ribbonVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.ribbonVao);
     const rb = gl.createBuffer();
@@ -296,6 +310,7 @@ export class SegmentRenderer {
     const rib = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, rib);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array([0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4]), gl.STATIC_DRAW);
+
 
     this.optVao = gl.createVertexArray()!;
     gl.bindVertexArray(this.optVao);
@@ -334,6 +349,7 @@ export class SegmentRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   }
 
+
   private upload(tex: WebGLTexture, format: number, type: number, comps: number, src: ArrayBufferView & ArrayLike<number>, from: number, to: number) {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -353,6 +369,7 @@ export class SegmentRenderer {
       }
     }
   }
+
 
   reset(d: PreviewData) {
     const gl = this.gl;
@@ -383,6 +400,7 @@ export class SegmentRenderer {
     this.renderer.resetState();
   }
 
+
   addChunk(start: number, count: number) {
     const d = this.data!;
     const gl = this.gl;
@@ -396,6 +414,7 @@ export class SegmentRenderer {
     this.upload(this.posTex, gl.RGBA, gl.FLOAT, 4, d.pos, start, end);
     if (d.orientation.length) this.upload(this.orientationTex, gl.RGB, gl.FLOAT, 3, d.orientation, start, end);
     this.upload(this.attrTex, gl.RGBA, gl.HALF_FLOAT, 4, a, start, end);
+
     for (let b = start; b < end; b += BLOCK) {
       const e = Math.min(end, b + BLOCK);
       const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
@@ -413,6 +432,7 @@ export class SegmentRenderer {
       box.expandByScalar(3 * Math.min(pad, 2));
       this.blocks.push({ first: Math.max(1, b), end: e, box });
     }
+
     for (; this.lodArrays < d.lod.length; ++this.lodArrays) {
       const pairs = d.lod[this.lodArrays];
       this.uploadOffset(this.lodTex, gl.RG_INTEGER, gl.UNSIGNED_INT, 2, pairs, this.lodUploaded);
@@ -426,12 +446,15 @@ export class SegmentRenderer {
     this.renderer.resetState();
   }
 
+
   private uploadOffset(tex: WebGLTexture, format: number, type: number, comps: number, src: Uint32Array, at: number) {
     const n = src.length / comps;
     if (!n) return;
+
     const shifted = { subarray: (a: number, b: number) => src.subarray(a - at * comps, b - at * comps) } as unknown as Float32Array;
     this.upload(tex, format, type, comps, shifted, at, at + n);
   }
+
 
   setDiff(flags: Uint8Array | null) {
     const gl = this.gl;
@@ -441,10 +464,12 @@ export class SegmentRenderer {
     this.renderer.resetState();
   }
 
+
   uploadColors(from: number, to: number) {
     this.upload(this.colorTex, this.gl.RGBA, this.gl.UNSIGNED_BYTE, 4, this.colors, from, to);
     this.renderer.resetState();
   }
+
 
   pick(ray: THREE.Ray, state: DrawState, tolerance: number): number | null {
     const d = this.data;
@@ -522,6 +547,7 @@ export class SegmentRenderer {
     let lodMode = false, ribbonMode = false;
     gl.uniform1i(u.lod, 0);
     gl.uniform1i(u.ribbon, 0);
+
     const order = camera.getWorldDirection(new THREE.Vector3()).z < -0.3 ? -1 : 1;
     const n = this.blocks.length;
     for (let j = 0; j < n; ++j) {
@@ -532,6 +558,8 @@ export class SegmentRenderer {
       if (!frustum.intersectsBox(b.box)) { ++stats.culled; continue; }
       ++stats.blocks;
       const lodRange = d.lodBlocks.length > bi * 2 + 1 ? [d.lodBlocks[bi * 2], d.lodBlocks[bi * 2 + 1]] : null;
+
+
       const far = this.lodEnabled && (camera instanceof THREE.OrthographicCamera ? (camera.top - camera.bottom) / camera.zoom / Math.max(1, viewportHeight) : b.box.distanceToPoint(camera.position) * k) >= this.lodPixel;
       const merged = far && lodRange != null && s0 === b.first && s1 === b.end;
       if (far !== ribbonMode) {

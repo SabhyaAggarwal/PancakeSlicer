@@ -33,6 +33,7 @@
 #include "miniz_extension.hpp"
 
 #if 0
+
 #define DEBUG
 #define _DEBUG
 #undef NDEBUG
@@ -40,8 +41,26 @@
 
 #include <assert.h>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 namespace Slic3r
 {
+
+
 
 #define L(s) (s)
 #define _(s) Slic3r::I18N::translate(s)
@@ -69,7 +88,9 @@ struct AMFParserContext
     bool        error()         const { return m_error; }
     const char* error_message() const {
         return m_error ?
+
             (m_error_message.empty() ? "Parse AMF file failed" : m_error_message.c_str()) :
+
             XML_ErrorString(XML_GetErrorCode(m_parser));
     }
 
@@ -89,6 +110,7 @@ struct AMFParserContext
         AMFParserContext *ctx = (AMFParserContext*)userData;
         ctx->endElement(name);
     }
+
 
     static void XMLCALL characters(void *userData, const XML_Char *s, int len)
     {
@@ -111,8 +133,14 @@ struct AMFParserContext
         NODE_TYPE_INVALID = 0,
         NODE_TYPE_UNKNOWN,
         NODE_TYPE_AMF,
+
         NODE_TYPE_MATERIAL,
+
         NODE_TYPE_OBJECT,
+
+
+
+
         NODE_TYPE_MESH,
         NODE_TYPE_VERTICES,
         NODE_TYPE_VERTEX,
@@ -121,6 +149,7 @@ struct AMFParserContext
         NODE_TYPE_COORDINATE_Y,
         NODE_TYPE_COORDINATE_Z,
         NODE_TYPE_VOLUME,
+
         NODE_TYPE_TRIANGLE,
         NODE_TYPE_VERTEX1,
         NODE_TYPE_VERTEX2,
@@ -141,6 +170,9 @@ struct AMFParserContext
         NODE_TYPE_MIRRORY,
         NODE_TYPE_MIRRORZ,
         NODE_TYPE_PRINTABLE,
+
+
+
         NODE_TYPE_METADATA,
     };
 
@@ -151,30 +183,39 @@ struct AMFParserContext
             , scalex_set(false), scaley_set(false), scalez_set(false)
             , mirrorx_set(false), mirrory_set(false), mirrorz_set(false)
             , printable(true) {}
+
         float deltax;
         bool  deltax_set;
+
         float deltay;
         bool  deltay_set;
+
         float deltaz;
         bool  deltaz_set;
+
         float rx;
         bool  rx_set;
+
         float ry;
         bool  ry_set;
+
         float rz;
         bool  rz_set;
+
         float scalex;
         bool  scalex_set;
         float scaley;
         bool  scaley_set;
         float scalez;
         bool  scalez_set;
+
         float mirrorx;
         bool  mirrorx_set;
         float mirrory;
         bool  mirrory_set;
         float mirrorz;
         bool  mirrorz_set;
+
         bool  printable;
 
         bool anything_set() const { return deltax_set || deltay_set || deltaz_set ||
@@ -189,22 +230,41 @@ struct AMFParserContext
         std::vector<Instance>   instances;
     };
 
+
+
+
     XML_Parser               m_parser;
+
+
     bool                     m_error { false };
     std::string              m_error_message;
+
     Model                   &m_model;
+
     std::vector<AMFNodeType> m_path;
+
     ModelObject             *m_object { nullptr };
+
     std::map<std::string, Object> m_object_instances_map;
+
     std::vector<Vec3f>       m_object_vertices;
+
     ModelVolume             *m_volume { nullptr };
+
     std::vector<Vec3i32>       m_volume_facets;
+
     Transform3d 			 m_volume_transform;
+
     ModelMaterial           *m_material { nullptr };
+
     Instance                *m_instance { nullptr };
+
     std::string              m_value[5];
+
     DynamicPrintConfig      *m_config { nullptr };
+
     ConfigSubstitutionContext *m_config_substitutions { nullptr };
+
     bool                     m_use_inches { false };
 
 private:
@@ -216,8 +276,10 @@ void AMFParserContext::startElement(const char *name, const char **atts)
     AMFNodeType node_type_new = NODE_TYPE_UNKNOWN;
     switch (m_path.size()) {
     case 0: {
+
         node_type_new = NODE_TYPE_AMF;
         if (strcmp(name, "amf") != 0) this->stop();
+
         const char *units = get_attribute(atts, "unit");
         if (units && (strcmp(units, "inch") == 0)) { m_use_inches = true; }
         break;
@@ -246,6 +308,8 @@ void AMFParserContext::startElement(const char *name, const char **atts)
         } else if (strcmp(name, "constellation") == 0) {
             node_type_new = NODE_TYPE_CONSTELLATION;
         }
+
+
         break;
     case 2:
         if (strcmp(name, "metadata") == 0) {
@@ -259,6 +323,7 @@ void AMFParserContext::startElement(const char *name, const char **atts)
                 }
             }
         }
+
         else if (strcmp(name, "mesh") == 0) {
             if (m_path[1] == NODE_TYPE_OBJECT)
                 node_type_new = NODE_TYPE_MESH;
@@ -276,6 +341,36 @@ void AMFParserContext::startElement(const char *name, const char **atts)
             else
                 this->stop();
         }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         break;
     case 3:
         if (m_path[2] == NODE_TYPE_MESH) {
@@ -320,6 +415,10 @@ void AMFParserContext::startElement(const char *name, const char **atts)
             else if (strcmp(name, "printable") == 0)
                 node_type_new = NODE_TYPE_PRINTABLE;
         }
+
+
+
+
         break;
     case 4:
         if (m_path[3] == NODE_TYPE_VERTICES) {
@@ -337,6 +436,10 @@ void AMFParserContext::startElement(const char *name, const char **atts)
             } else if (strcmp(name, "triangle") == 0)
                 node_type_new = NODE_TYPE_TRIANGLE;
         }
+
+
+
+
         break;
     case 5:
         if (strcmp(name, "coordinates") == 0) {
@@ -411,10 +514,11 @@ void AMFParserContext::characters(const XML_Char *s, int len)
     }
 }
 
-void AMFParserContext::endElement(const char * )
+void AMFParserContext::endElement(const char *  )
 {
     assert(is_decimal_separator_point());
     switch (m_path.back()) {
+
 
     case NODE_TYPE_DELTAX:
         assert(m_instance);
@@ -504,13 +608,16 @@ void AMFParserContext::endElement(const char * )
         m_value[0].clear();
         break;
 
+
     case NODE_TYPE_VERTEX:
         assert(m_object);
+
         m_object_vertices.emplace_back(float(atof(m_value[0].c_str())), float(atof(m_value[1].c_str())), float(atof(m_value[2].c_str())));
         m_value[0].clear();
         m_value[1].clear();
         m_value[2].clear();
         break;
+
 
     case NODE_TYPE_TRIANGLE:
         assert(m_object && m_volume);
@@ -519,6 +626,7 @@ void AMFParserContext::endElement(const char * )
         m_value[1].clear();
         m_value[2].clear();
         break;
+
 
     case NODE_TYPE_VOLUME:
     {
@@ -529,6 +637,7 @@ void AMFParserContext::endElement(const char * )
         }
 
         {
+
             int min_id = m_volume_facets.front()[0];
             int max_id = min_id;
             for (const Vec3i32& face : m_volume_facets) {
@@ -542,6 +651,7 @@ void AMFParserContext::endElement(const char * )
                 }
             }
 
+
             for (Vec3i32 &face : m_volume_facets)
                 face -= Vec3i32(min_id, min_id, min_id);
 
@@ -552,6 +662,7 @@ void AMFParserContext::endElement(const char * )
             m_volume->set_mesh(std::move(its));
         }
 
+
         if (bool has_transform = !m_volume_transform.isApprox(Transform3d::Identity(), 1e-10); has_transform)
             m_volume->source.transform = Slic3r::Geometry::Transformation(m_volume_transform);
 
@@ -560,6 +671,7 @@ void AMFParserContext::endElement(const char * )
             m_volume->source.volume_idx = (int)m_model.objects.back()->volumes.size() - 1;
             m_volume->center_geometry_after_creation();
         } else
+
             m_volume->center_geometry_after_creation(m_volume->source.input_file.empty());
 
         m_volume->calculate_convex_hull();
@@ -584,8 +696,143 @@ void AMFParserContext::endElement(const char * )
         m_instance = nullptr;
         break;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     case NODE_TYPE_METADATA:
-        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if (m_path.size() == 3) {
             if (m_path[1] == NODE_TYPE_MATERIAL) {
                 if (m_material)
@@ -598,6 +845,9 @@ if (m_path.size() == 3) {
             if (m_volume && m_value[0] == "name")
                 m_volume->name = std::move(m_value[1]);
         }
+
+
+
 
         m_value[0].clear();
         m_value[1].clear();
@@ -639,6 +889,8 @@ void AMFParserContext::endDocument()
         }
     }
 }
+
+
 
 bool load_amf_file(const char *path, DynamicPrintConfig *config, ConfigSubstitutionContext *config_substitutions, Model *model, bool *use_inches)
 {
@@ -701,6 +953,7 @@ bool load_amf_file(const char *path, DynamicPrintConfig *config, ConfigSubstitut
 
     return result;
 }
+
 
 bool extract_model_from_archive(mz_zip_archive& archive, const mz_zip_archive_file_stat& stat, DynamicPrintConfig* config, ConfigSubstitutionContext* config_substitutions, Model* model, bool* use_inches)
 {
@@ -769,8 +1022,16 @@ bool extract_model_from_archive(mz_zip_archive& archive, const mz_zip_archive_fi
         *use_inches = ctx.m_use_inches;
     }
 
+
+
+
+
+
+
+
     return true;
 }
+
 
 bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubstitutionContext* config_substitutions, Model* model, bool* use_inches)
 {
@@ -789,6 +1050,7 @@ bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubsti
     mz_uint num_entries = mz_zip_reader_get_num_files(&archive);
 
     mz_zip_archive_file_stat stat;
+
     for (mz_uint i = 0; i < num_entries; ++i)
     {
         if (mz_zip_reader_file_stat(&archive, i, &stat))
@@ -806,6 +1068,7 @@ bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubsti
                 }
                 catch (const std::exception& e)
                 {
+
                     close_zip_reader(&archive);
                     throw Slic3r::FileIOError(e.what());
                 }
@@ -816,10 +1079,12 @@ bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubsti
     }
 
 #if 0
+
     for (mz_uint i = 0; i < num_entries; ++i)
     {
         if (mz_zip_reader_file_stat(&archive, i, &stat))
         {
+
         }
     }
 #endif
@@ -833,6 +1098,9 @@ bool load_amf_archive(const char* path, DynamicPrintConfig* config, ConfigSubsti
 
     return true;
 }
+
+
+
 
 bool load_amf(const char *path, DynamicPrintConfig *config, ConfigSubstitutionContext *config_substitutions, Model *model, bool* use_inches)
 {
@@ -853,5 +1121,285 @@ bool load_amf(const char *path, DynamicPrintConfig *config, ConfigSubstitutionCo
     else
         return false;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 };

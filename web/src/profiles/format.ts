@@ -1,7 +1,9 @@
+
 import type { ConfigValue } from '../api/types';
 import { normalizeConfigValue } from '../config-values';
 import { OPTIONS } from '../options';
 import { PRESET_META } from './model';
+
 
 export function display(key: string, value: ConfigValue | undefined): string {
   if (value === undefined) return '—';
@@ -17,7 +19,9 @@ export function display(key: string, value: ConfigValue | undefined): string {
   return Array.isArray(v) ? v.map(one).join(', ') : one(v);
 }
 
+
 export const presetLabel = (name: string) =>
   (name.replace(/\s*@.*$/, '').replace(/\s*[·-]\s*System\b/gi, '').trim() || name);
+
 
 export const isMetaKey = (key: string) => PRESET_META.test(key) || /^(inherits_group|different_settings_to_system)$/.test(key);

@@ -12,20 +12,36 @@
 
 namespace Slic3r { namespace astar {
 
+
 template<class T> using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
+
+
+
 
 template<class T> struct TracerTraits_
 {
+
     using Node = typename T::Node;
+
+
 
     template<class Fn> static void foreach_reachable(const T &tracer, const Node &src, Fn &&fn) { tracer.foreach_reachable(src, fn); }
 
+
+
     static float distance(const T &tracer, const Node &a, const Node &b) { return tracer.distance(a, b); }
+
+
+
+
+
 
     static float goal_heuristic(const T &tracer, const Node &n) { return tracer.goal_heuristic(n); }
 
+
     static size_t unique_id(const T &tracer, const Node &n) { return tracer.unique_id(n); }
 };
+
 
 template<class T> using TracerNodeT = typename TracerTraits_<remove_cvref_t<T>>::Node;
 
@@ -45,6 +61,20 @@ template<class Tracer> struct QNode
     {}
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 template<class Tracer, class It, class NodeMap = std::unordered_map<size_t, QNode<Tracer>>>
 bool search_route(const Tracer &tracer, const TracerNodeT<Tracer> &source, It out, NodeMap &&cached_nodes = {})
 {
@@ -60,7 +90,7 @@ bool search_route(const Tracer &tracer, const TracerNodeT<Tracer> &source, It ou
 
     auto qopen = make_mutable_priority_queue<size_t, true>([&cached_nodes](size_t el, size_t qidx) { cached_nodes[el].queue_id = qidx; }, LessPred{cached_nodes});
 
-    QNode  initial{source,  Unassigned,  0.f};
+    QNode  initial{source,   Unassigned,   0.f};
     size_t source_id        = TracerTraits::unique_id(tracer, source);
     cached_nodes[source_id] = initial;
     qopen.push(source_id);
@@ -71,6 +101,7 @@ bool search_route(const Tracer &tracer, const TracerNodeT<Tracer> &source, It ou
         size_t q_id = qopen.top();
         qopen.pop();
         QNode &q = cached_nodes[q_id];
+
 
         assert(!std::isinf(q.g));
 
@@ -86,14 +117,20 @@ bool search_route(const Tracer &tracer, const TracerNodeT<Tracer> &source, It ou
                 goal_id               = succ_id;
                 cached_nodes[succ_id] = qsucc_nd;
             } else {
+
                 QNode &prev_nd = cached_nodes[succ_id];
 
                 if (qsucc_nd.g < prev_nd.g) {
+
+
+
                     size_t queue_id = prev_nd.queue_id;
+
 
                     prev_nd = qsucc_nd;
 
                     if (queue_id == InvalidQueueID)
+
                         qopen.push(succ_id);
                     else
                         qopen.update(queue_id);
@@ -103,6 +140,7 @@ bool search_route(const Tracer &tracer, const TracerNodeT<Tracer> &source, It ou
             return goal_id != Unassigned;
         });
     }
+
 
     if (goal_id != Unassigned) {
         const QNode *q = &cached_nodes[goal_id];

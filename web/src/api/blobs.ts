@@ -1,8 +1,11 @@
+
+
 import { mutation, type ApiError } from './access';
 
 export interface JobFile { name: string; blob: Blob }
 
 const digests = new WeakMap<Blob, Promise<string>>();
+
 const present = new Set<string>();
 const formFiles = new WeakMap<FormData, Map<string, Blob>>();
 
@@ -23,6 +26,7 @@ async function upload(blobs: Map<string, Blob>, signal?: AbortSignal, onUpload?:
   const sent = new Map<string, number>();
   const report = () => onUpload?.([...sent.values()].reduce((a, b) => a + b, 0) / total);
   const queue = [...blobs];
+
   await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [sum, blob] = next;
@@ -34,6 +38,7 @@ async function upload(blobs: Map<string, Blob>, signal?: AbortSignal, onUpload?:
     }
   }));
 }
+
 
 export async function attachFiles(fd: FormData, files: JobFile[], signal?: AbortSignal, onUpload?: (fraction: number) => void) {
   const sums = await Promise.all(files.map((f) => blobDigest(f.blob)));
@@ -49,6 +54,7 @@ export async function attachFiles(fd: FormData, files: JobFile[], signal?: Abort
   fd.set('files', JSON.stringify(files.map((f, i) => ({ name: f.name, sha256: sums[i] }))));
   formFiles.set(fd, blobs);
 }
+
 
 export async function postJob(fd: FormData, url = '/api/jobs', init: { headers?: HeadersInit; retry?: boolean; signal?: AbortSignal; quiet?: boolean } = {}) {
   const post = () => mutation(url, { method: 'POST', headers: init.headers, body: fd }, init.retry, init.signal, undefined, init.quiet);

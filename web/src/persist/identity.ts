@@ -1,3 +1,4 @@
+
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 let lastTime = -1;
 const entropy = new Uint8Array(10);

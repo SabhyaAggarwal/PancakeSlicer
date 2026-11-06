@@ -1,3 +1,4 @@
+
 import type { PresetType } from '../api/types';
 import { profileConflicts, type ProfileConflict } from '../profiles/model';
 import { getState, presetEdits, subscribeStore } from '../state/store';
@@ -23,6 +24,7 @@ export const createProfileEdit = () => createMachine<ProfileState, ProfileEvent,
   },
 });
 const machines = new Map<string, Machine<ProfileState, ProfileEvent, ProfileContext>>();
+
 export function profileEdit(type: PresetType, slot = 0) {
   const key = `${type}:${slot}`;
   let m = machines.get(key);

@@ -1,3 +1,6 @@
+
+
+
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { SystemPreset } from '../api/types';
@@ -5,14 +8,23 @@ import { bedAsset } from './bed-assets';
 import { bedBounds, parsePoints } from './geometry';
 import { isDark } from '../theme';
 
+
+
+
+
 const token = (name: string, fallback: number) => { const v = parseInt(getComputedStyle(document.documentElement).getPropertyValue(name).trim().slice(1), 16); return Number.isNaN(v) ? fallback : v; };
 export const sceneColors = () => {
   const outline = token('--bed-outline', 0x9e9e9e);
   return { background: token('--canvas', 0xd3d3d3), plate: token('--bed-plate', 0x363636), texture: token('--bed-texture', 0x323232), grid: token('--bed-grid', 0x646464), outline, model: token('--bed-texture', 0x2c2c2c), shell: outline };
 };
 
+
 export const bedKey = (machine: SystemPreset | undefined) =>
   `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}|${isDark()}`;
+
+
+
+
 
 export function showBedFor(bed: THREE.Object3D | null | undefined, camera: THREE.Camera, gridlines = true) {
   if (!bed) return;
@@ -41,6 +53,7 @@ function loadStl(url: string) {
     );
   return stlCache.get(url)!;
 }
+
 
 function loadSvgTexture(url: string) {
   if (!texCache.has(url))
@@ -75,12 +88,14 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   const { min, max } = bedBounds(pts);
   const shape = new THREE.Shape(pts);
 
+
   const plateGeo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
   plateGeo.translate(0, 0, -1.02);
   const plate = new THREE.Mesh(plateGeo, new THREE.MeshLambertMaterial({ color: colors.plate }));
   plate.receiveShadow = false;
   plate.userData.solid = true;
   group.add(plate);
+
 
   const texMat = new THREE.MeshBasicMaterial({ color: colors.texture, transparent: true, depthWrite: false });
   const surfGeo = new THREE.ShapeGeometry(shape);
@@ -90,6 +105,7 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   surf.position.z = 0.01;
   surf.userData.solid = true;
   group.add(surf);
+
 
   const grid: number[] = [];
   for (let x = Math.ceil(min.x / 10) * 10; x <= max.x; x += 10) grid.push(x, min.y, 0.02, x, max.y, 0.02);
@@ -115,6 +131,8 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
       g.computeBoundingBox();
       const bb = g.boundingBox!;
       const model = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: colors.model }));
+
+
       const bbl = !customModel && !!machine?.bed_model?.startsWith('bbl-3dp-');
       const c = bedBounds(pts).center;
       model.position.set(bbl ? 0 : c.x, bbl ? 0 : c.y, -bb.max.z - 0.03);
@@ -122,6 +140,7 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
       group.add(model);
       plate.visible = plate.userData.on = false;
       if (bbl) {
+
         const w = bb.max.x - bb.min.x, h = bb.max.y - bb.min.y;
         const tg = new THREE.PlaneGeometry(w, h);
         tg.translate(bb.min.x + w / 2, bb.min.y + h / 2, 0.005);

@@ -32,6 +32,8 @@ TriSoup to_soup(const indexed_triangle_set &its, const std::vector<uint8_t> &fac
         out.pos[t * 3]     = a;
         out.pos[t * 3 + 1] = b;
         out.pos[t * 3 + 2] = c;
+
+
         out.nrm[t * 3] = out.nrm[t * 3 + 1] = out.nrm[t * 3 + 2] = nrm;
         if (have_excl) {
             const float w = face_excluded[t] ? 1.f : 0.f;
@@ -58,6 +60,7 @@ indexed_triangle_set to_indexed_triangle_set(const TriSoup &soup, std::vector<in
     if (track_color)
         kept_color.reserve(face_color->size());
     for (size_t t = 0; t + 2 < n; t += 3) {
+
         if (id[t] == id[t + 1] || id[t + 1] == id[t + 2] || id[t] == id[t + 2])
             continue;
         out.indices.emplace_back(id[t], id[t + 1], id[t + 2]);

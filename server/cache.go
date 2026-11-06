@@ -29,7 +29,8 @@ var optionData []byte
 type cachedResponse struct {
 	plain, zipped []byte
 	etag          string
-	brotli        atomic.Pointer[[]byte]
+
+	brotli atomic.Pointer[[]byte]
 }
 
 var brotliSlot = make(chan struct{}, 1)
@@ -43,6 +44,7 @@ func cacheResponse(b []byte) *cachedResponse {
 	go func() {
 		brotliSlot <- struct{}{}
 		defer func() { <-brotliSlot }()
+
 		level := brotli.BestCompression
 		if len(b) > 1<<20 {
 			level = 5
@@ -107,6 +109,7 @@ func (c *cachedResponse) serve(w http.ResponseWriter, r *http.Request, name, con
 		etag = strings.TrimSuffix(etag, `"`) + `-gzip"`
 		w.Header().Set("Content-Encoding", "gzip")
 	}
+
 	base := strings.TrimSuffix(c.etag, `"`)
 	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
 		tag = strings.TrimPrefix(strings.TrimSpace(tag), "W/")
@@ -165,6 +168,7 @@ func serveGzipped(w http.ResponseWriter, r *http.Request, path string, st os.Fil
 		streamed, err := writeGzipped(w, r, path, cached, encode)
 		if streamed {
 			if err != nil {
+
 				panic(http.ErrAbortHandler)
 			}
 			return
@@ -255,6 +259,7 @@ func writeGzipped(w http.ResponseWriter, r *http.Request, path, cached string, e
 	if err == nil {
 		err = os.Rename(tmp.Name(), cached)
 	}
+
 	return streamed, err
 }
 

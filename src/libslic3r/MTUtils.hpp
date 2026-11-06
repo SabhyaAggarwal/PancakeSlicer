@@ -15,11 +15,13 @@
 
 namespace Slic3r {
 
+
+
 class SpinMutex
 {
     std::atomic_flag                m_flg;
-    static const  auto MO_ACQ = std::memory_order_acquire;
-    static const  auto MO_REL = std::memory_order_release;
+    static const   auto MO_ACQ = std::memory_order_acquire;
+    static const   auto MO_REL = std::memory_order_release;
 
 public:
     inline SpinMutex() { m_flg.clear(MO_REL); }
@@ -28,22 +30,32 @@ public:
     inline void unlock() { m_flg.clear(MO_REL); }
 };
 
+
 template<class T> class CachedObject
 {
 public:
+
     using Setter = std::function<void(T &)>;
 
 private:
     T         m_obj;
     bool      m_valid;
     SpinMutex m_lck;
+
+
+
     std::function<void(T &)> m_setter;
 
 public:
+
     template<class... Args>
     inline CachedObject(Setter &&fn, Args &&... args)
         : m_obj(std::forward<Args>(args)...), m_valid(false), m_setter(fn)
     {}
+
+
+
+
 
     template<class Fn> void invalidate(Fn &&fn)
     {
@@ -51,6 +63,7 @@ public:
         fn();
         m_valid = false;
     }
+
 
     inline const T &get()
     {
@@ -72,9 +85,13 @@ template<class C> bool all_of(const C &container)
                        });
 }
 
+
+
+
+
 template<class T, class I, class = IntegerOnly<I>>
-inline std::vector<T> linspace_vector(const ArithmeticOnly<T> &start, 
-                                      const T &stop, 
+inline std::vector<T> linspace_vector(const ArithmeticOnly<T> &start,
+                                      const T &stop,
                                       const I &n)
 {
     std::vector<T> vals(n, T());
@@ -102,18 +119,22 @@ inline std::array<ArithmeticOnly<T>, N> linspace_array(const T &start, const T &
     return vals;
 }
 
+
+
+
+
 template<class T>
-inline std::vector<ArithmeticOnly<T>> grid(const T &start, 
-                                           const T &stop, 
+inline std::vector<ArithmeticOnly<T>> grid(const T &start,
+                                           const T &stop,
                                            const T &stride)
 {
     std::vector<T> vals(size_t(std::ceil((stop - start) / stride)), T());
-    
+
     int i = 0;
     std::generate(vals.begin(), vals.end(), [&i, start, stride] {
-        return start + i++ * stride; 
+        return start + i++ * stride;
     });
-     
+
     return vals;
 }
 

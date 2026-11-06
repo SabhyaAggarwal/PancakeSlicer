@@ -1,3 +1,7 @@
+
+
+
+
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { retryProject, useProject } from '../flow/project';
 import { renameProject, useProjects } from './api';
@@ -10,6 +14,7 @@ import './versions.css';
 const VersionHistory = lazy(() => import('./VersionHistory'));
 
 const clock = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.2h2.2M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
 const spinner = <svg className="pt-spinner" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;
 const warning = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2 14.3 13.5H1.7zM8 6.5v3.2M8 11.6v.1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
@@ -17,6 +22,7 @@ export function ProjectTitle() {
   const name = useStore((s) => (s.projectName ?? s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, '')) ?? 'Untitled';
   const state = useProject((p) => p.value);
   const id = useProject((p) => p.context.id);
+
   const folderId = useProjects()?.find((p) => p.id === id)?.folderId;
   const folder = useFolders().folders.find((f) => f.id === folderId)?.name;
   const [draft, setDraft] = useState<string | null>(null);
@@ -27,6 +33,7 @@ export function ProjectTitle() {
     const next = draft?.trim();
     setDraft(null);
     if (cancelled.current || !next || next === name) return;
+
     if (id && state !== 'blank') void renameProject(id, next);
     else setState({ projectName: next });
   };
@@ -56,6 +63,7 @@ export function ProjectTitle() {
 }
 
 const LABEL = { editing: 'Unsaved changes', saving: 'Saving…', saved: 'Saved' } as const;
+
 
 function SaveState() {
   const { value, context } = useProject();

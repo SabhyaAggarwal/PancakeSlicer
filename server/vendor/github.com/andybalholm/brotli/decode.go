@@ -13,11 +13,6 @@ const (
 	decoderResultNeedsMoreOutput = 3
 )
 
-/**
- * Error code for detailed logging / production debugging.
- *
- * See ::BrotliDecoderGetErrorCode and ::BROTLI_LAST_ERROR_CODE.
- */
 const (
 	decoderNoError                          = 0
 	decoderSuccess                          = 1
@@ -54,19 +49,14 @@ const huffmanTableBits = 8
 
 const huffmanTableMask = 0xFF
 
-/* We need the slack region for the following reasons:
-   - doing up to two 16-byte copies for fast backward copying
-   - inserting transformed dictionary word (5 prefix + 24 base + 8 suffix) */
 const kRingBufferWriteAheadSlack uint32 = 42
 
 var kCodeLengthCodeOrder = [codeLengthCodes]byte{1, 2, 3, 4, 0, 5, 17, 6, 16, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
-/* Static prefix code for the complex code length code lengths. */
 var kCodeLengthPrefixLength = [16]byte{2, 2, 2, 3, 2, 2, 2, 4, 2, 2, 2, 3, 2, 2, 2, 4}
 
 var kCodeLengthPrefixValue = [16]byte{0, 4, 3, 2, 0, 4, 3, 1, 0, 4, 3, 2, 0, 4, 3, 5}
 
-/* Saves error code and converts it to BrotliDecoderResult. */
 func saveErrorCode(s *Reader, e int) int {
 	s.error_code = int(e)
 	switch e {
@@ -84,8 +74,6 @@ func saveErrorCode(s *Reader, e int) int {
 	}
 }
 
-/* Decodes WBITS by reading 1 - 7 bits, or 0x11 for "Large Window Brotli".
-   Precondition: bit-reader accumulator has at least 8 bits. */
 func decodeWindowBits(s *Reader, br *bitReader) int {
 	var n uint32
 	var large_window bool = s.large_window
@@ -126,7 +114,6 @@ func decodeWindowBits(s *Reader, br *bitReader) int {
 	return decoderSuccess
 }
 
-/* Decodes a number in the range [0..255], by reading 1 - 11 bits. */
 func decodeVarLenUint8(s *Reader, br *bitReader, value *uint32) int {
 	var bits uint32
 	switch s.substate_decode_uint8 {
@@ -141,7 +128,6 @@ func decodeVarLenUint8(s *Reader, br *bitReader, value *uint32) int {
 		}
 		fallthrough
 
-		/* Fall through. */
 	case stateDecodeUint8Short:
 		if !safeReadBits(br, 3, &bits) {
 			s.substate_decode_uint8 = stateDecodeUint8Short
@@ -154,11 +140,9 @@ func decodeVarLenUint8(s *Reader, br *bitReader, value *uint32) int {
 			return decoderSuccess
 		}
 
-		/* Use output value as a temporary storage. It MUST be persisted. */
 		*value = bits
 		fallthrough
 
-		/* Fall through. */
 	case stateDecodeUint8Long:
 		if !safeReadBits(br, *value, &bits) {
 			s.substate_decode_uint8 = stateDecodeUint8Long
@@ -174,7 +158,6 @@ func decodeVarLenUint8(s *Reader, br *bitReader, value *uint32) int {
 	}
 }
 
-/* Decodes a metablock length and flags by reading 2 - 31 bits. */
 func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 	var bits uint32
 	var i int
@@ -201,7 +184,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderEmpty
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderEmpty:
 			if !safeReadBits(br, 1, &bits) {
 				return decoderNeedsMoreInput
@@ -215,7 +197,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderNibbles
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderNibbles:
 			if !safeReadBits(br, 2, &bits) {
 				return decoderNeedsMoreInput
@@ -232,7 +213,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderSize
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderSize:
 			i = s.loop_counter
 
@@ -252,7 +232,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderUncompressed
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderUncompressed:
 			if s.is_last_metablock == 0 {
 				if !safeReadBits(br, 1, &bits) {
@@ -282,7 +261,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderBytes
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderBytes:
 			if !safeReadBits(br, 2, &bits) {
 				return decoderNeedsMoreInput
@@ -297,7 +275,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 			s.substate_metablock_header = stateMetablockHeaderMetadata
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeaderMetadata:
 			i = s.loop_counter
 
@@ -324,10 +301,6 @@ func decodeMetaBlockLength(s *Reader, br *bitReader) int {
 	}
 }
 
-/* Decodes the Huffman code.
-   This method doesn't read data from the bit reader, BUT drops the amount of
-   bits that correspond to the decoded symbol.
-   bits MUST contain at least 15 (BROTLI_HUFFMAN_MAX_CODE_LENGTH) valid bits. */
 func decodeSymbol(bits uint32, table []huffmanCode, br *bitReader) uint32 {
 	table = table[bits&huffmanTableMask:]
 	if table[0].bits > huffmanTableBits {
@@ -340,14 +313,10 @@ func decodeSymbol(bits uint32, table []huffmanCode, br *bitReader) uint32 {
 	return uint32(table[0].value)
 }
 
-/* Reads and decodes the next Huffman code from bit-stream.
-   This method peeks 16 bits of input and drops 0 - 15 of them. */
 func readSymbol(table []huffmanCode, br *bitReader) uint32 {
 	return decodeSymbol(get16BitsUnmasked(br), table, br)
 }
 
-/* Same as DecodeSymbol, but it is known that there is less than 15 bits of
-   input are currently available. */
 func safeDecodeSymbol(table []huffmanCode, br *bitReader, result *uint32) bool {
 	var val uint32
 	var available_bits uint32 = getAvailableBits(br)
@@ -357,7 +326,7 @@ func safeDecodeSymbol(table []huffmanCode, br *bitReader, result *uint32) bool {
 			return true
 		}
 
-		return false /* No valid bits at all. */
+		return false
 	}
 
 	val = uint32(getBitsUnmasked(br))
@@ -368,21 +337,20 @@ func safeDecodeSymbol(table []huffmanCode, br *bitReader, result *uint32) bool {
 			*result = uint32(table[0].value)
 			return true
 		} else {
-			return false /* Not enough bits for the first level. */
+			return false
 		}
 	}
 
 	if available_bits <= huffmanTableBits {
-		return false /* Not enough bits to move to the second level. */
+		return false
 	}
 
-	/* Speculatively drop HUFFMAN_TABLE_BITS. */
 	val = (val & bitMask(uint32(table[0].bits))) >> huffmanTableBits
 
 	available_bits -= huffmanTableBits
 	table = table[uint32(table[0].value)+val:]
 	if available_bits < uint32(table[0].bits) {
-		return false /* Not enough bits for the second level. */
+		return false
 	}
 
 	dropBits(br, huffmanTableBits+uint32(table[0].bits))
@@ -400,7 +368,6 @@ func safeReadSymbol(table []huffmanCode, br *bitReader, result *uint32) bool {
 	return safeDecodeSymbol(table, br, result)
 }
 
-/* Makes a look-up in first level Huffman table. Peeks 8 bits. */
 func preloadSymbol(safe int, table []huffmanCode, br *bitReader, bits *uint32, value *uint32) {
 	if safe != 0 {
 		return
@@ -411,8 +378,6 @@ func preloadSymbol(safe int, table []huffmanCode, br *bitReader, bits *uint32, v
 	*value = uint32(table[0].value)
 }
 
-/* Decodes the next Huffman code using data prepared by PreloadSymbol.
-   Reads 0 - 15 bits. Also peeks 8 following bits. */
 func readPreloadedSymbol(table []huffmanCode, br *bitReader, bits *uint32, value *uint32) uint32 {
 	var result uint32 = *value
 	var ext []huffmanCode
@@ -442,14 +407,10 @@ func log2Floor(x uint32) uint32 {
 	return result
 }
 
-/* Reads (s->symbol + 1) symbols.
-   Totally 1..4 symbols are read, 1..11 bits each.
-   The list of symbols MUST NOT contain duplicates. */
 func readSimpleHuffmanSymbols(alphabet_size uint32, max_symbol uint32, s *Reader) int {
 	var br *bitReader = &s.br
 	var max_bits uint32 = log2Floor(alphabet_size - 1)
 	var i uint32 = s.sub_loop_counter
-	/* max_bits == 1..11; symbol == 0..3; 1..44 bits will be read. */
 
 	var num_symbols uint32 = s.symbol
 	for i <= num_symbols {
@@ -480,15 +441,9 @@ func readSimpleHuffmanSymbols(alphabet_size uint32, max_symbol uint32, s *Reader
 	return decoderSuccess
 }
 
-/* Process single decoded symbol code length:
-   A) reset the repeat variable
-   B) remember code length (if it is not 0)
-   C) extend corresponding index-chain
-   D) reduce the Huffman space
-   E) update the histogram */
 func processSingleCodeLength(code_len uint32, symbol *uint32, repeat *uint32, space *uint32, prev_code_len *uint32, symbol_lists symbolList, code_length_histo []uint16, next_symbol []int) {
 	*repeat = 0
-	if code_len != 0 { /* code_len == 1..15 */
+	if code_len != 0 {
 		symbolListPut(symbol_lists, next_symbol[code_len], uint16(*symbol))
 		next_symbol[code_len] = int(*symbol)
 		*prev_code_len = code_len
@@ -499,18 +454,8 @@ func processSingleCodeLength(code_len uint32, symbol *uint32, repeat *uint32, sp
 	(*symbol)++
 }
 
-/* Process repeated symbol code length.
-    A) Check if it is the extension of previous repeat sequence; if the decoded
-       value is not BROTLI_REPEAT_PREVIOUS_CODE_LENGTH, then it is a new
-       symbol-skip
-    B) Update repeat variable
-    C) Check if operation is feasible (fits alphabet)
-    D) For each symbol do the same operations as in ProcessSingleCodeLength
-
-   PRECONDITION: code_len == BROTLI_REPEAT_PREVIOUS_CODE_LENGTH or
-                 code_len == BROTLI_REPEAT_ZERO_CODE_LENGTH */
 func processRepeatedCodeLength(code_len uint32, repeat_delta uint32, alphabet_size uint32, symbol *uint32, repeat *uint32, space *uint32, prev_code_len *uint32, repeat_code_len *uint32, symbol_lists symbolList, code_length_histo []uint16, next_symbol []int) {
-	var old_repeat uint32 /* for BROTLI_REPEAT_ZERO_CODE_LENGTH */ /* for BROTLI_REPEAT_ZERO_CODE_LENGTH */
+	var old_repeat uint32
 	var extra_bits uint32 = 3
 	var new_len uint32 = 0
 	if code_len == repeatPreviousCodeLength {
@@ -557,7 +502,6 @@ func processRepeatedCodeLength(code_len uint32, repeat_delta uint32, alphabet_si
 	}
 }
 
-/* Reads and decodes symbol codelengths. */
 func readSymbolCodeLengths(alphabet_size uint32, s *Reader) int {
 	var br *bitReader = &s.br
 	var symbol uint32 = s.symbol
@@ -586,10 +530,10 @@ func readSymbolCodeLengths(alphabet_size uint32, s *Reader) int {
 
 		fillBitWindow16(br)
 		p = p[getBitsUnmasked(br)&uint64(bitMask(huffmanMaxCodeLengthCodeLength)):]
-		dropBits(br, uint32(p[0].bits)) /* Use 1..5 bits. */
-		code_len = uint32(p[0].value)   /* code_len == 0..17 */
+		dropBits(br, uint32(p[0].bits))
+		code_len = uint32(p[0].value)
 		if code_len < repeatPreviousCodeLength {
-			processSingleCodeLength(code_len, &symbol, &repeat, &space, &prev_code_len, symbol_lists, code_length_histo, next_symbol) /* code_len == 16..17, extra_bits == 2..3 */
+			processSingleCodeLength(code_len, &symbol, &repeat, &space, &prev_code_len, symbol_lists, code_length_histo, next_symbol)
 		} else {
 			var extra_bits uint32
 			if code_len == repeatPreviousCodeLength {
@@ -631,10 +575,10 @@ func safeReadSymbolCodeLengths(alphabet_size uint32, s *Reader) int {
 			continue
 		}
 
-		code_len = uint32(p[0].value) /* code_len == 0..17 */
+		code_len = uint32(p[0].value)
 		if code_len < repeatPreviousCodeLength {
 			dropBits(br, uint32(p[0].bits))
-			processSingleCodeLength(code_len, &s.symbol, &s.repeat, &s.space, &s.prev_code_len, s.symbol_lists, s.code_length_histo[:], s.next_symbol[:]) /* code_len == 16..17, extra_bits == 2..3 */
+			processSingleCodeLength(code_len, &s.symbol, &s.repeat, &s.space, &s.prev_code_len, s.symbol_lists, s.code_length_histo[:], s.next_symbol[:])
 		} else {
 			var extra_bits uint32 = code_len - 14
 			var repeat_delta uint32 = (bits >> p[0].bits) & bitMask(extra_bits)
@@ -651,8 +595,6 @@ func safeReadSymbolCodeLengths(alphabet_size uint32, s *Reader) int {
 	return decoderSuccess
 }
 
-/* Reads and decodes 15..18 codes using static prefix code.
-   Each code is 2..4 bits long. In total 30..72 bits are used. */
 func readCodeLengthCodeLengths(s *Reader) int {
 	var br *bitReader = &s.br
 	var num_codes uint32 = s.repeat
@@ -687,7 +629,7 @@ func readCodeLengthCodeLengths(s *Reader) int {
 			num_codes++
 			s.code_length_histo[v]++
 			if space-1 >= 32 {
-				/* space is 0 or wrapped around. */
+
 				break
 			}
 		}
@@ -700,24 +642,11 @@ func readCodeLengthCodeLengths(s *Reader) int {
 	return decoderSuccess
 }
 
-/* Decodes the Huffman tables.
-   There are 2 scenarios:
-    A) Huffman code contains only few symbols (1..4). Those symbols are read
-       directly; their code lengths are defined by the number of symbols.
-       For this scenario 4 - 49 bits will be read.
-
-    B) 2-phase decoding:
-    B.1) Small Huffman table is decoded; it is specified with code lengths
-         encoded with predefined entropy code. 32 - 74 bits are used.
-    B.2) Decoded table is used to decode code lengths of symbols in resulting
-         Huffman table. In worst case 3520 bits are read. */
 func readHuffmanCode(alphabet_size uint32, max_symbol uint32, table []huffmanCode, opt_table_size *uint32, s *Reader) int {
 	var br *bitReader = &s.br
 
-	/* Unnecessary masking, but might be good for safety. */
 	alphabet_size &= 0x7FF
 
-	/* State machine. */
 	for {
 		switch s.substate_huffman {
 		case stateHuffmanNone:
@@ -725,12 +654,9 @@ func readHuffmanCode(alphabet_size uint32, max_symbol uint32, table []huffmanCod
 				return decoderNeedsMoreInput
 			}
 
-			/* The value is used as follows:
-			   1 for simple code;
-			   0 for no skipping, 2 skips 2 code lengths, 3 skips 3 code lengths */
 			if s.sub_loop_counter != 1 {
 				s.space = 32
-				s.repeat = 0 /* num_codes */
+				s.repeat = 0
 				var i int
 				for i = 0; i <= huffmanMaxCodeLengthCodeLength; i++ {
 					s.code_length_histo[i] = 0
@@ -745,9 +671,8 @@ func readHuffmanCode(alphabet_size uint32, max_symbol uint32, table []huffmanCod
 			}
 			fallthrough
 
-			/* Read symbols, codes & code lengths directly. */
 		case stateHuffmanSimpleSize:
-			if !safeReadBits(br, 2, &s.symbol) { /* num_symbols */
+			if !safeReadBits(br, 2, &s.symbol) {
 				s.substate_huffman = stateHuffmanSimpleSize
 				return decoderNeedsMoreInput
 			}
@@ -784,7 +709,6 @@ func readHuffmanCode(alphabet_size uint32, max_symbol uint32, table []huffmanCod
 			s.substate_huffman = stateHuffmanNone
 			return decoderSuccess
 
-			/* Decode Huffman-coded code lengths. */
 		case stateHuffmanComplex:
 			{
 				var i uint32
@@ -841,17 +765,14 @@ func readHuffmanCode(alphabet_size uint32, max_symbol uint32, table []huffmanCod
 	}
 }
 
-/* Decodes a block length by reading 3..39 bits. */
 func readBlockLength(table []huffmanCode, br *bitReader) uint32 {
 	var code uint32
 	var nbits uint32
 	code = readSymbol(table, br)
-	nbits = kBlockLengthPrefixCode[code].nbits /* nbits == 2..24 */
+	nbits = kBlockLengthPrefixCode[code].nbits
 	return kBlockLengthPrefixCode[code].offset + readBits(br, nbits)
 }
 
-/* WARNING: if state is not BROTLI_STATE_READ_BLOCK_LENGTH_NONE, then
-   reading can't be continued with ReadBlockLength. */
 func safeReadBlockLength(s *Reader, result *uint32, table []huffmanCode, br *bitReader) bool {
 	var index uint32
 	if s.substate_read_block_length == stateReadBlockLengthNone {
@@ -862,7 +783,7 @@ func safeReadBlockLength(s *Reader, result *uint32, table []huffmanCode, br *bit
 		index = s.block_length_index
 	}
 	{
-		var bits uint32 /* nbits == 2..24 */
+		var bits uint32
 		var nbits uint32 = kBlockLengthPrefixCode[index].nbits
 		if !safeReadBits(br, nbits, &bits) {
 			s.block_length_index = index
@@ -876,20 +797,6 @@ func safeReadBlockLength(s *Reader, result *uint32, table []huffmanCode, br *bit
 	}
 }
 
-/* Transform:
-    1) initialize list L with values 0, 1,... 255
-    2) For each input element X:
-    2.1) let Y = L[X]
-    2.2) remove X-th element from L
-    2.3) prepend Y to L
-    2.4) append Y to output
-
-   In most cases max(Y) <= 7, so most of L remains intact.
-   To reduce the cost of initialization, we reuse L, remember the upper bound
-   of Y values, and reinitialize only first elements in L.
-
-   Most of input values are 0 and 1. To reduce number of branches, we replace
-   inner for loop with do-while. */
 func inverseMoveToFrontTransform(v []byte, v_len uint32, state *Reader) {
 	var mtf [256]byte
 	var i int
@@ -898,7 +805,6 @@ func inverseMoveToFrontTransform(v []byte, v_len uint32, state *Reader) {
 	}
 	var mtf_1 byte
 
-	/* Transform the input. */
 	for i = 0; uint32(i) < v_len; i++ {
 		var index int = int(v[i])
 		var value byte = mtf[index]
@@ -913,7 +819,6 @@ func inverseMoveToFrontTransform(v []byte, v_len uint32, state *Reader) {
 	}
 }
 
-/* Decodes a series of Huffman table using ReadHuffmanCode function. */
 func huffmanTreeGroupDecode(group *huffmanTreeGroup, s *Reader) int {
 	if s.substate_tree_group != stateTreeGroupLoop {
 		s.next = group.codes
@@ -936,14 +841,6 @@ func huffmanTreeGroupDecode(group *huffmanTreeGroup, s *Reader) int {
 	return decoderSuccess
 }
 
-/* Decodes a context map.
-   Decoding is done in 4 phases:
-    1) Read auxiliary information (6..16 bits) and allocate memory.
-       In case of trivial context map, decoding is finished at this phase.
-    2) Decode Huffman table using ReadHuffmanCode function.
-       This table will be used for reading context map items.
-    3) Read context map items; "0" values could be run-length encoded.
-    4) Optionally, apply InverseMoveToFront transform to the resulting map. */
 func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_arg *[]byte, s *Reader) int {
 	var br *bitReader = &s.br
 	var result int = decoderSuccess
@@ -971,18 +868,16 @@ func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_a
 
 		s.substate_context_map = stateContextMapReadPrefix
 		fallthrough
-	/* Fall through. */
+
 	case stateContextMapReadPrefix:
 		{
 			var bits uint32
 
-			/* In next stage ReadHuffmanCode uses at least 4 bits, so it is safe
-			   to peek 4 bits ahead. */
 			if !safeGetBits(br, 5, &bits) {
 				return decoderNeedsMoreInput
 			}
 
-			if bits&1 != 0 { /* Use RLE for zeros. */
+			if bits&1 != 0 {
 				s.max_run_length_prefix = (bits >> 1) + 1
 				dropBits(br, 5)
 			} else {
@@ -994,7 +889,6 @@ func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_a
 		}
 		fallthrough
 
-		/* Fall through. */
 	case stateContextMapHuffman:
 		{
 			var alphabet_size uint32 = *num_htrees + s.max_run_length_prefix
@@ -1007,7 +901,6 @@ func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_a
 		}
 		fallthrough
 
-		/* Fall through. */
 	case stateContextMapDecode:
 		{
 			var context_index uint32 = s.context_index
@@ -1038,7 +931,6 @@ func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_a
 					skip_preamble = false
 				}
 
-				/* RLE sub-stage. */
 				{
 					var reps uint32
 					if !safeReadBits(br, code, &reps) {
@@ -1084,8 +976,6 @@ func decodeContextMap(context_map_size uint32, num_htrees *uint32, context_map_a
 	}
 }
 
-/* Decodes a command or literal and updates block type ring-buffer.
-   Reads 3..54 bits. */
 func decodeBlockTypeAndLength(safe int, s *Reader, tree_type int) bool {
 	var max_block_type uint32 = s.num_block_types[tree_type]
 	type_tree := s.block_type_trees[tree_type*huffmanMaxSize258:]
@@ -1097,7 +987,6 @@ func decodeBlockTypeAndLength(safe int, s *Reader, tree_type int) bool {
 		return false
 	}
 
-	/* Read 0..15 + 3..39 bits. */
 	if safe == 0 {
 		block_type = readSymbol(type_tree, br)
 		s.block_length[tree_type] = readBlockLength(len_tree, br)
@@ -1168,8 +1057,6 @@ func prepareLiteralDecoding(s *Reader) {
 	s.context_lookup = getContextLUT(int(context_mode))
 }
 
-/* Decodes the block type and updates the state for literal context.
-   Reads 3..54 bits. */
 func decodeLiteralBlockSwitchInternal(safe int, s *Reader) bool {
 	if !decodeBlockTypeAndLength(safe, s, 0) {
 		return false
@@ -1187,8 +1074,6 @@ func safeDecodeLiteralBlockSwitch(s *Reader) bool {
 	return decodeLiteralBlockSwitchInternal(1, s)
 }
 
-/* Block switch for insert/copy length.
-   Reads 3..54 bits. */
 func decodeCommandBlockSwitchInternal(safe int, s *Reader) bool {
 	if !decodeBlockTypeAndLength(safe, s, 1) {
 		return false
@@ -1206,8 +1091,6 @@ func safeDecodeCommandBlockSwitch(s *Reader) bool {
 	return decodeCommandBlockSwitchInternal(1, s)
 }
 
-/* Block switch for distance codes.
-   Reads 3..54 bits. */
 func decodeDistanceBlockSwitchInternal(safe int, s *Reader) bool {
 	if !decodeBlockTypeAndLength(safe, s, 2) {
 		return false
@@ -1237,9 +1120,6 @@ func unwrittenBytes(s *Reader, wrap bool) uint {
 	return partial_pos_rb - s.partial_pos_out
 }
 
-/* Dumps output.
-   Returns BROTLI_DECODER_NEEDS_MORE_OUTPUT only if there is more output to push
-   and either ring-buffer is as big as window size, or |force| is true. */
 func writeRingBuffer(s *Reader, available_out *uint, next_out *[]byte, total_out *uint, force bool) int {
 	start := s.ringbuffer[s.partial_pos_out&uint(s.ringbuffer_mask):]
 	var to_write uint = unwrittenBytes(s, true)
@@ -1275,7 +1155,6 @@ func writeRingBuffer(s *Reader, available_out *uint, next_out *[]byte, total_out
 		}
 	}
 
-	/* Wrap ring buffer only if it has reached its maximal size. */
 	if s.ringbuffer_size == 1<<s.window_bits && s.pos >= s.ringbuffer_size {
 		s.pos -= s.ringbuffer_size
 		s.rb_roundtrips++
@@ -1296,13 +1175,6 @@ func wrapRingBuffer(s *Reader) {
 	}
 }
 
-/* Allocates ring-buffer.
-
-   s->ringbuffer_size MUST be updated by BrotliCalculateRingBufferSize before
-   this function is called.
-
-   Last two bytes of ring-buffer are initialized to 0, so context calculation
-   could be done uniformly for the first two and all other positions. */
 func ensureRingBuffer(s *Reader) bool {
 	var old_ringbuffer []byte
 	if s.ringbuffer_size == s.new_ringbuffer_size {
@@ -1329,12 +1201,11 @@ func ensureRingBuffer(s *Reader) bool {
 }
 
 func copyUncompressedBlockToOutput(available_out *uint, next_out *[]byte, total_out *uint, s *Reader) int {
-	/* TODO: avoid allocation for single uncompressed block. */
+
 	if !ensureRingBuffer(s) {
 		return decoderErrorAllocRingBuffer1
 	}
 
-	/* State machine */
 	for {
 		switch s.substate_uncompressed {
 		case stateUncompressedNone:
@@ -1348,7 +1219,6 @@ func copyUncompressedBlockToOutput(available_out *uint, next_out *[]byte, total_
 					nbytes = s.ringbuffer_size - s.pos
 				}
 
-				/* Copy remaining bytes from s->br.buf_ to ring-buffer. */
 				copyBytes(s.ringbuffer[s.pos:], &s.br, uint(nbytes))
 
 				s.pos += nbytes
@@ -1383,18 +1253,11 @@ func copyUncompressedBlockToOutput(available_out *uint, next_out *[]byte, total_
 	}
 }
 
-/* Calculates the smallest feasible ring buffer.
-
-   If we know the data size is small, do not allocate more ring buffer
-   size than needed to reduce memory usage.
-
-   When this method is called, metablock size and flags MUST be decoded. */
 func calculateRingBufferSize(s *Reader) {
 	var window_size int = 1 << s.window_bits
 	var new_ringbuffer_size int = window_size
 	var min_size int
-	/* We need at least 2 bytes of ring buffer size to get the last two
-	   bytes for context from there */
+
 	if s.ringbuffer_size != 0 {
 		min_size = s.ringbuffer_size
 	} else {
@@ -1402,12 +1265,10 @@ func calculateRingBufferSize(s *Reader) {
 	}
 	var output_size int
 
-	/* If maximum is already reached, no further extension is retired. */
 	if s.ringbuffer_size == window_size {
 		return
 	}
 
-	/* Metadata blocks does not touch ring buffer. */
 	if s.is_metadata != 0 {
 		return
 	}
@@ -1424,9 +1285,7 @@ func calculateRingBufferSize(s *Reader) {
 	}
 
 	if !(s.canny_ringbuffer_allocation == 0) {
-		/* Reduce ring buffer size to save memory when server is unscrupulous.
-		   In worst case memory usage might be 1.5x bigger for a short period of
-		   ring buffer reallocation. */
+
 		for new_ringbuffer_size>>1 >= min_size {
 			new_ringbuffer_size >>= 1
 		}
@@ -1435,7 +1294,6 @@ func calculateRingBufferSize(s *Reader) {
 	s.new_ringbuffer_size = new_ringbuffer_size
 }
 
-/* Reads 1..256 2-bit context modes. */
 func readContextModes(s *Reader) int {
 	var br *bitReader = &s.br
 	var i int = s.loop_counter
@@ -1459,18 +1317,13 @@ func takeDistanceFromRingBuffer(s *Reader) {
 		s.dist_rb_idx--
 		s.distance_code = s.dist_rb[s.dist_rb_idx&3]
 
-		/* Compensate double distance-ring-buffer roll for dictionary items. */
 		s.distance_context = 1
 	} else {
 		var distance_code int = s.distance_code << 1
 		const kDistanceShortCodeIndexOffset uint32 = 0xAAAFFF1B
 		const kDistanceShortCodeValueOffset uint32 = 0xFA5FA500
 		var v int = (s.dist_rb_idx + int(kDistanceShortCodeIndexOffset>>uint(distance_code))) & 0x3
-		/* kDistanceShortCodeIndexOffset has 2-bit values from LSB:
-		   3, 2, 1, 0, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2 */
 
-		/* kDistanceShortCodeValueOffset has 2-bit values from LSB:
-		   -0, 0,-0, 0,-1, 1,-2, 2,-3, 3,-1, 1,-2, 2,-3, 3 */
 		s.distance_code = s.dist_rb[v]
 
 		v = int(kDistanceShortCodeValueOffset>>uint(distance_code)) & 0x3
@@ -1479,8 +1332,7 @@ func takeDistanceFromRingBuffer(s *Reader) {
 		} else {
 			s.distance_code -= v
 			if s.distance_code <= 0 {
-				/* A huge distance will cause a () soon.
-				   This is a little faster than failing here. */
+
 				s.distance_code = 0x7FFFFFFF
 			}
 		}
@@ -1496,7 +1348,6 @@ func safeReadBitsMaybeZero(br *bitReader, n_bits uint32, val *uint32) bool {
 	}
 }
 
-/* Precondition: s->distance_code < 0. */
 func readDistanceInternal(safe int, s *Reader, br *bitReader) bool {
 	var distval int
 	var memento bitReaderState
@@ -1513,8 +1364,6 @@ func readDistanceInternal(safe int, s *Reader, br *bitReader) bool {
 		s.distance_code = int(code)
 	}
 
-	/* Convert the distance code to the actual distance by possibly
-	   looking up past distances from the s->ringbuffer. */
 	s.distance_context = 0
 
 	if s.distance_code&^0xF == 0 {
@@ -1533,14 +1382,14 @@ func readDistanceInternal(safe int, s *Reader, br *bitReader) bool {
 			offset = ((2 + (distval & 1)) << nbits) - 4
 			s.distance_code = int(s.num_direct_distance_codes) + offset + int(readBits(br, nbits))
 		} else {
-			/* This branch also works well when s->distance_postfix_bits == 0. */
+
 			var bits uint32
 			postfix = distval & s.distance_postfix_mask
 			distval >>= s.distance_postfix_bits
 			nbits = (uint32(distval) >> 1) + 1
 			if safe != 0 {
 				if !safeReadBitsMaybeZero(br, nbits, &bits) {
-					s.distance_code = -1 /* Restore precondition. */
+					s.distance_code = -1
 					bitReaderRestoreState(br, &memento)
 					return false
 				}
@@ -1637,7 +1486,6 @@ func processCommandsInternal(safe int, s *Reader) int {
 		warmupBitReader(br)
 	}
 
-	/* Jump into state machine. */
 	if s.state == stateCommandBegin {
 		goto CommandBegin
 	} else if s.state == stateCommandInner {
@@ -1655,7 +1503,7 @@ CommandBegin:
 		s.state = stateCommandBegin
 	}
 
-	if !checkInputAmountMaybeSafe(safe, br, 28) { /* 156 bits + 7 bytes */
+	if !checkInputAmountMaybeSafe(safe, br, 28) {
 		s.state = stateCommandBegin
 		result = decoderNeedsMoreInput
 		goto saveStateAndReturn
@@ -1674,7 +1522,6 @@ CommandBegin:
 		goto CommandBegin
 	}
 
-	/* Read the insert/copy length in the command. */
 	if safe != 0 {
 		if !safeReadCommand(s, br, &i) {
 			result = decoderNeedsMoreInput
@@ -1695,13 +1542,12 @@ CommandInner:
 		s.state = stateCommandInner
 	}
 
-	/* Read the literals in the command. */
 	if s.trivial_literal_context != 0 {
 		var bits uint32
 		var value uint32
 		preloadSymbol(safe, s.literal_htree, br, &bits, &value)
 		for {
-			if !checkInputAmountMaybeSafe(safe, br, 28) { /* 162 bits + 7 bytes */
+			if !checkInputAmountMaybeSafe(safe, br, 28) {
 				s.state = stateCommandInner
 				result = decoderNeedsMoreInput
 				goto saveStateAndReturn
@@ -1752,7 +1598,7 @@ CommandInner:
 		var p2 byte = s.ringbuffer[(pos-2)&s.ringbuffer_mask]
 		for {
 			var context byte
-			if !checkInputAmountMaybeSafe(safe, br, 28) { /* 162 bits + 7 bytes */
+			if !checkInputAmountMaybeSafe(safe, br, 28) {
 				s.state = stateCommandInner
 				result = decoderNeedsMoreInput
 				goto saveStateAndReturn
@@ -1814,7 +1660,7 @@ CommandPostDecodeLiterals:
 	}
 
 	if s.distance_code >= 0 {
-		/* Implicit distance case. */
+
 		if s.distance_code != 0 {
 			s.distance_context = 0
 		} else {
@@ -1824,7 +1670,7 @@ CommandPostDecodeLiterals:
 		s.dist_rb_idx--
 		s.distance_code = s.dist_rb[s.dist_rb_idx&3]
 	} else {
-		/* Read distance code in the command, unless it was implicitly zero. */
+
 		if s.block_length[2] == 0 {
 			if safe != 0 {
 				if !safeDecodeDistanceBlockSwitch(s) {
@@ -1856,12 +1702,8 @@ CommandPostDecodeLiterals:
 
 	i = s.copy_length
 
-	/* Apply copy of LZ77 back-reference, or static dictionary reference if
-	   the distance is larger than the max LZ77 distance */
 	if s.distance_code > s.max_distance {
-		/* The maximum allowed distance is BROTLI_MAX_ALLOWED_DISTANCE = 0x7FFFFFFC.
-		   With this choice, no signed overflow can occur after decoding
-		   a special distance code (e.g., after adding 3 to the last distance). */
+
 		if s.distance_code > maxAllowedDistance {
 			return decoderErrorFormatDistance
 		}
@@ -1876,7 +1718,6 @@ CommandPostDecodeLiterals:
 			var word_idx int = address & mask
 			var transform_idx int = address >> shift
 
-			/* Compensate double distance-ring-buffer roll. */
 			s.dist_rb_idx += s.distance_context
 
 			offset += word_idx * i
@@ -1912,24 +1753,20 @@ CommandPostDecodeLiterals:
 		var dst_end int = pos + i
 		var src_end int = src_start + i
 
-		/* Update the recent distances cache. */
 		s.dist_rb[s.dist_rb_idx&3] = s.distance_code
 
 		s.dist_rb_idx++
 		s.meta_block_remaining_len -= i
 
-		/* There are 32+ bytes of slack in the ring-buffer allocation.
-		   Also, we have 16 short codes, that make these 16 bytes irrelevant
-		   in the ring-buffer. Let's copy over them as a first guess. */
 		copy(copy_dst, copy_src[:16])
 
 		if src_end > pos && dst_end > src_start {
-			/* Regions intersect. */
+
 			goto CommandPostWrapCopy
 		}
 
 		if dst_end >= s.ringbuffer_size || src_end >= s.ringbuffer_size {
-			/* At least one region wraps. */
+
 			goto CommandPostWrapCopy
 		}
 
@@ -1938,15 +1775,14 @@ CommandPostDecodeLiterals:
 			if i > 32 {
 				copy(copy_dst[16:], copy_src[16:][:uint(i-16)])
 			} else {
-				/* This branch covers about 45% cases.
-				   Fixed size short copy allows more compiler optimizations. */
+
 				copy(copy_dst[16:], copy_src[16:][:16])
 			}
 		}
 	}
 
 	if s.meta_block_remaining_len <= 0 {
-		/* Next metablock, if any. */
+
 		s.state = stateMetablockDone
 
 		goto saveStateAndReturn
@@ -1972,7 +1808,7 @@ CommandPostWrapCopy:
 	}
 
 	if s.meta_block_remaining_len <= 0 {
-		/* Next metablock, if any. */
+
 		s.state = stateMetablockDone
 
 		goto saveStateAndReturn
@@ -1994,9 +1830,6 @@ func safeProcessCommands(s *Reader) int {
 	return processCommandsInternal(1, s)
 }
 
-/* Returns the maximum number of distance symbols which can only represent
-   distances not exceeding BROTLI_MAX_ALLOWED_DISTANCE. */
-
 var maxDistanceSymbol_bound = [maxNpostfix + 1]uint32{0, 4, 12, 28}
 var maxDistanceSymbol_diff = [maxNpostfix + 1]uint32{73, 126, 228, 424}
 
@@ -2011,22 +1844,10 @@ func maxDistanceSymbol(ndirect uint32, npostfix uint32) uint32 {
 	}
 }
 
-/* Invariant: input stream is never overconsumed:
-   - invalid input implies that the whole stream is invalid -> any amount of
-     input could be read and discarded
-   - when result is "needs more input", then at least one more byte is REQUIRED
-     to complete decoding; all input data MUST be consumed by decoder, so
-     client could swap the input buffer
-   - when result is "needs more output" decoder MUST ensure that it doesn't
-     hold more than 7 bits in bit reader; this saves client from swapping input
-     buffer ahead of time
-   - when result is "success" decoder MUST return all unused data back to input
-     buffer; this is possible because the invariant is held on enter */
 func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, available_out *uint, next_out *[]byte) int {
 	var result int = decoderSuccess
 	var br *bitReader = &s.br
 
-	/* Do not try to process further in a case of unrecoverable error. */
 	if int(s.error_code) < 0 {
 		return decoderResultError
 	}
@@ -2038,43 +1859,36 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 	if *available_out == 0 {
 		next_out = nil
 	}
-	if s.buffer_length == 0 { /* Just connect bit reader to input stream. */
+	if s.buffer_length == 0 {
 		br.input_len = *available_in
 		br.input = *next_in
 		br.byte_pos = 0
 	} else {
-		/* At least one byte of input is required. More than one byte of input may
-		   be required to complete the transaction -> reading more data must be
-		   done in a loop -> do it in a main loop. */
+
 		result = decoderNeedsMoreInput
 
 		br.input = s.buffer.u8[:]
 		br.byte_pos = 0
 	}
 
-	/* State machine */
 	for {
 		if result != decoderSuccess {
-			/* Error, needs more input/output. */
+
 			if result == decoderNeedsMoreInput {
-				if s.ringbuffer != nil { /* Pro-actively push output. */
+				if s.ringbuffer != nil {
 					var intermediate_result int = writeRingBuffer(s, available_out, next_out, nil, true)
 
-					/* WriteRingBuffer checks s->meta_block_remaining_len validity. */
 					if int(intermediate_result) < 0 {
 						result = intermediate_result
 						break
 					}
 				}
 
-				if s.buffer_length != 0 { /* Used with internal buffer. */
+				if s.buffer_length != 0 {
 					if br.byte_pos == br.input_len {
-						/* Successfully finished read transaction.
-						   Accumulator contains less than 8 bits, because internal buffer
-						   is expanded byte-by-byte until it is enough to complete read. */
+
 						s.buffer_length = 0
 
-						/* Switch to input stream and restart. */
 						result = decoderSuccess
 
 						br.input_len = *available_in
@@ -2082,8 +1896,7 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 						br.byte_pos = 0
 						continue
 					} else if *available_in != 0 {
-						/* Not enough data in buffer, but can take one more byte from
-						   input stream. */
+
 						result = decoderSuccess
 
 						s.buffer.u8[s.buffer_length] = (*next_in)[0]
@@ -2092,15 +1905,13 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 						*next_in = (*next_in)[1:]
 						(*available_in)--
 
-						/* Retry with more data in buffer. */
 						continue
 					}
 
-					/* Can't finish reading and no more input. */
 					break
-					/* Input stream doesn't contain enough input. */
+
 				} else {
-					/* Copy tail to internal buffer and return. */
+
 					*next_in = br.input[br.byte_pos:]
 
 					*available_in = br.input_len - br.byte_pos
@@ -2115,17 +1926,11 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 				}
 			}
 
-			/* Unreachable. */
-
-			/* Fail or needs more output. */
 			if s.buffer_length != 0 {
-				/* Just consumed the buffered input and produced some output. Otherwise
-				   it would result in "needs more input". Reset internal buffer. */
+
 				s.buffer_length = 0
 			} else {
-				/* Using input stream in last iteration. When decoder switches to input
-				   stream it has less than 8 bits in accumulator, so it is safe to
-				   return unused accumulator bits there. */
+
 				bitReaderUnload(br)
 
 				*available_in = br.input_len - br.byte_pos
@@ -2136,15 +1941,14 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 		}
 
 		switch s.state {
-		/* Prepare to the first read. */
+
 		case stateUninited:
 			if !warmupBitReader(br) {
 				result = decoderNeedsMoreInput
 				break
 			}
 
-			/* Decode window size. */
-			result = decodeWindowBits(s, br) /* Reads 1..8 bits. */
+			result = decodeWindowBits(s, br)
 			if result != decoderSuccess {
 				break
 			}
@@ -2170,12 +1974,9 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 			s.state = stateInitialize
 			fallthrough
 
-			/* Maximum distance, see section 9.1. of the spec. */
-		/* Fall through. */
 		case stateInitialize:
 			s.max_backward_distance = (1 << s.window_bits) - windowGap
 
-			/* Allocate memory for both block_type_trees and block_len_trees. */
 			s.block_type_trees = make([]huffmanCode, (3 * (huffmanMaxSize258 + huffmanMaxSize26)))
 
 			if s.block_type_trees == nil {
@@ -2188,17 +1989,15 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 			s.state = stateMetablockBegin
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockBegin:
 			decoderStateMetablockBegin(s)
 
 			s.state = stateMetablockHeader
 			fallthrough
 
-			/* Fall through. */
 		case stateMetablockHeader:
 			result = decodeMetaBlockLength(s, br)
-			/* Reads 2 - 31 bits. */
+
 			if result != decoderSuccess {
 				break
 			}
@@ -2239,7 +2038,6 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 			for ; s.meta_block_remaining_len > 0; s.meta_block_remaining_len-- {
 				var bits uint32
 
-				/* Read one byte and ignore it. */
 				if !safeReadBits(br, 8, &bits) {
 					result = decoderNeedsMoreInput
 					break
@@ -2256,7 +2054,6 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 				break
 			}
 
-			/* Reads 1..11 bits. */
 			result = decodeVarLenUint8(s, br, &s.num_block_types[s.loop_counter])
 
 			if result != decoderSuccess {
@@ -2440,13 +2237,13 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 
 			if s.state == stateCommandPostWrite1 {
 				if s.meta_block_remaining_len == 0 {
-					/* Next metablock, if any. */
+
 					s.state = stateMetablockDone
 				} else {
 					s.state = stateCommandBegin
 				}
 			} else if s.state == stateCommandPostWrite2 {
-				s.state = stateCommandPostWrapCopy /* BROTLI_STATE_COMMAND_INNER_WRITE */
+				s.state = stateCommandPostWrapCopy
 			} else {
 				if s.loop_counter == 0 {
 					if s.meta_block_remaining_len == 0 {
@@ -2503,7 +2300,7 @@ func decoderDecompressStream(s *Reader, available_in *uint, next_in *[]byte, ava
 }
 
 func decoderHasMoreOutput(s *Reader) bool {
-	/* After unrecoverable error remaining output is considered nonsensical. */
+
 	if int(s.error_code) < 0 {
 		return false
 	}

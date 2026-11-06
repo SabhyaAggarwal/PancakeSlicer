@@ -31,19 +31,59 @@ class Flow;
 namespace Slic3r::Arachne
 {
 
+
+
+
+
+
+
 inline coord_t colinear_vertex_tolerance() { return coord_t(SCALED_EPSILON); }
+
+
+
+
+
+
+
 
 struct ExtrusionLine
 {
+
+
+
+
+
     size_t inset_idx;
+
+
+
+
+
+
+
 
     bool is_odd;
 
+
+
+
     bool is_closed;
+
+
+
+
 
     size_t size() const { return junctions.size(); }
 
+
+
+
     bool empty() const { return junctions.empty(); }
+
+
+
+
+
 
     std::vector<ExtrusionJunction> junctions;
 
@@ -95,8 +135,16 @@ struct ExtrusionLine
     void clear() { junctions.clear(); }
     void reverse() { std::reverse(junctions.begin(), junctions.end()); }
 
+
+
+
     int64_t getLength() const;
     int64_t polylineLength() const { return getLength(); }
+
+
+
+
+
 
     Polygon toPolygon() const
     {
@@ -107,7 +155,51 @@ struct ExtrusionLine
         return ret;
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     void simplify(int64_t smallest_line_segment_squared, int64_t allowed_error_distance_squared, int64_t maximum_extrusion_area_deviation);
+
+
+
+
+
+
+
+
+
+
 
     static int64_t calculateExtrusionAreaDeviationError(ExtrusionJunction A, ExtrusionJunction B, ExtrusionJunction C);
 

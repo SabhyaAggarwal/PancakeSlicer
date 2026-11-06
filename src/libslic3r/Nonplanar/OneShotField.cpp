@@ -71,25 +71,43 @@ constexpr int    Samples = 8192;
 const double     Cos70   = std::cos(70. * M_PI / 180.);
 constexpr double Inf     = std::numeric_limits<double>::infinity();
 constexpr int    StudentPolish = 3;
+
 constexpr double ClearanceDilation = 0.3;
+
+
+
 constexpr double BodyPathCap = 0.;
+
+
 double body_lean_cap()
 {
     const char *v = std::getenv("NP_ONESHOT_BODY_LEAN");
     return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) * M_PI / 180. : BodyPathCap;
 }
+
+
+
+
 constexpr double OneShotCpuCap    = 900.;
 constexpr int    OneShotCpuThreads = 4;
 constexpr double OneShotWallGuard = 3600.;
+
+
+
 constexpr size_t MaxNodes = 300000;
+
+
 
 std::vector<int> columns(const std::vector<std::array<Vec3d, 3>> &tris, const ObjectiveGeometry &g, int axis)
 {
     const int u = axis == 0 ? 1 : 0, w = axis == 2 ? 1 : 2;
+
     const double cyc = axis == 1 ? -1. : 1.;
     const size_t nd[3] = { g.dims[0], g.dims[1], g.dims[2] };
+
     std::vector<int> acc((nd[axis] + 1) * nd[u] * nd[w], 0);
     auto at = [&](size_t ia, size_t iu, size_t iw) -> int & { return acc[(iu * nd[w] + iw) * (nd[axis] + 1) + ia]; };
+
     const Vec2d o(g.origin[u] + 1e-5 * g.spacing[u], g.origin[w] + 1e-5 * g.spacing[w] * M_PI / 3.);
     const Vec2d s(g.spacing[u], g.spacing[w]);
     for (const auto &t : tris) {
@@ -127,6 +145,7 @@ std::vector<int> columns(const std::vector<std::array<Vec3d, 3>> &tris, const Ob
     return wind;
 }
 
+
 void edt_line(std::vector<double> &f, double s)
 {
     const size_t        n = f.size();
@@ -145,6 +164,7 @@ void edt_line(std::vector<double> &f, double s)
     for (size_t q = first + 1; q < n; ++q) {
         if (!std::isfinite(f[q]))
             continue;
+
         double x;
         while ((x = ((f[q] + s * s * double(q) * double(q)) - (f[v[k]] + s * s * double(v[k]) * double(v[k]))) /
                     (2. * s * s * (double(q) - double(v[k])))) <= z[k])
@@ -162,8 +182,12 @@ void edt_line(std::vector<double> &f, double s)
     f = std::move(d);
 }
 
+
+
+
 std::vector<float> shell_fraction(const ObjectiveGeometry &g, double want, double shell_mm)
 {
+
     const size_t        n[3] = { g.dims[0] + 2, g.dims[1] + 2, g.dims[2] + 2 };
     auto                pid  = [&](size_t i, size_t j, size_t k) { return (i * n[1] + j) * n[2] + k; };
     std::vector<double> d(n[0] * n[1] * n[2], 0.);
@@ -214,6 +238,7 @@ std::vector<float> shell_fraction(const ObjectiveGeometry &g, double want, doubl
     }
 }
 
+
 std::string file_sha256(const std::string &path)
 {
     std::ifstream     in(path, std::ios::binary);
@@ -255,6 +280,9 @@ std::string file_sha256(const std::string &path)
     return std::string(hex, 64);
 }
 
+
+
+
 std::vector<std::pair<std::string, std::string>> arm_dir_files(const PrintObject &object, const std::string &ext)
 {
     std::vector<std::pair<std::string, std::string>> out;
@@ -269,17 +297,25 @@ std::vector<std::pair<std::string, std::string>> arm_dir_files(const PrintObject
     return out;
 }
 
+
 bool arm_forced(const std::string &arm)
 {
     const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
     return force != nullptr && std::string(force) == "{A:" + arm + "}";
 }
 
+
+
+
+
 bool pick_meters()
 {
     static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_PICK_METERS"); return v != nullptr && *v == '1'; }();
     return on;
 }
+
+
+
 constexpr double PickPartTie   = 0.5;
 constexpr double PickPartShare = 0.05;
 constexpr double PickNetTie    = 0.02;
@@ -291,6 +327,8 @@ struct Meters
     double part = std::numeric_limits<double>::quiet_NaN(), net = part, time = part;
 };
 Meters meters_of(const MeasuredPrint &m, double time) { return { std::max(0., m.floating.part), std::max(0., m.support_mm3), time }; }
+
+
 double part_band(const Meters &b) { return std::max(PickPartTie, PickPartShare * b.part); }
 double net_band(const Meters &b) { return std::max(PickNetTie * b.net, PickNetFloor); }
 bool meters_better(const Meters &a, const Meters &b)
@@ -302,6 +340,11 @@ bool meters_better(const Meters &a, const Meters &b)
     return a.time < PickTimeTie * b.time;
 }
 std::string meters_text(const Meters &m) { return Slic3r::format("PART %1$.1f mm, NET %2$.0f mm3, %3$.0f s", m.part, m.net, m.time); }
+
+
+
+
+
 
 std::string external_field(const std::string &object_name, const std::string &command)
 {
@@ -333,6 +376,7 @@ std::string external_field(const std::string &object_name, const std::string &co
             BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object_name << ": NP_ONESHOT_FIELD_SOLVER exit " << solver.exit_code() << ", no offer (log " << stem << ".log)";
         } else {
             result = stem + ".npf.npz";
+
             boost::system::error_code ec;
             fs::remove(stem + ".npz", ec);
             fs::remove(stem + ".stl", ec);
@@ -345,6 +389,7 @@ std::string external_field(const std::string &object_name, const std::string &co
     return result;
 }
 
+
 std::string student_model()
 {
     if (const char *env = std::getenv("NP_ONESHOT_MODEL"); env != nullptr && *env != 0)
@@ -352,6 +397,7 @@ std::string student_model()
     const boost::filesystem::path bundled = boost::filesystem::path(resources_dir()) / "nonplanar" / "student" / "oneshot.nsw";
     return boost::filesystem::exists(bundled) ? bundled.string() : std::string();
 }
+
 
 void save_objective_geometry(const std::string &path, const ObjectiveGeometry &g)
 {
@@ -416,6 +462,7 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
     }
     if (tris.empty() || area <= 0.)
         return g;
+
     std::mt19937_64                        rng(0x6e733273ULL ^ uint64_t(tris.size()));
     std::uniform_real_distribution<double> uni(0., 1.);
     const double                           a = area / Samples;
@@ -427,6 +474,7 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
         const Vec3d  p  = (1. - s1) * t[0] + s1 * (1. - r2) * t[1] + s1 * r2 * t[2];
         const Vec3d  c  = (t[1] - t[0]).cross(t[2] - t[0]);
         const Vec3d  n  = c / std::max(c.norm(), 1e-30);
+
         if (n.z() < -std::cos(M_PI / 180.) && p.z() < 0.05) {
             g.bed_area += a;
             continue;
@@ -436,6 +484,8 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
         if (g.cls.back() == 1)
             area_wall += a;
     }
+
+
     double pitch = std::clamp(box.size().maxCoeff() / 96., 0.5, 2.);
     auto   nodes = [&box](double p) {
         size_t n = 1;
@@ -451,6 +501,7 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
     g.mesh_max         = box.max;
     for (int ax = 0; ax < 3; ++ax)
         g.dims[size_t(ax)] = size_t(std::ceil((box.max[ax] + 2. * pitch - g.origin[ax]) / pitch)) + 1;
+
     std::vector<uint8_t> votes(g.nodes(), 0);
     for (int ax = 0; ax < 3; ++ax) {
         const std::vector<int> wind = columns(tris, g, ax);
@@ -467,6 +518,7 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
 
 namespace {
 
+
 bool leans(const ObjectiveMachine &m)
 {
     return m.rotary ? m.tilt_max > 0. : *std::max_element(m.slope_cap.begin(), m.slope_cap.end()) > 0.;
@@ -476,11 +528,16 @@ bool leans(const ObjectiveMachine &m)
 
 namespace {
 
+
 bool organic_support(const PrintObjectConfig &oc)
 {
     return oc.enable_support.value && is_tree(oc.support_type.value) &&
            (oc.support_style.value == smsTreeOrganic || oc.support_style.value == smsDefault);
 }
+
+
+
+
 
 std::vector<double> mode_off_tops(const PrintObject &object, double layer_height = 0.)
 {
@@ -509,6 +566,8 @@ std::vector<double> mode_off_tops(const PrintObject &object, double layer_height
     return tops;
 }
 
+
+
 std::vector<float> anchor_field(const ObjectiveGeometry &g, const std::vector<double> &tops, double first_layer, double h)
 {
     if (tops.empty())
@@ -532,12 +591,17 @@ std::vector<float> anchor_field(const ObjectiveGeometry &g, const std::vector<do
     return f;
 }
 
+
+
+
 ObjectiveWeights machine_weights(const PrintObject &object)
 {
     ObjectiveWeights   w;
     const std::string &model = object.print()->config().printer_model.value;
     if (object.print()->config().nonplanar_kinematics.value != RotaryLayout::None)
         return w;
+
+
     if (model == "Bambu Lab A1 mini")
         w.up *= 1.23, w.wall *= 1.09;
     else if (model == "Prusa MINI" || model == "Prusa MINI IS")
@@ -559,14 +623,31 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.support_on = oc.enable_support.value;
     m.h                  = oc.layer_height.value;
     m.first_layer        = pc.initial_layer_print_height.value;
+
+
+
+
+
+
     const SlicingParameters &sp = object.slicing_parameters();
     m.thickness_min = sp.min_layer_height > 0. ? sp.min_layer_height : 0.5 * m.h;
     m.thickness_max = sp.max_layer_height > 0. ? sp.max_layer_height : 1.6 * m.h;
+
+
+
     if (organic_support(oc))
         m.thickness_min = m.thickness_max = m.h;
+
+
+
     m.thickness_min *= 0.999;
     m.thickness_max *= 1.001;
     m.printable_overhang = rad(oc.multiplanar_overhang_threshold.value);
+
+
+
+
+
     const int    threshold = oc.support_threshold_angle.value > 0 ? oc.support_threshold_angle.value : 30;
     const double cos_s = std::cos(double(threshold) * M_PI / 180.), band = 2. * m.h + geom.spacing.z();
     m.support_cos      = cos_s;
@@ -579,7 +660,13 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.anchor = anchor_field(geom, tops, m.first_layer, m.h);
     for (size_t j = 1; j < tops.size(); ++j)
         m.thickness_min = std::min(m.thickness_min, tops[j] - tops[j - 1] - 1e-4);
+
+
+
+
     m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
+
+
     const bool no_pins = std::getenv("NP_ONESHOT_NO_PINS") != nullptr && body_lean_cap() > 0.;
     for (const double z : no_pins ? std::vector<double>() : faces_z) {
         const double lo = (z - band - geom.origin.z()) / geom.spacing.z(), hi = (z + band - geom.origin.z()) / geom.spacing.z();
@@ -587,15 +674,21 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
             m.pinned_v[size_t(k)] = m.anchor.empty() ? float(geom.origin.z() + double(k) * geom.spacing.z()) :
                                                        m.anchor[geom.index(0, 0, size_t(k))];
     }
+
+
+
     m.rotary             = pc.nonplanar_kinematics.value != RotaryLayout::None;
     m.tilt_max           = std::min(m.rotary ? tilt_max : 0., m.rotary ? body_lean_cap() : BodyPathCap);
     m.slope_cap.fill(BodyPathCap);
+
+
     const double nozzle = pc.nozzle_diameter.get_at(0);
     m.line_width     = oc.line_width.get_abs_value(nozzle);
     m.infill_density = rc.sparse_infill_density.value / 100.;
     m.shell_speed    = 0.5 * (rc.outer_wall_speed.get_at(0) + rc.inner_wall_speed.get_at(0));
     m.sparse_speed   = rc.sparse_infill_speed.get_at(0);
     m.max_volumetric = pc.filament_max_volumetric_speed.get_at(0);
+
     {
         const bool   bbl     = object.print()->is_BBL_printer();
         const double d_comb  = std::min(nozzle_diameter_for_filament(pc, rc.sparse_infill_filament_id.value, bbl),
@@ -608,7 +701,11 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.first_layer_speed = pc.initial_layer_speed.get_at(0);
     m.top_speed         = rc.top_surface_speed.get_at(0);
     m.top_shell_layers  = rc.top_shell_layers.value;
+
     m.shells = false;
+
+
+
     if (m.rotary) {
         TimeModel &z = m.time_zonly;
         z.T = 0., z.c0 = 347.92, z.F_wallp = 0.10143, z.F_upp = 0.0093545, z.Ti = 0.28462, z.F_first = 0.99191, z.cap = 1.069;
@@ -616,11 +713,24 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
         c.T = 0., c.c0 = 435.33, c.F_flatx = 0.031288, c.F_upp = 0.046025, c.F_shells_top = 1.3976, c.Ti = 10.461, c.layers = 4.3382,
         c.T_minlayer = 4.0079, c.T_unwind = 0.23456, c.cap = 1.05;
     } else {
+
+
+
+
+
+
+
         TimeModel &z = m.time_zonly;
         const double a_default = oc.default_acceleration.get_at(0) > 0. ? oc.default_acceleration.get_at(0) : 5000.;
         const double a_travel  = oc.travel_acceleration.get_at(0) > 0. ? oc.travel_acceleration.get_at(0) : a_default;
         z.T = 0., z.c0 = 446.76, z.F_wallt = 1.0471, z.F_upt = 0.98145, z.Ti = 1.1251, z.Li = 0.3468 / m.sparse_speed,
         z.F_seg = 4.5281 * m.sparse_speed / a_default, z.layers = 116.41 * m.travel_speed / a_travel, z.F_first = 0.846;
+
+
+
+
+
+
         struct FixedHeadCap
         {
             const char *model;
@@ -637,26 +747,37 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
             if (pc.printer_model.value == c.model)
                 z.cap = c.cap, m.support_cA = c.support_cA, m.support_cH = c.support_cH;
     }
+
+
     if (const double limit = max_time_ratio_override(); limit > 0.) {
         m.time_zonly.cap *= limit / OneShotState::MaxTimeRatio;
         m.time_curved.cap *= limit / OneShotState::MaxTimeRatio;
     }
+
+
     if (const OneShotState *state = object.oneshot_state(); state != nullptr && state->cap_scale < 1.)
         m.time_zonly.cap = std::max(1., m.time_zonly.cap * state->cap_scale);
+
+
     if (m.rotary)
         m.support_cV = 0.0754, m.support_cS = 0.1563;
+
+
     m.road_factor = m.rotary ? 1.30 : 2.42;
     if (m.rotary) {
         m.b_rate       = rad(pc.rotary_max_speed.get_at(0));
         m.c_rate       = rad(pc.rotary_max_speed.get_at(1));
         m.c_continuous = pc.rotary_axis_continuous.get_at(1);
     }
+
     double rmin = Inf, rmax = 0.;
     for (const Vec2d &p : pc.printable_area.values)
         rmin = std::min(rmin, p.norm()), rmax = std::max(rmax, p.norm());
     if (rmax > 0. && rmax - rmin < 0.05 * rmax)
         m.plate_radius = rmax;
     const Vec3d span = Vec3d(double(geom.dims[0]), double(geom.dims[1]), double(geom.dims[2])).cwiseProduct(geom.spacing);
+
+
     if (leans(m))
         m.head = head_points(resolve_head_envelope(pc), geom.spacing.minCoeff(), span.norm(), ClearanceDilation);
     return m;
@@ -674,6 +795,9 @@ std::chrono::steady_clock::time_point measure_deadline(OneShotState &state)
 double *measure_work(const PrintObject &object, OneShotState &state)
 {
     if (std::isnan(state.measure_work_left)) {
+
+
+
         const double facets = double(std::max<size_t>(object.model_object()->facets_count(), 1));
         double       budget = MeasureWorkBudget * std::clamp(MeasureWorkFacets / facets, 1., MeasureWorkMaxScale);
         if (const char *env = std::getenv("NP_ONESHOT_MEASURE_WORK"); env != nullptr && *env != 0)
@@ -686,6 +810,7 @@ double *measure_work(const PrintObject &object, OneShotState &state)
 bool oneshot_requested(const PrintObject &object)
 {
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+
     const OneShotState *state = object.oneshot_state();
     return (mode ? mode->value : object.print()->default_object_config().nonplanar_mode.value) == NonplanarMode::OneShot &&
            object.config().nonplanar_atom_toolpath.value.empty() &&
@@ -693,6 +818,8 @@ bool oneshot_requested(const PrintObject &object)
 }
 
 namespace {
+
+
 
 thread_local const OneShotState *injected = nullptr;
 struct Injection
@@ -709,6 +836,7 @@ bool take_injected_oneshot(OneShotState &state)
     if (injected == nullptr)
         return false;
     state = *injected;
+
     state.plinth_applied = false;
     state.injected       = true;
     return true;
@@ -746,6 +874,8 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
         if (std::isfinite(ratio) && ratio <= state.max_time_ratio()) {
             state.solved = trial.solved;
             admitted     = true;
+
+
             state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             if (object.print()->objects().size() == 1)
                 auto_offer(object, state, t_ps, native.rms, t_native);
@@ -776,6 +906,9 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
                 return v;
         return std::numeric_limits<double>::quiet_NaN();
     };
+
+
+
     const char *keep_dir = std::getenv("NP_ONESHOT_LEAN_KEEP");
     auto        keep_as  = [&](const std::string &what) {
         return keep_dir != nullptr && *keep_dir != 0 ? (boost::filesystem::path(keep_dir) / (name + "." + what + ".gcode")).string() : std::string();
@@ -790,6 +923,8 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
     Meters best_m = meters_of(mb, t_body);
     const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
     const Floating control      = planar_control_floating(object, user_support);
+
+
     static const double F = [] { const char *v = std::getenv("NP_ONESHOT_FLOAT_W"); return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) : 0.; }();
     const double   J_body = term(*state.solved, "J") + F * std::max(0., mb.floating.part), S_body = term(*state.solved, "J_S"),
                  T_body = term(*state.solved, "J_T");
@@ -803,10 +938,12 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         double        t_off;
         {
             const Injection lean_only(trial);
+
             t_off = measured_time(object, NonplanarMode::OneShot, {}, keep_as("lean." + boost::filesystem::path(trial.solved->solver).filename().string()),
                                   pick_meters(), &mo);
         }
         const NpField &o     = *trial.solved;
+
         const std::string arm_prefix = "lean offer arm ";
         const bool        forced     = o.solver.rfind(arm_prefix, 0) == 0 &&
                              arm_forced(o.solver.substr(arm_prefix.size(), o.solver.find(',') - arm_prefix.size()));
@@ -817,6 +954,8 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         std::string    why;
         if (!std::isfinite(t_off))
             why = "its measured slice failed";
+
+
         else if (!forced && !(t_off <= 1.5 * t_ps))
             why = Slic3r::format("%1$.2f x planar + support", t_off / t_ps);
         else if (!forced && control.part >= 0. && mo.floating.part > control.part + 1e-6)
@@ -833,6 +972,7 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
         BOOST_LOG_TRIVIAL(warning) << "One-shot field " << name << ": " << line;
         state.time_cut_note += ", " + line;
         if (why.empty()) {
+
             double t_verified;
             {
                 const Injection lean_only(trial);
@@ -851,6 +991,8 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
     if (!best)
         return false;
     state.solved = best;
+
+
     state.z_only = in_plane_spread(*best) < OneShotState::ZOnlySpread;
     state.time_cut_note += ", the lean adopted";
     return true;
@@ -877,9 +1019,12 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
     using Offer              = OneShotState::Offer;
     state.measured_ratio     = ratio;
     state.measured_floating  = floating.part;
+
     if (state.offer == Offer::Control)
         return false;
     const bool time_over = std::isfinite(ratio) && ratio > state.max_time_ratio() && !state.measured_anchor;
+
+
     const bool float_over = past_floating_bar(object, state, floating);
     if (!time_over && !float_over)
         return false;
@@ -900,9 +1045,16 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
 
 bool band_control(const PrintObject &object, OneShotState &state)
 {
+
+
+
     if (pick_meters() || state.offer == OneShotState::Offer::Control || state.offer == OneShotState::Offer::Auto ||
         state.offer == OneShotState::Offer::Planar || state.measured_anchor || state.route != nullptr)
         return false;
+
+
+
+
     const double band = object.wall_band(LayerChangeMax), total = object.wall_band();
     state.band_note = Slic3r::format(", wall band %1$.4f over one step (total %2$.4f)", band, total);
     if (band < PrintObject::OneShotWallBand)
@@ -928,6 +1080,16 @@ bool control_past_cap(const PrintObject &object, OneShotState &state)
     return true;
 }
 
+
+
+
+
+
+
+
+
+
+
 constexpr double OneShotBodyBand   = 0.01;
 constexpr double OneShotBodySlower = 1.02;
 
@@ -935,6 +1097,7 @@ bool planar_keeps_pick(const PrintObject &object, OneShotState &state, const Flo
 {
     using Offer = OneShotState::Offer;
     const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
+
     if (!pick_meters() || state.injected || state.offer == Offer::Control || state.offer == Offer::Auto || state.offer == Offer::Planar ||
         (force != nullptr && *force != 0))
         return false;
@@ -961,12 +1124,17 @@ bool body_earns_control(const PrintObject &object, OneShotState &state, const Fl
     const MeasureDeadline deadline(measure_deadline(state));
     const MeasureWork     work(measure_work(object, state));
     using Offer = OneShotState::Offer;
+
+
+
     if (pick_meters() || state.offer == Offer::Control || state.offer == Offer::Auto || state.offer == Offer::Planar || state.route != nullptr)
         return false;
     std::string why;
     if (const double band = object.wall_band(); band > OneShotBodyBand)
         why = Slic3r::format(", wall band %1$.4f past %2$.2f -> control", band, OneShotBodyBand);
     else if (state.measured_ratio > OneShotBodySlower) {
+
+
         const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
         const Floating control      = planar_control_floating(object, user_support);
         if (!(control.part >= 0. && floating.part >= 0. && floating.part <= 0.5 * control.part && control.part - floating.part >= 1.))
@@ -990,10 +1158,15 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
         return false;
     state.auto_weighed = true;
     const auto    t0 = std::chrono::steady_clock::now();
+
+
+
     if (!state.auto_measured) {
         MeasuredPrint automatic;
         automatic.as_printed     = make_tool_kinematics(object.print()->config())->rotary_count() == 0;
         automatic.count_contacts = !automatic.as_printed;
+
+
         std::vector<std::pair<std::string, std::string>> user;
         for (const char *key : { "enable_support", "support_type", "support_style", "support_critical_regions_only" }) {
             const ConfigOption *option = object.model_object()->config.get().option(key);
@@ -1003,6 +1176,9 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
                 user.emplace_back(key, option->serialize());
         }
         measured_time(object, NonplanarMode::Auto, user, {}, automatic.as_printed, &automatic);
+
+
+
         if (automatic.contacts > 0) {
             MeasuredPrint planar;
             measured_time(object, NonplanarMode::Off, user, {}, false, &planar);
@@ -1012,12 +1188,20 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
             state.auto_planar = true;
         }
         state.auto_measured = std::make_shared<const MeasuredPrint>(std::move(automatic));
+
+
         state.auto_floats = past_floating_bar(object, state, state.auto_measured->floating);
     }
     const MeasuredPrint &automatic = *state.auto_measured;
     state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const bool   floats = state.auto_floats;
     const double ratio  = automatic.time / t_ps;
+
+
+
+
+
+
     const bool   pick_over = pick_time / t_ps > state.max_time_ratio();
     const bool   smoother  = !state.auto_planar && (!std::isfinite(pick_rms) || automatic.rms < pick_rms);
     const bool   wins      = !floats && std::isfinite(automatic.rms) && std::isfinite(automatic.time) &&
@@ -1043,9 +1227,13 @@ void measured_export_check(PrintObject &object, OneShotState &state, const std::
 {
     const MeasureDeadline deadline(measure_deadline(state));
     const MeasureWork     work(measure_work(object, state));
+
+
     if (!state.z_only || std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") != nullptr || object.print()->objects().size() == 1)
         return;
     const auto t0 = std::chrono::steady_clock::now();
+
+
     const double t_ps = measured_time(object, NonplanarMode::Off,
                                       {}, {}, false);
     for (;;) {
@@ -1074,7 +1262,10 @@ double in_plane_spread(const NpField &f)
     return spread;
 }
 
+
+
 constexpr double TopSpreadLayers = 6.;
+
 
 static std::vector<double> tops_profile(const std::vector<double> &tops)
 {
@@ -1087,10 +1278,14 @@ static std::vector<double> tops_profile(const std::vector<double> &tops)
     return out;
 }
 
+
+
+
 static std::vector<double> capped_tops(const std::vector<double> &tops, double min_h, double max_h)
 {
     if (tops.size() < 3)
         return tops;
+
     constexpr double    dz    = 0.01;
     const double        z0    = tops.front(), top = tops.back();
     const size_t        n     = size_t(std::ceil((top - z0) / dz)) + 1;
@@ -1105,10 +1300,13 @@ static std::vector<double> capped_tops(const std::vector<double> &tops, double m
     auto at = [&](double z) { return t[std::min(n - 1, size_t(std::max(0., (z - z0) / dz)))]; };
     std::vector<double> out { z0 };
     for (double below = z0; below < top - 1e-6;) {
+
         double h = at(below);
         for (double z = below; z < below + h && z < top; z += dz)
             h = std::min(h, std::max(at(z), z - below));
         h = std::clamp(h, min_h, max_h);
+
+
         const double rest = top - below;
         size_t       n    = size_t(std::ceil(rest / h - 1e-9));
         while (n > 1 && rest / double(n) < min_h)
@@ -1126,8 +1324,10 @@ static std::vector<double> capped_tops(const std::vector<double> &tops, double m
 std::vector<double> layer_profile(const NpField &f, double first_layer, double top, double min_h, double max_h,
                                   const std::vector<std::pair<double, double>> &planar_bands, double planar_h)
 {
+
     if (!f.layer_tops.empty())
         return tops_profile(f.layer_tops);
+
     std::vector<double> z(f.dims[2]), phi(f.dims[2]);
     for (size_t k = 0; k < f.dims[2]; ++k) {
         double sum = 0.;
@@ -1143,10 +1343,12 @@ std::vector<double> layer_profile(const NpField &f, double first_layer, double t
                 return z[k - 1] + (z[k] - z[k - 1]) * (level - phi[k - 1]) / std::max(phi[k] - phi[k - 1], 1e-12);
         return z.back() + (level - phi.back());
     };
+
     std::vector<double> out { 0., first_layer };
     double              below = first_layer;
     for (int j = 1; below < top - 1e-6; ++j) {
         double h = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
+
         if (planar_h > 0. && std::any_of(planar_bands.begin(), planar_bands.end(),
                                          [&](const auto &b) { return below + h > b.first && below < b.second; })) {
             const double next = first_layer + std::ceil((below + min_h - first_layer) / planar_h - 1e-6) * planar_h;
@@ -1154,8 +1356,14 @@ std::vector<double> layer_profile(const NpField &f, double first_layer, double t
             while (inverse(first_layer + (j + 1) * f.h) < below + h + min_h)
                 ++j;
         }
+
+
+
+
         if (const double rest = top - below; rest - h < std::max(min_h, 0.5 * f.h))
             h = rest <= max_h ? rest : 0.5 * rest;
+
+
         if (smooth_layers() && planar_h <= 0.) {
             const double rest = top - below, h0 = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
             if (rest < TopSpreadLayers * h0 && rest > h0 + 1e-6) {
@@ -1251,6 +1459,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     const double             nozzle = object.print()->config().nozzle_diameter.get_at(0);
     const ObjectiveGeometry  g = objective_geometry(mesh, rc.wall_loops.value, rc.top_shell_layers.value, oc.line_width.get_abs_value(nozzle),
                                                     oc.layer_height.value, unsampled);
+
+
     if (g.nodes() == 0) {
         abort      = OneShotAbortReason();
         abort.kind = OneShotAbort::Infeasible;
@@ -1259,6 +1469,12 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     }
     const ObjectiveMachine   m = objective_machine(object, g, tilt_max);
     const ObjectiveWeights   W = machine_weights(object);
+
+
+
+
+
+
     ObjectiveParams          params;
     params.max_starts   = 3;
     params.lottery_keep = 1;
@@ -1267,6 +1483,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     params.budget       = 0.;
     if (const char *only = std::getenv("NP_ONESHOT_ONLY_OFFER"); only != nullptr)
         params.only_offer = only;
+
+
     if (const char *search = std::getenv("NP_ONESHOT_SEARCH"); search != nullptr && *search != 0) {
         int starts = params.max_starts, keep = params.lottery_keep, local = params.local_rounds;
         if (std::sscanf(search, "%d,%d,%d", &starts, &keep, &local) >= 1) {
@@ -1275,12 +1493,18 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             params.local_rounds = std::max(0, local);
         }
     }
+
+
     if (const OneShotState *state = object.oneshot_state();
         state != nullptr && (state->measured_anchor || state->offer == OneShotState::Offer::Control))
         params.only_offer = "anchor";
+
+
     const bool level_only = !leans(m);
     if (level_only)
         params.planar_adaptive = true;
+
+
     std::vector<std::vector<double>> exact_tops;
     if (params.only_offer.empty()) {
         const SlicingParameters &sp = object.slicing_parameters();
@@ -1296,10 +1520,14 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             params.exact_natives.emplace_back("native_orca_q" + std::to_string(int(std::lround(100. * q))), anchor_field(g, tops, m.first_layer, m.h));
             exact_tops.push_back(tops);
         }
+
+
         for (int i = 2; i <= 7; ++i) {
             const double t = 0.04 * i;
             if (t < m.thickness_min - 1e-9 || t > m.thickness_max + 1e-9)
                 continue;
+
+
             std::vector<double> tops = mode_off_tops(object, t);
             if (smooth_layers())
                 tops = capped_tops(tops, m.thickness_min, m.thickness_max);
@@ -1308,6 +1536,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         }
     }
     const std::string model = level_only ? std::string() : student_model();
+
     std::vector<TimeCutOffer> cuts;
     if (time_cut && model.empty() && params.only_offer.empty() && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr)
         params.time_cut = &cuts;
@@ -1324,6 +1553,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         for (size_t j = 0; j < g.dims[1]; ++j)
             for (size_t k = 0; k < g.dims[2]; ++k)
                 f.phi[g.index(i, j, k)] = float(g.origin.z() + double(k) * g.spacing.z());
+
+
     if (m.anchor.size() == g.nodes())
         f.phi = m.anchor;
     if (!model.empty()) {
@@ -1334,6 +1565,9 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         params.level_rounds  = 0;
         params.iterations    = StudentPolish;
     }
+
+
+
     const std::vector<float> anchor_phi  = f.phi;
     const ObjectiveParams    full_params = params;
     std::string              init_path;
@@ -1358,6 +1592,11 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_INIT " << init << " unused: " << ex.what();
         }
     }
+
+
+
+
+
     struct Aborted
     {
         bool wall;
@@ -1365,6 +1604,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     const std::vector<float> planar = f.phi;
     ObjectiveTerms           t;
     const double             cpu0 = process_cpu_seconds();
+
+
     const int                threads = std::clamp(tbb::this_task_arena::max_concurrency(), 1, OneShotCpuThreads);
     const double             cpu_cap = OneShotCpuCap * threads;
     ObjectiveTerms given;
@@ -1384,6 +1625,9 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
                                 BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << line;
                             },
                             &given);
+
+
+
         if (!t.feasible()) {
             abort.kind = OneShotAbort::Infeasible;
             abort.what = Slic3r::format("H thickness/slope/head/bed/time %1%/%2%/%3%/%4%/%5%, time ratio %6$.3f vs cap %7$.3f; the start: "
@@ -1413,6 +1657,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     for (const stl_vertex &v : mesh.vertices)
         box.merge(v.cast<double>());
     f.mesh_min = box.min;
+
+
     if (const size_t raised = make_z_monotone(f); raised > 0)
         BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << raised << " grid nodes raised to keep phi increasing in z";
     f.solver   = model.empty() ? std::string("one-shot teacher ") + ObjectiveVersion :
@@ -1422,13 +1668,17 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     f.proxy_version = ObjectiveVersion;
     f.terms.emplace_back("stat_oneshot_seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     f.terms.emplace_back("stat_oneshot_aborted", double(int(abort.kind)));
+
+
     f.terms.emplace_back("stat_anchor_ratio", given.T_ratio);
     f.terms.emplace_back("stat_anchor_feasible", given.feasible() ? 1. : 0.);
     f.terms.emplace_back("stat_anchor_H", double(given.H_thickness > 0) + 2. * (given.H_slope > 0) + 4. * (given.H_head > 0) +
                                                 8. * (given.H_bed > 0) + 16. * (given.H_time > 0));
     f.terms.emplace_back("stat_oneshot_cpu_seconds", cpu0 >= 0. ? process_cpu_seconds() - cpu0 : -1.);
     f.terms.emplace_back("stat_oneshot_cpu_threads", double(threads));
+
     f.terms.emplace_back("stat_planar_support_s", support_time(g, m));
+
     std::vector<float> flat(g.nodes());
     for (size_t i = 0; i < g.dims[0]; ++i)
         for (size_t j = 0; j < g.dims[1]; ++j)
@@ -1454,6 +1704,9 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             cf.solver += " (time-cut native " + c.name + ")";
             time_cut->push_back(std::move(cf));
         }
+
+
+
     if (const char *local = std::getenv("NP_ONESHOT_LEAN_LOCAL"); time_cut && local != nullptr && *local != 0 && std::string(local) != "0" && model.empty() &&
         params.only_offer.empty()) {
         const std::vector<std::vector<float>> leans = overhang_local_leans(g, m, f.phi, 6., { 1., 0.6 });
@@ -1472,6 +1725,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             time_cut->push_back(std::move(lf));
         }
     }
+
+
     auto offer_file = [&](const std::string &path, const std::string &label) {
         BoundingBoxf3 box;
         for (const stl_vertex &v : mesh.vertices)
@@ -1491,10 +1746,13 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << lf.solver << " J " << lt.J << " S " << lt.S
                                 << " E_up " << lt.E_up << " E_wall " << lt.E_wall << " E_down " << lt.E_down << " T " << lt.T << " H "
                                 << lt.H_thickness << "/" << lt.H_slope << "/" << lt.H_head << "/" << lt.H_bed << "/" << lt.H_time;
+
+
         original.terms  = std::move(lf.terms);
         original.solver = std::move(lf.solver);
         time_cut->push_back(std::move(original));
     };
+
     if (const char *lean = std::getenv("NP_ONESHOT_LEAN_OFFER"); time_cut && lean != nullptr && *lean != 0 && model.empty() && params.only_offer.empty()) {
         std::stringstream paths(lean);
         for (std::string path; std::getline(paths, path, ',');) {
@@ -1505,8 +1763,11 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             }
         }
     }
+
+
     if (time_cut && model.empty() && params.only_offer.empty())
         for (const auto &[arm, path] : arm_dir_files(object, ".npf.npz")) {
+
             if (boost::filesystem::exists(boost::filesystem::path(path).parent_path() /
                                           (boost::filesystem::path(object.model_object()->name).stem().string() + ".route.json")))
                 continue;
@@ -1519,10 +1780,12 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
                 BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": arm " << arm << " unused: " << ex.what();
             }
         }
+
     if (const char *command = std::getenv("NP_ONESHOT_FIELD_SOLVER"); time_cut && command != nullptr && *command != 0 && model.empty() &&
         params.only_offer.empty())
         if (const std::string path = external_field(object.model_object()->name, command); !path.empty()) {
             try {
+
                 const std::string solver = load_npfield(path).solver;
                 const size_t      open   = solver.rfind(" (");
                 const std::string backend = open != std::string::npos && solver.back() == ')' ? solver.substr(open + 2, solver.size() - open - 3) : "cpu";
@@ -1531,12 +1794,15 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
                 BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_FIELD_SOLVER field unused: " << ex.what();
             }
         }
+
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
+
         const OneShotState *st     = object.oneshot_state();
         const bool          anchor = st != nullptr && (st->measured_anchor || st->offer == OneShotState::Offer::Control);
         const std::string   stem   = (boost::filesystem::path(dir) / object.model_object()->name).string() + (anchor ? ".anchor" : "");
         save_objective_geometry(stem + ".geom.npz", g);
         save_npfield(stem + ".field.npz", f);
+
         if (const char *only = std::getenv("NP_SOLVE_ONLY"); only != nullptr && *only != 0 && *only != '0') {
             BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve only: J " << t.J << " S " << t.S << " E "
                                        << t.E << " T " << t.T << (t.feasible() ? " feasible" : " infeasible") << ", spread " << t.spread << ", "
@@ -1553,20 +1819,42 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
 
 namespace {
 
+
+
 constexpr double RouteTimeCap = OneShotState::MaxTimeRatio / 1.02;
+
+
 constexpr double RouteScreenBand = 1.05;
 constexpr int    RouteMeasured   = 4;
+
+
 constexpr std::array<int, 4> PlinthLadder { 8, 15, 25, 40 };
 const std::vector<std::pair<std::string, std::string>> NoOverrides;
+
+
 constexpr size_t RouteSubsets = 32;
+
+
 const double     SeamCos = std::cos(20. * M_PI / 180.);
 constexpr double SeamK   = 0.25;
+
 constexpr double JoinRidgeMs  = 0.0108;
+
+
+
+
+
 double join_line_k()
 {
     static const double k = [] { const char *v = std::getenv("NP_ONESHOT_JOIN_LINE"); return v != nullptr && *v != 0 ? std::atof(v) : 1.; }();
     return k;
 }
+
+
+
+
+
+
 bool arm_grade()
 {
     static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_ARM_GRADE"); return v != nullptr && *v == '1'; }();
@@ -1579,13 +1867,26 @@ bool force_joins(const std::string &cuts)
     static const bool  on    = [] { const char *v = std::getenv("NP_ONESHOT_ROUTE_FORCE_JOINS"); return v != nullptr && std::atoi(v) != 0; }();
     return on && force != nullptr && cuts == force;
 }
+
 constexpr double SlabLayers   = 3.;
+
 constexpr double TerminalFaceArea = 20.;
+
+
 constexpr double JoinTurnMax = 20.;
+
+
 constexpr double FanStepFallback = 10.;
+
 constexpr double GradeAbove = 15.;
+
+
+
 constexpr double FanReach = 23.;
+
 constexpr double ChunkOverhangMax = 50.;
+
+
 double chunk_overhang_max()
 {
     static const double cap = [] {
@@ -1594,7 +1895,9 @@ double chunk_overhang_max()
     }();
     return cap;
 }
+
 constexpr int FanMinLayers = 3;
+
 
 bool on_clip(const std::array<Vec3d, 3> &t, const std::vector<HalfSpace> &clips)
 {
@@ -1602,6 +1905,7 @@ bool on_clip(const std::array<Vec3d, 3> &t, const std::vector<HalfSpace> &clips)
         return std::all_of(t.begin(), t.end(), [&c](const Vec3d &v) { return std::abs(c.normal.dot(v) - c.offset) < 1e-3; });
     });
 }
+
 
 double cut_perimeter(const indexed_triangle_set &mesh, const std::vector<HalfSpace> &clips, size_t base)
 {
@@ -1615,6 +1919,7 @@ double cut_perimeter(const indexed_triangle_set &mesh, const std::vector<HalfSpa
             pts.emplace_back(u.dot(p.cast<double>()), v.dot(p.cast<double>()));
     if (pts.size() < 3)
         return 0.;
+
     std::sort(pts.begin(), pts.end(), [](const Vec2d &a, const Vec2d &b) { return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
     std::vector<Vec2d> hull(2 * pts.size());
     size_t             k     = 0;
@@ -1635,6 +1940,12 @@ double cut_perimeter(const indexed_triangle_set &mesh, const std::vector<HalfSpa
     return length;
 }
 
+
+
+
+
+
+
 struct PieceTerms
 {
     ObjectiveTerms t;
@@ -1651,11 +1962,15 @@ PieceTerms price_piece(const ObjectiveGeometry &g, const ObjectiveMachine &m, co
         const double nd = g.n[s].z();
         if (nd < -cos_t)
             out.overhang += g.a[s];
+
+
         if ((frame.transpose() * g.n[s]).z() >= SeamCos && nd < SeamCos)
             out.seam += W.up * g.a[s] * std::max(0., SeamK * SeamK * m.h * m.h - e[s] * e[s]) / (er * er);
     }
     return out;
 }
+
+
 
 
 bool face_slab(const indexed_triangle_set &mesh, const MultiplanarChunk &c, double h)
@@ -1666,11 +1981,19 @@ bool face_slab(const indexed_triangle_set &mesh, const MultiplanarChunk &c, doub
     return top - c.base <= SlabLayers * h + 0.05;
 }
 
+
+
 bool slab_joins_exempt()
 {
     const char *v = std::getenv("NP_ONESHOT_SLAB_EXEMPT");
     return v != nullptr && *v == '1';
 }
+
+
+
+
+
+
 
 std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh, const ToolKinematics &kinematics, double h, double fan_step)
 {
@@ -1684,9 +2007,12 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
         const double            turn = std::acos(std::clamp(dp.dot(bn), -1., 1.));
         const int               steps = int(std::ceil(Geometry::rad2deg(turn) / fan_step - 1e-9));
         Vec3d                   axis  = dp.cross(bn);
+
+
         if (Geometry::rad2deg(turn) <= GradeAbove || steps < 2 || axis.norm() < 1e-9 || face_slab(mesh, c, h))
             continue;
         axis.normalize();
+
         const Vec3d                u     = axis.cross(bn);
         const double               sigma = dp.dot(u) >= 0. ? 1. : -1.;
         const indexed_triangle_set piece = clip_mesh(mesh, c.clips);
@@ -1703,6 +2029,7 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
             continue;
         centre /= double(on_cut);
         const Vec3d edge = hinge;
+
         auto make_fan = [&](int n) {
             std::vector<MultiplanarChunk> fan;
             for (int k = 1; k < n; ++k) {
@@ -1728,6 +2055,10 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
             }
             return fan;
         };
+
+
+
+
         std::string tried;
         auto prints = [&](const std::vector<MultiplanarChunk> &fan) {
             MultiplanarChunk rest = plan.chunks[p];
@@ -1742,10 +2073,14 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
             }
             return all;
         };
+
+
+
         std::vector<MultiplanarChunk> fan;
         int                           n  = steps;
         bool                          ok = false;
         double                        reach = FanReach;
+
         const std::vector<double> reaches = chunk_support_requested() ? std::vector<double>{ FanReach, 0.5 * FanReach, 0.25 * FanReach }
                                                                       : std::vector<double>{ FanReach };
         for (const double r : reaches) {
@@ -1778,6 +2113,13 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
     return log;
 }
 
+
+
+
+
+
+
+
 struct SpecCut
 {
     int    parent = -1;
@@ -1785,6 +2127,7 @@ struct SpecCut
     double o = 0.;
     double jvis = 0.;
 };
+
 
 MultiplanarPlan spec_cut_plan(const std::vector<SpecCut> &cuts, const indexed_triangle_set &mesh, const ToolKinematics &kinematics)
 {
@@ -1845,10 +2188,25 @@ MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_
 }
 
 
+
+
+
+
+
+
+
 constexpr double LipMinZ = 12., LipAccept = 0.7, LipMinPlanar = 50., LipStep = 0.25;
 constexpr double LipTilts[] = { 30., 35., 40., 45., 55. };
 constexpr size_t LipPerTilt = 2;
+
 constexpr int LipMeasured = 4;
+
+
+
+
+
+
+
 constexpr double LipRegionBend = 15., LipRegionMin = 50., LipJvisMax = 60., LipJvisWeight = 2.;
 struct LipFaces
 {
@@ -1870,6 +2228,7 @@ LipFaces lip_faces(const indexed_triangle_set &mesh)
         index[i] = int(f.c.size());
         f.c.push_back((t0 + t1 + t2) / 3.), f.nrm.push_back(cr.normalized()), f.area.push_back(a), f.tri.push_back({ t0, t1, t2 });
     }
+
     std::vector<int> parent(f.c.size());
     std::iota(parent.begin(), parent.end(), 0);
     std::function<int(int)> root = [&](int x) { return parent[x] == x ? x : parent[x] = root(parent[x]); };
@@ -1898,6 +2257,7 @@ LipFaces lip_faces(const indexed_triangle_set &mesh)
     }
     return f;
 }
+
 double lip_join_weight(const Vec3d &m, const Vec3d &d, double region_area)
 {
     const Vec3d  tz = m.cross(Vec3d::UnitZ()), td = m.cross(d);
@@ -1905,6 +2265,7 @@ double lip_join_weight(const Vec3d &m, const Vec3d &d, double region_area)
                          Geometry::rad2deg(std::acos(std::clamp(std::abs(tz.dot(td)) / std::max(tz.norm() * td.norm(), 1e-12), 0., 1.)));
     return std::min(1., theta / 10.) * std::min(1., region_area / 1000.);
 }
+
 double lip_jvis(const indexed_triangle_set &mesh, const LipFaces &f, const Vec3d &d, double o)
 {
     double sum = 0.;
@@ -1949,6 +2310,8 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
     std::vector<std::pair<double, SpecCut>> out;
     if (planar < LipMinPlanar)
         return out;
+
+
     constexpr double     LipJvisSample = 0.05;
     const LipFaces       faces = lip_faces(mesh);
     std::vector<Vec3d>   sp;
@@ -1957,6 +2320,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
     for (size_t i = 0; i < faces.c.size(); ++i) {
         if (faces.region_area[i] <= 0.)
             continue;
+
         const int                   n = std::max(1, int(std::ceil(std::sqrt(faces.area[i] / LipJvisSample))));
         const std::array<Vec3d, 3> &T = faces.tri[i];
         const size_t                first = sp.size();
@@ -1973,6 +2337,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
         for (int az = 0; az < 360; az += 15) {
             const double tr = t * M_PI / 180., ar = az * M_PI / 180.;
             const Vec3d  d(std::sin(tr) * std::cos(ar), std::sin(tr) * std::sin(ar), std::cos(tr));
+
             std::vector<size_t> fi(c.size()), vi(vtx.size());
             std::iota(fi.begin(), fi.end(), 0), std::iota(vi.begin(), vi.end(), 0);
             std::sort(fi.begin(), fi.end(), [&](size_t a, size_t b) { return c[a].dot(d) < c[b].dot(d); });
@@ -1990,6 +2355,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
             const double lo = std::floor(vtx[vi.back()].dot(d) / LipStep) * LipStep, hi = vtx[vi.front()].dot(d);
             double minz = std::numeric_limits<double>::infinity();
             size_t kv   = 0;
+
             std::vector<double> os;
             for (double o = lo; o < hi; o += LipStep)
                 os.push_back(o);
@@ -2005,6 +2371,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
                 sc[j]   = chunk[k] + root[k];
                 frac[j] = chunk_area[k] / chunk_area[0];
             }
+
             std::vector<double> jvis(os.size(), 0.);
             std::vector<double> face_w(faces.c.size(), -1.);
             for (size_t q = 0; q < sp.size(); ++q) {
@@ -2017,6 +2384,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
                 if (b >= 0 && b < long(os.size()))
                     jvis[size_t(b)] += sw[q] * face_w[i];
             }
+
             std::vector<double> obj(os.size(), std::numeric_limits<double>::infinity());
             for (size_t j = 0; j < os.size(); ++j)
                 if (std::isfinite(sc[j]) && sc[j] <= LipAccept * planar)
@@ -2036,6 +2404,7 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
         std::sort(picks.begin(), picks.end(), [](const auto &a, const auto &b) {
             return std::get<0>(a) < std::get<0>(b) || (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) < std::get<1>(b));
         });
+
         size_t taken = 0;
         for (size_t k = 0; k < picks.size() && taken < LipPerTilt; ++k) {
             SpecCut cut = std::get<2>(picks[k]);
@@ -2047,6 +2416,8 @@ std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_se
     return out;
 }
 
+
+
 bool lip_offers_requested()
 {
     static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_LIP_OFFER"); return v != nullptr && std::atoi(v) != 0; }();
@@ -2055,6 +2426,8 @@ bool lip_offers_requested()
 }
 
 namespace {
+
+
 
 bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step)
 {
@@ -2070,7 +2443,11 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     const std::string         &name    = object.model_object()->name;
     const indexed_triangle_set mesh    = slicing_frame_mesh(object);
     MultiplanarParams          params  = multiplanar_params(object, kinematics.get());
+
+
+
     params.work_budget = oneshot_planner_cuts();
+
     const bool                 chunk_support = chunk_support_requested() && object.config().enable_support.value;
     const char                *spec    = std::getenv("NP_ONESHOT_ROUTE_SPEC");
     const MultiplanarPlan      plan    = spec != nullptr && *spec != 0 ? route_spec_plan(spec, mesh, *kinematics)
@@ -2079,8 +2456,12 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": the chunk planner stopped at its work budget (" << params.work_budget
                                    << " validated cuts) with " << plan.cuts.size() << " cuts";
     std::ostringstream         log;
+
     const std::vector<std::pair<double, SpecCut>> lips = lip_offers_requested() && (spec == nullptr || *spec == 0) ? lip_offer_cuts(mesh) :
                                                                                                                       std::vector<std::pair<double, SpecCut>>();
+
+
+
     const std::vector<std::pair<std::string, std::string>> arms = arm_dir_files(object, ".route.json");
     for (size_t k = 0; k < lips.size(); ++k)
         log << Slic3r::format("lip cut L%1%: tilt %2$.0f, dir %3$.3f,%4$.3f,%5$.3f @ %6$.2f, J_vis %7$.1f; ", k, lips[k].first, lips[k].second.dir.x(),
@@ -2095,6 +2476,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     const double             lw = oc.line_width.get_abs_value(pc.nozzle_diameter.get_at(0));
     const ObjectiveWeights   W  = machine_weights(object);
     const double             J0 = solved_term(state, "J"), T0 = solved_term(state, "J_T");
+
     const NpField      &body = *state.solved;
     std::vector<double> zk(body.dims[2]), pk(body.dims[2]);
     for (size_t k = 0; k < body.dims[2]; ++k) {
@@ -2108,6 +2490,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         const size_t i = std::clamp(size_t(std::upper_bound(zk.begin(), zk.end(), z) - zk.begin()), size_t(1), zk.size() - 1);
         return pk[i - 1] + (pk[i] - pk[i - 1]) * (z - zk[i - 1]) / std::max(zk[i] - zk[i - 1], 1e-12);
     };
+
     auto clips_key = [](const std::vector<HalfSpace> &clips) {
         std::string key;
         for (const HalfSpace &c : clips)
@@ -2116,7 +2499,11 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     };
     std::map<std::string, PieceTerms>  priced;
     std::map<std::string, std::string> head_hits;
+
+
     const bool plinth_allowed = plinth_requested() && oc.raft_layers.value == 0;
+
+
     std::map<std::string, MultiplanarParams> plinth_params;
     auto lifted = [&](int layers, const std::vector<HalfSpace> &root) -> const MultiplanarParams & {
         const std::string key = std::to_string(layers) + "#" + clips_key(root);
@@ -2134,6 +2521,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         if (auto it = priced.find(key); it != priced.end())
             return it->second;
         throw_if_canceled(object);
+
         const Matrix3d         frame = root ? Matrix3d::Identity() : c.frame;
         indexed_triangle_set   piece = clip_mesh(mesh, c.clips);
         std::vector<HalfSpace> clips = c.clips;
@@ -2152,6 +2540,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         ObjectiveMachine   m = objective_machine(object, g, 0.);
         std::vector<float> phi(g.nodes());
         if (!root) {
+
             m.first_layer = h;
             m.anchor.clear();
             m.pinned_v.clear();
@@ -2164,6 +2553,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                 }
         return priced[key] = price_piece(g, m, W, phi, frame, params.overhang_threshold);
     };
+
     struct Offer
     {
         std::string     cuts;
@@ -2172,11 +2562,17 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         double          J_ceil = 0.;
         std::string     why;
         std::string     pieces;
+
         std::shared_ptr<const NpField> root;
         double t_measured = std::numeric_limits<double>::quiet_NaN(), J_measured = std::numeric_limits<double>::quiet_NaN();
+
+
         int         plinth = 0;
         std::string bed_hit;
+
+
         bool        arm = false;
+
         std::string root_phi;
     };
     const size_t             K       = plan.cuts.size();
@@ -2210,19 +2606,27 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             }
         }
     }
+
+
+
     struct Variant
     {
         size_t          cut;
         MultiplanarPlan plan;
         std::string     tag;
+
+
+
         std::vector<size_t> global;
     };
     std::vector<Variant> variants;
     {
+
         for (size_t i = 0; i < K; ++i) {
             const MultiplanarChunk &c     = plan.cuts[i].chunk;
             const HalfSpace         base  = c.clips[size_t(c.base_clip)];
             const indexed_triangle_set piece = clip_mesh(mesh, c.clips);
+
             std::map<std::array<long, 3>, std::pair<double, Vec3d>> clusters;
             std::map<std::array<long, 3>, Vec3d>                    centroids;
             Vec3d  centre = Vec3d::Zero();
@@ -2252,6 +2656,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             for (const auto &[key, value] : clusters)
                 if (value.first > best)
                     best = value.first, face = value.second.normalized();
+
+
+
             {
                 std::vector<int> ids { -1 };
                 for (size_t j = 0; j < K; ++j)
@@ -2269,6 +2676,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                     if (!kinematics->inverse(ToolPose { g, n }, nullptr, slab_joints))
                         continue;
                     const double   o = n.dot(g) - depth;
+
+
+
                     double plane_area = 0.;
                     for (const stl_triangle_vertex_indices &f : mesh.indices) {
                         const Vec3d  t0 = mesh.vertices[f[0]].cast<double>(), t1 = mesh.vertices[f[1]].cast<double>(),
@@ -2292,6 +2702,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                     log << Slic3r::format("face slab on cut %1%: %2$.0f mm2 at %3$.3f,%4$.3f,%5$.3f%6%; ", i, value.first, n.x(), n.y(), n.z(),
                                           slabs.back().second ? " (whole plane)" : "");
                 }
+
+
+
                 const uint32_t all = (1u << slabs.size()) - 1;
                 for (uint32_t bits = all; bits > 0 && (bits == all || slabs.size() <= 3); --bits) {
                     Variant v { i, plan, "s", {} };
@@ -2310,6 +2723,8 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             if (on_cut == 0 || best < TerminalFaceArea || std::abs(face.dot(c.build_dir)) > std::cos(5. * M_PI / 180.))
                 continue;
             centre /= double(on_cut);
+
+
             Vec3d          dir  = face;
             const double   az   = std::atan2(face.y(), face.x());
             const double   tilt = std::acos(std::clamp(face.z(), -1., 1.));
@@ -2337,10 +2752,14 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         made += v.tag == "a" ? 1 : v.plan.cuts.size() - K;
     log << "terminal-face offers made: " << made << "; ";
     std::vector<Offer> offers;
+
     auto finish = [&](Offer o) {
+
         const bool chunk_supported = chunk_support || (o.plan.lip && object.config().enable_support.value);
+
         if (o.why.empty() && !force_joins(o.cuts) && (!o.arm || arm_grade()))
             if (const std::string graded = grade_joins(o.plan, mesh, *kinematics, h, fan_step); !graded.empty()) {
+
                 if (!o.arm)
                     o.cuts += "g";
                 o.pieces += " (" + graded + ")";
@@ -2352,6 +2771,12 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         for (size_t ci = 0; ci < o.plan.chunks.size() && o.why.empty(); ++ci) {
             const MultiplanarChunk &c  = o.plan.chunks[ci];
             const PieceTerms       &pt = price(c, ci == 0);
+
+
+
+
+
+
             o.J += ci == 0 || chunk_supported ? pt.t.J + pt.seam : pt.t.J - W.sup * pt.t.S + pt.seam;
             o.J_ceil += pt.t.J + pt.seam;
             o.pieces += Slic3r::format(" [%1%: S %2$.0f over %3$.0f E_up %4$.0f E_wall %5$.0f E_down %6$.0f T %7$.0f]", ci, pt.t.S, pt.overhang,
@@ -2360,17 +2785,34 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             o.seam += pt.seam;
             if (ci == 0)
                 continue;
+
+
+
             if (pt.overhang > chunk_overhang_max() && !chunk_supported && !o.arm) {
                 o.why = Slic3r::format("chunk %1%: %2$.0f mm2 overhangs in its own layers (> %3$.0f), and a chunk prints no support", ci,
                                        pt.overhang, chunk_overhang_max());
+
                 cap_refused = cap_refused || o.cuts.back() == 'g';
                 break;
             }
+
+
+
+
+
             if (const double turn = Geometry::rad2deg(std::acos(std::clamp(o.plan.chunks[size_t(c.parent)].build_dir.dot(c.build_dir), -1., 1.)));
                 turn > JoinTurnMax && !(slab_joins_exempt() && face_slab(mesh, c, h)) && !force_joins(o.cuts) && !o.arm) {
                 o.why = Slic3r::format("chunk %1%: its layers turn %2$.0f deg from its parent's (> %3$.0f): a visible join line", ci, turn, JoinTurnMax);
                 break;
             }
+
+
+
+
+
+
+
+
             {
                 const MultiplanarChunk &parent = o.plan.chunks[size_t(c.parent)];
                 const Vec3d             n      = c.clips[size_t(c.base_clip)].normal;
@@ -2387,6 +2829,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                 o.J_ceil += ridge;
                 o.pieces += Slic3r::format(" (join %1$.0f)", ridge);
             }
+
             BoundingBoxf3 box;
             for (const stl_vertex &v : clip_mesh(mesh, c.clips).vertices)
                 box.merge(v.cast<double>());
@@ -2400,6 +2843,10 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                 if (const double rate = kinematics->rotary_axes()[size_t(a)].max_speed_deg_s; rate > 0.)
                     move = std::max(move, std::abs(joints.rot[size_t(a)]) / rate);
             o.T_motion += 2. * move;
+
+
+
+
             std::string key = clips_key(c.clips);
             for (size_t j = 0; j < ci; ++j)
                 key += "/" + clips_key(o.plan.chunks[j].clips);
@@ -2414,6 +2861,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             } else
                 o.why = Slic3r::format("chunk %1%: %2%", ci, hit->second);
         }
+
+
+
         if (o.why.empty() && !o.bed_hit.empty()) {
             std::string blocked;
             for (const int layers : PlinthLadder) {
@@ -2457,10 +2907,13 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             if (keep[i])
                 o.cuts += (o.cuts.empty() ? "{" : ",") + std::to_string(i) + (pv > 0 && i == variants[pv - 1].cut ? variants[pv - 1].tag : "");
         o.cuts += "}";
+
         std::vector<bool> with = keep;
         if (pv > 0)
             with.resize(variants[pv - 1].plan.cuts.size(), true);
         o.plan = multiplanar_subset(pv > 0 ? variants[pv - 1].plan : plan, with);
+
+
         if (pv > 0)
             for (const size_t g : variants[pv - 1].global) {
                 const HalfSpace base = variants[pv - 1].plan.cuts[g].chunk.clips.front();
@@ -2503,13 +2956,17 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             if (!want.empty() && !input.empty() && want != file_sha256(input))
                 throw Slic3r::RuntimeError("its mesh_sha256 is not this object's input file's");
             o.plan = route_spec_plan(file, mesh, *kinematics);
+
             if (o.plan.cuts.empty()) {
                 log << "offer " << o.cuts << ": planar (" << spec.value("label", std::string("no cuts")) << "), the body; ";
                 continue;
             }
+
             const std::string source = !spec.contains("source") ? std::string("no source") :
                                        spec.at("source").is_string() ? spec.at("source").get<std::string>() : spec.at("source").dump();
             o.pieces += " (arm " + arm + ", " + source + ", sha256 " + file_sha256(file) + ")";
+
+
             if (const char *v = std::getenv("NP_ONESHOT_ARM_ROOT_PHI"); v != nullptr && *v == '1')
                 if (const boost::filesystem::path phi = boost::filesystem::path(file).parent_path() /
                                                         (boost::filesystem::path(object.model_object()->name).stem().string() + ".npf.npz");
@@ -2522,6 +2979,9 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         finish(std::move(o));
     }
     const double screen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
+
+
+
     auto                 forced = [](const Offer &o) { return route_forced(o.cuts); };
     std::vector<Offer *> order;
     for (Offer &o : offers)
@@ -2531,8 +2991,11 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         return forced(*a) != forced(*b) ? forced(*a) : a->J < b->J;
     });
     double       t_body = std::numeric_limits<double>::quiet_NaN(), t_ps = t_body;
+
     MeasuredPrint                          body_measured;
     std::vector<std::pair<Meters, Offer *>> metered;
+
+
     const char  *keep_dir = std::getenv("NP_ONESHOT_ROUTE_KEEP");
     auto         keep_as  = [&](const std::string &what) {
         return keep_dir != nullptr && *keep_dir != 0 ? (boost::filesystem::path(keep_dir) / (name + "." + what + ".gcode")).string() : std::string();
@@ -2540,7 +3003,14 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
     const Offer *chosen = nullptr;
     double       J_chosen = J0;
     int          measured = 0;
+
+
+
+
     std::vector<std::pair<double, Offer *>> priced_offers;
+
+
+
     int lip_measured = 0, arm_measured = 0;
     for (Offer *o : order) {
         const bool lip = o->cuts.rfind("{L", 0) == 0;
@@ -2551,12 +3021,18 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             continue;
         } else
             ++(lip ? lip_measured : measured);
+
+
+
         if (!o->root_phi.empty()) {
             try {
                 BoundingBoxf3 box;
                 for (const stl_vertex &v : mesh.vertices)
                     box.merge(v.cast<double>());
                 NpField given = load_npfield_for(o->root_phi, box, plate_offset(object));
+
+
+
                 if (given.layer_tops.empty() && !(in_plane_spread(given) < OneShotState::ZOnlySpread))
                     throw Slic3r::RuntimeError("it is not z-only and carries no layer tops, and a route's root prints planar layers");
                 o->root = std::make_shared<const NpField>(std::move(given));
@@ -2573,6 +3049,8 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             OneShotAbortReason            root_abort;
             NpField rf = one_shot_field(object, rmesh, 0., [&object]() { throw_if_canceled(object); }, root_student,
                                         root_polish, root_abort, nullptr, [&rclips](const std::array<Vec3d, 3> &t) { return on_clip(t, rclips); });
+
+
             if (rf.dims[0] * rf.dims[1] * rf.dims[2] == 0) {
                 o->why = "its root holds no grid node";
                 continue;
@@ -2612,11 +3090,14 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             o->why = pick_meters() ? "its verified slice failed or hits" : "its measured slice failed (a chunk floats, or no slice)";
             continue;
         }
+
+
         if (const double cap = pick_meters() ? PickTimeCap : RouteTimeCap; !(t_route <= cap * t_ps) && !forced(*o)) {
             cap_refused = true;
             o->why = Slic3r::format("measured %1$.0f s > %2$.3f x planar + support %3$.0f s", t_route, cap, t_ps);
             continue;
         }
+
         const double J = o->J - W.time * (o->T + o->T_motion) + W.time * T0 * t_route / t_body;
         o->t_measured  = t_route;
         o->J_measured  = J;
@@ -2628,11 +3109,14 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             metered.emplace_back(m, o);
             continue;
         }
+
+
         if (J < J0 || forced(*o))
             priced_offers.emplace_back(forced(*o) ? -Inf : J, o);
         else
             o->why = Slic3r::format("measured J %1$.0f >= the body's", J);
     }
+
     if (pick_meters() && !metered.empty()) {
         Meters best = meters_of(body_measured, t_body);
         log << "body (" << meters_text(best) << "); ";
@@ -2655,6 +3139,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         double t_verified;
         {
             const Injection route(offered);
+
             t_verified = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides,
                                        keep_as("route" + o->cuts + ".verified"), true);
         }
@@ -2663,6 +3148,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
             J_chosen = std::isfinite(J) ? J : o->J;
             break;
         }
+
         o->why = last_measured_failure().empty() ? std::string("its verified export hits") : "its verified export failed: " + last_measured_failure();
     }
     for (const auto &[J, o] : priced_offers)
@@ -2678,6 +3164,8 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
                           solved_term(state, "J_E_wall"), solved_term(state, "J_E_down"), T0)
         << "; routes " << std::lround(screen_s) << " s screen, " << std::lround(total_s) << " s total";
     state.route_log = log.str();
+
+
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         std::ofstream out((boost::filesystem::path(dir) / (object.model_object()->name + ".route-offers.tsv")).string());
         out << "cuts\tchunks\tscreen_J\tscreen_J_own_S\tscreen_T\tscreen_T_motion\tseam\tmeasured_s\tmeasured_J\tchosen\twhy\tpieces\n";
@@ -2715,8 +3203,12 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
 
 namespace {
 
+
 void choose_route_any(PrintObject &object, OneShotState &state)
 {
+
+
+
     const double step = std::clamp(object.config().nonplanar_oneshot_fan_step.value, 1., 45.);
     if (!choose_route_once(object, state, step) || state.route != nullptr || step >= FanStepFallback)
         return;
@@ -2743,14 +3235,22 @@ void choose_route(PrintObject &object, OneShotState &state)
     state.route_cuts.clear();
     state.forced_why.clear();
     choose_route_any(object, state);
+
+
+
     if (const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE"); force != nullptr && std::string(force).rfind("{A:", 0) == 0 && state.route_cuts != force) {
+
         const std::string arm  = std::string(force).substr(3, std::string(force).size() - 4);
         const size_t      lean = state.time_cut_note.find("lean offer arm " + arm + ",");
         const std::string why  = !state.forced_why.empty() ? state.forced_why :
+
                                  lean != std::string::npos ? state.time_cut_note.substr(lean, state.time_cut_note.find(", lean offer ", lean + 1) - lean) :
                                                              std::string("no such offer");
         throw SlicingError(Slic3r::format("FORCED ARM NOT ADOPTED: %1% did not print (%2%)", force, why));
     }
+
+
+
     if (const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE"); force != nullptr && *force != 0 && !route_forced(state.route_cuts))
         throw SlicingError(Slic3r::format("FORCED ROUTE NOT ADOPTED: %1% did not print (%2%)", force,
                                           state.forced_why.empty() ? std::string("no such offer") : state.forced_why));

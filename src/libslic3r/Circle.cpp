@@ -10,7 +10,10 @@
 #include "libslic3r.h"
 
 
+
+
 namespace Slic3r {
+
 
 static const double Parallel_area_threshold = 0.0001;
 
@@ -23,10 +26,13 @@ bool Circle::try_create_circle(const Point& p1, const Point& p2, const Point& p3
     double x3 = p3.x();
     double y3 = p3.y();
 
+
+
     if (fabs((y1 - y2) * (x1 - x3) - (y1 - y3) * (x1 - x2)) <= scale_(scale_(Parallel_area_threshold)))
         return false;
 
     double a = x1 * (y2 - y3) - y1 * (x2 - x3) + x2 * y3 - x3 * y2;
+
     if (fabs(a) < SCALED_EPSILON)
         return false;
 
@@ -57,6 +63,7 @@ bool Circle::try_create_circle(const Points& points, const double max_radius, co
 {
     size_t count = points.size();
     size_t middle_index = count / 2;
+
     if (count == 3) {
         return (Circle::try_create_circle(points[0], points[middle_index], points[count - 1], max_radius, new_circle)
                 && !new_circle.is_over_deviation(points, tolerance));
@@ -68,6 +75,7 @@ bool Circle::try_create_circle(const Points& points, const double max_radius, co
             return true;
     }
 
+
     Circle test_circle;
     double least_deviation;
     bool found_circle = false;
@@ -75,6 +83,7 @@ bool Circle::try_create_circle(const Points& points, const double max_radius, co
     for (int index = 1; index < count - 1; index++)
     {
         if (index == middle_index)
+
             continue;
 
         if (Circle::try_create_circle(points[0], points[index], points[count - 1], max_radius, test_circle) && test_circle.get_deviation_sum_squared(points, tolerance, current_deviation))
@@ -109,15 +118,18 @@ bool Circle::is_over_deviation(const Points& points, const double tolerance)
     Point closest_point;
     Point temp;
     double distance_from_center;
+
     for (size_t index = 0; index < points.size() - 1; index++)
     {
         if (index != 0)
         {
+
             temp = points[index] - center;
             distance_from_center = sqrt((double)temp.x() * (double)temp.x() + (double)temp.y() * (double)temp.y());
             if (std::fabs(distance_from_center - radius) > tolerance)
                 return true;
         }
+
 
         if (get_closest_perpendicular_point(points[index], points[(size_t)index + 1], center, closest_point)) {
             temp = closest_point - center;
@@ -137,9 +149,11 @@ bool Circle::get_closest_perpendicular_point(const Point& p1, const Point& p2, c
     double y2 = p2.y();
     double x_dif = x2 - x1;
     double y_dif = y2 - y1;
+
     double num = (c[0] - x1) * x_dif + (c[1] - y1) * y_dif;
     double denom = (x_dif * x_dif) + (y_dif * y_dif);
     double t = num / denom;
+
 
     if (Circle::less_than_or_equal(t, 0) || Circle::greater_than_or_equal(t, 1))
         return false;
@@ -154,8 +168,11 @@ bool Circle::get_deviation_sum_squared(const Points& points, const double tolera
     total_deviation = 0;
     Point temp;
     double distance_from_center,  deviation;
+
     for (int index = 1; index < points.size() - 1; index++)
     {
+
+
         temp = points[index] - center;
         distance_from_center = sqrt((double)temp.x() * (double)temp.x() + (double)temp.y() * (double)temp.y());
         deviation = std::fabs(distance_from_center - radius);
@@ -165,6 +182,7 @@ bool Circle::get_deviation_sum_squared(const Points& points, const double tolera
 
     }
     Point closest_point;
+
     for (int index = 0; index < points.size() - 1; index++)
     {
         if (get_closest_perpendicular_point(points[index], points[(size_t)index + 1], center, closest_point)) {
@@ -178,6 +196,7 @@ bool Circle::get_deviation_sum_squared(const Points& points, const double tolera
     }
     return true;
 }
+
 
 Vec3f Circle::calc_tangential_vector(const Vec3f& pos, const Vec3f& center_pos, const bool is_ccw)
 {
@@ -323,6 +342,7 @@ bool ArcSegment::try_create_arc(
 
     double angle_radians = 0;
     ArcDirection direction = ArcDirection::Arc_Dir_unknow;
+
     if (polar_end_theta > polar_start_theta) {
         if (polar_start_theta < polar_mid_theta && polar_mid_theta < polar_end_theta) {
             direction = ArcDirection::Arc_Dir_CCW;
@@ -343,18 +363,32 @@ bool ArcSegment::try_create_arc(
         }
     }
 
+
     if (direction == ArcDirection::Arc_Dir_unknow || std::fabs(angle_radians) < EPSILON)
         return false;
+
+
+
+
 
     double arc_length = c.radius * angle_radians;
     double difference = (arc_length - approximate_length) / approximate_length;
     if (std::fabs(difference) >= path_tolerance_percent)
     {
+
+
+
+
+
+
+
         double test_radians = std::fabs(angle_radians - 2 * PI);
+
         double test_arc_length = c.radius * test_radians;
         difference = (test_arc_length - approximate_length) / approximate_length;
         if (std::fabs(difference) >= path_tolerance_percent)
             return false;
+
         arc_length = test_arc_length;
         direction = direction == ArcDirection::Arc_Dir_CCW ? ArcDirection::Arc_Dir_CW : ArcDirection::Arc_Dir_CCW;
     }
@@ -378,6 +412,7 @@ bool ArcSegment::try_create_arc(
 
 bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Points& points)
 {
+
     double previous_polar = test_arc.polar_start_theta;
     bool will_cross_zero = false;
     bool crossed_zero = false;
@@ -392,6 +427,7 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
         will_cross_zero = test_arc.polar_start_theta > test_arc.polar_end_theta;
     else
         will_cross_zero = test_arc.polar_start_theta < test_arc.polar_end_theta;
+
 
     double polar_test;
     for (int index = point_count - 2; index < point_count; index++)
@@ -401,8 +437,10 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
         else
           polar_test = test_arc.polar_end_theta;
 
+
         if (test_arc.direction == ArcDirection::Arc_Dir_CCW)
         {
+
             if (index < point_count - 1) {
                 if (will_cross_zero) {
                     if (!(polar_test > test_arc.polar_start_theta || polar_test < test_arc.polar_end_theta))
@@ -410,9 +448,11 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
                 } else if (!(test_arc.polar_start_theta < polar_test && polar_test < test_arc.polar_end_theta))
                     return false;
             }
+
             if (previous_polar > polar_test) {
                 if (!will_cross_zero)
                     return false;
+
 
                 if (crossed_zero)
                     return false;
@@ -426,15 +466,18 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
                 } else if (!(test_arc.polar_start_theta > polar_test && polar_test > test_arc.polar_end_theta))
                     return false;
             }
+
             if (previous_polar < polar_test)
             {
                 if (!will_cross_zero)
                     return false;
+
                 if (crossed_zero)
                     return false;
                 crossed_zero = true;
             }
         }
+
 
         Line segmemt(points[index - 1], points[index]);
         if ((index != 1 && ray_intersects_segment(test_arc.center, start_norm, segmemt)) ||
@@ -442,6 +485,7 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
             return false;
         previous_polar = polar_test;
     }
+
     if (will_cross_zero != crossed_zero)
         return false;
     return true;
@@ -449,6 +493,7 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
 
 bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Points3& points)
 {
+
     double previous_polar = test_arc.polar_start_theta;
     bool will_cross_zero = false;
     bool crossed_zero = false;
@@ -464,6 +509,7 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
     else
         will_cross_zero = test_arc.polar_start_theta < test_arc.polar_end_theta;
 
+
     double polar_test;
     for (int index = point_count - 2; index < point_count; index++)
     {
@@ -472,8 +518,10 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
         else
           polar_test = test_arc.polar_end_theta;
 
+
         if (test_arc.direction == ArcDirection::Arc_Dir_CCW)
         {
+
             if (index < point_count - 1) {
                 if (will_cross_zero) {
                     if (!(polar_test > test_arc.polar_start_theta || polar_test < test_arc.polar_end_theta))
@@ -481,9 +529,11 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
                 } else if (!(test_arc.polar_start_theta < polar_test && polar_test < test_arc.polar_end_theta))
                     return false;
             }
+
             if (previous_polar > polar_test) {
                 if (!will_cross_zero)
                     return false;
+
 
                 if (crossed_zero)
                     return false;
@@ -497,15 +547,18 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
                 } else if (!(test_arc.polar_start_theta > polar_test && polar_test > test_arc.polar_end_theta))
                     return false;
             }
+
             if (previous_polar < polar_test)
             {
                 if (!will_cross_zero)
                     return false;
+
                 if (crossed_zero)
                     return false;
                 crossed_zero = true;
             }
         }
+
 
         Line segmemt(points[index - 1].to_point(), points[index].to_point());
         if ((index != 1 && ray_intersects_segment(test_arc.center, start_norm, segmemt)) ||
@@ -513,10 +566,12 @@ bool ArcSegment::are_points_within_slice(const ArcSegment& test_arc, const Point
             return false;
         previous_polar = polar_test;
     }
+
     if (will_cross_zero != crossed_zero)
         return false;
     return true;
 }
+
 
 bool ArcSegment::ray_intersects_segment(const Point &rayOrigin, const Vec2d &rayDirection, const Line& segment)
 {
@@ -537,15 +592,18 @@ bool ArcSegment::ray_intersects_segment(const Point &rayOrigin, const Vec2d &ray
     return false;
 }
 
+
 float ArcSegment::calc_arc_radian(Vec3f start_pos, Vec3f end_pos, Vec3f center_pos, bool is_ccw)
 {
     Vec3f delta1 = center_pos - start_pos;
     Vec3f delta2 = center_pos - end_pos;
+
     delta1(2,0) = 0;
     delta2(2,0) = 0;
 
     float radian;
     if ((delta1 - delta2).norm() < 1e-6) {
+
         radian = 2 * M_PI;
     } else {
         double dot = delta1.dot(delta2);
@@ -565,6 +623,7 @@ float ArcSegment::calc_arc_radius(Vec3f start_pos, Vec3f center_pos)
     delta1(2,0) = 0;
     return delta1.norm();
 }
+
 
 float ArcSegment::calc_arc_length(Vec3f start_pos, Vec3f end_pos, Vec3f center_pos, bool is_ccw)
 {

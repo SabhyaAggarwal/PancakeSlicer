@@ -5,6 +5,7 @@ namespace Slic3r {
 
 size_t ObjectBase::s_last_id = 0;
 
+
 ObjectID wipe_tower_object_id()
 {
     static ObjectBase mine;

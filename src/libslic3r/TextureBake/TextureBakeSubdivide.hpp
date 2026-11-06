@@ -1,5 +1,13 @@
 #pragma once
 
+
+
+
+
+
+
+
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -11,13 +19,20 @@
 namespace Slic3r {
 namespace TextureBake {
 
+
 static constexpr int SUBDIVIDE_SAFETY_CAP = 16'000'000;
+
+
 
 static constexpr double SUBDIVIDE_SHARP_ANGLE_DEG = 30.0;
 
+
 static constexpr int SUBDIVIDE_MAX_ITERATIONS = 12;
 
+
 static constexpr double SUBDIVIDE_GRADE = 1.0;
+
+
 
 struct VertStore
 {
@@ -44,21 +59,36 @@ struct IndexedMesh
     bool              has_canon = false;
 };
 
+
+
 using SubdivideProgressFn = std::function<bool(double fraction, size_t triangles, double longest_edge)>;
+
+
 using SubdivideWithinFn = std::function<bool(const Vec3d &point, double radius)>;
 
 struct SubdivideResult
 {
     TriSoup geometry;
+
     std::vector<int> face_parent_id;
     bool             safety_cap_hit = false;
 };
+
+
+
+
+
+
+
+
+
 
 SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
                           const std::vector<uint8_t> &face_excluded = {}, bool fast = false,
                           int safety_cap = SUBDIVIDE_SAFETY_CAP,
                           const SubdivideProgressFn &on_progress = {},
                           const SubdivideWithinFn &within = {});
+
 
 IndexedMesh to_indexed(const TriSoup &geometry);
 IndexedMesh to_indexed_fast(const TriSoup &geometry);

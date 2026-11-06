@@ -6,17 +6,43 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class InstanceLock
 {
 public:
+
+
     static constexpr std::chrono::milliseconds default_timeout{1000};
+
+
     static inline std::chrono::milliseconds cooldown{10000};
+
 
     explicit InstanceLock(const std::string &lock_file_path, std::chrono::milliseconds timeout = default_timeout);
     ~InstanceLock();
 
     InstanceLock(const InstanceLock &) = delete;
     InstanceLock &operator=(const InstanceLock &) = delete;
+
 
     bool locked() const { return m_locked; }
 

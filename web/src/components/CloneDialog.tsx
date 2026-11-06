@@ -1,5 +1,8 @@
 import { preferenceText, savePreferences, usePreference } from '../saved-preferences';
 import { Check } from './Check';
+
+
+
 import { useState } from 'react';
 import { arrangeAll, fillBed } from '../actions';
 import { copySelection, pasteClipboard } from '../edit';

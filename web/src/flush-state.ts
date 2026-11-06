@@ -1,9 +1,12 @@
+
 import type { Config } from './api/types';
 import { OPTIONS } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { effectiveConfig, setState, type State } from './state/store';
 import { extruderCount, installedVariant, valueAt } from './multinozzle/config';
 import { filament_options_with_variant, printer_options_with_variant_1 } from './multinozzle/variant-keys';
+
+
 
 let flush: typeof import('./flush') | null = null;
 export const flushReady = () => (flush ? Promise.resolve() : import('./flush').then((m) => { if (!flush) { flush = m; setState({}); } }));
@@ -32,6 +35,7 @@ export function defaultMultiplier(s: State, nozzle = 0): number {
   return Number.isFinite(Number(first)) ? Number(first) : 1;
 }
 
+
 export function currentFlush(s: State, nozzle = 0): { matrix: number[]; multiplier: number } {
   const n = s.filamentSlots.length;
   const table = s.flush.matrix ?? (s.project ? s.projectMaterials?.matrix : null);
@@ -40,10 +44,12 @@ export function currentFlush(s: State, nozzle = 0): { matrix: number[]; multipli
   return { matrix: saved ?? autoFlushMatrix(s, nozzle), multiplier: s.flush.multiplier ?? defaultMultiplier(s, nozzle) };
 }
 
+
 export function allFlush(s: State): { matrix: number[]; multipliers: number[] } {
   const tables = Array.from({ length: extruderCount(effectiveConfig(s, 'machine')) }, (_, nozzle) => currentFlush(s, nozzle));
   return { matrix: tables.flatMap((t) => t.matrix), multipliers: tables.map((t) => t.multiplier) };
 }
+
 
 export function flushModified(s: State): boolean {
   if (s.filamentSlots.length < 2 || !flush) return false;

@@ -42,7 +42,9 @@ namespace Slic3r {
 
 class Print;
 
+
 inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
+
 
 #define NOZZLE_HRC_CHECKER                                          "the_actual_nozzle_hrc_smaller_than_the_required_nozzle_hrc"
 #define BED_TEMP_TOO_HIGH_THAN_FILAMENT                             "bed_temperature_too_high_than_filament"
@@ -66,6 +68,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         Extrude,
         Count
     };
+
+
+
+
 
     enum SkipType
     {
@@ -108,11 +114,15 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::map<size_t, double>                            wipe_tower_volumes_per_extruder;
         std::map<size_t, double>                            support_volumes_per_extruder;
         std::map<size_t, double>                            total_volumes_per_extruder;
+
         std::map<size_t, double>                            flush_per_filament;
         std::map<ExtrusionRole, std::pair<double, double>>  used_filaments_per_role;
 
         std::array<Mode, static_cast<size_t>(ETimeMode::Count)> modes;
         unsigned int                                        total_filament_changes;
+
+
+
         unsigned int                                        total_flush_filament_changes;
         unsigned int                                        total_extruder_changes;
         float                                               total_filament_load_time;
@@ -169,6 +179,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
     struct GCodeCheckResult
     {
         int error_code = 0;
+
         std::map<int, std::vector<std::pair<int, int>>> print_area_error_infos;
         std::map<int, std::vector<std::pair<int, int>>> print_height_error_infos;
         void reset() {
@@ -203,6 +214,13 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         ConflictResultOpt conflict_result;
         GCodeCheckResult  gcode_check_result;
         FilamentPrintableResult filament_printable_reuslt;
+
+
+
+
+
+
+
         std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase> nozzle_group_result;
         float initial_layer_time;
 
@@ -219,23 +237,35 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             }
         };
 
+
+
         struct MoveState
         {
             float fan_speed{ 0.0f };
             float temperature{ 0.0f };
+
             float pressure_advance{ 0.0f };
+
             float acceleration{ 0.0f };
+
             float jerk{ 0.0f };
+
             float print_z{ 0.0f };
             int   object_label_id{ -1 };
+
+
             unsigned char nonplanar_patch_shell{ 0xFF };
+
             signed char nonplanar_band{ -1 };
             short nonplanar_patch{ -1 };
             int wave_object{ -1 };
+
             uint32_t native_road_id{ UINT32_MAX };
 
             bool operator==(const MoveState &other) const { return std::memcmp(this, &other, sizeof(MoveState)) == 0; }
         };
+
+
 
         struct MoveVertex
         {
@@ -253,9 +283,13 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             float mm3_per_mm{ 0.0f };
             std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> time{ 0.0f, 0.0f };
             unsigned int layer_id{ 0 };
+
             unsigned int state{ 0 };
             bool internal_only{ false };
+
             bool timing_only{ false };
+
+
             bool clearance_pose_known{ true };
             bool clearance_from_unknown{ false };
 
@@ -273,6 +307,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             std::vector<std::string> params;
         };
 
+
         struct ObjectMass
         {
             struct Sum
@@ -280,6 +315,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 double mass{ 0. };
                 double volume{ 0. };
                 Vec3d  moment{ Vec3d::Zero() };
+
                 Vec3d second{ Vec3d::Zero() };
 
                 void add(const Sum &other)
@@ -290,8 +326,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                     second += other.second;
                 }
             };
+
             std::vector<Sum> printed_up_to_layer;
             BoundingBoxf3    box;
+
             bool assembly{ false };
 
             Sum  total() const { return printed_up_to_layer.empty() ? Sum{} : printed_up_to_layer.back(); }
@@ -301,32 +339,57 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::string filename;
         unsigned int id;
         Moves moves;
+
         std::vector<MoveState> move_states{ MoveState() };
+
+
+
         ChunkedVector<JointPose> joints;
+
+
+
         std::array<float, static_cast<size_t>(EMoveType::Count)> move_type_distances{};
         std::vector<float> clearance;
         bool nonplanar = false;
         ClearanceReport clearance_report;
+
         Nonplanar::NonplanarReport nonplanar_report;
         ObjectMass plate_mass;
+
         std::vector<ObjectMass> object_masses;
         std::vector<ObjectMass> body_masses;
+
         std::vector<ObjectMass> support_masses;
+
         std::vector<size_t> lines_ends;
         Pointfs printable_area;
+
         Pointfs bed_exclude_area;
         Pointfs wrapping_exclude_area;
         std::vector<Pointfs> extruder_areas;
         std::vector<double> extruder_heights;
+
         bool toolpath_outside;
+
         bool label_object_enabled;
+
         bool long_retraction_when_cut {0};
         int timelapse_warning_code {0};
         bool support_traditional_timelapse{true};
         float printable_height;
         float z_offset;
+
+
         float belt_tilt_angle{ 0.f };
+
+
+
+
         float belt_z_origin{ 0.f };
+
+
+
+
         bool machine_frame_transform_active{ false };
         SettingsIds settings_ids;
         size_t filaments_count;
@@ -342,18 +405,31 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         PrintEstimatedStatistics print_statistics;
         std::vector<CustomGCode::Item> custom_gcode_per_print_z;
         bool spiral_vase_mode;
+
         std::vector<SliceWarning> warnings;
         int nozzle_hrc;
         std::vector<NozzleType> nozzle_type;
+
+
+
         std::vector<ExtruderType> extruder_types;
+
+
         std::vector<std::string> printer_extruder_variant;
         std::vector<int>         printer_extruder_id;
+
         std::unordered_map<std::vector<unsigned int>, std::vector<std::pair<int, int>>,FilamentSequenceHash> layer_filaments;
         std::vector<unsigned int> nozzle_change_sequence;
         std::vector<unsigned int> filament_change_sequence;
+
+
         std::vector<unsigned int> used_mixed_filaments;
         std::vector<int> optimal_assignment;
+
         std::map<std::pair<int,int>, int > filament_change_count_map;
+
+
+
 
         std::unordered_map<SkipType, float> skippable_part_time;
 
@@ -362,15 +438,19 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         const MoveState &state(const MoveVertex &move) const { return move_states[move.state]; }
         bool has_joints() const { return !joints.empty(); }
+
         const JointPose &joint(size_t i) const
         {
             static const JointPose none;
             return joints.empty() ? none : joints[i];
         }
 
+
         mutable std::mutex result_mutex;
         GCodeProcessorResult& operator=(const GCodeProcessorResult &other) { assign(other); return *this; }
+
         GCodeProcessorResult& operator=(GCodeProcessorResult &&other) { assign(std::move(other)); return *this; }
+
         template<class Other> void assign(Other &&other)
         {
             filename = std::forward<Other>(other).filename;
@@ -410,7 +490,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             gcode_check_result = std::forward<Other>(other).gcode_check_result;
             limit_filament_maps = std::forward<Other>(other).limit_filament_maps;
             filament_printable_reuslt = std::forward<Other>(other).filament_printable_reuslt;
+
+
             nozzle_group_result = std::forward<Other>(other).nozzle_group_result;
+
             extruder_types = std::forward<Other>(other).extruder_types;
             printer_extruder_variant = std::forward<Other>(other).printer_extruder_variant;
             printer_extruder_id = std::forward<Other>(other).printer_extruder_id;
@@ -420,6 +503,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             nozzle_change_sequence = std::forward<Other>(other).nozzle_change_sequence;
             optimal_assignment = std::forward<Other>(other).optimal_assignment;
             filament_change_count_map = std::forward<Other>(other).filament_change_count_map;
+
             skippable_part_time = std::forward<Other>(other).skippable_part_time;
             initial_layer_time = std::forward<Other>(other).initial_layer_time;
             belt_tilt_angle = std::forward<Other>(other).belt_tilt_angle;
@@ -433,6 +517,11 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void  unlock() const { result_mutex.unlock(); }
     };
 
+
+
+
+
+
     namespace ExtruderPreHeating
     {
         struct FilamentUsageBlock
@@ -444,6 +533,23 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             unsigned int upper_gcode_id;
             FilamentUsageBlock(int filament_id_, int extruder_id_, int nozzle_id_, unsigned int lower_gcode_id_, unsigned int upper_gcode_id_) :filament_id(filament_id_), extruder_id(extruder_id_), nozzle_id(nozzle_id_), lower_gcode_id(lower_gcode_id_), upper_gcode_id(upper_gcode_id_) {}
         };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         struct ExtruderUsageBlcok
         {
@@ -509,11 +615,21 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         static const std::string VFlush_End_Tag;
         static const std::string External_Purge_Tag;
     public:
+
         static constexpr size_t Output_Block_Size = 65536;
+
+
+
 
         static const std::string Skippable_Start_Tag;
         static const std::string Skippable_End_Tag;
         static const std::string Skippable_Type_Tag;
+
+
+
+
+
+
         static const std::string Machine_Start_GCode_End_Tag;
         static const std::string Machine_End_GCode_Start_Tag;
         static const std::string Nozzle_Change_Start_Tag;
@@ -549,7 +665,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         };
 
         static const std::string& reserved_tag(ETags tag) { return s_IsBBLPrinter ? Reserved_Tags[static_cast<unsigned char>(tag)] : Reserved_Tags_compatible[static_cast<unsigned char>(tag)]; }
+
         static bool contains_reserved_tag(const std::string& gcode, std::string& found_tag);
+
+
         static bool contains_reserved_tags(const std::string& gcode, unsigned int max_count, std::vector<std::string>& found_tag, bool is_bbl_printer);
 
         static int get_gcode_last_filament(const std::string &gcode_str);
@@ -625,11 +744,14 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 bool nominal_length{ false };
                 bool prepare_stage{ false };
                 bool nonplanar{ false };
+
                 bool arc_continuation{ false };
             };
 
             EMoveType move_type{ EMoveType::Noop };
             ExtrusionRole role{ erNone };
+
+
             SkipType skippable_type{ SkipType::stNone };
             unsigned int move_id{ 0 };
             unsigned int g1_line_id{ 0 };
@@ -639,12 +761,18 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             float acceleration{ 0.0f };
             float max_entry_speed{ 0.0f };
             float safe_feedrate{ 0.0f };
+
+
             float feed_interval{ 0.0f };
+
+
             float smooth_acceleration{ 0.0f };
+
             float smooth_cruise{ 0.0f };
             Flags flags;
             FeedrateProfile feedrate_profile;
             Trapezoid trapezoid;
+
 
             void calculate_trapezoid();
 
@@ -664,10 +792,17 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 float feedrate;
                 float safe_feedrate;
                 std::array<float, 2> rotary_feedrate{};
+
+
                 AxisCoords axis_feedrate;
                 AxisCoords abs_axis_feedrate;
+
+
+
                 Vec3f enter_direction;
                 Vec3f exit_direction;
+
+
                 Vec4f jd_unit_vec;
 
                 void reset();
@@ -705,12 +840,17 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
             bool enabled;
             float acceleration;
+
             float max_acceleration;
             float retract_acceleration;
+
             float max_retract_acceleration;
             float travel_acceleration;
+
             float max_travel_acceleration;
             float extrude_factor_override_percentage;
+
+
             double time;
             struct StopTime
             {
@@ -727,24 +867,39 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             std::vector<G1LinesCacheItem> g1_times_cache;
             float first_layer_time;
             std::vector<ActualSpeedMove> actual_speed_moves;
+
             float prepare_time;
+
+
+
+
+
+
 
             using AdditionalBufferBlock = std::pair<EMoveType, float>;
             using AdditionalBuffer      = std::vector<AdditionalBufferBlock>;
             AdditionalBuffer m_additional_time_buffer;
+
+
+
+
 
             struct HostFeed
             {
                 static constexpr size_t PlannerBlocks = 32;
                 double             last_arrival{ 0. };
                 std::deque<double> starts;
+
                 float stall(const TimeBlock& block, double now);
             };
             HostFeed host_feed;
 
             void reset();
 
+
             static AdditionalBuffer merge_adjacent_additional_time_blocks(const AdditionalBuffer& buffer);
+
+
 
             void calculate_time(GCodeProcessorResult& result, PrintEstimatedStatistics::ETimeMode mode, size_t keep_last_n_blocks = 0, float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop, bool is_final = false);
         };
@@ -762,6 +917,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
             double support_volume_cache;
             std::map<size_t, double>support_volumes_per_filament;
+
 
             std::map<size_t, double> flush_per_filament;
 
@@ -792,6 +948,12 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         struct TimeProcessor
         {
+
+
+
+
+
+
             enum InsertLineType
             {
                 PlaceholderReplace,
@@ -802,25 +964,44 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 PreHeating,
             };
 
+
             using InsertedLinesMap = std::map<unsigned int, std::vector<std::pair<std::string, InsertLineType>>>;
 
             struct Planner
             {
+
+
                 static constexpr size_t queue_size = 64;
+
+
                 static constexpr size_t refresh_threshold = queue_size * 4;
             };
 
+
+
+
             bool extruder_unloaded;
+
             bool machine_envelope_processing_enabled;
             MachineEnvelopeConfig machine_limits;
+
             float filament_load_times;
             float filament_unload_times;
+
             float machine_tool_change_time;
 
             std::array<TimeMachine, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> machines;
 
             void reset();
         };
+
+
+
+
+
+
+
+
 
         class PreCoolingInjector {
         public:
@@ -834,6 +1015,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 int last_nozzle_id;
                 int next_nozzle_id;
                 int extruder_id;
+
                 bool ignore_cooling_before_tower = false;
             };
 
@@ -944,6 +1126,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             bool is_active() const { return m_active; }
             bool has_first_vertex() const { return m_first_vertex.has_value(); }
         };
+
+
 
         class OptionsZCorrector
         {
@@ -1056,16 +1240,22 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             }
         };
 #endif
+
+
         struct MassLocation
         {
             int object{ -1 };
             int body{ -1 };
         };
+
         using MassLocator = std::function<MassLocation(const Vec3d &point, bool support)>;
 
     private:
         CommandProcessor m_command_processor;
         GCodeReader m_parser;
+
+
+
         DynamicConfig m_belt_render_config;
         EUnits m_units;
         EPositioningType m_global_positioning_type;
@@ -1073,6 +1263,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<Vec3f> m_extruder_offsets;
         GCodeFlavor m_flavor;
         std::vector<float> m_nozzle_volume;
+
+
         std::unique_ptr<ToolKinematics> m_tool_kinematics;
         JointPose                       m_joints;
         unsigned char                   m_rotary_position_known_axes{ 0 };
@@ -1086,7 +1278,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         int                             m_wave_object{ -1 };
         signed char                     m_nonplanar_band{ -1 };
         uint32_t                        m_native_road_id{ UINT32_MAX };
+
         bool                            m_keep_tips{ false };
+
         struct MoveStateHash
         {
             size_t operator()(const GCodeProcessorResult::MoveState &state) const
@@ -1101,8 +1295,11 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         };
         std::unordered_map<GCodeProcessorResult::MoveState, unsigned int, MoveStateHash> m_move_state_ids;
         std::array<unsigned int, 2> m_recent_move_states{ 0, 0 };
+
         float                           m_nonplanar_feed_interval{ 0.f };
+
         float                           m_klipper_min_cruise_ratio{ 0.5f };
+
         bool                            m_arc_first_block{ false };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
@@ -1112,6 +1309,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         bool m_flushing;
         bool m_virtual_flushing;
         bool m_wipe_tower;
+
+
+
         bool m_skippable{false};
         SkipType m_skippable_type{SkipType::stNone};
         int m_object_label_id{-1};
@@ -1121,7 +1321,13 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         ExtruderTemps m_filament_nozzle_temp;
         ExtruderTemps m_filament_nozzle_temp_first_layer;
         std::vector<int> m_physical_extruder_map;
+
+
+
         std::vector<int> m_extruder_max_nozzle_count{1};
+
+
+
         std::vector<std::string> m_filament_types;
         std::vector<double> m_nozzle_diameter;
         std::vector<double> m_hotend_cooling_rate{ 2.f };
@@ -1131,18 +1337,43 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         bool m_enable_pre_heating{ false };
         bool m_handle_hotend_as_extruder{ false };
         bool m_has_filament_switcher{ false };
+
+
+
+
+
         std::vector<std::pair<unsigned int, unsigned int>> m_skippable_blocks;
+
+
+
+
         std::vector<ExtruderPreHeating::FilamentUsageBlock> m_filament_blocks;
         std::vector<ExtruderPreHeating::ExtruderUsageBlcok>  m_extruder_blocks;
         unsigned int m_machine_start_gcode_end_line_id{ (unsigned int) (-1) };
         unsigned int m_machine_end_gcode_start_line_id{ (unsigned int) (-1) };
+
+
+
         bool m_skip_end_gcode_delays{ false };
+
+
+
+
         MultiNozzleUtils::NozzleStatusRecorder m_nozzle_status_recorder;
+
+
+
+
         std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase> m_nozzle_group_result;
         bool m_manual_filament_change;
 
+
         double          m_x_offset{ 0 };
         double          m_y_offset{ 0 };
+
+
+
+
 
         MachineFrameTransform m_machine_frame_transform;
         bool                  m_belt_printer{ false };
@@ -1158,12 +1389,15 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         float m_travel_dist;
         float m_fan_speed;
         float m_z_offset;
+
         float m_pressure_advance;
         ExtrusionRole m_extrusion_role;
         std::vector<int> m_filament_maps;
         std::vector<unsigned char> m_last_filament_id;
         std::vector<unsigned char> m_filament_id;
         unsigned char m_extruder_id;
+
+
         int m_machine_config_idx{0};
         ExtruderColors m_extruder_colors;
         ExtruderTemps m_extruder_temps;
@@ -1207,10 +1441,14 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         EProducer m_producer;
 
         TimeProcessor m_time_processor;
+
+
         std::vector<std::pair<unsigned int, unsigned int>> m_actual_speed_id_map;
         UsedFilaments m_used_filaments;
 
         Print* m_print{ nullptr };
+
+
         bool   m_marlin_junctions{ false };
 
         GCodeProcessorResult m_result;
@@ -1219,7 +1457,12 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
     public:
         GCodeProcessor();
         void init_filament_maps_and_nozzle_type_when_import_only_gcode();
+
+
+
+
         void ensure_nozzle_group_result(int min_filament_count);
+
         bool check_multi_extruder_gcode_valid(const int                         extruder_size,
                                               const Pointfs                     plate_printable_area,
                                               const double                      plate_printable_height,
@@ -1230,13 +1473,17 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                                               const std::vector<std::set<int>>& unprintable_filament_types );
         void apply_config(const PrintConfig& config);
         void set_print(Print* print);
+
         void set_keep_raw_positions(bool keep) { m_keep_tips = keep; }
+
         void set_mass_locator(MassLocator locator, std::vector<GCodeProcessorResult::ObjectMass> objects)
         {
             m_mass_locator = std::move(locator);
             m_result.support_masses.assign(objects.size(), {});
             m_result.object_masses = std::move(objects);
         }
+
+
         void initialize_from_context(const std::shared_ptr<MultiNozzleUtils::NozzleGroupResultBase>& nozzle_group_result) {
             m_nozzle_group_result = nozzle_group_result;
         }
@@ -1254,10 +1501,14 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         GCodeProcessorResult& result() { return m_result; }
         GCodeProcessorResult&& extract_result() { return std::move(m_result); }
 
+
+
         void process_file(const std::string& filename, std::function<void()> cancel_callback = nullptr);
+
 
         void initialize(const std::string& filename);
         void initialize_result_moves() {
+
             assert(m_result.moves.empty());
             m_result.moves.emplace_back(GCodeProcessorResult::MoveVertex());
         }
@@ -1271,7 +1522,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         float get_first_layer_time(PrintEstimatedStatistics::ETimeMode mode) const;
 
+
         void set_xy_offset(double x, double y) { m_x_offset = x; m_y_offset = y; }
+
+
 
         void detect_layer_based_on_tag(bool enabled) { m_detect_layer_based_on_tag = enabled; }
 
@@ -1281,6 +1535,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void apply_config_simplify3d(const std::string& filename);
         void apply_config_superslicer(const std::string& filename);
         void process_gcode_line(const GCodeReader::GCodeLine& line, bool producers_enabled);
+
 
         void process_tags(const std::string_view comment, bool producers_enabled);
         bool process_producers_tags(const std::string_view comment);
@@ -1293,8 +1548,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         bool detect_producer(const std::string_view comment);
 
+
         void process_G0(const GCodeReader::GCodeLine& line);
         void process_G1(const GCodeReader::GCodeLine& line, const std::optional<unsigned int>& remaining_internal_g1_lines = std::nullopt);
+
         void process_rotary_G1(const GCodeReader::GCodeLine& line);
         void process_G93(const GCodeReader::GCodeLine&) { m_inverse_time = true; }
         void process_G94(const GCodeReader::GCodeLine&) { m_inverse_time = false; }
@@ -1306,98 +1563,142 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             const std::optional<double>& feedrate = std::nullopt, G1DiscretizationOrigin origin = G1DiscretizationOrigin::G1,
             const std::optional<unsigned int>& remaining_internal_g1_lines = std::nullopt);
 
+
         void process_G2_G3(const GCodeReader::GCodeLine& line, bool clockwise);
 
         void process_VG1(const GCodeReader::GCodeLine& line);
 
 
+
         void process_G4(const GCodeReader::GCodeLine& line);
+
 
         void process_G10(const GCodeReader::GCodeLine& line);
 
+
         void process_G11(const GCodeReader::GCodeLine& line);
+
 
         void process_G20(const GCodeReader::GCodeLine& line);
 
+
         void process_G21(const GCodeReader::GCodeLine& line);
+
 
         void process_G22(const GCodeReader::GCodeLine& line);
 
+
         void process_G23(const GCodeReader::GCodeLine& line);
+
 
         void process_G28(const GCodeReader::GCodeLine& line);
 
+
         void process_G29(const GCodeReader::GCodeLine& line);
+
 
         void process_G90(const GCodeReader::GCodeLine& line);
 
+
         void process_G91(const GCodeReader::GCodeLine& line);
+
 
         void process_G92(const GCodeReader::GCodeLine& line);
 
+
         void process_M1(const GCodeReader::GCodeLine& line);
+
 
         void process_M82(const GCodeReader::GCodeLine& line);
 
+
         void process_M83(const GCodeReader::GCodeLine& line);
+
 
         void process_M104(const GCodeReader::GCodeLine& line);
 
+
         void process_VM104(const GCodeReader::GCodeLine& line);
+
 
         void process_VM109(const GCodeReader::GCodeLine& line);
 
+
         void process_M106(const GCodeReader::GCodeLine& line);
 
+
         void process_M107(const GCodeReader::GCodeLine& line);
+
+
 
         void process_M900(const GCodeReader::GCodeLine& line);
         void process_M572(const GCodeReader::GCodeLine &line);
         void process_SET_PRESSURE_ADVANCE(const GCodeReader::GCodeLine& line);
 
+
         void process_M108(const GCodeReader::GCodeLine& line);
+
 
         void process_M109(const GCodeReader::GCodeLine& line);
 
+
         void process_M132(const GCodeReader::GCodeLine& line);
+
 
         void process_M135(const GCodeReader::GCodeLine& line);
 
+
         void process_M140(const GCodeReader::GCodeLine& line);
+
 
         void process_M190(const GCodeReader::GCodeLine& line);
 
+
         void process_M191(const GCodeReader::GCodeLine& line);
+
 
         void process_M201(const GCodeReader::GCodeLine& line);
 
+
         void process_M203(const GCodeReader::GCodeLine& line);
+
 
         void process_M204(const GCodeReader::GCodeLine& line);
 
+
         void process_M205(const GCodeReader::GCodeLine& line);
+
 
         void process_SET_VELOCITY_LIMIT(const GCodeReader::GCodeLine& line);
 
+
         void process_M221(const GCodeReader::GCodeLine& line);
+
 
         void process_M400(const GCodeReader::GCodeLine& line);
 
+
         void process_M401(const GCodeReader::GCodeLine& line);
+
 
         void process_M402(const GCodeReader::GCodeLine& line);
 
+
         void process_M566(const GCodeReader::GCodeLine& line);
 
+
         void process_M702(const GCodeReader::GCodeLine& line);
+
 
         void process_M6211(const GCodeReader::GCodeLine& line);
         void process_elegoo_M6211(const GCodeReader::GCodeLine& line);
 
         void process_SYNC(const GCodeReader::GCodeLine& line);
 
+
         void process_T(const GCodeReader::GCodeLine& line);
         void process_T(const std::string_view command);
+
         void process_T(const std::string_view command, int nozzle_id);
         void process_M1020(const GCodeReader::GCodeLine &line);
 
@@ -1405,37 +1706,69 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void process_M623(const GCodeReader::GCodeLine &line);
 
         void process_filament_change(int id);
+
+
+
         void process_filament_change(int id, int nozzle_id);
+
+
+
         std::optional<MultiNozzleUtils::NozzleInfo> resolve_target_nozzle(
             const MultiNozzleUtils::NozzleGroupResultBase &group, int id, int nozzle_id) const;
+
+
+
         int  get_machine_config_idx() const;
+
+
+
         bool use_multi_nozzle_change_time_model() const;
+
+
+
 
         void run_post_process();
 
+
+
+
+
         void run_second_pass_injection();
+
+
         void handle_offsets_of_second_process(const TimeProcessor::InsertedLinesMap& inserted_operation_lines);
 
+
         void store_move_vertex(EMoveType type, EMovePathType path_type = EMovePathType::Noop_move, bool internal_only = false);
+
         unsigned int intern_move_state(const GCodeProcessorResult::MoveState &state);
         bool keep_joints() const { return m_tool_kinematics != nullptr || m_keep_tips; }
         void add_object_mass(int filament_id, float volume);
         void finalize_object_masses();
 
         void set_extrusion_role(ExtrusionRole role);
+
         void set_skippable_type(const std::string_view type);
 
         float minimum_feedrate(PrintEstimatedStatistics::ETimeMode mode, float feedrate) const;
         float minimum_travel_feedrate(PrintEstimatedStatistics::ETimeMode mode, float feedrate) const;
+
+
+
+
         float get_axis_max_feedrate(PrintEstimatedStatistics::ETimeMode mode, Axis axis) const;
         float get_axis_max_feedrate(PrintEstimatedStatistics::ETimeMode mode, Axis axis, int machine_idx) const;
         float get_axis_max_acceleration(PrintEstimatedStatistics::ETimeMode mode, Axis axis) const;
         float get_axis_max_acceleration(PrintEstimatedStatistics::ETimeMode mode, Axis axis, int machine_idx) const;
         float get_axis_max_jerk_with_jd(PrintEstimatedStatistics::ETimeMode mode, Axis axis, float acceleration) const;
         float get_axis_max_jerk_with_jd(PrintEstimatedStatistics::ETimeMode mode, Axis axis) const;
+
         float get_junction_deviation(PrintEstimatedStatistics::ETimeMode mode, float acceleration) const;
+
         float calc_junction_acceleration(const TimeBlock& block, const Vec4f& junction_unit_vec,
                                          PrintEstimatedStatistics::ETimeMode mode) const;
+
+
         float calc_vmax_junction_deviation(const TimeBlock& block, const TimeMachine::State& prev,
                                            const TimeMachine::State& curr, bool has_prev_move,
                                            PrintEstimatedStatistics::ETimeMode mode,
@@ -1457,16 +1790,21 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         void calculate_time(GCodeProcessorResult& result, size_t keep_last_n_blocks = 0, float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop, bool is_final = false);
 
+
         void simulate_st_synchronize(float additional_time = 0.0f, EMoveType target_move_type = EMoveType::Noop);
 
         void update_estimated_times_stats();
 
         double extract_absolute_position_on_axis(Axis axis, const GCodeReader::GCodeLine& line, double area_filament_cross_section);
 
+
         void update_slice_warnings();
 
+
         int get_filament_id(bool force_initialize = true) const;
+
         int get_last_filament_id(bool force_initialize = true) const;
+
         int get_extruder_id(bool force_initialize = true)const;
    };
 

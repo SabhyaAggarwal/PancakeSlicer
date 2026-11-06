@@ -1,13 +1,16 @@
+
 import { createHash } from 'node:crypto';
 import type { RendererBinaryKind, RendererDecodedValue, RendererPartReference } from '../legacy-renderer';
 import { Cursor, Incomplete, LIMITS, requireSource } from './leveldb';
 
 export function utf8(bytes: Buffer): string {
   requireSource(bytes.length <= LIMITS.text);
+
   return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
 }
 export function utf16(bytes: Buffer, bigEndian = false): string {
   requireSource(bytes.length % 2 === 0 && bytes.length <= LIMITS.text);
+
   let text = '';
   for (let start = 0; start < bytes.length; start += 8192) {
     const units: number[] = [];
@@ -18,6 +21,7 @@ export function utf16(bytes: Buffer, bigEndian = false): string {
   return text;
 }
 function finite(n: number) { requireSource(Number.isFinite(n) && !Object.is(n, -0), 'Unsupported scalar number.'); return n; }
+
 
 export class Parts {
   readonly bytes = new Map<string, Buffer>();
@@ -36,6 +40,8 @@ export class Parts {
     return { $orcaRendererPart: key, ...meta } as RendererPartReference;
   }
 }
+
+
 
 export function decodeV8(bytes: Buffer, parts: Parts, host?: (tag: number, cursor: Cursor) => RendererDecodedValue): RendererDecodedValue {
   const c = new Cursor(bytes); requireSource(c.byte() === 255);
@@ -63,6 +69,7 @@ export function decodeV8(bytes: Buffer, parts: Parts, host?: (tag: number, curso
       let count = 0;
       while (next() !== 123) {
         const rawKey = value(depth + 1);
+
         const key = typeof rawKey === 'number' && Number.isInteger(rawKey) && rawKey >= 0 && rawKey < 0xffffffff ? String(rawKey) : rawKey;
         requireSource(typeof key === 'string' && !Object.hasOwn(result, key)
           && !key.startsWith('$orca'), 'Ambiguous source object key.');
@@ -103,6 +110,7 @@ export function decodeV8(bytes: Buffer, parts: Parts, host?: (tag: number, curso
 
 const secret = /password|passwd|secret|bearer|token|api[_. -]?key|access[_. -]?code|authorization|credential|print[_. -]?host/i;
 const ownedKeys = /^(?:orca\.(?:userPresets|profile(?:Overlays|Bases|Defaults)\.v1|printer|vendor|project-change|developer_mode|enable_high_low_temp_mixed_printing|web\.(?:theme|view|camera|sidebar|railWidth|railObjects|nonplanar_view|sendPrinter|filamentsToUse|arrange|clone|recentCommands))|orca[-.]picker[.:].+)$/;
+
 export function screenStorage(key: string, raw: string) {
   if (!ownedKeys.test(key) || secret.test(key)) throw new Incomplete('sensitive_source', 'Unestablished application ownership or excluded credential key.');
   requireSource(raw.length <= LIMITS.text); screenLogical(raw);
@@ -116,6 +124,8 @@ export function screenLogical(value: unknown, parts?: Parts) {
         || item.length > 16384) throw new Incomplete('sensitive_source', 'Opaque or potentially credential-bearing logical value.');
       if (/^\s*[\[{]/.test(item)) {
         try { JSON.parse(item); } catch { throw new Incomplete('sensitive_source', 'Unresolved structured logical value.'); }
+
+
         for (let at = 0; at < item.length; at++) if (item[at] === '"') {
           const start = at++;
           for (; at < item.length && item[at] !== '"'; at++) if (item[at] === '\\') at++;
@@ -138,7 +148,12 @@ export function screenLogical(value: unknown, parts?: Parts) {
 }
 
 export function screenBinary(bytes: Buffer, file?: { kind: 'Blob' | 'File'; mimeType: string; name?: string }) {
+
+
+
   for (let at = 0; at < bytes.length; at += 65536) {
+
+
     const chunk = bytes.subarray(Math.max(0, at - 64), Math.min(bytes.length, at + 65536));
     const texts = [chunk.toString('latin1')], even = chunk.subarray(0, chunk.length - chunk.length % 2);
     texts.push(utf16(even), utf16(even, true));

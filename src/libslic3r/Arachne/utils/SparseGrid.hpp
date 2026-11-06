@@ -17,6 +17,13 @@
 
 namespace Slic3r::Arachne {
 
+
+
+
+
+
+
+
 template<class ElemT> class SparseGrid : public SquareGrid
 {
 public:
@@ -29,6 +36,13 @@ public:
     using iterator       = typename GridMap::iterator;
     using const_iterator = typename GridMap::const_iterator;
 
+
+
+
+
+
+
+
     SparseGrid(coord_t cell_size, size_t elem_reserve=0U, float max_load_factor=1.0f);
 
     iterator begin() { return m_grid.begin(); }
@@ -36,18 +50,55 @@ public:
     const_iterator begin() const { return m_grid.begin(); }
     const_iterator end() const { return m_grid.end(); }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     std::vector<Elem> getNearby(const Point &query_pt, coord_t radius) const;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     bool processNearby(const Point &query_pt, coord_t radius, const std::function<bool(const ElemT &)> &process_func) const;
 
 protected:
+
+
+
+
+
+
+
     bool processFromCell(const GridPoint &grid_pt, const std::function<bool(const Elem &)> &process_func) const;
+
 
     GridMap m_grid;
 };
 
 template<class ElemT> SparseGrid<ElemT>::SparseGrid(coord_t cell_size, size_t elem_reserve, float max_load_factor) : SquareGrid(cell_size)
 {
+
     m_grid.max_load_factor(max_load_factor);
     if (elem_reserve != 0U)
         m_grid.reserve(elem_reserve);

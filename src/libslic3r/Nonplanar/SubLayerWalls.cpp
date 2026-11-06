@@ -52,8 +52,11 @@ constexpr double PatchClear  = 3.;
 constexpr double MinLayer    = 0.12;
 constexpr double Simplify    = 0.005;
 constexpr double TimeBudget  = 0.40;
+
 constexpr double Taper       = 2.;
+
 constexpr double Overhead    = 1.3;
+
 
 struct Sample
 {
@@ -66,6 +69,8 @@ struct Sample
     double s = 0.;
     double dz = 0.;
 };
+
+
 
 double taper(const std::vector<Sample> &samples, size_t first, size_t last, size_t k)
 {
@@ -80,6 +85,7 @@ struct Run
     Polyline3 raised;
     bool      attached = false;
 };
+
 
 struct Wall
 {
@@ -98,6 +104,8 @@ struct LayerWalls
     AABBTreeLines::LinesDistancer<Line> outline;
     AABBTreeLines::LinesDistancer<Line> holes;
 };
+
+
 
 bool candidate(const ExtrusionPath &path, bool contoured)
 {
@@ -147,6 +155,7 @@ void collect(ExtrusionEntityCollection &c, std::vector<Wall> &out, bool contoure
 
 const ExtrusionPath &wall_path(const Wall &w) { return w.slot ? *static_cast<const ExtrusionPath *>(*w.slot) : (*w.owner)[w.index]; }
 
+
 int outward_side(const Layer &layer, const LayerWalls &lw, const ExtrusionPath &path)
 {
     const Points3 &pts   = path.polyline.points;
@@ -165,6 +174,9 @@ int outward_side(const Layer &layer, const LayerWalls &lw, const ExtrusionPath &
     }
     return votes > 0 ? 1 : votes < 0 ? -1 : 0;
 }
+
+
+
 
 void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, const LayerWalls &above, Wall &w)
 {
@@ -193,6 +205,7 @@ void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, c
     const Layer &lower = *layer.lower_layer, &upper = *layer.upper_layer;
     const double h = layer.height, cap = MaxShift * path.width;
     const double mid = layer.print_z - 0.5 * h;
+
     const double f_lo = 0.25 * h / (mid - (lower.print_z - 0.5 * lower.height));
     const double f_hi = 0.25 * h / ((upper.print_z - 0.5 * upper.height) - mid);
     for (size_t i = 0; i < w.samples.size(); ++i) {
@@ -210,12 +223,17 @@ void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, c
         smp.tilt  = Geometry::rad2deg(std::atan2(0.5 * h, std::abs(step)));
         smp.lo    = std::clamp(lo, -cap, cap);
         smp.hi    = std::clamp(hi, -cap, cap);
+
+
+
         smp.valid = smp.tilt >= 0. && smp.tilt <= MaxTilt && step >= -0.01 && smp.dz > -0.4 * h;
     }
+
     const Point middle = pts[pts.size() / 2].to_point();
     w.hole = !lw.holes.get_lines().empty() &&
              std::abs(lw.holes.distance_from_lines<true>(middle)) <= std::abs(lw.outline.distance_from_lines<true>(middle)) + SCALED_EPSILON;
 }
+
 
 bool concave(const std::vector<Sample> &samples, size_t k)
 {
@@ -225,6 +243,8 @@ bool concave(const std::vector<Sample> &samples, size_t k)
     return a.norm() > 1e-6 && b.norm() > 1e-6 && a.dot(b) < std::cos(Geometry::deg2rad(30.)) * a.norm() * b.norm() &&
            b.dot(samples[k - 1].n) > 0.;
 }
+
+
 
 size_t settle(const std::vector<Sample> &samples, size_t end, int dir, double share)
 {
@@ -239,6 +259,8 @@ size_t settle(const std::vector<Sample> &samples, size_t end, int dir, double sh
     }
     return at;
 }
+
+
 
 std::vector<Run> runs_of(std::vector<Sample> &samples, size_t layer_id)
 {
@@ -289,6 +311,7 @@ std::vector<Run> runs_of(std::vector<Sample> &samples, size_t layer_id)
     return out;
 }
 
+
 double stretch_time(double length, double speed, double accel)
 {
     if (speed <= 0.)
@@ -297,6 +320,7 @@ double stretch_time(double length, double speed, double accel)
         return length / speed + (accel > 0. ? speed / accel : 0.);
     return 2. * std::sqrt(length / accel);
 }
+
 
 double polyline_time(const Polyline &pl, double speed, double accel)
 {
@@ -312,6 +336,8 @@ double polyline_time(const Polyline &pl, double speed, double accel)
     }
     return t + stretch_time(run, speed, accel);
 }
+
+
 
 std::pair<double, double> estimated_times(const PrintObject &object)
 {
@@ -357,6 +383,8 @@ std::pair<double, double> estimated_times(const PrintObject &object)
     return { total, outer };
 }
 
+
+
 bool admitted(const PrintObject &object, const std::vector<LayerWalls> &layers)
 {
     double length = 0.;
@@ -365,6 +393,7 @@ bool admitted(const PrintObject &object, const std::vector<LayerWalls> &layers)
             for (size_t i = 0; i + 1 < w.samples.size(); ++i)
                 if (w.samples[i].valid)
                     length += w.samples[i + 1].s - w.samples[i].s;
+
     const auto [total, outer] = estimated_times(object);
     double outer_length = 0.;
     for (const Layer *layer : object.layers())
@@ -380,6 +409,8 @@ bool admitted(const PrintObject &object, const std::vector<LayerWalls> &layers)
     return cost <= TimeBudget * total;
 }
 
+
+
 void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
 {
     const ExtrusionPath &path    = wall_path(w);
@@ -391,6 +422,7 @@ void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
         size_t j = i;
         while (j + 1 < samples.size() && samples[j + 1].sloped == samples[i].sloped)
             ++j;
+
         const size_t last = std::min(j + 1, samples.size() - 1);
         Polyline3    pl;
         for (size_t k = i; k <= last; ++k) {
@@ -398,6 +430,8 @@ void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
             pl.points.emplace_back(q.x(), q.y(), scaled<coord_t>(samples[k].dz));
         }
         if (path.z_contoured && samples[i].sloped) {
+
+
             for (size_t k = 0; k + 1 < pl.points.size(); ++k) {
                 ExtrusionPath piece(Polyline3(Points3{ pl.points[k], pl.points[k + 1] }), path);
                 const double  gap = std::max(0.01, 0.5 * h + 0.5 * unscale<double>(pl.points[k].z() + pl.points[k + 1].z()));
@@ -422,6 +456,7 @@ void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
     }
 }
 
+
 std::vector<std::pair<ExtrusionLoop *, Polygon>> outer_loops(Layer &layer)
 {
     std::vector<std::pair<ExtrusionLoop *, Polygon>> loops;
@@ -442,6 +477,8 @@ std::vector<std::pair<ExtrusionLoop *, Polygon>> outer_loops(Layer &layer)
     return loops;
 }
 
+
+
 ExPolygons curved_passes(const PrintObject &object, const Layer &layer, const Layer &host, double clear)
 {
     ExPolygons passes;
@@ -455,21 +492,30 @@ ExPolygons curved_passes(const PrintObject &object, const Layer &layer, const La
 
 void split_sublayer_walls(PrintObject &object)
 {
+
+
+
     object.set_sublayer_walls_active(false);
     const NonplanarMode mode = object.config().nonplanar_mode.value;
     if ((mode != NonplanarMode::Auto && mode != NonplanarMode::Off && mode != NonplanarMode::CurvedTops) ||
         object.object_extruders().size() > 1 || object.sublayer_walls_off())
         return;
+
+
+
+
     if (mode == NonplanarMode::CurvedTops && !object.nonplanar_surfaces().empty())
         return;
     const LayerPtrs &layers = object.layers();
     if (std::none_of(layers.begin(), layers.end(), [](const Layer *l) { return enabled(*l); }))
         return;
+
     bool zaa_walls = object.curved_fallback_zaa();
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
         zaa_walls |= object.printing_region(region_id).config().zaa_enabled.value;
     zaa_walls &= mode != NonplanarMode::Auto;
     std::vector<LayerWalls> walls(layers.size());
+
 
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
@@ -498,13 +544,21 @@ void split_sublayer_walls(PrintObject &object)
         }
     });
 
+
     if (!admitted(object, walls))
         return;
     std::vector<double> stepped(layers.size(), 0.);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
+
+
+
             const ExPolygons  passes     = k > 0 ? curved_passes(object, *layers[k], *layers[k - 1], PatchClear + 2. * SampleStep) : ExPolygons();
             const BoundingBox passes_box = get_extents(passes);
+
+
+
+
             AABBTreeLines::LinesDistancer<Line> host;
             if (k > 0 && !walls[k].walls.empty()) {
                 Lines lines;
@@ -528,6 +582,8 @@ void split_sublayer_walls(PrintObject &object)
                 w.runs = runs_of(w.samples, k);
                 const coord_t up = coord_t(scale_(0.5 * layers[k]->height));
                 for (Run &run : w.runs) {
+
+
                     bool beyond = false;
                     for (size_t i = run.first; i <= std::min(run.last + 1, w.samples.size() - 1) && !beyond; ++i) {
                         const Sample &smp = w.samples[i];
@@ -553,6 +609,8 @@ void split_sublayer_walls(PrintObject &object)
         BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " step guard keeps " << mm
                                 << " mm of wall on the single bead";
 
+
+
     std::atomic<bool> split{ false };
     tbb::parallel_for(tbb::blocked_range<size_t>(1, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
@@ -562,12 +620,16 @@ void split_sublayer_walls(PrintObject &object)
             auto   loops = outer_loops(host);
             if (loops.empty())
                 continue;
+
             Lines               lines;
             std::vector<size_t> line_loop;
             for (size_t i = 0; i < loops.size(); ++i)
                 for (const Line &l : loops[i].second.lines())
                     lines.emplace_back(l), line_loop.emplace_back(i);
             const AABBTreeLines::LinesDistancer<Line> nearest(std::move(lines));
+
+
+
             const ExPolygons passes = curved_passes(object, *layers[k], host, PatchClear);
             std::vector<ExPolygons> forbidden(host.lslices.size() + 1);
             for (size_t j = 0; j <= host.lslices.size(); ++j) {
@@ -582,6 +644,7 @@ void split_sublayer_walls(PrintObject &object)
                     const Points3 &pts = run.raised.points;
                     if (pts.size() < 2)
                         continue;
+
                     const auto [d_mid, line_mid, foot_mid] = nearest.distance_from_lines_extra<false>(pts[pts.size() / 2].to_point());
                     if (line_mid >= line_loop.size() || d_mid > scale_(HostReach))
                         continue;
@@ -612,6 +675,7 @@ void split_sublayer_walls(PrintObject &object)
                 }
         }
     });
+
 
     tbb::parallel_for(tbb::blocked_range<size_t>(1, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {

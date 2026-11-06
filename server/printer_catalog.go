@@ -15,12 +15,13 @@ import (
 )
 
 type catalogModel struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Family   string            `json:"family,omitempty"`
-	Cover    string            `json:"cover,omitempty"`
-	Nozzles  []string          `json:"nozzles"`
-	Bed      string            `json:"bed,omitempty"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Family  string   `json:"family,omitempty"`
+	Cover   string   `json:"cover,omitempty"`
+	Nozzles []string `json:"nozzles"`
+	Bed     string   `json:"bed,omitempty"`
+
 	Machines map[string]string `json:"machines"`
 }
 type catalogVendor struct {

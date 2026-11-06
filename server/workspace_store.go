@@ -22,8 +22,9 @@ import (
 )
 
 type workspaceStore struct {
-	mu     sync.Mutex
-	root   string
+	mu   sync.Mutex
+	root string
+
 	cached *workspaceData
 	stamp  [2]int64
 	views  map[string]any
@@ -51,15 +52,16 @@ type workspaceReceipt struct {
 	Response json.RawMessage `json:"response"`
 }
 type workspaceData struct {
-	Schema         int                         `json:"schema"`
-	Projects       map[string]workspaceProject `json:"projects"`
-	Drafts         map[string]workspaceDraft   `json:"drafts"`
-	Values         map[string]workspaceValue   `json:"values"`
-	Operations     map[string]workspaceReceipt `json:"operations"`
-	Adoptions      map[string]json.RawMessage  `json:"adoptions"`
-	Aliases        map[string]string           `json:"aliases"`
-	Folders        map[string]workspaceFolder  `json:"folders,omitempty"`
-	FolderRevision uint64                      `json:"folderRevision,omitempty"`
+	Schema     int                         `json:"schema"`
+	Projects   map[string]workspaceProject `json:"projects"`
+	Drafts     map[string]workspaceDraft   `json:"drafts"`
+	Values     map[string]workspaceValue   `json:"values"`
+	Operations map[string]workspaceReceipt `json:"operations"`
+	Adoptions  map[string]json.RawMessage  `json:"adoptions"`
+	Aliases    map[string]string           `json:"aliases"`
+
+	Folders        map[string]workspaceFolder `json:"folders,omitempty"`
+	FolderRevision uint64                     `json:"folderRevision,omitempty"`
 }
 
 func newWorkspaceData() *workspaceData {
@@ -100,6 +102,7 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 		d.Folders = map[string]workspaceFolder{}
 	}
 	for id, project := range d.Projects {
+
 		if bytes.Equal(bytes.TrimSpace(project.Record), []byte("null")) {
 			project.Record = nil
 			d.Projects[id] = project
@@ -114,6 +117,7 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 			return nil, fmt.Errorf("invalid retained project %s: %w", id, err)
 		}
 	}
+
 	st.cached, st.stamp, st.views = d.clone(), fileStamp(info), nil
 	return &d, nil
 }
@@ -195,6 +199,7 @@ func (d *workspaceData) encode() ([]byte, error) {
 	}); err != nil {
 		return nil, err
 	}
+
 	return bytes.Replace(head, []byte(`"projects":null,"drafts":null`), []byte(`"projects":`+projects.String()+`,"drafts":`+drafts.String()), 1), nil
 }
 
@@ -438,6 +443,7 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 			}))
 		})
 	})
+
 	mux.HandleFunc("GET /api/projects/references", func(w http.ResponseWriter, r *http.Request) {
 		st.view(w, func(d *workspaceData) {
 			writeJSON(w, 200, st.derived("references", func() any {
@@ -506,6 +512,7 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 				v.Document = nil
 				out = append(out, v)
 			}
+
 			sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 			writeJSON(w, 200, out)
 		})
@@ -593,6 +600,7 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 			return
 		}
 		p, exists := d.Projects[id]
+
 		if action != "duplicate" && st.leaseConflict(w, id, r.Header.Get(sessionHeader), p.Revision) {
 			return
 		}
@@ -665,6 +673,7 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 		if !st.commit(w, d, in.OperationID, digest, response) {
 			return
 		}
+
 		if action == "save" {
 			st.claimLease(id, r.Header.Get(sessionHeader))
 		}
@@ -750,6 +759,7 @@ func (st *workspaceStore) putValue(w http.ResponseWriter, r *http.Request, kind 
 		}
 		v := d.Values[kind]
 		if v.Revision != in.ExpectedRevision {
+
 			failure := workspaceError("revision_conflict", "Another writer changed saved "+kind+". Reload before applying changes.", "reload_and_reapply", v.Revision)
 			failure["document"] = v.Document
 			writeJSON(w, 409, failure)
@@ -842,6 +852,7 @@ func (st *workspaceStore) getAsset(w http.ResponseWriter, r *http.Request) {
 	sum := hex.EncodeToString(h.Sum(nil))
 	w.Header().Set("X-Content-SHA256", sum)
 	w.Header().Set("Content-Type", "application/octet-stream")
+
 	w.Header().Set("Cache-Control", privateRevalidate)
 	w.Header().Set("ETag", `"`+sum+`"`)
 	f.Seek(0, io.SeekStart)

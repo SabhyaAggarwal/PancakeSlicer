@@ -15,7 +15,7 @@ type zopfliNode struct {
 
 const maxEffectiveDistanceAlphabetSize = 544
 
-const kInfinity float32 = 1.7e38 /* ~= 2 ^ 127 */
+const kInfinity float32 = 1.7e38
 
 var kDistanceCacheIndex = []uint32{0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1}
 
@@ -59,7 +59,6 @@ func zopfliNodeCommandLength(self *zopfliNode) uint32 {
 	return zopfliNodeCopyLength(self) + (self.dcode_insert_length & 0x7FFFFFF)
 }
 
-/* Histogram based cost model for zopflification. */
 type zopfliCostModel struct {
 	cost_cmd_               [numCommandSymbols]float32
 	cost_dist_              []float32
@@ -113,10 +112,8 @@ func setCost(histogram []uint32, histogram_size uint, literal_histogram bool, co
 			continue
 		}
 
-		/* Shannon bits for this symbol. */
 		cost[i] = log2sum - float32(fastLog2(uint(histogram[i])))
 
-		/* Cannot be coded with less than 1 bit */
 		if cost[i] < 1 {
 			cost[i] = 1
 		}
@@ -220,9 +217,6 @@ func zopfliCostModelGetMinCostCmd(self *zopfliCostModel) float32 {
 	return self.min_cost_cmd_
 }
 
-/* REQUIRES: len >= 2, start_pos <= pos */
-/* REQUIRES: cost < kInfinity, nodes[start_pos].cost < kInfinity */
-/* Maintains the "ZopfliNode array invariant". */
 func updateZopfliNode(nodes []zopfliNode, pos uint, start_pos uint, len uint, len_code uint, dist uint, short_code uint, cost float32) {
 	var next *zopfliNode = &nodes[pos+len]
 	next.length = uint32(len | (len+9-len_code)<<25)
@@ -238,7 +232,6 @@ type posData struct {
 	cost           float32
 }
 
-/* Maintains the smallest 8 cost difference together with their positions */
 type startPosQueue struct {
 	q_   [8]posData
 	idx_ uint
@@ -260,8 +253,6 @@ func startPosQueuePush(self *startPosQueue, posdata *posData) {
 	var q []posData = self.q_[:]
 	q[offset] = *posdata
 
-	/* Restore the sorted order. In the list of |len| items at most |len - 1|
-	   adjacent element comparisons / swaps are required. */
 	for i = 1; i < len; i++ {
 		if q[offset&7].costdiff > q[(offset+1)&7].costdiff {
 			var tmp posData = q[offset&7]
@@ -277,24 +268,18 @@ func startPosQueueAt(self *startPosQueue, k uint) *posData {
 	return &self.q_[(k-self.idx_)&7]
 }
 
-/* Returns the minimum possible copy length that can improve the cost of any */
-/* future position. */
 func computeMinimumCopyLength(start_cost float32, nodes []zopfliNode, num_bytes uint, pos uint) uint {
 	var min_cost float32 = start_cost
 	var len uint = 2
 	var next_len_bucket uint = 4
-	/* Compute the minimum possible cost of reaching any future position. */
 
 	var next_len_offset uint = 10
 	for pos+len <= num_bytes && nodes[pos+len].u.cost <= min_cost {
-		/* We already reached (pos + len) with no more cost than the minimum
-		   possible cost of reaching anything from this pos, so there is no point in
-		   looking for lengths <= len. */
+
 		len++
 
 		if len == next_len_offset {
-			/* We reached the next copy length code bucket, so we add one more
-			   extra bit to the minimum cost. */
+
 			min_cost += 1.0
 
 			next_len_offset += next_len_bucket
@@ -305,18 +290,11 @@ func computeMinimumCopyLength(start_cost float32, nodes []zopfliNode, num_bytes 
 	return uint(len)
 }
 
-/* REQUIRES: nodes[pos].cost < kInfinity
-   REQUIRES: nodes[0..pos] satisfies that "ZopfliNode array invariant". */
 func computeDistanceShortcut(block_start uint, pos uint, max_backward_limit uint, gap uint, nodes []zopfliNode) uint32 {
 	var clen uint = uint(zopfliNodeCopyLength(&nodes[pos]))
 	var ilen uint = uint(nodes[pos].dcode_insert_length & 0x7FFFFFF)
 	var dist uint = uint(zopfliNodeCopyDistance(&nodes[pos]))
 
-	/* Since |block_start + pos| is the end position of the command, the copy part
-	   starts from |block_start + pos - clen|. Distances that are greater than
-	   this or greater than |max_backward_limit| + |gap| are static dictionary
-	   references, and do not update the last distances.
-	   Also distance code 0 (last distance) does not update the last distances. */
 	if pos == 0 {
 		return 0
 	} else if dist+clen <= block_start+pos+gap && dist <= max_backward_limit+gap && zopfliNodeDistanceCode(&nodes[pos]) > 0 {
@@ -326,13 +304,6 @@ func computeDistanceShortcut(block_start uint, pos uint, max_backward_limit uint
 	}
 }
 
-/* Fills in dist_cache[0..3] with the last four distances (as defined by
-   Section 4. of the Spec) that would be used at (block_start + pos) if we
-   used the shortest path of commands from block_start, computed from
-   nodes[0..pos]. The last four distances at block_start are in
-   starting_dist_cache[0..3].
-   REQUIRES: nodes[pos].cost < kInfinity
-   REQUIRES: nodes[0..pos] satisfies that "ZopfliNode array invariant". */
 func computeDistanceCache(pos uint, starting_dist_cache []int, nodes []zopfliNode, dist_cache []int) {
 	var idx int = 0
 	var p uint = uint(nodes[pos].u.shortcut)
@@ -343,7 +314,6 @@ func computeDistanceCache(pos uint, starting_dist_cache []int, nodes []zopfliNod
 		dist_cache[idx] = int(dist)
 		idx++
 
-		/* Because of prerequisite, p >= clen + ilen >= 2. */
 		p = uint(nodes[p-clen-ilen].u.shortcut)
 	}
 
@@ -353,10 +323,8 @@ func computeDistanceCache(pos uint, starting_dist_cache []int, nodes []zopfliNod
 	}
 }
 
-/* Maintains "ZopfliNode array invariant" and pushes node to the queue, if it
-   is eligible. */
 func evaluateNode(block_start uint, pos uint, max_backward_limit uint, gap uint, starting_dist_cache []int, model *zopfliCostModel, queue *startPosQueue, nodes []zopfliNode) {
-	/* Save cost, because ComputeDistanceCache invalidates it. */
+
 	var node_cost float32 = nodes[pos].u.cost
 	nodes[pos].u.shortcut = computeDistanceShortcut(block_start, pos, max_backward_limit, gap, nodes)
 	if node_cost <= zopfliCostModelGetLiteralCosts(model, 0, pos) {
@@ -369,7 +337,6 @@ func evaluateNode(block_start uint, pos uint, max_backward_limit uint, gap uint,
 	}
 }
 
-/* Returns longest copy length. */
 func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, ringbuffer_mask uint, params *encoderParams, max_backward_limit uint, starting_dist_cache []int, num_matches uint, matches []backwardMatch, model *zopfliCostModel, queue *startPosQueue, nodes []zopfliNode) uint {
 	var cur_ix uint = block_start + pos
 	var cur_ix_masked uint = cur_ix & ringbuffer_mask
@@ -389,8 +356,6 @@ func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, 
 		min_len = computeMinimumCopyLength(min_cost, nodes, num_bytes, pos)
 	}
 
-	/* Go over the command starting positions in order of increasing cost
-	   difference. */
 	for k = 0; k < max_iters && k < startPosQueueSize(queue); k++ {
 		var posdata *posData = startPosQueueAt(queue, k)
 		var start uint = posdata.pos
@@ -399,8 +364,7 @@ func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, 
 		var base_cost float32 = start_costdiff + float32(getInsertExtra(inscode)) + zopfliCostModelGetLiteralCosts(model, 0, pos)
 		var best_len uint = min_len - 1
 		var j uint = 0
-		/* Look for last distance matches using the distance cache from this
-		   starting position. */
+
 		for ; j < numDistanceShortCodes && best_len < max_len; j++ {
 			var idx uint = uint(kDistanceCacheIndex[j])
 			var backward uint = uint(posdata.distance_cache[idx] + kDistanceCacheOffset[j])
@@ -412,12 +376,12 @@ func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, 
 			}
 
 			if backward > max_distance+gap {
-				/* Word dictionary -> ignore. */
+
 				continue
 			}
 
 			if backward <= max_distance {
-				/* Regular backward reference. */
+
 				if prev_ix >= cur_ix {
 					continue
 				}
@@ -454,14 +418,11 @@ func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, 
 			}
 		}
 
-		/* At higher iterations look only for new last distance matches, since
-		   looking only for new command start positions with the same distances
-		   does not help much. */
 		if k >= 2 {
 			continue
 		}
 		{
-			/* Loop through all possible copy lengths at this position. */
+
 			var len uint = min_len
 			for j = 0; j < num_matches; j++ {
 				var match backwardMatch = matches[j]
@@ -473,16 +434,12 @@ func updateNodes(num_bytes uint, block_start uint, pos uint, ringbuffer []byte, 
 				var distnumextra uint32
 				var dist_cost float32
 				var max_match_len uint
-				/* We already tried all possible last distance matches, so we can use
-				   normal distance code here. */
+
 				prefixEncodeCopyDistance(dist_code, uint(params.dist.num_direct_distance_codes), uint(params.dist.distance_postfix_bits), &dist_symbol, &distextra)
 
 				distnumextra = uint32(dist_symbol) >> 10
 				dist_cost = base_cost + float32(distnumextra) + zopfliCostModelGetDistanceCost(model, uint(dist_symbol)&0x3FF)
 
-				/* Try all copy lengths up until the maximum copy length corresponding
-				   to this distance. If the distance refers to the static dictionary, or
-				   the maximum length is long enough, try only one maximum length. */
 				max_match_len = backwardMatchLength(&match)
 
 				if len < max_match_len && (is_dictionary_match || max_match_len > max_zopfli_len) {
@@ -530,7 +487,6 @@ func computeShortestPathFromNodes(num_bytes uint, nodes []zopfliNode) uint {
 	return num_commands
 }
 
-/* REQUIRES: nodes != NULL and len(nodes) >= num_bytes + 1 */
 func zopfliCreateCommands(num_bytes uint, block_start uint, nodes []zopfliNode, dist_cache []int, last_insert_len *uint, params *encoderParams, commands *[]command, num_literals *uint) {
 	var max_backward_limit uint = maxBackwardLimit(params.lgwin)
 	var pos uint = 0
@@ -606,21 +562,6 @@ func zopfliIterate(num_bytes uint, position uint, ringbuffer []byte, ringbuffer_
 	return computeShortestPathFromNodes(num_bytes, nodes)
 }
 
-/* Computes the shortest path of commands from position to at most
-   position + num_bytes.
-
-   On return, path->size() is the number of commands found and path[i] is the
-   length of the i-th command (copy length plus insert length).
-   Note that the sum of the lengths of all commands can be less than num_bytes.
-
-   On return, the nodes[0..num_bytes] array will have the following
-   "ZopfliNode array invariant":
-   For each i in [1..num_bytes], if nodes[i].cost < kInfinity, then
-     (1) nodes[i].copy_length() >= 2
-     (2) nodes[i].command_length() <= i and
-     (3) nodes[i - nodes[i].command_length()].cost < kInfinity
-
- REQUIRES: nodes != nil and len(nodes) >= num_bytes + 1 */
 func zopfliComputeShortestPath(num_bytes uint, position uint, ringbuffer []byte, ringbuffer_mask uint, params *encoderParams, dist_cache []int, hasher *h10, nodes []zopfliNode) uint {
 	var max_backward_limit uint = maxBackwardLimit(params.lgwin)
 	var max_zopfli_len uint = maxZopfliLen(params)
@@ -661,7 +602,7 @@ func zopfliComputeShortestPath(num_bytes uint, position uint, ringbuffer []byte,
 		}
 
 		if skip > 1 {
-			/* Add the tail of the copy to the hasher. */
+
 			hasher.StoreRange(ringbuffer, ringbuffer_mask, pos+1, brotli_min_size_t(pos+skip, store_end))
 
 			skip--
@@ -719,7 +660,6 @@ func createHqZopfliBackwardReferences(num_bytes uint, position uint, ringbuffer 
 		var cur_match_end uint
 		var j uint
 
-		/* Ensure that we have enough free slots. */
 		if matches_size < cur_match_pos+maxNumMatchesH10+shadow_matches {
 			var new_size uint = matches_size
 			if new_size == 0 {
@@ -754,7 +694,6 @@ func createHqZopfliBackwardReferences(num_bytes uint, position uint, ringbuffer 
 				cur_match_pos++
 				num_matches[i] = 1
 
-				/* Add the tail of the copy to the hasher. */
 				hasher.StoreRange(ringbuffer, ringbuffer_mask, pos+1, brotli_min_size_t(pos+match_len, store_end))
 				var pos uint = i
 				for i := 0; i < int(skip); i++ {

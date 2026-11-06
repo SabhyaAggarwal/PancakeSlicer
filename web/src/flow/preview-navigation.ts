@@ -1,9 +1,12 @@
+
 import { plateSignature } from '../slice-input';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import { getState, setState, subscribeStore } from '../state/store';
 import { project } from './project';
 interface SliceNavigation { token: number; project: string; generation: number; plate: number; signature: string; job?: string }
 let serial = 0, pending: SliceNavigation | null = null, watching = false;
+
+
 function watch() {
   if (watching) return;
   watching = true;

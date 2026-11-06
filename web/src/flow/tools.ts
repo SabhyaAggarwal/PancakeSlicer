@@ -1,3 +1,4 @@
+
 import type { Gizmo, Selected } from '../state/store';
 import { createMachine } from './fsm';
 interface ToolsContext { selected: Selected | null; gizmo: Gizmo }
@@ -14,6 +15,7 @@ export const tools = createMachine<'idle' | 'selected' | 'active' | 'dragging', 
     idle: { on: common }, selected: { on: { ...common, DRAG: 'dragging' } },
     active: { on: { ...common, DRAG: 'dragging' } },
     dragging: { on: { ...common,
+
       SYNC: [{ guard: (c, e) => c.selected === e.selected && c.gizmo === e.gizmo }, ...sync],
       RELEASE: [{ target: 'active', guard: (c) => c.gizmo !== 'none' }, { target: 'selected', guard: (c) => !!c.selected }, { target: 'idle' }],
     } },

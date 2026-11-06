@@ -64,6 +64,7 @@ float estimate_M6211_time_for_centauri_carbon(const GCodeReader::GCodeLine& line
     const float travel_time  = static_cast<float>(std::abs(current_y - parking_y) + std::abs(current_x - parking_x)) /
                               travel_feedrate * 60.0f;
 
+
     float m6211_time = 18.2f + travel_time;
 
     float remaining_flush_length = std::max(flush_length, 0.0f);
@@ -71,10 +72,12 @@ float estimate_M6211_time_for_centauri_carbon(const GCodeReader::GCodeLine& line
         const float segment_length = std::min(remaining_flush_length, max_segment_length);
         remaining_flush_length -= segment_length;
         if (segment_length >= max_segment_length) {
+
             m6211_time += extrusion_time(30.0f, main_feedrate) + extrusion_time(35.0f, main_feedrate) +
                           extrusion_time(10.0f, tail_feedrate) + extrusion_time(2.0f, tail_feedrate) + cool_time +
                           wipe_after_flush_time;
         } else {
+
             m6211_time += extrusion_time(segment_length, main_feedrate) + extrusion_time(2.0f, tail_feedrate) + cool_time +
                           wipe_after_flush_time;
         }
@@ -91,12 +94,15 @@ float estimate_M6211_time_for_centauri_carbon_2(const GCodeReader::GCodeLine& li
     const float new_filament_e_feedrate = get_clamped_param(line, 'N', 300.0f, 10.0f, 600.0f);
     const float cool_time               = get_clamped_param(line, 'P', 3000.0f, 0.0f, 20000.0f) * 0.001f;
 
+
     static constexpr float e_flush_dist          = 15.0f;
+
     static constexpr float wipe_after_flush_time = 5.0f;
 
     const float flush_length_after_start = std::max(flush_length - e_flush_dist, 0.0f);
     const int   flush_times              = std::max(1, static_cast<int>(std::ceil(flush_length_after_start / flush_length_single)));
     const float flush_length_actual      = flush_length_single;
+
 
     float m6211_time = 31.0f;
     m6211_time += extrusion_time(std::min(e_flush_dist, flush_length), old_filament_e_feedrate);

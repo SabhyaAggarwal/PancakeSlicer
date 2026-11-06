@@ -11,16 +11,17 @@ bool open_zip_writer(mz_zip_archive *zip, const std::string &fname_utf8);
 bool close_zip_reader(mz_zip_archive *zip);
 bool close_zip_writer(mz_zip_archive *zip);
 std::string decode_archive_entry_path(mz_zip_archive *zip, const mz_zip_archive_file_stat &stat);
+
 bool extract_archive_confined(const std::string &zip_path_utf8, const std::string &dest_dir);
 
 class MZ_Archive {
 public:
     mz_zip_archive arch;
-    
+
     MZ_Archive();
-    
+
     static std::string get_errorstr(mz_zip_error mz_err);
-    
+
     std::string get_errorstr() const
     {
         return get_errorstr(arch.m_last_error) + "!";

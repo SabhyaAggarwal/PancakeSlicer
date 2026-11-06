@@ -1,3 +1,6 @@
+
+
+
 import * as THREE from 'three';
 import { instanceBox } from '../plater/geometry';
 import { filamentColor } from '../plater/filamentColor';
@@ -12,6 +15,7 @@ const plain = (color: string) => {
 
 const WIDTH = 320, HEIGHT = 240;
 
+
 export function projectThumbnail(): string | null {
   const p = (window as unknown as { __plater?: { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.Camera } }).__plater;
   const c = p?.renderer.domElement, s = getState();
@@ -21,6 +25,7 @@ export function projectThumbnail(): string | null {
   const sphere = box.getBoundingSphere(new THREE.Sphere());
   const aspect = c.width / c.height;
   const cam = new THREE.PerspectiveCamera(30, aspect, 1, 10000);
+
   const dir = new THREE.Vector3(0.45, -1, 0.8).normalize();
   const fit = Math.min(1, aspect * (HEIGHT / WIDTH));
   const dist = (1.15 * sphere.radius) / Math.sin(THREE.MathUtils.degToRad(15)) / fit;
@@ -30,6 +35,7 @@ export function projectThumbnail(): string | null {
   cam.near = Math.max(0.1, dist - 4 * sphere.radius);
   cam.far = dist + 4 * sphere.radius;
   cam.updateProjectionMatrix();
+
   const byId = new Map(s.objects.map((o) => [o.id, o]));
   const hidden: THREE.Object3D[] = [], swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
   for (const child of p.scene.children) {
@@ -46,6 +52,7 @@ export function projectThumbnail(): string | null {
     for (const child of hidden) child.visible = true;
     for (const [mesh, material] of swapped) mesh.material = material;
   }
+
   const h = Math.min(c.height, (c.width * HEIGHT) / WIDTH), w = (h * WIDTH) / HEIGHT;
   const t = document.createElement('canvas');
   t.width = WIDTH;

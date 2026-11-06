@@ -20,6 +20,9 @@ namespace I18N {
 }
 
 }
+
+
+
 #ifndef SLIC3R_CURRENTLY_COMPILING_GUI_MODULE
 	#ifdef L
 	    #error L macro is defined where it shouldn't be. Didn't you include slic3r/GUI/I18N.hpp in libslic3r by mistake?

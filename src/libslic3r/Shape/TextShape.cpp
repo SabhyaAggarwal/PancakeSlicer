@@ -58,8 +58,8 @@ namespace Slic3r {
 
 static std::map<std::string, std::string> g_occt_fonts_maps;
 
-static const std::vector<const char*> fonts_suffix{ "Bold",  "Medium", "Heavy", "Italic", "Oblique", "Inclined", "Light", "Thin", 
-"Semibold", "ExtraBold", "ExtraBold",  "Semilight", "SemiLight", "ExtraLight", "Extralight",  "Ultralight", 
+static const std::vector<const char*> fonts_suffix{ "Bold",  "Medium", "Heavy", "Italic", "Oblique", "Inclined", "Light", "Thin",
+"Semibold", "ExtraBold", "ExtraBold",  "Semilight", "SemiLight", "ExtraLight", "Extralight",  "Ultralight",
 "Condensed", "Ultra", "Extra", "Expanded", "Extended", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Al Tarikh"};
 
 std::map<std::string, std::string> get_occt_fonts_maps()
@@ -82,6 +82,7 @@ std::vector<std::string> init_occt_fonts()
 
     BOOST_LOG_TRIVIAL(info) << "init_occt_fonts start";
 #ifdef __APPLE__
+
     stdFontNames.push_back("HarmonyOS Sans SC");
     g_occt_fonts_maps.insert(std::make_pair("HarmoneyOS Sans SC", Slic3r::resources_dir() + "/fonts/" + "HarmonyOS_Sans_SC_Regular.ttf"));
 #endif
@@ -113,6 +114,7 @@ std::vector<std::string> init_occt_fonts()
         }
     }
     BOOST_LOG_TRIVIAL(info) << "init_occt_fonts end";
+
     for (auto occt_font : g_occt_fonts_maps) {
         stdFontNames.push_back(occt_font.first);
     }
@@ -124,6 +126,7 @@ static bool TextToBRep(const char* text, const char* font, const float theTextHe
     const char* aText = text;
 
     Font_BRepFont           aFont;
+
     TCollection_AsciiString aFontName(font);
     double                  aTextHeight = theTextHeight;
     Font_FontAspect         aFontAspect = theFontAspect;
@@ -148,6 +151,7 @@ static bool TextToBRep(const char* text, const char* font, const float theTextHe
     aFormatter->SetupAlignment(aHJustification, aVJustification);
     aFormatter->Append(aText, *aFont.FTFont());
     aFormatter->Format();
+
 
     text_width                  = 0;
     NCollection_String coll_str = aText;
@@ -199,7 +203,9 @@ static void MakeMesh(TopoDS_Shape& theSolid, TriangleMesh& theMesh)
 
     std::vector<Vec3f> points;
     points.reserve(aNbNodes);
+
     int aNbFacesNoTri = 0;
+
     int aNodeOffset = 0;
     int aTriangleOffet = 0;
     for (TopExp_Explorer anExpSF(theSolid, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
@@ -210,12 +216,14 @@ static void MakeMesh(TopoDS_Shape& theSolid, TriangleMesh& theMesh)
             ++aNbFacesNoTri;
             continue;
         }
+
         gp_Trsf aTrsf = aLoc.Transformation();
         for (int aNodeIter = 1; aNodeIter <= aTriangulation->NbNodes(); ++aNodeIter) {
             gp_Pnt aPnt = aTriangulation->Node(aNodeIter);
             aPnt.Transform(aTrsf);
             points.emplace_back(Vec3f(aPnt.X(), aPnt.Y(), aPnt.Z()));
         }
+
         const TopAbs_Orientation anOrientation = anExpSF.Current().Orientation();
         for (int aTriIter = 1; aTriIter <= aTriangulation->NbTriangles(); ++aTriIter) {
             Poly_Triangle aTri = aTriangulation->Triangle(aTriIter);
@@ -223,13 +231,16 @@ static void MakeMesh(TopoDS_Shape& theSolid, TriangleMesh& theMesh)
             int anId[3];
             aTri.Get(anId[0], anId[1], anId[2]);
             if (anOrientation == TopAbs_REVERSED) {
+
                 int aTmpIdx = anId[1];
                 anId[1] = anId[2];
                 anId[2] = aTmpIdx;
             }
+
             anId[0] += aNodeOffset;
             anId[1] += aNodeOffset;
             anId[2] += aNodeOffset;
+
             stl_facet facet;
             facet.vertex[0] = points[anId[0] - 1].cast<float>();
             facet.vertex[1] = points[anId[1] - 1].cast<float>();

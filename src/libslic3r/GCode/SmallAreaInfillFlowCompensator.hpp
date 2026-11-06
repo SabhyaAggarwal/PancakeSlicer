@@ -21,6 +21,7 @@ public:
     double modify_flow(const double line_length, const double dE, const ExtrusionRole role);
 
 private:
+
     std::vector<double> eLengths;
     std::vector<double> flowComps;
 

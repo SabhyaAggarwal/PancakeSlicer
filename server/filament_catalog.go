@@ -8,12 +8,13 @@ import (
 )
 
 type filamentFamily struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Brand    string            `json:"brand,omitempty"`
-	Material string            `json:"material,omitempty"`
-	Colour   string            `json:"colour,omitempty"`
-	Models   []string          `json:"models"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Brand    string   `json:"brand,omitempty"`
+	Material string   `json:"material,omitempty"`
+	Colour   string   `json:"colour,omitempty"`
+	Models   []string `json:"models"`
+
 	Variants map[string]string `json:"variants"`
 	Fallback string            `json:"fallback"`
 }

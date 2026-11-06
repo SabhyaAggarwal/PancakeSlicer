@@ -9,19 +9,30 @@ export interface ManagerProfileRowItem {
   key: string;
   name: string;
   note: string;
+
   meta?: string;
+
   fullName?: string;
+
   label?: string;
+
   child?: boolean;
   slot?: number;
+
   cover?: string | null;
   swatch?:string|null;
+
   lead?: string;
+
   dynamic?: boolean;
+
   flag?: string;
+
   method?: string;
+
   user?: UserPreset;
 }
+
 
 const METHOD: Record<string, string> = {
   Flat: 'M3 6h10M3 9h10M3 12h10',
@@ -31,17 +42,22 @@ const METHOD: Record<string, string> = {
   Automatic: 'M8 3v2.5M8 10.5V13M3 8h2.5M10.5 8H13M4.6 4.6l1.8 1.8M9.6 9.6l1.8 1.8M11.4 4.6 9.6 6.4M6.4 9.6l-1.8 1.8',
 };
 
+
+
 function splitName(name: string): [string, string] {
   for (const re of [/\s\S+\s\S+$/, /\s\S+$/]) { const m = re.exec(name); if (m && m[0].length <= 15 && m.index >= 4) return [name.slice(0, m.index), '\u00a0' + m[0].slice(1)]; }
   return ['', name];
 }
 
+
 export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId, selected, open = false, focused, selectable = true, dispatch }: {
   item: ManagerProfileRowItem;
   listId: string;
   selected: boolean;
+
   open?: boolean;
   focused: boolean;
+
   selectable?: boolean;
   dispatch(event: SelectionEvent): void;
 }) {

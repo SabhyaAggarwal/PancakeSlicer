@@ -1,5 +1,6 @@
 import type { Ev, MachineDef, Transition } from './fsm';
 
+
 export function machineDiagram<S extends string, E extends Ev, C>(def: MachineDef<S, E, C>): string {
   const lines = ['stateDiagram-v2', `  [*] --> ${def.initial}`];
   for (const [state, node] of Object.entries(def.states) as [S, MachineDef<S, E, C>['states'][S]][]) {
@@ -20,6 +21,7 @@ export function machineDiagram<S extends string, E extends Ev, C>(def: MachineDe
   }
   return lines.join('\n');
 }
+
 
 export function machineTable<S extends string, E extends Ev, C>(def: MachineDef<S, E, C>): string {
   const rows = ['| State | Event | Guard | Destination | Effect |', '|---|---|---|---|---|'];

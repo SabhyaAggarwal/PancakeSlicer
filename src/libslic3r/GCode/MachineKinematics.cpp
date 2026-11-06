@@ -3,6 +3,7 @@
 
 namespace Slic3r {
 
+
 Vec3d CartesianKinematics::apply_axis_remap(const Vec3d &pos) const
 {
     if (!has_axis_remap())

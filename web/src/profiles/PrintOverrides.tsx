@@ -1,3 +1,5 @@
+
+
 import { Dropdown } from '../components/Dropdown';
 import { Glyph } from '../components/Glyph';
 import { useTabLoaded } from '../components/PresetDialogs';
@@ -5,13 +7,16 @@ import { OPTIONS, splitKey, TABS } from '../options';
 import type { Config, ConfigValue } from '../api/types';
 
 const first = (v: ConfigValue | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
+
 const printKeys = () => [...new Set((TABS.process?.pages ?? []).flatMap((p) => p.groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0])))))]
   .filter((k) => OPTIONS[k]?.label && k !== 'layer_height');
+
 export const labelOf = (key: string) => {
   const group = TABS.process?.pages.flatMap((p) => p.groups).find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === key)))?.title;
   const own = OPTIONS[key]?.label || key;
   if (!group) return own;
   const g = group.toLowerCase(), o = own.toLowerCase();
+
   const words = (t: string) => new Set(t.split(/[^a-z]+/).filter((w) => w.length > 2).map((w) => w.replace(/s$/, '')));
   const shared = [...words(o)].some((w) => words(g).has(w));
   return o.includes(g) || shared && !g.includes(o) ? own : g.includes(o) ? group : `${group} · ${own}`;

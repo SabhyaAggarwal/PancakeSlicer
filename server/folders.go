@@ -100,6 +100,7 @@ func (st *workspaceStore) folderWrite(w http.ResponseWriter, r *http.Request, ac
 			return
 		}
 		now := time.Now().UnixMilli()
+
 		parent, parentSet := "", len(in.ParentID) > 0
 		if parentSet && string(in.ParentID) != "null" && json.Unmarshal(in.ParentID, &parent) != nil {
 			invalid("parentId must be a folder ID or null.")
@@ -158,6 +159,7 @@ func (st *workspaceStore) folderWrite(w http.ResponseWriter, r *http.Request, ac
 			f.UpdatedAt = now
 			d.Folders[in.ID] = f
 		case "delete":
+
 			f, exists := d.Folders[in.ID]
 			if !exists {
 				workspaceFailure(w, 404, "folder_missing", "This folder no longer exists.", "reload_and_reapply", d.FolderRevision)

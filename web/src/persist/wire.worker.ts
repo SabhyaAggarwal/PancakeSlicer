@@ -13,6 +13,7 @@ const capture = (id: number) => {
   try {
     switch (request.type) {
       case 'capture': {
+
         const prepared = prepareDocumentText(request.value);
         const digest = await sha256(new TextEncoder().encode(prepared.text));
         captures.set(request.id, { value: request.value as Record<string, unknown>, stringify: prepared.stringify });
@@ -20,6 +21,7 @@ const capture = (id: number) => {
       }
       case 'project': {
         const prepared = capture(request.capture);
+
         request.body.record.doc = prepared.value.doc;
         post({ type: 'text', id: request.id, text: prepared.stringify(request.body) }); break;
       }

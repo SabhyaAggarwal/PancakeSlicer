@@ -32,6 +32,7 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 Points resample_closed(const Polygon &loop, double step)
 {
     Points        out;
@@ -57,7 +58,10 @@ double dist2_to_segment(const Vec2d &p, const Vec2d &a, const Vec2d &b)
     return (a + t * d - p).squaredNorm();
 }
 
+
+
 constexpr double PaintedSeamReach = 10.;
+
 
 double facet_dist2(const std::vector<SeamPaint::Facet> &facets, const Point &p, double z)
 {
@@ -83,6 +87,7 @@ bool near_facet(const std::vector<SeamPaint::Facet> &facets, const Point &p, dou
 }
 
 namespace {
+
 
 bool segments_cross(const Point &a, const Point &b, const Point &c, const Point &d)
 {
@@ -176,6 +181,9 @@ SeamPaint seam_paint(const PrintObject &object)
 
 Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPosition seam, unsigned salt, const SeamPaint *paint, double reach)
 {
+
+
+
     struct Candidate
     {
         Point  p;
@@ -203,6 +211,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
     if (cands.empty())
         return Point(0, 0);
 
+
     if (paint != nullptr && !paint->empty()) {
         const double r = scale_(reach);
         std::vector<Candidate> enforced, free;
@@ -212,6 +221,9 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
             else if (!near_facet(paint->blockers, c.p, c.z, r))
                 free.emplace_back(c);
         }
+
+
+
         if (enforced.empty() && !paint->enforcers.empty()) {
             std::vector<double> d2(cands.size());
             double              best = scale_(PaintedSeamReach) * scale_(PaintedSeamReach);
@@ -229,6 +241,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
     }
 
     if (seam == spRandom) {
+
         const unsigned h = (salt + 1u) * 2654435761u;
         return cands[size_t(h % cands.size())].p;
     }
@@ -239,6 +252,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
         return std::min_element(cands.begin(), cands.end(), [](const Candidate &a, const Candidate &b) {
                    return a.y > b.y + 0.05 || (a.y >= b.y - 0.05 && a.z < b.z);
                })->p;
+
     const double deepest = std::max_element(cands.begin(), cands.end(), [](const Candidate &a, const Candidate &b) {
                                return a.concave < b.concave;
                            })->concave;
@@ -250,6 +264,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
                 corners.emplace_back(c);
         return std::min_element(corners.begin(), corners.end(), lowest_then_rear)->p;
     }
+
     double y_min = std::numeric_limits<double>::max(), y_max = -y_min;
     for (const Candidate &c : cands) {
         y_min = std::min(y_min, c.y);
@@ -258,6 +273,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
     std::vector<double> rear, curvature, z;
     for (const Candidate &c : cands) {
         rear.emplace_back(y_max > y_min ? (c.y - y_min) / (y_max - y_min) : 1.);
+
         curvature.emplace_back(rear.back() >= 0.75 ? meridian_curvature(surface, seam_line(surface, c.p, area)) : 0.);
         z.emplace_back(c.z);
     }
@@ -266,6 +282,7 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
 
 Polyline seam_line(const HeightField &surface, const Point &seam, const ExPolygons &area)
 {
+
     auto trace = [&](double dir) {
         Polyline out;
         out.points.emplace_back(seam);
@@ -296,6 +313,7 @@ Polyline seam_line(const HeightField &surface, const Point &seam, const ExPolygo
 
 namespace {
 
+
 template<typename Fn> bool each_inner_sample(const Vec2d &a, const Vec2d &b, double step, Fn &&fn)
 {
     const int k = std::max(1, int(std::ceil((b - a).norm() / step)));
@@ -305,12 +323,18 @@ template<typename Fn> bool each_inner_sample(const Vec2d &a, const Vec2d &b, dou
     return true;
 }
 
+
+
+
+
 class GlideRouter
 {
 public:
     static constexpr double EndSlack = 0.75;
 
     GlideRouter(const HeightField &grid, const GlideZ &glide_z, double step) : m_grid(grid), m_glide_z(glide_z), m_step(step) {}
+
+
 
     bool route(const Vec2d &a, const Vec2d &b, double cap, Points3 &route)
     {
@@ -324,6 +348,8 @@ public:
             m_parent.assign(size_t(nx) * ny, -1);
         }
         const double pitch = m_grid.pitch(), diagonal = std::sqrt(2.) * pitch;
+
+
         auto snaps = [&](const Vec2d &p, std::vector<std::pair<int, float>> &out) {
             out.clear();
             const Vec2d o = (p - m_grid.origin()) / pitch;
@@ -360,6 +386,7 @@ public:
                 touch(n, d, -1);
                 open.emplace(d + h(n), n);
             }
+
         int found = -1;
         while (!open.empty()) {
             const auto [f, n] = open.top();
@@ -401,6 +428,7 @@ public:
         if (nodes.empty())
             return false;
         std::reverse(nodes.begin(), nodes.end());
+
         std::vector<Vec2d> pulled{ nodes.front() };
         for (size_t i = 0; i + 1 < nodes.size();) {
             size_t j = nodes.size() - 1;
@@ -409,6 +437,8 @@ public:
             pulled.emplace_back(nodes[j]);
             i = j;
         }
+
+
         for (size_t i = 0; i < pulled.size(); ++i)
             if ((i > 0 && !each_inner_sample(pulled[i - 1], pulled[i], m_step, [&](const Vec2d &p) { return this->emit(p, route); })) ||
                 !this->emit(pulled[i], route)) {
@@ -432,6 +462,7 @@ private:
         return v;
     }
     bool ok(int n) { return this->verdict(n) == Ok; }
+
     bool clear(const Vec2d &a, const Vec2d &b)
     {
         return each_inner_sample(a, b, m_step, [&](const Vec2d &p) {
@@ -439,6 +470,9 @@ private:
             return m_glide_z(p, z) == GlideAt::Ok;
         });
     }
+
+
+
     bool step_clear(const Vec2d &a, const Vec2d &b)
     {
         return each_inner_sample(a, b, 0.5 * m_step, [&](const Vec2d &p) {
@@ -466,6 +500,11 @@ private:
     std::unordered_map<int, float>          m_goal_cost;
 };
 
+
+
+
+
+
 bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_z, double max_glide, double step,
                       GlideRouter &router, Points3 &pts)
 {
@@ -484,6 +523,7 @@ bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_
             if (glide_z(p, z) != GlideAt::Ok)
                 return false;
             const Point3 q(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
+
             if (j == 0 && q.z() < from.z())
                 return false;
             if (q != pts.back())
@@ -506,6 +546,8 @@ bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_
 
 namespace {
 
+
+
 size_t first_bead(const ExtrusionPathConformal &p)
 {
     size_t i = 0;
@@ -524,6 +566,7 @@ bool extruded(const ExtrusionPathConformal &p)
 {
     return p.polyline.points.size() >= 2 && std::any_of(p.bead_height.begin(), p.bead_height.end(), [](float h) { return h > 0.f; });
 }
+
 
 bool joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, int &mode, Point &a, Point &b)
 {
@@ -579,6 +622,7 @@ void extrude_short_glides(ExtrusionEntitiesPtr &paths, double floor, double ceil
         for (size_t i = 1; i + 1 < pts.size(); ++i) {
             if (h[i] > 0.f || h[i - 1] <= 0.f)
                 continue;
+
             size_t j = i;
             while (j < pts.size() && h[j] == 0.f)
                 ++j;
@@ -618,6 +662,7 @@ void absorb_short_roads(ExtrusionEntitiesPtr &paths)
         cut(p.bead_height);
         cut(p.bead_width);
     };
+
     auto splice = [&](ExtrusionPathConformal &head, ExtrusionPathConformal &tail) {
         trim(head, 0, last_bead(head));
         trim(tail, first_bead(tail), tail.polyline.points.size() - 1);
@@ -656,6 +701,7 @@ void absorb_short_roads(ExtrusionEntitiesPtr &paths)
                 splice(*o, *s);
                 delete s;
             } else {
+
                 splice(*s, *o);
                 delete o;
                 paths[best] = s;
@@ -668,12 +714,16 @@ void absorb_short_roads(ExtrusionEntitiesPtr &paths)
 
 namespace {
 
+
+
+
 void join_glide(ExtrusionPathConformal &current, ExtrusionPathConformal &path, const Points3 &route, double floor, double ceiling)
 {
     Points3            &pts     = current.polyline.points;
     std::vector<float> &heights = current.bead_height;
     const Point3        a       = pts.back();
     const Point3        b       = path.polyline.points.front();
+
     std::vector<float> &widths  = current.bead_width;
     const size_t        n_before = pts.size();
     if (!widths.empty() || !path.bead_width.empty()) {
@@ -682,10 +732,18 @@ void join_glide(ExtrusionPathConformal &current, ExtrusionPathConformal &path, c
         if (path.bead_width.empty())
             path.bead_width.assign(path.polyline.points.size(), float(path.width));
     }
+
+
+
+
+
+
     constexpr double JoinClamp = 0.02;
     auto in_band = [floor, ceiling](const Point3 &q, double slack) {
         return unscale<double>(q.z()) >= floor - slack && unscale<double>(q.z()) <= ceiling + slack;
     };
+
+
     bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= ExtrudedJoin * current.width && in_band(a, JoinClamp) &&
                    in_band(b, JoinClamp);
     for (const Point3 &q : route)
@@ -729,9 +787,12 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
     std::vector<bool>  used(todo.size(), false);
     ExtrusionEntitiesPtr out;
     ExtrusionPathConformal *current = nullptr;
+
     RoadGrid           roads;
+
     const double       reach_mm = std::max(max_glide, MaxRoute);
     const double       reach    = scale_(reach_mm);
+
     constexpr size_t   Tries = 8;
 
     struct End
@@ -756,6 +817,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                 return true;
             }))
             return true;
+
         if (!router.route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
             return false;
         if (!hidden) {
@@ -773,6 +835,9 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
     auto mergeable = [](const ExtrusionPathConformal &a, const ExtrusionPathConformal &b) {
         return a.role() == b.role() && a.width == b.width && a.mm3_per_mm == b.mm3_per_mm && a.tool_axis.empty() && b.tool_axis.empty();
     };
+
+
+
 
     auto splice = [&](ExtrusionPathConformal &piece) {
         struct Slot
@@ -839,6 +904,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
             glide_points(back, pts[slot.g1 + 1]);
             std::vector<float> &h = slot.path->bead_height;
             std::vector<float> &w = slot.path->bead_width;
+
             if (!w.empty() || !piece.bead_width.empty()) {
                 if (w.empty())
                     w.assign(pts.size(), float(slot.path->width));
@@ -858,7 +924,13 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         }
         return false;
     };
+
     constexpr size_t SpliceLeft = 4;
+
+
+
+
+
 
     static const double climb = [] {
         const char *v = std::getenv("NP_B2_CLIMB");
@@ -889,6 +961,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         }
         for (size_t i = 0; i < todo.size(); ++i)
             if (!used[i] && (low.empty() || low[i] <= limit)) {
+
                 const bool lower_last = !low.empty() && todo[i]->can_reverse() && todo[i]->polyline.points.back().z() < todo[i]->polyline.points.front().z();
                 if (!lower_last)
                     ends.push_back({ (todo[i]->first_point() - cursor).cast<double>().norm(), i, false });
@@ -900,6 +973,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
 
         int  pick  = -1;
         bool glide = false;
+
         Points3 lead;
         if (current == nullptr && out.empty() && from != nullptr)
             for (size_t k = 0; k < head && ends[k].d <= reach && pick < 0; ++k) {
@@ -957,6 +1031,8 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
             if (!path->bead_width.empty())
                 path->bead_width.insert(path->bead_width.begin(), lead.size(), path->bead_width.front());
         }
+
+
         {
             Points3            &pts = path->polyline.points;
             std::vector<float> &h   = path->bead_height;
@@ -970,6 +1046,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                     Points3            tail(pts.begin() + g1, pts.end());
                     std::vector<float> tail_h(h.begin() + g1, h.end());
                     if (g0 < 2) {
+
                         pts = std::move(tail);
                         h   = std::move(tail_h);
                         if (!path->bead_width.empty())
@@ -1008,6 +1085,8 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         delete path;
     }
     pieces = std::move(out);
+
+
     if (floor <= ceiling) {
         absorb_short_roads(pieces);
         extrude_short_glides(pieces, floor, ceiling);

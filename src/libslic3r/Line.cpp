@@ -37,6 +37,8 @@ bool Line::intersection_infinite(const Line &other, Point* point) const
     Vec2d result = (a1 + t1 * v1);
     if (result.x() > double(std::numeric_limits<coord_t>::max()) || result.x() < double(std::numeric_limits<coord_t>::lowest()) ||
         result.y() > double(std::numeric_limits<coord_t>::max()) || result.y() < double(std::numeric_limits<coord_t>::lowest())) {
+
+
         return false;
     }
     *point = (result).cast<coord_t>();

@@ -13,19 +13,42 @@
 namespace Slic3r {
 namespace Measure {
 
+
+
+
+
 class Polynomial1
 {
 public:
     Polynomial1(std::initializer_list<double> values)
     {
+
+
+
         m_coefficient.resize(values.size());
         std::copy(values.begin(), values.end(), m_coefficient.begin());
         EliminateLeadingZeros();
     }
 
+
+
+
+
+
+
+
     explicit Polynomial1(uint32_t degree)
         : m_coefficient(static_cast<size_t>(degree) + 1, 0.0)
     {}
+
+
+
+
+
+
+
+
+
 
     void EliminateLeadingZeros()
     {
@@ -42,6 +65,7 @@ public:
         }
     }
 
+
     void SetCoefficients(double value)
     {
         std::fill(m_coefficient.begin(), m_coefficient.end(), value);
@@ -49,11 +73,14 @@ public:
 
     inline uint32_t GetDegree() const
     {
+
         return static_cast<uint32_t>(m_coefficient.size() - 1);
     }
 
     inline const double& operator[](uint32_t i) const { return m_coefficient[i]; }
     inline double& operator[](uint32_t i) { return m_coefficient[i]; }
+
+
 
     double operator()(double t) const
     {
@@ -67,6 +94,7 @@ public:
     }
 
 protected:
+
     std::vector<double> m_coefficient;
 };
 
@@ -152,9 +180,18 @@ inline Polynomial1 operator * (double scalar, const Polynomial1& p)
     return result;
 }
 
+
+
+
+
 class RootsPolynomial
 {
 public:
+
+
+
+
+
     static int32_t Find(int32_t degree, const double* c, uint32_t maxIterations, double* roots)
     {
         if (degree >= 0 && c != nullptr) {
@@ -164,6 +201,7 @@ public:
             }
 
             if (degree > 0) {
+
                 const double one = 1.0;
                 const double invLeading = one / c[degree];
                 double maxValue = zero;
@@ -177,15 +215,20 @@ public:
                 return FindRecursive(degree, c, -bound, bound, maxIterations, roots);
             }
             else if (degree == 0)
+
                 return 0;
             else {
+
                 roots[0] = zero;
                 return 1;
             }
         }
         else
+
             return 0;
     }
+
+
 
     static bool Find(int32_t degree, const double* c, double tmin, double tmax, uint32_t maxIterations, double& root)
     {
@@ -202,13 +245,17 @@ public:
         }
 
         if (pmin * pmax > zero)
+
             return false;
 
         if (tmin >= tmax)
+
             return false;
 
         for (uint32_t i = 1; i <= maxIterations; ++i) {
             root = 0.5 * (tmin + tmax);
+
+
 
             if (root == tmin || root == tmax)
                 break;
@@ -230,8 +277,10 @@ public:
         return true;
     }
 
+
     static int32_t FindRecursive(int32_t degree, double const* c, double tmin, double tmax, uint32_t maxIterations, double* roots)
     {
+
         const double zero = 0.0;
         double root = zero;
         if (degree == 1) {
@@ -254,6 +303,12 @@ public:
             return 0;
         }
 
+
+
+
+
+
+
         const int32_t derivDegree = degree - 1;
         std::vector<double> derivCoeff(static_cast<size_t>(derivDegree) + 1);
         std::vector<double> derivRoots(derivDegree);
@@ -264,18 +319,22 @@ public:
 
         int32_t numRoots = 0;
         if (numDerivRoots > 0) {
+
             if (Find(degree, c, tmin, derivRoots[0], maxIterations, root))
                 roots[numRoots++] = root;
+
 
             for (int32_t i = 0, ip1 = 1; i <= numDerivRoots - 2; ++i, ++ip1) {
                 if (Find(degree, c, derivRoots[i], derivRoots[ip1], maxIterations, root))
                     roots[numRoots++] = root;
             }
 
+
             if (Find(degree, c, derivRoots[static_cast<size_t>(numDerivRoots) - 1], tmax, maxIterations, root))
                 roots[numRoots++] = root;
         }
         else {
+
             if (Find(degree, c, tmin, tmax, maxIterations, root))
                 roots[numRoots++] = root;
         }
@@ -292,6 +351,13 @@ public:
         return result;
     }
 };
+
+
+
+
+
+
+
 
 inline Vec3d get_orthogonal(const Vec3d& v, bool unitLength)
 {

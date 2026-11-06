@@ -22,8 +22,8 @@ const Point& Polyline::leftmost_point() const
 {
     const Point *p = &this->points.front();
     for (Points::const_iterator it = this->points.begin() + 1; it != this->points.end(); ++ it) {
-        if (it->x() < p->x()) 
-        	p = &(*it);
+        if (it->x() < p->x())
+            p = &(*it);
     }
     return *p;
 }
@@ -42,7 +42,9 @@ Lines Polyline::lines() const
 
 void Polyline::reverse()
 {
+
     MultiPoint::reverse();
+
     if (!this->fitting_result.empty()) {
         for (size_t i = 0; i < this->fitting_result.size(); i++) {
             std::swap(fitting_result[i].start_point_index, fitting_result[i].end_point_index);
@@ -54,6 +56,7 @@ void Polyline::reverse()
         std::reverse(this->fitting_result.begin(), this->fitting_result.end());
     }
 }
+
 
 void Polyline::clip_end(double distance)
 {
@@ -77,21 +80,26 @@ void Polyline::clip_end(double distance)
         distance -= sqrt(lsqr);
     }
 
+
     if (fitting_result.empty())
         return;
     while (!fitting_result.empty() && fitting_result.back().start_point_index >= remove_after_index)
         fitting_result.pop_back();
     if (!fitting_result.empty()) {
+
         if (fitting_result.back().path_type == EMovePathType::Arc_move_ccw
             || fitting_result.back().path_type == EMovePathType::Arc_move_cw) {
             if (fitting_result.back().arc_data.clip_end(this->last_point()))
+
                 this->points.back() = fitting_result.back().arc_data.end_point;
             else
+
                 fitting_result.back().path_type = EMovePathType::Linear_move;
         }
         fitting_result.back().end_point_index = this->points.size() - 1;
     }
 }
+
 
 void Polyline::clip_start(double distance)
 {
@@ -103,6 +111,7 @@ void Polyline::clip_start(double distance)
 
 void Polyline::extend_end(double distance)
 {
+
     Vec2d v = (this->points.back() - *(this->points.end() - 2)).cast<double>().normalized();
     Point new_last_point = this->points.back() + (v * distance).cast<coord_t>();
     this->append(new_last_point);
@@ -115,12 +124,14 @@ void Polyline::extend_start(double distance)
     this->reverse();
 }
 
+
+
 Points Polyline::equally_spaced_points(double distance) const
 {
     Points points;
     points.emplace_back(this->first_point());
     double len = 0;
-    
+
     for (Points::const_iterator it = this->points.begin() + 1; it != this->points.end(); ++it) {
         Vec2d  p1 = (it-1)->cast<double>();
         Vec2d  v  = it->cast<double>() - p1;
@@ -149,6 +160,7 @@ void Polyline::simplify(double tolerance)
 
 void Polyline::simplify_by_fitting_arc(double tolerance)
 {
+
     ArcFitter::do_arc_fitting_and_simplify(this->points, this->fitting_result, tolerance);
 }
 
@@ -169,7 +181,7 @@ Polylines Polyline::equally_spaced_lines(double distance) const
         if (len == distance) {
             line.append(*it);
             lines.emplace_back(line);
-            
+
             line.clear();
             line.append(*it);
             len = 0;
@@ -184,6 +196,7 @@ Polylines Polyline::equally_spaced_lines(double distance) const
         --it;
         len = -take;
     }
+
     if (line.size() == 1) {
         line.append(this->last_point());
         if(line.first_point()!=line.last_point())
@@ -193,11 +206,12 @@ Polylines Polyline::equally_spaced_lines(double distance) const
 }
 
 #if 0
+
 template <class T>
 void Polyline::simplify_by_visibility(const T &area)
 {
     Points &pp = this->points;
-    
+
     size_t s = 0;
     bool did_erase = false;
     for (size_t i = s+2; i < pp.size(); i = s + 2) {
@@ -219,13 +233,16 @@ void Polyline::split_at(Point &point, Polyline* p1, Polyline* p2) const
 {
     if (this->points.empty()) return;
 
+
     int index = this->find_point(point);
     if (index != -1) {
+
         split_at_index(index, p1, p2);
         point = p1->is_valid()? p1->last_point(): p2->first_point();
         return;
     }
-    
+
+
     size_t line_idx = 0;
     Point p = this->first_point();
     double min = (p - point).cast<double>().norm();
@@ -238,6 +255,8 @@ void Polyline::split_at(Point &point, Polyline* p1, Polyline* p2) const
 	        line_idx = line - lines.begin();
         }
     }
+
+
 
     index = this->find_point(p);
     if (index != -1)
@@ -269,6 +288,7 @@ bool Polyline::split_at_index(const size_t index, Polyline* p1, Polyline* p2) co
         p2->append(this->last_point());
         *p1 = *this;
     } else {
+
         p1->clear();
         p1->points.reserve(index + 1);
         p1->points.insert(p1->begin(), this->begin(), this->begin() + index + 1);
@@ -302,6 +322,7 @@ bool Polyline::split_at_length(const double length, Polyline* p1, Polyline* p2) 
         p2->append(this->last_point());
         *p1 = *this;
     } else {
+
         size_t line_idx = 0;
         double acc_length = 0;
         Point p = this->first_point();
@@ -316,6 +337,8 @@ bool Polyline::split_at_length(const double length, Polyline* p1, Polyline* p2) 
             acc_length += current_length;
             line_idx++;
         }
+
+
 
         int index = this->find_point(p);
         if (index != -1) {
@@ -333,6 +356,9 @@ bool Polyline::split_at_length(const double length, Polyline* p1, Polyline* p2) 
 
 bool Polyline::is_straight() const
 {
+
+
+
     double dir = Line(this->first_point(), this->last_point()).direction();
     for (const auto &line: this->lines())
         if (! line.parallel_to(dir))
@@ -348,12 +374,17 @@ void Polyline::append(const Polyline &src)
         this->points = src.points;
         this->fitting_result = src.fitting_result;
     } else {
+
         this->append(src.points[0]);
+
+
         if (this->fitting_result.empty() &&
             !src.fitting_result.empty()) {
             this->fitting_result.emplace_back(PathFittingData{ 0, this->points.size() - 1, EMovePathType::Linear_move, ArcSegment() });
         }
+
         MultiPoint::append(src.points.begin() + 1, src.points.end());
+
         append_fitting_result_after_append_polyline(src);
     }
 }
@@ -366,12 +397,17 @@ void Polyline::append(Polyline &&src)
         this->points = std::move(src.points);
         this->fitting_result = std::move(src.fitting_result);
     } else {
+
         this->append(src.points[0]);
+
+
         if (this->fitting_result.empty() &&
             !src.fitting_result.empty()) {
             this->fitting_result.emplace_back(PathFittingData{ 0, this->points.size() - 1, EMovePathType::Linear_move, ArcSegment() });
         }
+
         MultiPoint::append(src.points.begin() + 1, src.points.end());
+
         append_fitting_result_after_append_polyline(src);
         src.points.clear();
         src.fitting_result.clear();
@@ -394,6 +430,7 @@ void Polyline::append_fitting_result_after_append_points() {
 void Polyline::append_fitting_result_after_append_polyline(const Polyline& src)
 {
     if (!this->fitting_result.empty()) {
+
         if (!src.fitting_result.empty()) {
             size_t old_size = this->fitting_result.size();
             size_t index_offset = this->fitting_result.back().end_point_index;
@@ -403,6 +440,7 @@ void Polyline::append_fitting_result_after_append_polyline(const Polyline& src)
                 this->fitting_result[i].end_point_index += index_offset;
             }
         } else {
+
             size_t new_start = this->fitting_result.back().end_point_index;
             size_t new_end = this->size() - 1;
             if (new_start != new_end)
@@ -423,7 +461,9 @@ bool Polyline::split_fitting_result_before_index(const size_t index, Point& new_
     data.clear();
     new_endpoint = this->points[index];
     if (!this->fitting_result.empty()) {
+
         data.reserve(this->fitting_result.size());
+
         for (size_t i = 0; i < this->fitting_result.size(); i++)
         {
             if (this->fitting_result[i].start_point_index < index)
@@ -433,10 +473,13 @@ bool Polyline::split_fitting_result_before_index(const size_t index, Point& new_
         }
 
         if (!data.empty()) {
+
             if (data.back().is_arc_move() && data.back().end_point_index > index) {
                 if (!data.back().arc_data.clip_end(this->points[index]))
+
                     data.back().path_type = EMovePathType::Linear_move;
                 else
+
                     new_endpoint = data.back().arc_data.end_point;
             }
             data.back().end_point_index = index;
@@ -463,10 +506,13 @@ bool Polyline::split_fitting_result_after_index(const size_t index, Point& new_s
                     data[i].end_point_index -= index;
                 } else {
                     data[i].end_point_index -= index;
+
                     if (data.front().is_arc_move() && data.front().start_point_index < index) {
                         if (!data.front().arc_data.clip_start(this->points[index]))
+
                             data.front().path_type = EMovePathType::Linear_move;
                         else
+
                             new_startpoint = data.front().arc_data.start_point;
                     }
                     data[i].start_point_index = 0;
@@ -495,11 +541,13 @@ BoundingBox get_extents(const Polylines &polylines)
     return bb;
 }
 
+
 bool remove_same_neighbor(Polyline &polyline) {
     Points &points = polyline.points;
     if (points.empty())
         return false;
     auto last = std::unique(points.begin(), points.end());
+
 
     if (last == points.end())
         return false;
@@ -514,6 +562,7 @@ bool remove_same_neighbor(Polylines &polylines){
     bool exist = false;
     for (Polyline &polyline : polylines)
         exist |= remove_same_neighbor(polyline);
+
     polylines.erase(std::remove_if(polylines.begin(), polylines.end(), [](const Polyline &p) { return p.points.size() <= 1; }), polylines.end());
     return exist;
 }
@@ -539,7 +588,7 @@ bool remove_degenerate(Polylines &polylines)
     size_t j = 0;
     for (size_t i = 0; i < polylines.size(); ++ i) {
         if (polylines[i].points.size() >= 2) {
-            if (j < i) 
+            if (j < i)
                 std::swap(polylines[i].points, polylines[j].points);
             ++ j;
         } else
@@ -662,16 +711,21 @@ void Polyline3::clip_end(double distance)
         distance -= sqrt(lsqr);
     }
 
+
     if (fitting_result.empty())
         return;
     while (!fitting_result.empty() && fitting_result.back().start_point_index >= remove_after_index)
         fitting_result.pop_back();
     if (!fitting_result.empty()) {
+
         if (fitting_result.back().path_type == EMovePathType::Arc_move_ccw ||
             fitting_result.back().path_type == EMovePathType::Arc_move_cw) {
             if (fitting_result.back().arc_data.clip_end(this->last_point().to_point()))
+
+
                 this->points.back() = Point3(fitting_result.back().arc_data.end_point, this->points.back().z());
             else
+
                 fitting_result.back().path_type = EMovePathType::Linear_move;
         }
         fitting_result.back().end_point_index = this->points.size() - 1;
@@ -686,6 +740,7 @@ void Polyline3::simplify(double tolerance)
 
 void Polyline3::simplify_by_fitting_arc(double tolerance)
 {
+
     Points points_2d = to_points(this->points);
     ArcFitter::do_arc_fitting_and_simplify(points_2d, this->fitting_result, tolerance);
     this->points = to_points3(points_2d);
@@ -693,7 +748,9 @@ void Polyline3::simplify_by_fitting_arc(double tolerance)
 
 void Polyline3::reverse()
 {
+
     MultiPoint3::reverse();
+
     if (!this->fitting_result.empty()) {
         for (size_t i = 0; i < this->fitting_result.size(); i++) {
             std::swap(fitting_result[i].start_point_index, fitting_result[i].end_point_index);
@@ -720,6 +777,7 @@ bool Polyline3::split_at_index(const size_t index, Polyline3 *p1, Polyline3 *p2)
         p2->append(this->last_point());
         *p1 = *this;
     } else {
+
         p1->clear();
         p1->points.reserve(index + 1);
         p1->points.insert(p1->begin(), this->begin(), this->begin() + index + 1);
@@ -739,6 +797,14 @@ bool Polyline3::split_at_index(const size_t index, Polyline3 *p1, Polyline3 *p2)
 
 void Polyline3::append(const Point3& point)
 {
+
+
+
+
+
+
+
+
     if (!this->empty() && this->last_point() == point)
         return;
     MultiPoint3::append(point);
@@ -753,17 +819,23 @@ void Polyline3::append(const Polyline3& src)
         this->points = src.points;
         this->fitting_result = src.fitting_result;
     } else {
+
         this->append(src.points[0]);
+
+
         if (this->fitting_result.empty() && !src.fitting_result.empty()) {
             this->fitting_result.emplace_back(PathFittingData{0, this->points.size() - 1, EMovePathType::Linear_move, ArcSegment()});
         }
+
         MultiPoint3::append(src.points.begin() + 1, src.points.end());
+
         append_fitting_result_after_append_polyline(src);
     }
 }
 
 void Polyline3::append_before(const Point3& point)
 {
+
     if (!this->empty() && this->first_point() == point)
         return;
     if (this->size() == 1) {
@@ -781,12 +853,15 @@ void Polyline3::split_at(Point& point, Polyline3* p1, Polyline3* p2) const
 {
     if (this->points.empty()) return;
 
+
     int index = this->find_point(point);
     if (index != -1) {
+
         split_at_index(index, p1, p2);
         point = p1->is_valid() ? p1->last_point().to_point() : p2->first_point().to_point();
         return;
     }
+
 
     size_t line_idx = 0;
     Point p = this->first_point().to_point();
@@ -800,6 +875,8 @@ void Polyline3::split_at(Point& point, Polyline3* p1, Polyline3* p2) const
             line_idx = line - lines.begin();
         }
     }
+
+
 
     index = this->find_point(p);
     if (index != -1) {
@@ -836,6 +913,7 @@ bool Polyline3::split_at_length(const double length, Polyline3 *p1, Polyline3 *p
         p2->append(this->last_point());
         *p1 = *this;
     } else {
+
         size_t line_idx = 0;
         double acc_length = 0;
         Point3 p          = this->first_point();
@@ -850,6 +928,8 @@ bool Polyline3::split_at_length(const double length, Polyline3 *p1, Polyline3 *p
             acc_length += current_length;
             line_idx++;
         }
+
+
 
         int index = this->find_point(p);
         if (index != -1) {
@@ -870,7 +950,9 @@ bool Polyline3::split_fitting_result_before_index(size_t index, Point3& new_endp
     data.clear();
     new_endpoint = this->points[index];
     if (!this->fitting_result.empty()) {
+
         data.reserve(this->fitting_result.size());
+
         for (size_t i = 0; i < this->fitting_result.size(); i++) {
             if (this->fitting_result[i].start_point_index < index)
                 data.push_back(this->fitting_result[i]);
@@ -879,10 +961,13 @@ bool Polyline3::split_fitting_result_before_index(size_t index, Point3& new_endp
         }
 
         if (!data.empty()) {
+
             if (data.back().is_arc_move() && data.back().end_point_index > index) {
                 if (!data.back().arc_data.clip_end(this->points[index].to_point()))
+
                     data.back().path_type = EMovePathType::Linear_move;
                 else
+
                     new_endpoint = Point3(data.back().arc_data.end_point, 0);
             }
             data.back().end_point_index = index;
@@ -910,10 +995,13 @@ bool Polyline3::split_fitting_result_after_index(size_t index, Point3& new_start
                     data[i].end_point_index -= index;
                 } else {
                     data[i].end_point_index -= index;
+
                     if (data.front().is_arc_move() && data.front().start_point_index < index) {
                         if (!data.front().arc_data.clip_start(this->points[index].to_point()))
+
                             data.front().path_type = EMovePathType::Linear_move;
                         else
+
                             new_startpoint = Point3(data.front().arc_data.start_point, 0);
                     }
                     data[i].start_point_index = 0;
@@ -943,6 +1031,7 @@ void Polyline3::append_fitting_result_after_append_points()
 void Polyline3::append_fitting_result_after_append_polyline(const Polyline3& src)
 {
     if (!this->fitting_result.empty()) {
+
         if (!src.fitting_result.empty()) {
             size_t old_size     = this->fitting_result.size();
             size_t index_offset = this->fitting_result.back().end_point_index;
@@ -952,6 +1041,7 @@ void Polyline3::append_fitting_result_after_append_polyline(const Polyline3& src
                 this->fitting_result[i].end_point_index += index_offset;
             }
         } else {
+
             size_t new_start = this->fitting_result.back().end_point_index;
             size_t new_end   = this->size() - 1;
             if (new_start != new_end)

@@ -19,6 +19,7 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 struct Vol
 {
     int                c = 0;
@@ -50,6 +51,7 @@ void parallel(int n, int threads, const std::function<void(int)> &f)
         th.join();
 }
 
+
 Vol conv3(const Vol &in, const std::vector<float> &w, const std::vector<float> &b, int cout, int threads)
 {
     Vol out(cout, in.d);
@@ -79,6 +81,7 @@ Vol conv3(const Vol &in, const std::vector<float> &w, const std::vector<float> &
     });
     return out;
 }
+
 
 void group_norm_silu(Vol &x, int groups, const std::vector<float> &gamma, const std::vector<float> &beta, int threads)
 {
@@ -121,6 +124,7 @@ Vol avg_pool2(const Vol &in)
     return out;
 }
 
+
 Vol up2_concat(const Vol &x, const Vol &skip)
 {
     Vol out(x.c + skip.c, skip.d);
@@ -137,6 +141,7 @@ Vol up2_concat(const Vol &x, const Vol &skip)
     return out;
 }
 
+
 void lin_taps(int n_in, int o, int &i0, int &i1, float &f)
 {
     const double s = std::max(0., (o + .5) / 2. - .5);
@@ -150,6 +155,7 @@ size_t read_u32(const std::string &s, size_t at)
     return size_t(uint8_t(s[at])) | size_t(uint8_t(s[at + 1])) << 8 | size_t(uint8_t(s[at + 2])) << 16 |
            size_t(uint8_t(s[at + 3])) << 24;
 }
+
 
 double json_number(const std::string &h, const std::string &key)
 {
@@ -262,6 +268,7 @@ std::vector<float> StudentNet::phi(const Input &in, int threads) const
         threads = int(std::max(1u, std::thread::hardware_concurrency()));
     const int X = int(in.dims[0]), Y = int(in.dims[1]), Z = int(in.dims[2]);
     const int mult = 1 << int(m_width.size());
+
     const std::vector<float> feat = features(in);
     Vol                      x(NFeat, {X + (mult - X % mult) % mult, Y + (mult - Y % mult) % mult, Z + (mult - Z % mult) % mult});
     for (int c = 0; c < NFeat; ++c)
@@ -288,6 +295,7 @@ std::vector<float> StudentNet::phi(const Input &in, int threads) const
             x = avg_pool2(x);
         }
     }
+
     const std::vector<float> &W = m_tensors[t].v, &B = m_tensors[t + 1].v;
     t += 2;
     for (int c = 0; c < x.c; ++c) {
@@ -303,6 +311,7 @@ std::vector<float> StudentNet::phi(const Input &in, int threads) const
         x = block(up2_concat(x, skips.back()), m_width[l]);
         skips.pop_back();
     }
+
     const std::vector<float> &hw = m_tensors[t].v;
     const float               hb = m_tensors[t + 1].v[0];
     std::vector<float>        head(x.plane(), hb);
@@ -311,6 +320,7 @@ std::vector<float> StudentNet::phi(const Input &in, int threads) const
         for (size_t i = 0; i < head.size(); ++i)
             head[i] += hw[c] * s[i];
     }
+
 
     const double sz   = in.spacing[2];
     const int    kb   = int(std::floor(in.first_layer / sz + 1e-9)) + 1;

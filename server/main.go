@@ -85,7 +85,7 @@ func parseConfig() Config {
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
 	flag.StringVar(&c.FallbackBackend, "fallback-backend", env("ORCA_WEB_FALLBACK_BACKEND", ""), "comma-separated previous loopback backends for read-only historical jobs")
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
-	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
+	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/src/cli/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
 	flag.StringVar(&c.Resources, "resources", env("ORCA_WEB_RESOURCES", "resources"), "resources directory holding profiles/ and nonplanar/ (ORCA_WEB_RESOURCES)")
 	flag.StringVar(&c.JobRoot, "job-root", env("ORCA_WEB_JOB_ROOT", filepath.Join(os.TempDir(), "orca-webapp-jobs")), "scratch directory for job files (ORCA_WEB_JOB_ROOT)")
 	flag.StringVar(&c.StaticDir, "static", env("ORCA_WEB_STATIC", "web/dist"), "static front end to serve at / when it exists (ORCA_WEB_STATIC)")
@@ -200,6 +200,7 @@ func main() {
 	if _, err := presets.names(); err != nil {
 		log.Fatal(err)
 	}
+
 	for _, vendor := range []string{"BBL", "Prusa", "Custom"} {
 		if _, err := presets.vendor(vendor); err != nil {
 			log.Printf("cannot preload %s presets: %v", vendor, err)

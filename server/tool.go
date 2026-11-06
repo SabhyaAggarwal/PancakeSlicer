@@ -14,57 +14,89 @@ import (
 )
 
 type ToolFeatures struct {
-	ColourChange         map[string]bool `json:"colour_change"`
-	PlateIndex           bool            `json:"plate_index"`
-	PlatePlacement       bool            `json:"plate_placement"`
-	DumpOptions          bool            `json:"dump_options"`
-	DumpPresets          bool            `json:"dump_presets"`
-	Progress             bool            `json:"progress"`
-	MovesOut             bool            `json:"moves_out"`
-	ObjectSettings       bool            `json:"object_settings"`
-	Step                 bool            `json:"step"`
-	Edit                 bool            `json:"edit"`
-	ForcePlanar          bool            `json:"force_planar"`
-	Cut                  bool            `json:"cut"`
-	PatchPreview         bool            `json:"patch_preview"`
-	SurfaceGrid          bool            `json:"surface_grid"`
-	Calib                bool            `json:"calib"`
-	Volumes              bool            `json:"volumes"`
-	PresetCompat         bool            `json:"preset_compat"`
-	OneShot              bool            `json:"oneshot"`
-	CurvedTops           bool            `json:"curved_tops"`
-	NonplanarWave        bool            `json:"nonplanar_wave"`
-	MeshPlates           bool            `json:"mesh_plates"`
-	PlateLocks           bool            `json:"plate_locks"`
-	Paint                bool            `json:"paint"`
-	LayerProfile         bool            `json:"layer_profile"`
-	Arrange              bool            `json:"arrange"`
-	ProjectVolumes       bool            `json:"project_volumes"`
-	ProjectPaint         bool            `json:"project_paint"`
-	OrientScores         bool            `json:"orient_scores"`
-	Floating             bool            `json:"floating"`
-	Ranges               bool            `json:"ranges"`
-	MovesExtended        bool            `json:"moves_extended"`
-	MixedTemperatures    bool            `json:"mixed_temperatures"`
-	ArrangeMaterials     bool            `json:"arrange_materials"`
-	WipeTower            bool            `json:"wipe_tower"`
-	Explode              bool            `json:"explode"`
-	CutConnectors        bool            `json:"cut_connectors"`
-	MeshRepair           bool            `json:"mesh_repair"`
-	MeshSimplify         bool            `json:"mesh_simplify"`
-	MeshSimplifyError    bool            `json:"mesh_simplify_error"`
-	NativeSupport        bool            `json:"native_support"`
-	MeshBoolean          bool            `json:"mesh_boolean"`
-	EmbossText           bool            `json:"emboss_text"`
-	EmbossSVG            bool            `json:"emboss_svg"`
-	EmbossSVGSurface     bool            `json:"emboss_svg_surface"`
-	EmbossSurface        bool            `json:"emboss_surface"`
-	ExportGeneric3MF     bool            `json:"export_generic_3mf"`
-	ExportDRC            bool            `json:"export_drc"`
-	EmbossSurfaceOutside bool            `json:"emboss_surface_outside"`
-	PresetCache          bool            `json:"preset_cache"`
-	BrimEars             bool            `json:"brim_ears"`
-	SeamParts            bool            `json:"seam_parts"`
+	ColourChange   map[string]bool `json:"colour_change"`
+	PlateIndex     bool            `json:"plate_index"`
+	PlatePlacement bool            `json:"plate_placement"`
+	DumpOptions    bool            `json:"dump_options"`
+	DumpPresets    bool            `json:"dump_presets"`
+	Progress       bool            `json:"progress"`
+	MovesOut       bool            `json:"moves_out"`
+	ObjectSettings bool            `json:"object_settings"`
+
+	Step        bool `json:"step"`
+	Edit        bool `json:"edit"`
+	ForcePlanar bool `json:"force_planar"`
+	Cut         bool `json:"cut"`
+
+	PatchPreview bool `json:"patch_preview"`
+	SurfaceGrid  bool `json:"surface_grid"`
+	Calib        bool `json:"calib"`
+
+	Volumes bool `json:"volumes"`
+
+	PresetCompat bool `json:"preset_compat"`
+
+	OneShot       bool `json:"oneshot"`
+	CurvedTops    bool `json:"curved_tops"`
+	NonplanarWave bool `json:"nonplanar_wave"`
+
+	MeshPlates bool `json:"mesh_plates"`
+
+	PlateLocks bool `json:"plate_locks"`
+
+	Paint bool `json:"paint"`
+
+	LayerProfile bool `json:"layer_profile"`
+
+	Arrange bool `json:"arrange"`
+
+	ProjectVolumes bool `json:"project_volumes"`
+
+	ProjectPaint bool `json:"project_paint"`
+
+	OrientScores bool `json:"orient_scores"`
+
+	Floating bool `json:"floating"`
+
+	Ranges bool `json:"ranges"`
+
+	MovesExtended bool `json:"moves_extended"`
+
+	MixedTemperatures bool `json:"mixed_temperatures"`
+
+	ArrangeMaterials bool `json:"arrange_materials"`
+
+	WipeTower bool `json:"wipe_tower"`
+
+	Explode bool `json:"explode"`
+
+	CutConnectors bool `json:"cut_connectors"`
+
+	MeshRepair   bool `json:"mesh_repair"`
+	MeshSimplify bool `json:"mesh_simplify"`
+
+	MeshSimplifyError bool `json:"mesh_simplify_error"`
+
+	NativeSupport bool `json:"native_support"`
+
+	MeshBoolean bool `json:"mesh_boolean"`
+
+	EmbossText bool `json:"emboss_text"`
+
+	EmbossSVG        bool `json:"emboss_svg"`
+	EmbossSVGSurface bool `json:"emboss_svg_surface"`
+
+	EmbossSurface bool `json:"emboss_surface"`
+
+	ExportGeneric3MF     bool `json:"export_generic_3mf"`
+	ExportDRC            bool `json:"export_drc"`
+	EmbossSurfaceOutside bool `json:"emboss_surface_outside"`
+
+	PresetCache bool `json:"preset_cache"`
+
+	BrimEars bool `json:"brim_ears"`
+
+	SeamParts bool `json:"seam_parts"`
 }
 
 type toolOption struct {
@@ -138,6 +170,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ExportGeneric3MF = strings.Contains(usage, "--export-3mf-generic IN.3mf OUT.3mf")
 	f.ExportDRC = strings.Contains(usage, "--export-drc IN OUT.drc")
 	f.CutConnectors = strings.Contains(usage, "--cut-connectors") && strings.Contains(usage, "--cut-mode planar|dovetail")
+
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}
@@ -158,6 +191,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		log.Print("using legacy tool contract: invalid options dump")
 		return ToolFeatures{}, fallback
 	}
+
 	nativeSupport := false
 	options := map[string]map[string]any{}
 	kinds := map[string]string{}
@@ -186,6 +220,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 			kind = "groups"
 		}
 		kinds[option.Key] = kind
+
 		types := map[string]string{"float_or_percent": "FloatOrPercent", "floats_or_percents": "FloatsOrPercents", "points_groups": "PointsGroups", "ints_groups": "IntsGroups"}
 		typ := types[option.Type]
 		if typ == "" {
@@ -276,13 +311,16 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 		return nil, err
 	}
 	type entry struct {
-		Name                 string                     `json:"name"`
-		Inherits             []string                   `json:"inherits"`
-		Values               map[string]json.RawMessage `json:"values"`
-		Printers             *[]string                  `json:"compatible_printers_evaluated"`
-		Prints               *[]string                  `json:"compatible_prints_evaluated"`
-		FilamentID           string                     `json:"filament_id"`
-		NativeSupportCapable bool                       `json:"native_support_capable"`
+		Name     string                     `json:"name"`
+		Inherits []string                   `json:"inherits"`
+		Values   map[string]json.RawMessage `json:"values"`
+
+		Printers *[]string `json:"compatible_printers_evaluated"`
+		Prints   *[]string `json:"compatible_prints_evaluated"`
+
+		FilamentID string `json:"filament_id"`
+
+		NativeSupportCapable bool `json:"native_support_capable"`
 	}
 	var dump struct {
 		Schema   string      `json:"schema"`
@@ -316,6 +354,7 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 			}
 			if e.Printers != nil {
 				preset.Evaluated, preset.CompatiblePrinters = true, *e.Printers
+
 				if e.Prints != nil && (len(stringList(config["compatible_prints"])) > 0 || stringValue(config["compatible_prints_condition"]) != "") {
 					preset.CompatiblePrints = *e.Prints
 				}

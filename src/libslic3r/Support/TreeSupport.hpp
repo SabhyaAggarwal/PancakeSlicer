@@ -57,6 +57,9 @@ enum TreeNodeType {
 };
 
 
+
+
+
 struct SupportNode
 {
     static constexpr SupportNode* NO_PARENT = nullptr;
@@ -71,6 +74,7 @@ struct SupportNode
         , print_z(0.0)
         , height(0.0)
     {}
+
 
     SupportNode(const Point position, const int distance_to_top, const int obj_layer_nr, const int support_roof_layers_below, const bool to_buildplate, SupportNode* parent,
         coordf_t     print_z_, coordf_t height_, coordf_t dist_mm_to_top_ = 0, coordf_t radius_ = 0)
@@ -110,9 +114,19 @@ struct SupportNode
         merged_neighbours.clear();
     }
 #endif
+
+
+
+
+
     int distance_to_top;
     coordf_t dist_mm_to_top = 0;
+
+
     static double diameter_angle_scale_factor;
+
+
+
 
     Point          position;
     Point          movement;
@@ -125,16 +139,52 @@ struct SupportNode
     bool           is_sharp_tail   = false;
     bool           valid = true;
     ExPolygon      overhang;
+
+
+
+
+
+
+
     Point skin_direction;
+
+
+
+
+
+
+
+
 
     int support_roof_layers_below;
     int obj_layer_nr;
 
+
+
+
+
+
+
+
     bool to_buildplate;
+
+
+
+
+
+
+
 
     SupportNode* parent;
     std::vector<SupportNode*> parents;
     SupportNode* child = nullptr;
+
+
+
+
+
+
+
 
     std::list<SupportNode*> merged_neighbours;
 
@@ -147,14 +197,27 @@ struct SupportNode
     }
 };
 
+
+
+
+
+
 class TreeSupportData
 {
 public:
     TreeSupportData() = default;
+
+
+
+
+
+
+
     TreeSupportData(const PrintObject& object, coordf_t xy_distance, coordf_t radius_sample_resolution);
     ~TreeSupportData() {
         clear_nodes();
     }
+
 
     TreeSupportData(TreeSupportData&&) = delete;
     TreeSupportData& operator=(TreeSupportData&&) = delete;
@@ -162,7 +225,31 @@ public:
     TreeSupportData(const TreeSupportData&) = delete;
     TreeSupportData& operator=(const TreeSupportData&) = delete;
 
+
+
+
+
+
+
+
+
+
+
     const ExPolygons& get_collision(coordf_t radius, size_t layer_idx) const;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     const ExPolygons& get_avoidance(coordf_t radius, size_t layer_idx, int recursions=0) const;
 
@@ -176,7 +263,11 @@ public:
 
     std::vector<std::unique_ptr<SupportNode>> contact_nodes;
 
+
 private:
+
+
+
     struct RadiusLayerPair {
         coordf_t radius;
         size_t layer_nr;
@@ -194,9 +285,26 @@ private:
         }
     };
 
+
+
+
+
+
     coordf_t ceil_radius(coordf_t radius) const;
 
+
+
+
+
+
+
     const ExPolygons& calculate_collision(const RadiusLayerPair& key) const;
+
+
+
+
+
+
 
     const ExPolygons& calculate_avoidance(const RadiusLayerPair& key) const;
 
@@ -204,16 +312,43 @@ private:
 
 public:
     bool is_slim = false;
+
+
+
     coordf_t m_xy_distance;
 
     double branch_scale_factor = 1.0;
+
+
+
+
+
+
+
+
     coordf_t m_radius_sample_resolution;
 
+
+
+
     std::vector<ExPolygons> m_layer_outlines;
+
 
     std::vector<ExPolygons> m_layer_outlines_below;
 
     std::vector<double> m_max_move_distances;
+
+
+
+
+
+
+
+
+
+
+
+
 
     mutable tbb::concurrent_unordered_map<RadiusLayerPair, ExPolygons, RadiusLayerPairHash, RadiusLayerPairEquality> m_collision_cache;
     mutable tbb::concurrent_unordered_map<RadiusLayerPair, ExPolygons, RadiusLayerPairHash, RadiusLayerPairEquality> m_avoidance_cache;
@@ -228,14 +363,29 @@ struct LineHash {
     }
 };
 
+
+
+
 class TreeSupport
 {
 public:
+
+
+
+
+
     TreeSupport(PrintObject& object, const SlicingParameters &slicing_params);
 
     void move_bounds_to_contact_nodes(std::vector<TreeSupport3D::SupportElements> &move_bounds,
                                       PrintObject                                 &print_object,
                                       const TreeSupport3D::TreeSupportSettings    &config);
+
+
+
+
+
+
+
 
     void generate();
 
@@ -267,6 +417,10 @@ public:
 
     std::function<void()> throw_on_cancel;
     const PrintConfig* m_print_config;
+
+
+
+
     ExPolygon m_machine_border;
 
     enum OverhangType { Detected = 0, Enforced, SharpTail };
@@ -274,14 +428,22 @@ public:
     std::vector<std::pair<Vec3f, Vec3f>>      m_vertical_enforcer_points;
 
 private:
+
+
+
+
+
+
     std::vector<std::vector<SupportNode*>> contact_nodes;
     std::shared_ptr<TreeSupportData> m_ts_data;
     std::unique_ptr<TreeSupport3D::TreeModelVolumes> m_model_volumes;
     PrintObject    *m_object;
     const PrintObjectConfig* m_object_config;
     SlicingParameters        m_slicing_params;
+
     SupportParameters   m_support_params;
     size_t          m_raft_layers = 0;
+
     bool            m_contact_gap_recounted = false;
     size_t          m_highest_overhang_layer = 0;
     std::vector<std::vector<MinimumSpanningTree>> m_spanning_trees;
@@ -292,6 +454,7 @@ private:
     const coordf_t MAX_BRANCH_RADIUS_FIRST_LAYER = 12.0;
     const coordf_t MIN_BRANCH_RADIUS_FIRST_LAYER = 2.0;
     double diameter_angle_scale_factor = tan(5.0*M_PI/180.0);
+
     const double minimum_roof_area{SQ(scaled<double>(1.))};
     float        top_z_distance = 0.0;
 
@@ -299,31 +462,88 @@ private:
     bool  is_slim                            = false;
     bool  with_infill                        = false;
 
+
+
     double belt_floor_print_z(const Point &pos_slicing) const;
+
+
+
+
     bool belt_node_landed(const Point &pos_slicing, double radius, double print_z) const;
+
     bool belt_polygon_landed(const ExPolygon &poly, double print_z) const;
+
+
+
+
+
+
+
+
+
+
 
 
 
     void draw_circles();
 
+
+
+
+
+
+
+
+
+
+
+
+
     void drop_nodes();
 
     void smooth_nodes();
 
+
+
+
+
+
     std::vector<LayerHeightData> plan_layer_heights();
+
+
+
+
+
+
+
+
+
+
+
+
+
     void generate_contact_points();
+
+
+
+
+
 
     void insert_dropped_node(std::vector<SupportNode*>& nodes_layer, SupportNode* node);
     void create_tree_support_layers();
     void generate_toolpaths();
+
     coordf_t calc_branch_radius(coordf_t base_radius, size_t layers_to_top, size_t tip_layers, double diameter_angle_scale_factor);
+
     coordf_t calc_branch_radius(coordf_t base_radius, coordf_t mm_to_top, double diameter_angle_scale_factor, bool use_min_distance=true);
     coordf_t   calc_radius(coordf_t mm_to_top);
     coordf_t get_radius(const SupportNode* node);
     ExPolygons get_avoidance(coordf_t radius, size_t obj_layer_nr);
+
     ExPolygons get_collision(coordf_t radius, size_t layer_nr);
+
     Polygons get_collision_polys(coordf_t radius, size_t layer_nr);
+
 
     Polygons get_trim_support_regions(
         const PrintObject& object,

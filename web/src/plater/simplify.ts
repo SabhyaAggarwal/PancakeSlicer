@@ -5,6 +5,7 @@ export type { SimplificationInfo } from './simplify-core';
 
 const requests = new Map<number, number>();
 
+
 export async function setKeepOriginal(id: number, keep: boolean): Promise<void> {
   const object = getState().objects.find((o) => o.id === id);
   if (!object?.simplification || object.project || object.native) return;

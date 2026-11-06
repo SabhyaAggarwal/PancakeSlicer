@@ -1,3 +1,5 @@
+
+
 import * as THREE from 'three';
 import { bedArea } from '../actions';
 import { getState, newId, printerPreset, setState, toast, updateVolume, type PlateObject, type Volume } from '../state/store';
@@ -8,12 +10,14 @@ import objectKeys from '../object_options.json';
 const replace = (name: string, objects: PlateObject[], selected?: { object: number; instance: number }) =>
   undoable(name, () => setState({ objects, ...(selected ? { selected } : {}) }));
 
+
 export function scaleToBuildVolume(id: number) {
   const s = getState(), o = s.objects.find((x) => x.id === id), machine = printerPreset(s);
   if (!o || !machine) return;
   const area = bedArea(), xs = area.map((p) => p.x), ys = area.map((p) => p.y);
   const box = instanceBox(o, o.instances[0]), size = box.getSize(new THREE.Vector3());
   const height = Number(machine.config.printable_height ?? 0) || Infinity;
+
   const f = 0.99 * Math.min((Math.max(...xs) - Math.min(...xs)) / size.x, (Math.max(...ys) - Math.min(...ys)) / size.y, height / size.z);
   if (!Number.isFinite(f) || f <= 0) return;
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
@@ -22,6 +26,7 @@ export function scaleToBuildVolume(id: number) {
 }
 
 const UNIT = { inch: 25.4, meter: 1000 } as const;
+
 
 export function convertUnits(id: number, unit: 'inch' | 'meter' | null) {
   const s = getState(), o = s.objects.find((x) => x.id === id);
@@ -33,6 +38,7 @@ export function convertUnits(id: number, unit: 'inch' | 'meter' | null) {
 }
 
 
+
 export function mergeObjects(ids: number[]) {
   const s = getState(), objects = s.objects.filter((o) => ids.includes(o.id) && !o.project);
   if (objects.length < 2) return;
@@ -40,6 +46,7 @@ export function mergeObjects(ids: number[]) {
   const into = instanceMatrix(first, i0).invert();
   const volumes: Volume[] = [...(first.volumes ?? [])];
   for (const o of rest) {
+
     const m = into.clone().multiply(instanceMatrix(o, o.instances[0]));
     const [geometry, back] = centred(o.geometry);
     volumes.push({ id: newId(), name: o.name, type: 'part', geometry, matrix: m.clone().multiply(back).elements, extruder: o.extruder === first.extruder ? 0 : o.extruder,
@@ -51,6 +58,7 @@ export function mergeObjects(ids: number[]) {
   replace('Merge', s.objects.filter((o) => !gone.has(o.id)).map((o) => (o.id === first.id ? merged : o)), { object: merged.id, instance: i0.id });
 }
 
+
 export async function partsToObjects(id: number) {
   const s = getState(), o = s.objects.find((x) => x.id === id);
   const parts = o?.volumes?.filter((v) => v.type === 'part') ?? [];
@@ -58,6 +66,7 @@ export async function partsToObjects(id: number) {
   const inst = o.instances[0];
   const objects: PlateObject[] = [];
   for (const v of parts) {
+
     const g = v.geometry.clone().applyMatrix4(volumeWorld(o, inst, v));
     const at = new THREE.Box3().setFromBufferAttribute(g.attributes.position as THREE.BufferAttribute);
     const file = new File([stl(g)], `${v.name}.stl`, { type: 'model/stl' });
@@ -82,6 +91,7 @@ function stl(g: THREE.BufferGeometry): Blob {
   return new Blob([buf]);
 }
 
+
 export function replaceFile(id: number) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -100,6 +110,7 @@ export function replaceFile(id: number) {
   input.click();
 }
 
+
 export function mirrorVolume(objectId: number, volumeId: number, axis: 0 | 1 | 2) {
   const o = getState().objects.find((x) => x.id === objectId), v = o?.volumes?.find((x) => x.id === volumeId);
   if (!o || !v) return;
@@ -108,6 +119,7 @@ export function mirrorVolume(objectId: number, volumeId: number, axis: 0 | 1 | 2
   const world = new THREE.Matrix4().makeTranslation(c.x, c.y, c.z).multiply(flip).multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z)).multiply(volumeWorld(o, inst, v));
   updateVolume(o.id, v.id, { matrix: instanceMatrix(o, inst).invert().multiply(world).elements }, 'Mirror');
 }
+
 
 export async function exportVolumeStl(objectId: number, volumeId: number) {
   const o = getState().objects.find((x) => x.id === objectId), v = o?.volumes?.find((x) => x.id === volumeId);
@@ -130,12 +142,17 @@ export async function exportVolumeStl(objectId: number, volumeId: number) {
   }
 }
 
+
+
 export function copySettings(id: number, volumeId?: number) {
   const o = getState().objects.find((x) => x.id === id);
   const v = volumeId === undefined ? undefined : o?.volumes?.find((x) => x.id === volumeId);
   if (!o) return;
   setState({ settingsClipboard: v ? { kind: 'volume', config: { ...o.settings, ...v.settings } } : { kind: 'object', config: { ...o.settings } } });
 }
+
+
+
 
 export function pasteSettings(targets: { object: number; volume?: number }[]) {
   const clip = getState().settingsClipboard;

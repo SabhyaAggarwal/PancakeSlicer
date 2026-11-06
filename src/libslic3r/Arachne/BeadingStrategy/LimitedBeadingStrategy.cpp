@@ -68,7 +68,8 @@ LimitedBeadingStrategy::Beading LimitedBeadingStrategy::compute(coord_t thicknes
     bead_count = ret.toolpath_locations.size();
     ret.left_over += thickness - ret.total_thickness;
     ret.total_thickness = thickness;
-    
+
+
     if (bead_count % 2 == 1) {
         ret.toolpath_locations[bead_count / 2] = thickness / 2;
         ret.bead_widths[bead_count / 2] = thickness - optimal_thickness;
@@ -76,10 +77,13 @@ LimitedBeadingStrategy::Beading LimitedBeadingStrategy::compute(coord_t thicknes
     for (coord_t bead_idx = 0; bead_idx < (bead_count + 1) / 2; bead_idx++)
         ret.toolpath_locations[bead_count - 1 - bead_idx] = thickness - ret.toolpath_locations[bead_idx];
 
+
+
     coord_t innermost_toolpath_location = ret.toolpath_locations[max_bead_count / 2 - 1];
     coord_t innermost_toolpath_width = ret.bead_widths[max_bead_count / 2 - 1];
     ret.toolpath_locations.insert(ret.toolpath_locations.begin() + max_bead_count / 2, innermost_toolpath_location + innermost_toolpath_width / 2);
     ret.bead_widths.insert(ret.bead_widths.begin() + max_bead_count / 2, 0);
+
 
     const size_t opposite_bead = bead_count - (max_bead_count / 2 - 1);
     innermost_toolpath_location = ret.toolpath_locations[opposite_bead];
@@ -118,7 +122,7 @@ coord_t LimitedBeadingStrategy::getOptimalBeadCount(coord_t thickness) const
     } else if (parent_bead_count == max_bead_count + 1) {
         if (thickness < parent->getOptimalThickness(max_bead_count + 1) - scaled<coord_t>(0.01))
             return max_bead_count;
-        else 
+        else
             return max_bead_count + 1;
     }
     else return max_bead_count + 1;

@@ -4,6 +4,7 @@
 
 namespace Slic3r {
 
+
 static constexpr double IN  = 25.4;
 static inline double tpi_pitch(double tpi) { return IN / tpi; }
 
@@ -11,6 +12,7 @@ const std::vector<ThreadSpec>& thread_standards()
 {
     using S = ThreadSpec::Series;
     static const std::vector<ThreadSpec> table = {
+
         {"M1",    1.0,  0.25, S::MetricCoarse},
         {"M1.2",  1.2,  0.25, S::MetricCoarse},
         {"M1.6",  1.6,  0.35, S::MetricCoarse},
@@ -34,6 +36,7 @@ const std::vector<ThreadSpec>& thread_standards()
         {"M56",  56.0,  5.50, S::MetricCoarse},
         {"M64",  64.0,  6.00, S::MetricCoarse},
 
+
         {"M8x1",      8.0,  1.00, S::MetricFine},
         {"M10x1.25", 10.0,  1.25, S::MetricFine},
         {"M10x1",    10.0,  1.00, S::MetricFine},
@@ -42,6 +45,7 @@ const std::vector<ThreadSpec>& thread_standards()
         {"M16x1.5",  16.0,  1.50, S::MetricFine},
         {"M20x1.5",  20.0,  1.50, S::MetricFine},
         {"M24x2",    24.0,  2.00, S::MetricFine},
+
 
         {"#1-64 UNC",   0.073 * IN, tpi_pitch(64), S::UNC},
         {"#2-56 UNC",   0.086 * IN, tpi_pitch(56), S::UNC},
@@ -62,6 +66,7 @@ const std::vector<ThreadSpec>& thread_standards()
         {"3/4-10 UNC",  0.750 * IN, tpi_pitch(10), S::UNC},
         {"7/8-9 UNC",   0.875 * IN, tpi_pitch(9),  S::UNC},
         {"1-8 UNC",     1.000 * IN, tpi_pitch(8),  S::UNC},
+
 
         {"#2-64 UNF",   0.086 * IN, tpi_pitch(64), S::UNF},
         {"#4-48 UNF",   0.112 * IN, tpi_pitch(48), S::UNF},

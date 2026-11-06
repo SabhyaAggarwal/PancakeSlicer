@@ -1,4 +1,12 @@
-///|/ Released under the terms of the AGPLv3 or higher.
+
+
+
+
+
+
+
+
+
 #include "WaveOverhangs.hpp"
 
 #include <algorithm>
@@ -25,6 +33,7 @@ namespace Slic3r::WaveOverhangs {
 
 bool enabled(const PrintRegionConfig &region, const PrintObject &object)
 {
+
     const NonplanarMode mode = object.requested_nonplanar_mode();
     return region.wave_overhangs.value && mode != NonplanarMode::Off && mode != NonplanarMode::CurvedTops;
 }
@@ -61,6 +70,8 @@ Polylines reconnect_polylines(const Polylines &polylines, double limit_distance)
     auto close = [limit_sq](const Point &p1, const Point &p2) {
         return (p1 - p2).cast<double>().squaredNorm() < limit_sq;
     };
+
+
 
     for (bool changed = true; changed;) {
         changed = false;
@@ -99,6 +110,12 @@ Polylines reconnect_polylines(const Polylines &polylines, double limit_distance)
     return result;
 }
 
+
+
+
+
+
+
 Points detect_overhang_corners(const Polygons &polys, double angle_threshold_rad)
 {
     Points corners;
@@ -115,6 +132,8 @@ Points detect_overhang_corners(const Polygons &polys, double angle_threshold_rad
             if (v1.squaredNorm() < 1. || v2.squaredNorm() < 1.)
                 continue;
             const double turn = angle(v1, v2);
+
+
             const bool convex = is_ccw ? turn > 0. : turn < 0.;
             if (! convex) continue;
             const double interior_angle_rad = M_PI - std::abs(turn);
@@ -143,6 +162,10 @@ void for_each_boundary_point(const ExPolygon &expoly, Fn &&fn)
         for (const Point &pt : hole.points)
             fn(pt);
 }
+
+
+
+
 
 Polygons build_corner_influence(const Points &corners, coord_t radius_scaled)
 {
@@ -252,6 +275,7 @@ bool slit_changes_topology(const ExPolygon &wave_cover, const Polygon &slit)
     const ExPolygons split_result = union_ex(diff_ex(ExPolygons{ wave_cover }, Polygons{ slit }));
     return split_result.size() != 1 || total_hole_count(split_result) != wave_cover.holes.size();
 }
+
 
 Polygon make_effective_split_slit(const ExPolygon &wave_cover, const Point &a, const Point &b, coord_t extension, coord_t wave_spacing)
 {
@@ -377,6 +401,9 @@ Polylines generate_wave_overhang_seeds(const ExPolygon &boundary, const Polygons
     return seeds;
 }
 
+
+
+
 static bool should_generate_waves_for_region(const Polygons &overhang_to_cover,
                                              const ExPolygon &overhang_region,
                                              const Polygons &real_overhang,
@@ -399,6 +426,8 @@ static bool should_generate_waves_for_region(const Polygons &overhang_to_cover,
     const double   unbridgeable_area = area(diff(real_overhang, Polygons{ anchoring_convex_hull }));
     const double   unsupported_dist = std::get<1>(detect_bridging_direction(real_overhang, anchors));
 
+
+
     return unbridgeable_area >= 0.2 * area(real_overhang) ||
            unsupported_dist >= total_length(real_overhang) * 0.2;
 }
@@ -409,6 +438,7 @@ void tag_wave_overhang_paths(std::vector<ExtrusionPaths> &wave_paths)
         for (ExtrusionPath &path : region)
             path.wave_overhang = true;
 }
+
 
 static ExtrusionPath make_wave_path(const Polyline &polyline, const Flow &flow)
 {
@@ -480,6 +510,7 @@ void append_wave_fronts(ExtrusionPaths &overhang_region,
 
         double best_score = -1.;
         for (auto it = support_paths.rbegin(); it != support_paths.rend(); ++it) {
+
             const Points support = it->polyline.to_polyline().points;
             if (support.size() < 2)
                 continue;
@@ -653,6 +684,12 @@ GenerateResult generate(const ExPolygons   &overhang_area,
     const coord_t wave_spacing       = std::max<coord_t>(1, wave_line_spacing > 0. ? coord_t(scale_(wave_line_spacing)) : base_spacing);
     const coord_t min_wave_width     = std::max<coord_t>(0, minimum_wave_width > 0. ? coord_t(scale_(minimum_wave_width)) : 0);
 
+
+
+
+
+
+
     const coord_t wave_spacing_corner = (corner_taper_enable
                                          && line_spacing_corner_mm > 0.
                                          && line_spacing_corner_mm < wave_line_spacing)
@@ -664,15 +701,22 @@ GenerateResult generate(const ExPolygons   &overhang_area,
     const bool    taper_enabled       = corner_taper_enable
                                         && wave_spacing_corner < wave_spacing
                                         && corner_taper_dist > 0;
+
+
+
     const int     taper_substeps     = taper_enabled
                                        ? std::min(8, std::max(2, int(std::round(double(wave_spacing) / double(wave_spacing_corner)))))
                                        : 1;
+
+
     const coord_t taper_step         = taper_enabled ? std::max<coord_t>(wave_spacing_corner, wave_spacing / taper_substeps) : wave_spacing;
     const double  corner_angle_rad   = std::max(10.0, std::min(179.0, corner_angle_threshold_deg)) * M_PI / 180.0;
     const coord_t anchors_size       = std::min(coord_t(scale_(EXTERNAL_INFILL_MARGIN)), base_spacing * (perimeter_count + 1));
     const coord_t seed_expansion     = std::max<coord_t>(1, base_spacing / 10);
     const coord_t filled_area_regularization = std::max<coord_t>(1, base_spacing / 2);
     const coord_t zig_zag_connector_limit = std::max<coord_t>(wave_spacing, wave_flow.scaled_width()) + perimeter_overlap;
+
+
     const double  min_area_growth    = min_new_area_mm2 > 0.
                                        ? scale_(1.) * scale_(1.) * min_new_area_mm2
                                        : 0.05 * double(wave_spacing) * double(wave_spacing);
@@ -693,10 +737,15 @@ GenerateResult generate(const ExPolygons   &overhang_area,
 
     const double min_length_scaled = params.min_length_mm > 0. ? scale_(params.min_length_mm) : 0.;
     for (const ExPolygon &overhang : union_ex(to_expolygons(inset_overhang_area))) {
+
         if (min_length_scaled > 0. && overhang.contour.length() < min_length_scaled)
             continue;
         Polygons overhang_to_cover = to_polygons(overhang);
         Polygons wave_cover_area   = expand(overhang_to_cover, perimeter_overlap, jtRound, 0.);
+
+
+
+
 
         Polygons corner_influence;
         if (taper_enabled) {
@@ -722,8 +771,15 @@ GenerateResult generate(const ExPolygons   &overhang_area,
             const ExPolygon &full_seed_boundary      = wave_cover;
             Polygons full_anchoring = intersection(expand(full_seed_cover_polygons, 1.1 * base_spacing, jtRound, 0.), inset_anchors);
             if (full_anchoring.empty())
+
+
+
+
+
                 full_anchoring = intersection(expand(full_seed_cover_polygons, 1.1 * base_spacing, jtRound, 0.), anchors);
             if (full_anchoring.empty())
+
+
                 full_anchoring = intersection(expand(full_seed_cover_polygons, 1.1 * base_spacing, jtRound, 0.), optimized_lower);
             const Polylines base_seeds = generate_wave_overhang_seeds(full_seed_boundary, full_anchoring, seed_expansion);
 
@@ -746,6 +802,8 @@ GenerateResult generate(const ExPolygons   &overhang_area,
                 std::vector<Polylines> front_levels;
                 double accumulated_area = area(accumulated_region);
                 int    iteration        = 0;
+
+
                 const bool taper_region_active = taper_enabled
                     && ! corner_influence.empty()
                     && ! intersection(corner_influence, wave_cover_polygons).empty();
@@ -753,6 +811,12 @@ GenerateResult generate(const ExPolygons   &overhang_area,
                     if (max_iterations > 0 && iteration >= max_iterations)
                         break;
                     ++iteration;
+
+
+
+
+
+
 
                     if (taper_region_active) {
                         for (int sub = 1; sub < taper_substeps; ++sub) {

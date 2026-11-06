@@ -1,3 +1,5 @@
+
+
 import { useSyncExternalStore } from 'react';
 import { confirmDialog } from './components/Ask';
 import { discardPendingWrites } from './api/access';
@@ -13,11 +15,13 @@ function ask() {
     listeners.forEach((l) => l());
   }).catch(() => { asked = false; });
 }
+
 export function useDevReset(): boolean {
   if (import.meta.env.MODE === 'demo') enabled = true;
   else ask();
   return useSyncExternalStore((l) => { listeners.add(l); return () => { listeners.delete(l); }; }, () => enabled);
 }
+
 
 export async function startOver(): Promise<void> {
   if (!await confirmDialog('Start over?', 'Everything is deleted.', ['Start over', 'Cancel'], true)) return;
@@ -27,6 +31,7 @@ export async function startOver(): Promise<void> {
     location.replace(location.pathname);
     return;
   }
+
   discardPendingWrites();
   const r = await fetch('/api/dev/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: crypto.randomUUID() }) });
   if (!r.ok) { discardPendingWrites(false); throw new Error(`${r.status} ${r.statusText}: /api/dev/reset`); }

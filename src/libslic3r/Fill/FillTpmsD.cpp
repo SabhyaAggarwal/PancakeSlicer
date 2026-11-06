@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <vector>
 
+
 #include "../ClipperUtils.hpp"
 #include "../ShortestPath.hpp"
 #include "libslic3r/Polyline.hpp"
@@ -33,17 +34,30 @@ static Polylines make_waves(double gridZ, double density_adjusted, double line_s
 {
     const double scaleFactor = scale_(line_spacing) / density_adjusted;
 
+
+
     const double tolerance = std::min(line_spacing / 2, FillTpmsD::PatternTolerance) / unscale<double>(scaleFactor);
+
+
 
     const double z = gridZ / scaleFactor;
     Polylines result;
 
+
+
+
+
 	double a=sin(z)-cos(z);
 	double b=sin(z)+cos(z);
+
+
 	double minU=0-height;
 	double maxU=width-0;
 	double minV=0+0;
 	double maxV=width+height;
+
+
+
 	const bool swapUV=(std::abs(a)>std::abs(b));
 	if(swapUV) {
 		std::swap(a,b);
@@ -89,16 +103,18 @@ static Polylines make_waves(double gridZ, double density_adjusted, double line_s
 			}
 		}
 	}
+
     return result;
 }
+
 
 constexpr double FillTpmsD::PatternTolerance;
 
 void FillTpmsD::_fill_surface_single(
-    const FillParams                &params, 
+    const FillParams                &params,
     unsigned int                     thickness_layers,
-    const std::pair<float, Point>   &direction, 
-    ExPolygon                        expolygon, 
+    const std::pair<float, Point>   &direction,
+    ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
     if (params.tpms_adaptive == TpmsAdaptiveMode::SteppedShells && this->tpms_radial_field != nullptr) {
@@ -115,6 +131,7 @@ void FillTpmsD::_fill_surface_single(
 
     Polylines polylines;
     if (params.tpms_adaptive != TpmsAdaptiveMode::Disabled && this->tpms_radial_field != nullptr) {
+
         auto frequency = [&params, this](double density) { return density * DensityAdjust / (params.multiline * this->spacing); };
         BoundingBox bbox = expolygon.contour.bounding_box();
         bbox.offset(scale_((params.multiline + 1) * this->spacing));
@@ -122,10 +139,14 @@ void FillTpmsD::_fill_surface_single(
                                        *this->tpms_radial_field, bbox, this->z, params.layer_height, this->spacing, infill_angle);
     } else {
         BoundingBox bb = expolygon.contour.bounding_box();
+
         double      density_adjusted = std::max(0., params.density * DensityAdjust / params.multiline);
+
         coord_t     distance = coord_t(scale_(this->spacing)  / density_adjusted);
 
+
         bb.merge(align_to_grid(bb.min, Point(2*M_PI*distance, 2*M_PI*distance)));
+
 
         polylines = make_waves(
             scale_(this->z),
@@ -134,15 +155,19 @@ void FillTpmsD::_fill_surface_single(
             ceil(bb.size()(0) / distance) + 1.,
             ceil(bb.size()(1) / distance) + 1.);
 
+
         for (Polyline &pl : polylines)
             pl.translate(bb.min);
     }
+
 
     multiline_fill(polylines, params, spacing);
 
 	polylines = intersection_pl(std::move(polylines), expolygon);
 
     if (! polylines.empty()) {
+
+
         const double minlength = scale_(0.8 * this->spacing);
 		polylines.erase(
 			std::remove_if(polylines.begin(), polylines.end(), [minlength](const Polyline &pl) { return pl.length() < minlength; }),
@@ -150,15 +175,17 @@ void FillTpmsD::_fill_surface_single(
     }
 
 	if (! polylines.empty()) {
+
 		size_t polylines_out_first_idx = polylines_out.size();
 		if (params.dont_connect())
-        	append(polylines_out, chain_polylines(polylines));
+            append(polylines_out, chain_polylines(polylines));
         else
             this->connect_infill(std::move(polylines), expolygon, polylines_out, this->spacing, params);
 
+
         if (std::abs(infill_angle) >= EPSILON) {
 	        for (auto it = polylines_out.begin() + polylines_out_first_idx; it != polylines_out.end(); ++ it)
-	        	it->rotate(infill_angle);
+                it->rotate(infill_angle);
 	    }
     }
 }

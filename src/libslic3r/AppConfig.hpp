@@ -43,6 +43,7 @@
 #define SETTING_OPENGL_REALISTIC_PHONG "opengl_realistic_phong"
 #define SETTING_OPENGL_SHADING_MODEL "opengl_shading_model"
 #define SETTING_OPENGL_PHONG_BASIC_PLATE_SHADOWS "opengl_phong_basic_plate_shadows"
+
 #define SETTING_OPENGL_REALISTIC_SHADOWS "opengl_realistic_shadows"
 #define SETTING_OPENGL_PHONG_SSAO "opengl_phong_ssao"
 #define SETTING_OPENGL_PHONG_SMOOTH_NORMALS "opengl_phong_smooth_normals"
@@ -67,7 +68,9 @@
 #define SUPPORT_DARK_MODE
 
 
+
 namespace Slic3r {
+
 
 
 struct BBLocalMachine
@@ -77,6 +80,12 @@ struct BBLocalMachine
     std::string dev_id;
     std::string printer_type;
     std::string printer_agent_id;
+
+
+
+
+
+
     std::string access_code;
 
     bool operator==(const BBLocalMachine& other) const
@@ -96,6 +105,7 @@ public:
 		GCodeViewer
 	};
 
+
 	explicit AppConfig() :
 		m_dirty(false),
 		m_orig_version(Semver::invalid()),
@@ -110,18 +120,29 @@ public:
 	bool get_stealth_mode();
 	bool get_hide_login_side_panel();
 
+
 	void 			   	reset();
+
 	void 			   	set_defaults();
 
+
+
 	std::string         load(bool read_only = false);
+
+
 	std::string         load_if_exists();
+
 	void 			   	save();
 
+
 	bool 				dirty() const { return m_dirty; }
+
+
 	bool 				save_due() const { return std::chrono::steady_clock::now() >= m_retry_save_at; }
 
 
 	void				set_dirty() { m_dirty = true; }
+
 
 	bool get(const std::string &section, const std::string &key, std::string &value) const
 	{
@@ -235,6 +256,7 @@ public:
 	void 				set_vendors(VendorMap &&vendors) { m_vendors = std::move(vendors); m_dirty = true; }
 	const VendorMap&    vendors() const { return m_vendors; }
 
+
     typedef std::map<std::string, nlohmann::json> MachineSettingMap;
     bool has_printer_settings(std::string printer) const {
         return m_printer_settings.find(printer) != m_printer_settings.end();
@@ -298,12 +320,16 @@ public:
 	const std::vector<PrinterCaliInfo> &get_printer_cali_infos() const { return m_printer_cali_infos; }
     void save_printer_cali_infos(const PrinterCaliInfo& cali_info, bool need_change_status = true);
 
+
 	std::string 		get_last_dir() const;
 	void 				update_config_dir(const std::string &dir);
 	void 				update_skein_dir(const std::string &dir);
 
+
+
 	std::string 		get_last_output_dir(const std::string& alt, const bool removable = false) const;
 	void                update_last_output_dir(const std::string &dir, const bool removable = false);
+
 
 	std::string 		get_last_backup_dir() const;
 	void                update_last_backup_dir(const std::string &dir);
@@ -318,19 +344,29 @@ public:
     void save_nozzle_volume_types_to_config(const std::string& printer_name, const std::string& nozzle_volume_types);
     std::string get_nozzle_volume_types_from_config(const std::string& printer_name);
 
+
+
+
     void                reset_selections();
 
+
 	std::string			config_path();
+
 	std::string			lock_path();
+
 
 	bool 				legacy_datadir() const { return m_legacy_datadir; }
 	void 				set_legacy_datadir(bool value) { m_legacy_datadir = value; }
 
-	std::string 		version_check_url() const;
 
-	std::string 		profile_update_url() const;
+
+
+
+
+
 
 	Semver 				orig_version() const { return m_orig_version; }
+
 
 	bool 				exists();
 
@@ -374,7 +410,10 @@ public:
     std::string get_network_plugin_version() const;
     void set_network_plugin_version(const std::string& version);
 
+
+
     int get_plugin_pages_visible_count() const;
+
 
     int get_speed_dial_recent_count() const;
 
@@ -389,6 +428,7 @@ public:
     bool should_remind_network_update_later() const;
     void set_remind_network_update_later(bool remind);
     void clear_remind_network_update_later();
+
 
     std::vector<std::string> get_cloud_providers() const;
     void set_cloud_providers(const std::vector<std::string>& providers);
@@ -411,17 +451,29 @@ private:
 	    return true;
 	}
 
+
 	EAppMode													m_mode { EAppMode::Editor };
+
 	std::map<std::string, std::map<std::string, std::string>> 	m_storage;
+
 
 	VendorMap                                                   m_vendors;
 
+
 	MachineSettingMap											m_printer_settings;
+
+
+
 	bool												write_config_file(const std::string &path, std::string body, const std::string &checksum_source);
 
+
 	bool														m_dirty;
+
+
 	std::chrono::steady_clock::time_point						m_retry_save_at{};
+
 	Semver                                                      m_orig_version;
+
 	bool                                                        m_legacy_datadir;
 
 	std::string                                                 m_loading_path;

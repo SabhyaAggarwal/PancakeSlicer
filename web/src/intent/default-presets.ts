@@ -8,6 +8,7 @@ export { defaultProcesses, type DefaultProcess } from './default-process-model';
 const number = (v: Parameters<typeof text>[0]) => parseFloat(text(v));
 
 export function currentDefault(s: State): DefaultProcess | undefined {
+
   if (resolvePreset(s, 'process', s.process).user || Object.keys(s.projectPresets?.process ?? {}).length) return;
   const config = effectiveConfig(s, 'process');
   return defaultProcesses(s).find((p) => p.preset === s.process && surfaceOf(config) === p.surface
@@ -19,6 +20,7 @@ export function chooseDefaultProcess(id: string) {
   if (!choice?.preset || choice.unavailable) return;
   const preset = choice.preset;
   undoable(`Process: ${choice.label}`, () => {
+
     const carried = { ...s.projectPresets?.process, ...s.dirty.process };
     if (preset !== s.process) {
       switchPreset('process', 0, preset, 'transfer');

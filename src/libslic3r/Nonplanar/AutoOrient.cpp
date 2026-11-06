@@ -25,10 +25,17 @@ namespace {
 
 constexpr double FlatSlope = 1. * M_PI / 180.;
 constexpr double WallSlope = 70. * M_PI / 180.;
+
+
+
 constexpr double TimeBase = 537., TimePerSurface = 0.099, TimePerHeight = 38.8, TimePerCurvedTop = 0.325,
                  TimePerSupport = 0.02;
+
+
 constexpr double CurvedDefect = 0.25, SupportDefect = 2.;
 constexpr double UnstablePenalty = 1e5;
+
+
 constexpr double TipCost = 600.;
 
 struct Mesh
@@ -45,6 +52,7 @@ struct Hit
     float    z, nz;
     bool     operator<(const Hit &o) const { return std::tie(cell, z) < std::tie(o.cell, o.z); }
 };
+
 
 Matrix3d frame(const Vec3d &up)
 {
@@ -67,9 +75,11 @@ OrientScore score(const Mesh &mesh, const Vec3d &up_in, const OrientParams &para
     const double   cap = std::atan(params.layer_height / params.outer_width);
     const double   support_cos = std::cos(params.support_angle * M_PI / 180.);
 
+
     for (size_t i = 0; i < mesh.normals.size(); ++i) {
         const double nz = mesh.normals[i].dot(up), stair = mesh.areas[i] * nz * nz;
         if (nz <= 0.) {
+
             if (-nz < support_cos)
                 s.under_stair += stair;
             continue;
@@ -87,6 +97,8 @@ OrientScore score(const Mesh &mesh, const Vec3d &up_in, const OrientParams &para
         }
     }
 
+
+
     std::vector<Vec3f> p(mesh.its.vertices.size());
     Vec3f              lo = Vec3f::Constant(std::numeric_limits<float>::max()), hi = -lo;
     for (size_t i = 0; i < p.size(); ++i) {
@@ -95,6 +107,7 @@ OrientScore score(const Mesh &mesh, const Vec3d &up_in, const OrientParams &para
         hi   = hi.cwiseMax(p[i]);
     }
     s.height = hi.z() - lo.z();
+
     const float pitch = std::max(0.5f, std::sqrt((hi.x() - lo.x()) * (hi.y() - lo.y()) / 20000.f));
     const int   nx = int(std::ceil((hi.x() - lo.x()) / pitch)) + 1, ny = int(std::ceil((hi.y() - lo.y()) / pitch)) + 1;
     std::vector<Hit> hits;
@@ -132,6 +145,9 @@ OrientScore score(const Mesh &mesh, const Vec3d &up_in, const OrientParams &para
             if (h.z < first && h.nz < -0.9f)
                 s.bed += cell_area;
         }
+
+
+
         if (const double gap = h.z - (lowest ? 0.f : hits[i - 1].z); h.nz < -support_cos && h.z > first && gap > 2. * params.layer_height) {
             s.support_area += cell_area;
             s.support_volume += gap * cell_area;
@@ -155,6 +171,7 @@ Mesh make_mesh(const indexed_triangle_set &its)
     return mesh;
 }
 
+
 std::vector<Vec3d> flat_face_directions(const Mesh &mesh, size_t count)
 {
     std::map<std::tuple<int, int, int>, std::pair<double, Vec3d>> buckets;
@@ -177,6 +194,7 @@ std::vector<Vec3d> flat_face_directions(const Mesh &mesh, size_t count)
         out.push_back(sorted[i].second);
     return out;
 }
+
 
 OrientScore refine(const Mesh &mesh, OrientScore best, const OrientParams &params)
 {
@@ -208,6 +226,7 @@ OrientParams orient_params(const DynamicPrintConfig &config)
         p.layer_height = shell;
     else if (config.has("layer_height"))
         p.layer_height = config.opt_float("layer_height");
+
     p.outer_width = 0.75 * nozzle;
     if (const auto *w = config.option<ConfigOptionFloatOrPercent>("top_surface_line_width"); w && w->value > 0.)
         p.outer_width = std::min(p.outer_width, w->get_abs_value(nozzle));
@@ -219,6 +238,7 @@ OrientParams orient_params(const DynamicPrintConfig &config)
 }
 
 namespace {
+
 double support_of(const OrientScore &s) { return s.measured && s.printed_support <= 0. ? 0. : s.support_area; }
 }
 
@@ -226,6 +246,7 @@ void rescore(OrientScore &s)
 {
     s.defect = s.steep_stair + s.under_stair + s.curved_stair * (CurvedDefect * s.curved_share + 1. - s.curved_share) +
                SupportDefect * support_of(s);
+
     s.stable = s.bed >= std::max(20., 0.03 * s.footprint);
     s.cost   = s.time_s + OrientDefectCost * s.defect + TipCost * std::max(0., s.height / std::sqrt(std::max(s.bed, 1.)) - 1.) +
              (s.stable ? 0. : UnstablePenalty);
@@ -240,19 +261,25 @@ bool replaces(const OrientScore &candidate, const OrientScore &original)
 {
     if (!candidate.stable)
         return false;
+
     if (!original.stable)
         return true;
     if (candidate.height > 1.25 * original.height)
         return false;
+
+
     const double top = original.flat_top + original.curved_top + original.steep_top;
     if (support_of(original) == 0. && original.steep_top <= 0.01 * top)
         return candidate.measured && original.measured && candidate.time_s <= 0.9 * original.time_s && support_of(candidate) == 0.;
     const double gain = original.cost - candidate.cost;
     if (gain < std::max(0.10 * original.cost, 60.))
         return false;
+
     const double before = support_of(original), after = support_of(candidate), removed = before - after;
     if (before > 5. && removed >= 0.25 * before && removed >= std::min(50., before))
         return true;
+
+
     const bool measured = candidate.measured && original.measured;
     return (measured || gain >= 0.25 * original.cost) && after <= before + 5. + 0.02 * top;
 }
@@ -263,6 +290,7 @@ OrientResult auto_orient(const indexed_triangle_set &its, const OrientParams &pa
     std::vector<Vec3d> dirs{ Vec3d::UnitZ(), -Vec3d::UnitZ(), Vec3d::UnitX(), -Vec3d::UnitX(), Vec3d::UnitY(), -Vec3d::UnitY() };
     for (const Vec3d &d : flat_face_directions(mesh, 12))
         dirs.push_back(d);
+
     for (int i = 0; i < params.samples; ++i) {
         const double z = 1. - 2. * (i + 0.5) / params.samples, r = std::sqrt(1. - z * z), th = M_PI * (1. + std::sqrt(5.)) * (i + 0.5);
         dirs.emplace_back(std::cos(th) * r, std::sin(th) * r, z);
@@ -296,6 +324,8 @@ OrientResult auto_orient(const indexed_triangle_set &its, const OrientParams &pa
 
 Matrix3d rotation_to_z(const Vec3d &up)
 {
+
+
     if (up.z() < 0.) {
         const Matrix3d flip = Eigen::AngleAxisd(M_PI, Vec3d::UnitX()).toRotationMatrix();
         return rotation_to_z(flip * up) * flip;

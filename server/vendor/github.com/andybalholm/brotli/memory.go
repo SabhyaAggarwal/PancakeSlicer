@@ -6,13 +6,6 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/*
-Dynamically grows array capacity to at least the requested size
-T: data type
-A: array
-C: capacity
-R: requested size
-*/
 func brotli_ensure_capacity_uint8_t(a *[]byte, c *uint, r uint) {
 	if *c < r {
 		var new_size uint = *c

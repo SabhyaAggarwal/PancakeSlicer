@@ -1,4 +1,5 @@
 import { observePreference, preferenceJson, savePreferences } from './saved-preferences';
+
 export const CAMERA_VIEWS = ['Default View', 'Top', 'Bottom', 'Front', 'Rear', 'Left', 'Right'] as const;
 export type CameraView = 'plate' | 'top' | 'bottom' | 'front' | 'rear' | 'left' | 'right';
 export const VIEW_DIRECTIONS: CameraView[] = ['plate', 'top', 'bottom', 'front', 'rear', 'left', 'right'];
@@ -17,6 +18,7 @@ export function cameraCommand(command: CameraCommand) {
   if (command === 'perspective' || command === 'orthogonal') cameraProjection(command === 'perspective');
   window.dispatchEvent(new CustomEvent('camera-command', { detail: command }));
 }
+
 
 export type CameraPrefs = { style: 'default' | 'touchpad'; orbitMult: number; zoomToMouse: boolean; reverseZoom: boolean };
 const PREFS_KEY = 'orca.web.camera';

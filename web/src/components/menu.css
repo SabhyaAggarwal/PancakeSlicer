@@ -9,7 +9,6 @@
 :where(.orca-parity) .orca-menu .menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
 :where(.orca-parity) .orca-menu-group { padding: 8px 8px 4px; font: var(--t-small); font-weight: 600; color: var(--text-dim); }
 :where(.orca-parity) .menu-position-anchor { width: 0; height: 0; padding: 0; border: 0; pointer-events: none; }
-
 :where(.orca-parity) .dropdown { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: var(--h-field); height: var(--h-field); min-width: 0; padding: 4px 8px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 3px; text-align: left; font: inherit; cursor: pointer; }
 :where(.orca-parity) .dropdown:hover:not(:disabled) { border-color: var(--ink-3); }
 :where(.orca-parity) .dropdown-value { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

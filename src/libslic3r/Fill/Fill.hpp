@@ -18,15 +18,18 @@ class ExtrusionEntityCollection;
 class LayerRegion;
 class PrintObject;
 
+
+
 double calculate_infill_rotation_angle(const PrintObject *object, size_t layer_id,
                                       const double &fixed_infill_angle, const std::string &template_string);
+
 
 class Filler
 {
 public:
     Filler() : fill(nullptr) {}
-    ~Filler() { 
-        delete fill; 
+    ~Filler() {
+        delete fill;
         fill = nullptr;
     }
     Fill        *fill;

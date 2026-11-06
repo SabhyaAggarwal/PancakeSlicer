@@ -279,10 +279,12 @@ var resultCaches = struct {
 func init() {
 	jobResultGet = restoreJobResult
 	jobResultPut = storeJobResult
+
 	jobResultWarm = func(m *JobManager) {
 		if _, err := cacheForManager(m); err != nil {
 			log.Printf("result cache unavailable: %v", err)
 		}
+
 		if current := presetCacheDir(m); current != "" {
 			entries, _ := os.ReadDir(filepath.Dir(current))
 			for _, e := range entries {
@@ -329,6 +331,7 @@ func cacheForManager(m *JobManager) (*managerResultCache, error) {
 		return nil, err
 	}
 	artifact := hex.EncodeToString(hash.Sum(nil))
+
 	resourceHasher := &ResultCache{artifact: "resources-v1"}
 	resourceSHA, err := resourceHasher.Key(m.cfg.Resources, nil)
 	if err != nil {
@@ -356,6 +359,7 @@ func presetCacheDir(m *JobManager) string {
 
 func cacheableJob(m *JobManager, j *Job) bool {
 	r := j.Request
+
 	if r.Orient || r.Explode || r.Cut != "" || r.MeshOp != "" || r.Arrange || r.WipeTower || r.Output == "patch-preview" {
 		return false
 	}
@@ -391,6 +395,7 @@ func restoreJobResult(m *JobManager, j *Job, args []string) bool {
 		log.Printf("result cache hash: %v", err)
 		return false
 	}
+
 	marker := state.cache.artifact + "\n" + key
 	if err := os.WriteFile(filepath.Join(j.Dir, ".result-cache-key"), []byte(marker), 0600); err != nil {
 		return false

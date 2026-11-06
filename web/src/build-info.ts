@@ -1,9 +1,11 @@
+
+
 import { useSyncExternalStore } from 'react';
 import { version } from '../package.json';
 
 export const APP_VERSION = version;
 export const GITHUB_URL = 'https://github.com/ZimengXiong/PancakeSlicer';
-export const DOCS_URL = 'https://github.com/ZimengXiong/PancakeSlicer';
+export const DOCS_URL = '/help/index.html';
 
 export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
 export interface BuildInfo { state: 'loading' | 'ready' | 'failed'; about?: BuildAbout; engine?: string; engineSha?: string }
@@ -20,6 +22,7 @@ function load() {
     listeners.forEach((l) => l());
   });
 }
+
 export function reloadBuildInfo() { asked = false; info = { state: 'loading' }; listeners.forEach((l) => l()); load(); }
 export function useBuildInfo(): BuildInfo {
   load();
@@ -27,6 +30,7 @@ export function useBuildInfo(): BuildInfo {
 }
 
 export const shortSha = (sha?: string) => sha?.slice(0, 7);
+
 export function buildLine(i: BuildInfo): string {
   return [`PancakeSlicer v${APP_VERSION}`, i.about?.revision && `build ${shortSha(i.about.revision)}`,
     i.engine && `engine ${i.engine}${i.engineSha ? ` ${shortSha(i.engineSha)}` : ''}`].filter(Boolean).join(' · ');

@@ -1,3 +1,6 @@
+
+
+
 import { Cursor, LIMITS, requireSource, type UserComparator } from './leveldb';
 
 type UserKey = { tag: number; value?: number | Buffer | UserKey[] };
@@ -27,6 +30,7 @@ export function encodedKey(c: Cursor, depth = 0, budget = { nodes: 0 }): UserKey
 }
 const cmpNumber = (a: number | bigint, b: number | bigint) => a === b ? 0 : a < b ? -1 : 1;
 function compareKey(a: UserKey, b: UserKey): number {
+
   const rank = [6, 3, 2, 1, 5, 0, 4];
   if (a.tag !== b.tag) return rank[a.tag] - rank[b.tag];
   if (a.tag === 0 || a.tag === 5) return 0;
@@ -45,11 +49,11 @@ function atoms(bytes: Buffer): Atom[] {
     requireSource(p.store !== 0n || p.index === 0n);
     const tag = c.byte(); out.push(tag);
     if (p.database === 0n) {
-      if (tag <= 6) {  }
+      if (tag <= 6) {                              }
       else if (tag === 50) out.push(c.take(bytes.length - c.at));
       else if (tag === 100) out.push(identifier());
       else { requireSource(tag === 201); out.push(stringBytes(c), stringBytes(c)); }
-    } else if (tag <= 5) {  }
+    } else if (tag <= 5) {                                   }
     else if (tag === 50) out.push(identifier(), c.byte());
     else if (tag === 100) out.push(identifier(), identifier(), c.byte());
     else if (tag === 150) out.push(identifier());
@@ -61,6 +65,7 @@ function atoms(bytes: Buffer): Atom[] {
     out.push(encodedKey(c));
     if (p.index >= 30n) {
       const sequence = c.at < bytes.length ? identifier() : -1n;
+
       if (c.at < bytes.length) out.push(1, encodedKey(c), sequence);
       else out.push(0);
     }

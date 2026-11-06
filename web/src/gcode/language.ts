@@ -1,6 +1,10 @@
 import { HighlightStyle, StreamLanguage, syntaxHighlighting, type StringStream } from '@codemirror/language';
 import { Tag, tags } from '@lezer/highlight';
 
+
+
+
+
 const unknown = Tag.define();
 const KEYWORDS = new Set(['if', 'elsif', 'else', 'endif', 'and', 'or', 'not', 'local', 'global', 'true', 'false']);
 const FUNCTIONS = new Set(['min', 'max', 'int', 'round', 'digits', 'zdigits', 'is_nil', 'one_of', 'interpolate_table', 'regex_replace', 'size', 'empty', 'filament_change', 'random', 'repeat']);
@@ -53,6 +57,7 @@ function expression(stream: StringStream, s: State, isKnown: (name: string, s: S
   stream.next();
   return null;
 }
+
 
 export const gcodeHighlight = syntaxHighlighting(HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--gc-command)', fontWeight: '600' },

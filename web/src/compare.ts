@@ -1,3 +1,6 @@
+
+
+
 import { useSyncExternalStore } from 'react';
 import { jobRequest } from './actions';
 import { canForcePlanar } from './api/client';
@@ -18,6 +21,7 @@ type CompareEvent = { type: 'START'; key: string } | { type: 'SHOW'; key: string
   | { type: 'DONE'; request: number; id: string; status: JobStatus } | { type: 'FAIL'; request: number; error: string; busy: boolean };
 interface CompareContext { request: number; view: CompareState }
 const cache = new Map<string, { id: string; status: JobStatus }>();
+
 let active: { id?: string; stop?: () => void; submission: AbortController } | null = null;
 function stopActive() {
   const a = active;
@@ -31,6 +35,7 @@ type On = NonNullable<StateNode<CompareState['state'], CompareEvent, Ctx>['on']>
 const listeners = new Set<() => void>();
 const mine = (c: Ctx, e: { request: number }) => e.request === c.request;
 const key = (c: Ctx) => c.view.state === 'idle' ? '' : c.view.key;
+
 const start: On['START'] = { target: 'running', action: (c, e) => ({ request: c.request + 1, view: { state: 'running', key: e.key, queued: true, pct: 0 } }) };
 const show: On['SHOW'] = { target: 'done', action: (c, e) => ({ request: c.request + 1, view: { state: 'done', key: e.key, id: e.id, status: e.status } }) };
 const stopped = (c: Ctx): Partial<Ctx> => ({ request: c.request + 1, view: { state: 'idle' } });
@@ -57,6 +62,7 @@ export function useCompare(): CompareState {
   return useSyncExternalStore(compare.subscribe, () => compare.get().context.view);
 }
 
+
 let wanted = false;
 export function setCompareWanted(on: boolean) {
   wanted = on;
@@ -65,6 +71,7 @@ export function setCompareWanted(on: boolean) {
 export function useCompareWanted(): boolean {
   return useSyncExternalStore(subscribe, () => wanted);
 }
+
 
 let standardData: PreviewData | null = null;
 export function setStandardData(d: PreviewData | null) {
@@ -75,22 +82,30 @@ export function useStandardData(): PreviewData | null {
   return useSyncExternalStore(subscribe, () => standardData);
 }
 
+
+
+
+
+
 async function standardRequest() {
   const req = await jobRequest(getState());
   const flat = { nonplanar_mode: jobValue('nonplanar_mode', 'off'), zaa_enabled: false };
   return {
     ...req,
     overrides: { ...req.overrides, ...flat },
+
     plate: req.plate && { objects: req.plate.objects.map((o) => {
       const { nonplanar_mode: _, ...rest } = o.settings ?? {};
       return { ...o, settings: canForcePlanar() ? { ...rest, zaa_enabled: '0' } : { ...rest, nonplanar_mode: 'off', zaa_enabled: '0' } };
     }) },
     project_settings: req.plate ? undefined : canForcePlanar() ? { zaa_enabled: false } : flat,
     force_planar: canForcePlanar() || undefined,
+
     output: 'gcode' as const,
     priority: 'low' as const,
   };
 }
+
 
 export async function startCompare() {
   const s = getState();
@@ -105,6 +120,7 @@ export async function startCompare() {
   active = own;
   const current = () => compare.get().context.request === request;
   try {
+
     const id = await s.api.submit(await standardRequest(), submission.signal);
     if (!current()) return void s.api.cancel(id).catch(() => undefined);
     own.id = id;
@@ -120,7 +136,9 @@ export async function startCompare() {
   }
 }
 
+
 export const stopCompare = () => compare.send({ type: 'STOP' });
+
 
 export function forgetCompare(key: string) {
   cache.delete(key);

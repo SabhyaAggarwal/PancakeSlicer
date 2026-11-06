@@ -1,8 +1,11 @@
+
+
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'vite';
 
-const DOC = new URL('../docs/HLSD/web-state.md', import.meta.url);
+const DOC = new URL('../docs/design/web-state.md', import.meta.url);
 const MARKER = '<!-- generated web tables -->';
+
 const MACHINES: [string, string, unknown[]?][] = [
   ['/src/flow/app.ts', 'app'], ['/src/flow/routes.ts', 'routing'], ['/src/flow/project.ts', 'project'],
   ['/src/flow/slice.ts', 'slice'], ['/src/flow/job.ts', 'job'], ['/src/flow/import.ts', 'importing'],
@@ -12,6 +15,7 @@ const MACHINES: [string, string, unknown[]?][] = [
   ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/saved-preferences.ts', 'savedPreferencesMachine'], ['/src/compare.ts', 'compareMachine'], ['/src/profiles/printer-setups.ts', 'printerSetupsMachine'], ['/src/flow/projects-ops.ts', 'projectsOps'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
 ];
 
+
 const target = new EventTarget();
 const memory = new Map<string, string>();
 const storage = { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => void memory.set(k, v), removeItem: (k: string) => void memory.delete(k) };
@@ -20,6 +24,8 @@ Object.assign(globalThis, {
   document: Object.assign(new EventTarget(), { visibilityState: 'visible', documentElement: { dataset: {}, style: {} } }),
   localStorage: storage,
 });
+
+
 
 process.on('unhandledRejection', (error) => console.warn(`ignored while loading machines: ${String(error).split('\n')[0]}`));
 process.on('uncaughtException', (error) => console.warn(`ignored while loading machines: ${String(error).split('\n')[0]}`));

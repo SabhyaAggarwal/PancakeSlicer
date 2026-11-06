@@ -1,3 +1,5 @@
+
+
 import { bakeStl, centre, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
 import { buildBvh, type Bvh } from './bvh';
 import { split } from './split';
@@ -16,6 +18,7 @@ export interface MeshData {
   positions: Float32Array;
   index: Uint32Array;
   normals: Float32Array;
+
   centre: [number, number, number];
   min: [number, number, number];
   max: [number, number, number];
@@ -48,6 +51,7 @@ let shellsWorker: Worker | null = null;
 let shellId = 0;
 const shellRequests = new Map<number, { id: number; item?: number }>();
 function checkShells(id: number, positions: Float32Array, index: Uint32Array, item?: number) {
+
   if (!shellsWorker) {
     shellsWorker = new Worker(new URL('./shells.worker.ts', import.meta.url), { type: 'module' });
     const fail = () => {
@@ -69,6 +73,7 @@ function checkShells(id: number, positions: Float32Array, index: Uint32Array, it
   shellsWorker.postMessage({ id: request, positions, index } satisfies ShellsIn);
 }
 
+
 async function contentHash(array: Float32Array | Uint32Array): Promise<string> {
   if (globalThis.crypto?.subtle) {
     const digest = await crypto.subtle.digest('SHA-256', array.buffer as ArrayBuffer);
@@ -84,6 +89,7 @@ async function contentHash(array: Float32Array | Uint32Array): Promise<string> {
   }
   return [words.length, a >>> 0, b >>> 0, c >>> 0, d >>> 0].map((n) => n.toString(16)).join('-');
 }
+
 
 async function finish(id: number, soup: Float32Array, item?: number, progress?: (pct: number) => void, simplify = false): Promise<() => void> {
   let { positions, index } = weld(soup);
@@ -101,6 +107,7 @@ async function finish(id: number, soup: Float32Array, item?: number, progress?: 
   for (let i = 0; i < positions.length; i += 3)
     r2 = Math.max(r2, (positions[i] - cx) ** 2 + (positions[i + 1] - cy) ** 2 + (positions[i + 2] - cz) ** 2);
   const contentSignature = (await Promise.all([contentHash(positions), contentHash(index)])).join(':');
+
   const displayResult = await simplifyMesh(positions, index, { minTriangles: 100_000, target: 50_000 }).catch(() => null);
   const display = displayResult ? { positions: displayResult.positions, index: displayResult.index, normals: vertexNormals(displayResult.positions, displayResult.index) }
     : displayLod(positions, index, normals, box.min, box.max);
@@ -109,6 +116,9 @@ async function finish(id: number, soup: Float32Array, item?: number, progress?: 
   const motion = motionResult ? { positions: motionResult.positions, index: motionResult.index, normals: vertexNormals(motionResult.positions, motionResult.index) } : undefined;
   checkShells(id, positions, index, item);
   const keep = positions.slice(), keepIndex = index.slice();
+
+
+
   const hullSource = keep.length <= 150_000 ? keep
     : display && display.positions.length <= 150_000 ? display.positions.slice() : null;
   post({ type: 'mesh', id, item, stats, positions, index, normals, display, motion, contentSignature, simplification, ...box, radius: Math.sqrt(r2) }, [positions.buffer, index.buffer, normals.buffer, ...(display ? [display.positions.buffer, display.index.buffer, display.normals.buffer] : []), ...(motion ? [motion.positions.buffer, motion.index.buffer, motion.normals.buffer] : [])]);

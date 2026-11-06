@@ -44,6 +44,7 @@ namespace Slic3r {
 void InterlockingGenerator::generate_interlocking_structure(PrintObject* print_object, const std::function<void()>& throw_on_cancel)
 {
     const auto& config = print_object->config();
+
     if (!config.interlocking_beam || config.interlocking_beam_layer_count < 1 || config.interlocking_depth < 1 || config.interlocking_beam_width < EPSILON ) {
         return;
     }
@@ -117,6 +118,7 @@ void InterlockingGenerator::handleThinAreas(const std::unordered_set<GridPoint3>
         std::min(print_object.printing_region(region_a_index).flow(print_object, frExternalPerimeter, 0.1).scaled_width(),
                  print_object.printing_region(region_b_index).flow(print_object, frExternalPerimeter, 0.1).scaled_width()) / 4;
 
+
     std::vector<Polygons> near_interlock_per_layer;
     near_interlock_per_layer.assign(print_object.layer_count(), Polygons());
     for (const auto& cell : has_all_meshes) {
@@ -132,6 +134,7 @@ void InterlockingGenerator::handleThinAreas(const std::unordered_set<GridPoint3>
         polygons_rotate(near_interlock, rotation);
     }
 
+
     for (size_t layer_nr = 0; layer_nr < print_object.layer_count(); layer_nr++){
         throw_on_cancel();
         auto       layer   = print_object.get_layer(layer_nr);
@@ -140,8 +143,10 @@ void InterlockingGenerator::handleThinAreas(const std::unordered_set<GridPoint3>
 
         const auto [from_border_a, from_border_b] = growBorderAreasPerpendicular(polys_a, polys_b, detect);
 
+
         const ExPolygons large_a = opening_ex(polys_a, detect);
         const ExPolygons large_b = opening_ex(polys_b, detect);
+
 
         const ExPolygons thin_expansion_a =
             offset_ex(intersection_ex(intersection_ex(intersection_ex(large_b, offset_ex(diff_ex(polys_a, large_a), expand)),
@@ -153,6 +158,8 @@ void InterlockingGenerator::handleThinAreas(const std::unordered_set<GridPoint3>
                                                       near_interlock_per_layer[layer_nr]),
                                       from_border_b),
                       rounding_errors);
+
+
 
         layer->get_region(region_a_index)->slices.set(closing_ex(diff_ex(union_ex(polys_a, thin_expansion_a), thin_expansion_b), close_gaps), stInternal);
         layer->get_region(region_b_index)->slices.set(closing_ex(diff_ex(union_ex(polys_b, thin_expansion_b), thin_expansion_a), close_gaps), stInternal);
@@ -190,6 +197,7 @@ void InterlockingGenerator::generateInterlockingStructure() const
 std::vector<std::unordered_set<GridPoint3>> InterlockingGenerator::getShellVoxels(const DilationKernel& kernel) const
 {
     std::vector<std::unordered_set<GridPoint3>> voxels_per_mesh(2);
+
 
     for (size_t region_idx = 0; region_idx < 2; region_idx++)
     {
@@ -292,10 +300,16 @@ void InterlockingGenerator::applyMicrostructureToOutlines(const std::unordered_s
     const size_t max_layer_count  = print_object.layer_count();
 
     std::vector<ExPolygons> structure_per_layer[2];
+
+
+
+
     size_t num_interlocking_layers = (max_layer_count + static_cast<size_t>(beam_layer_count) - 1ul) /
                                      static_cast<size_t>(beam_layer_count);
     structure_per_layer[0].resize(num_interlocking_layers);
     structure_per_layer[1].resize(num_interlocking_layers);
+
+
 
     for (const GridPoint3& grid_loc : cells) {
         Vec3crd bottom_corner = vu.toLowerCorner(grid_loc);

@@ -26,6 +26,7 @@ using LinesIt                     = Lines::iterator;
 using ColoredLinesIt              = ColoredLines::iterator;
 using ColoredLinesConstIt         = ColoredLines::const_iterator;
 
+
 template LinesIt::reference VoronoiUtils::get_source_segment(const VoronoiDiagram::cell_type &, LinesIt, LinesIt);
 template VD::SegmentIt::reference VoronoiUtils::get_source_segment(const VoronoiDiagram::cell_type &, VD::SegmentIt, VD::SegmentIt);
 template ColoredLinesIt::reference VoronoiUtils::get_source_segment(const VoronoiDiagram::cell_type &, ColoredLinesIt, ColoredLinesIt);
@@ -119,6 +120,8 @@ typename boost::polygon::enable_if<typename boost::polygon::gtl_if<typename boos
 VoronoiUtils::discretize_parabola(const Point &source_point, const Segment &source_segment, const Point &start, const Point &end, const coord_t approximate_step_size, float transitioning_angle)
 {
     Points discretized;
+
+
     const Point   a       = source_segment.from();
     const Point   b       = source_segment.to();
     const Point   ab      = b - a;
@@ -224,7 +227,9 @@ VoronoiUtils::compute_segment_cell_range(const VD::cell_type &cell, const Segmen
     const Vec2i64  from_i64       = from.template cast<int64_t>();
     const Vec2i64  to_i64         = to.template cast<int64_t>();
 
+
     SegmentCellRange cell_range(to, from);
+
 
     bool                 seen_possible_start             = false;
     bool                 after_start                     = false;
@@ -269,10 +274,13 @@ VoronoiUtils::compute_point_cell_range(const VD::cell_type &cell, const SegmentI
 
     const Point source_point = Geometry::VoronoiUtils::get_source_point(cell, segment_begin, segment_end);
 
+
     PointCellRange cell_range(source_point);
 
     const VD::edge_type *edge = cell.incident_edge();
     if (edge->is_infinite() || !is_in_range<CoordType>(*edge)) {
+
+
         return cell_range;
     }
 
@@ -281,7 +289,10 @@ VoronoiUtils::compute_point_cell_range(const VD::cell_type &cell, const SegmentI
     const Point                       edge_v1          = Geometry::VoronoiUtils::to_point(edge->vertex1()).template cast<CoordType>();
     const Point                       edge_query_point = (edge_v0 == source_point) ? edge_v1 : edge_v0;
 
+
     if (!Geometry::is_point_inside_polygon_corner(source_point_idx.prev().p(), source_point_idx.p(), source_point_idx.next().p(), edge_query_point)) {
+
+
         return cell_range;
     }
 
@@ -294,6 +305,9 @@ VoronoiUtils::compute_point_cell_range(const VD::cell_type &cell, const SegmentI
             cell_range.edge_begin = edge->next();
             cell_range.edge_end   = edge;
         } else {
+
+
+
             assert((Geometry::VoronoiUtils::to_point(edge->vertex0()) == source_point_i64 || edge->is_primary()) && "Point cells must end in the point! They cannot cross the point with an edge, because collinear edges are not allowed in the input.");
         }
     } while (edge = edge->next(), edge != cell.incident_edge());

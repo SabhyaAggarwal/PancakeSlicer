@@ -1,8 +1,13 @@
+
+
+
+
 import * as THREE from 'three';
 import { instanceMatrix, volumeWorld } from './geometry';
 import { gapFill, isPaint, overhangFacets, overhangGeometry, overlayGeometry, paintOf, paintTool, type Paintable, type Painting } from './paint';
 import type { PlateObject, State } from '../state/store';
 import { filamentColor } from './filamentColor';
+
 
 const LIGHT_RED = 0xc70000;
 
@@ -35,6 +40,7 @@ export class PaintView {
     mesh.matrixWorldNeedsUpdate = true;
   }
 
+
   private gapPreview(target: Paintable, paint: Painting | null, scale: number): Painting | null {
     const t = paintTool();
     if (t.tool !== 'gap' || !(t.gapArea > 0) || !paint) return paint;
@@ -44,10 +50,12 @@ export class PaintView {
     return byArea.get(t.gapArea)!;
   }
 
+
   sync(s: State, preview?: { volume?: number; paint: Painting | null }) {
     const kind = isPaint(s.gizmo) ? s.gizmo : null;
     const o = kind ? s.objects.find((ob) => ob.id === s.selected?.object) : undefined;
     const seen = new Set<string>();
+
     const palette = [null, ...s.filamentSlots.map((_, i) => new THREE.Color(filamentColor(s, i + 1)).toArray())];
     for (const ob of s.objects) {
       if (ob === o && kind === 'color') continue;
@@ -81,6 +89,7 @@ export class PaintView {
       if (!seen.has(key)) { this.group.remove(mesh); this.meshes.delete(key); }
   }
 
+
   showCursor(point: THREE.Vector3 | null, normal?: THREE.Vector3, radius = 1) {
     this.cursor.visible = !!point && radius > 0;
     if (!point || !normal) return;
@@ -90,5 +99,6 @@ export class PaintView {
     this.cursor.updateMatrix();
   }
 }
+
 
 export const meshScale = (o: PlateObject, inst: PlateObject['instances'][number]) => instanceMatrix(o, inst).getMaxScaleOnAxis();

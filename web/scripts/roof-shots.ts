@@ -1,9 +1,14 @@
+
+
+
 import type { Page } from 'playwright-core';
+
 
 const ROOF: [[number, number, number], [number, number, number]] = [[84, 80, 35], [102, 100, 41]];
 const CROP: [[number, number, number], [number, number, number]] = [[84, 80, 35], [102, 100, 48]];
 
 export interface RoofFacts { time?: string | null; curved?: string | null }
+
 
 export async function roofPair(page: Page, prefix: string, save: (name: string, shot: (file: string) => Promise<unknown>) => Promise<void>) {
   const facts: Record<string, RoofFacts> = {};
@@ -19,7 +24,9 @@ export async function roofPair(page: Page, prefix: string, save: (name: string, 
     await page.mouse.move(5, 5);
     await page.waitForTimeout(1000);
     facts[name] = await page.evaluate(() => ({ time: document.querySelector('.lg-stat-v')?.textContent, curved: document.querySelector('.np-summary-line')?.textContent ?? null }));
+
     if (mode === 'curved_tops' && !/[1-9][\d.]* % of top surface curved/.test(facts[name].curved ?? '')) throw new Error(`roof curved: no curved tops (${facts[name].curved})`);
+
     await page.addStyleTag({ content: '.legend,.layer-slider,.order-bar,.nav3d,.notifications,.toast,.preview-status,.tool-position,.gcode-window,.canvas-tools{visibility:hidden!important}' });
     await page.evaluate((b) => { const s = (window as any).__preview.scene, V = s.camera.position.constructor; s.fit(new V(...b[0]), new V(...b[1])); }, ROOF);
     await page.waitForTimeout(1500);
@@ -33,6 +40,7 @@ export async function roofPair(page: Page, prefix: string, save: (name: string, 
       }
       return { x0, y0, x1, y1, left: el.left, top: el.top, right: el.right, bottom: el.bottom };
     }, CROP);
+
     const side = Math.min(Math.max(r.x1 - r.x0, r.y1 - r.y0) * 1.08, r.right - r.left, r.bottom - r.top);
     const x = Math.min(Math.max((r.x0 + r.x1 - side) / 2, r.left), r.right - side), y = Math.min(Math.max((r.y0 + r.y1 - side) / 2, r.top), r.bottom - side);
     await save(`${prefix}-${name}`, (file) => page.screenshot({ path: file, clip: { x, y, width: side, height: side } }));

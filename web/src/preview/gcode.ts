@@ -1,3 +1,11 @@
+
+
+
+
+
+
+
+
 const ROLES: Record<string, number> = {
   'Inner wall': 1, 'Outer wall': 2, 'Overhang wall': 3, 'Sparse infill': 4, 'Internal solid infill': 5, 'Top surface': 6,
   'Bottom surface': 7, Ironing: 8, Bridge: 9, 'Internal Bridge': 10, 'Gap infill': 11, Skirt: 12, Brim: 13, Support: 14,
@@ -8,6 +16,7 @@ const ROLES: Record<string, number> = {
 };
 const T = { Noop: 0, Retract: 1, Unretract: 2, ToolChange: 4, ColorChange: 5, Pause: 6, Travel: 8, Wipe: 9, Extrude: 10 } as const;
 const STATE = 32, LAYER = 16;
+
 
 function duration(text: string): number | null {
   let s = 0, any = false;
@@ -48,6 +57,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
     const su = Math.sin(u), cu = Math.cos(u), sv = Math.sin(v), cv = Math.cos(v);
     if (layout.startsWith('table')) {
       const r = [x, y, z].map((q, i) => (tableMoves[i] ? -q : q) - pivot[i] + mount[i] - (i === 2 ? toolLength : 0));
+
       const qx = layout === 'table_bc' ? cu * r[0] - su * r[2] : r[0];
       const qy = layout === 'table_bc' ? r[1] : cu * r[1] + su * r[2];
       const qz = layout === 'table_bc' ? su * r[0] + cu * r[2] : -su * r[1] + cu * r[2];
@@ -58,6 +68,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
   };
   const diameter = Number((config.get('filament_diameter') ?? '1.75').split(/[,;]/)[0]) || 1.75;
   const area = Math.PI * (diameter / 2) ** 2;
+
 
   const PAGE = 16384;
   const pages: Uint8Array[] = [];
@@ -84,6 +95,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
     const mm3 = type === T.Extrude && distance > 0 ? (de * area) / distance : 0;
     const h = height || (type === T.Extrude ? Math.max(0.05, tip[2] - previousZ) : 0);
     const w = width || (type === T.Extrude && h > 0 ? mm3 / h : 0);
+
     const layerId = Math.max(1, layer) - 1, state = stateOf();
     if (moveCount > 0) {
       if (layers.at(-1)?.[0] !== layerId) { layers.push([layerId, moveCount, 0]); best.push([0, 0, 0]); }
@@ -123,6 +135,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
       else if ((m = /^ ?(?:LINE_WIDTH|WIDTH): ?([\d.]+)/.exec(c))) width = Number(m[1]);
       else if ((m = /^ ?(?:LAYER_HEIGHT|HEIGHT): ?([\d.]+)/.exec(c))) height = Number(m[1]);
       else if (ct === 'CHANGE_LAYER' || ct === 'LAYER_CHANGE') layer++;
+
       else if ((m = /^ Z_HEIGHT: ?([\d.]+)/.exec(c))) printZ = Number(m[1]);
       else if (ct === 'WIPE_START') wipe = true;
       else if (ct === 'WIPE_END') wipe = false;
@@ -189,6 +202,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
     const type = !moved ? (de < 0 ? T.Retract : de > 0 ? T.Unretract : -1) : wipe ? T.Wipe : de > 0 ? T.Extrude : T.Travel;
     if (type < 0) continue;
     if ((word === 'G2' || word === 'G3') && moved) {
+
       const cx = x + (arg('I') ?? 0), cy = y + (arg('J') ?? 0), r = Math.hypot(x - cx, y - cy);
       let a0 = Math.atan2(y - cy, x - cx), a1 = Math.atan2(ny - cy, nx - cx);
       if (word === 'G2' && a1 >= a0) a1 -= 2 * Math.PI;
@@ -204,6 +218,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
     } else push(line, type, nx, ny, nz, de, Math.hypot(nx - x, ny - y, nz - z), seconds);
     x = nx; y = ny; z = nz;
   }
+
 
   layers.forEach((l, k) => { l[2] = best[k][0] || best[k][1] || best[k][2]; });
 

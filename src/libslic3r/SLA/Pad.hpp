@@ -21,6 +21,7 @@ namespace sla {
 
 using ThrowOnCancel = std::function<void(void)>;
 
+
 void pad_blueprint(
     const indexed_triangle_set &mesh,
     ExPolygons &        output,
@@ -76,6 +77,7 @@ struct PadConfig {
     {
         return wall_height_mm + wall_thickness_mm;
     }
+
 
     inline double required_elevation() const { return wall_thickness_mm; }
 

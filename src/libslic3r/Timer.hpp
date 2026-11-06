@@ -8,21 +8,34 @@
 
 namespace Slic3r {
 
+
+
+
+
 class Timer
 {
     std::string m_name;
     std::chrono::steady_clock::time_point m_start;
 public:
+
+
+
+
     Timer(const std::string& name);
+
+
+
 
     ~Timer();
 };
 
 namespace Timing {
 
+
     static inline uint64_t nanoseconds_since_epoch() {
         return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
     }
+
 
     class Timer {
     public:
@@ -45,10 +58,11 @@ namespace Timing {
         uint64_t m_nanoseconds = 0;
     };
 
+
     class TimeLimitAlarm {
     public:
         TimeLimitAlarm(uint64_t time_limit_nanoseconds, std::string_view limit_exceeded_message) :
-            m_time_limit_nanoseconds(time_limit_nanoseconds), m_limit_exceeded_message(limit_exceeded_message) { 
+            m_time_limit_nanoseconds(time_limit_nanoseconds), m_limit_exceeded_message(limit_exceeded_message) {
             m_timer.start();
         }
         ~TimeLimitAlarm() {

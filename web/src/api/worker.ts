@@ -1,3 +1,6 @@
+
+
+
 let worker: Worker | null = null;
 let id = 0;
 const failures = new Set<(error: Error) => void>();
@@ -16,6 +19,7 @@ export function catalogWorker() {
   return (worker = w);
 }
 export function workerId() { return ++id; }
+
 
 export function onWorkerFailure(fail: (error: Error) => void): () => void {
   failures.add(fail);

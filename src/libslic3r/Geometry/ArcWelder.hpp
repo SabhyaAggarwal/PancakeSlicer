@@ -14,10 +14,14 @@
 
 namespace Slic3r { namespace Geometry { namespace ArcWelder {
 
+
+
+
+
 template<typename Derived, typename Derived2, typename Float>
 inline Eigen::Matrix<Float, 2, 1, Eigen::DontAlign> arc_center(
     const Eigen::MatrixBase<Derived>   &start_pos,
-    const Eigen::MatrixBase<Derived2>  &end_pos, 
+    const Eigen::MatrixBase<Derived2>  &end_pos,
     const Float                         radius,
     const bool                          is_ccw)
 {
@@ -31,11 +35,15 @@ inline Eigen::Matrix<Float, 2, 1, Eigen::DontAlign> arc_center(
     Float q2 = v.squaredNorm();
     assert(q2 > 0);
     Float t2 = sqr(radius) / q2 - Float(.25f);
+
+
     Float t = t2 > 0 ? sqrt(t2) : Float(0);
     auto mid = Float(0.5) * (start_pos + end_pos);
     Vector vp{ -v.y() * t, v.x() * t };
     return (radius > Float(0)) == is_ccw ? (mid + vp).eval() : (mid - vp).eval();
 }
+
+
 
 
 template<typename FloatType>
@@ -48,10 +56,14 @@ size_t arc_discretization_steps(const FloatType radius, const FloatType angle, c
 
     FloatType d = radius - deviation;
     return d < EPSILON ?
+
         (
-            angle < M_PI || 
+            angle < M_PI ||
+
             radius * (FloatType(1.) + cos(M_PI - FloatType(.5) * angle)) < deviation ?
+
             1 :
+
             2) :
         size_t(ceil(angle / (2. * acos(d / radius))));
 }

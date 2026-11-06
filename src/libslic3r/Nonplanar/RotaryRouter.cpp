@@ -26,6 +26,11 @@
 
 namespace Slic3r::Nonplanar {
 
+
+
+
+
+
 static bool flat_overhangs_claim(const PrintObject &object)
 {
     constexpr double FlatUpDeg = 3., WallDeg = 1., DownDeg = 30., MinHeight = 0.5, MinArea = 20., MaxOtherShare = 0.01;
@@ -59,11 +64,16 @@ static bool flat_overhangs_claim(const PrintObject &object)
 
 const std::vector<RotaryRoute> &rotary_routes()
 {
+
+
     static const std::vector<RotaryRoute> routes {
+
+
         { "lean_vase", RotaryRoute::Stage::Replace, lean_vase_considered,
           [](PrintObject &object, ConformalResult &result) {
               std::string        why;
               const AtomToolpath plan = lean_vase_toolpath(object, why);
+
               if (plan.points.empty() || !lean_vase_in_time(object, plan, why)) {
                   BOOST_LOG_TRIVIAL(warning) << "Lean vase: " << object.model_object()->name << " keeps the spiral vase: " << why;
                   return false;
@@ -73,8 +83,11 @@ const std::vector<RotaryRoute> &rotary_routes()
               return true;
           },
           lean_vase_flares },
+
+
         { "flat_overhangs", RotaryRoute::Stage::Replace, flat_overhangs_claim,
           [](PrintObject &, ConformalResult &) { return false; } },
+
         { "wall_skin", RotaryRoute::Stage::Append, rotary_skin_claims,
           [](PrintObject &object, ConformalResult &result) {
               build_rotary_skin(object, result);
@@ -93,10 +106,13 @@ static bool routed(const PrintObject &object)
 bool rotary_route_claimed(const PrintObject &object)
 {
     const std::vector<RotaryRoute> &routes = rotary_routes();
+
     return !routes.empty() && routed(object) && std::any_of(routes.begin(), routes.end(), [&object](const RotaryRoute &route) {
                return route.stage == RotaryRoute::Stage::Replace && (route.decides ? route.decides(object) : route.claims(object));
            });
 }
+
+
 
 static bool appended(const PrintObject &object)
 {
@@ -125,6 +141,9 @@ bool build_rotary_routes(PrintObject &object, ConformalResult &result, RotaryRou
 
 RoutePrediction predict_rotary_route(const indexed_triangle_set &mesh, const PrintObject & )
 {
+
+
+
     RoutePrediction prediction;
     if (mesh.vertices.empty())
         return prediction;

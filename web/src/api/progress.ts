@@ -10,11 +10,14 @@ const STATUS: Record<string, string> = {
   shells: 'Generating curved top shells', atom: 'Importing the Atomizer toolpath', contour: 'Z contouring',
 };
 
+
 export function sliceProgress(e: ProgressEvent): ProgressEvent {
   if (e.stage === 'queued' && e.queuePosition) return { stage: 'queued', pct: 0, queuePosition: e.queuePosition };
   const pct = Math.max(0, Math.min(100, e.pct));
   let text = STATUS[e.stage] ?? e.stage.replace(/_/g, ' ');
   if (e.stage === 'slice' || e.stage === 'slicing') {
+
+
     text = pct >= 100 ? 'Slicing complete' : pct >= 75 ? 'Optimizing toolpath' : pct >= 71 ? 'Detect overhangs for auto-lift'
       : pct >= 70 ? 'Generating skirt & brim' : pct >= 50 ? 'Generating support material'
       : pct >= 40 ? 'Slicing' : pct >= 35 ? 'Infilling layers' : pct >= 25 ? 'Generating infill regions'

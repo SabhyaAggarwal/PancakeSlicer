@@ -29,6 +29,7 @@ public:
     }
     void apply_aplha(cv::Mat &ori_image, cv::Mat &new_image, int num_cluster, int color_space)
     {
+
         cv::Mat flatten_image8UC3 = flatten_alpha(ori_image);
         cv::Mat image8UC3;
         convert_color_space(flatten_image8UC3, image8UC3, color_space);
@@ -57,6 +58,7 @@ public:
                int                                      max_cluster = 15,
                int                                      color_space = 2)
     {
+
         cv::Mat flatten_image8UC3 = flatten_vector(ori_colors);
 
         this->apply(flatten_image8UC3, cluster_results, labels, num_cluster, max_cluster, color_space);

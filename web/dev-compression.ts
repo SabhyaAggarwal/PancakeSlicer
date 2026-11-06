@@ -1,3 +1,6 @@
+
+
+
 import type { IncomingMessage, OutgoingHttpHeaders, ServerResponse } from 'node:http';
 import { createGzip, type Gzip } from 'node:zlib';
 import type { Plugin } from 'vite';
@@ -23,8 +26,10 @@ function compress(req: IncomingMessage, res: ServerResponse, next: () => void) {
     gzip = createGzip({ level: 1 });
     gzip.on('data', (chunk: Buffer) => write(chunk));
     gzip.on('end', () => end());
+
     gzip.on('drain', () => res.emit('drain'));
   };
+
   res.writeHead = ((status: number, ...rest: unknown[]) => {
     const headers = rest.find((r) => r && typeof r === 'object') as OutgoingHttpHeaders | undefined;
     for (const [key, value] of Object.entries(headers ?? {})) if (value !== undefined) res.setHeader(key, value);

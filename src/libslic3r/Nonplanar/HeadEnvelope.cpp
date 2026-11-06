@@ -38,11 +38,13 @@ namespace {
 constexpr double Inf         = std::numeric_limits<double>::infinity();
 constexpr char   SchemaV1[]  = "orca.head_envelope.v1";
 
+
 std::pair<Vec2d, Vec2d> footprint(const HeadBox &box, double lateral_margin)
 {
     const double grow = box.nozzle ? 0. : lateral_margin;
     return { Vec2d(box.min.x() - grow, box.min.y() - grow), Vec2d(box.max.x() + grow, box.max.y() + grow) };
 }
+
 
 bool band_x_extent(const std::vector<Vec2d> &poly, double ya, double yb, double &xmin, double &xmax)
 {
@@ -63,6 +65,8 @@ bool band_x_extent(const std::vector<Vec2d> &poly, double ya, double yb, double 
     }
     return xmin <= xmax;
 }
+
+
 
 std::vector<std::pair<Vec2d, Vec2d>> rect_cover(const std::vector<Vec2d> &poly)
 {
@@ -86,6 +90,7 @@ std::vector<std::pair<Vec2d, Vec2d>> rect_cover(const std::vector<Vec2d> &poly)
             double                               area = 0.;
             for (const auto &[ya, yb] : { std::make_pair(ymin, ys[i]), std::make_pair(ys[i], ys[j]), std::make_pair(ys[j], ymax) }) {
                 double x0, x1;
+
                 if ((yb <= ya && ymax > ymin) || !band_x_extent(poly, ya, yb, x0, x1))
                     continue;
                 rects.emplace_back(Vec2d(x0, ya), Vec2d(x1, yb));
@@ -188,6 +193,7 @@ double HeadEnvelope::underside_height(const Vec2d &d) const
         if ((box.infinite_x || (d.x() >= lo.x() && d.x() <= hi.x())) && (box.infinite_y || (d.y() >= lo.y() && d.y() <= hi.y())))
             best = std::min(best, box.min.z());
     }
+
     return d.x() == 0. && d.y() == 0. ? std::min(best, 0.) : best;
 }
 
@@ -196,8 +202,13 @@ double HeadEnvelope::max_slope(double phi, double gap, double reach) const
     const Vec2d u(std::cos(phi), std::sin(phi));
     double      tan_min = Inf;
     for (const HeadBox &box : boxes) {
+
+
         if (box.infinite_x || box.infinite_y)
             continue;
+
+
+
         const auto [lo, hi] = footprint(box, lateral_margin);
         double pmin = Inf, pmax = -Inf;
         for (const Vec2d &c : { lo, hi, Vec2d(lo.x(), hi.y()), Vec2d(hi.x(), lo.y()) }) {
@@ -263,6 +274,13 @@ HeadEnvelope HeadEnvelope::from_slope_star(const HeadEnvelope &base, const Slope
     if (!std::isfinite(layer_height) || layer_height <= 0. || base.empty())
         throw RuntimeError("Slope star: select a nonempty base head and a positive layer height");
     HeadEnvelope out = base;
+
+
+
+
+
+
+
     for (HeadBox &box : out.boxes) {
         if (box.infinite_x || box.infinite_y)
             continue;
@@ -297,6 +315,7 @@ HeadEnvelope HeadEnvelope::from_slope_star(const HeadEnvelope &base, const Slope
         }
         if (binding == nullptr)
             throw RuntimeError("Slope star: base head has no finite component toward a reported azimuth");
+
         binding->min.z() = std::tan(sample.max_clean_slope) * projection - layer_height +
                            (binding->nozzle ? 0. : out.margin) - 1e-10;
     }
@@ -548,6 +567,7 @@ void HeadLibrary::load_locked() const
     m_sources.clear();
     m_heads.emplace(generic_conservative().id, generic_conservative());
     namespace fs = boost::filesystem;
+
     for (const std::string &root : { resources_dir(), data_dir() }) {
         if (root.empty())
             continue;
@@ -571,6 +591,7 @@ void HeadLibrary::load_locked() const
                 m_sources[head.id] = file.string();
                 m_heads[head.id]  = std::move(head);
             } catch (const std::exception &err) {
+
                 const auto json = nlohmann::json::parse(json_text, nullptr, false);
                 std::string id = json.is_object() && json.contains("id") && json["id"].is_string() ?
                                      json["id"].get<std::string>() : file.stem().string();
@@ -620,6 +641,7 @@ void HeadLibrary::reload()
 
 void HeadLibrary::save_user_head(const HeadEnvelope &head)
 {
+
     if (head.id.empty() || head.id == "." || head.id == ".." ||
         head.id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") != std::string::npos)
         throw RuntimeError("Head id must contain only letters, digits, hyphens and underscores.");
@@ -646,6 +668,8 @@ void HeadLibrary::save_user_head(const HeadEnvelope &head)
         fs::remove(temporary, ignored);
         throw;
     }
+
+
     std::lock_guard<std::mutex> lock(m_mutex);
     m_heads.emplace(head.id, head);
     m_sources.emplace(head.id, path.string());
@@ -654,6 +678,8 @@ void HeadLibrary::save_user_head(const HeadEnvelope &head)
 const HeadEnvelope &HeadLibrary::generic_conservative()
 {
     static const HeadEnvelope head = [] {
+
+
         const double                t = std::tan(15. * PI / 180.);
         std::vector<SideProfileRow> rows;
         for (int i = 1; i <= 40; ++i) {
@@ -681,10 +707,14 @@ HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warni
 {
     if (warning != nullptr)
         warning->clear();
+
     const std::string &id = config.nonplanar_head.value;
     try {
+
+
         if (!config.nonplanar_head_snapshot.value.empty()) {
             const auto snapshot = nlohmann::json::parse(config.nonplanar_head_snapshot.value);
+
             if (snapshot.at("reference").get<std::string>() == id)
                 return load_head_envelope(snapshot.at("envelope").dump());
         }
@@ -711,10 +741,14 @@ HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warni
 
 bool native_support_capable(const PrintConfig &config)
 {
+
+
+
     std::string      warning;
     const HeadEnvelope head = resolve_head_envelope(config, &warning);
     if (!warning.empty() || head.extensions.empty())
         return false;
+
     try {
         const auto coverage = nlohmann::json::parse(head.extensions).at("coverage");
         const auto &cone = coverage.at("nozzle_cone"), &ducts = coverage.at("duct_limits");

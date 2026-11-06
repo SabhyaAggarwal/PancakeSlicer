@@ -10,12 +10,20 @@
 namespace Slic3r::Arachne
 {
 
+
+
+
+
+
 class DistributedBeadingStrategy : public BeadingStrategy
 {
 protected:
     float one_over_distribution_radius_squared;
 
 public:
+
+
+
     DistributedBeadingStrategy(coord_t optimal_width,
                                coord_t default_transition_length,
                                double  transitioning_angle,

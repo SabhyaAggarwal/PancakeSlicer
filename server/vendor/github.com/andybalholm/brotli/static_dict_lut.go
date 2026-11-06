@@ -6,8 +6,6 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Lookup table for static dictionary and transforms. */
-
 type dictWord struct {
 	len       byte
 	transform byte

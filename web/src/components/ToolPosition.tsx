@@ -1,3 +1,6 @@
+
+
+
 import { useMemo, useState } from 'react';
 import type { PreviewData } from '../preview/data';
 import type { ViewType } from '../preview/colors';
@@ -6,7 +9,9 @@ import { Caret } from './Caret';
 
 const TYPE_NAMES = ['Noop', 'Retract', 'Unretract', 'Seam', 'Tool change', 'Color change', 'Pause print', 'Custom G-code', 'Travel', 'Wipe', 'Extrude'];
 const NA = 'N/A';
+
 let shownDefault = false;
+
 
 function dhms(t: number) {
   const s = Math.round(t), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
@@ -15,12 +20,14 @@ function dhms(t: number) {
 
 export default function ToolPosition({ data, at, view }: { data: PreviewData; at: number; view: ViewType }) {
   const [shown, setShown] = useState(shownDefault);
+
   const elapsed = useMemo(() => {
     const e = new Float64Array(data.loaded);
     for (let i = 1; i < data.loaded; ++i) e[i] = e[i - 1] + data.time[i];
     return e;
   }, [data, data.loaded]);
   let i = at;
+
   if (view !== 'feature' && (data.type[i] & 0x7f) === MoveType.Seam && i > 1) i -= 1;
   const type = data.type[i] & 0x7f, st = data.states!, s = data.state[i];
   const extrusion = type === MoveType.Extrude;
@@ -50,6 +57,7 @@ export default function ToolPosition({ data, at, view }: { data: PreviewData; at
       default: return '';
     }
   })();
+
   let length = NA;
   if (i > 0 && (extrusion || type === MoveType.Travel || type === MoveType.Wipe)) {
     let a = i, b = i, sum = 0;

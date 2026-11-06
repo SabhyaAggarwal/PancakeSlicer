@@ -1,3 +1,8 @@
+
+
+
+
+
 #ifndef ADAPTIVEPAPROCESSOR_H
 #define ADAPTIVEPAPROCESSOR_H
 
@@ -11,19 +16,59 @@
 
 namespace Slic3r {
 
+
 class GCode;
 class PrintConfig;
 
+
+
+
 class AdaptivePAProcessor {
 public:
+
+
+
+
+
+
+
+
+
     AdaptivePAProcessor(GCode &gcodegen);
-    
+
+
+
+
+
+
+
+
+
+
     std::string process_layer(std::string &&gcode);
-    
+
+
+
+
+
+
+
     void resetPreviousPA(double PA){ m_last_predicted_pa = PA; };
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
     static std::string validate_adaptive_pa_model(const std::string& model_str);
-    
+
 private:
     GCode &m_gcodegen;
     std::unordered_map<unsigned int, std::unique_ptr<AdaptivePAInterpolator>> m_AdaptivePAInterpolators;
@@ -38,6 +83,13 @@ private:
     std::regex m_pa_change_pattern;
     std::regex m_g1_f_pattern;
     std::smatch m_match;
+
+
+
+
+
+
+
     AdaptivePAInterpolator* getInterpolator(unsigned int config_index);
 };
 

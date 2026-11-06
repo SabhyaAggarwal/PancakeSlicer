@@ -1,3 +1,5 @@
+
+
 import type { PresetType } from '../api/types';
 import { OPTIONS } from '../options';
 import { display, presetLabel } from '../profiles/format';
@@ -5,6 +7,7 @@ import { effectiveConfig, getState, resolvePreset, type PlateObject, type State 
 import type { Doc } from '../state/history';
 
 export interface VersionChange { key?: string; label: string; from?: string; to?: string }
+
 
 export function profileName(type: PresetType, key: unknown): string {
   if (typeof key !== 'string' || !key) return '';
@@ -31,11 +34,13 @@ function objectChanges(before: PlateObject[], after: PlateObject[], out: Version
   for (const o of old.values()) out.push({ key: `o:${o.id}`, label: `Removed ${name(o)}` });
 }
 
+
 export function describeChange(before: Doc, after: Doc): VersionChange[] {
   const out: VersionChange[] = [];
   if (before.objects !== after.objects) objectChanges(before.objects, after.objects, out);
   if (before.projectPlates.length !== after.projectPlates.length)
     out.push({ key: 'plates', label: after.projectPlates.length > before.projectPlates.length ? 'Added plate' : 'Removed plate' });
+
   if (before.printer !== after.printer) out.push({ key: 'printer', label: 'Printer', from: profileName('machine', before.printer), to: profileName('machine', after.printer) });
   if (before.process !== after.process) out.push({ key: 'process', label: 'Process', from: profileName('process', before.process), to: profileName('process', after.process) });
   if (before.filamentSlots !== after.filamentSlots && shown(before.filamentSlots) !== shown(after.filamentSlots)) {
@@ -43,6 +48,7 @@ export function describeChange(before: Doc, after: Doc): VersionChange[] {
     if (a.length !== b.length) out.push({ key: 'filaments', label: b.length > a.length ? 'Added filament' : 'Removed filament' });
     else b.forEach((k, i) => k !== a[i] && out.push({ key: `filament:${i}`, label: b.length > 1 ? `Filament ${i + 1}` : 'Filament', from: profileName('filament', a[i]), to: profileName('filament', k) }));
   }
+
   if (before.dirty !== after.dirty && before.printer === after.printer && before.process === after.process) {
     const s = getState();
     for (const type of ['process', 'machine'] as const) {
@@ -58,6 +64,8 @@ export function describeChange(before: Doc, after: Doc): VersionChange[] {
   if (before.filamentEdits !== after.filamentEdits && !out.some((c) => c.key?.startsWith('filament'))) out.push({ key: 'filaments', label: 'Filament settings' });
   return out.slice(0, 8);
 }
+
+
 
 export function changeParts(c: VersionChange): { name: string; from?: string; to?: string } {
   if (c.from === undefined || c.to === undefined) return { name: c.label };

@@ -1,4 +1,7 @@
 import { observePreference, preferenceJson, savePreferences } from '../saved-preferences';
+
+
+
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getState, setState, useStore } from '../state/store';
 import { requestPreset } from '../components/PresetCombo';
@@ -10,6 +13,7 @@ import { fuzzy, loadSettings, settingCommands } from './settings';
 
 registerCore();
 
+
 const RECENT_KEY = 'orca.web.palette.recent';
 let recent: string[] = [];
 observePreference(RECENT_KEY, () => { const value = preferenceJson<unknown>(RECENT_KEY, []); recent = Array.isArray(value) ? value.filter((v):v is string=>typeof v === 'string') : []; });
@@ -17,6 +21,7 @@ function remember(id: string) {
   recent = [id, ...recent.filter((r) => r !== id)].slice(0, 20);
   savePreferences({[RECENT_KEY]:recent});
 }
+
 
 registerProvider('presets', (q) => {
   if (!q) return [];
@@ -34,6 +39,7 @@ registerProvider('presets', (q) => {
   ];
 });
 
+
 const objectCommands = (): Command[] => getState().objects.map((o) => ({
   id: `object.${o.id}`, title: o.name, group: 'Object on plate', keywords: 'select zoom',
   detail: o.instances.length > 1 ? `×${o.instances.length}` : undefined,
@@ -42,6 +48,7 @@ const objectCommands = (): Command[] => getState().objects.map((o) => ({
     requestAnimationFrame(() => window.dispatchEvent(new Event('camera-fit')));
   },
 }));
+
 
 let sessions: Command[] = [];
 const ago = (t: number) => {
@@ -80,6 +87,7 @@ function rank(list: Command[], q: string): Row[] {
   return out.sort((a, b) => b.score - a.score);
 }
 
+
 function suggestions(): [string, Row[]][] {
   const s = getState();
   const byId = new Map(allCommands().map((c) => [c.id, c]));
@@ -93,6 +101,7 @@ function suggestions(): [string, Row[]][] {
 }
 
 const SCOPES: Record<string, string> = { '>': 'Commands', '/': 'Settings', '@': 'Objects' };
+
 
 function Marked({ text, hits }: { text: string; hits: number[] }) {
   const all = new Set(hits);
@@ -114,6 +123,7 @@ export default function Palette() {
 
   const scope = SCOPES[query[0]] ? query[0] : '';
   const q = (scope ? query.slice(1) : query).trim();
+
 
   useEffect(() => {
     if (!q || scope === '>' || scope === '@') return;
@@ -145,6 +155,7 @@ export default function Palette() {
     if (!r || r.off) return;
     remember(r.c.id);
     closePalette();
+
     setTimeout(() => r.c.run!(), 0);
   };
   let i = -1;
@@ -162,6 +173,7 @@ export default function Palette() {
             else if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) setActive((a) => (a - 1 + rows.length) % Math.max(1, rows.length));
             else if (e.key === 'PageDown' || e.key === 'PageUp') setActive((a) => Math.max(0, Math.min(rows.length - 1, a + (e.key === 'PageDown' ? 8 : -8))));
             else if (e.key === 'Enter') run(rows[at]);
+
             else if (e.key === 'Backspace' && scope && !e.currentTarget.value) setQuery('');
             else return;
             e.preventDefault();

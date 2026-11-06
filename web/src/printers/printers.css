@@ -16,7 +16,6 @@
 :where(.orca-parity) .send-live-row { display: flex; align-items: center; gap: var(--s-2); font: var(--t-small); color: var(--ink-2); }
 :where(.orca-parity) .send-live-row .btn { margin-left: auto; }
 :where(.orca-parity) .send-live-row .btn + .btn { margin-left: 0; }
-
 :where(.orca-parity) .printer-live-action { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
 
 :where(.orca-parity) .connection-editor { display: grid; gap: var(--s-2); }

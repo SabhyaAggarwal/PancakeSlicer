@@ -15,6 +15,7 @@ namespace Slic3r { namespace sla {
 using ClusterEl = std::vector<unsigned>;
 using ClusteredPoints = std::vector<ClusterEl>;
 
+
 ClusteredPoints cluster(const std::vector<unsigned>& indices,
                         std::function<Vec3d(unsigned)> pointfn,
                         double dist,
@@ -30,15 +31,28 @@ ClusteredPoints cluster(
     std::function<bool(const PointIndexEl&, const PointIndexEl&)> predicate,
     unsigned max_points);
 
+
+
 template<class DistFn, class PointFn>
 long cluster_centroid(const ClusterEl &clust, PointFn pointfn, DistFn df)
 {
     switch(clust.size()) {
-    case 0:  return -1;
-    case 1:  return 0;
-    case 2:  return 0;
+    case 0:   return -1;
+    case 1:   return 0;
+    case 2:   return 0;
     default: ;
     }
+
+
+
+
+
+
+
+
+
+
+
 
     std::vector<bool> sel(clust.size(), false);
     std::fill(sel.end() - 2, sel.end(), true);
@@ -52,11 +66,15 @@ long cluster_centroid(const ClusterEl &clust, PointFn pointfn, DistFn df)
         double d = df(pointfn(clust[idx[0]]),
                       pointfn(clust[idx[1]]));
 
+
         for(auto i : idx) avgs[i] += d;
+
 
     } while(std::next_permutation(sel.begin(), sel.end()));
 
+
     for(auto& a : avgs) a /= clust.size();
+
 
     auto minit = std::min_element(avgs.begin(), avgs.end());
     return long(minit - avgs.begin());

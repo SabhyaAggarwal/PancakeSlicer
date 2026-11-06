@@ -1,21 +1,36 @@
+
+
+
+
+
+
 import { useSyncExternalStore } from 'react';
 import { annotate } from '../flow/slice';
 import { getState, setState, subscribeStore } from '../state/store';
 import { MoveType } from './format';
 import type { PreviewData } from './data';
 
+
 export const VOXEL_MM = 2;
+
 const KEEP = 12;
 
+
 const SUPPORT_ROLES = (1 << 14) | (1 << 15) | (1 << 16);
+
+
+
+
 const SHELL_ROLES = [1, 2, 3, 6, 7, 8, 9, 11, 12, 13, 17].reduce((m, r) => m | (1 << r), 0);
 
 export interface ResultNumbers {
+
   time: number | null;
   grams: number | null;
   supportGrams: number | null;
   layers: number | null;
 }
+
 
 export interface Occupancy {
   support: Set<number>;
@@ -23,8 +38,11 @@ export interface Occupancy {
 }
 
 export interface SliceResult {
+
   id: string;
+
   signature?: string;
+
   at: number;
   record?: Record<string, unknown>;
   numbers: ResultNumbers;
@@ -39,6 +57,7 @@ const emit = () => {
 };
 const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
 
+
 export const getResults = () => results;
 export const getResult = (id: string | undefined) => (id ? results.find((r) => r.id === id) : undefined);
 export function useResults(): SliceResult[] {
@@ -52,6 +71,11 @@ function recordNumbers(record: Record<string, unknown> | undefined): Pick<Result
   return { time: num(r?.totals?.estimated_time_s) ?? num(r?.text_summary?.estimated_time_s), grams: num(r?.statistics?.total_weight_g) };
 }
 const recordSupport = (record: Record<string, unknown> | undefined) => num((record as { statistics?: Record<string, unknown> } | undefined)?.statistics?.support_weight_g);
+
+
+
+
+
 
 export function noteResult(id: string, record: Record<string, unknown> | undefined, signature?: string) {
   const known = getResult(id);
@@ -69,6 +93,7 @@ export function noteResult(id: string, record: Record<string, unknown> | undefin
   emit();
 }
 
+
 let lastId: string | undefined;
 subscribeStore(() => {
   const j = getState().job;
@@ -83,6 +108,7 @@ subscribeStore(() => {
 }
 
 const key = (x: number, y: number, z: number) => {
+
   const ix = Math.floor(x / VOXEL_MM) + 500, iy = Math.floor(y / VOXEL_MM) + 500, iz = Math.floor(z / VOXEL_MM);
   return (iz * 1000 + iy) * 1000 + ix;
 };
@@ -92,6 +118,7 @@ export const voxelCentre = (k: number): [number, number, number] => {
 };
 export const vertexKey = (d: PreviewData, i: number) => key(d.pos[i * 4], d.pos[i * 4 + 1], d.pos[i * 4 + 2]);
 
+
 export function occupy(d: PreviewData, occ: Occupancy, from: number, to: number) {
   for (let i = Math.max(1, from); i < to; ++i) {
     if ((d.type[i] & 0x7f) !== MoveType.Extrude) continue;
@@ -100,6 +127,7 @@ export function occupy(d: PreviewData, occ: Occupancy, from: number, to: number)
     else if (bit & SHELL_ROLES) occ.shell.add(vertexKey(d, i));
   }
 }
+
 
 export function noteStream(id: string, d: PreviewData, occupancy: Occupancy) {
   const r = getResult(id);
@@ -121,10 +149,12 @@ export function noteStream(id: string, d: PreviewData, occupancy: Occupancy) {
 export interface ResultDiff {
   from: SliceResult;
   to: SliceResult;
+
   time: number | null;
   grams: number | null;
   supportGrams: number | null;
   layers: number | null;
+
   added?: Set<number>;
   removed?: Set<number>;
 }
@@ -136,6 +166,7 @@ const minus = (a: Set<number>, b: Set<number>, out: Set<number>) => {
 };
 
 const diffCache = new WeakMap<SliceResult, WeakMap<SliceResult, ResultDiff>>();
+
 export function diffResults(from: SliceResult, to: SliceResult): ResultDiff {
   const hit = diffCache.get(to)?.get(from);
   if (hit && (hit.added || !from.occupancy || !to.occupancy)) return hit;
@@ -152,12 +183,14 @@ export function diffResults(from: SliceResult, to: SliceResult): ResultDiff {
   return d;
 }
 
+
 export function latestDiff(list = results): ResultDiff | null {
   return list.length < 2 ? null : diffResults(list[list.length - 2], list[list.length - 1]);
 }
 export function useLatestDiff(): ResultDiff | null {
   return latestDiff(useResults());
 }
+
 
 export function signed(v: number | null, unit: 'time' | 'g' | 'layers'): string | null {
   if (v == null) return null;
@@ -171,6 +204,9 @@ export function signed(v: number | null, unit: 'time' | 'g' | 'layers'): string 
   if (unit === 'g') return a < 0.05 ? '±0 g' : `${sign}${a < 10 ? a.toFixed(1) : Math.round(a)} g`;
   return a === 0 ? '±0' : `${sign}${a}`;
 }
+
+
+
 
 let compareTarget: string | null = null;
 const targetListeners = new Set<() => void>();

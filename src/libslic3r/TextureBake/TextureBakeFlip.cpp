@@ -31,6 +31,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
     if (count == 0 || !sample || settings.passes <= 0)
         return result;
 
+
     QuantizedPointMap  weld(WELD_GRID_GEOMETRY, std::min(count, size_t(1) << 22));
     std::vector<int>   vid(count);
     std::vector<Vec3f> pos;
@@ -47,6 +48,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
     }
     const size_t nv = pos.size();
 
+
     std::vector<std::array<int, 3>> tri(tri_ct);
     std::vector<uint8_t>            fixed(tri_ct, 0);
     for (size_t t = 0; t < tri_ct; ++t) {
@@ -56,6 +58,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
         if (has_weight && geometry.exclude_weight[t * 3] > 0.99f)
             fixed[t] = 1;
     }
+
 
     std::vector<Vec3f> nrm(nv, Vec3f::Zero());
     std::vector<Vec3f> face_n(tri_ct);
@@ -94,6 +97,9 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
     };
 
     for (int pass = 0; pass < settings.passes; ++pass) {
+
+
+
         struct Half { uint64_t key; uint32_t corner; };
         std::vector<Half> half;
         half.reserve(count);
@@ -113,6 +119,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
             size_t j = i + 1;
             while (j < half.size() && half[j].key == half[i].key) ++j;
             if (j - i == 2) {
+
                 const uint32_t c1 = half[i].corner, c2 = half[i + 1].corner;
                 const int f1 = tri[c1 / 3][size_t(c1 % 3)], f2 = tri[c2 / 3][size_t(c2 % 3)];
                 if (f1 != f2)
@@ -129,12 +136,17 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
                 const int      k1 = int(c1 % 3), k2 = int(c2 % 3);
                 if (fixed[t1] || fixed[t2]) continue;
                 if (!face_parent_id.empty() && face_parent_id[t1] != face_parent_id[t2]) continue;
+
                 const int a = tri[t1][size_t(k1)], c = tri[t1][size_t((k1 + 1) % 3)], b = tri[t1][size_t((k1 + 2) % 3)];
                 const int d = tri[t2][size_t((k2 + 2) % 3)];
                 if (b == d) continue;
+
                 const float hmin = std::min({ h[size_t(a)], h[size_t(b)], h[size_t(c)], h[size_t(d)] });
                 const float hmax = std::max({ h[size_t(a)], h[size_t(b)], h[size_t(c)], h[size_t(d)] });
                 if (hmax - hmin < min_gain) continue;
+
+
+
                 const Vec3f n1 = face_n[t1], n2 = face_n[t2];
                 const float l1 = n1.norm(), l2 = n2.norm();
                 if (l1 <= 0.f || l2 <= 0.f || n1.dot(n2) < planar * l1 * l2) continue;
@@ -145,6 +157,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
                 const float min_part = 0.05f * area_old;
                 if (m1.dot(quad_n) < min_part || m2.dot(quad_n) < min_part) continue;
                 if (std::abs(area_new - area_old) > 0.02f * area_old) continue;
+
                 const auto mid_err = [&](int u, int w) {
                     const Vec3f p = 0.5f * (pos[size_t(u)] + pos[size_t(w)]);
                     Vec3f       n = nrm[size_t(u)] + nrm[size_t(w)];
@@ -164,6 +177,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
         std::sort(chosen.begin(), chosen.end(), [](const Candidate &x, const Candidate &y) {
             return x.gain != y.gain ? x.gain > y.gain : (x.t1 != y.t1 ? x.t1 < y.t1 : x.t2 < y.t2);
         });
+
         std::vector<uint8_t> touched(tri_ct, 0);
         size_t               applied = 0;
         for (const Candidate &cd : chosen) {
@@ -183,6 +197,7 @@ FlipResult flip_edges_to_height(const TriSoup &geometry, const std::vector<int> 
 
     if (result.flipped == 0)
         return result;
+
 
     for (size_t t = 0; t < tri_ct; ++t) {
         for (int k = 0; k < 3; ++k) {

@@ -1,7 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import { isDark, subscribeTheme } from '../theme';
 
+
 const ICON_REV = 'ube-1';
+
+
 
 export function Icon({ name, size = 16, className, title }: { name: string; size?: number; className?: string; title?: string }) {
   const dark = useSyncExternalStore(subscribeTheme, isDark);

@@ -11,7 +11,9 @@ class VoronoiDiagram;
 class VoronoiUtilsCgal
 {
 public:
+
     static bool is_voronoi_diagram_planar_intersection(const VoronoiDiagram &voronoi_diagram);
+
 
     template<typename SegmentIterator>
     static typename boost::polygon::enable_if<

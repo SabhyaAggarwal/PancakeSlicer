@@ -13,6 +13,7 @@ namespace Slic3r {
 
 namespace {
 
+
 constexpr double SingularXY = 1e-12;
 
 Matrix3d rot_x(double t) { return Eigen::AngleAxisd(t, Vec3d::UnitX()).toRotationMatrix(); }
@@ -44,6 +45,8 @@ void ToolKinematics::linearize(const JointPose &ja, const ToolPose &pa, const To
     if ((this->forward(jb).axis - pb.axis.normalized()).norm() > 1e-9 ||
         (this->forward(ja).axis - pa.axis.normalized()).norm() > 1e-9)
         tol = std::min(tol, 0.0001);
+
+
     constexpr int max_depth = 16;
     std::function<void(const JointPose &, const ToolPose &, const JointPose &, const ToolPose &, int)> subdivide =
         [&](const JointPose &j0, const ToolPose &p0, const JointPose &j1, const ToolPose &p1, int depth) {
@@ -59,6 +62,9 @@ void ToolKinematics::linearize(const JointPose &ja, const ToolPose &pa, const To
             }
             if (depth >= max_depth)
                 throw RuntimeError("Non-planar: a rotary move needs too many subdivisions to stay on the tool path.");
+
+
+
             JointPose turned = lerp(j0, j1, 0.5);
             ToolPose  pm;
             pm.tip  = 0.5 * (p0.tip + p1.tip);
@@ -116,6 +122,8 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
     double                best_cost = std::numeric_limits<double>::infinity();
     std::array<double, 2> best_rot { 0., 0. };
     for (const std::array<double, 2> &kin : solutions) {
+
+
         std::array<std::vector<double>, 2> options;
         for (int i = 0; i < 2; ++i) {
             const RotaryAxis &ra = m_geo.axes[i];
@@ -126,11 +134,15 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
                 const double first_turn = std::ceil((ra.min_deg - m - 1e-9) / 360.);
                 const double last_turn  = std::floor((ra.max_deg - m + 1e-9) / 360.);
                 if (first_turn <= last_turn) {
+
                     const double turn = std::clamp(std::round((from.rot[i] - m) / 360.), first_turn, last_turn);
                     options[i].push_back(m + 360. * turn);
                 }
             }
         }
+
+
+
         for (double m0 : options[0])
             for (double m1 : options[1]) {
                 const std::array<double, 2> m { m0, m1 };
@@ -157,11 +169,14 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
     if (m_geo.firmware_rtcp) {
         out.xyz = pose.tip;
     } else if (this->is_table()) {
+
+
         const Vec3d r    = R * (pose.tip + Vec3d(0., 0., m_geo.table_height));
         const Vec3d tip0 = m_geo.tool_mount - m_geo.tool_length * Vec3d::UnitZ();
         for (int i = 0; i < 3; ++i)
             out.xyz[i] = (m_geo.linear_moves_table[i] ? -1. : 1.) * (r[i] + m_geo.pivot[i] - tip0[i]);
     } else {
+
         out.xyz = pose.tip + m_geo.tool_length * (R * Vec3d::UnitZ() - Vec3d::UnitZ());
     }
     return true;
@@ -194,6 +209,8 @@ Matrix3d RotaryKinematics::head_frame(const JointPose &joints) const
 {
     const auto     kin = this->kinematic_angles(joints);
     const Matrix3d R   = this->rotation(kin[0], kin[1]);
+
+
     return this->is_table() ? R : Matrix3d(R.transpose());
 }
 
@@ -205,6 +222,8 @@ double RotaryKinematics::max_tilt(double phi) const
         JointPose j;
         return this->inverse(pose, nullptr, j);
     };
+
+
     double lo = 0., hi = this->is_table() && m_geo.max_tilt > 0.5 * M_PI ? m_geo.max_tilt : std::min(m_geo.max_tilt, 0.5 * M_PI - 1e-6);
     if (hi <= 0.)
         return 0.;
@@ -217,12 +236,15 @@ double RotaryKinematics::max_tilt(double phi) const
     return lo;
 }
 
+
 Matrix3d RotaryTableBC::rotation(double b, double c) const { return rot_y(b) * rot_z(c); }
 
 bool RotaryTableBC::inverse_for_motion(const ToolPose &pose, const JointPose &prev, JointPose &out) const
 {
     const Vec3d axis = pose.axis.normalized();
     const double tilt = std::atan2(axis.head<2>().norm(), axis.z());
+
+
     const double hold_deg = std::clamp(m_geo.singularity_hold_deg, 0., 2.);
     const double axis_error_deg = std::clamp(m_geo.singularity_axis_error_deg, 0., 0.9);
     if (tilt >= Geometry::deg2rad(hold_deg) || tilt < SingularXY || axis_error_deg <= 0.)
@@ -231,6 +253,8 @@ bool RotaryTableBC::inverse_for_motion(const ToolPose &pose, const JointPose &pr
     const double error = Geometry::deg2rad(axis_error_deg * blend * blend * (3. - 2. * blend));
     const double allowance = std::asin(std::min(1., std::sin(error) / std::sin(tilt)));
     const double previous_c = this->kinematic_angles(prev)[1];
+
+
     const double exact_c = std::atan2(axis.y(), -axis.x());
     const double delta = std::remainder(exact_c - previous_c, M_PI);
     const double c = previous_c + std::copysign(std::max(0., std::abs(delta) - allowance), delta);
@@ -252,6 +276,7 @@ void RotaryTableBC::solve_axis(const Vec3d &a, double free_angle, std::vector<st
     out.push_back({ -tilt, std::atan2(-a.y(), a.x()) });
 }
 
+
 Matrix3d RotaryTableAC::rotation(double a, double c) const { return rot_x(a) * rot_z(c); }
 
 void RotaryTableAC::solve_axis(const Vec3d &a, double free_angle, std::vector<std::array<double, 2>> &out) const
@@ -266,15 +291,18 @@ void RotaryTableAC::solve_axis(const Vec3d &a, double free_angle, std::vector<st
     out.push_back({ -tilt, std::atan2(-a.x(), -a.y()) });
 }
 
+
 Matrix3d RotaryHeadAB::rotation(double a, double b) const { return rot_y(b) * rot_x(a); }
 
 void RotaryHeadAB::solve_axis(const Vec3d &v, double, std::vector<std::array<double, 2>> &out) const
 {
     const double a = std::asin(std::clamp(-v.y(), -1., 1.));
+
     const double b = std::hypot(v.x(), v.z()) < SingularXY ? 0. : std::atan2(v.x(), v.z());
     out.push_back({ a, b });
     out.push_back({ wrap_pi(M_PI - a), wrap_pi(b + M_PI) });
 }
+
 
 Matrix3d RotaryHeadBC::rotation(double b, double c) const { return rot_z(c) * rot_y(b); }
 
@@ -292,7 +320,12 @@ void RotaryHeadBC::solve_axis(const Vec3d &a, double free_angle, std::vector<std
 
 namespace {
 
+
 constexpr RotaryLayout HybridAC = RotaryLayout(5);
+
+
+
+
 
 class RotaryHybridAC : public RotaryKinematics
 {
@@ -302,6 +335,7 @@ public:
 
     bool inverse(const ToolPose &pose, const JointPose *prev, JointPose &out) const override
     {
+
         if (!RotaryKinematics::inverse(pose, prev, out))
             return false;
         if (!m_geo.firmware_rtcp) {
@@ -323,6 +357,7 @@ public:
     }
 
 protected:
+
     Matrix3d rotation(double a, double c) const override { return rot_z(-c) * rot_x(a); }
     bool     is_table() const override { return false; }
     int      free_axis() const override { return 1; }
@@ -340,6 +375,7 @@ protected:
     }
 
 private:
+
     Vec3d turn_work(const Vec3d &p, double c) const
     {
         const Vec3d centre(m_geo.pivot.x(), m_geo.pivot.y(), 0.);
@@ -413,6 +449,8 @@ std::unique_ptr<MachineKinematics> make_upright_machine_kinematics(const PrintCo
 {
     if (config.nonplanar_kinematics.value == RotaryLayout::None)
         return nullptr;
+
+
     std::unique_ptr<ToolKinematics> kin = make_tool_kinematics(config);
     return std::make_unique<RotaryUprightKinematics>(std::unique_ptr<RotaryKinematics>(static_cast<RotaryKinematics *>(kin.release())));
 }

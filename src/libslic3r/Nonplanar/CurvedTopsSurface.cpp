@@ -39,6 +39,7 @@ NonplanarSurface::operator==(const NonplanarSurface& other) const {
 void
 NonplanarSurface::calculate_stats()
 {
+
     this->stats.min.x = 10000000;
     this->stats.min.y = 10000000;
     this->stats.min.z = 10000000;
@@ -58,9 +59,11 @@ NonplanarSurface::calculate_stats()
 void
 NonplanarSurface::translate(float x, float y, float z)
 {
+
     for(auto& facet : this->mesh) {
         facet.second.translate(x, y, z);
     }
+
 
     this->stats.min.x += x;
     this->stats.min.y += y;
@@ -83,9 +86,11 @@ NonplanarSurface::scale(float factor)
 void
 NonplanarSurface::scale(float versor[3])
 {
+
     for(auto& facet : this->mesh) {
         facet.second.scale(versor);
     }
+
 
     this->stats.min.x *= versor[0];
     this->stats.min.y *= versor[1];
@@ -144,6 +149,8 @@ NonplanarSurface::debug_output()
         std::cout << " Y:"<< facet.second.normal.y;
         std::cout << " Z:"<< facet.second.normal.z;
 
+
+
         std::cout << " | Neighbors:";
         std::cout << " 0:"<< facet.second.neighbor[0];
         std::cout << " 1:"<< facet.second.neighbor[1];
@@ -178,8 +185,11 @@ NonplanarSurface::group_surfaces()
 void
 NonplanarSurface::mark_neighbor_surfaces(int id)
 {
+
     if(this->mesh.find(id) == this->mesh.end() || this->mesh[id].marked == true) return;
+
     this->mesh[id].marked = true;
+
     for(int j = 0; j < 3; j++) {
         this->mark_neighbor_surfaces(this->mesh[id].neighbor[j]);
     }
@@ -199,6 +209,7 @@ NonplanarSurface::check_max_printing_height(float height)
 bool
 NonplanarSurface::check_surface_area()
 {
+
     float area = 0.0f;
     for(auto& facet : this->mesh) {
         area += facet.second.calculate_surface_area();
@@ -214,7 +225,9 @@ NonplanarSurface::check_surface_area()
 void
 NonplanarSurface::check_printable_surfaces(float max_angle)
 {
+
 }
+
 
 ExPolygons
 NonplanarSurface::horizontal_projection() const
@@ -230,6 +243,7 @@ NonplanarSurface::horizontal_projection() const
         p.make_counter_clockwise();
         pp.push_back(p);
     }
+
 
     return union_ex(offset(pp, scale_(0.01)));
 }
@@ -274,6 +288,7 @@ double curved_tops_cone_tolerance(const Print &print)
             any = true;
         }
     if (!any) return 0.05;
+
     if (const char *value = std::getenv("NP_CONTACT_CONE_TOL"); value != nullptr)
         tolerance = std::atof(value);
     return std::clamp(tolerance, 0., 0.13);
@@ -316,6 +331,8 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
             visit(region->perimeters);
             visit(region->fills);
         }
+
+
     std::set<int> used;
     for (const auto &[id, heights] : top_heights)
         if (heights.second - heights.first >= 0.03 - EPSILON) {
@@ -323,6 +340,8 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
             out.extrusion_mm += road_lengths[id];
         }
     out.kept = used.size();
+
+
     if (const auto *hints = object.nonplanar_repair())
         for (int id : used) {
             const auto found = hints->curved_top_areas.find(id);

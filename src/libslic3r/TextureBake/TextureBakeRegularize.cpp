@@ -19,6 +19,9 @@ namespace TextureBake {
 
 namespace {
 
+
+
+
 struct SlotLists
 {
     std::vector<int> head, next, prev;
@@ -67,6 +70,8 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
     const double extreme_aspect2 = opts.extreme_sliver_aspect * opts.extreme_sliver_aspect;
     const double aspect_thr2     = opts.aspect_threshold * opts.aspect_threshold;
 
+
+
     QuantizedPointMap pos_map(WELD_GRID_GEOMETRY, std::min(tri_count * 3, size_t(1) << 22));
     std::vector<Vec3d> vert;
     std::vector<int>   corners(tri_count * 3);
@@ -97,7 +102,14 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
     for (size_t t = 0; t < tri_count; ++t)
         recompute_face_normal(t);
 
+
     const std::vector<Vec3d> orig_nrm = tri_nrm;
+
+
+
+
+
+
 
     const auto tri_aspect_sq = [&](size_t t) -> double {
         const Vec3d &a  = vert[size_t(corners[t * 3])];
@@ -114,8 +126,16 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
     for (size_t s = 0; s < tri_count * 3; ++s)
         slots.link(int(s), corners);
 
+
     std::vector<uint32_t> vert_stamp(vert_count, 0), tri_stamp(tri_count, 0);
     uint32_t              stamp_gen = 0;
+
+
+
+
+
+
+
 
     std::vector<uint8_t> frozen_vert(vert_count, 0);
     {
@@ -139,6 +159,7 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
                 }
             }
     }
+
 
     if (opts.preserve_excluded && !geometry.exclude_weight.empty())
         for (size_t t = 0; t < tri_count; ++t)
@@ -173,11 +194,14 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
             return false;
         if (frozen_vert[size_t(u)] || frozen_vert[size_t(v)]) { ++stats.frozen; return false; }
 
+
         std::vector<int> &wings = triangles_sharing_edge(u, v);
         if (wings.size() != 2) { ++stats.wing_count; return false; }
         const size_t w0 = size_t(wings[0]), w1 = size_t(wings[1]);
         const int    apex1 = third_vertex(w0, u, v), apex2 = third_vertex(w1, u, v);
         if (apex1 == apex2) { ++stats.folded_apex; return false; }
+
+
 
         const double w1a = tri_aspect_sq(w0), w2a = tri_aspect_sq(w1);
         const bool   either_extreme = w1a > extreme_aspect2 || w2a > extreme_aspect2;
@@ -185,6 +209,8 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
         const double eff_max_len_sq = either_extreme ? aggr_max_len_sq : base_max_len_sq;
         const double eff_normal_cos =
             both_extreme ? opts.aggressive_normal_delta_cos : opts.max_normal_delta_cos;
+
+
 
         ++stamp_gen;
         for (int s = slots.head[size_t(v)]; s != -1; s = slots.next[size_t(s)]) {
@@ -210,6 +236,7 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
 
         const Vec3d m = (vert[size_t(u)] + vert[size_t(v)]) * 0.5;
 
+
         ++stamp_gen;
         affected_scratch.clear();
         for (const int endpoint : { u, v })
@@ -222,6 +249,7 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
                     affected_scratch.push_back(int(t));
                 }
             }
+
 
         for (const int ti : affected_scratch) {
             const size_t t = size_t(ti);
@@ -243,12 +271,14 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
             if ((n / nlen).dot(orig_nrm[t]) < eff_normal_cos) { ++stats.normal_change; return false; }
         }
 
+
         vert[size_t(u)] = m;
         for (const size_t w : { w0, w1 }) {
             tri_deleted[w] = 1;
             for (int k = 0; k < 3; ++k)
                 slots.unlink(int(w * 3) + k, corners);
         }
+
         for (int s = slots.head[size_t(v)]; s != -1;) {
             const int ns = slots.next[size_t(s)];
             slots.unlink(s, corners);
@@ -265,8 +295,11 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
         return true;
     };
 
+
+
     std::vector<double> round_aspect(tri_count);
     for (int round = 0; round < opts.maxrounds; ++round) {
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &r) {
             for (size_t t = r.begin(); t < r.end(); ++t) {
                 round_aspect[t] = -1.0;
@@ -280,6 +313,9 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
                     round_aspect[t] = aspect2;
             }
         });
+
+
+
         std::vector<std::pair<double, int>> cand;
         for (size_t t = 0; t < tri_count; ++t)
             if (round_aspect[t] >= 0.0)
@@ -294,6 +330,9 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
             if (tri_deleted[t])
                 continue;
             const int a = corners[t * 3], b = corners[t * 3 + 1], c = corners[t * 3 + 2];
+
+
+
             struct Cand { double len2; int u, v; };
             Cand e[3] = { { sq_dist(a, b), a, b }, { sq_dist(b, c), b, c }, { sq_dist(c, a), c, a } };
             std::stable_sort(std::begin(e), std::end(e),
@@ -306,6 +345,7 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
         if (round_collapses == 0)
             break;
     }
+
 
     const bool have_weights = !geometry.exclude_weight.empty();
     const size_t survivors = tri_count - size_t(std::count(tri_deleted.begin(), tri_deleted.end(), uint8_t(1)));
@@ -321,12 +361,14 @@ RegularizeResult regularize_mesh(const TriSoup &geometry, const std::vector<int>
         for (int k = 0; k < 3; ++k)
             out.pos.push_back(vert[size_t(corners[t * 3 + size_t(k)])].cast<float>());
         if (have_weights) {
+
             const float w = geometry.exclude_weight[t * 3];
             out.exclude_weight.insert(out.exclude_weight.end(), { w, w, w });
         }
         out_parent.push_back(result.face_parent_id[t]);
     }
     result.face_parent_id = std::move(out_parent);
+
 
     out.nrm.assign(out.pos.size(), Vec3f::Zero());
     {

@@ -129,6 +129,8 @@ class HeadTerm final : public FieldTerm
 public:
     explicit HeadTerm(const ObjectiveGeometry &g)
     {
+
+
         for (size_t id = 0; id < g.nodes(); ++id)
             if (g.occ[id])
                 m_nodes.push_back(id);

@@ -1,3 +1,4 @@
+
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type MenuItemConstructorOptions } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -19,13 +20,30 @@ let quitReady = false;
 let closing = false;
 let projects: ProjectStore | null = null;
 
+
+
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+for (const name of [
+  'disable-background-networking', 'disable-component-update', 'disable-domain-reliability',
+  'disable-sync', 'disable-breakpad', 'disable-client-side-phishing-detection',
+  'no-proxy-server', 'disable-quic',
+]) app.commandLine.appendSwitch(name);
+app.commandLine.appendSwitch('disable-features',
+  'AutofillServerCommunication,CertificateTransparencyComponentUpdater,OptimizationHints,MediaRouter,SpellingServiceClient');
+
+
+
 
 app.setPath('userData', process.env.ORCA_DESKTOP_USER_DATA ?? path.join(app.getPath('appData'), 'OrcaSlicer Web'));
+
+
 
 const originalUserData = app.getPath('userData');
 const originalSessionData = app.getPath('sessionData');
 const legacyRenderer = new LegacyRendererSource(originalUserData, originalSessionData, () =>
+
+
+
   process.versions.electron === '45.2.1' && (process.platform === 'linux' || process.platform === 'darwin')
   && app.hasSingleInstanceLock() && app.getPath('userData') === originalUserData
   && originalSessionData === originalUserData
@@ -71,6 +89,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(start).catch((e) => fail(String(e?.stack ?? e)));
 }
 
+
 function payload() {
   if (app.isPackaged) return { web: path.join(process.resourcesPath, 'web'), engine: path.join(process.resourcesPath, 'engine') };
   const build = path.join(__dirname, '..', 'build');
@@ -87,6 +106,7 @@ interface BundleIdentity {
   server_binary_sha256: string;
   native_manifest_sha256: string;
   native_qualification_sha256: string;
+
   schemas: Record<string, number>;
 }
 
@@ -132,7 +152,7 @@ function healthy(nonce: string, expected: BundleIdentity): Promise<boolean> {
           const artifact = health.artifact_manifest;
           resolve(health.desktop_ready_nonce === nonce && health.server_revision === expected.server_source
             && Object.entries(expected.schemas).every(([key, value]) => health[key] === value)
-            && artifact?.source_sha === expected.native_source && artifact.binary_sha256 === expected.native_binary_sha256
+            && artifact?.publication_main_sha === expected.server_source && artifact.source_sha === expected.native_source && artifact.binary_sha256 === expected.native_binary_sha256
             && artifact.resources_sha256 === expected.native_resources_sha256);
         } catch { resolve(false); }
       });
@@ -155,14 +175,19 @@ async function startServer(): Promise<string> {
   const env = { ...process.env };
   const nonce = randomBytes(32).toString('hex');
   env.ORCA_DESKTOP_READY_NONCE = nonce;
+  delete env.ORCA_WEB_SOURCE_ARCHIVE;
+  env.ORCA_WEB_SOURCE_URL = `https://github.com/ZimengXiong/PancakeSlicer/archive/${expected.server_source}.tar.gz`;
   delete env.ORCA_BUILD_REVISION;
   delete env.ORCA_BUILD_IMAGE;
+
   env.ORCA_WEB_FALLBACK_BACKEND = '';
   delete env.ORCA_WEB_SURFACE_MANIFEST;
   delete env.ORCA_WEB_ARTIFACT_MANIFEST;
   delete env.ORCA_WEB_ARTIFACT_QUALIFICATION;
+
   if (fs.existsSync(surfaceManifest)) env.ORCA_WEB_SURFACE_MANIFEST = surfaceManifest;
   if (fs.existsSync(qualification)) env.ORCA_WEB_ARTIFACT_QUALIFICATION = qualification;
+
   if (process.platform === 'linux' && fs.existsSync(lib)) env.LD_LIBRARY_PATH = [lib, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
   let lastError = 'The bundled service did not prove readiness at the fixed desktop origin.';
   const child = spawn(path.join(engine, `orca-webapp-server${EXE}`), [
@@ -172,6 +197,7 @@ async function startServer(): Promise<string> {
     '--resources', path.join(engine, 'resources'),
     '--data-dir', path.join(data, 'data'),
     '--job-root', path.join(data, 'jobs'),
+
     '--printer-network', 'lan',
   ], { env, stdio: ['ignore', log, log], windowsHide: true });
   fs.closeSync(log);
@@ -203,13 +229,15 @@ function stopServer() {
 function fail(message: string) {
   if (quitting) return;
   quitting = true;
-  dialog.showErrorBox('OrcaSlicer', message);
+  dialog.showErrorBox('PancakeSlicer', message);
   stopServer();
   app.exit(1);
 }
 
+
 function send(command: string) {
   if (command === 'import' || command === 'export-gcode' || command === 'export-3mf') {
+
     void win?.webContents.executeJavaScript(
       `window.dispatchEvent(new CustomEvent('orca-desktop-menu', { detail: ${JSON.stringify(command)} }))`, true,
     ).catch(console.error);
@@ -219,6 +247,8 @@ function send(command: string) {
 }
 
 function menu() {
+
+
   const item = (label: string, command: string, accelerator: string): MenuItemConstructorOptions =>
     ({ label, accelerator, click: () => send(command) });
   const template: MenuItemConstructorOptions[] = [
@@ -270,10 +300,12 @@ function storage() {
     ipcMain.handle(`orca-desktop:projects:${op}`, async (e, ...args: unknown[]) => {
       if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
       if (exporting && !readers.has(op)) throw new Error('Legacy desktop writes are disabled during workspace adoption. Retry service adoption; source files are retained.');
+
       const operation = (legacyReady ??= store.init()).then(() => (store[op] as (...a: unknown[]) => Promise<unknown>).apply(store, args));
       if (!readers.has(op)) pendingWrites.add(operation);
       try { return await operation; }
       catch (error) {
+
         if (error instanceof Error && ['ProjectConflictError', 'ProjectDeletedError'].includes(error.name))
           return { __orcaProjectError: { name: error.name, message: error.message } };
         throw error;
@@ -282,6 +314,8 @@ function storage() {
   }
   ipcMain.handle('orca-desktop:legacy-projects:inventory', async (e) => {
     if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
+
+
     exporting = true;
     await Promise.all([...pendingWrites]);
     await store.flush();
@@ -305,6 +339,8 @@ function storage() {
   });
 }
 
+
+
 async function openInBambuConnect(jobId: unknown, filename: unknown) {
   if (typeof jobId !== 'string' || !/^[0-9a-f]{16,64}$/.test(jobId)) throw new Error('Invalid job.');
   if (typeof filename !== 'string' || !/\.gcode\.3mf$/i.test(filename) || /[\\/\u0000-\u001f]/.test(filename) || filename.length > 240) throw new Error('Invalid file name.');
@@ -326,11 +362,29 @@ async function openInBambuConnect(jobId: unknown, filename: unknown) {
   catch { throw new Error('Bambu Connect is not installed on this computer. Install it from bambulab.com, then send again.'); }
 }
 
+
+function restrictNetwork(target: Electron.Session) {
+  target.setSpellCheckerEnabled(false);
+  target.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
+    const url = new URL(details.url);
+    const local = url.origin === DESKTOP_ORIGIN;
+    const update = url.protocol === 'https:' && url.hostname === 'api.github.com'
+      && url.pathname === '/repos/ZimengXiong/PancakeSlicer/releases' && url.search === '?per_page=30';
+    const embedded = ['blob:', 'data:', 'devtools:'].includes(url.protocol);
+    const allow = local || update || embedded;
+    if (!allow) console.error(`Blocked outbound request: ${url.origin}${url.pathname}`);
+    callback({ cancel: !allow });
+  });
+}
+
 async function start() {
+  restrictNetwork(session.defaultSession);
   menu();
   const [url] = await Promise.all([startServer(), storage()]);
   origin = url;
+  if (app.commandLine.hasSwitch('service-only')) return;
   const rendererSession = session.fromPartition('orca-service-renderer', { cache: false });
+  restrictNetwork(rendererSession);
   if (rendererSession.isPersistent() || rendererSession.getStoragePath() !== null) throw new Error('The renderer requires an isolated in-memory session.');
   win = new BrowserWindow({
     width: 1440,
@@ -338,7 +392,7 @@ async function start() {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: 'OrcaSlicer',
+    title: 'PancakeSlicer',
     backgroundColor: '#ffffff',
     webPreferences: { session: rendererSession, preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
@@ -354,12 +408,20 @@ async function start() {
     if (details.level === 'warning' || details.level === 'error')
       console.error(`Renderer ${details.level}: ${details.message} (${details.sourceId}:${details.lineNumber})`);
   });
+
   contents.on('will-prevent-unload', (e) => e.preventDefault());
   contents.on('will-navigate', (e, target) => {
     if (new URL(target).origin !== origin) { e.preventDefault(); shell.openExternal(target); }
   });
   contents.setWindowOpenHandler(({ url: target }) => {
-    if (/^https?:/.test(target) && new URL(target).origin !== origin) shell.openExternal(target);
+    const url = new URL(target);
+    if (url.origin === origin && (url.pathname.startsWith('/help/') || ['/licence.txt', '/third-party-licences.txt'].includes(url.pathname))) {
+      const guide = new BrowserWindow({ width: 1000, height: 800, title: 'PancakeSlicer user guide',
+        webPreferences: { session: rendererSession, contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false } });
+      guide.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      guide.webContents.on('will-navigate', (event, next) => { if (new URL(next).origin !== origin) event.preventDefault(); });
+      void guide.loadURL(target).catch(console.error);
+    } else if (url.protocol === 'https:' && url.origin !== origin) void shell.openExternal(target);
     return { action: 'deny' };
   });
   await win.loadURL(url);
@@ -375,6 +437,7 @@ app.on('will-quit', stopServer);
 process.on('exit', stopServer);
 process.on('SIGTERM', () => app.quit());
 process.on('SIGINT', () => app.quit());
+
 
 async function prepareQuit() {
   if (closing) return;
@@ -392,6 +455,8 @@ async function prepareQuit() {
       flush().then(() => true),
       new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 10000); }),
     ]);
+
+
     if (!finished) throw new Error('Saving is still in progress or has not been confirmed. The window remains open. Try closing again after saving finishes.');
     quitReady = true;
     app.quit();

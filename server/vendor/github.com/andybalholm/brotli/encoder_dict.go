@@ -1,6 +1,5 @@
 package brotli
 
-/* Dictionary data (words and transforms) for 1 possible context */
 type encoderDictionary struct {
 	words                 *dictionary
 	cutoffTransformsCount uint32

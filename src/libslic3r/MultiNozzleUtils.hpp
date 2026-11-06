@@ -10,9 +10,22 @@
 #include <unordered_map>
 #include "PrintConfig.hpp"
 
+
+
+
+
+
+
+
+
+
+
+
+
 namespace Slic3r {
 struct FilamentInfo;
 namespace MultiNozzleUtils {
+
 
 struct NozzleInfo
 {
@@ -30,6 +43,7 @@ struct NozzleInfo
         return diameter < other.diameter;
     }
 };
+
 
 struct NozzleGroupInfo
 {
@@ -66,6 +80,9 @@ struct NozzleGroupInfo
     static std::optional<NozzleGroupInfo> deserialize(const std::string& str);
 };
 
+
+
+
 struct FilamentChangeTimeParams
 {
     float selector_load_time{0.0f};
@@ -73,6 +90,9 @@ struct FilamentChangeTimeParams
     float standard_load_time{0.0f};
     float standard_unload_time{0.0f};
 };
+
+
+
 
 class NozzleGroupResultBase
 {
@@ -97,6 +117,10 @@ public:
     virtual std::vector<unsigned int> get_used_filaments() const = 0;
 };
 
+
+
+
+
 class LayeredNozzleGroupResult : public NozzleGroupResultBase
 {
 private:
@@ -109,16 +133,19 @@ private:
 public:
     LayeredNozzleGroupResult(bool support_dynamic_map = false) : NozzleGroupResultBase(support_dynamic_map) {}
 
+
     static std::optional<LayeredNozzleGroupResult> create(
         const std::vector<int>&          filament_nozzle_map,
         const std::vector<NozzleInfo>&   nozzle_list,
         const std::vector<unsigned int>& used_filaments);
+
 
     static std::optional<LayeredNozzleGroupResult> create(
         const std::vector<std::vector<int>>&          layer_filament_nozzle_maps,
         const std::vector<NozzleInfo>&                nozzle_list,
         const std::vector<unsigned int>&              used_filaments,
         const std::vector<std::vector<unsigned int>>& layer_filament_sequences);
+
 
     static std::optional<LayeredNozzleGroupResult> create(
         const std::vector<unsigned int>&                    used_filaments,
@@ -157,8 +184,14 @@ public:
     const std::vector<std::vector<int>> &get_layer_filament_nozzle_maps() const { return _layer_filament_nozzle_maps; }
     const std::vector<std::vector<unsigned int>>& get_layer_filament_sequences() const { return _layer_filament_sequences; }
 
+
+
     int estimate_seq_flush_weight(const std::vector<std::vector<std::vector<float>>>& flush_matrix, const std::vector<int>& filament_change_seq) const;
 };
+
+
+
+
 
 class StaticNozzleGroupResult : public NozzleGroupResultBase
 {
@@ -170,6 +203,7 @@ private:
 
 public:
     StaticNozzleGroupResult(bool support_dynamic_map) : NozzleGroupResultBase(support_dynamic_map) {}
+
     static std::optional<StaticNozzleGroupResult> create(
         const std::vector<FilamentInfo>& filaments_info,
         const std::vector<NozzleInfo>&   nozzles_info,
@@ -188,6 +222,8 @@ public:
     std::optional<NozzleInfo> get_first_nozzle_for_filament(int filament_id) const override;
 };
 
+
+
 class NozzleStatusRecorder
 {
 private:
@@ -205,9 +241,12 @@ public:
     void clear_nozzle_status(int nozzle_id);
     void set_current_extruder_id(int extruder_id) { current_extruder_id_ = extruder_id; }
 
+
     void set_nozzle_status(int nozzle_id, int filament_id, int extruder_id = -1);
 
+
     const std::unordered_map<int, int>& get_nozzle_filament_map() const { return nozzle_filament_status; }
+
     const std::unordered_map<int, int>& get_extruder_nozzle_map() const { return extruder_nozzle_status; }
 };
 
@@ -215,6 +254,11 @@ struct FilamentChangeSimResult {
     double actual_time = 0.0;
     double sliced_time = 0.0;
 };
+
+
+
+
+
 
 FilamentChangeSimResult simulate_filament_change_time(
     const std::vector<int>&           logical_filaments,
@@ -226,11 +270,21 @@ FilamentChangeSimResult simulate_filament_change_time(
     const std::vector<bool>&          ams_preload_enabled = {},
     bool                              calc_sliced_time = false);
 
+
+
+
+
+
+
+
 void normalize_nozzle_map_per_layer(std::vector<std::vector<int>>&                layer_filament_nozzle_maps,
                                     const std::vector<std::vector<unsigned int>>& layer_filaments);
 std::vector<NozzleInfo> build_nozzle_list(std::vector<NozzleGroupInfo> info);
 std::vector<NozzleInfo> build_nozzle_list(double diameter, const std::vector<int>& filament_nozzle_map,
                                           const std::vector<int>& filament_volume_map, const std::vector<int>& filament_map);
+
+
+
 std::vector<NozzleInfo> load_nozzle_infos_with_compatibility(
     const std::vector<NozzleInfo>& nozzle_infos,
     const std::vector<FilamentInfo>& filament_infos,

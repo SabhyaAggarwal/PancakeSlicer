@@ -25,6 +25,7 @@
 namespace Slic3r {
 namespace Algorithm {
 
+
 inline double clipper_round_offset_error(double offset, double arc_tolerance)
 {
     static constexpr const double def_arc_tolerance = 0.25;
@@ -39,8 +40,11 @@ inline double clipper_round_offset_error(double offset, double arc_tolerance)
 }
 
 RegionExpansionParameters RegionExpansionParameters::build(
+
     float                full_expansion,
+
     float                expansion_step,
+
     size_t               max_nr_expansion_steps)
 {
     assert(full_expansion > 0);
@@ -48,6 +52,10 @@ RegionExpansionParameters RegionExpansionParameters::build(
     assert(max_nr_expansion_steps > 0);
 
     RegionExpansionParameters out;
+
+
+
+
     out.tiny_expansion = std::min(0.25f * full_expansion, scaled<float>(0.05f));
     size_t nsteps = size_t(ceil((full_expansion - out.tiny_expansion) / expansion_step));
     if (max_nr_expansion_steps > 0)
@@ -55,6 +63,7 @@ RegionExpansionParameters RegionExpansionParameters::build(
     assert(nsteps > 0);
     out.initial_step = (full_expansion - out.tiny_expansion) / nsteps;
     if (nsteps > 1 && 0.25 * out.initial_step < out.tiny_expansion) {
+
         nsteps       = std::max<size_t>(1, (floor((full_expansion - out.tiny_expansion) / (4. * out.tiny_expansion))));
         out.initial_step = (full_expansion - out.tiny_expansion) / nsteps;
     }
@@ -65,12 +74,20 @@ RegionExpansionParameters RegionExpansionParameters::build(
     out.other_step           = out.initial_step;
     out.num_other_steps      = nsteps - 1;
 
+
     out.arc_tolerance        = scaled<double>(0.1);
+
+
+
+
 
     out.max_inflation = (out.tiny_expansion + nsteps * out.initial_step) * 1.1;
 
+
     return out;
 }
+
+
 
 static ClipperZUtils::ZPaths expolygons_to_zpaths_expanded_opened(
     const ExPolygons &src, const float expansion, coord_t &base_idx)
@@ -80,6 +97,7 @@ static ClipperZUtils::ZPaths expolygons_to_zpaths_expanded_opened(
         [](const size_t acc, const ExPolygon &expoly) { return acc + expoly.num_contours(); }));
     for (const ExPolygon &expoly : src) {
         for (size_t icontour = 0; icontour < expoly.num_contours(); ++ icontour) {
+
             Polygon contour = expoly.contour_or_hole(icontour);
             if (! contour.is_counter_clockwise())
                 contour.reverse();
@@ -91,6 +109,10 @@ static ClipperZUtils::ZPaths expolygons_to_zpaths_expanded_opened(
     return out;
 }
 
+
+
+
+
 static inline void merge_splits(ClipperZUtils::ZPaths &paths, std::vector<std::pair<ClipperZUtils::ZPoint, int>> &splits)
 {
     for (auto it_path = paths.begin(); it_path != paths.end(); ) {
@@ -100,7 +122,11 @@ static inline void merge_splits(ClipperZUtils::ZPaths &paths, std::vector<std::p
         if (path.size() >= 2) {
             const ClipperZUtils::ZPoint &front = path.front();
             const ClipperZUtils::ZPoint &back  = path.back();
+
+
             if (front.x() != back.x() || front.y() != back.y()) {
+
+
                 auto find_end = [&splits](const ClipperZUtils::ZPoint &pt) -> std::pair<ClipperZUtils::ZPoint, int>* {
                     auto it = std::lower_bound(splits.begin(), splits.end(), pt,
                         [](const auto &l, const auto &r){ return ClipperZUtils::zpoint_lower(l.first, r); });
@@ -113,9 +139,12 @@ static inline void merge_splits(ClipperZUtils::ZPaths &paths, std::vector<std::p
                     end = find_end(back);
                 }
                 if (end) {
+
                     if (end->second == -1) {
+
                         end->second = int(it_path - paths.begin());
                     } else {
+
                         ClipperZUtils::ZPath &other_path = paths[end->second];
                         polylines_merge(other_path, other_path.front() == end->first, std::move(path), end_front);
                         if (std::next(it_path) == paths.end()) {
@@ -136,19 +165,22 @@ static inline void merge_splits(ClipperZUtils::ZPaths &paths, std::vector<std::p
 
 using AABBTreeBBoxes = AABBTreeIndirect::Tree<2, coord_t>;
 
-static AABBTreeBBoxes build_aabb_tree_over_expolygons(const ExPolygons &expolygons) 
+static AABBTreeBBoxes build_aabb_tree_over_expolygons(const ExPolygons &expolygons)
 {
+
     std::vector<AABBTreeIndirect::BoundingBoxWrapper> bboxes;
     bboxes.reserve(expolygons.size());
     for (size_t i = 0; i < expolygons.size(); ++ i)
         bboxes.emplace_back(i, get_extents(expolygons[i].contour));
+
     AABBTreeBBoxes out;
     out.build_modify_input(bboxes);
     return out;
 }
 
 static int sample_in_expolygons(
-    const AABBTreeBBoxes &aabb_tree, 
+
+    const AABBTreeBBoxes &aabb_tree,
     const ExPolygons     &expolygons,
     const Point          &sample)
 {
@@ -162,17 +194,23 @@ static int sample_in_expolygons(
             assert(node.is_valid());
             if (expolygons[node.idx].contains(sample)) {
                 out = int(node.idx);
+
                 return false;
             }
+
             return true;
         });
     return out;
 }
 
 std::vector<WaveSeed> wave_seeds(
+
     const ExPolygons      &src,
+
     const ExPolygons      &boundary,
+
     float                  tiny_expansion,
+
     bool                   sorted)
 {
     assert(tiny_expansion > 0);
@@ -192,7 +230,9 @@ std::vector<WaveSeed> wave_seeds(
 
     {
         ClipperZUtils::ClipperZIntersectionVisitor visitor(intersections);
+
         ClipperZUtils::ZPaths zboundary = ClipperZUtils::expolygons_to_zpaths(boundary, idx_boundary_end);
+
         std::vector<std::pair<ClipperZUtils::ZPoint, int>> zsrc_splits;
         idx_src_end = idx_boundary_end;
         ClipperZUtils::ZPaths zsrc = expolygons_to_zpaths_expanded_opened(src, tiny_expansion, idx_src_end);
@@ -207,7 +247,13 @@ std::vector<WaveSeed> wave_seeds(
         merge_splits(segments, zsrc_splits);
     }
 
+
+
+
     AABBTreeBBoxes aabb_tree;
+
+
+
 
     WaveSeeds out;
     out.reserve(segments.size());
@@ -216,11 +262,26 @@ std::vector<WaveSeed> wave_seeds(
         assert(path.size() >= 2);
         ClipperZUtils::ZPoint front = path.front();
         ClipperZUtils::ZPoint back  = path.back();
-        assert((front == back && front.z() >= idx_boundary_end && front.z() < idx_src_end) || 
+
+
+        assert((front == back && front.z() >= idx_boundary_end && front.z() < idx_src_end) ||
+
+
             (front.z() < 0 || back.z() < 0));
 
+
+
         if (front != back && front.z() >= 0 && back.z() >= 0) {
+
+
+
+
+
+
+
+
             coord_t src_z = -1, boundary_z = -1;
+
             for (const ClipperZUtils::ZPoint &point : path) {
                 if (point.z() >= idx_boundary_end && point.z() < idx_src_end && src_z < 0)
                     src_z = point.z();
@@ -234,6 +295,7 @@ std::vector<WaveSeed> wave_seeds(
                 if (boundary_z >= 0) {
                     out.push_back({ src_id, uint32_t(boundary_z - 1), ClipperZUtils::from_zpath(path) });
                 } else {
+
                     if (aabb_tree.empty())
                         aabb_tree = build_aabb_tree_over_expolygons(boundary);
                     int boundary_id = sample_in_expolygons(aabb_tree, boundary, Point(front.x(), front.y()));
@@ -243,9 +305,14 @@ std::vector<WaveSeed> wave_seeds(
                 ++ iseed;
                 continue;
             }
+
             continue;
         } else
         if (front == back && (front.z() < idx_boundary_end)) {
+
+
+
+
             bool found = false;
             for (const ClipperZUtils::ZPoint &point : path) {
                 if (point.z() >= idx_boundary_end) {
@@ -277,14 +344,18 @@ std::vector<WaveSeed> wave_seeds(
                 intersection = &is;
         }
         if (intersection) {
+
             out.push_back({ uint32_t(intersection->second - idx_boundary_end), uint32_t(intersection->first - 1), ClipperZUtils::from_zpath(path) });
         } else {
+
             assert(front == back && front.z() >= idx_boundary_end && front.z() < idx_src_end);
             if (front != back || front.z() < idx_boundary_end || front.z() >= idx_src_end)
                 continue;
+
             if (aabb_tree.empty())
                 aabb_tree = build_aabb_tree_over_expolygons(boundary);
             int boundary_id = sample_in_expolygons(aabb_tree, boundary, Point(front.x(), front.y()));
+
             assert(boundary_id >= 0);
             if (boundary_id >= 0)
                 out.push_back({ uint32_t(front.z() - idx_boundary_end), uint32_t(boundary_id), ClipperZUtils::from_zpath(path) });
@@ -292,6 +363,7 @@ std::vector<WaveSeed> wave_seeds(
     }
 
     if (sorted)
+
         std::sort(out.begin(), out.end(), lower_by_boundary_and_src);
     return out;
 }
@@ -307,11 +379,15 @@ static Polygons wavefront_initial(const VecOfPoints &polylines, float offset, do
     return out;
 }
 
+
+
+
 static Polygons wavefront_step(const Polygons &polygons, float offset, double arc_tolerance)
 {
     Polygons out;
     out.reserve(polygons.size());
     for (const Polygon &polygon : polygons)
+
         append(out, Slic3r::offset(polygon, offset, jtRound, arc_tolerance));
     return out;
 }
@@ -322,21 +398,31 @@ static Polygons wavefront_clip(const Polygons &wavefront, const Polygons &clippi
 }
 
 static Polygons propagate_wave_from_boundary(
+
     const VecOfPoints           &seed,
+
     const ExPolygon             &boundary,
+
     const float                  initial_step,
+
     const float                  other_step,
+
     const size_t                 num_other_steps,
+
+
     const float                  max_inflation,
+
     const double                 arc_tolerance)
 {
     assert(! seed.empty() && seed.front().size() >= 2);
     Polygons clipping = ClipperUtils::clip_clipper_polygons_with_subject_bbox(boundary, get_extents<true>(seed).inflated(max_inflation));
     Polygons polygons = wavefront_clip(wavefront_initial(seed, initial_step, arc_tolerance), clipping);
+
     for (size_t ioffset = 0; ioffset < num_other_steps; ++ ioffset)
         polygons = wavefront_clip(wavefront_step(polygons, other_step, arc_tolerance), clipping);
     return polygons;
 }
+
 
 std::vector<RegionExpansion> propagate_waves(const WaveSeeds &seeds, const ExPolygons &boundary, const RegionExpansionParameters &params)
 {
@@ -347,6 +433,8 @@ std::vector<RegionExpansion> propagate_waves(const WaveSeeds &seeds, const ExPol
         paths.clear();
         for (; it != seeds.end() && it->boundary == it_seed->boundary && it->src == it_seed->src; ++ it)
             paths.emplace_back(it->path);
+
+
         RegionExpansion re;
         for (Polygon &polygon : propagate_wave_from_boundary(paths, boundary[it_seed->boundary], params.initial_step, params.other_step, params.num_other_steps, params.max_inflation, params.arc_tolerance))
             out.push_back({ std::move(polygon), it_seed->src, it_seed->boundary });
@@ -362,12 +450,16 @@ std::vector<RegionExpansion> propagate_waves(const ExPolygons &src, const ExPoly
 }
 
 std::vector<RegionExpansion> propagate_waves(const ExPolygons &src, const ExPolygons &boundary,
-    float expansion, 
+
+    float expansion,
+
     float expansion_step,
+
     size_t max_nr_steps)
 {
     return propagate_waves(src, boundary, RegionExpansionParameters::build(expansion, expansion_step, max_nr_steps));
 }
+
 
 std::vector<RegionExpansionEx> propagate_waves_ex(const WaveSeeds &seeds, const ExPolygons &boundary, const RegionExpansionParameters &params)
 {
@@ -394,11 +486,17 @@ std::vector<RegionExpansionEx> propagate_waves_ex(const WaveSeeds &seeds, const 
     return out;
 }
 
+
 std::vector<RegionExpansionEx> propagate_waves_ex(
+
+
     const ExPolygons    &src,
     const ExPolygons    &boundary,
+
     float                full_expansion,
+
     float                expansion_step,
+
     size_t               max_nr_expansion_steps)
 {
     auto params = RegionExpansionParameters::build(full_expansion, expansion_step, max_nr_expansion_steps);
@@ -406,8 +504,11 @@ std::vector<RegionExpansionEx> propagate_waves_ex(
 }
 
 std::vector<Polygons> expand_expolygons(const ExPolygons &src, const ExPolygons &boundary,
-    float expansion, 
+
+    float expansion,
+
     float expansion_step,
+
     size_t max_nr_steps)
 {
     std::vector<Polygons> out(src.size(), Polygons{});
@@ -418,6 +519,7 @@ std::vector<Polygons> expand_expolygons(const ExPolygons &src, const ExPolygons 
 
 std::vector<ExPolygon> merge_expansions_into_expolygons(ExPolygons &&src, std::vector<RegionExpansion> &&expanded)
 {
+
     std::sort(expanded.begin(), expanded.end(), [](const auto &l, const auto &r) { return l.src_id < r.src_id; });
     uint32_t   last = 0;
     Polygons   acc;
@@ -430,6 +532,7 @@ std::vector<ExPolygon> merge_expansions_into_expolygons(ExPolygons &&src, std::v
         assert(it->src_id == last);
         for (; it != expanded.end() && it->src_id == last; ++ it)
             acc.emplace_back(std::move(it->polygon));
+
         ExPolygon &src_ex = src[last ++];
         assert(! src_ex.contour.empty());
 #if 0
@@ -447,7 +550,13 @@ std::vector<ExPolygon> merge_expansions_into_expolygons(ExPolygons &&src, std::v
         Point sample = src_ex.contour.front();
         append(acc, to_polygons(std::move(src_ex)));
         ExPolygons merged = union_safety_offset_ex(acc);
+
+
         if (merged.size() > 1) {
+
+
+
+
             auto aabb_tree = build_aabb_tree_over_expolygons(merged);
             int id = sample_in_expolygons(aabb_tree, merged, sample);
             assert(id != -1);
@@ -463,6 +572,7 @@ std::vector<ExPolygon> merge_expansions_into_expolygons(ExPolygons &&src, std::v
 
 std::vector<ExPolygon> expand_merge_expolygons(ExPolygons &&src, const ExPolygons &boundary, const RegionExpansionParameters &params)
 {
+
     std::vector<RegionExpansion> expanded = propagate_waves(src, boundary, params);
     return merge_expansions_into_expolygons(std::move(src), std::move(expanded));
 }

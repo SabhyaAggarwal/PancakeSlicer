@@ -49,12 +49,14 @@ func encodeMoveTransfer(src io.Reader, dst io.Writer, flush func() error) error 
 		return err
 	}
 	words := stride / 4
+
 	diffs := make([]uint32, int(moves)*words)
 	rowHash := make([]uint64, moves)
 	bits := 16
 	for bits < 24 && uint64(1)<<bits < 2*moves {
 		bits++
 	}
+
 	table := make([]int32, 1<<bits)
 	key := func(i int) uint32 {
 		h := rowHash[i]*0x9e3779b97f4a7c15 ^ rowHash[i+1]*0xc2b2ae3d27d4eb4f ^ rowHash[i+2]*0x165667b19e3779f9
@@ -138,6 +140,7 @@ func encodeMoveTransfer(src io.Reader, dst io.Writer, flush func() error) error 
 		}
 		first += n
 	}
+
 	_, err := io.Copy(dst, r)
 	return err
 }

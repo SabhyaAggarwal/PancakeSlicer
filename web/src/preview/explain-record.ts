@@ -1,16 +1,23 @@
+
+
+
+
 import { recordConfig, styleName } from '../style-names';
 
 type Rec = Record<string, unknown>;
+
 
 const MIN_FLAT_ROW_MM2 = 2;
 interface Patch { kind?: string; area_mm2?: number | null; shells?: number | null; reason_tags?: string[]; object_id?: number }
 interface CurvedLayers { source?: string; layers?: number; refused?: string }
 
 
+
 const FLAT_NAMES: Record<string, string> = {
   steep: 'Steep area', steep_strip: 'Steep strip', narrow: 'Narrow groove', head: 'Head clearance', flat: 'Flat area',
   edge: 'Edge', near_bed: 'Near bed', outline: 'Ragged outline', bottom: 'Underside',
 };
+
 
 const REASONS: Record<string, string> = {
   steep: 'too steep for the nozzle here',
@@ -24,6 +31,7 @@ const REASONS: Record<string, string> = {
   bottom: 'it faces down',
 };
 export const reasonText = (tag: string) => REASONS[tag] ?? 'kept flat';
+
 const overhangTag = (tags: string[]) => tags.some((t) => t.startsWith('overhang') || t === 'bottom');
 
 export interface FlatArea { name: string; reason: string; area: number }
@@ -31,6 +39,7 @@ export interface FlatArea { name: string; reason: string; area: number }
 export interface RecordSummary {
   mode: string;
   style: string;
+
   curved: boolean;
   part: string;
   topCurved: number;
@@ -39,6 +48,7 @@ export interface RecordSummary {
   overhangs: number;
   bridges: number;
   flat: FlatArea[];
+
   wholePart: { source: string; layers?: number } | null;
   refusedWhy: string | null;
   verifier: { ran: boolean; hits: number; closest: number | null; uncalibrated: boolean } | null;
@@ -72,6 +82,8 @@ export function readRecord(record: Rec | undefined): RecordSummary | null {
     flatByTag.set(tags[0], (flatByTag.get(tags[0]) ?? 0) + (num(p.area_mm2) ?? 0));
   }
   const top = accepted.filter((p) => p.kind === 'top');
+
+
   const cl = objects.map((o) => o.curved_layers).find((c) => c && typeof c === 'object');
   const volumeOnly = accepted.length > 0 && accepted.every((p) => p.kind === 'volume' && num(p.area_mm2) == null);
   const wholePart = cl && !cl.refused && (cl.layers ?? 1) > 0 ? { source: String(cl.source ?? style), layers: cl.layers }
@@ -89,6 +101,7 @@ export function readRecord(record: Rec | undefined): RecordSummary | null {
     shells: top.reduce((m, p) => Math.max(m, num(p.shells) ?? 0), 0),
     overhangs: accepted.filter((p) => p.kind === 'overhang').length,
     bridges: accepted.filter((p) => p.kind === 'bridge').length,
+
     flat: [...flatByTag].filter(([, area]) => area >= MIN_FLAT_ROW_MM2)
       .map(([tag, area]) => ({ name: FLAT_NAMES[tag] ?? 'Kept flat', reason: reasonText(tag), area })).sort((a, b) => b.area - a.area),
     wholePart,
@@ -107,10 +120,18 @@ export function readRecord(record: Rec | undefined): RecordSummary | null {
 
 export const microns = (mm: number | null) => (mm == null ? '–' : `${Math.round(mm * 1000)} µm`);
 export const grams = (g: number | null) => (g == null ? '–' : `${g.toFixed(2)} g`);
+
 export const supportText = (g: number | null) => (g == null ? '–' : g > 0 ? `${g.toFixed(2)} g` : '0 g');
 export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(mm2)} mm²`;
 
+
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null }
+
+
+
+
+
+
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
   if (!record || record.status === 'error') return [];
@@ -130,9 +151,12 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   for (const [name, o] of byName) {
     if (o.mode === 'off') continue;
     const style = styleName({ ...base, nonplanar_mode: o.mode, ...(o.deform ? { nonplanar_deform: o.deform } : {}) });
+
+
     let mine = patches.filter((p) => p.object_id != null && o.ids.has(p.object_id));
     const native = mine.length ? undefined : reported.find((r) => r.name === name);
     if (native) mine = native.patches ?? [];
+
     const footprints = (kinds: string[]) => {
       const seen = new Set<number>();
       let total = 0;
@@ -146,6 +170,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     };
     const top = mine.filter((p) => p.kind === 'top').reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
     const ledge = footprints(['overhang', 'bridge']);
+
     const flat = mine.filter((p) => p.kind === 'fallback' && !overhangTag(p.reason_tags?.length ? p.reason_tags : ['untagged']) && (num(p.area_mm2) ?? 0) >= 0.05)
       .reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
     const share = native && Number.isFinite(native.curved_top_area_fraction) ? native.curved_top_area_fraction! : top / (top + flat);
@@ -159,6 +184,9 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   }
   return out;
 }
+
+
+
 
 const FALLBACK_REASONS: Record<string, [string, string]> = {
   flat: ['flat', 'flat: planar layers print it exactly'],
@@ -187,8 +215,11 @@ export interface ReportObject {
   curvedTop: number;
   planarTop: number;
   flatTop: number;
+
   planarReason: string;
   flatReason: string;
+
+
   share?: number;
   supportFree?: number;
   orientation?: string;
@@ -196,9 +227,12 @@ export interface ReportObject {
 
 type ReportFallbackJson = { reason?: string; class?: string; why?: string; area_mm2?: number; top?: boolean };
 
+
+
 function fromReportJson(r: Rec) {
   const clearance = (r.clearance ?? {}) as Rec;
   const objects = ((r.objects ?? []) as Rec[]).map((o): ReportObject => {
+
     const mainReason = (fallback: boolean) => {
       const by = new Map<string, [number, string]>();
       for (const f of (o.fallbacks ?? []) as ReportFallbackJson[]) {
@@ -222,10 +256,14 @@ function fromReportJson(r: Rec) {
   };
 }
 
+
+
+
 export function readReport(record: Rec | undefined) {
   if (!record || record.status !== 'sliced') return null;
   const report = record.nonplanar_report as Rec | undefined;
   if (report && typeof report === 'object') {
+
     const own = (report.objects ?? []) as { patches?: unknown[]; fallbacks?: unknown[] }[];
     return own.some((o) => o.patches?.length || o.fallbacks?.length) ? fromReportJson(report) : null;
   }
@@ -268,6 +306,12 @@ export function readReport(record: Rec | undefined) {
     objects: out,
   };
 }
+
+
+
+
+
+
 
 export function droppedCurvedTop(record: Rec | undefined): number | null {
   type Budget = { measured?: boolean; planar_fw_s?: number | null; patches?: { dropped?: boolean; time_cost_s?: number | null }[] };

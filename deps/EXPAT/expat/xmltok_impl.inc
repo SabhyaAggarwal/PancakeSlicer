@@ -41,7 +41,7 @@
 
 #ifdef XML_TOK_IMPL_C
 
-#  ifndef IS_INVALID_CHAR // i.e. for UTF-16 and XML_MIN_SIZE not defined
+#  ifndef IS_INVALID_CHAR
 #    define IS_INVALID_CHAR(enc, ptr, n) (0)
 #  endif
 
@@ -139,7 +139,7 @@
 
 #  define REQUIRE_CHAR(enc, ptr, end) REQUIRE_CHARS(enc, ptr, end, 1)
 
-/* ptr points to character following "<!-" */
+
 
 static int PTRCALL
 PREFIX(scanComment)(const ENCODING *enc, const char *ptr, const char *end,
@@ -176,7 +176,7 @@ PREFIX(scanComment)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following "<!" */
+
 
 static int PTRCALL
 PREFIX(scanDecl)(const ENCODING *enc, const char *ptr, const char *end,
@@ -200,7 +200,7 @@ PREFIX(scanDecl)(const ENCODING *enc, const char *ptr, const char *end,
     switch (BYTE_TYPE(enc, ptr)) {
     case BT_PERCNT:
       REQUIRE_CHARS(enc, ptr, end, 2);
-      /* don't allow <!ENTITY% foo "whatever"> */
+
       switch (BYTE_TYPE(enc, ptr + MINBPC(enc))) {
       case BT_S:
       case BT_CR:
@@ -270,7 +270,7 @@ PREFIX(checkPiTarget)(const ENCODING *enc, const char *ptr, const char *end,
   return 1;
 }
 
-/* ptr points to character following "<?" */
+
 
 static int PTRCALL
 PREFIX(scanPi)(const ENCODING *enc, const char *ptr, const char *end,
@@ -339,7 +339,7 @@ PREFIX(scanCdataSection)(const ENCODING *enc, const char *ptr, const char *end,
       = {ASCII_C, ASCII_D, ASCII_A, ASCII_T, ASCII_A, ASCII_LSQB};
   int i;
   UNUSED_P(enc);
-  /* CDATA[ */
+
   REQUIRE_CHARS(enc, ptr, end, 6);
   for (i = 0; i < 6; i++, ptr += MINBPC(enc)) {
     if (! CHAR_MATCHES(enc, ptr, CDATA_LSQB[i])) {
@@ -425,7 +425,7 @@ PREFIX(cdataSectionTok)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_DATA_CHARS;
 }
 
-/* ptr points to character following "</" */
+
 
 static int PTRCALL
 PREFIX(scanEndTag)(const ENCODING *enc, const char *ptr, const char *end,
@@ -460,8 +460,8 @@ PREFIX(scanEndTag)(const ENCODING *enc, const char *ptr, const char *end,
       return XML_TOK_PARTIAL;
 #  ifdef XML_NS
     case BT_COLON:
-      /* no need to check qname syntax here,
-         since end-tag must match exactly */
+
+
       ptr += MINBPC(enc);
       break;
 #  endif
@@ -476,7 +476,7 @@ PREFIX(scanEndTag)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following "&#X" */
+
 
 static int PTRCALL
 PREFIX(scanHexCharRef)(const ENCODING *enc, const char *ptr, const char *end,
@@ -507,7 +507,7 @@ PREFIX(scanHexCharRef)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following "&#" */
+
 
 static int PTRCALL
 PREFIX(scanCharRef)(const ENCODING *enc, const char *ptr, const char *end,
@@ -538,7 +538,7 @@ PREFIX(scanCharRef)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following "&" */
+
 
 static int PTRCALL
 PREFIX(scanRef)(const ENCODING *enc, const char *ptr, const char *end,
@@ -566,7 +566,7 @@ PREFIX(scanRef)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following first character of attribute name */
+
 
 static int PTRCALL
 PREFIX(scanAtts)(const ENCODING *enc, const char *ptr, const char *end,
@@ -638,7 +638,7 @@ PREFIX(scanAtts)(const ENCODING *enc, const char *ptr, const char *end,
         }
       }
       ptr += MINBPC(enc);
-      /* in attribute value */
+
       for (;;) {
         int t;
         REQUIRE_CHAR(enc, ptr, end);
@@ -679,7 +679,7 @@ PREFIX(scanAtts)(const ENCODING *enc, const char *ptr, const char *end,
         *nextTokPtr = ptr;
         return XML_TOK_INVALID;
       }
-      /* ptr points to closing quote */
+
       for (;;) {
         ptr += MINBPC(enc);
         REQUIRE_CHAR(enc, ptr, end);
@@ -719,7 +719,7 @@ PREFIX(scanAtts)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-/* ptr points to character following "<" */
+
 
 static int PTRCALL
 PREFIX(scanLt)(const ENCODING *enc, const char *ptr, const char *end,
@@ -752,7 +752,7 @@ PREFIX(scanLt)(const ENCODING *enc, const char *ptr, const char *end,
 #  ifdef XML_NS
   hadColon = 0;
 #  endif
-  /* we have a start-tag */
+
   while (HAS_CHAR(enc, ptr, end)) {
     switch (BYTE_TYPE(enc, ptr)) {
       CHECK_NAME_CASES(enc, ptr, end, nextTokPtr)
@@ -917,7 +917,7 @@ PREFIX(contentTok)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_DATA_CHARS;
 }
 
-/* ptr points to character following "%" */
+
 
 static int PTRCALL
 PREFIX(scanPercent)(const ENCODING *enc, const char *ptr, const char *end,
@@ -1056,7 +1056,7 @@ PREFIX(prologTok)(const ENCODING *enc, const char *ptr, const char *end,
   case BT_CR:
     if (ptr + MINBPC(enc) == end) {
       *nextTokPtr = end;
-      /* indicate that this might be part of a CR/LF pair */
+
       return -XML_TOK_PROLOG_S;
     }
     /* fall through */
@@ -1071,7 +1071,7 @@ PREFIX(prologTok)(const ENCODING *enc, const char *ptr, const char *end,
       case BT_LF:
         break;
       case BT_CR:
-        /* don't split CR/LF pair */
+
         if (ptr + MINBPC(enc) != end)
           break;
         /* fall through */
@@ -1264,11 +1264,11 @@ PREFIX(attributeValueTok)(const ENCODING *enc, const char *ptr, const char *end,
   if (ptr >= end)
     return XML_TOK_NONE;
   else if (! HAS_CHAR(enc, ptr, end)) {
-    /* This line cannot be executed.  The incoming data has already
-     * been tokenized once, so incomplete characters like this have
-     * already been eliminated from the input.  Retaining the paranoia
-     * check is still valuable, however.
-     */
+
+
+
+
+
     return XML_TOK_PARTIAL; /* LCOV_EXCL_LINE */
   }
   start = ptr;
@@ -1276,7 +1276,7 @@ PREFIX(attributeValueTok)(const ENCODING *enc, const char *ptr, const char *end,
     switch (BYTE_TYPE(enc, ptr)) {
 #  define LEAD_CASE(n)                                                         \
   case BT_LEAD##n:                                                             \
-    ptr += n; /* NOTE: The encoding has already been validated. */             \
+    ptr += n;               \
     break;
       LEAD_CASE(2)
       LEAD_CASE(3)
@@ -1288,7 +1288,7 @@ PREFIX(attributeValueTok)(const ENCODING *enc, const char *ptr, const char *end,
       *nextTokPtr = ptr;
       return XML_TOK_DATA_CHARS;
     case BT_LT:
-      /* this is for inside entity references */
+
       *nextTokPtr = ptr;
       return XML_TOK_INVALID;
     case BT_LF:
@@ -1333,11 +1333,11 @@ PREFIX(entityValueTok)(const ENCODING *enc, const char *ptr, const char *end,
   if (ptr >= end)
     return XML_TOK_NONE;
   else if (! HAS_CHAR(enc, ptr, end)) {
-    /* This line cannot be executed.  The incoming data has already
-     * been tokenized once, so incomplete characters like this have
-     * already been eliminated from the input.  Retaining the paranoia
-     * check is still valuable, however.
-     */
+
+
+
+
+
     return XML_TOK_PARTIAL; /* LCOV_EXCL_LINE */
   }
   start = ptr;
@@ -1345,7 +1345,7 @@ PREFIX(entityValueTok)(const ENCODING *enc, const char *ptr, const char *end,
     switch (BYTE_TYPE(enc, ptr)) {
 #  define LEAD_CASE(n)                                                         \
   case BT_LEAD##n:                                                             \
-    ptr += n; /* NOTE: The encoding has already been validated. */             \
+    ptr += n;               \
     break;
       LEAD_CASE(2)
       LEAD_CASE(3)
@@ -1443,7 +1443,7 @@ PREFIX(ignoreSectionTok)(const ENCODING *enc, const char *ptr, const char *end,
   return XML_TOK_PARTIAL;
 }
 
-#  endif /* XML_DTD */
+#  endif
 
 static int PTRCALL
 PREFIX(isPublicId)(const ENCODING *enc, const char *ptr, const char *end,
@@ -1487,8 +1487,8 @@ PREFIX(isPublicId)(const ENCODING *enc, const char *ptr, const char *end,
       /* fall through */
     default:
       switch (BYTE_TO_ASCII(enc, ptr)) {
-      case 0x24: /* $ */
-      case 0x40: /* @ */
+      case 0x24:
+      case 0x40:
         break;
       default:
         *badPtr = ptr;
@@ -1500,18 +1500,18 @@ PREFIX(isPublicId)(const ENCODING *enc, const char *ptr, const char *end,
   return 1;
 }
 
-/* This must only be called for a well-formed start-tag or empty
-   element tag.  Returns the number of attributes.  Pointers to the
-   first attsMax attributes are stored in atts.
-*/
+
+
+
+
 
 static int PTRCALL
 PREFIX(getAtts)(const ENCODING *enc, const char *ptr, int attsMax,
                 ATTRIBUTE *atts) {
   enum { other, inName, inValue } state = inName;
   int nAtts = 0;
-  int open = 0; /* defined when state == inValue;
-                   initialization just to shut up compilers */
+  int open = 0;
+
 
   for (ptr += MINBPC(enc);; ptr += MINBPC(enc)) {
     switch (BYTE_TYPE(enc, ptr)) {
@@ -1524,7 +1524,7 @@ PREFIX(getAtts)(const ENCODING *enc, const char *ptr, int attsMax,
       state = inName;                                                          \
     }
 #  define LEAD_CASE(n)                                                         \
-  case BT_LEAD##n: /* NOTE: The encoding has already been validated. */        \
+  case BT_LEAD##n:          \
     START_NAME ptr += (n - MINBPC(enc));                                       \
     break;
       LEAD_CASE(2)
@@ -1579,8 +1579,8 @@ PREFIX(getAtts)(const ENCODING *enc, const char *ptr, int attsMax,
       break;
     case BT_CR:
     case BT_LF:
-      /* This case ensures that the first attribute name is counted
-         Apart from that we could just change state on the quote. */
+
+
       if (state == inName)
         state = other;
       else if (state == inValue && nAtts < attsMax)
@@ -1595,13 +1595,13 @@ PREFIX(getAtts)(const ENCODING *enc, const char *ptr, int attsMax,
       break;
     }
   }
-  /* not reached */
+
 }
 
 static int PTRFASTCALL
 PREFIX(charRefNumber)(const ENCODING *enc, const char *ptr) {
   int result = 0;
-  /* skip &# */
+
   UNUSED_P(enc);
   ptr += 2 * MINBPC(enc);
   if (CHAR_MATCHES(enc, ptr, ASCII_x)) {
@@ -1716,11 +1716,11 @@ PREFIX(nameMatchesAscii)(const ENCODING *enc, const char *ptr1,
   UNUSED_P(enc);
   for (; *ptr2; ptr1 += MINBPC(enc), ptr2++) {
     if (end1 - ptr1 < MINBPC(enc)) {
-      /* This line cannot be executed.  The incoming data has already
-       * been tokenized once, so incomplete characters like this have
-       * already been eliminated from the input.  Retaining the
-       * paranoia check is still valuable, however.
-       */
+
+
+
+
+
       return 0; /* LCOV_EXCL_LINE */
     }
     if (! CHAR_MATCHES(enc, ptr1, *ptr2))
@@ -1736,7 +1736,7 @@ PREFIX(nameLength)(const ENCODING *enc, const char *ptr) {
     switch (BYTE_TYPE(enc, ptr)) {
 #  define LEAD_CASE(n)                                                         \
   case BT_LEAD##n:                                                             \
-    ptr += n; /* NOTE: The encoding has already been validated. */             \
+    ptr += n;               \
     break;
       LEAD_CASE(2)
       LEAD_CASE(3)
@@ -1781,7 +1781,7 @@ PREFIX(updatePosition)(const ENCODING *enc, const char *ptr, const char *end,
     switch (BYTE_TYPE(enc, ptr)) {
 #  define LEAD_CASE(n)                                                         \
   case BT_LEAD##n:                                                             \
-    ptr += n; /* NOTE: The encoding has already been validated. */             \
+    ptr += n;               \
     pos->columnNumber++;                                                       \
     break;
       LEAD_CASE(2)
@@ -1816,4 +1816,4 @@ PREFIX(updatePosition)(const ENCODING *enc, const char *ptr, const char *end,
 #  undef CHECK_NMSTRT_CASE
 #  undef CHECK_NMSTRT_CASES
 
-#endif /* XML_TOK_IMPL_C */
+#endif

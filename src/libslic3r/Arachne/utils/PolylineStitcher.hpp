@@ -21,16 +21,50 @@
 namespace Slic3r::Arachne
 {
 
+
+
+
 template<typename Paths, typename Path, typename Junction>
 class PolylineStitcher
 {
 public:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     static void stitch(const Paths& lines, Paths& result_lines, Paths& result_polygons, coord_t max_stitch_distance = scaled<coord_t>(0.1), coord_t snap_distance = scaled<coord_t>(0.01))
     {
         if (lines.empty())
             return;
 
         SparsePointGrid<PathsPointIndex<Paths>, PathsPointIndexLocator<Paths>> grid(max_stitch_distance, lines.size() * 2);
+
 
         for (size_t line_idx = 0; line_idx < lines.size(); line_idx++)
         {
@@ -89,10 +123,13 @@ public:
                                                    if (!should_close)
                                                    {
                                                        dist += scaled<coord_t>(0.01);
+
+
                                                    }
                                                    else
                                                    {
                                                        dist -= scaled<coord_t>(0.01);
+
                                                    }
                                                }
                                                else if (processed[nearby.poly_idx])
@@ -163,6 +200,7 @@ public:
                 {
                     if (go_in_reverse_direction)
                     {
+
                         chain.reverse();
                     }
 
@@ -178,6 +216,7 @@ public:
                 PathsPointIndex<Paths> ppi_here(&lines, line_idx, 0);
                 if ( ! canReverse(ppi_here))
                 {
+
                     chain.reverse();
                 }
                 result_lines.emplace_back(chain);
@@ -185,7 +224,14 @@ public:
         }
     }
 
+
+
+
     static bool canReverse(const PathsPointIndex<Paths> &polyline);
+
+
+
+
 
     static bool canConnect(const Path &a, const Path &b);
 

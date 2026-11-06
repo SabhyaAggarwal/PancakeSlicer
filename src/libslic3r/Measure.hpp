@@ -50,14 +50,20 @@ public:
     }
     void translate(const Vec3d& displacement);
     void translate(const Transform3d& tran);
+
     SurfaceFeatureType get_type() const { return m_type; }
 
+
     Vec3d get_point() const { assert(m_type == SurfaceFeatureType::Point); return m_pt1; }
+
     std::pair<Vec3d, Vec3d> get_edge() const { assert(m_type == SurfaceFeatureType::Edge); return std::make_pair(m_pt1, m_pt2); }
+
 
     std::tuple<Vec3d, double, Vec3d> get_circle() const { assert(m_type == SurfaceFeatureType::Circle); return std::make_tuple(m_pt1, m_value, m_pt2); }
 
+
     std::tuple<int, Vec3d, Vec3d> get_plane() const { assert(m_type == SurfaceFeatureType::Plane); return std::make_tuple(int(m_value), m_pt1, m_pt2); }
+
 
     std::optional<Vec3d> get_extra_point() const { assert(m_type != SurfaceFeatureType::Undef); return m_pt3; }
 
@@ -110,17 +116,24 @@ class MeasuringImpl;
 
 class Measuring {
 public:
+
     explicit Measuring(const indexed_triangle_set& its);
     ~Measuring();
 
 
+
+
     std::optional<SurfaceFeature> get_feature(size_t face_idx, const Vec3d& point, const Transform3d & world_tran,bool only_select_plane) const;
+
 
     int get_num_of_planes() const;
 
+
     const std::vector<int>& get_plane_triangle_indices(int idx) const;
 
+
     const std::vector<SurfaceFeature>& get_plane_features(unsigned int plane_id) const;
+
 
     const indexed_triangle_set& get_its() const;
 
@@ -163,6 +176,7 @@ struct MeasurementResult {
         return angle.has_value() || distance_infinite.has_value() || distance_strict.has_value() || distance_xyz.has_value();
     }
 };
+
 
 MeasurementResult get_measurement(const SurfaceFeature& a, const SurfaceFeature& b,bool deal_circle_result =false);
 bool              can_set_xyz_distance(const SurfaceFeature &a, const SurfaceFeature &b);

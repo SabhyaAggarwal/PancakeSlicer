@@ -1,4 +1,7 @@
 #pragma once
+
+
+
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
@@ -20,6 +23,7 @@ namespace Slic3r::Nonplanar {
 class HeightField;
 struct PatchDiagnostics;
 
+
 struct ReportPatch
 {
     size_t      object  = 0;
@@ -38,6 +42,7 @@ struct ReportPatch
     std::string summary;
 };
 
+
 struct ReportFallback
 {
     size_t      object = 0;
@@ -46,7 +51,9 @@ struct ReportFallback
     std::string cls;
     double      area   = 0.;
     bool        top    = true;
+
     ExPolygons  shape;
+
     std::vector<std::vector<Vec3f>> hatch;
 };
 
@@ -58,6 +65,7 @@ struct ReportObject
     CurvedTopsStats curved_tops;
     CurvedTopBudgetReport curved_budget;
     double curved_cone_tolerance = 0.05;
+
     std::string layer_source, layer_source_refused;
     size_t      top_patches   = 0;
     size_t      other_patches = 0;
@@ -71,8 +79,12 @@ struct ReportObject
     std::string oneshot_student;
     int         oneshot_polish_k = 0;
     double      oneshot_max_time_ratio_override = -1.;
+
+
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
+
+
 
     double curved_share() const {
         if (mode == "curved_tops") return curved_tops.area_fraction;
@@ -93,6 +105,8 @@ struct NonplanarReport
     size_t      machine_hits = 0;
     double      time_s        = 0.;
     double      curved_time_s = 0.;
+
+
     bool empty() const {
         if (!patches.empty() || !fallbacks.empty()) return false;
         for (const auto &object : objects)
@@ -100,18 +114,32 @@ struct NonplanarReport
                 !object.curved_budget.patches.empty() || !object.curved_budget.reason.empty())) return false;
         return true;
     }
+
     const ReportPatch *find_patch(int id, const Point &pos) const;
+
+
     std::string to_json(const std::map<size_t, std::string> &orientation = {}) const;
 };
 
+
+
+
 NonplanarReport make_report(const Print &print, const GCodeProcessorResult &result, bool planar_too = false);
+
 
 std::string patch_kind_name(int kind);
 
+
 std::string fallback_reason_text(const std::string &reason);
+
 std::string fallback_class(const std::string &reason);
+
+
 bool fallback_is_exact(const std::string &reason);
+
 bool fallback_hatched(const std::string &reason);
+
+
 
 void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const HeightField &surface);
 

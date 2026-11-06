@@ -89,7 +89,9 @@ func discover(ctx context.Context, policy *hostPolicy, resources string) ([]Disc
 	for _, d := range found {
 		list = append(list, d)
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Kind+list[i].Host+list[i].URL < list[j].Kind+list[j].Host+list[j].URL })
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Kind+list[i].Host+list[i].URL < list[j].Kind+list[j].Host+list[j].URL
+	})
 	return list, notes
 }
 
@@ -366,6 +368,7 @@ func probeLocal(ctx context.Context, add func(DiscoveredPrinter, netip.Addr), no
 			ones, _ := ipnet.Mask.Size()
 			own, _ := netip.AddrFromSlice(ipnet.IP.To4())
 			prefix := netip.PrefixFrom(own, max(ones, 24)).Masked()
+
 			for ip := prefix.Addr().Next(); prefix.Contains(ip) && ip != lastAddr(prefix); ip = ip.Next() {
 				targets = append(targets, ip)
 			}

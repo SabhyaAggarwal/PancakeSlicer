@@ -1,3 +1,8 @@
+
+
+
+
+
 import * as THREE from 'three';
 import type { Config } from '../api/types';
 import { objectMatrix } from '../plater/geometry';
@@ -6,6 +11,7 @@ import { num } from './goals';
 
 export interface MeshStats {
   volume: number; side: number; up: number; down: number; height: number;
+
   tops: number; curvedTops: number; curvedArea: number;
 }
 
@@ -22,6 +28,7 @@ export function meshStats(o: PlateObject): MeshStats {
   const vi = (t: number, k: number) => (index ? index.getX(3 * t + k) : 3 * t + k);
   const p = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), nrm = new THREE.Vector3();
+
   const weld = new Map<string, number>();
   const parent: number[] = [];
   const find = (x: number): number => { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; };
@@ -66,6 +73,7 @@ export function meshStats(o: PlateObject): MeshStats {
 
 export interface Cost { time_s: number; grams: number }
 
+
 function proxy(objects: PlateObject[], c: Config, fil: Config): Cost {
   const lh = num(c.layer_height) || 0.2;
   const lw = num(c.line_width) || num(c.inner_wall_line_width) || 0.42;
@@ -92,6 +100,7 @@ function proxy(objects: PlateObject[], c: Config, fil: Config): Cost {
   return { time_s: t, grams: (vol / 1000) * density };
 }
 
+
 let scale = { time: 1, grams: 1 };
 const realOf = (s: State): Cost | null => {
   const r = s.job.state === 'done' && !s.job.stale ? s.job.status?.record : undefined;
@@ -111,6 +120,7 @@ subscribeStore(() => {
   const t = real.time_s / p.time_s, g = real.grams / p.grams;
   scale = t > 0.3 && t < 3 && g > 0.3 && g < 3 ? { time: t, grams: g } : { time: 1, grams: 1 };
 });
+
 
 export function estimate(s: State, patch: Partial<State>): { now: Cost; next: Cost } | null {
   const objects = s.objects.filter((o) => !o.project);

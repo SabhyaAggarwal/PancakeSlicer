@@ -1,10 +1,16 @@
+
+
+
+
 import type * as THREE from 'three';
 import { T3 } from '../three-runtime';
 
 const EPSILON = 1e-4;
+
 const LAYER_HEIGHT_CHANGE_STEP = 0.04;
 
 export interface SlicingParams { first: number; layer: number; min: number; max: number; height: number }
+
 
 export function slicingParams(layer: number, first: number, minLayer: number, maxLayer: number, nozzle: number, height: number): SlicingParams {
   const min = Math.min(minLayer === 0 ? 0.07 : Math.max(0.01, minLayer), layer);
@@ -12,9 +18,13 @@ export function slicingParams(layer: number, first: number, minLayer: number, ma
   return { first, layer, min, max, height };
 }
 
+
 export const baseProfile = (p: SlicingParams) => [0, p.first, p.first, p.first, p.height, p.layer];
 
+
+
 interface Face { lo: number; hi: number; cos: number; sin: number }
+
 
 function faces(positions: ArrayLike<number>, index: ArrayLike<number> | null, matrix: THREE.Matrix4): Face[] {
   const out: Face[] = [];
@@ -36,6 +46,7 @@ function faces(positions: ArrayLike<number>, index: ArrayLike<number> | null, ma
 }
 
 const slopeHeight = (f: Face, dev: number) => Math.min(dev / 0.184, f.cos > 1e-5 ? 1.44 * dev * Math.sqrt(f.sin / f.cos) : Infinity);
+
 
 export function adaptiveProfile(p: SlicingParams, positions: ArrayLike<number>, index: ArrayLike<number> | null, matrix: THREE.Matrix4, quality: number): number[] {
   const fs = faces(positions, index, matrix);
@@ -82,6 +93,9 @@ export function adaptiveProfile(p: SlicingParams, positions: ArrayLike<number>, 
   return out;
 }
 
+
+
+
 export function smoothProfile(profile: number[], p: SlicingParams, radius: number, keepMin: boolean): number[] {
   const r = Math.max(1, Math.round(radius));
   const sigma = 0.3 * (r - 1) + 0.8, two = 2 * sigma * sigma, norm = 1 / Math.sqrt(Math.PI * two);
@@ -112,7 +126,10 @@ export function smoothProfile(profile: number[], p: SlicingParams, radius: numbe
   return out;
 }
 
+
+
 export type EditAction = 'increase' | 'decrease' | 'reduce' | 'smooth';
+
 
 export function adjustProfile(profile: number[], p: SlicingParams, z: number, delta: number, band: number, action: EditAction): number[] {
   const lo0 = p.first, hi0 = p.height;
@@ -180,11 +197,17 @@ export function adjustProfile(profile: number[], p: SlicingParams, z: number, de
   return out;
 }
 
+
 export function heightAt(profile: number[], z: number): number {
   for (let i = 0; i + 2 < profile.length; i += 2)
     if (profile[i + 2] > z) return profile[i + 1] + (profile[i + 3] - profile[i + 1]) * (z - profile[i]) / (profile[i + 2] - profile[i]);
   return profile[profile.length - 1];
 }
+
+
+
+
+
 
 export function fitProfile(profile: number[], height: number, first: number): number[] {
   const top = profile[profile.length - 2];

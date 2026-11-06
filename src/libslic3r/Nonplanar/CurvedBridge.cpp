@@ -42,13 +42,22 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 constexpr double SagRatio = 1. / 80.;
+
 constexpr double MinSpan = 4.;
+
 constexpr double MinWidth = 1.;
+
 constexpr double AnchorReach = 1.5;
+
 constexpr double MinSag = 0.05;
+
 constexpr double FloorGap = 0.05;
+
 constexpr int MaxStack = 16;
+
+
 
 double unit_catenary(double ratio, double t)
 {
@@ -61,6 +70,8 @@ double unit_catenary(double ratio, double t)
     }
     return a * (std::cosh(0.5 / a) - std::cosh((t - 0.5) / a));
 }
+
+
 
 void take_paths(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &bbox, ExtrusionPaths &out)
 {
@@ -107,8 +118,12 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             region_id = int(r);
             break;
         }
+
     if (region_id < 0 || layers.size() < 3 || object.config().enable_support.value)
         return;
+
+
+
     if (field_layers(object))
         return;
     if (result.planar_exclusion.size() != layers.size())
@@ -120,7 +135,10 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
     const double       nozzle = region.flow(object, frSolidInfill, object.config().layer_height.value).nozzle_diameter();
     const bool         flow_mod = region.config().nonplanar_flow_mod.value;
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
+
+
     const double max_sag = layer_changes_filament(object) ? head_band_height(head) : std::numeric_limits<double>::infinity();
+
     auto one_filament = [&object](size_t r) {
         const PrintRegionConfig &cfg = object.printing_region(r).config();
         const int                id  = cfg.outer_wall_filament_id.value;
@@ -136,9 +154,11 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
         auto it = slice_masks.find(l);
         return it != slice_masks.end() ? it->second : slice_masks.emplace(l, rasterize(layers[l]->lslices, grid)).first->second;
     };
+
     HeightField material = grid;
     material.data().assign(n_nodes, -std::numeric_limits<float>::infinity());
     size_t swept = 0;
+
     std::vector<Mask> taken(layers.size());
     const double first_top = layers.front()->print_z;
 
@@ -150,7 +170,10 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 if (m[n])
                     material.data()[n] = std::max(material.data()[n], float(layers[swept]->print_z));
         }
+
+
         slice_masks.erase(slice_masks.begin(), slice_masks.lower_bound(i - 1));
+
         ExPolygons     bridge_area;
         ExtrusionPaths bridge_roads;
         for (LayerRegion *layerm : layers[i]->regions()) {
@@ -187,6 +210,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 (!taken[i].empty() && std::any_of(nodes.begin(), nodes.end(), [&](int n) { return taken[i][size_t(n)] != 0; })))
                 continue;
 
+
             double c2 = 0., s2 = 0., bead = 0.;
             for (const ExtrusionPath &road : bridge_roads) {
                 const Points &pts = road.polyline.to_polyline().points;
@@ -202,6 +226,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             }
             if (c2 == 0. && s2 == 0.)
                 continue;
+
+
             const ExPolygons inner = offset_ex(a, -float(scale_(MinWidth)));
             const bool       cut   = std::any_of(bridge_roads.begin(), bridge_roads.end(), [&inner](const ExtrusionPath &road) {
                 const Polyline pl = road.polyline.to_polyline();
@@ -212,6 +238,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 continue;
             const double theta = 0.5 * std::atan2(s2, c2);
             const Vec2d  dir(std::cos(theta), std::sin(theta));
+
+
 
             auto node_at = [&grid](const Vec2d &p) {
                 const Vec2d u = (p - grid.origin()) / grid.pitch();
@@ -248,6 +276,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 if (!march(p, dir, d1) || !march(p, -dir, d2))
                     continue;
                 ++anchored;
+
                 if (support[size_t(n)])
                     continue;
                 const double span = d1 + d2;
@@ -258,8 +287,11 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 s_max    = std::max(s_max, double(s));
                 span_max = std::max(span_max, span);
             }
+
             if (2 * anchored < nodes.size() || s_max < MinSag)
                 continue;
+
+
 
             int n_avail = 0;
             for (; n_avail < MaxStack && i + size_t(n_avail) < layers.size(); ++n_avail) {
@@ -275,6 +307,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             if (n_avail < 2)
                 continue;
             const int n_flat = std::clamp(int(std::ceil(s_max / dmax - 1e-9)), 1, n_avail - 1);
+
+
             bool owned = false;
             for (int j = 0; j <= n_flat && !owned; ++j)
                 owned = area(intersection_ex(a, result.planar_exclusion[i + size_t(j)])) > 0.05 * area(a);
@@ -282,6 +316,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 continue;
             double    k      = std::min({ 1., n_flat * dmax / s_max, max_sag / s_max });
             auto      fall   = [n_flat](int j) { return 1. - double(j) / n_flat; };
+
+
 
             const BoundingBox bb = get_extents(a);
             const int   pad = 2;
@@ -326,6 +362,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             if (k * s_max < MinSag)
                 continue;
 
+
+
             bool mixed = false;
             for (int j = 0; j <= n_flat && !mixed; ++j)
                 for (const LayerRegion *layerm : layers[i + size_t(j)]->regions())
@@ -337,6 +375,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             for (int j = 0; j <= n_flat; ++j) {
                 const size_t l      = i + size_t(j);
                 const double host_z = layers[l]->print_z;
+
+
                 HeightField surface = like;
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix)

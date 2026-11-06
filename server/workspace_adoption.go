@@ -88,6 +88,7 @@ func (st *workspaceStore) adoptionRoutes(mux *http.ServeMux) {
 	})
 }
 func (st *workspaceStore) adopt(w http.ResponseWriter, r *http.Request) {
+
 	r.Body = http.MaxBytesReader(w, r.Body, 2<<30)
 	reader, err := r.MultipartReader()
 	if err != nil {
@@ -362,6 +363,7 @@ func (st *workspaceStore) adopt(w http.ResponseWriter, r *http.Request) {
 				d.Values[kind] = workspaceValue{1, raw}
 			}
 		}
+
 		if err := os.MkdirAll(filepath.Join(st.root, "assets"), 0700); err != nil {
 			workspaceFailure(w, 507, "asset_write_failed", "Asset storage unavailable.", "free_storage_and_retry", 0)
 			return

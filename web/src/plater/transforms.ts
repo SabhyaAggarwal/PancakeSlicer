@@ -1,12 +1,18 @@
+
+
+
+
 import * as THREE from 'three';
 import { ConvexHull } from 'three/examples/jsm/math/ConvexHull.js';
 import type { Instance, PlateObject } from '../state/store';
 
 const DEG = Math.PI / 180;
 
+
 function rotation(o: PlateObject, inst: Instance): THREE.Matrix4 {
   return new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(o.rotX * DEG, o.rotY * DEG, inst.rotZ * DEG, 'ZYX'));
 }
+
 
 export function linearOf(o: PlateObject, inst: Instance): THREE.Matrix4 {
   return rotation(o, inst).multiply(new THREE.Matrix4().makeScale(...o.scale));
@@ -16,6 +22,11 @@ const wrap = (deg: number) => {
   const d = ((deg + 180) % 360 + 360) % 360 - 180;
   return Math.abs(d) < 1e-9 ? 0 : d;
 };
+
+
+
+
+
 
 function withRotation(o: PlateObject, instId: number, r: THREE.Matrix4, scale = o.scale): PlateObject {
   const sel = o.instances.find((i) => i.id === instId) ?? o.instances[0];
@@ -27,10 +38,15 @@ function withRotation(o: PlateObject, instId: number, r: THREE.Matrix4, scale = 
   };
 }
 
+
 export function rotateWorld(o: PlateObject, instId: number, q: THREE.Matrix4): PlateObject {
   const sel = o.instances.find((i) => i.id === instId) ?? o.instances[0];
   return withRotation(o, instId, q.clone().multiply(rotation(o, sel)));
 }
+
+
+
+
 
 export function mirror(o: PlateObject, instId: number, axis: 0 | 1 | 2): PlateObject {
   const sel = o.instances.find((i) => i.id === instId) ?? o.instances[0];
@@ -39,12 +55,19 @@ export function mirror(o: PlateObject, instId: number, axis: 0 | 1 | 2): PlateOb
   return withRotation(o, instId, m.clone().multiply(rotation(o, sel)).multiply(m), scale);
 }
 
+
+
 export interface LayOnFacePlane {
+
   normal: THREE.Vector3;
+
   area: number;
+
   outline: THREE.Vector3[];
+
   down: number;
 }
+
 
 function hull2(points: THREE.Vector3[]): THREE.Vector3[] {
   const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
@@ -62,6 +85,11 @@ function hull2(points: THREE.Vector3[]): THREE.Vector3[] {
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 }
 
+
+
+
+
+
 export function layOnFacePlanes(points: ArrayLike<number>, linear: THREE.Matrix4): LayOnFacePlane[] {
   const vs: THREE.Vector3[] = [];
   for (let i = 0; i < points.length; i += 3) vs.push(new THREE.Vector3(points[i], points[i + 1], points[i + 2]));
@@ -73,6 +101,7 @@ export function layOnFacePlanes(points: ArrayLike<number>, linear: THREE.Matrix4
   const minimalArea = 5, minimalSide = 1, angleThreshold = Math.cos(1 * DEG);
   for (const start of faces) {
     if (visited.has(start)) continue;
+
     const n0 = start.normal.clone();
     const pts: THREE.Vector3[] = [];
     const queue = [start];
@@ -92,6 +121,7 @@ export function layOnFacePlanes(points: ArrayLike<number>, linear: THREE.Matrix4
     }
     const world = pts.map((p) => p.clone().applyMatrix4(linear));
     if (world.length === 3 && (world[0].distanceTo(world[1]) < minimalSide || world[0].distanceTo(world[2]) < minimalSide || world[1].distanceTo(world[2]) < minimalSide)) continue;
+
     const tn = n0.clone().applyMatrix3(normalMatrix).normalize();
     const toPlane = new THREE.Quaternion().setFromUnitVectors(tn, new THREE.Vector3(0, 0, 1));
     const flat = hull2(world.map((p) => p.clone().applyQuaternion(toPlane)));
@@ -114,6 +144,7 @@ export function layOnFacePlanes(points: ArrayLike<number>, linear: THREE.Matrix4
   return planes.sort((a, b) => b.area - a.area);
 }
 
+
 export function largestPlane(planes: LayOnFacePlane[]): number {
   let best = -1;
   for (let i = 0; i < planes.length && planes[i].area >= planes[0].area * (1 - 1e-3); i++)
@@ -121,9 +152,14 @@ export function largestPlane(planes: LayOnFacePlane[]): number {
   return best;
 }
 
+
+
+
+
 export function layOnFace(o: PlateObject, instId: number, normal: THREE.Vector3): PlateObject {
   const sel = o.instances.find((i) => i.id === instId) ?? o.instances[0];
   const tn = normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(linearOf(o, sel))).normalize();
+
   const q = tn.z > 1 - 1e-12 ? new THREE.Matrix4().makeRotationX(Math.PI)
     : new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(tn, new THREE.Vector3(0, 0, -1)));
   const next = rotateWorld(o, instId, q);

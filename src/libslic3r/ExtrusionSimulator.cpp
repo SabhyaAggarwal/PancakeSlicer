@@ -1,3 +1,8 @@
+
+
+
+
+
 #include <boost/geometry/core/cs.hpp>
 #include <algorithm>
 #include <boost/multi_array/base.hpp>
@@ -28,17 +33,23 @@
 
 namespace Slic3r {
 
+
+
 template<typename T>
 struct V2
 {
 	typedef boost::geometry::model::d2::point_xy<T> Type;
 };
 
+
+
 template<typename T>
 struct V3
 {
 	typedef boost::geometry::model::point<T, 3, boost::geometry::cs::cartesian> Type;
 };
+
+
 
 template<typename T>
 struct V4
@@ -50,7 +61,9 @@ typedef V2<int   >::Type V2i;
 typedef V2<float >::Type V2f;
 typedef V2<double>::Type V2d;
 
+
 typedef V3<unsigned char>::Type V3uc;
+
 typedef V4<unsigned char>::Type V4uc;
 
 typedef boost::geometry::model::box<V2i> B2i;
@@ -64,7 +77,7 @@ typedef boost::multi_array<double		, 2> 	 A2d;
 
 template<typename T>
 inline void operator+=(
-	      boost::geometry::model::d2::point_xy<T> &v1, 
+	      boost::geometry::model::d2::point_xy<T> &v1,
 	const boost::geometry::model::d2::point_xy<T> &v2)
 {
 	boost::geometry::add_point(v1, v2);
@@ -72,7 +85,7 @@ inline void operator+=(
 
 template<typename T>
 inline void operator-=(
-	      boost::geometry::model::d2::point_xy<T> &v1, 
+	      boost::geometry::model::d2::point_xy<T> &v1,
 	const boost::geometry::model::d2::point_xy<T> &v2)
 {
 	boost::geometry::subtract_point(v1, v2);
@@ -153,17 +166,19 @@ inline T dot(const boost::geometry::model::d2::point_xy<T> &v)
 
 template <typename T>
 inline T cross(
-	const boost::geometry::model::d2::point_xy<T> &v1, 
+	const boost::geometry::model::d2::point_xy<T> &v1,
 	const boost::geometry::model::d2::point_xy<T> &v2)
 {
 	return v1.x() * v2.y() - v2.x() * v1.y();
 }
+
 
 template<typename T>
 inline T l2(const boost::geometry::model::d2::point_xy<T> &v)
 {
 	return std::sqrt(dot(v));
 }
+
 
 template<typename T>
 inline T mag(const boost::geometry::model::d2::point_xy<T> &v)
@@ -188,6 +203,8 @@ inline T dist2_to_line(
 	return dot(vx);
 }
 
+
+
 template<typename T>
 int line_circle_intersection(
 	const boost::geometry::model::d2::point_xy<T>	&p0,
@@ -205,14 +222,17 @@ int line_circle_intersection(
 	T   d = b * b - T(4.) * a * c;
 
 	if (d < T(0))
+
 		return 0;
 
 	int n = 0;
 	if (d == T(0)) {
+
 		T t = - b / (T(2.) * a);
 		if (t >= T(0.) && t <= T(1.))
 			intersection[n ++] = p0 + t * v;
 	} else {
+
 		d = sqrt(d);
 		T t = (- b - d) / (T(2.) * a);
 		if (t >= T(0.) && t <= T(1.))
@@ -224,9 +244,13 @@ int line_circle_intersection(
 	return n;
 }
 
+
+
+
+
 template<typename T>
 int clip_rect_by_AABB(
-	boost::geometry::model::d2::point_xy<T>			   					         rect[8], 
+	boost::geometry::model::d2::point_xy<T>			   					         rect[8],
 	const boost::geometry::model::box<boost::geometry::model::d2::point_xy<T> > &aabb)
 {
 	typedef typename V2<T>::Type V2T;
@@ -235,6 +259,7 @@ int clip_rect_by_AABB(
 	int  nout = 0;
 	V2T *in   = rect;
 	V2T *out  = result;
+
 	{
 		const V2T *S    = in + nin - 1;
 		T          left = aabb.min_corner().x();
@@ -244,13 +269,16 @@ int clip_rect_by_AABB(
 				out[nout++] = E;
 			}
 			else if (E.x() > left) {
+
 				if (S->x() < left) {
+
 					T t = (left - S->x()) / (E.x() - S->x());
 					out[nout++] = V2T(left, S->y() + t * (E.y() - S->y()));
 				}
 				out[nout++] = E;
 			}
 			else if (S->x() > left) {
+
 				T t = (left - S->x()) / (E.x() - S->x());
 				out[nout++] = V2T(left, S->y() + t * (E.y() - S->y()));
 			}
@@ -258,6 +286,7 @@ int clip_rect_by_AABB(
 		}
 		assert(nout <= 8);
 	}
+
 	{
 		std::swap(in, out);
 		nin = nout;
@@ -270,13 +299,16 @@ int clip_rect_by_AABB(
 				out[nout++] = E;
 			}
 			else if (E.y() > bottom) {
+
 				if (S->y() < bottom) {
+
 					T t = (bottom - S->y()) / (E.y() - S->y());
 					out[nout++] = V2T(S->x() + t * (E.x() - S->x()), bottom);
 				}
 				out[nout++] = E;
 			}
 			else if (S->y() > bottom) {
+
 				T t = (bottom - S->y()) / (E.y() - S->y());
 				out[nout++] = V2T(S->x() + t * (E.x() - S->x()), bottom);
 			}
@@ -284,6 +316,7 @@ int clip_rect_by_AABB(
 		}
 		assert(nout <= 8);
 	}
+
 	{
 		std::swap(in, out);
 		nin = nout;
@@ -296,13 +329,16 @@ int clip_rect_by_AABB(
 				out[nout++] = E;
 			}
 			else if (E.x() < right) {
+
 				if (S->x() > right) {
+
 					T t = (right - S->x()) / (E.x() - S->x());
 					out[nout++] = V2T(right, S->y() + t * (E.y() - S->y()));
 				}
 				out[nout++] = E;
 			}
 			else if (S->x() < right) {
+
 				T t = (right - S->x()) / (E.x() - S->x());
 				out[nout++] = V2T(right, S->y() + t * (E.y() - S->y()));
 			}
@@ -310,6 +346,7 @@ int clip_rect_by_AABB(
 		}
 		assert(nout <= 8);
 	}
+
 	{
 		std::swap(in, out);
 		nin = nout;
@@ -322,13 +359,16 @@ int clip_rect_by_AABB(
 				out[nout++] = E;
 			}
 			else if (E.y() < top) {
+
 				if (S->y() > top) {
+
 					T t = (top - S->y()) / (E.y() - S->y());
 					out[nout++] = V2T(S->x() + t * (E.x() - S->x()), top);
 				}
 				out[nout++] = E;
 			}
 			else if (S->y() < top) {
+
 				T t = (top - S->y()) / (E.y() - S->y());
 				out[nout++] = V2T(S->x() + t * (E.x() - S->x()), top);
 			}
@@ -340,6 +380,9 @@ int clip_rect_by_AABB(
 	assert(nout <= 8);
 	return nout;
 }
+
+
+
 
 template<typename T>
 int clip_circle_by_AABB(
@@ -365,13 +408,16 @@ int clip_circle_by_AABB(
 	bits_corners >>= 1;
 
 	if (bits_corners == 0) {
+
 		memcpy(result, rect, sizeof(rect));
 		memset(result_arc, true, 4);
 		return 4;
 	}
 
 	if (bits_corners == 0x0f)
+
 		return 0;
+
 
 	int n = 0;
 	for (int i = 0; i < 4; ++ i) {
@@ -397,6 +443,81 @@ int clip_circle_by_AABB(
 	}
 	return n;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 template<typename T>
 inline T polyArea(const boost::geometry::model::d2::point_xy<T> *poly, int n)
@@ -424,13 +545,17 @@ void gcode_paint_layer(
 {
 	int nc = acc.shape()[1];
 	int nr = acc.shape()[0];
+
 	for (size_t iLine = 1; iLine != polyline.size(); ++iLine) {
 		const V2f &p1 = polyline[iLine - 1];
 		const V2f &p2 = polyline[iLine];
+
 		const V2f  dir = p2 - p1;
 		V2f vperp(- dir.y(), dir.x());
 		vperp = vperp * 0.5f * width / l2(vperp);
+
 		V2f rect[4] = { p1 + vperp, p1 - vperp, p2 - vperp, p2 + vperp };
+
 		B2f bboxLine(rect[0], rect[0]);
 		boost::geometry::expand(bboxLine, rect[1]);
 		boost::geometry::expand(bboxLine, rect[2]);
@@ -440,6 +565,7 @@ void gcode_paint_layer(
 				std::clamp(int(floor(bboxLine.min_corner().y())), 0, nr-1)),
 			V2i(std::clamp(int(ceil(bboxLine.max_corner().x())), 0, nc-1),
 				std::clamp(int(ceil(bboxLine.max_corner().y())), 0, nr-1)));
+
 #ifdef _DEBUG
 		float area = polyArea(rect, 4);
 		assert(area > 0.f);
@@ -466,13 +592,17 @@ void gcode_paint_bitmap(
 	int nc = bitmap.shape()[1];
 	int nr = bitmap.shape()[0];
 	float r2 = width * width * 0.25f;
+
 	for (size_t iLine = 1; iLine != polyline.size(); ++iLine) {
 		const V2f &p1 = polyline[iLine - 1];
 		const V2f &p2 = polyline[iLine];
+
 		V2f dir = p2 - p1;
 		dir = dir * 0.5f * width / l2(dir);
 		V2f vperp(- dir.y(), dir.x());
+
 		V2f rect[4] = { (p1 + vperp - dir) * scale, (p1 - vperp - dir) * scale, (p2 - vperp + dir) * scale, (p2 + vperp + dir) * scale };
+
 		B2f bboxLine(rect[0], rect[0]);
 		boost::geometry::expand(bboxLine, rect[1]);
 		boost::geometry::expand(bboxLine, rect[2]);
@@ -482,6 +612,7 @@ void gcode_paint_bitmap(
 				std::clamp(int(floor(bboxLine.min_corner().y())), 0, nr-1)),
 			V2i(std::clamp(int(ceil(bboxLine.max_corner().x())), 0, nc-1),
 				std::clamp(int(ceil(bboxLine.max_corner().y())), 0, nr-1)));
+
 		for (int j = bboxLinei.min_corner().y(); j + 1 < bboxLinei.max_corner().y(); ++ j) {
 			for (int i = bboxLinei.min_corner().x(); i + 1 < bboxLinei.max_corner().x(); ++i) {
 				float d2 = dist2_to_line(p1, p2, V2f(float(i) + 0.5f, float(j) + 0.5f) / scale);
@@ -494,10 +625,15 @@ void gcode_paint_bitmap(
 
 struct Cell
 {
+
 	V2i   idx;
+
 	float volume;
+
 	float area;
+
 	float fraction_covered;
+
 	float excess_height;
 
 	bool operator<(const Cell &c2) const {
@@ -516,11 +652,12 @@ typedef std::vector<ExtrusionPoint> ExtrusionPoints;
 void gcode_spread_points(
 	A2f 					&acc,
 	const A2f				&mask,
-	const ExtrusionPoints   &points, 
+	const ExtrusionPoints   &points,
 	ExtrusionSimulationType simulationType)
 {
 	int nc = acc.shape()[1];
 	int nr = acc.shape()[0];
+
 
 	float rmax = 0.f;
 	for (ExtrusionPoints::const_iterator it = points.begin(); it != points.end(); ++ it)
@@ -534,6 +671,7 @@ void gcode_spread_points(
 	for (ExtrusionPoints::const_iterator it = points.begin(); it != points.end(); ++ it) {
 		const V2f  &center = it->center;
 		const float radius = it->radius;
+
 		const float height_target = it->height;
 		B2f bbox(center - V2f(radius, radius), center + V2f(radius, radius));
 		B2i bboxi(
@@ -541,13 +679,41 @@ void gcode_spread_points(
 				std::clamp(int(floor(bbox.min_corner().y())), 0, nr-1)),
 			V2i(std::clamp(int(ceil(bbox.max_corner().x())), 0, nc-1),
 				std::clamp(int(ceil(bbox.max_corner().y())), 0, nr-1)));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 		float area_total     = 0;
 		float volume_total   = 0;
 		float volume_excess  = 0;
 		float volume_deficit = 0;
 		size_t n_cells = 0;
-		float area_circle_total = 0; 
+		float area_circle_total = 0;
 #if 0
+
 		for (int j = row_first; j < row_last; ++ j) {
 			const std::pair<float, float> &span1 = spans[j];
 			const std::pair<float, float> &span2 = spans[j+1];
@@ -619,18 +785,28 @@ void gcode_spread_points(
 			}
 		}
 #endif
+
+
+
 		float volume_full = float(M_PI) * sqr(radius) * height_target;
+
+
+
 		if (simulationType == ExtrusionSimulationSpreadFull || volume_total <= volume_full) {
+
 			float height_avg = volume_total / area_total;
 			for (size_t i = 0; i < n_cells; ++ i) {
 				const Cell &cell = cells[i];
 				acc[cell.idx.y()][cell.idx.x()] = (1.f - cell.fraction_covered) * cell.volume + cell.fraction_covered * cell.area * height_avg;
 			}
 		} else if (simulationType == ExtrusionSimulationSpreadExcess) {
+
+
 			float volume_borrowed_total = 0.;
 			for (size_t i = 0; i < n_cells;) {
 				Cell &cell = cells[i];
 				if (cell.excess_height <= 0) {
+
 					float volume_borrowed = - cell.excess_height * cell.area * cell.fraction_covered;
 					assert(volume_borrowed >= 0.f);
 					acc[cell.idx.y()][cell.idx.x()] = cell.volume + volume_borrowed;
@@ -639,12 +815,16 @@ void gcode_spread_points(
 				} else
 					++ i;
 			}
+
 			std::sort(cells.begin(), cells.begin() + n_cells);
+
+
 			areas_sum[n_cells-1] = cells[n_cells-1].area * cells[n_cells-1].fraction_covered;
 			for (int i = n_cells - 2; i >= 0; -- i) {
 				const Cell &cell = cells[i];
 				areas_sum[i] = areas_sum[i + 1] + cell.area * cell.fraction_covered;
 			}
+
 			float volume_current = 0.f;
 			float excess_height_prev = 0.f;
 			size_t i_top = n_cells;
@@ -657,12 +837,15 @@ void gcode_spread_points(
 					break;
 				}
 			}
+
+
 			for (size_t i = 0; i < i_top; ++ i) {
 				const Cell &cell = cells[i];
 				float volume_removed = cell.excess_height * cell.area * cell.fraction_covered;
 				acc[cell.idx.y()][cell.idx.x()] = cell.volume - volume_removed;
 				volume_borrowed_total -= volume_removed;
 			}
+
 			if (i_top < n_cells) {
 				float height_diff = volume_borrowed_total / areas_sum[i_top];
 				for (size_t i = i_top; i < n_cells; ++ i) {
@@ -701,6 +884,7 @@ public:
 	A2uc						bitmap;
 	unsigned int 				bitmap_oversampled;
 	ExtrusionPoints 			extrusion_points;
+
 	std::vector<boost::geometry::model::point<unsigned char, 3, boost::geometry::cs::cartesian> > color_gradient;
 };
 
@@ -719,27 +903,39 @@ ExtrusionSimulator::~ExtrusionSimulator()
 
 void ExtrusionSimulator::set_image_size(const Point &image_size)
 {
+
 	if (this->image_size.x() == image_size.x() &&
 		this->image_size.y() == image_size.y())
 		return;
 
+
 	this->image_size = image_size;
+
+
 	pimpl->image_data.assign(image_size.x() * image_size.y() * 4, 0);
+
+
+
 	for (size_t r = 0; r < size_t(image_size.y()); ++ r) {
 		for (size_t c = 0; c < size_t(image_size.x()); c += 2) {
+
 			pimpl->image_data[r * image_size.x() * 4 + c * 4] = 255;
+
 			pimpl->image_data[r * image_size.x() * 4 + c * 4 + 3] = 255;
 		}
 	}
+
 }
 
 void ExtrusionSimulator::set_viewport(const BoundingBox &viewport)
 {
+
 	if (this->viewport != viewport) {
 		this->viewport = viewport;
 		Point sz = viewport.size();
 		pimpl->accumulator.resize(boost::extents[sz.y()][sz.x()]);
 		pimpl->bitmap.resize(boost::extents[sz.y()*pimpl->bitmap_oversampled][sz.x()*pimpl->bitmap_oversampled]);
+
 	}
 }
 
@@ -748,28 +944,37 @@ void ExtrusionSimulator::set_bounding_box(const BoundingBox &bbox)
 	this->bbox = bbox;
 }
 
-const void* ExtrusionSimulator::image_ptr() const 
+const void* ExtrusionSimulator::image_ptr() const
 {
 	return (pimpl->image_data.empty()) ? NULL : (void*)&pimpl->image_data.front();
 }
 
 void ExtrusionSimulator::reset_accumulator()
 {
+
 	Point sz = viewport.size();
+
 	memset(&pimpl->accumulator[0][0], 0, sizeof(float) * sz.x() * sz.y());
 	memset(&pimpl->bitmap[0][0], 0, sz.x() * sz.y() * pimpl->bitmap_oversampled * pimpl->bitmap_oversampled);
 	pimpl->extrusion_points.clear();
+
 }
 
 void ExtrusionSimulator::extrude_to_accumulator(const ExtrusionPath &path, const Point &shift, ExtrusionSimulationType simulationType)
 {
+
+
 	std::vector<V2f> polyline;
 	polyline.reserve(path.polyline.points.size());
 	float scalex  = float(viewport.size().x()) / float(bbox.size().x());
 	float scaley  = float(viewport.size().y()) / float(bbox.size().y());
 	float w = scale_(path.width) * scalex;
+
 	w = scale_(path.mm3_per_mm / path.height) * scalex;
+
+
 	for (Points3::const_iterator it = path.polyline.points.begin(); it != path.polyline.points.end(); ++ it) {
+
 		ExtrusionPoint ept;
 		ept.center = V2f(float((*it)(0)+shift.x()-bbox.min.x()) * scalex, float((*it)(1)+shift.y()-bbox.min.y()) * scaley);
 		ept.radius = w/2.f;
@@ -777,17 +982,24 @@ void ExtrusionSimulator::extrude_to_accumulator(const ExtrusionPath &path, const
 		polyline.push_back(ept.center);
 		pimpl->extrusion_points.push_back(ept);
 	}
+
+
 	gcode_paint_layer(polyline, w, 0.5f, pimpl->accumulator);
 
- 	if (simulationType > ExtrusionSimulationDontSpread)
+    if (simulationType > ExtrusionSimulationDontSpread)
 		gcode_paint_bitmap(polyline, w, pimpl->bitmap, pimpl->bitmap_oversampled);
+
+
+
 }
 
 void ExtrusionSimulator::evaluate_accumulator(ExtrusionSimulationType simulationType)
 {
+
 	Point sz = viewport.size();
 
 	if (simulationType > ExtrusionSimulationDontSpread) {
+
 		A2f mask(boost::extents[sz.y()][sz.x()]);
 		for (int r = 0; r < sz.y(); ++r) {
 			for (int c = 0; c < sz.x(); ++c) {
@@ -803,8 +1015,10 @@ void ExtrusionSimulator::evaluate_accumulator(ExtrusionSimulationType simulation
 			}
 		}
 
+
 		gcode_spread_points(pimpl->accumulator, mask, pimpl->extrusion_points, simulationType);
 	}
+
 
 	for (int r = 0; r < sz.y(); ++r) {
 		unsigned char *ptr = &pimpl->image_data[(image_size.x() * (viewport.min.y() + r) + viewport.min.x()) * 4];

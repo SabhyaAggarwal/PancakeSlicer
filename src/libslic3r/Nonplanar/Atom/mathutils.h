@@ -55,11 +55,11 @@ struct Mat3 {
     Mat3(float a0, float a1, float a2, float b0, float b1, float b2, float c0, float c1, float c2) { rows[0] = Vec3(a0, a1, a2); rows[1] = Vec3(b0, b1, b2); rows[2] = Vec3(c0, c1, c2); }
 };
 
-inline Vec3 operator*(const Mat3 &m, const Vec3& v) { 
-    return Vec3(m.rows[0].dot(v), m.rows[1].dot(v), m.rows[2].dot(v)); 
+inline Vec3 operator*(const Mat3 &m, const Vec3& v) {
+    return Vec3(m.rows[0].dot(v), m.rows[1].dot(v), m.rows[2].dot(v));
 }
 
-inline Vec3 operator*(const Vec3& v, const Mat3 &m) { 
+inline Vec3 operator*(const Vec3& v, const Mat3 &m) {
     return m.rows[0]*v.x + m.rows[1]*v.y + m.rows[2]*v.z;
 }
 
@@ -126,7 +126,7 @@ inline Vec3 triangleNormal(const Vec3 &a, const Vec3 &b, const Vec3 &c) {
     return (a-c).cross(b-c).normalize();
 }
 
-inline float cellSizeFromLayerHeight(float h) { 
+inline float cellSizeFromLayerHeight(float h) {
     return h*0.375f;
 }
 

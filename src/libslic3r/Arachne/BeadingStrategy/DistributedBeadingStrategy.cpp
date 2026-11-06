@@ -53,6 +53,8 @@ DistributedBeadingStrategy::Beading DistributedBeadingStrategy::compute(const co
             const coord_t splitup_left_over_weight = to_be_divided * weight_fraction;
             const coord_t width                    = (bead_idx == bead_count - 1) ? thickness - accumulated_width : optimal_width + splitup_left_over_weight;
 
+
+
             if (bead_idx == 0)
                 ret.toolpath_locations.emplace_back(width / 2);
             else

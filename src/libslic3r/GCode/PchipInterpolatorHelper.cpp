@@ -1,3 +1,8 @@
+
+
+
+
+
 #include "PchipInterpolatorHelper.hpp"
 #include <cstddef>
 #include <iterator>
@@ -7,9 +12,20 @@
 #include <vector>
 #include <utility>
 
+
+
+
+
+
 PchipInterpolatorHelper::PchipInterpolatorHelper(const std::vector<double>& x, const std::vector<double>& y) {
     setData(x, y);
 }
+
+
+
+
+
+
 
 void PchipInterpolatorHelper::setData(const std::vector<double>& x, const std::vector<double>& y) {
     if (x.size() != y.size() || x.size() < 2) {
@@ -20,6 +36,9 @@ void PchipInterpolatorHelper::setData(const std::vector<double>& x, const std::v
     sortData();
     computePCHIP();
 }
+
+
+
 
 void PchipInterpolatorHelper::sortData() {
     std::vector<std::pair<double, double>> data;
@@ -33,6 +52,9 @@ void PchipInterpolatorHelper::sortData() {
         y_[i] = data[i].second;
     }
 }
+
+
+
 
 void PchipInterpolatorHelper::computePCHIP() {
     size_t n = x_.size() - 1;
@@ -57,6 +79,9 @@ void PchipInterpolatorHelper::computePCHIP() {
         }
     }
 }
+
+
+
 
 double PchipInterpolatorHelper::interpolate(double xi) const {
     if (xi <= x_.front()) return y_.front();

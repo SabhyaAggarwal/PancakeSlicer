@@ -1,5 +1,9 @@
+
+
+
 import { Vector3 } from 'three';
 import { ConvexHull } from 'three/examples/jsm/math/ConvexHull.js';
+
 
 export function parseStl(buf: ArrayBuffer): Float32Array {
   const dv = new DataView(buf);
@@ -19,6 +23,7 @@ export function parseStl(buf: ArrayBuffer): Float32Array {
   if (!out.length) throw new Error('no triangles in the STL');
   return new Float32Array(out);
 }
+
 
 export function parseObj(text: string): Float32Array {
   const v: number[] = [];
@@ -40,6 +45,11 @@ export function parseObj(text: string): Float32Array {
   if (!out.length) throw new Error('no mesh in the OBJ');
   return new Float32Array(out);
 }
+
+
+
+
+
 
 export function weld(soup: Float32Array): { positions: Float32Array; index: Uint32Array } {
   const n = soup.length / 3;
@@ -74,6 +84,7 @@ export function weld(soup: Float32Array): { positions: Float32Array; index: Uint
   return { positions: positions.slice(0, unique * 3), index };
 }
 
+
 export function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array {
   const nrm = new Float32Array(p.length);
   for (let t = 0; t < index.length; t += 3) {
@@ -90,6 +101,7 @@ export function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array
   return nrm;
 }
 
+
 export function centre(p: Float32Array): { centre: [number, number, number]; min: [number, number, number]; max: [number, number, number] } {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < p.length; i += 3)
@@ -102,6 +114,12 @@ export function centre(p: Float32Array): { centre: [number, number, number]; min
   for (let i = 0; i < p.length; i += 3) p[i] -= c[0], p[i + 1] -= c[1], p[i + 2] -= c[2];
   return { centre: c, min: [min[0] - c[0], min[1] - c[1], 0], max: [max[0] - c[0], max[1] - c[1], max[2] - c[2]] };
 }
+
+
+
+
+
+
 
 export function hullPoints(p: Float32Array): Float32Array {
   const n = p.length / 3;
@@ -143,6 +161,12 @@ export function hullPoints(p: Float32Array): Float32Array {
   return out;
 }
 
+
+
+
+
+
+
 export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null, m: ArrayLike<number>): Blob {
   const tp = new Float64Array(p.length);
   for (let i = 0; i < p.length; i += 3) {
@@ -152,6 +176,7 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
     tp[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
   }
   const tris = (index ? index.length : p.length / 3) / 3;
+
   const flip = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]) < 0;
   const head = new ArrayBuffer(84);
   new TextEncoder().encodeInto('PancakeSlicer web plate object', new Uint8Array(head, 0, 80));
@@ -167,6 +192,7 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
       const a = 3 * (index ? index[3 * t] : 3 * t);
       let b = 3 * (index ? index[3 * t + 1] : 3 * t + 1), c = 3 * (index ? index[3 * t + 2] : 3 * t + 2);
       if (flip) [b, c] = [c, b];
+
       const cbx = tp[c] - tp[b], cby = tp[c + 1] - tp[b + 1], cbz = tp[c + 2] - tp[b + 2];
       const abx = tp[a] - tp[b], aby = tp[a + 1] - tp[b + 1], abz = tp[a + 2] - tp[b + 2];
       const nx = cby * abz - cbz * aby, ny = cbz * abx - cbx * abz, nz = cbx * aby - cby * abx;

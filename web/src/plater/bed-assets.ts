@@ -1,3 +1,4 @@
+
 const assets = new Map<string, string>();
 export function bedAsset(name: string) { return assets.get(name) ?? name; }
 export function registerBedAsset(file: File) {

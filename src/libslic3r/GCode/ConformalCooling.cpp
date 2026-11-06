@@ -49,10 +49,13 @@ std::vector<float> road_hang(const std::vector<ConformalPoint> &points, double w
         const double          dxy = d.head<2>().norm();
         if (h <= 0. || dxy < EPSILON)
             continue;
+
         const double h_z    = h * std::abs(0.5 * (a.pose.axis + b.pose.axis).normalized().z());
         const Vec3d  mid    = 0.5 * (a.pose.tip + b.pose.tip);
         const Vec2d  across = Vec2d(-d.y(), d.x()) / dxy;
         const Vec2d  g      = gradient ? gradient(mid.head<2>()) : Vec2d(Vec2d::Zero());
+
+
         const double tol    = h_z + 0.1;
         int          hang   = 0;
         for (int k = 0; k < samples; ++k) {
@@ -92,6 +95,7 @@ std::vector<float> road_fan_demand(const std::vector<ConformalPoint> &points, co
         raw[i] = hang[i] >= params.overhang_from ? 1.f :
                                                    float(std::max(params.hang_weight * hang[i], params.downhill_weight * stretch));
     }
+
     std::vector<float> out(n, 0.f);
     std::deque<size_t> window;
     size_t             next = 0;

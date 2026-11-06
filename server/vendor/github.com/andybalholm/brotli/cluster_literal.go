@@ -8,8 +8,6 @@ import "math"
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Computes the bit cost reduction by combining out[idx1] and out[idx2] and if
-   it is below a threshold, stores the pair (idx1, idx2) in the *pairs queue. */
 func compareAndPushToQueueLiteral(out []histogramLiteral, cluster_size []uint32, idx1 uint32, idx2 uint32, max_num_pairs uint, pairs []histogramPair, num_pairs *uint) {
 	var is_good_pair bool = false
 	var p histogramPair
@@ -59,7 +57,7 @@ func compareAndPushToQueueLiteral(out []histogramLiteral, cluster_size []uint32,
 	if is_good_pair {
 		p.cost_diff += p.cost_combo
 		if *num_pairs > 0 && histogramPairIsLess(&pairs[0], &p) {
-			/* Replace the top of the queue if needed. */
+
 			if *num_pairs < max_num_pairs {
 				pairs[*num_pairs] = pairs[0]
 				(*num_pairs)++
@@ -78,8 +76,7 @@ func histogramCombineLiteral(out []histogramLiteral, cluster_size []uint32, symb
 	var min_cluster_size uint = 1
 	var num_pairs uint = 0
 	{
-		/* We maintain a vector of histogram pairs, with the property that the pair
-		   with the maximum bit cost reduction is the first. */
+
 		var idx1 uint
 		for idx1 = 0; idx1 < num_clusters; idx1++ {
 			var idx2 uint
@@ -99,7 +96,6 @@ func histogramCombineLiteral(out []histogramLiteral, cluster_size []uint32, symb
 			continue
 		}
 
-		/* Take the best pair from the top of heap. */
 		best_idx1 = pairs[0].idx1
 
 		best_idx2 = pairs[0].idx2
@@ -121,17 +117,17 @@ func histogramCombineLiteral(out []histogramLiteral, cluster_size []uint32, symb
 
 		num_clusters--
 		{
-			/* Remove pairs intersecting the just combined best pair. */
+
 			var copy_to_idx uint = 0
 			for i = 0; i < num_pairs; i++ {
 				var p *histogramPair = &pairs[i]
 				if p.idx1 == best_idx1 || p.idx2 == best_idx1 || p.idx1 == best_idx2 || p.idx2 == best_idx2 {
-					/* Remove invalid pair from the queue. */
+
 					continue
 				}
 
 				if histogramPairIsLess(&pairs[0], p) {
-					/* Replace the top of the queue if needed. */
+
 					var front histogramPair = pairs[0]
 					pairs[0] = *p
 					pairs[copy_to_idx] = front
@@ -145,7 +141,6 @@ func histogramCombineLiteral(out []histogramLiteral, cluster_size []uint32, symb
 			num_pairs = copy_to_idx
 		}
 
-		/* Push new pairs formed with the combined histogram to the heap. */
 		for i = 0; i < num_clusters; i++ {
 			compareAndPushToQueueLiteral(out, cluster_size, best_idx1, clusters[i], max_num_pairs, pairs[0:], &num_pairs)
 		}
@@ -154,7 +149,6 @@ func histogramCombineLiteral(out []histogramLiteral, cluster_size []uint32, symb
 	return num_clusters
 }
 
-/* What is the bit cost of moving histogram from cur_symbol to candidate. */
 func histogramBitCostDistanceLiteral(histogram *histogramLiteral, candidate *histogramLiteral) float64 {
 	if histogram.total_count_ == 0 {
 		return 0.0
@@ -165,10 +159,6 @@ func histogramBitCostDistanceLiteral(histogram *histogramLiteral, candidate *his
 	}
 }
 
-/* Find the best 'out' histogram for each of the 'in' histograms.
-   When called, clusters[0..num_clusters) contains the unique values from
-   symbols[0..in_size), but this property is not preserved in this function.
-   Note: we assume that out[]->bit_cost_ is already up-to-date. */
 func histogramRemapLiteral(in []histogramLiteral, in_size uint, clusters []uint32, num_clusters uint, out []histogramLiteral, symbols []uint32) {
 	var i uint
 	for i = 0; i < in_size; i++ {
@@ -191,7 +181,6 @@ func histogramRemapLiteral(in []histogramLiteral, in_size uint, clusters []uint3
 		symbols[i] = best_out
 	}
 
-	/* Recompute each out based on raw and symbols. */
 	for i = 0; i < num_clusters; i++ {
 		histogramClearLiteral(&out[clusters[i]])
 	}
@@ -200,17 +189,6 @@ func histogramRemapLiteral(in []histogramLiteral, in_size uint, clusters []uint3
 		histogramAddHistogramLiteral(&out[symbols[i]], &in[i])
 	}
 }
-
-/* Reorders elements of the out[0..length) array and changes values in
-   symbols[0..length) array in the following way:
-     * when called, symbols[] contains indexes into out[], and has N unique
-       values (possibly N < length)
-     * on return, symbols'[i] = f(symbols[i]) and
-                  out'[symbols'[i]] = out[symbols[i]], for each 0 <= i < length,
-       where f is a bijection between the range of symbols[] and [0..N), and
-       the first occurrences of values in symbols'[i] come in consecutive
-       increasing order.
-   Returns N, the number of unique values in symbols[]. */
 
 var histogramReindexLiteral_kInvalidIndex uint32 = math.MaxUint32
 
@@ -231,8 +209,6 @@ func histogramReindexLiteral(out []histogramLiteral, symbols []uint32, length ui
 		}
 	}
 
-	/* TODO: by using idea of "cycle-sort" we can avoid allocation of
-	   tmp and reduce the number of copying by the factor of 2. */
 	tmp = make([]histogramLiteral, next_index)
 
 	next_index = 0
@@ -263,7 +239,6 @@ func clusterHistogramsLiteral(in []histogramLiteral, in_size uint, max_histogram
 	var pairs []histogramPair = make([]histogramPair, (pairs_capacity + 1))
 	var i uint
 
-	/* For the first pass of clustering, we allow all pairs. */
 	for i = 0; i < in_size; i++ {
 		cluster_size[i] = 1
 	}
@@ -286,8 +261,7 @@ func clusterHistogramsLiteral(in []histogramLiteral, in_size uint, max_histogram
 		num_clusters += num_new_clusters
 	}
 	{
-		/* For the second pass, we limit the total number of histogram pairs.
-		   After this limit is reached, we only keep searching for the best pair. */
+
 		var max_num_pairs uint = brotli_min_size_t(64*num_clusters, (num_clusters/2)*num_clusters)
 		if pairs_capacity < (max_num_pairs + 1) {
 			var _new_size uint
@@ -309,18 +283,15 @@ func clusterHistogramsLiteral(in []histogramLiteral, in_size uint, max_histogram
 			pairs_capacity = _new_size
 		}
 
-		/* Collapse similar histograms. */
 		num_clusters = histogramCombineLiteral(out, cluster_size, histogram_symbols, clusters, pairs, num_clusters, in_size, max_histograms, max_num_pairs)
 	}
 
 	pairs = nil
 	cluster_size = nil
 
-	/* Find the optimal map from original histograms to the final ones. */
 	histogramRemapLiteral(in, in_size, clusters, num_clusters, out, histogram_symbols)
 
 	clusters = nil
 
-	/* Convert the context map to a canonical form. */
 	*out_size = histogramReindexLiteral(out, histogram_symbols, in_size)
 }

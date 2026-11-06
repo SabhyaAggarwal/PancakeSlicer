@@ -70,22 +70,32 @@ class Geom_TrimmedCurve;
 
 namespace Slic3r {
 
+
+
+
+
+
 static std::atomic<bool> s_auto_close{true};
 
 double sketch_join_tol() { return s_auto_close.load() ? kSketchJoinTol : 0.0; }
 void   set_sketch_auto_close(bool on) { s_auto_close.store(on); }
 
+
+
 SketchPlane SketchPlane::from_face(const TopoDS_Face& face)
 {
     SketchPlane sp;
+
     TopLoc_Location loc;
     Handle(Poly_Triangulation) tri = BRep_Tool::Triangulation(face, loc);
     if (!tri.IsNull() && tri->NbNodes() > 0) {
         gp_Pnt p = tri->Node(1).Transformed(loc.Transformation());
         sp.origin = Vec3d(p.X(), p.Y(), p.Z());
     }
+
     BRepAdaptor_Surface surf(face);
     if (surf.GetType() != GeomAbs_Plane) {
+
         double u1 = surf.FirstUParameter(), v1 = surf.FirstVParameter();
         gp_Pnt pt; gp_Vec du, dv;
         surf.D1(u1, v1, pt, du, dv);
@@ -95,6 +105,7 @@ SketchPlane SketchPlane::from_face(const TopoDS_Face& face)
         sp.y_axis = sp.normal.cross(sp.x_axis).normalized();
         return sp;
     }
+
     gp_Pln pln = surf.Plane();
     sp.origin = Vec3d(pln.Location().X(), pln.Location().Y(), pln.Location().Z());
     gp_Dir n = pln.Axis().Direction();
@@ -123,6 +134,8 @@ Vec3d SketchPlane::to_world(const Vec2d& pt) const
     return origin + x_axis * pt.x() + y_axis * pt.y();
 }
 
+
+
 TopoDS_Wire SketchProfile::to_occt_wire(const SketchPlane& plane) const
 {
     if (points.size() < 2)
@@ -141,6 +154,8 @@ TopoDS_Wire SketchProfile::to_occt_wire(const SketchPlane& plane) const
         throw std::runtime_error(_u8L("Failed to build wire from profile"));
     return builder.Wire();
 }
+
+
 
 TopoDS_Shape SketchEngine::make_prism(const TopoDS_Shape& base, const gp_Vec& vec)
 {
@@ -170,7 +185,7 @@ TopoDS_Shape SketchEngine::make_extrude(const TopoDS_Wire& wire, const SketchPla
 }
 
 TopoDS_Shape SketchEngine::make_extrude(const TopoDS_Face& face, const SketchPlane& plane,
-                                        double length, bool symmetric, double )
+                                        double length, bool symmetric, double  )
 {
     gp_Dir dir(plane.normal.x(), plane.normal.y(), plane.normal.z());
     return extrude_face_internal(face, dir, length, symmetric);
@@ -209,6 +224,7 @@ TopoDS_Shape SketchEngine::make_extrude_taper(const TopoDS_Wire& wire, const Ske
     const double off = length * std::tan(taper_deg * M_PI / 180.0);
     if (std::abs(off) < 1e-7) return straight();
     try {
+
         BRepOffsetAPI_MakeOffset mko(wire, GeomAbs_Arc);
         mko.Perform(off);
         if (!mko.IsDone()) return straight();
@@ -217,10 +233,12 @@ TopoDS_Shape SketchEngine::make_extrude_taper(const TopoDS_Wire& wire, const Ske
         if (offShape.ShapeType() == TopAbs_WIRE) topFlat = TopoDS::Wire(offShape);
         else { for (TopExp_Explorer ex(offShape, TopAbs_WIRE); ex.More(); ex.Next()) { topFlat = TopoDS::Wire(ex.Current()); break; } }
         if (topFlat.IsNull()) return straight();
+
         gp_Trsf tr; tr.SetTranslation(gp_Vec(dir) * length);
         BRepBuilderAPI_Transform xf(topFlat, tr, true);
         TopoDS_Wire topWire = TopoDS::Wire(xf.Shape());
-        BRepOffsetAPI_ThruSections loft(true , false );
+
+        BRepOffsetAPI_ThruSections loft(true  , false  );
         loft.AddWire(wire);
         loft.AddWire(topWire);
         loft.Build();
@@ -234,7 +252,7 @@ TopoDS_Shape SketchEngine::make_extrude_taper(const TopoDS_Wire& wire, const Ske
 }
 
 TopoDS_Shape SketchEngine::make_extrude_face(const TopoDS_Face& face, const SketchPlane& plane,
-                                             double length, bool symmetric, double )
+                                             double length, bool symmetric, double  )
 {
     gp_Dir dir(plane.normal.x(), plane.normal.y(), plane.normal.z());
     return extrude_face_internal(face, dir, length, symmetric);
@@ -244,9 +262,16 @@ TopoDS_Shape SketchEngine::make_extrude_regions(
     const std::vector<std::vector<std::vector<Vec2d>>>& regions,
     const SketchPlane& plane, double length, bool symmetric)
 {
+
     if (std::abs(length) < 1e-9) throw std::runtime_error(_u8L("extrude depth is zero"));
 
+
+
+
+
     auto clean = [](const std::vector<Vec2d>& pts) {
+
+
         const double eps2 = kSketchJoinTol * kSketchJoinTol;
         std::vector<Vec2d> out;
         out.reserve(pts.size());
@@ -257,6 +282,12 @@ TopoDS_Shape SketchEngine::make_extrude_regions(
             out.pop_back();
         return out;
     };
+
+
+
+
+
+
 
     auto contour_wire = [&](const std::vector<Vec2d>& raw) -> TopoDS_Wire {
         std::vector<Vec2d> pts = clean(raw);
@@ -269,7 +300,13 @@ TopoDS_Shape SketchEngine::make_extrude_regions(
     };
 
     gp_Dir dir(plane.normal.x(), plane.normal.y(), plane.normal.z());
+
+
+
     const gp_Pln pln(gp_Pnt(plane.origin.x(), plane.origin.y(), plane.origin.z()), dir);
+
+
+
 
     BRep_Builder bb;
     TopoDS_Compound comp;
@@ -282,6 +319,12 @@ TopoDS_Shape SketchEngine::make_extrude_regions(
         try {
             TopoDS_Wire outer = contour_wire(region[0]);
             if (outer.IsNull()) continue;
+
+
+
+
+
+
 
             if (!BRepBuilderAPI_MakeFace(outer).IsDone()) continue;
             BRepBuilderAPI_MakeFace fm(pln, outer);
@@ -317,6 +360,8 @@ TopoDS_Shape SketchEngine::make_revolve(const TopoDS_Wire& wire, const gp_Ax1& a
         throw std::runtime_error(_u8L("Failed to make face from wire"));
     TopoDS_Face face = faceMaker.Face();
 
+
+
     {
         const gp_Pnt o = axis_in.Location();
         const gp_Dir d = axis_in.Direction();
@@ -338,6 +383,8 @@ TopoDS_Shape SketchEngine::make_revolve(const TopoDS_Wire& wire, const gp_Ax1& a
     }
     gp_Ax1 axis = axis_in;
     double angle_rad = angle_deg * M_PI / 180.0;
+
+
     if (angle_rad < 0) { axis.Reverse(); angle_rad = -angle_rad; }
     BRepPrimAPI_MakeRevol rev(face, axis, angle_rad);
     if (!rev.IsDone())
@@ -365,7 +412,7 @@ TopoDS_Shape SketchEngine::make_loft(const std::vector<TopoDS_Wire>& profiles, b
 {
     if (profiles.size() < 2)
         throw std::runtime_error(_u8L("loft needs at least 2 profiles"));
-    BRepOffsetAPI_ThruSections loft(true , ruled);
+    BRepOffsetAPI_ThruSections loft(true  , ruled);
     for (const TopoDS_Wire& w : profiles) {
         if (w.IsNull()) throw std::runtime_error("loft: null profile wire");
         loft.AddWire(w);
@@ -377,11 +424,12 @@ TopoDS_Shape SketchEngine::make_loft(const std::vector<TopoDS_Wire>& profiles, b
     return s;
 }
 
+
 TopoDS_Shape SketchEngine::make_loft_surface(const std::vector<TopoDS_Wire>& profiles, bool ruled)
 {
     if (profiles.size() < 2)
         throw std::runtime_error(_u8L("loft needs at least 2 profiles"));
-    BRepOffsetAPI_ThruSections loft(false , ruled);
+    BRepOffsetAPI_ThruSections loft(false  , ruled);
     for (const TopoDS_Wire& w : profiles) {
         if (w.IsNull()) throw std::runtime_error("loft: null profile wire");
         loft.AddWire(w);
@@ -495,6 +543,12 @@ TriangleMesh SketchEngine::tessellate(const TopoDS_Shape& shape,
                 new_tri[j] = it->second;
             }
         }
+
+
+
+
+
+
         if (new_tri[0] == new_tri[1] || new_tri[1] == new_tri[2] || new_tri[0] == new_tri[2])
             continue;
         its.indices.push_back(new_tri);
@@ -509,6 +563,9 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
                                                          const SketchPlane& plane,
                                                          bool closed_only)
 {
+
+
+
     const double tol = sketch_join_tol();
 
     struct Item { const SketchEntity* e; size_t idx; };
@@ -522,9 +579,16 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
     }
     if (valid.empty()) return {};
 
+
+
+
     auto make_elips = [&](const SketchEntity& c) -> gp_Elips {
         Vec3d  c3 = plane.to_world(c.center);
         gp_Pnt center(c3.x(), c3.y(), c3.z());
+
+
+
+
         const Vec3d nz = plane.x_axis.cross(plane.y_axis);
         gp_Dir n(nz.x(), nz.y(), nz.z());
         Vec2d  maj2(std::cos(c.rotation), std::sin(c.rotation));
@@ -534,6 +598,9 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
         if (a < b) std::swap(a, b);
         return gp_Elips(gp_Ax2(center, n, xdir), a, b);
     };
+
+
+
 
     auto make_bspline = [&](const SketchEntity& c) -> Handle(Geom_BSplineCurve) {
         const int n = int(c.ctrl.size());
@@ -559,6 +626,8 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
                e.type == SketchEntity::Type::EllipseArc || e.type == SketchEntity::Type::BSpline;
     };
 
+
+
     auto endpoints = [&](const SketchEntity& e, Vec2d& a, Vec2d& b) -> bool {
         if (e.type == SketchEntity::Type::BSpline) {
             if (e.ctrl.size() < 2) return false;
@@ -569,7 +638,13 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
         return true;
     };
 
+
+
+
+
+
     auto same = [&](const Vec2d& p, const Vec2d& q) { return (p - q).norm() <= tol; };
+
 
     std::vector<int> parent(valid.size());
     for (size_t i = 0; i < valid.size(); ++i) parent[i] = int(i);
@@ -600,11 +675,13 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
         }
     }
 
+
     std::map<int, std::vector<size_t>> comps;
     for (size_t i = 0; i < valid.size(); ++i) {
         if (!is_chain(*valid[i].e)) continue;
         comps[find(int(i))].push_back(i);
     }
+
 
     struct Loop { size_t min_idx{0}; bool closed_single{false}; size_t member{0}; std::vector<size_t> members; };
     std::vector<Loop> loops;
@@ -622,7 +699,9 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
         l.min_idx = mn;
         loops.push_back(l);
     }
+
     std::sort(loops.begin(), loops.end(), [](const Loop& x, const Loop& y) { return x.min_idx < y.min_idx; });
+
 
     std::vector<TopoDS_Wire> out;
     out.reserve(loops.size());
@@ -635,6 +714,8 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
                 if (c.radius <= 1e-9 || c.rminor <= 1e-9) return {};
                 e = BRepBuilderAPI_MakeEdge(make_elips(c)).Edge();
             } else {
+
+
                 if (c.radius <= 1e-9) return {};
                 Vec3d  c3 = plane.to_world(c.center);
                 gp_Pnt center(c3.x(), c3.y(), c3.z());
@@ -644,6 +725,13 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
             }
             wm.Add(e);
         } else {
+
+
+
+
+
+
+
             struct Member { size_t v; int a; int b; };
             std::vector<Vec2d> node_pt;
             std::vector<int>   node_deg;
@@ -663,6 +751,8 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
                 node_deg[a]++; node_deg[b]++;
                 ms.push_back({m, a, b});
             }
+
+
 
             std::vector<size_t> order;
             order.reserve(ms.size());
@@ -687,12 +777,31 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
             }
             if (order.size() != ms.size()) return {};
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             if (closed_only) {
                 bool has_free_end = false;
                 for (const Member& mm : ms)
                     if (node_deg[mm.a] == 1 || node_deg[mm.b] == 1) { has_free_end = true; break; }
                 if (has_free_end) continue;
             }
+
+
+
+
+
 
             std::vector<TopoDS_Vertex> verts(node_pt.size());
             BRep_Builder B;
@@ -736,6 +845,10 @@ std::vector<TopoDS_Wire> SketchEngine::entities_to_wires(const std::vector<Sketc
             }
         }
         wm.Build();
+
+
+
+
         if (!wm.IsDone()) return {};
         const TopoDS_Wire wire = wm.Wire();
         size_t edge_count = 0;
@@ -755,7 +868,7 @@ TopoDS_Wire SketchEngine::entities_to_wire(const std::vector<SketchEntity>& enti
 }
 
 std::vector<Vec2d> sketch_open_ends(const std::vector<SketchEntity>& entities,
-                                    const SketchPlane& )
+                                    const SketchPlane&  )
 {
     const double tol = sketch_join_tol();
 
@@ -772,6 +885,9 @@ std::vector<Vec2d> sketch_open_ends(const std::vector<SketchEntity>& entities,
         a = e.p0; b = e.p1;
         return true;
     };
+
+
+
 
     std::vector<Vec2d> node_pt;
     std::vector<int>   node_deg;
@@ -799,6 +915,10 @@ std::vector<Vec2d> sketch_open_ends(const std::vector<SketchEntity>& entities,
     return out;
 }
 
+
+
+
+
 static TopoDS_Face checked_profile_face(const TopoDS_Face& f)
 {
     BRepCheck_Analyzer an(f);
@@ -812,6 +932,14 @@ TopoDS_Face SketchEngine::wires_to_face(const std::vector<TopoDS_Wire>& wires,
 {
     if (wires.empty()) throw std::runtime_error(_u8L("sketch has no closed loop"));
 
+
+
+
+
+
+
+
+
     const gp_Pln pln(gp_Pnt(plane.origin.x(), plane.origin.y(), plane.origin.z()),
                      gp_Dir(plane.normal.x(), plane.normal.y(), plane.normal.z()));
 
@@ -820,6 +948,8 @@ TopoDS_Face SketchEngine::wires_to_face(const std::vector<TopoDS_Wire>& wires,
         if (!fm.IsDone()) throw std::runtime_error(_u8L("sketch loop does not bound a face"));
         return checked_profile_face(fm.Face());
     }
+
+
 
     std::vector<TopoDS_Face> faces;
     faces.reserve(wires.size());
@@ -838,9 +968,14 @@ TopoDS_Face SketchEngine::wires_to_face(const std::vector<TopoDS_Wire>& wires,
     for (size_t i = 1; i < areas.size(); ++i)
         if (areas[i] > areas[outer]) outer = i;
 
+
+
+
     BRepBuilderAPI_MakeFace fm(pln, wires[outer]);
     for (size_t i = 0; i < wires.size(); ++i) {
         if (i == outer) continue;
+
+
         gp_Pnt p;
         bool got = false;
         for (TopExp_Explorer ex(wires[i], TopAbs_VERTEX); ex.More(); ex.Next()) {
@@ -852,9 +987,19 @@ TopoDS_Face SketchEngine::wires_to_face(const std::vector<TopoDS_Wire>& wires,
         BRepClass_FaceClassifier fc(faces[outer], p, 1e-7);
         if (fc.State() != TopAbs_IN)
             throw std::runtime_error(_u8L("sketch has two disjoint regions; put each in its own sketch"));
+
+
+
+
+
+
+
         fm.Add(wires[i]);
     }
     if (!fm.IsDone()) throw std::runtime_error(_u8L("sketch loop does not bound a face"));
+
+
+
     ShapeFix_Face sff(fm.Face());
     sff.FixOrientation();
     return checked_profile_face(sff.Face());
@@ -920,6 +1065,7 @@ std::vector<SketchEntity> SketchEngine::mirror_entities(
         case SketchEntity::Type::Ellipse:
         case SketchEntity::Type::EllipseArc: {
             m.center = reflect(e.center);
+
             const Vec2d majdir(std::cos(e.rotation), std::sin(e.rotation));
             const Vec2d rdir = reflect(e.center + majdir) - m.center;
             m.rotation = std::atan2(rdir.y(), rdir.x());
@@ -928,6 +1074,11 @@ std::vector<SketchEntity> SketchEngine::mirror_entities(
             } else {
                 m.p0 = reflect(e.p0);
                 m.p1 = reflect(e.p1);
+
+
+
+
+
                 auto param = [&](const Vec2d& P) {
                     const Vec2d d  = P - m.center;
                     const double cu = std::cos(m.rotation), su = std::sin(m.rotation);
@@ -949,6 +1100,16 @@ std::vector<SketchEntity> SketchEngine::mirror_entities(
         }
         out.push_back(m);
     }
+
+
+
+
+
+
+
+
+
+
 
     std::reverse(out.begin(), out.end());
     for (SketchEntity& m : out) {
@@ -973,7 +1134,22 @@ std::vector<SketchEntity> SketchEngine::mirror_entities(
     return out;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
 namespace {
+
+
+
 
 bool off_same(const Vec2d& a, const Vec2d& b)
 {
@@ -981,10 +1157,13 @@ bool off_same(const Vec2d& a, const Vec2d& b)
     return (a - b).squaredNorm() <= tol * tol;
 }
 
+
 bool off_is_open_curve(const SketchEntity& e)
 {
     return e.type == SketchEntity::Type::Line || e.type == SketchEntity::Type::Arc;
 }
+
+
 
 bool off_pick(const std::vector<Vec2d>& cands, const Vec2d& seed, Vec2d& out)
 {
@@ -1041,6 +1220,8 @@ std::vector<Vec2d> off_circle_circle(const Vec2d& c0, double r0, const Vec2d& c1
     return out;
 }
 
+
+
 void off_set_end(SketchEntity& e, bool at_end, const Vec2d& q)
 {
     if (e.type == SketchEntity::Type::Line) {
@@ -1065,6 +1246,7 @@ void off_set_end(SketchEntity& e, bool at_end, const Vec2d& q)
     }
 }
 
+
 bool off_one(const SketchEntity& e, double d, SketchEntity& out)
 {
     switch (e.type) {
@@ -1079,12 +1261,20 @@ bool off_one(const SketchEntity& e, double d, SketchEntity& out)
         return true;
     }
     case SketchEntity::Type::Circle: {
+
+
+
         const double r = e.radius - d;
         if (r <= 1e-9) return false;
         out = e; out.radius = r; out.p0 = out.center;
         return true;
     }
     case SketchEntity::Type::Arc: {
+
+
+
+
+
         const double sgn = (e.end_angle >= e.start_angle) ? -1.0 : 1.0;
         const double r = e.radius + sgn * d;
         if (r <= 1e-9) return false;
@@ -1095,9 +1285,14 @@ bool off_one(const SketchEntity& e, double d, SketchEntity& out)
         return true;
     }
     default:
+
+
         return false;
     }
 }
+
+
+
 
 bool off_join(SketchEntity& a, SketchEntity& b)
 {
@@ -1119,6 +1314,9 @@ bool off_join(SketchEntity& a, SketchEntity& b)
     return true;
 }
 
+
+
+
 void off_reverse(SketchEntity& e)
 {
     std::swap(e.p0, e.p1);
@@ -1133,6 +1331,7 @@ std::vector<SketchEntity> SketchEngine::offset_entities(
 {
     std::vector<SketchEntity> out;
 
+
     std::vector<int> open_idx;
     for (int i = 0; i < int(src.size()); ++i) {
         if (off_is_open_curve(src[i])) { open_idx.push_back(i); continue; }
@@ -1142,7 +1341,11 @@ std::vector<SketchEntity> SketchEngine::offset_entities(
 
     std::vector<bool> used(open_idx.size(), false);
 
+
     auto ends = [&](int k, Vec2d& p0, Vec2d& p1) { p0 = src[open_idx[k]].p0; p1 = src[open_idx[k]].p1; };
+
+
+
 
     auto is_free = [&](int k, const Vec2d& pt) {
         for (size_t j = 0; j < open_idx.size(); ++j) {
@@ -1157,6 +1360,11 @@ std::vector<SketchEntity> SketchEngine::offset_entities(
         std::vector<std::pair<int, bool>> items;
         Vec2d start, end;
     };
+
+
+
+
+
 
     auto walk = [&](int s) -> Chain {
         Chain c;
@@ -1184,11 +1392,20 @@ std::vector<SketchEntity> SketchEngine::offset_entities(
         return c;
     };
 
+
+
+
+
+
     auto emit = [&](const Chain& c) {
         const bool closed = c.items.size() > 1 && off_same(c.end, c.start);
         std::vector<SketchEntity> off;
         off.reserve(c.items.size());
         for (const auto& it : c.items) {
+
+
+
+
             const double ed = it.second ? -d : d;
             SketchEntity o;
             if (!off_one(src[open_idx[it.first]], ed, o)) continue;
@@ -1201,12 +1418,15 @@ std::vector<SketchEntity> SketchEngine::offset_entities(
         for (auto& o : off) out.push_back(o);
     };
 
+
+
     for (size_t s = 0; s < open_idx.size(); ++s) {
         if (used[s]) continue;
         Vec2d s0, s1; ends(int(s), s0, s1);
         if (!is_free(int(s), s0) && !is_free(int(s), s1)) continue;
         emit(walk(int(s)));
     }
+
     for (size_t s = 0; s < open_idx.size(); ++s) {
         if (used[s]) continue;
         emit(walk(int(s)));
@@ -1226,6 +1446,7 @@ std::vector<SketchEntity> SketchEngine::array_entities(
         const double ang = i * angle_step;
         const double ca = std::cos(ang), sa = std::sin(ang);
         const Vec2d  tr  = double(i) * step;
+
         auto xf = [&](const Vec2d& p) -> Vec2d {
             const Vec2d d = p - pivot;
             return Vec2d(pivot.x() + ca * d.x() - sa * d.y(),
@@ -1260,6 +1481,7 @@ std::vector<SketchEntity> SketchEngine::array_entities(
                     m.p0 = m.center;
                 } else {
                     m.p0 = xf(e.p0); m.p1 = xf(e.p1);
+
                 }
                 break;
             case SketchEntity::Type::BSpline:
@@ -1281,7 +1503,10 @@ std::vector<SketchEntity> SketchEngine::transform_entities(
     out.reserve(src.size());
     const double ca = std::cos(angle), sa = std::sin(angle);
     const double rs = std::abs(scale);
+
+
     const double turn = angle + (scale < 0.0 ? M_PI : 0.0);
+
     auto xf = [&](const Vec2d& p) -> Vec2d {
         const Vec2d d = scale * (p - pivot);
         return Vec2d(pivot.x() + ca * d.x() - sa * d.y(),
@@ -1319,6 +1544,7 @@ std::vector<SketchEntity> SketchEngine::transform_entities(
                 m.p0 = m.center;
             } else {
                 m.p0 = xf(e.p0); m.p1 = xf(e.p1);
+
             }
             break;
         case SketchEntity::Type::BSpline:
@@ -1443,9 +1669,13 @@ bool SketchEngine::chamfer_lines(const SketchEntity& a, const SketchEntity& b, d
     double denom = da.x() * db.y() - da.y() * db.x();
     if (std::abs(denom) < 1e-12)
         return false;
+
+
     Vec2d diff = b.p0 - a.p0;
     double s = (diff.x() * db.y() - diff.y() * db.x()) / denom;
     Vec2d C = a.p0 + s * da;
+
+
 
     auto pick = [&](const SketchEntity& ln, int& near_idx, Vec2d& u) -> bool {
         double d0 = (ln.p0 - C).norm();
@@ -1460,6 +1690,7 @@ bool SketchEngine::chamfer_lines(const SketchEntity& a, const SketchEntity& b, d
     Vec2d ua, ub;
     if (!pick(a, a_near_idx, ua)) return false;
     if (!pick(b, b_near_idx, ub)) return false;
+
 
     double cosT = std::max(-1.0, std::min(1.0, ua.dot(ub)));
     if (cosT > 1.0 - 1e-9 || cosT < -1.0 + 1e-9)
@@ -1556,6 +1787,10 @@ static std::vector<double> line_entity_hits(const Vec2d& a0, const Vec2d& adir,
     return hits;
 }
 
+
+
+
+
 static std::vector<double> circle_cross_angles(const Vec2d& C, double R,
                                                const SketchEntity& other)
 {
@@ -1643,12 +1878,16 @@ static std::vector<double> circle_cross_angles(const Vec2d& C, double R,
     return out;
 }
 
+
 static double wrap_2pi(double x)
 {
     while (x < 0.0)         x += 2.0 * M_PI;
     while (x >= 2.0 * M_PI) x -= 2.0 * M_PI;
     return x;
 }
+
+
+
 
 static void sync_arc_ends(SketchEntity& e)
 {
@@ -1659,11 +1898,13 @@ static void sync_arc_ends(SketchEntity& e)
 bool SketchEngine::trim_entity(SketchEntity& e, const std::vector<SketchEntity>& others,
                                const Vec2d& pick)
 {
+
     if (e.type == SketchEntity::Type::Arc) {
         double sweep = e.end_angle - e.start_angle;
         if (std::abs(sweep) < 1e-12) return false;
         double phi_pick = std::atan2(pick.y() - e.center.y(), pick.x() - e.center.x());
         double u_pick = (phi_pick - e.start_angle) / sweep;
+
         while (u_pick < -1e-9) u_pick += (2.0 * M_PI) / std::abs(sweep);
         u_pick = std::max(0.0, std::min(1.0, u_pick));
 
@@ -1692,6 +1933,7 @@ bool SketchEngine::trim_entity(SketchEntity& e, const std::vector<SketchEntity>&
         return true;
     }
 
+
     if (e.type == SketchEntity::Type::Circle) {
         std::vector<double> ang;
         for (const auto& other : others)
@@ -1715,6 +1957,7 @@ bool SketchEngine::trim_entity(SketchEntity& e, const std::vector<SketchEntity>&
         if (idx < 0) return false;
         double lo = ang[idx];
         double hi = (idx + 1 < n) ? ang[idx + 1] : ang[0] + 2.0 * M_PI;
+
         e.type        = SketchEntity::Type::Arc;
         e.start_angle = hi;
         e.end_angle   = lo + 2.0 * M_PI;
@@ -1765,6 +2008,9 @@ bool SketchEngine::trim_entity(SketchEntity& e, const std::vector<SketchEntity>&
 bool SketchEngine::extend_entity(SketchEntity& e, const std::vector<SketchEntity>& others,
                                  const Vec2d& pick)
 {
+
+
+
     if (e.type == SketchEntity::Type::Arc) {
         double sweep = e.end_angle - e.start_angle;
         double mag   = std::abs(sweep);
@@ -1828,6 +2074,10 @@ bool SketchEngine::extend_entity(SketchEntity& e, const std::vector<SketchEntity
     return true;
 }
 
+
+
+
+
 SketchEntity SketchEngine::make_bridge(const SketchEntity& a, int a_end,
                                        const SketchEntity& b, int b_end)
 {
@@ -1845,12 +2095,16 @@ SketchEntity SketchEngine::make_bridge(const SketchEntity& a, int a_end,
         }
         case SketchEntity::Type::Arc: {
             double theta = end == 1 ? e.end_angle : e.start_angle;
+
+
+
             double sweep = e.end_angle - e.start_angle;
             int sign = end == 1 ? (sweep >= 0 ? 1 : -1) : (sweep >= 0 ? -1 : 1);
             Vec2d t(-std::sin(theta), std::cos(theta));
             return t * double(sign);
         }
         default:
+
             return fallback_dir;
         }
     };
@@ -1858,6 +2112,7 @@ SketchEntity SketchEngine::make_bridge(const SketchEntity& a, int a_end,
     const Vec2d Pa = endpoint(a, a_end);
     const Vec2d Pb = endpoint(b, b_end);
     const double d = (Pb - Pa).norm();
+
 
     Vec2d fallback = d < 1e-9 ? Vec2d(1, 0) : (Pb - Pa) / d;
     Vec2d Ta = tangent(a, a_end, fallback);
@@ -1868,11 +2123,20 @@ SketchEntity SketchEngine::make_bridge(const SketchEntity& a, int a_end,
     SketchEntity e;
     e.type         = SketchEntity::Type::BSpline;
     e.construction = false;
+
+
     e.ctrl = { Pa, Pa + Ta * k, Pb + Tb * k, Pb };
     e.p0 = e.ctrl.front();
     e.p1 = e.ctrl.back();
     return e;
 }
+
+
+
+
+
+
+
 
 int sketch_entity_ends(const SketchEntity& e, std::pair<SketchPointRole, Vec2d> out[2])
 {
@@ -1891,6 +2155,8 @@ int sketch_entity_ends(const SketchEntity& e, std::pair<SketchPointRole, Vec2d> 
 
 namespace {
 
+
+
 bool angle_on_arc(const SketchEntity& e, double ang, double tol)
 {
     const double TWO_PI = 2.0 * M_PI;
@@ -1901,6 +2167,7 @@ bool angle_on_arc(const SketchEntity& e, double ang, double tol)
     if (d > TWO_PI - tol) d -= TWO_PI;
     return d >= -tol && d <= std::abs(sweep) + tol;
 }
+
 
 void entity_intersections(const SketchEntity& A, const SketchEntity& B, std::vector<Vec2d>& out)
 {
@@ -1917,6 +2184,8 @@ void entity_intersections(const SketchEntity& A, const SketchEntity& B, std::vec
         const Vec2d r = A.p1 - A.p0, q = B.p1 - B.p0, w = B.p0 - A.p0;
         const double den = r.x() * q.y() - r.y() * q.x();
         if (std::abs(den) < eps * r.norm() * q.norm()) {
+
+
             if (std::abs(r.x() * w.y() - r.y() * w.x()) > 1e-9 * std::max(1.0, r.norm())) return;
             for (const Vec2d& p : { B.p0, B.p1 }) if (on_seg(A, p)) out.push_back(p);
             for (const Vec2d& p : { A.p0, A.p1 }) if (on_seg(B, p)) out.push_back(p);
@@ -1947,6 +2216,7 @@ void entity_intersections(const SketchEntity& A, const SketchEntity& B, std::vec
         const Vec2d dc = B.center - A.center;
         const double dd = dc.norm();
         if (dd < 1e-12) {
+
             if (std::abs(A.radius - B.radius) > 1e-9) return;
             for (const Vec2d& p : { B.p0, B.p1 })
                 if (angle_on_arc(A, std::atan2(p.y() - A.center.y(), p.x() - A.center.x()), 1e-9)) out.push_back(p);
@@ -1979,6 +2249,8 @@ bool sketch_loop_defect(const std::vector<SketchEntity>& ents, const std::vector
             return false;
     const double tol = std::max(1e-6, sketch_join_tol());
 
+
+
     std::vector<Vec2d> start(n), end(n);
     std::vector<bool>  rev(n, false);
     for (size_t k = 0; k < n; ++k) {
@@ -2006,10 +2278,12 @@ bool sketch_loop_defect(const std::vector<SketchEntity>& ents, const std::vector
         return l > 1e-15 ? Vec2d(t / l) : Vec2d(0, 0);
     };
 
+
     for (size_t k = 0; k < n; ++k) {
         const size_t j = (k + 1) % n;
         if (tangent(k, true).dot(tangent(j, false)) < -0.9999) { at = end[k]; return true; }
     }
+
 
     for (size_t i = 0; i < n; ++i)
         for (size_t j = i + 1; j < n; ++j) {
@@ -2058,6 +2332,7 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
     auto is_round = [](const SketchEntity& e) {
         return e.type == SketchEntity::Type::Circle || e.type == SketchEntity::Type::Arc; };
 
+
     if (type == T::EqualLength && e0 >= 0 && e1 >= 0 && e0 < n && e1 < n &&
         is_round(ents[e0]) && is_round(ents[e1]))
         type = T::EqualRadius;
@@ -2083,6 +2358,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
     switch (type) {
     case T::Horizontal:
     case T::Vertical:
+
+
+
         if (ents[e0].type != SketchEntity::Type::Line) {
             plan.kind = ConstraintPlan::Kind::Reject;
             plan.reason = ConstraintReject::NeedALine;
@@ -2094,6 +2372,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
     case T::Parallel:
     case T::Perpendicular:
     case T::EqualLength:
+
+
+
         if (ents[e0].type != SketchEntity::Type::Line ||
             ents[e1].type != SketchEntity::Type::Line) {
             plan.kind = ConstraintPlan::Kind::Reject;
@@ -2103,6 +2384,8 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         def.ea = e0; def.eb = e1;
         break;
     case T::Coincident: {
+
+
         R ra, rb; Vec2d pa, pb;
         if (!sketch_closest_ends(ents[e0], ents[e1], ra, rb, pa, pb)) {
             plan.kind = ConstraintPlan::Kind::Reject;
@@ -2120,6 +2403,8 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
             plan.reason = ConstraintReject::NeedMeasurablePoints;
             return plan;
         }
+
+
         int a = e0, b = e1;
         double delta = (type == T::DistanceX) ? (pb.x() - pa.x()) : (pb.y() - pa.y());
         if (delta < 0.0) { std::swap(a, b); std::swap(ra, rb); delta = -delta; }
@@ -2138,6 +2423,7 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         def.ea = e0; def.ra = R::Center; def.eb = e1; def.rb = R::Center;
         break;
     case T::Tangent: {
+
         const bool ok = (is_round(ents[e0]) && ents[e1].type == SketchEntity::Type::Line) ||
                         (is_round(ents[e1]) && ents[e0].type == SketchEntity::Type::Line) ||
                         (is_round(ents[e0]) && is_round(ents[e1]));
@@ -2150,6 +2436,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         break;
     }
     case T::Angle: {
+
+
+
         if (ents[e0].type != SketchEntity::Type::Line ||
             ents[e1].type != SketchEntity::Type::Line) {
             plan.kind = ConstraintPlan::Kind::Reject;
@@ -2171,6 +2460,7 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         break;
     }
     case T::Midpoint: {
+
         const SketchEntity& A = ents[e0];
         const SketchEntity& B = ents[e1];
         int pt = -1, ln = -1;
@@ -2185,6 +2475,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         break;
     }
     case T::Symmetric: {
+
+
+
         const int axis = e2;
         if (axis < 0 || axis >= n || ents[axis].type != SketchEntity::Type::Line) {
             plan.kind = ConstraintPlan::Kind::Reject;
@@ -2210,6 +2503,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
     }
     case T::SymmetricAboutY:
     case T::SymmetricAboutX: {
+
+
+
         using ET = SketchEntity::Type;
         const ET ta = ents[e0].type, tb = ents[e1].type;
         if (!((ta == ET::Point && tb == ET::Point) || (ta == ET::Line && tb == ET::Line))) {
@@ -2245,6 +2541,9 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         def.ea = e0; def.eb = e1;
         break;
     case T::Fix: {
+
+
+
         using ET = SketchEntity::Type;
         const ET et = ents[e0].type;
         def.ea = e0;
@@ -2265,6 +2564,8 @@ ConstraintPlan plan_entity_constraint(const std::vector<SketchEntity>& ents,
         break;
     }
     default:
+
+
         plan.kind   = ConstraintPlan::Kind::Reject;
         plan.reason = ConstraintReject::Unsupported;
         return plan;

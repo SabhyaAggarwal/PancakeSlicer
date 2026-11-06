@@ -23,6 +23,7 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 void add_breaks(std::vector<double> &breaks, double from, double to, double piece)
 {
     if (to <= from)
@@ -53,6 +54,7 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
             ++i;
             continue;
         }
+
         size_t              j = i;
         std::vector<double> s{ 0. };
         while (j + 1 < n && extruded(j)) {
@@ -61,8 +63,10 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
         }
         const double run  = s.back();
         const double ramp = first_run ? std::min(shape.ramp, 0.25 * run) : 0.;
+
         const double end   = shape.open_end && j + 1 == n ? 0. : shape.taper + shape.coast;
         const double scale = end > 0.25 * run && end > 0. ? 0.25 * run / end : 1.;
+
         const bool   soft  = shape.scored || run < CoastMinRun;
         const double taper = end > 0. ? (soft ? end : shape.taper) * scale : 0.;
         const double coast = end > 0. && !soft ? shape.coast * scale : 0.;
@@ -105,6 +109,7 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
 void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::vector<ExtrusionPathConformal> &storage,
                        double min_rise)
 {
+
     storage.clear();
     storage.reserve(order.size());
     const coord_t rise = coord_t(scale_(min_rise));
@@ -113,13 +118,20 @@ void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::
         if (path.preserve_points || path.polyline.points.size() < 2 || !path.tool_axis.empty())
             continue;
         const Point3 &first = path.polyline.points.front(), &last = path.polyline.points.back();
+
+
         const bool joined = (i > 0 && order[i - 1]->polyline.points.back().to_point() == first.to_point()) ||
                             (i + 1 < order.size() && order[i + 1]->polyline.points.front().to_point() == last.to_point());
+
+
         const bool tucked = i > 0 && (order[i - 1]->polyline.points.back().to_point() - first.to_point()).cast<double>().norm() <
                                          scale_(StartTuck);
+
+
         const bool loop = (last.to_point() - first.to_point()).cast<double>().norm() <= 1.5 * scale_(path.width);
         if (joined || tucked || loop || last.z() >= first.z() - rise)
             continue;
+
         if (!path.bead_height.empty() && (path.bead_height.front() <= 0.f || path.bead_height.back() <= 0.f))
             continue;
         storage.emplace_back(path);
@@ -156,22 +168,27 @@ void order_pass_roads(std::vector<const ExtrusionPathConformal *> &order, size_t
         units.push_back({ i, i + 1, unscale(road.polyline.points.front().to_point()), unscale(road.polyline.points.back().to_point()),
                           open && ends && road.can_reverse() && !road.preserve_points && road.tool_axis.empty() });
     }
+
     const size_t pinned = end < order.size() && order[end - 1]->polyline.points.back() == order[end]->polyline.points.front() ? 1 : 0;
     const size_t n      = units.size();
+
     if (n < 3 || n > 600)
         return;
     std::vector<size_t> seq(n);
     for (size_t i = 0; i < n; ++i)
         seq[i] = i;
     auto gap = [&units](size_t from, size_t to) { return (units[to].start() - units[from].last()).norm(); };
+
     constexpr double Gain = 0.1;
     for (int sweep = 0; sweep < 10; ++sweep) {
         bool improved = false;
         for (size_t len = 1; len <= 3; ++len)
             for (size_t i = 1; i + len + pinned <= seq.size(); ++i) {
                 const size_t first = seq[i], last = seq[i + len - 1];
+
                 const size_t size = seq.size() - len;
                 auto rest = [&](size_t k) { return k < i ? seq[k] : seq[k + len]; };
+
                 auto added = [&](size_t k) {
                     const size_t p = rest(k - 1);
                     return gap(p, first) + (k < size ? gap(last, rest(k)) - gap(p, rest(k)) : 0.);
@@ -195,6 +212,7 @@ void order_pass_roads(std::vector<const ExtrusionPathConformal *> &order, size_t
                 if (best_flip)
                     units[first].flipped = !units[first].flipped;
                 if (best_k != i) {
+
                     if (best_k < i)
                         std::rotate(seq.begin() + best_k, seq.begin() + i, seq.begin() + i + len);
                     else
@@ -228,6 +246,7 @@ double pressure_advance_scale(double height, double nominal_height)
 
 PressureAdvance parse_pressure_advance(const std::string &gcode)
 {
+
     static const std::regex re(R"(^\s*(M900\b[^;]*?\bK|M572\b[^;]*?\bS|SET_PRESSURE_ADVANCE\b[^;]*?\bADVANCE=)\s*([0-9]*\.?[0-9]+))",
                                std::regex::icase);
     PressureAdvance out;
@@ -239,6 +258,7 @@ PressureAdvance parse_pressure_advance(const std::string &gcode)
         std::smatch m;
         if (std::regex_search(line, m, re)) {
             out.value = std::stod(m[2].str());
+
             out.command = m[1].str();
         }
     }
@@ -285,6 +305,7 @@ bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, c
     for (float h : path.bead_height)
         if (h <= 0.f)
             return false;
+
     auto xy = [&pts](size_t i) { return unscale(pts[i].to_point()); };
     if ((xy(n - 1) - xy(0)).norm() > 1.5 * path.width)
         return false;
@@ -300,6 +321,7 @@ bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, c
     if (std::abs(turn) < 1.6 * PI || std::abs(turn) > 2.4 * PI || s.back() < 4. * scarf.nozzle)
         return false;
     if (scarf.max_turn >= 0.) {
+
         auto at = [&](double t) {
             t        = std::clamp(t, 0., s.back());
             size_t k = size_t(std::upper_bound(s.begin(), s.end(), t) - s.begin());
@@ -317,6 +339,7 @@ bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, c
     }
     const double length = std::min(scarf.length, s.back());
     const double share0 = std::clamp(scarf.start_share, CurvedScarfMinShare, 1.);
+
     Points3            ramp;
     std::vector<float> ramp_h, ramp_w;
     std::vector<double> ramp_s;
@@ -344,6 +367,8 @@ bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, c
         out_h.emplace_back(h);
         out_w.emplace_back(w);
     };
+
+
     for (size_t k = 0; k < ramp.size(); ++k) {
         const double f    = share(ramp_s[k]);
         const double drop = (1. - f) * ramp_h[k];
@@ -351,11 +376,14 @@ bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, c
         if (std::isnan(g.x()) || std::isnan(g.y()))
             g = Vec2d::Zero();
         const double c = 1. / std::sqrt(1. + g.squaredNorm());
+
         const Vec3d d = drop * c * c * Vec3d(g.x(), g.y(), -1.);
         push(Point3(ramp[k] + Vec3d(scale_(d.x()), scale_(d.y()), scale_(d.z())).cast<coord_t>()), float(f * ramp_h[k]), ramp_w[k]);
     }
+
     for (size_t i = m; i < n; ++i)
         push(pts[i], path.bead_height[i], path.bead_width.empty() ? 0.f : path.bead_width[i]);
+
     for (size_t k = 0; k < ramp.size(); ++k)
         push(ramp[k], float(std::max(SoftTaperFloor, 1. - share(ramp_s[k])) * ramp_h[k]), ramp_w[k]);
     path.polyline.points = std::move(out_pts);
@@ -380,6 +408,7 @@ double mean_bead_height(const std::vector<ConformalPoint> &points)
 size_t convex_seam(const std::vector<double> &rear, const std::vector<double> &curvature, const std::vector<double> &z)
 {
     const size_t n = rear.size();
+
     std::vector<size_t> pick;
     for (size_t i = 0; i < n; ++i)
         if (rear[i] >= 0.75)
@@ -389,6 +418,8 @@ size_t convex_seam(const std::vector<double> &rear, const std::vector<double> &c
             pick.emplace_back(i);
     if (pick.empty())
         return 0;
+
+
     auto keep = [&pick](auto &&value, double tol) {
         double best = std::numeric_limits<double>::max();
         for (size_t i : pick)
@@ -403,6 +434,7 @@ size_t convex_seam(const std::vector<double> &rear, const std::vector<double> &c
 
 double meridian_curvature(const HeightField &surface, const Polyline &meridian, double length)
 {
+
     std::vector<double> slope, at;
     double              s = 0.;
     for (size_t i = 0; i + 1 < meridian.points.size() && s < length; ++i) {

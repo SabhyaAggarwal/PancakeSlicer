@@ -1,3 +1,7 @@
+
+
+
+
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import type { Config, SystemPreset } from '../api/types';
@@ -11,6 +15,7 @@ import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const NOZZLES = ['0.2', '0.4', '0.6', '0.8'];
 const first = (v: unknown) => String([v].flat()[0] ?? '');
+
 function rect(area: string) {
   const pts = area.split(',').map((p) => p.split('x').map(Number));
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -20,6 +25,7 @@ function rect(area: string) {
 export default function CreatePrinter({ close }: { close(): void }) {
   const s: State = getState();
   const ready = useStore((st) => st.profileLibraryLoad.state === 'ready');
+
   const catalog = useCatalog('machine', '', true).data, vendors = catalog && 'vendors' in catalog ? catalog.vendors : [];
   const templatesOf = (vendor: string) => (vendors.find((v) => v.id === vendor)?.models ?? []).flatMap((m) => Object.values(m.machines)).sort();
   const current = printerPreset(s);
@@ -39,6 +45,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
     return () => { live = false; };
   }, [onCurrent, template, templateVendor]);
   const base = onCurrent ? current : loaded?.name === template ? loaded : undefined;
+
   const shape = onCurrent ? effectiveConfig(s, 'machine') : base?.config ?? {};
   const r = rect(String(shape.printable_area ?? '0x0,200x0,200x200,0x200'));
   const [vendor, setVendor] = useState('');
@@ -49,6 +56,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
   const [height, setHeight] = useState<number | null>(null);
   const [w, d] = size ?? [r.w, r.d], [ox, oy] = origin ?? [r.ox, r.oy];
   const h = height ?? (Number(shape.printable_height) || 250);
+
   const name = mode === 'nozzle' ? resolvePreset(s,'machine',s.printer).name ?? 'Printer' : `${vendor.trim()} ${model.trim()} ${nozzle} nozzle`;
   const missing = mode === 'printer' && (!vendor.trim() || !model.trim()) ? 'Enter a vendor and a model.'
     : !(Number(nozzle) > 0) ? 'Enter the nozzle diameter.'
@@ -56,6 +64,8 @@ export default function CreatePrinter({ close }: { close(): void }) {
   const create = async () => {
     if (!base || missing) return;
     if (getState().profileLibraryLoad.state !== 'ready') return;
+
+
     const nd = base.config.nozzle_diameter;
     const overrides: Config = {
       printable_area: `${-ox}x${-oy},${w - ox}x${-oy},${w - ox}x${d - oy},${-ox}x${d - oy}`,
@@ -63,6 +73,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
       nozzle_diameter: Array.isArray(nd) ? (nd as unknown[]).map(() => nozzle) : nozzle,
     };
     try {
+
       if (!findCatalogBase(getState(), 'machine', base.name).base) setState((st) => ({ machines: [...st.machines.filter((m) => catalogKey(m) !== catalogKey(base)), base] }));
       const profile=saveProfile(getState(),'machine',name,mode === 'nozzle' ? s.printer : base.name,{...shape,...overrides});
       await commitProfileRecords([profile]);

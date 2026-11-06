@@ -1,3 +1,5 @@
+
+
 import { SlotPicker } from './SlotChip';
 import { Caret } from './Caret';
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +25,7 @@ import { overrideCount } from '../plater/overrides';
 import { setHoverLink, useHoverLink } from '../plater/hoverLink';
 import './prepare.css';
 
+
 interface SliceRecord {
   objects?: { id: number; name: string; mode?: string; instances?: { id: number; shift_mm?: [number, number] }[] }[];
 }
@@ -33,6 +36,7 @@ const linkProps = (object: number, instance?: number) => ({
   onFocus: () => setHoverLink({ object, instance, source: 'list' }),
   onBlur: () => setHoverLink(null),
 });
+
 const openMenu = (e: React.MouseEvent, object: number, instance?: number, volume?: number) => {
   e.preventDefault();
   const o = getState().objects.find((ob) => ob.id === object)!;
@@ -47,6 +51,7 @@ const openMenu = (e: React.MouseEvent, object: number, instance?: number, volume
     contextMenu: { x: e.clientX, y: e.clientY, object, instance },
   });
 };
+
 const printableButton = (object: number, printable: boolean, instance?: number) => printable ? null : (
   <span role="gridcell" className="ol-cell">
   <button className="ol-printable" aria-label="Printable" aria-pressed={printable}
@@ -55,6 +60,7 @@ const printableButton = (object: number, printable: boolean, instance?: number) 
   </button>
   </span>
 );
+
 const rowKeys = (pick: () => void, object: number, instance?: number) => ({
   tabIndex: 0,
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -67,6 +73,7 @@ const rowKeys = (pick: () => void, object: number, instance?: number) => ({
     e.preventDefault();
   },
 });
+
 const clickObject = (e: React.MouseEvent, object: number) => {
   const s = getState(), o = s.objects.find((ob) => ob.id === object)!;
   if (e.ctrlKey || e.metaKey) return toggleSelection(object, o.instances.map((i) => i.id));
@@ -77,6 +84,9 @@ const clickObject = (e: React.MouseEvent, object: number) => {
   }
   setState({ selected: { object, instance: o.instances[0].id, allInstances: true } });
 };
+
+
+
 const settingsCell = (n: number, name: string, pick: () => void) => (
   <span role="gridcell" className="ol-set">
     <button type="button" className={`ol-set-btn${n ? ' has' : ''}`} aria-label={n ? `${name}: ${n} setting${n === 1 ? '' : 's'}` : `Add settings to ${name}`}
@@ -85,6 +95,7 @@ const settingsCell = (n: number, name: string, pick: () => void) => (
     </button>
   </span>
 );
+
 
 const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expanded, onToggle, renaming, result, meshError, canFix, meshPlates, global, plateStyle, rowIndex, onFocus }: {
   onFocus(object: number | null): void; rowIndex: number; o: PlateObject; selected: Selected | null; linkedInstance: number | null | undefined; expanded: boolean;
@@ -96,10 +107,13 @@ const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expan
   const multi = o.instances.length > 1;
   const instSelected = (id: number) => (selected?.all ? isSelected(selected, o.id, id) : selected?.instance === id);
   const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
+
   const expandable = multi || !!o.volumes?.length || !!o.ranges?.length;
+
   const nSettings = expanded ? Object.keys(o.settings).length : overrideCount(o);
   const pickSettings = () => setState((st) => ({ processScope: 'objects',
     selected: objSelected && st.selected?.all ? st.selected : { object: o.id, instance: o.instances[0].id, allInstances: true } }));
+
   const style = o.project || !Object.keys(o.settings).length ? plateStyle : styleOf({ ...global, ...o.settings });
   return (
     <div onFocusCapture={() => onFocus(o.id)} onBlurCapture={e => {if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onFocus(null);}}>
@@ -249,6 +263,7 @@ const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expan
 export const ObjectList = memo(function ObjectList() {
   useTab('process');
   const objects = useStore((s) => s.objects);
+
   const results = useStore(plateResults);
   const selected = useStore((s) => s.selected);
   const project = useStore((s) => s.project);
@@ -257,6 +272,8 @@ export const ObjectList = memo(function ObjectList() {
   const meshErrors = useStore((s) => s.meshErrors);
   const canFix = useStore((s) => !!s.features.mesh_repair);
   const meshPlates = useStore((s) => canAddPlate(s) && s.projectPlates.length > 1);
+
+
   const link = useHoverLink('canvas');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
@@ -285,6 +302,8 @@ export const ObjectList = memo(function ObjectList() {
     refreshViewport();
     return () => {resize.disconnect(); box.removeEventListener('scroll', schedule); pointer.removeEventListener('change', schedule); cancelAnimationFrame(frame);};
   }, [refreshViewport]);
+
+
   const rows = useMemo(() => {
     let count = 0;
     return shown.map(o => {
@@ -299,6 +318,7 @@ export const ObjectList = memo(function ObjectList() {
   const visible = rows.filter(r => r.o.id === focused || r.o.id === renaming || r.o.volumes?.some(v => v.id === renaming) ||
     r.top + r.height >= viewport.top - viewport.row * 4 && r.top <= viewport.top + viewport.height + viewport.row * 4);
   const bottom = visible.length ? visible[visible.length - 1] : undefined;
+
   const revealed = useRef<Selected | null | undefined>(undefined);
   useLayoutEffect(() => {
     if (revealed.current === selected) return;

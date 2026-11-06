@@ -7,6 +7,10 @@
 
 namespace Slic3r {
 
+
+
+
+
 class NormalUtils
 {
 public:
@@ -20,11 +24,28 @@ public:
         NelsonMaxWeighted
     };
 
+
+
+
+
+
+
     static Normal create_triangle_normal(
         const stl_triangle_vertex_indices &indices,
         const std::vector<stl_vertex> &    vertices);
 
+
+
+
+
+
     static Normals create_triangle_normals(const indexed_triangle_set &its);
+
+
+
+
+
+
 
     static Normals create_normals(
         const indexed_triangle_set &its,
@@ -32,6 +53,13 @@ public:
     static Normals create_normals_average_neighbor(const indexed_triangle_set &its);
     static Normals create_normals_angle_weighted(const indexed_triangle_set &its);
     static Normals create_normals_nelson_weighted(const indexed_triangle_set &its);
+
+
+
+
+
+
+
 
     static float indice_angle(int                            i,
                               const Vec3i32 &                indice,

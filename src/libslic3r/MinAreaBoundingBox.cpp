@@ -27,6 +27,7 @@
 
 namespace Slic3r {
 
+
 using Unit = int64_t;
 
 #if !defined(HAS_INTRINSIC_128_TYPE) || defined(__APPLE__)

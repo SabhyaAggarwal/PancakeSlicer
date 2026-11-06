@@ -1,3 +1,5 @@
+
+
 import { createHash } from 'node:crypto';
 import { constants, type BigIntStats } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -51,6 +53,8 @@ class Snapshot {
     requireSource(s.isFile() && !s.isSymbolicLink() && s.nlink === 1n, 'Unsupported database directory entry.');
     const old = this.observations.get(relative);
     requireSource(!old || old.stamp === stamp(s), 'Source entry changed during enumeration.');
+
+
     if (!old) this.observations.set(relative, { stamp: stamp(s) });
   }
   private async read(relative: string) {
@@ -70,6 +74,7 @@ class Snapshot {
     } finally { await h.close(); }
   }
   async verify(): Promise<string> {
+
     for (const [relative, old] of this.observations) {
       if (old.names) {
         const full = await this.ancestors(relative), stat = await fs.lstat(full, { bigint: true });
@@ -87,6 +92,7 @@ class Snapshot {
   }
   async database(relative: string, comparator?: UserComparator): Promise<CurrentRecord[]> {
     const names = await this.directory(relative);
+
     requireSource(names.every((n) => /^(?:CURRENT|LOCK|LOG(?:\.old)?|MANIFEST-[0-9]{6,}|[0-9]{6,}\.(?:ldb|sst|log))$/.test(n)),
       'Unknown database file family.');
     for (const name of names) await this.metadata(`${relative}/${name}`);
@@ -172,11 +178,14 @@ function sessionStorage(records: CurrentRecord[]): Map<string, { namespaceId: st
   const output = new Map<string, { namespaceId: string; values: { key: string; value: string }[] }[]>();
   for (const n of namespaces.sort((a, b) => sort(a.id, b.id) || sort(a.origin, b.origin))) {
     const list = output.get(n.origin) ?? [];
+
     list.push({ namespaceId: n.id, values: (maps.get(n.map) ?? []).map(({ key, value }) => ({ key, value })).sort((a, b) => sort(a.key, b.key)) });
     output.set(n.origin, list);
   }
   return output;
 }
+
+
 
 const excluded = new Set(['data', 'jobs', 'logs', 'projects', 'trash', 'deleted-projects', 'project-aliases.json', 'assets',
   'Local State', 'Preferences', 'Secure Preferences', 'Cookies', 'Cookies-journal', 'Network', 'Login Data', 'Login Data-journal',
@@ -191,6 +200,7 @@ export interface DecodedSnapshot {
   absence: { supportedLayout: string; sourceRefs: string[] } | null;
   origins: RendererOriginInventory[];
   physicalFingerprint: string;
+
   parts: Map<string, { origin: string; bytes: Buffer; size: number; sha256: string }>;
 }
 export async function scanOriginal(root: string): Promise<DecodedSnapshot> {
@@ -217,6 +227,8 @@ export async function scanOriginal(root: string): Promise<DecodedSnapshot> {
       const blobName = directory.slice(0, -'.leveldb'.length) + '.blob', blobRoot = `IndexedDB/${blobName}`;
       const current = await snapshot.database(`IndexedDB/${directory}`, idbComparator);
       const recovered = await recoverIDB(current, partsFor, (relative) => snapshot.file(relative), blobRoot);
+
+
       requireSource(directory === recovered.identifier.replace(/@1$/, '') + '.indexeddb.leveldb'
         && !databases.has(recovered.origin), 'IndexedDB metadata/layout ownership differs.');
       exactOrigin(recovered.origin); databases.set(recovered.origin, recovered.databases);

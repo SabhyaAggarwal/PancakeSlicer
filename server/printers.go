@@ -124,6 +124,7 @@ func (p *PrinterConfig) validate(resources string) error {
 			}
 		}
 	case "bambu-connect":
+
 		if p.URL != "" || p.Host != "" || p.TLS != "" {
 			return errors.New("Bambu Connect takes no address")
 		}
@@ -231,6 +232,7 @@ func (p *PrinterConfig) tlsConfig(serverName string) *tls.Config {
 			return nil
 		}
 	case "tofu":
+
 		c.InsecureSkipVerify = true
 		c.VerifyConnection = func(cs tls.ConnectionState) error {
 			if len(cs.PeerCertificates) == 0 {
@@ -326,12 +328,13 @@ func (t *Transfer) to(next TransferState) bool {
 func (t *Transfer) active() bool { return t.State == TransferUploading || t.State == TransferStarting }
 
 type SendManager struct {
-	store   *printerStore
-	mu      sync.Mutex
-	conns   []*PrinterConfig
-	busy    map[string]bool
-	live    map[string]*Job
-	cards   map[string]string
+	store *printerStore
+	mu    sync.Mutex
+	conns []*PrinterConfig
+	busy  map[string]bool
+	live  map[string]*Job
+	cards map[string]string
+
 	buckets map[string]tokenBucket
 	hub     *statusHub
 	history *sendHistory
@@ -458,16 +461,17 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Printer       string             `json:"printer"`
-		Start         *bool              `json:"start"`
-		Filename      string             `json:"filename"`
-		BedLeveling   *bool              `json:"bed_leveling"`
-		FlowCali      bool               `json:"flow_cali"`
-		Timelapse     bool               `json:"timelapse"`
-		VibrationCali *bool              `json:"vibration_cali"`
-		UseAMS        bool               `json:"use_ams"`
-		AMSMapping    []int              `json:"ams_mapping"`
-		AMSMapping2   []bambuTrayAddress `json:"ams_mapping_2"`
+		Printer       string `json:"printer"`
+		Start         *bool  `json:"start"`
+		Filename      string `json:"filename"`
+		BedLeveling   *bool  `json:"bed_leveling"`
+		FlowCali      bool   `json:"flow_cali"`
+		Timelapse     bool   `json:"timelapse"`
+		VibrationCali *bool  `json:"vibration_cali"`
+		UseAMS        bool   `json:"use_ams"`
+
+		AMSMapping  []int              `json:"ams_mapping"`
+		AMSMapping2 []bambuTrayAddress `json:"ams_mapping_2"`
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil {
@@ -551,9 +555,11 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this job is already being sent")
 		return
 	}
+
 	card := p.Printer + "\x00" + filename
 	resend := m.cards[card] == j.ID
 	delete(m.cards, card)
+
 	base, stopTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
 	ctx, cancel := context.WithCancelCause(base)
 	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: TransferUploading,
@@ -568,6 +574,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	m.hub.changed()
 	audit(map[string]any{"event": "send_accepted", "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": start, "bytes": st.Size()})
 	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, flowCali: body.FlowCali, timelapse: body.Timelapse, vibrationCali: body.VibrationCali == nil || *body.VibrationCali, useAMS: body.UseAMS, amsMapping: body.AMSMapping, amsMapping2: body.AMSMapping2}
+
 	if body.AMSMapping != nil {
 		options.useAMS = false
 		for _, t := range body.AMSMapping {
@@ -589,16 +596,17 @@ const sendTimeout = 30 * time.Minute
 const sendStall = 30 * time.Second
 
 type upload struct {
-	printer        *PrinterConfig
-	secret         string
-	filename       string
-	file           *os.File
-	size           int64
-	start          bool
-	progress       *atomic.Int64
-	starting       func()
-	stored         func()
-	options        bambuOptions
+	printer  *PrinterConfig
+	secret   string
+	filename string
+	file     *os.File
+	size     int64
+	start    bool
+	progress *atomic.Int64
+	starting func()
+	stored   func()
+	options  bambuOptions
+
 	resend, onCard bool
 }
 

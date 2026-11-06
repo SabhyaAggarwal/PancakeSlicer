@@ -51,7 +51,6 @@
   :where(.orca-parity) .gcode-back { display: inline-flex; }
 }
 @media (pointer: coarse) { :where(.orca-parity) .gcode-hook { min-height: 44px; } }
-
 :where(.orca-parity) .gcode-group { --gc-command: var(--accent-text); --gc-param: #8fc6f0; --gc-number: #e6c07b; --gc-comment: var(--ink-3); --gc-placeholder: #7fd6a8; --gc-unknown: var(--danger); --gc-control: #f0a3d0; --gc-operator: var(--ink-2); --gc-string: #e6c07b; }
 :where(.orca-parity) .gcode-hook-row { display: flex; flex-direction: column; gap: var(--s-2); padding: 1px var(--space-section, var(--s-5)) 1px var(--row-inset, var(--space-section, var(--s-5))); }
 :where(.orca-parity) .gcode-hook-row[data-modified] .opt-label-text { color: var(--changed); }

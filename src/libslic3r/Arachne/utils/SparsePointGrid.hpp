@@ -16,17 +16,36 @@
 
 namespace Slic3r::Arachne {
 
+
+
+
+
+
+
+
 template<class ElemT, class Locator> class SparsePointGrid : public SparseGrid<ElemT>
 {
 public:
     using Elem = ElemT;
 
+
+
+
+
+
+
+
     SparsePointGrid(coord_t cell_size, size_t elem_reserve = 0U, float max_load_factor = 1.0f);
+
+
+
+
 
     void insert(const Elem &elem);
 
 protected:
     using GridPoint = typename SparseGrid<ElemT>::GridPoint;
+
 
     Locator m_locator;
 };

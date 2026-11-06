@@ -98,6 +98,7 @@ func (s *Server) methodDecisions(printer map[string]any) []methodDecision {
 		ready = artifact["validated"] == true
 	}
 	ready = ready && methodDigest.MatchString(fmt.Sprint(artifact["binary_sha256"])) && methodDigest.MatchString(fmt.Sprint(artifact["resources_sha256"]))
+
 	af := map[string]bool{}
 	if raw, err := json.Marshal(artifact["features"]); err == nil {
 		json.Unmarshal(raw, &af)
@@ -178,6 +179,7 @@ func methodSelection(config map[string]any, decisions []methodDecision) *methodP
 	return nil
 }
 func (s *Server) validateJobMethods(j *Job, req JobRequest, vendor *VendorPresets) *methodProblem {
+
 	if req.Output == "3mf" || req.Output == "patch-preview" || req.Orient || req.Arrange || req.WipeTower || req.Explode || req.Cut != "" || req.MeshOp != "" {
 		return nil
 	}
@@ -229,6 +231,7 @@ func (s *Server) validateJobMethods(j *Job, req JobRequest, vendor *VendorPreset
 			return p
 		}
 	}
+
 	var walk func(any, map[string]any) *methodProblem
 	walk = func(node any, parent map[string]any) *methodProblem {
 		switch v := node.(type) {

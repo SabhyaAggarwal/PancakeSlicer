@@ -45,6 +45,7 @@ namespace {
 
 constexpr double Step = 0.25, CellXY = 1., CellZ = 0.5, OwnRun = 2.;
 
+
 struct Sample
 {
     Vec3f    p;
@@ -53,8 +54,10 @@ struct Sample
     float    length;
     uint32_t run;
     bool     support, sparse;
+
     bool     touch;
 };
+
 struct Probe
 {
     Vec3d    p, axis;
@@ -76,6 +79,7 @@ public:
         if (path.mm3_per_mm <= 0. || path.is_force_no_extrusion() || path.polyline.points.size() < 2)
             return;
         const ExtrusionRole role = path.role();
+
         if (role == erIroning)
             return;
         const auto         *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path);
@@ -92,16 +96,22 @@ public:
                 if (!conformal->bead_width.empty() && i < conformal->bead_width.size())
                     w = 0.5 * (conformal->bead_width[i - 1] + conformal->bead_width[i]);
             }
+
             Vec3d ax = Vec3d::UnitZ();
             if (m_rotary && conformal != nullptr && i < conformal->tool_axis.size() && conformal->tool_axis[i].squaredNorm() > 0.f)
                 ax = conformal->tool_axis[i].cast<double>().normalized();
+
             auto at = [&](size_t j) -> Vec3d {
+
                 return Vec3d(unscale<double>(pts[j].x()), unscale<double>(pts[j].y()),
                              conformal != nullptr || path.z_contoured ? z + unscale<double>(pts[j].z()) : z) - 0.5 * h * ax;
             };
             this->segment(at(i - 1), at(i), ax, w, h, role, run, along);
         }
     }
+
+
+
     uint32_t new_run() { return m_runs++; }
     void     move(const Vec3d &from, const Vec3d &to, double w, double h, ExtrusionRole role, uint32_t run, double &along,
                   const Vec3d &ax = Vec3d::UnitZ())
@@ -109,8 +119,10 @@ public:
         const Vec3d down = 0.5 * h * ax;
         this->segment(from - down, to - down, ax, w, h, role, run, along);
     }
+
     void segment(const Vec3d &a, const Vec3d &b, const Vec3d &ax, double w, double h, ExtrusionRole role, uint32_t run, double &along)
     {
+
         const bool   checked = role != erInternalInfill && role != erBridgeInfill && role != erInternalBridgeInfill &&
                              role != erSolidInfill && role != erSupportMaterialInterface && role != erSupportTransition;
         const bool   surface = role == erTopSolidInfill || role == erBottomSurface;
@@ -122,6 +134,7 @@ public:
             const Probe  probe{ p, ax, s, h, run };
             if (checked && !this->rests(probe, h, w) && !(surface && this->spans(probe))) {
                 m_floating.push_back(m_samples.size());
+
                 static const bool dump = std::getenv("NP_FLOAT_DUMP") != nullptr;
                 if (dump)
                     BOOST_LOG_TRIVIAL(warning) << "float " << ExtrusionEntity::role_to_string(role) << " " << p.x() << " " << p.y() << " "
@@ -132,6 +145,8 @@ public:
         }
         along += l;
     }
+
+
     void raised(const ExtrusionEntity &ee, double z)
     {
         if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&ee)) {
@@ -150,11 +165,13 @@ public:
             this->path(*p, z);
     }
 
+
     Floating floating() const
     {
         Floating out;
         for (size_t i : m_floating)
             (m_samples[i].support ? out.support : out.part) += m_samples[i].length;
+
         constexpr double    ClusterReach = 1., MaxSpan = 5.;
         std::vector<size_t> part;
         for (size_t i : m_floating)
@@ -201,6 +218,7 @@ public:
     }
 
 private:
+
     template<class Fn> bool any_near(const Probe &s, double reach, Fn &&fn) const
     {
         const int x0 = int(std::floor((s.p.x() - reach) / CellXY)), x1 = int(std::floor((s.p.x() + reach) / CellXY));
@@ -215,11 +233,17 @@ private:
                                 return true;
         return false;
     }
+
+
+
+
+
     bool rests(const Probe &s, double h, double w) const
     {
         if (s.p.z() <= m_bed + 0.75 * m_layer)
             return true;
         constexpr double LateralSlack = 0.05, WidestBead = 1.5;
+
         const double deep = std::max(2. * std::max(h, m_layer) + 0.1, m_interface >= 0. ? 0.5 * h + m_interface : 0.), own = 0.5 * w + h;
         const double side = std::max(own, 0.5 * (w + WidestBead) + LateralSlack);
         return this->any_near(s, std::sqrt(deep * deep + side * side), [&](const Sample &m) {
@@ -230,6 +254,8 @@ private:
             return m.run != s.run || s.along - m.along >= OwnRun;
         });
     }
+
+
     bool spans(const Probe &s) const
     {
         const double       deep = 2. * std::max(s.height, m_layer) + 0.1;
@@ -260,6 +286,7 @@ private:
 
     double                                             m_bed, m_layer, m_spacing;
     bool                                               m_rotary;
+
     double                                             m_interface = -1.;
     uint32_t                                           m_runs = 0;
     std::vector<Sample>                                m_samples;
@@ -275,6 +302,8 @@ Floating floating_road(const PrintObject &object, const ConformalResult *result)
     const auto support = object.support_layers();
     if (layers.empty())
         return {};
+
+
     const Layer *first = layers.front();
     double       bed   = first->print_z - 0.5 * first->height;
     if (!support.empty())
@@ -284,6 +313,7 @@ Floating floating_road(const PrintObject &object, const ConformalResult *result)
     const double             density = 0.01 * rc.sparse_infill_density.value;
     const double             spacing = density > 0. ? 2. * rc.sparse_infill_line_width.get_abs_value(nozzle) / density : 6.;
     Walker walker(bed, object.config().layer_height.value, spacing, make_tool_kinematics(object.print()->config())->rotary_count() > 0);
+
     struct Event { double z; int kind; size_t index; };
     std::vector<Event> events;
     for (size_t i = 0; i < support.size(); ++i)
@@ -308,6 +338,8 @@ Floating floating_road(const PrintObject &object, const ConformalResult *result)
         patches(layer->conformal_patches_before, e.z);
         for (const LayerRegion *layerm : layer->regions()) {
             walker.entity(layerm->perimeters, e.z);
+
+
             walker.entity(layerm->fills, e.z);
         }
         patches(layer->conformal_patches_after, e.z);
@@ -339,6 +371,8 @@ Floating floating_road(const GCodeProcessorResult &result, const PrintObject &ob
     const double             density = 0.01 * rc.sparse_infill_density.value;
     const double             spacing = density > 0. ? 2. * rc.sparse_infill_line_width.get_abs_value(nozzle) / density : 6.;
     const double             gap     = object.config().support_top_z_distance.value;
+
+
     const auto kinematics = make_tool_kinematics(object.print()->config());
     const bool rotary     = kinematics->rotary_count() > 0 && result.has_joints();
     Walker walker(bed, object.config().layer_height.value, spacing, rotary, interface_h > 0. ? gap + 0.5 * interface_h + 0.1 : -1.);
@@ -348,6 +382,7 @@ Floating floating_road(const GCodeProcessorResult &result, const PrintObject &ob
     double               along  = 0.;
     for (size_t i = 0; i < result.moves.size(); ++i) {
         const Move &m = result.moves[i];
+
         if (m.timing_only)
             continue;
         const Vec3d to = m.position.cast<double>();
@@ -371,13 +406,20 @@ Floating floating_road(const GCodeProcessorResult &result, const PrintObject &ob
 
 bool floats_past_bar(const Floating &print, const Floating &control)
 {
+
     constexpr double Share = 1.05, Slack = 2.;
+
+
+
+
     constexpr double MaterialExcess = 10.;
     return print.part > Share * std::max(control.part, 0.) + Slack + MaterialExcess;
 }
 
 std::string may_need_support(const std::string &name, const Floating &planar)
 {
+
+
     constexpr double MayNeedSupportAir = 20.;
     if (planar.part < 0. || planar.air <= MayNeedSupportAir)
         return {};
@@ -398,6 +440,7 @@ Floating planar_control_floating(const PrintObject &object, bool support)
                     { "support_critical_regions_only", "0" } };
     Model        model;
     ModelObject *copy = model.add_object(*object.model_object());
+
     DynamicPrintConfig &copy_config = const_cast<DynamicPrintConfig &>(copy->config.get());
     for (const auto &[key, value] : control) {
         config.set_deserialize_strict(key, value);
@@ -405,6 +448,7 @@ Floating planar_control_floating(const PrintObject &object, bool support)
             copy_config.set_deserialize_strict(key, value);
     }
     copy_config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
+
     if (oneshot_plinth_applied(object)) {
         config.set_deserialize_strict("raft_layers", "0");
         if (copy_config.has("raft_layers"))
@@ -412,6 +456,10 @@ Floating planar_control_floating(const PrintObject &object, bool support)
     }
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
+
+
+
+
     constexpr size_t                                     CachedControls = 4;
     static std::mutex                                    cache_mutex;
     static std::deque<std::pair<std::string, Floating>> cache;
@@ -433,6 +481,7 @@ Floating planar_control_floating(const PrintObject &object, bool support)
             if (cached == key)
                 return floating;
     }
+
     if (measure_work_spent() || measure_deadline_passed())
         return { -1., -1. };
     Print print;

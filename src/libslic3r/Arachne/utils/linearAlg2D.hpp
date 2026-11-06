@@ -12,10 +12,38 @@
 namespace Slic3r::Arachne::LinearAlg2D
 {
 
+
+
+
+
+
+
+
+
+
+
+
 static inline int64_t pointIsLeftOfLine(const Point &p, const Point &a, const Point &b)
 {
     return int64_t(b.x() - a.x()) * int64_t(p.y() - a.y()) - int64_t(b.y() - a.y()) * int64_t(p.x() - a.x());
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static inline float getAngleLeft(const Point &a, const Point &b, const Point &c)
 {

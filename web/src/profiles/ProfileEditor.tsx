@@ -26,8 +26,10 @@ import { DynamicTab } from './DynamicTab';
 import { PrintOverrides } from './PrintOverrides';
 import { effectiveLayerHeight, type SettingOrigin } from './context';
 import { DynamicBadge } from '../components/DynamicBadge';
+
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
-export interface ProfileDraft { scales?: ScaleRow[];  printOverrides?: Config; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
+export interface ProfileDraft {                                                     scales?: ScaleRow[];                                                  printOverrides?: Config; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
+
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
   const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
   const unchanged=[...keys].every(key=>sameValue(key,current.values[key],submitted.values[key]));
@@ -38,6 +40,7 @@ export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileD
   }
   return {...current,values,baseline,origin,baselineApplicability:origin.applicability};
 }
+
 export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove, onDuplicate, foldActions = false, renameRequest}: {type: PresetType; name: string; draft?: ProfileDraft; renameRequest?: {key: string; at: number}; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onDuplicate?(): void; onSavingChange?(saving: boolean): void; foldActions?: boolean}) {
   const users = useStore(s => s.userPresets);
   const ready=useStore(s=>s.profileLibraryLoad.state==='ready');
@@ -53,6 +56,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const changes = useMemo(() => changedKeys(values, baseline), [values, baseline]);
   const mode=useStore(effectiveMode);
   const connections=useStore(s=>s.printerConnections.enabled);
+
   const m = useMemo(createProfileSave, []), snap = useMachine(m);
   const saving = snap.value === 'saving' || snap.value === 'renaming', error = snap.value === 'failed' ? snap.context.error : null;
   const setError = (message: string | null) => m.send(message ? {type: 'REJECT', error: message} : {type: 'DISMISS'});
@@ -61,7 +65,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const latest = useRef<ProfileDraft>({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged,scales:draft?.scales,printOverrides:draft?.printOverrides};
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
+
+
   const resetToBase = useCallback((k: string) => { const current = latest.current, next = {...current.values}, native = resolved.base?.config ?? {}; if (native[k] === undefined) delete next[k]; else next[k] = native[k]; update(key, {...current, values: next}); }, [key, update, resolved.base]);
+
+
   const savedScales = (source as {auto?: {scales?: ScaleRow[]}} | undefined)?.auto?.scales ?? [];
   const scales = type === 'process' ? draft?.scales ?? savedScales : [];
   const scalesDirty = JSON.stringify(scales) !== JSON.stringify(type === 'process' ? savedScales : []);
@@ -69,23 +77,31 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const height = useStore((st) => effectiveLayerHeight(st) ?? 0.2);
   const heightLimits = useStore((st) => { const c = resolvePreset(st, 'machine', st.printer).config; return `${[c.min_layer_height].flat()[0] ?? ''},${[c.max_layer_height].flat()[0] ?? ''}`; });
   const [minHeight, maxHeight] = heightLimits.split(',').map((v) => Number(v) || undefined);
+
   const savedOverrides = (source as {printOverrides?: Config} | undefined)?.printOverrides ?? {};
   const overrides = type === 'machine' ? draft?.printOverrides ?? savedOverrides : {};
   const overridesDirty = type === 'machine' && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
   const setOverrides = useCallback((next: Config) => update(key, {...latest.current, printOverrides: next}), [key, update]);
   const setScales = useCallback((next: ScaleRow[]) => update(key, {...latest.current, scales: next}), [key, update]);
+
   const makeDynamic = () => { const current = latest.current, next = {...current.values}, native = resolved.base?.config ?? {};
     for (const r of DEFAULT_SCALES) { if (native[r.key] === undefined) delete next[r.key]; else next[r.key] = native[r.key]; }
     update(key, {...current, values: next, scales: [...DEFAULT_SCALES]}); };
+
   const makeRegular = async () => {
     if (!await confirmDialog('Make regular', `Fix the formulas’ values at a ${nozzle} mm nozzle and ${height.toFixed(2)} mm layers?`, ['Make regular', 'Cancel'])) return;
     const current = latest.current;
     update(key, {...current, values: {...current.values, ...scaleValues(scales, {nozzle, layerHeight: height}), layer_height: String(height)}, scales: []}); };
+
+
   const printer = useStore((st) => findProfile(st, 'machine', st.printer));
   const fromPrinter = type === 'process' ? (printer as {printOverrides?: Config} | undefined)?.printOverrides ?? {} : {};
   const printerName = printer?.name ?? '';
   const shown0 = useMemo(() => scales.length ? {...values, ...Object.fromEntries(scales.map((r) => [r.key, scaledValue(r, {nozzle, layerHeight: height})]))} : values, [values, scales, nozzle, height]);
   const shown = useMemo(() => { const own = (source as {overlay?: Config} | undefined)?.overlay ?? {}, out = {...shown0}; for (const [k, v] of Object.entries(fromPrinter)) if (!(k in own) && !(k in changes)) out[k] = v; return out; }, [shown0, fromPrinter, source, changes]);
+
+
+
   const lifted = useMemo(() => type !== 'process' ? {} : Object.fromEntries((['top', 'bottom'] as const).flatMap((side) => {
     const e = effectiveShells(shown, side, height);
     return e.lifted ? [[`${side}_shell_layers`, `${e.effective} at ${height} mm to keep ≥ ${e.thickness} mm`]] : [];
@@ -110,6 +126,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     const current = latest.current, next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k];
     update(key, {...current, values: next, scales: [...(current.scales ?? savedScales).filter((r) => r.key !== k), row]});
   }, [type, key, update, savedScales, resetToBase]);
+
   const editor: ProfileFields = useMemo(() => ({name, config: shown, baseline, changes, set: type === 'process' ? setOrUnlink : set, reset, mode: type === 'process' ? 'develop' : mode, sources, sourceText, resetToBase: type === 'process' ? relink : resetToBase}), [name, shown, baseline, changes, set, setOrUnlink, reset, mode, type, sources, sourceText, resetToBase, relink]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || scalesDirty || overridesDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
@@ -125,6 +142,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     try {
       const auto = type === 'process' ? autoOf(currentSource, submitted.scales ?? savedScales).auto : undefined;
       const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability, ...(auto ? {auto} : {}), ...(type === 'machine' && (submitted.printOverrides || Object.keys(savedOverrides).length) ? {printOverrides: submitted.printOverrides ?? savedOverrides} : {})} as UserPreset;
+
       if (type === 'process' && !auto) delete (p as {auto?: unknown}).auto;
       await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
       const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolvePreset(saved,type,profileKey(p));
@@ -133,11 +151,14 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
       update(key,next); m.send({type: 'SAVED', request}); toast(`Saved ${profileName}`);
     } catch (e) { m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}); }
   };
+
+
   const renamable = !!source && source.kind !== 'master';
   const naming = snap.value === 'naming' || snap.value === 'renaming' ? snap.context.name : null, nameError = naming === null ? null : snap.context.nameError;
   const nameInput = useRef<HTMLInputElement>(null);
   const startRename = () => {if (renamable && m.can({type: 'RENAME', name: profileName})) m.send({type: 'RENAME', name: profileName});};
   useEffect(() => {if (renameRequest?.key === name && Date.now() - renameRequest.at < 2000) startRename();}, [renameRequest]);
+
   const writeName = async (next: string) => {
     const current = findProfile(getState(), type, name);
     if (!current) throw new Error('This profile is unavailable.');
@@ -145,6 +166,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     await commitProfileRecords([renameOwnedProfile(current, next)]);
     const renamed = findProfile(getState(), type, name);
     if (draft && renamed) update(key, {...latest.current, origin: renamed});
+
     toast(`Renamed to ${next}`, {label: 'Undo', run: () => {
       if (!m.can({type: 'RENAME', name: next})) {toast('Finish saving first, then rename it back.'); return;}
       m.send({type: 'RENAME', name: next}); m.send({type: 'TYPE', value: prior}); void commitName();
@@ -179,6 +201,8 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   </DetailPane>;
 }
 
+
+
 export function DetailPane({label, identity, summary, controls, error, children}: {label: string; identity: ReactNode; summary: ReactNode; controls: ReactNode; error?: string | null; children: ReactNode}) {
   return <section className="pf-full-editor" aria-label={label}>
     <div className="pf-editor-heading"><div className="pf-editor-identity">{identity}{summary}</div><div className="pf-editor-controls">{controls}</div></div>
@@ -186,4 +210,5 @@ export function DetailPane({label, identity, summary, controls, error, children}
     {children}
   </section>;
 }
+
 const autoPreferences = (p?: UserPreset) => { const h = (p as {auto?: {preferredHeight?: number}} | undefined)?.auto?.preferredHeight; return h ? `Prefers ${h.toFixed(2)} mm` : ''; };

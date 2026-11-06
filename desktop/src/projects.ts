@@ -1,3 +1,8 @@
+
+
+
+
+
 import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -42,14 +47,17 @@ export class ProjectStore {
     this.aliasesFile = path.join(userData, 'project-aliases.json');
   }
 
+
   async init() {
     const aliases = await readJson<Record<string, string>>(this.aliasesFile);
     this.aliases = Object.fromEntries(Object.entries(aliases ?? {}).filter(([old, id]) => ID.test(old) && !old.startsWith('.') && ULID.test(id)));
   }
 
+
   async flush() {
     while (this.chains.size) await Promise.all([...this.chains.values()]);
   }
+
 
   private serial<T>(id: string, op: () => Promise<T>): Promise<T> {
     id = this.canonical(id);
@@ -119,6 +127,7 @@ export class ProjectStore {
       await writeAtomic(path.join(dir, 'project.json'), JSON.stringify(body));
       if (thumbnail === null) await fs.rm(path.join(dir, 'thumb.jpg'), { force: true });
       else if (typeof thumbnail === 'string') await writeAtomic(path.join(dir, 'thumb.jpg'), fromDataUrl(thumbnail));
+
       for (const name of await fs.readdir(path.join(dir, 'blobs'))) {
         if (/^ta-[0-9a-f]{40}\.bin$/.test(name) && !used.has(name)) await fs.rm(path.join(dir, 'blobs', name), { force: true });
       }
@@ -164,6 +173,7 @@ export class ProjectStore {
       const old = await readJson<StoredProject>(path.join(this.dir(id), 'project.json'));
       const marker = await readJson<Tombstone>(this.tombstone(id));
       const tombstone = { revision: Math.max(old?.meta.revision ?? 0, marker?.revision ?? 0) + 1, deletedAt: Date.now() };
+
       await fs.mkdir(this.tombstones, { recursive: true });
       await fs.mkdir(this.trash, { recursive: true });
       await writeAtomic(this.tombstone(id), JSON.stringify(tombstone));
@@ -177,6 +187,7 @@ export class ProjectStore {
     return this.serial(id, async () => {
       const marker = await readJson<Tombstone>(this.tombstone(id));
       const bin = path.join(this.trash, this.canonical(id));
+
       const from = await exists(bin) ? bin : marker ? this.dir(id) : bin;
       if (from !== this.dir(id) && await exists(this.dir(id))) throw new Error(`project exists: ${id}`);
       const file = path.join(from, 'project.json');
@@ -259,6 +270,7 @@ function fromDataUrl(url: string): Buffer {
   if (!m) throw new Error('thumbnail is not a data URL');
   return m[1] ? Buffer.from(m[2], 'base64') : Buffer.from(decodeURIComponent(m[2]));
 }
+
 
 async function encode(v: unknown, put: (bytes: Buffer) => Promise<string>): Promise<unknown> {
   if (v === null || typeof v !== 'object') return v;

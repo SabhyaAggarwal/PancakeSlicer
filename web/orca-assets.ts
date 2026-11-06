@@ -1,3 +1,8 @@
+
+
+
+
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,8 +12,11 @@ const RESOURCES = fileURLToPath(new URL('../resources', import.meta.url));
 const IMAGES = path.join(RESOURCES, 'images');
 const PROFILES = path.join(RESOURCES, 'profiles');
 const VENDORS = fs.readdirSync(PROFILES).filter(v => fs.existsSync(path.join(PROFILES, `${v}.json`)) && fs.statSync(path.join(PROFILES, v)).isDirectory());
+
+
 const HEADS = path.join(RESOURCES, 'nonplanar', 'heads');
 function headIndex(): string {
+
   const heads = fs.readdirSync(HEADS).filter((f) => f.endsWith('.json')).map((f) => {
     const h = JSON.parse(fs.readFileSync(path.join(HEADS, f), 'utf8'));
     return { id: String(h.id ?? f.slice(0, -5)), name: String(h.name ?? ''), calibrated: h.calibrated === true };
@@ -24,6 +32,8 @@ const MIME: Record<string, string> = {
   '.json': 'application/json',
 };
 
+
+
 function assetSource(file: string): Buffer | string {
   const data = fs.readFileSync(file);
   if (!file.endsWith('.svg')) return data;
@@ -32,14 +42,21 @@ function assetSource(file: string): Buffer | string {
     .replace(/@font-face\s*\{[^}]*\}/gi, (rule) => /(?:https?:)?\/\//i.test(rule) ? '' : rule);
 }
 
+
+
+
+
 const DARK_COLOURS: [string, string][] = [
   ['#262E30', '#F1F1F1'], ['#323A3D', '#B8B8B8'], ['#808080', '#828282'], ['#CECECE', '#555555'],
   ['#6B6B6B', '#828282'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#383838'],
   ['#DBDBDB', '#4C4C4C'], ['#F0F0F1', '#353535'], ['#515151', '#B8B8B8'],
 ];
 
+
+
 const ACCENT = /#(?:009688|00675B)(?![0-9A-Fa-f])/gi;
 const lightIcon = (file: string) => String(assetSource(file)).replace(ACCENT, '#63378F');
+
 
 function darkIcon(name: string): string | null {
   const own = path.join(IMAGES, `${name}_dark.svg`);
@@ -62,8 +79,12 @@ function resolveAsset(url: string): string | null {
   return null;
 }
 
-const MOVES_DIR = process.env.ORCA_MOVES_DIR ?? 'samples-moves';
+
+
+
+const MOVES_DIR = process.env.ORCA_MOVES_DIR ?? path.resolve('.local/samples');
 const SAMPLE = process.env.ORCA_MOVES_SAMPLE ?? path.join(MOVES_DIR, 'dome-a1mini/dome.moves');
+
 const RECORD = process.env.ORCA_RECORD_SAMPLE ?? path.join(MOVES_DIR, 'dome-a1mini/dome.json');
 
 function resolveMoves(url: string): string | null {
@@ -109,6 +130,7 @@ export function orcaAssets(): Plugin {
         else fs.createReadStream(file).pipe(res);
       });
     },
+
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
         const moves = req.url ? resolveMoves(req.url) : null;
@@ -123,6 +145,7 @@ export function orcaAssets(): Plugin {
         .map((c) => (c.type === 'chunk' ? c.code : typeof c.source === 'string' ? c.source
           : c.fileName.endsWith('.json') ? Buffer.from(c.source).toString('utf8') : ''))
         .join('\n');
+
       const tokens = new Set(Array.from(text.matchAll(/["'`]([A-Za-z0-9_.+-]{2,80})["'`]/g), (m) => m[1]));
       for (const f of fs.readdirSync(IMAGES)) {
         if (!f.endsWith('.svg')) continue;
@@ -139,6 +162,8 @@ export function orcaAssets(): Plugin {
         this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
       const quoted = (name: string) => new RegExp(`["'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text);
       for (const v of VENDORS) {
+
+
         const beds = new Set<string>();
         for (const f of fs.existsSync(path.join(PROFILES, v, 'machine')) ? fs.readdirSync(path.join(PROFILES, v, 'machine')) : []) {
           if (!f.endsWith('.json')) continue;
@@ -146,7 +171,9 @@ export function orcaAssets(): Plugin {
           if (m.type === 'machine_model' && quoted(m.name)) for (const b of [m.bed_model, m.bed_texture]) if (b) beds.add(b);
         }
         for (const f of fs.readdirSync(path.join(PROFILES, v))) {
+
           const cover = /^(.*)_cover\.png$/.exec(f);
+
           if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || beds.has(f) || cover)) continue;
           this.emitFile({ type: 'asset', fileName: `profiles/${v}/${f}`, source: assetSource(path.join(PROFILES, v, f)) });
         }

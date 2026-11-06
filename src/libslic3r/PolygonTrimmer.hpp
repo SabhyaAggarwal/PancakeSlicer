@@ -15,6 +15,7 @@ namespace EdgeGrid {
 struct TrimmedLoop
 {
 	Points          			points;
+
 	std::vector<unsigned int> 	segments;
 
 	bool 	is_trimmed() const { return ! segments.empty(); }

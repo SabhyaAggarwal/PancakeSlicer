@@ -16,7 +16,25 @@
 
 namespace Slic3r {
 
+
+
 inline constexpr size_t resolve_batch_size = 64;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 template<class ChunkSetup = std::monostate, class Resolve, class Commit>
 void resolve_then_commit(size_t count, Resolve resolve, Commit commit)
@@ -26,6 +44,8 @@ void resolve_then_commit(size_t count, Resolve resolve, Commit commit)
     std::vector<Resolved> resolved(std::min(count, resolve_batch_size));
     for (size_t first = 0; first < count; first += resolve_batch_size) {
         const size_t last = std::min(first + resolve_batch_size, count);
+
+
         tbb::this_task_arena::isolate([&] {
             tbb::parallel_for(tbb::blocked_range<size_t>(first, last),
                 [&](const tbb::blocked_range<size_t>& range) {

@@ -1,6 +1,8 @@
 import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
+
+
 import { useEffect, useSyncExternalStore } from 'react';
-import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
+import knobUrl from '../../../resources/handy_models/knurled-knob.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
 import carUrl from '../samples/sports_car_3d.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
@@ -13,6 +15,9 @@ import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
+
+
+
 const SAMPLES: { url: string; file: string; label: string; surface?: SurfaceId }[] = [
   { url: carUrl, file: 'sports_car.stl', label: 'Sports car', surface: 'smooth' },
   { url: handyUrl('3DBenchy.drc'), file: '3DBenchy.drc', label: 'Benchy' },
@@ -45,6 +50,10 @@ function DropZone() {
   );
 }
 
+
+
+
+
 let firstVisitObserver: (() => void) | null = null;
 onLeaveDocument(() => firstVisitObserver?.());
 function afterFirstVisit() {
@@ -64,7 +73,9 @@ function afterFirstVisit() {
   firstVisitObserver=stop;
 }
 
+
 const hasFilament = (s: ReturnType<typeof getState>) => !!s.filamentSlots[0] && (() => { const r = resolvePreset(s, 'filament', s.filamentSlots[0]); return !!r.name && !r.error; })();
+
 
 export function StartOver({ className = 'btn' }: { className?: string }) {
   if (!useDevReset()) return null;
@@ -77,8 +88,12 @@ export default function EmptyPlate() {
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
   const library=useStore(s=>s.profileLibraryLoad.state);
   const filament=useStore(hasFilament);
+
   const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && (!printer || !filament);
+
+
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
+
   useEffect(()=>{if(firstVisit && !setupOffered){setupOffered=true;openSetup();}},[firstVisit]);
   return (
     <div className="empty-plate">
@@ -87,6 +102,7 @@ export default function EmptyPlate() {
     </div>
   );
 }
+
 
 export function SetupWizard({ close }: { close(): void }) {
   useEffect(() => { openSetup(); close(); }, []);

@@ -17,12 +17,18 @@ TriangleMesh TriangleMeshDeal::smooth_triangle_mesh(const TriangleMesh& mesh, bo
 
         auto vertices_count = mesh.its.vertices.size();
         auto indices_count  = mesh.its.indices.size();
+
         const Eigen::Map<const RowMatrixX3f> OV(mesh.its.vertices[0].data(), vertices_count, 3);
         const Eigen::Map<const RowMatrixX3i> OF(mesh.its.indices[0].data(), indices_count, 3);
         Eigen::MatrixX3f                     V;
         Eigen::MatrixX3i                     F;
 
         ok = true;
+
+
+
+
+
         loop(OV, OF, V, F);
 
         indexed_triangle_set its;

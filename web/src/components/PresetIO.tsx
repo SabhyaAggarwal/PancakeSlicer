@@ -1,4 +1,7 @@
 import { Check } from './Check';
+
+
+
 import { useRef, useState } from 'react';
 import type { PresetType } from '../api/types';
 import { applyImportPlans, downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
@@ -12,7 +15,10 @@ const ACCEPT = '.json,.zip,.bbscfg,.orca_printer,.orca_filament,.orca_bundle';
 const close = () => setState({ presetUx: null });
 
 type Row = ImportPlan & { checked: boolean; result?: string; ok?: boolean };
+
 const importable = (r: ImportPlan) => !!(r.preset || r.base || r.parsed.physical);
+
+
 
 type ImportState = 'empty' | 'reading' | 'review' | 'importing' | 'imported';
 type ImportEvent = { type: 'FILES' } | { type: 'PARSED'; request: number; rows: Row[] } | { type: 'READ_FAIL'; request: number; error: string }
@@ -30,6 +36,7 @@ const createImport = () => createMachine<ImportState, ImportEvent, ImportContext
     } },
     review: { on: { FILES: files, ROWS: { action: (_, e) => ({ rows: e.rows }) },
       IMPORT: { target: 'importing', guard: (c) => !!c.rows?.some((r) => r.checked && importable(r)), action: () => ({ error: null }) } } },
+
     importing: { on: { IMPORTED: { target: 'imported', action: (_, e) => ({ rows: e.rows }) }, IMPORT_FAIL: { target: 'review', action: (_, e) => ({ rows: e.rows }) } } },
     imported: { on: { FILES: files } },
   },
@@ -119,6 +126,7 @@ export function ExportDialog() {
   const userPresets = useStore((s) => s.userPresets);
   const [kind, setKind] = useState<ExportKind>('printer_bundle');
   const [picked, setPicked] = useState<Set<string>>(new Set());
+
   const s = getState();
   const choices: string[] = kind === 'printer_bundle'
     ? userPresets.filter((u) => u.type === 'machine' && !u.archived).map((u) => u.name)

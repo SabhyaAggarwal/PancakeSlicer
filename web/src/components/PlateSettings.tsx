@@ -1,3 +1,6 @@
+
+
+
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { OPTIONS } from '../options';
@@ -8,6 +11,7 @@ import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 type Range = { from: number; to: number; order: number[] };
 const ints = (v: unknown) => String(v ?? '').split(/[,;]/).map((x) => Number(x.trim())).filter((x) => Number.isFinite(x));
+
 
 function ranges(v: unknown, nums: unknown, n: number): Range[] {
   const flat = ints(v), count = Number(nums) || 0, out: Range[] = [];
@@ -44,6 +48,7 @@ export default function PlateSettings({ close }: { close(): void }) {
   const [first, setFirst] = useState(first0.length === n ? first0 : null);
   const [others, setOthers] = useState<Range[] | null>(() => { const r = ranges(cfg.other_layers_print_sequence, cfg.other_layers_print_sequence_nums, n); return r.length ? r : null; });
   const bedDef = OPTIONS.curr_bed_type, seqDef = OPTIONS.print_sequence;
+
   const machine = printerPreset(s), multiBed = machine?.config.support_multi_bed_types;
   const bedTypes = machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1';
   const beds = (bedDef?.enum_values ?? []).map((v, i) => [v, bedDef?.enum_labels?.[i] ?? v] as const)

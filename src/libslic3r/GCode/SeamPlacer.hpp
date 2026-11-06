@@ -40,18 +40,26 @@ enum class EnforcedBlockedSeamPoint {
   Enforced = 2,
 };
 
+
 struct Perimeter {
   size_t start_index{};
   size_t end_index{};
   size_t seam_index{};
   float flow_width{};
 
+
+
+
   bool finalized = false;
   Vec3f final_seam_position = Vec3f::Zero();
+
 
   std::optional<Vec3f> precise_seam_point;
   size_t precise_seam_index{};
 };
+
+
+
 
 struct SeamCandidate {
   SeamCandidate(const Vec3f &pos, Perimeter &perimeter,
@@ -61,10 +69,14 @@ struct SeamCandidate {
                                                                                                                                                      local_ccw_angle), type(type), central_enforcer(false) {
   }
   const Vec3f position;
+
   Perimeter &perimeter;
   float visibility;
   float overhang;
+
   float unsupported_dist = 0.f;
+
+
   float embedded_distance;
   float local_ccw_angle;
   EnforcedBlockedSeamPoint type;
@@ -92,7 +104,12 @@ struct PrintObjectSeamData
     std::vector<SeamPlacerImpl::SeamCandidate> points;
     std::unique_ptr<SeamCandidatesTree> points_tree;
   };
+
   std::vector<LayerSeams> layers;
+
+
+
+
   bool has_precise_seam_strong_volumes = false;
 
   void clear()
@@ -103,25 +120,40 @@ struct PrintObjectSeamData
 
 class SeamPlacer {
 public:
+
   static constexpr size_t raycasting_visibility_samples_count = 30000;
   static constexpr size_t fast_decimation_triangle_count_target = 16000;
+
   static constexpr size_t sqr_rays_per_sample_point = 5;
 
+
   static constexpr float sharp_angle_snapping_threshold = 55.0f * float(PI) / 180.0f;
+
   static constexpr float overhang_angle_threshold = 45.0f * float(PI) / 180.0f;
+
 
   static constexpr float angle_importance_aligned = 0.6f;
   static constexpr float angle_importance_nearest = 1.0f;
+
+
   static constexpr float enforcer_oversampling_distance = 0.2f;
 
+
+
   static constexpr float seam_align_score_tolerance = 0.3f;
+
   static constexpr float seam_align_tolerable_dist_factor = 4.0f;
+
   static constexpr size_t seam_align_minimum_string_seams = 6;
+
   static constexpr size_t seam_align_mm_per_segment = 4.0f;
+
 
   std::unordered_map<const PrintObject*, PrintObjectSeamData> m_seam_per_object;
 
   void init(const Print &print, std::function<void(void)> throw_if_canceled_func);
+
+
 
   const std::string &precise_seam_warning() const { return m_precise_seam_warning; }
 

@@ -54,6 +54,8 @@
 namespace Slic3r { namespace tex2color {
 namespace color_utils {
 
+
+
 #ifndef M_PI
 #define M_PI 3.1415926535897932
 #endif
@@ -142,6 +144,8 @@ static void calc_face_normals(const CGALMesh& mesh, std::vector<Eigen::Vector3d>
 }
 
 static bool check_and_repair_self_intersect(CGALMesh& mesh, bool* is_self_intersect_status = nullptr) {
+
+
     auto is_self_intersect = PMP::does_self_intersect(mesh);
     if (is_self_intersect_status != nullptr) {
         *is_self_intersect_status = is_self_intersect;
@@ -181,6 +185,7 @@ static bool save_polylines(const std::string& file_name, const std::vector<std::
 }
 
 static bool smooth_region_topo_boundary(CGALMesh& mesh, std::vector<std::size_t>& face_labels, std::size_t max_iters = 20) {
+
     std::size_t iter = 0;
     while (iter < max_iters) {
         ++iter;
@@ -218,6 +223,7 @@ static bool smooth_region_topo_boundary(CGALMesh& mesh, std::vector<std::size_t>
 }
 
 static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>& face_labels, const SmoothParameters& smooth_parameters) {
+
     std::unordered_map<CGAL::SM_Vertex_index, std::size_t> map_vtx_to_degree;
     std::unordered_set<CGAL::SM_Edge_index> segment_boundary_edges;
     std::unordered_set<CGAL::SM_Edge_index> feature_edges;
@@ -249,6 +255,7 @@ static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>
         ++map_vtx_to_degree[target];
     }
 
+
     std::vector<std::vector<CGAL::SM_Vertex_index>> polylines;
     std::unordered_set<CGAL::SM_Edge_index> visited_edges;
 
@@ -275,6 +282,7 @@ static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>
         }
     };
 
+
     for (auto& [src_vtx, degree] : map_vtx_to_degree) {
         if (degree == 2) {
             continue;
@@ -295,6 +303,7 @@ static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>
         }
     }
 
+
     for (auto edge : segment_boundary_edges) {
         if (visited_edges.count(edge)) {
             continue;
@@ -308,6 +317,7 @@ static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>
         }
         polylines.push_back(std::move(polyline));
     }
+
 
     Tree boundary_tree(mesh.faces().begin(), mesh.faces().end(), mesh);
     boundary_tree.accelerate_distance_queries();
@@ -354,12 +364,21 @@ static bool smooth_region_geom_boundary(CGALMesh& mesh, std::vector<std::size_t>
     return true;
 }
 
+
 typedef std::array<double, 3> HSV;
 typedef std::array<double, 3> XYZ;
 typedef std::array<double, 3> LAB;
+
 const XYZ D65_WHITE = {0.95047, 1.0, 1.08883};
 
+
+
+
+
+
+
 static HSV convert_rgb_to_hsv(const RGB& rgb) {
+
     double r = rgb[0] / 255.0;
     double g = rgb[1] / 255.0;
     double b = rgb[2] / 255.0;
@@ -367,6 +386,7 @@ static HSV convert_rgb_to_hsv(const RGB& rgb) {
     double max = std::max({r, g, b});
     double min = std::min({r, g, b});
     double delta = max - min;
+
 
     double h = 0;
     if (delta == 0) {
@@ -384,12 +404,20 @@ static HSV convert_rgb_to_hsv(const RGB& rgb) {
         }
     }
 
+
     double s = (max == 0) ? 0 : (delta / max);
+
 
     double v = max;
 
     return {h, s, v};
 }
+
+
+
+
+
+
 
 static RGB convert_hsv_to_rgb(const HSV& hsv) {
     double h = hsv[0];
@@ -446,8 +474,10 @@ static XYZ convert_rgb_to_xyz(const RGB& color_rgb) {
     double g = gammaCorrect(rgb[1]);
     double b = gammaCorrect(rgb[2]);
 
+
     return {r * 0.4124564 + g * 0.3575761 + b * 0.1804375, r * 0.2126729 + g * 0.7151522 + b * 0.0721750, r * 0.0193339 + g * 0.1191920 + b * 0.9503041};
 }
+
 
 static XYZ convert_srgb01_to_xyz(double rs, double gs, double bs) {
     auto gamma_correct = [](double v) -> double {
@@ -470,6 +500,7 @@ static LAB convert_xyz_to_lab(const XYZ& xyz) {
         }
     };
 
+
     double xn = D65_WHITE[0], yn = D65_WHITE[1], zn = D65_WHITE[2];
 
     double fx = f(xyz[0] / xn);
@@ -478,6 +509,7 @@ static LAB convert_xyz_to_lab(const XYZ& xyz) {
 
     return {116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)};
 }
+
 
 static LAB convert_srgb01_to_lab(const ColorDouble& srgb01) {
     return convert_xyz_to_lab(convert_srgb01_to_xyz(srgb01[0], srgb01[1], srgb01[2]));
@@ -488,6 +520,7 @@ static LAB convert_rgb_to_lab(const RGB& rgb) {
 }
 
 static Color convert_lab_to_rgb(const LAB& lab) {
+
     const double delta = 6.0 / 29.0;
     const double delta2x3 = 3.0 * delta * delta;
 
@@ -499,9 +532,11 @@ static Color convert_lab_to_rgb(const LAB& lab) {
     double y = D65_WHITE[1] * (fy > delta ? fy * fy * fy : delta2x3 * (fy - 4.0 / 29.0));
     double z = D65_WHITE[2] * (fz > delta ? fz * fz * fz : delta2x3 * (fz - 4.0 / 29.0));
 
+
     double r_lin = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
     double g_lin = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
     double b_lin = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+
 
     auto inverse_gamma = [](double v) -> double {
         v = std::max(v, 0.0);
@@ -513,23 +548,38 @@ static Color convert_lab_to_rgb(const LAB& lab) {
     return {to_uint8(inverse_gamma(r_lin)), to_uint8(inverse_gamma(g_lin)), to_uint8(inverse_gamma(b_lin))};
 }
 
+
+
+
+
+
+
+
+
+
 static double ciede2000(const std::array<double, 3>& lab1, const std::array<double, 3>& lab2) {
+
     double L1 = lab1[0], a1 = lab1[1], b1 = lab1[2];
     double L2 = lab2[0], a2 = lab2[1], b2 = lab2[2];
+
 
     double C1 = std::sqrt(a1 * a1 + b1 * b1);
     double C2 = std::sqrt(a2 * a2 + b2 * b2);
     double C_avg = (C1 + C2) / 2.0;
 
+
     double C7 = C_avg * C_avg * C_avg * C_avg * C_avg * C_avg * C_avg;
     double G = 0.5 * (1.0 - std::sqrt(C7 / (C7 + 6103515625.0)));
+
 
     double a1_prime = (1.0 + G) * a1;
     double a2_prime = (1.0 + G) * a2;
 
+
     double C1_prime = std::sqrt(a1_prime * a1_prime + b1 * b1);
     double C2_prime = std::sqrt(a2_prime * a2_prime + b2 * b2);
     double C_prime_avg = (C1_prime + C2_prime) / 2.0;
+
 
     double h1_prime = std::atan2(b1, a1_prime);
     double h2_prime = std::atan2(b2, a2_prime);
@@ -540,6 +590,7 @@ static double ciede2000(const std::array<double, 3>& lab1, const std::array<doub
         h2_prime += 2 * M_PI;
     }
 
+
     double dh_prime;
     if (std::abs(h1_prime - h2_prime) <= M_PI) {
         dh_prime = h2_prime - h1_prime;
@@ -549,11 +600,15 @@ static double ciede2000(const std::array<double, 3>& lab1, const std::array<doub
         dh_prime = h2_prime - h1_prime - 2 * M_PI;
     }
 
+
     double dH_prime = 2.0 * std::sqrt(C1_prime * C2_prime) * std::sin(dh_prime / 2.0);
+
 
     double dL_prime = L2 - L1;
 
+
     double dC_prime = C2_prime - C1_prime;
+
 
     double h_prime_avg;
     if (std::abs(h1_prime - h2_prime) > M_PI) {
@@ -562,18 +617,23 @@ static double ciede2000(const std::array<double, 3>& lab1, const std::array<doub
         h_prime_avg = (h1_prime + h2_prime) / 2.0;
     }
 
+
     double T = 1.0 - 0.17 * std::cos(h_prime_avg - M_PI / 6.0) + 0.24 * std::cos(2.0 * h_prime_avg) + 0.32 * std::cos(3.0 * h_prime_avg + M_PI / 30.0) -
                0.20 * std::cos(4.0 * h_prime_avg - 3.0 * M_PI / 6.0);
+
+
 
     double h_prime_avg_deg = h_prime_avg * 180.0 / M_PI;
     double C_prime_avg_7 = std::pow(C_prime_avg, 7);
     double R = -2.0 * std::sqrt(C_prime_avg_7 / (C_prime_avg_7 + 6103515625.0)) *
                std::sin((60.0 * M_PI / 180.0) * std::exp(-std::pow((h_prime_avg_deg - 275.0) / 25.0, 2)));
 
+
     double L_prime_avg = (L1 + L2) / 2.0;
     double SL = 1.0 + 0.015 * std::pow(L_prime_avg - 50.0, 2) / std::sqrt(20 + std::pow(L_prime_avg - 50.0, 2));
     double SC = 1.0 + 0.045 * C_prime_avg;
     double SH = 1.0 + 0.015 * C_prime_avg * T;
+
 
     double deltaE = std::sqrt(std::pow(dL_prime / SL, 2) + std::pow(dC_prime / SC, 2) + std::pow(dH_prime / SH, 2) + R * (dC_prime / SC) * (dH_prime / SH));
 
@@ -592,10 +652,14 @@ double calc_rgb_color_difference_by_ciede2000_srgb01(const ColorDouble& rgb1, co
     return ciede2000(lab1, lab2);
 }
 
+
 using WorkingDistFunc = double (*)(const ColorDouble&, const ColorDouble&);
+
+
 
 static std::vector<ColorDouble> farthest_point_sampling_init(const std::vector<ColorDouble>& working_colors, std::size_t k, WorkingDistFunc dist_func) {
     std::vector<ColorDouble> centers(k);
+
 
     ColorDouble centroid = {0.0, 0.0, 0.0};
     for (const auto& c : working_colors) {
@@ -619,10 +683,13 @@ static std::vector<ColorDouble> farthest_point_sampling_init(const std::vector<C
     }
     centers[0] = working_colors[first_idx];
 
+
     std::vector<double> min_distances(working_colors.size(), std::numeric_limits<double>::max());
+
 
     for (std::size_t i = 1; i < k; ++i) {
         const ColorDouble& last_center = centers[i - 1];
+
 
         double farthest_dist = -1.0;
         std::size_t farthest_idx = 0;
@@ -649,10 +716,14 @@ bool remesh_mesh(TriMesh& bbs_mesh, std::vector<std::size_t>& face_labels, doubl
         return false;
     }
 
+
     std::vector<std::size_t> face_labels_of_original_mesh(face_labels);
 
     CGALMesh cgal_mesh;
     cgalutils::convert_trimesh_to_cgal(bbs_mesh, cgal_mesh);
+
+
+
 
     TriVertices old_vertices = std::move(bbs_mesh.vertices);
     TriFaces    old_indices  = std::move(bbs_mesh.indices);
@@ -665,6 +736,7 @@ bool remesh_mesh(TriMesh& bbs_mesh, std::vector<std::size_t>& face_labels, doubl
     CGALMesh::Property_map<CGALMesh::Vertex_index, bool> constrained_vertices =
         cgal_mesh.add_property_map<CGALMesh::Vertex_index, bool>("constrained_vertices", false).first;
 
+
     constexpr double feature_angle = 135;
 
     auto is_feature_edge = [&](CGAL::SM_Edge_index edge) -> bool {
@@ -676,8 +748,15 @@ bool remesh_mesh(TriMesh& bbs_mesh, std::vector<std::size_t>& face_labels, doubl
         auto face_1 = cgal_mesh.face(halfedge_1);
         auto face_2 = cgal_mesh.face(halfedge_2);
         if (face_labels[face_1] != face_labels[face_2]) {
+
             return true;
         }
+
+
+
+
+
+
         return false;
     };
 
@@ -708,6 +787,7 @@ bool remesh_mesh(TriMesh& bbs_mesh, std::vector<std::size_t>& face_labels, doubl
 #ifdef DEBUG_FLAG
     BOOST_LOG_TRIVIAL(debug) << "PMP::isotropic_remeshing start...\n";
 #endif
+
     PMP::isotropic_remeshing(cgal_mesh.faces(), target_edge_length_ratio * detail::average_edge_length_impl(cgal_mesh), cgal_mesh,
                              CGAL::parameters::number_of_iterations(iters)
                                  .protect_constraints(true)
@@ -844,10 +924,12 @@ static bool smooth_region_labels(TriMesh& tri_mesh, std::vector<std::size_t>& fa
     }
 
     if (smooth_parameters.smooth_weight >= TOPO_SMOOTH_WEIGHT_THRESHOLD) {
+
         smooth_region_topo_boundary(mesh, face_labels);
     }
 
     if (smooth_parameters.smooth_weight > EPSILON) {
+
         smooth_region_geom_boundary(mesh, face_labels, smooth_parameters);
     }
 
@@ -857,6 +939,7 @@ static bool smooth_region_labels(TriMesh& tri_mesh, std::vector<std::size_t>& fa
 }
 
 bool smooth_region(TriMesh& tri_mesh, std::vector<std::array<std::size_t, 3>>& face_colors, const SmoothParameters& smooth_parameters) {
+
     std::size_t label_next = 0;
     std::vector<std::size_t> face_labels;
     face_labels.reserve(face_colors.size());
@@ -874,6 +957,7 @@ bool smooth_region(TriMesh& tri_mesh, std::vector<std::array<std::size_t, 3>>& f
     if (!smooth_region_labels(tri_mesh, face_labels, smooth_parameters))
         return false;
 
+
     for (std::size_t fid = 0; fid < face_labels.size(); ++fid) {
         face_colors[fid] = map_label_to_color[face_labels[fid]];
     }
@@ -885,6 +969,7 @@ bool smooth_region(TriMesh& tri_mesh, std::vector<std::size_t>& face_labels, con
     return smooth_region_labels(tri_mesh, face_labels, smooth_parameters);
 }
 
+
 double calc_rgb_color_difference_by_squared_rgb_double(const ColorDouble& c1, const ColorDouble& c2) {
     double dr = c1[0] - c2[0];
     double dg = c1[1] - c2[1];
@@ -892,11 +977,13 @@ double calc_rgb_color_difference_by_squared_rgb_double(const ColorDouble& c1, co
     return dr * dr + dg * dg + db * db;
 }
 
+
 double calc_rgb_color_difference_by_squared_rgb(const RGB& c1, const RGB& c2) {
     auto c1d = convert_rgb_uint_to_rgb_double(c1);
     auto c2d = convert_rgb_uint_to_rgb_double(c2);
     return calc_rgb_color_difference_by_squared_rgb_double(c1d, c2d);
 }
+
 
 static std::vector<ColorDouble> kmeans_core(const std::vector<ColorDouble>& working_colors, std::size_t k, std::size_t max_iter, WorkingDistFunc dist_func,
                                             const std::function<bool()>& cancel_cb = nullptr) {
@@ -974,6 +1061,7 @@ static std::vector<ColorDouble> kmeans_core(const std::vector<ColorDouble>& work
     return centers;
 }
 
+
 std::vector<Color> cluster_k_means(const std::vector<Color>& colors, const ClusterParameters& cluster_parameters) {
     std::size_t k = cluster_parameters.cluster_k;
     std::size_t max_iter = cluster_parameters.max_iter;
@@ -984,6 +1072,9 @@ std::vector<Color> cluster_k_means(const std::vector<Color>& colors, const Clust
 
     const bool use_lab = (cluster_parameters.color_difference_method != ColorDifferenceMethod::RGB);
     WorkingDistFunc working_dist_func = use_lab ? ciede2000 : calc_rgb_color_difference_by_squared_rgb_double;
+
+
+
 
     std::vector<Color> unique_colors = colors;
     std::sort(unique_colors.begin(), unique_colors.end());
@@ -1012,7 +1103,13 @@ std::vector<Color> cluster_k_means(const std::vector<Color>& colors, const Clust
         }
     }
 
+
+
+
     auto centers = kmeans_core(working_colors, k, max_iter, working_dist_func, cluster_parameters.cancel_callback);
+
+
+
 
     std::vector<Color> result(k);
     for (std::size_t i = 0; i < k; ++i) {
@@ -1058,6 +1155,7 @@ std::vector<Color> cluster_to_specified_colors(const std::vector<Color>& colors,
     return cluster_colors;
 }
 
+
 struct ColorPCA {
     std::size_t color_idx;
     double pca_value;
@@ -1066,7 +1164,9 @@ struct ColorPCA {
         : color_idx(c_idx),
           pca_value(pca_val) {}
 
+
     bool operator<(const ColorPCA& other) const { return pca_value < other.pca_value; }
+
 
     bool operator==(const ColorPCA& other) const { return color_idx == other.color_idx; }
 };
@@ -1082,6 +1182,7 @@ struct ColorPCA {
         return {{0, 0.0}};
     }
 
+
     Eigen::MatrixXd data(n, 3);
 
     for (std::size_t i = 0; i < n; ++i) {
@@ -1090,10 +1191,13 @@ struct ColorPCA {
         data(i, 2) = static_cast<double>(colors[i][2]) / 255.0;
     }
 
+
     Eigen::RowVector3d mean = data.colwise().mean();
     Eigen::MatrixXd centered = data.rowwise() - mean;
 
+
     Eigen::Matrix3d cov = (centered.adjoint() * centered) / static_cast<double>(n - 1);
+
 
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
 
@@ -1101,6 +1205,8 @@ struct ColorPCA {
 #ifdef DEBUG_FLAG
         std::cerr << "PCA: Eigenvalue decomposition failed" << std::endl;
 #endif
+
+
         std::vector<ColorPCA> result;
         result.reserve(n);
         for (std::size_t i = 0; i < n; ++i) {
@@ -1111,15 +1217,19 @@ struct ColorPCA {
         return result;
     }
 
+
     Eigen::Vector3d eigenvalues = solver.eigenvalues();
     Eigen::Matrix3d eigenvectors = solver.eigenvectors();
+
 
     Eigen::MatrixXd::Index max_eigenvalue_idx;
     eigenvalues.maxCoeff(&max_eigenvalue_idx);
 
     Eigen::Vector3d first_principal_component = eigenvectors.col(max_eigenvalue_idx);
 
+
     Eigen::VectorXd projections = centered * first_principal_component;
+
 
     std::vector<ColorPCA> result;
     result.reserve(n);
@@ -1143,6 +1253,9 @@ std::vector<Color> cluster_adaptive(const std::vector<Color>& colors, const Clus
     const bool use_lab = (cluster_parameters.color_difference_method != ColorDifferenceMethod::RGB);
     WorkingDistFunc working_dist_func = use_lab ? ciede2000 : calc_rgb_color_difference_by_squared_rgb_double;
 
+
+
+
     std::vector<Color> unique_colors = colors;
     std::sort(unique_colors.begin(), unique_colors.end());
     auto last = std::unique(unique_colors.begin(), unique_colors.end());
@@ -1164,6 +1277,9 @@ std::vector<Color> cluster_adaptive(const std::vector<Color>& colors, const Clus
             working_colors[i] = {static_cast<double>(unique_colors[i][0]), static_cast<double>(unique_colors[i][1]), static_cast<double>(unique_colors[i][2])};
         }
     }
+
+
+
 
     const std::size_t max_k = cluster_parameters.max_cluster_k;
     std::size_t lo = 1;
@@ -1223,6 +1339,9 @@ std::vector<Color> cluster_adaptive(const std::vector<Color>& colors, const Clus
     }
 
     BOOST_LOG_TRIVIAL(debug) << "cluster_adaptive: best_k=" << best_k;
+
+
+
 
     std::vector<Color> result(best_k);
     for (std::size_t i = 0; i < best_k; ++i) {
@@ -1364,7 +1483,12 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
         }
     });
 
+
+
     constexpr double absolute_difference_times = 1.5;
+
+
+
     constexpr double difference_epsilon = 3.0;
     constexpr std::size_t invalid_cluster_id = std::numeric_limits<std::size_t>::max();
     map_face_to_cluster_id.resize(mesh.number_of_faces(), invalid_cluster_id);
@@ -1376,6 +1500,7 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
             std::vector<std::pair<double, std::size_t>>& dist_and_cid_vec = map_face_to_dists[fid];
             for (std::size_t cluster_id = 0; cluster_id < cluster_centers.size(); ++cluster_id) {
                 double dist = calc_rgb_color_difference_by_ciede2000(map_face_to_rgb[fid], cluster_centers[cluster_id]);
+
                 dist_and_cid_vec[cluster_id] = std::pair<double, std::size_t>{dist, cluster_id};
             }
             std::sort(dist_and_cid_vec.begin(), dist_and_cid_vec.end());
@@ -1402,9 +1527,11 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
         return true;
     };
 
+
     while (!unclusted_fids.empty()) {
         bool changed = false;
         std::unordered_set<std::size_t> iter_clustered_fids;
+
         for (auto fid : unclusted_fids) {
             CGAL::SM_Face_index face(fid);
             std::size_t count = 0;
@@ -1427,6 +1554,7 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
         changed = convert_unclustered_to_clustered(iter_clustered_fids) || changed;
         iter_clustered_fids.clear();
 
+
         for (auto fid : unclusted_fids) {
             CGAL::SM_Face_index face(fid);
             std::unordered_set<std::size_t> adj_cluster_ids;
@@ -1447,16 +1575,19 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
         changed = convert_unclustered_to_clustered(iter_clustered_fids) || changed;
         iter_clustered_fids.clear();
 
+
         if (!changed) {
             break;
         }
     }
+
 
     constexpr bool use_average_color = true;
     for (auto src_fid : std::vector<std::size_t>(unclusted_fids.begin(), unclusted_fids.end())) {
         if (!unclusted_fids.count(src_fid)) {
             continue;
         }
+
         std::queue<std::size_t> que;
         std::unordered_set<std::size_t> connected_unclustered_faces;
         que.push(src_fid);
@@ -1488,6 +1619,7 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
         }
         std::size_t matched_cluster_id = invalid_cluster_id;
         if (use_average_color) {
+
             RGB average_color{static_cast<std::size_t>(sum_r / sum_area), static_cast<std::size_t>(sum_g / sum_area),
                               static_cast<std::size_t>(sum_b / sum_area)};
             double min_dist = std::numeric_limits<double>::max();
@@ -1499,6 +1631,7 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
                 }
             }
         } else {
+
             double adj_max_area = 0.0;
             for (auto& [cluster_id, area] : map_cluster_id_to_adj_area) {
                 if (area > adj_max_area) {
@@ -1512,6 +1645,7 @@ bool mesh_cluster(const TriMesh& bbs_mesh, const std::vector<RGB>& cluster_cente
             unclusted_fids.erase(fid);
         }
     }
+
 
     for (std::size_t fid = 0; fid < mesh.number_of_faces(); ++fid) {
         if (map_face_to_cluster_id[fid] == invalid_cluster_id) {

@@ -1,3 +1,7 @@
+
+
+
+
 import type { UserPreset } from '../api/types';
 import type { ProfileCreation } from '../profiles/transactions';
 import { createMachine, type StateNode } from './fsm';
@@ -10,6 +14,7 @@ type WindowOpsEvent = { type: 'BEGIN'; op: WindowOp } | { type: 'END'; op: Windo
   | { type: 'COPY'; source: UserPreset; name: string; creation: ProfileCreation } | { type: 'COPY_FAILED'; error: string }
   | { type: 'COPY_DONE' } | { type: 'DISCARD' };
 type Node = StateNode<WindowOpsState, WindowOpsEvent, WindowOpsContext>;
+
 
 const copyResult = {
   COPY_FAILED: { action: (c: WindowOpsContext, e: Extract<WindowOpsEvent, { type: 'COPY_FAILED' }>) => ({ copy: c.copy && { ...c.copy, error: e.error } }) },

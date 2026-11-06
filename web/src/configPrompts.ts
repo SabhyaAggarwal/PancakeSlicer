@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 import { confirmDialog, messageDialog } from './components/Ask';
 import { undoable } from './state/history';
 import { effectiveConfig, getState, markStale, presetEdits, setState } from './state/store';
@@ -6,6 +13,7 @@ import type { Config, ConfigValue, PresetType } from './api/types';
 const TITLE = 'Warning';
 const first = (v: ConfigValue | undefined) => Number(String(Array.isArray(v) ? v[0] : v ?? '').split(',')[0]);
 const bool = (v: ConfigValue | undefined) => v === true || v === '1' || v === 'true' || v === 1;
+
 
 function setOptions(type: PresetType, patch: Config, name: string, slot = 0) {
   undoable(name, () => setState((s) => {
@@ -16,6 +24,7 @@ function setOptions(type: PresetType, patch: Config, name: string, slot = 0) {
     };
   }));
 }
+
 
 const SPIRAL: Config = { wall_loops: '1', top_shell_layers: '0', sparse_infill_density: '0%', enable_support: '0', enforce_support_layers: '0',
   detect_thin_wall: '0', overhang_reverse: '0', timelapse_type: '0', enable_wrapping_detection: '0' };
@@ -60,6 +69,7 @@ async function checkNozzleTemperature(key: string, slot: number) {
     + `The recommended nozzle temperature for this filament type is [${low}, ${high}] degrees Celsius.`);
 }
 
+
 const MATERIAL_RANGE = new Map('ABS:190-300 ABS-CF:220-300 ABS-GF:240-280 ASA:220-300 ASA-CF:230-300 ASA-GF:240-300 ASA-AERO:240-280 BVOH:190-240 EVA:175-220 FLEX:210-230 HIPS:220-270 PA:235-280 PA-CF:240-315 PA-GF:240-290 PA6:260-300 PA6-CF:230-300 PA6-GF:260-300 PA11:275-295 PA11-CF:275-295 PA11-GF:275-295 PA12:250-270 PA12-CF:250-300 PA12-GF:255-270 PAHT:260-310 PAHT-CF:270-310 PAHT-GF:270-310 PC:240-300 PC-ABS:230-270 PC-CF:270-295 PC-PBT:260-300 PCL:130-170 PCTG:220-300 PE:175-260 PE-CF:175-260 PE-GF:230-270 PEI-1010:370-430 PEI-1010-CF:380-430 PEI-1010-GF:380-430 PEI-9085:350-390 PEI-9085-CF:365-390 PEI-9085-GF:370-390 PEEK:350-460 PEEK-CF:380-410 PEEK-GF:375-410 PEKK:325-400 PEKK-CF:360-400 PES:340-390 PET:200-290 PET-CF:240-320 PET-GF:280-320 PETG:190-260 PETG-CF:230-290 PETG-GF:210-270 PHA:190-250 PI:390-410 PLA:180-240 PLA-AERO:220-270 PLA-CF:190-250 POM:210-250 PP:200-240 PP-CF:210-250 PP-GF:220-260 PPA-CF:260-300 PPA-GF:260-290 PPS:300-345 PPS-CF:295-350 PPSU:360-420 PSU:350-380 PVA:185-250 PVB:190-250 PVDF:245-265 SBS:195-250 TPI:420-445 TPU:175-260'.split(' ').map((e) => { const [t, r] = e.split(':'); return [t, r.split('-').map(Number)] as const; }));
 
 async function checkRecommendedRange(slot: number) {
@@ -99,6 +109,7 @@ async function checkVolumetricSpeed(slot: number) {
   await messageDialog(TITLE, 'Too small max volumetric speed.\nValue was reset to 0.5');
   setOptions('filament', { filament_max_volumetric_speed: '0.5' }, 'Change setting "Max volumetric speed"', slot);
 }
+
 
 export async function checkSetting(type: PresetType, key: string, slot = 0) {
   if (type === 'process' && SPIRAL_KEYS.includes(key)) return checkSpiral();

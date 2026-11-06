@@ -28,6 +28,20 @@ static float gyroid(float x, float y, float z)
 }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 namespace marchsq {
 using namespace Slic3r;
 
@@ -127,10 +141,12 @@ static inline double f(double x, double z_sin, double z_cos, bool vertical, bool
     }
 }
 
+
 static inline Polyline make_wave(
     const std::vector<Vec2d>& one_period, double x_min, double x_max, double offset, double scaleFactor, bool vertical)
 {
     const double period = one_period.back().x();
+
     const size_t n  = one_period.size() - 1;
     double       x0 = std::floor(x_min / period) * period;
     size_t       i  = 0;
@@ -167,6 +183,7 @@ static std::vector<Vec2d> make_one_period(double scaleFactor, double z_cos, doub
     }
     points.emplace_back(Vec2d(limit, f(limit, z_sin, z_cos, vertical, flip)));
 
+
     for(;;)
     {
         size_t size = points.size();
@@ -185,6 +202,7 @@ static std::vector<Vec2d> make_one_period(double scaleFactor, double z_cos, doub
             break;
         else
         {
+
             std::sort(points.begin(), points.end(),
                       [](const Vec2d &lhs, const Vec2d &rhs) { return lhs(0) < rhs(0); });
         }
@@ -192,6 +210,41 @@ static std::vector<Vec2d> make_one_period(double scaleFactor, double z_cos, doub
 
     return points;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static inline double compute_omega_factor(double density_adjusted, double line_spacing, double layer_height)
 {
@@ -201,17 +254,23 @@ static inline double compute_omega_factor(double density_adjusted, double line_s
     return std::clamp(raw, 1.0, 2.0);
 }
 
+
 static Polylines make_gyroid_waves(double gridZ, double density_adjusted, double line_spacing, const BoundingBox &bbox, const Point &origin)
 {
     const double scaleFactor = scale_(line_spacing) / density_adjusted;
 
+
+
     const double tolerance = std::min(line_spacing / 2, FillGyroid::PatternTolerance) / unscale<double>(scaleFactor);
+
+
 
     const double z     = gridZ / scaleFactor;
     const double z_sin = sin(z);
     const double z_cos = cos(z);
 
     bool vertical = (std::abs(z_sin) <= std::abs(z_cos));
+
     Vec2d lo = (bbox.min - origin).cast<double>() / scaleFactor;
     Vec2d hi = (bbox.max - origin).cast<double>() / scaleFactor;
     double lower_bound = 0.;
@@ -226,6 +285,7 @@ static Polylines make_gyroid_waves(double gridZ, double density_adjusted, double
     std::vector<Vec2d> one_period_odd = make_one_period(scaleFactor, z_cos, z_sin, vertical, flip, tolerance);
     flip = !flip;
     std::vector<Vec2d> one_period_even = make_one_period(scaleFactor, z_cos, z_sin, vertical, flip, tolerance);
+
 
     double f_min = std::numeric_limits<double>::max();
     double f_max = std::numeric_limits<double>::lowest();
@@ -244,6 +304,7 @@ static Polylines make_gyroid_waves(double gridZ, double density_adjusted, double
 
     return result;
 }
+
 
 constexpr double FillGyroid::PatternTolerance;
 
@@ -267,25 +328,41 @@ void FillGyroid::_fill_surface_single(
         expolygon.rotate(-infill_angle);
 
     BoundingBox bb = expolygon.contour.bounding_box();
+
     double      density_adjusted = std::max(0., params.density * DensityAdjust / params.multiline);
+
     coord_t     distance = coord_t(scale_(this->spacing) / density_adjusted);
+
 
     const coord_t shift  = coord_t(10 * scale_(this->spacing));
     const Point   origin = align_to_grid(bb.min, Point(2*M_PI*distance, 2*M_PI*distance)) - Point(shift, shift);
 
+
     bb.offset(scale_(this->spacing * params.multiline));
+
 
     Polylines polylines;
     if (params.tpms_adaptive != TpmsAdaptiveMode::Disabled && this->tpms_radial_field != nullptr) {
+
         auto frequency = [&params, this](double density) { return density * DensityAdjust / (params.multiline * this->spacing); };
         polylines = make_adaptive_tpms({gyroid, frequency(params.density), frequency(params.tpms_interior_density), params.tpms_adaptive_gradient},
                                        *this->tpms_radial_field, bb, this->z, params.layer_height, this->spacing, infill_angle);
     } else if (params.gyroid_optimized) {
+
+
+
+
+
+
+
+
+
         const double lh = (params.layer_height > 0.) ? double(params.layer_height) : double(this->spacing);
         const double omega = compute_omega_factor(density_adjusted, this->spacing * params.multiline, lh);
 
         const float density_factor = std::max(0.001f, float(params.density * DensityAdjust / params.multiline));
         const float period         = float(2.0 * M_PI) * float(this->spacing) / density_factor;
+
 
         const coord_t cell = scaled(marchsq::GyroidField::gsizef);
         bb.offset(cell);
@@ -296,11 +373,14 @@ void FillGyroid::_fill_surface_single(
         polylines = make_gyroid_waves(scale_(this->z), density_adjusted, this->spacing, bb, origin);
     }
 
+
     multiline_fill(polylines, params, spacing);
 
 	polylines = intersection_pl(std::move(polylines), expolygon);
 
     if (! polylines.empty()) {
+
+
         const double minlength = scale_(0.8 * this->spacing);
 		polylines.erase(
 			std::remove_if(polylines.begin(), polylines.end(), [minlength](const Polyline &pl) { return pl.length() < minlength; }),
@@ -308,12 +388,14 @@ void FillGyroid::_fill_surface_single(
     }
 
 	if (! polylines.empty()) {
+
 		size_t polylines_out_first_idx = polylines_out.size();
         chain_or_connect_infill(std::move(polylines), expolygon, polylines_out, this->spacing, params);
 
+
         if (std::abs(infill_angle) >= EPSILON) {
 	        for (auto it = polylines_out.begin() + polylines_out_first_idx; it != polylines_out.end(); ++ it)
-	        	it->rotate(infill_angle);
+                it->rotate(infill_angle);
 	    }
     }
 }

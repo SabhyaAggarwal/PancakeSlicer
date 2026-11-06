@@ -263,6 +263,9 @@ ColorDecomposeRecipeResult recommend_from_physical_filaments(
             candidates.push_back(filament);
     }
 
+
+
+
     const std::string target_hex = color_decompose_rgb_to_hex(target);
     for (const auto& cand : candidates) {
         ColorDecomposeRgb cand_rgb;
@@ -386,6 +389,8 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
         return std::string(buf);
     };
 
+
+
     const size_t n = component_hexes.size();
     std::vector<std::pair<std::string, int>> in_pairs;
     in_pairs.reserve(n);
@@ -406,6 +411,8 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
         in_ratios.push_back(p.second);
     }
 
+
+
     {
         int sum = 0;
         for (int r : in_ratios) sum += r;
@@ -423,6 +430,7 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
         }
     }
 
+
     {
         bool out_of_range = false;
         if (n == 2) {
@@ -435,6 +443,7 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
         if (out_of_range)
             return {};
     }
+
 
     struct Anchor {
         std::vector<int> ratios;
@@ -476,7 +485,9 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
     if (anchors.size() < 2)
         return {};
 
+
     if (n == 2) {
+
         std::sort(anchors.begin(), anchors.end(),
                   [](const Anchor& a, const Anchor& b) { return a.ratios[0] < b.ratios[0]; });
         const double x = static_cast<double>(in_ratios[0]);
@@ -491,6 +502,7 @@ std::string lookup_measured_blend_color(const std::vector<std::string>& componen
                                 a0.lab.a + t * (a1.lab.a - a0.lab.a),
                                 a0.lab.b + t * (a1.lab.b - a0.lab.b)});
     }
+
 
     const double ra = static_cast<double>(in_ratios[0]);
     const double rb = static_cast<double>(in_ratios[1]);

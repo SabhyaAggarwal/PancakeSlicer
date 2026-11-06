@@ -1,7 +1,12 @@
+
 import { Euler, Matrix4, Vector3 } from 'three';
 import type { PlateObject } from '../state/store';
 
 const DEG = Math.PI / 180;
+
+
+
+
 
 export function withRotation(o: PlateObject, rotation: number[]): PlateObject {
   const r = new Matrix4().set(
@@ -14,6 +19,7 @@ export function withRotation(o: PlateObject, rotation: number[]): PlateObject {
   return { ...o, rotX: angles.x / DEG, rotY: angles.y / DEG,
     instances: o.instances.map((i) => ({ ...i, rotZ: i.rotZ + angles.z / DEG, z: 0 })) };
 }
+
 
 export function axisAngle(axis: number[], angle: number): number[] {
   const e = new Matrix4().makeRotationAxis(new Vector3(axis[0], axis[1], axis[2]).normalize(), (angle * Math.PI) / 180).elements;

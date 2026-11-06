@@ -1,3 +1,4 @@
+
 import type { PresetType, UserPreset } from '../api/types';
 import type { State } from '../state/store';
 import { effectiveProfileValues, type ProfileContextState } from './context';
@@ -34,6 +35,7 @@ export function restoreProjectProfiles(s:ProfileContextState,snapshots:ProjectPr
   return {printer:snapshots.printer.id,process:snapshots.process.id,filamentSlots:snapshots.filaments.map(row=>row.id),profileSnapshots:snapshots,profileRecoveries:recoveries,
     ...(snapshots.slots?{slotColours:snapshots.slots.map(slot=>slot.colour)}:{})};
 }
+
 export function recoverProjectProfile(s:ProfileContextState,snapshot:ProjectProfileSnapshot,baseKey:string,name=snapshot.name):UserPreset{
   const base=findCatalogBase(s,snapshot.type,baseKey).base;if(!base)throw new Error('Choose an available base before recovering this profile.');
   const config=snapshot.profileConfig ?? snapshot.profile?.snapshot?.config ?? snapshot.config,overlay=changedKeys(config,base.config);
@@ -48,6 +50,7 @@ export const projectProfileIds=(s:Pick<State,'printer'|'process'|'filamentSlots'
   };
   return {printer_settings_id:name('machine',s.printer),print_settings_id:name('process',s.process),filament_settings_id:s.filamentSlots.map((key,slot)=>name('filament',key,slot))};
 };
+
 export async function stampProjectProfiles(blob:Blob,s:Pick<State,'printer'|'process'|'filamentSlots'> & Partial<ProfileContextState>):Promise<Blob>{
   const {strFromU8,strToU8,unzipSync,zipSync}=await import('fflate');
   const files=unzipSync(new Uint8Array(await blob.arrayBuffer())),path=Object.keys(files).find(p=>p.toLowerCase()==='metadata/project_settings.config');

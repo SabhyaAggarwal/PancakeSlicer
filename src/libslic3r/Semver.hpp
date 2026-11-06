@@ -104,12 +104,14 @@ public:
 
 	~Semver() { ::semver_free(&ver); }
 
+
 	int 		maj()        const { return ver.major; }
 	int 		min()        const { return ver.minor; }
 	int 		patch() 	 const { return ver.patch; }
 	const char*	prerelease() const { return ver.prerelease; }
 	const char*	metadata() 	 const { return ver.metadata; }
-	
+
+
 	void set_maj(int maj) { ver.major = maj; }
 	void set_min(int min) { ver.minor = min; }
 	void set_patch(int patch) { ver.patch = patch; }
@@ -138,18 +140,23 @@ public:
         ver.prerelease = pre ? strdup(pre) : nullptr;
     }
 
+
 	bool operator<(const Semver &b)  const { return ::semver_compare(ver, b.ver) == -1; }
 	bool operator<=(const Semver &b) const { return ::semver_compare(ver, b.ver) <= 0; }
 	bool operator==(const Semver &b) const { return ::semver_compare(ver, b.ver) == 0; }
 	bool operator!=(const Semver &b) const { return ::semver_compare(ver, b.ver) != 0; }
 	bool operator>=(const Semver &b) const { return ::semver_compare(ver, b.ver) >= 0; }
 	bool operator>(const Semver &b)  const { return ::semver_compare(ver, b.ver) == 1; }
+
+
 	bool operator&(const Semver &b) const { return ::semver_satisfies_patch(ver, b.ver) != 0; }
 	bool operator^(const Semver &b) const { return ::semver_satisfies_caret(ver, b.ver) != 0; }
 	bool in_range(const Semver &low, const Semver &high) const { return low <= *this && *this <= high; }
 	bool valid()                    const { return *this != zero() && *this != inf() && *this != invalid(); }
 
+
 	std::string to_string() const {
+
 		std::string res;
 		int patch_1 = ver.patch/100;
 		int patch_2 = ver.patch%100;
@@ -160,6 +167,7 @@ public:
 		return res;
 	}
 	std::string to_string_sf() const {
+
 		std::string res;
 		res = (boost::format("%1%.%2%.%3%") % ver.major % ver.minor % ver.patch).str();
 
@@ -167,6 +175,7 @@ public:
 		if (ver.metadata != nullptr) { res += '+'; res += ver.metadata; }
 		return res;
 	}
+
 
 	Semver& operator+=(const Major &b) { ver.major += b.i; return *this; }
 	Semver& operator+=(const Minor &b) { ver.minor += b.i; return *this; }
@@ -181,10 +190,13 @@ public:
 	Semver operator-(const Minor &b) const { Semver res(*this); return res -= b; }
 	Semver operator-(const Patch &b) const { Semver res(*this); return res -= b; }
 
+
 	friend std::ostream& operator<<(std::ostream& os, const Semver &self) {
 		os << self.to_string();
 		return os;
 	}
+
+
 
 	template<class Archive>
 	std::string save_minimal(const Archive&) const { return to_string_sf(); }

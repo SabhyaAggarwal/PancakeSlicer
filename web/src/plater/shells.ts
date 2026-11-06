@@ -1,11 +1,23 @@
+
+
+
+
+
+
+
 export const PIP_GAP_MM = 0.6;
 const CONTACT_MM = 0.08;
 const CELL = PIP_GAP_MM;
+
 const MIN_GAP_AREA_MM2 = 60;
+
 const MAX_CONTACT = 0.05;
+
 const SAMPLE_MM = 1.2;
 const MIN_VOLUME_MM3 = 1;
+
 const MAX_ENTRIES = 4_000_000;
+
 
 function shellsOf(index: Uint32Array, vertices: number): { shell: Int32Array; count: number } {
   const parent = new Int32Array(vertices);
@@ -29,6 +41,7 @@ function shellsOf(index: Uint32Array, vertices: number): { shell: Int32Array; co
   }
   return { shell, count };
 }
+
 
 function pointTriangle(p: number[], P: Float32Array, a: number, b: number, c: number): number {
   const ax = P[a], ay = P[a + 1], az = P[a + 2];
@@ -60,7 +73,9 @@ function pointTriangle(p: number[], P: Float32Array, a: number, b: number, c: nu
   return dx * dx + dy * dy + dz * dz;
 }
 
+
 function inside(P: Float32Array, index: Uint32Array, tris: number[], x: number, y: number, z: number): boolean {
+
   x += 1.37e-4;
   y += 2.11e-4;
   let n = 0;
@@ -75,6 +90,13 @@ function inside(P: Float32Array, index: Uint32Array, tris: number[], x: number, 
   }
   return (n & 1) === 1;
 }
+
+
+
+
+
+
+
 
 export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | null {
   const { shell, count } = shellsOf(index, P.length / 3);
@@ -93,6 +115,7 @@ export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | n
       }
     }
   }
+
   const pairs: [number, number][] = [];
   for (let i = 0; i < count; i++) {
     if (volume[i] < MIN_VOLUME_MM3) continue;
@@ -105,6 +128,7 @@ export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | n
   }
   if (!pairs.length) return null;
   const paired = new Set(pairs.map(([i, j]) => i * count + j));
+
 
   const region = (i: number, j: number, a: number): [number, number] =>
     [Math.max(lo[i * 3 + a], lo[j * 3 + a]) - PIP_GAP_MM, Math.min(hi[i * 3 + a], hi[j * 3 + a]) + PIP_GAP_MM];
@@ -140,6 +164,8 @@ export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | n
     }
   }
 
+
+
   const gapArea = new Map<number, number>();
   const contactArea = new Map<number, number>();
   const nearest = new Map<number, number>();
@@ -149,6 +175,7 @@ export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | n
   const probe = (s: number, x: number, y: number, z: number, w: number) => {
     if (!regions.some((r, q) => (pairs[q][0] === s || pairs[q][1] === s) && inRegion(r, x, y, z))) return;
     (p[0] = x), (p[1] = y), (p[2] = z);
+
     near.clear();
     const cx = cell(x), cy = cell(y), cz = cell(z);
     for (let dx = -1; dx <= 1; dx++)
@@ -185,6 +212,7 @@ export function printInPlaceGap(P: Float32Array, index: Uint32Array): number | n
         if (i + j < n - 1) at((i + 2 / 3) / n, (j + 2 / 3) / n);
       }
   }
+
   const members: number[][] = Array.from({ length: count }, () => []);
   for (let t = 0; t < shell.length; t++) members[shell[t]].push(t);
   const fused = (i: number, j: number) => {

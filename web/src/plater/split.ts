@@ -1,3 +1,5 @@
+
+
 import { bakeStl } from './meshcore';
 
 export function split(soup: Float32Array): Blob[] {
@@ -50,6 +52,7 @@ export function split(soup: Float32Array): Blob[] {
     const part = new Float32Array(faces.length * 9);
     faces.forEach((t, i) => part.set(soup.subarray(t * 9, t * 9 + 9), i * 9));
     let volume = 0;
+
     const ox = part[0], oy = part[1], oz = part[2];
     for (let t = 0; t < part.length; t += 9) {
       const ax = part[t] - ox, ay = part[t + 1] - oy, az = part[t + 2] - oz;

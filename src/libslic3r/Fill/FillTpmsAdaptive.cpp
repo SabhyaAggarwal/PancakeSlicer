@@ -30,19 +30,28 @@ namespace Slic3r {
 
 namespace {
 
+
 constexpr double MaxNodes    = double(1 << 20);
 constexpr double MinCellSize = 0.5;
 
+
 constexpr double NeckRatio = 0.8;
+
 constexpr double MinLobeRatio = 0.3;
+
 constexpr double LobeReach = 2.;
+
 constexpr double LobeMorph = 0.1;
+
+
 constexpr double ShellRatio = 1.5;
 constexpr double BlendRatio = 2.5;
+
 constexpr int Samples = 32;
 
 constexpr float  InfF = std::numeric_limits<float>::infinity();
 constexpr double InfD = std::numeric_limits<double>::infinity();
+
 
 void distance_transform_line(const float *f, float *d, int n, int *v, double *s)
 {
@@ -100,6 +109,7 @@ void distance_transform_axis(std::vector<float> &grid, const Vec3i32 &size, int 
     });
 }
 
+
 void rasterize(const ExPolygons &expolygons, const Vec2d &origin, double cell, int nx, int ny, float *nodes)
 {
     std::vector<std::vector<double>> crossings(ny);
@@ -135,6 +145,7 @@ void rasterize(const ExPolygons &expolygons, const Vec2d &origin, double cell, i
     }
 }
 
+
 double target_scale(double ratio, TpmsAdaptiveGradient gradient, double depth)
 {
     switch (gradient) {
@@ -143,6 +154,8 @@ double target_scale(double ratio, TpmsAdaptiveGradient gradient, double depth)
     default: return 1. + (ratio - 1.) * depth;
     }
 }
+
+
 
 struct DensityLevels
 {
@@ -160,6 +173,9 @@ struct DensityLevels
     TpmsAdaptiveGradient gradient;
     int                  count;
 };
+
+
+
 
 class RadialScale
 {
@@ -205,6 +221,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
     const Vec3d min(unscaled(bbox.min.x()), unscaled(bbox.min.y()), slices.front().bottom_z);
     const Vec3d extent = Vec3d(unscaled(bbox.max.x()), unscaled(bbox.max.y()), slices.back().top_z) - min;
 
+
     m_cell     = std::max(MinCellSize, std::cbrt(extent.prod() / MaxNodes));
     auto nodes = [this](double length) { return int(std::ceil(length / m_cell)) + 3; };
     while (double(nodes(extent.x())) * nodes(extent.y()) * nodes(extent.z()) > MaxNodes)
@@ -240,6 +257,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
             return -1;
         return std::ptrdiff_t(size_t(z) * sz + size_t(y) * sy + size_t(x));
     };
+
     auto in_section = [this](size_t step) { return int(step / 2) != m_axis; };
     std::vector<std::ptrdiff_t> neighbours;
     for (int dz = -1; dz <= 1; ++dz)
@@ -247,6 +265,9 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
             for (int dx = -1; dx <= 1; ++dx)
                 if ((dx != 0 || dy != 0 || dz != 0) && (m_axis < 0 || Vec3i32(dx, dy, dz)[m_axis] == 0))
                     neighbours.push_back(std::ptrdiff_t(dz) * std::ptrdiff_t(sz) + std::ptrdiff_t(dy) * std::ptrdiff_t(sy) + dx);
+
+
+
 
     const bool lobes = m_mode != TpmsAdaptiveMode::SteppedShells && m_mode != TpmsAdaptiveMode::SmoothBlend;
     m_body.assign(depth.size(), -1);
@@ -285,6 +306,8 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
                     return true;
             return false;
         };
+
+
         std::vector<std::vector<size_t>> ties;
         while (!peaks.empty()) {
             const size_t      front = peaks.front();
@@ -325,6 +348,8 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
                 m_depth[i] = float(std::min(1., std::max(0., std::sqrt(double(depth[i])) - 0.5) * m_cell / m_bodies[m_body[i]].depth));
     }
 
+
+
     std::vector<int> lobe_body(m_lobes.size());
     for (size_t id = 0; id < m_bodies.size(); ++id)
         std::fill_n(lobe_body.begin() + m_bodies[id].first_lobe, m_bodies[id].lobes, int(id));
@@ -341,6 +366,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
         }
         return dir;
     };
+
     auto smooth = [rows](std::vector<double> &values, size_t count) {
         for (int pass = 0; pass < 2; ++pass) {
             std::vector<double> smoothed(values.size(), 0.);
@@ -361,6 +387,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
             const int   id   = lobe_body[l];
             const Body &body = m_bodies[id];
             Lobe       &lobe = m_lobes[l];
+
             std::vector<std::pair<double, size_t>> others;
             for (size_t k = body.first_lobe; k < body.first_lobe + body.lobes; ++k)
                 if (k != l)
@@ -402,6 +429,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
                     double      previous    = this->depth(lobe.center);
                     mean[d * (Samples + 1)] = previous;
                     for (int k = 1; k <= Samples; ++k) {
+
                         const double t0 = double(k - 1) / Samples;
                         const double t1 = double(k) / Samples;
                         const double d1 = this->depth(lobe.center + t1 * lobe.reach[d] * dir);
@@ -412,12 +440,14 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
                         mean[d * (Samples + 1) + k] = 3. * integral / std::pow(t1, 3);
                     }
                 }
+
                 smooth(mean, Samples + 1);
                 lobe.mean_depth.assign(mean.begin(), mean.end());
             }
         }
         throw_if_canceled();
     });
+
 
     if (m_axis >= 0) {
         std::vector<bool> has_body(m_size[m_axis], false);
@@ -432,6 +462,7 @@ TpmsRadialField::TpmsRadialField(const std::vector<Slice> &slices, const Boundin
                 else if (k + d < m_size[m_axis] && has_body[k + d])
                     m_section[k] = k + d;
     }
+
     if (!lobes) {
         m_body = {};
         return;
@@ -489,6 +520,7 @@ double TpmsRadialField::radial(const Lobe &lobe, const Vec3d &pt) const
 {
     const Vec3d  d = this->offset(pt, lobe.center);
     const double r = d.norm();
+
     auto warp = [](double mean_depth) { return std::max(0., 4. / 3. * (1. - mean_depth)); };
     if (r < EPSILON)
         return lobe.mean_depth.empty() ? 0. : warp(lobe.mean_depth.front());
@@ -515,6 +547,7 @@ double TpmsRadialField::radial(const Lobe &lobe, const Vec3d &pt) const
     const double tau = r / reach;
     if (lobe.mean_depth.empty())
         return tau;
+
     auto mean_at = [&lobe, tau](int i, int j) {
         const float *mean = lobe.mean_depth.data() + size_t(i * Azimuth + j) * (Samples + 1);
         if (tau >= 1.)
@@ -539,6 +572,7 @@ size_t TpmsRadialField::radial(const Vec3d &pt, Radials &out) const
     if (m_axis < 0)
         return this->body_radial(node(idx), pt, 1.f, out.data());
 
+
     const double f     = std::clamp((pt[m_axis] - m_origin[m_axis]) / m_cell, 0., double(m_size[m_axis] - 1));
     const int    k     = std::min(int(f), m_size[m_axis] - 2);
     const float  w     = float(f - k);
@@ -562,6 +596,7 @@ size_t TpmsRadialField::body_radial(size_t node, const Vec3d &pt, float weight, 
         out[0]           = {lobe.center, radial(lobe, pt), weight};
         return 1;
     }
+
 
     std::array<std::pair<double, size_t>, MaxMorph> nearest;
     size_t                                          count = 0;
@@ -622,6 +657,9 @@ struct AdaptiveTpmsField
         , cos_angle(std::cos(angle)), sin_angle(std::sin(angle))
     {}
 
+
+
+
     float get_scalar(const Coord &p) const
     {
         const Point                            pt = to_Point(p);
@@ -629,6 +667,7 @@ struct AdaptiveTpmsField
         const double                           y  = unscaled(pt.y());
         const Vec3d                            obj(cos_angle * x - sin_angle * y, sin_angle * x + cos_angle * y, z);
         if (radial_field.mode() == TpmsAdaptiveMode::SmoothBlend) {
+
             auto lattice = [this, x, y](int level) {
                 const double frequency = tpms.surface_frequency * levels.scale(level);
                 return tpms.equation(float(frequency * x), float(frequency * y), float(frequency * z));
@@ -667,6 +706,7 @@ template<> struct _RasterTraits<AdaptiveTpmsField>
     static size_t rows(const AdaptiveTpmsField &sf) { return sf.to_coordr(sf.size.y()); }
     static size_t cols(const AdaptiveTpmsField &sf) { return sf.to_coordr(sf.size.x()); }
 };
+
 
 struct TpmsLevelField
 {
@@ -711,11 +751,13 @@ namespace Slic3r {
 Polylines make_adaptive_tpms(const AdaptiveTpms &tpms, const TpmsRadialField &field, BoundingBox bbox,
                              coordf_t z, coordf_t layer_height, coordf_t spacing, float angle)
 {
+
     const coord_t cell = scaled(marchsq::AdaptiveTpmsField::gsizef);
     bbox.offset(cell);
     bbox.merge(align_to_grid(bbox.min, Point(cell, cell)));
     const marchsq::AdaptiveTpmsField raster(tpms, field, bbox, z - 0.5 * layer_height, angle);
     const std::vector<marchsq::Ring> rings = marchsq::execute_with_policy(ex_tbb, raster, 0.f, {raster.gsize, raster.gsize});
+
 
     const double min_loop_length = scaled(2. * PI * spacing);
     Polylines    polylines;
@@ -739,11 +781,13 @@ std::vector<TpmsShell> make_tpms_shells(const TpmsRadialField &field, const ExPo
     const DensityLevels levels(interior_density / surface_density, ShellRatio, gradient);
     if (levels.count == 0)
         return {{surface_density, {expolygon}}};
+
     const coord_t cell = scaled(marchsq::TpmsLevelField::gsizef);
     BoundingBox   bbox = get_extents(expolygon);
     bbox.offset(cell);
     bbox.merge(align_to_grid(bbox.min, Point(cell, cell)));
     const marchsq::TpmsLevelField raster(field, levels, bbox, z);
+
 
     std::vector<TpmsShell> shells;
     ExPolygons             remaining{expolygon};

@@ -1,3 +1,4 @@
+
 import type { PresetType } from '../api/types';
 import type { State } from '../state/store';
 import { findProfile, profileKey } from './identity';
@@ -9,6 +10,7 @@ export interface ProfileLibraryHydration {
   patch: Partial<State>;
   requiresAdoption: boolean;
 }
+
 export function prepareProfileLibraryHydration(s: State, document: ProfileLibraryDocument, options:{restoreStartupPlaceholder?:boolean}={}):ProfileLibraryHydration {
   const userPresets=document.profiles.map(normalizeUserPreset),ids=userPresets.map(profileKey);
   if(new Set(ids).size!==ids.length)throw new Error('The saved library contains duplicate profile identities. Export it before recovery.');
@@ -21,6 +23,7 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
   const differs=(id:string)=>JSON.stringify(s.printerLibrary.setups[id])!==JSON.stringify(document.printers.setups[id]);
   const authoredSetups=Object.keys(s.printerLibrary.setups).filter(differs);
   if(authoredSetups.some(id=>id!==s.printer || !options.restoreStartupPlaceholder)){
+
     return {patch:Object.fromEntries(Object.entries(patch).filter(([key])=>['machines','processes','filaments'].includes(key))),requiresAdoption:true};
   }
   const owned=(type:PresetType)=>userPresets.filter(p=>p.type===type && !p.archived && p.kind!=='master' && (p as {baseRole?:string}).baseRole!=='base-only').sort((a,b)=>profileKey(a).localeCompare(profileKey(b)));
@@ -28,11 +31,13 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
   const selected=(type:PresetType,key:string):string=>{
     const known=findProfile(next,type,key);
     if(known)return profileKey(known);
+
     const wrappers=owned(type).filter(p=>p.base?.name===key && !p.parent && !p.parentId && !Object.keys(p.overlay ?? p.overrides).length);
     if(wrappers.length===1)return profileKey(wrappers[0]);
     return key;
   };
   next.printer=s.profileSnapshots ? s.printer : selected('machine',s.printer);
+
   const printers=owned('machine');
   if(!next.printer || options.restoreStartupPlaceholder && !s.profileSnapshots && !findProfile(next,'machine',next.printer))next.printer=printers.length===1 ? printers[0].id ?? '' : '';
   const setup=document.printers.setups[next.printer];

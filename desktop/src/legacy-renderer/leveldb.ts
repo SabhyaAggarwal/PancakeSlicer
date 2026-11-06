@@ -1,3 +1,6 @@
+
+
+
 import { unsnappy } from './snappy';
 
 export class Incomplete extends Error {
@@ -53,6 +56,7 @@ function checkCRC(bytes: Buffer, stored: number, prefix?: number, suffix?: numbe
   if (suffix !== undefined) crc = crc32c(Buffer.from([suffix]), crc);
   requireSource((((crc >>> 15) | (crc << 17)) + 0xa282ead8) >>> 0 === stored, 'Source checksum mismatch.');
 }
+
 
 function logRecords(file: Buffer, budget: Budget): Buffer[] {
   const records: Buffer[] = [];
@@ -181,6 +185,7 @@ function dataKey(record: Internal): Buffer {
 }
 
 export interface CurrentRecord { key: Buffer; value: Buffer }
+
 export async function currentView(names: readonly string[], read: (name: string) => Promise<Buffer>, budget: Budget, expected: UserComparator = bytewise): Promise<CurrentRecord[]> {
   const compare = (a: Buffer, b: Buffer) => compareInternal(a, b, expected);
   requireSource(names.includes('CURRENT'), 'Missing CURRENT selector.');

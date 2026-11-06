@@ -1,3 +1,5 @@
+
+
 import type { PlateObject } from '../state/store';
 
 export const overrideCount = (o: PlateObject) => Object.keys(o.settings).length

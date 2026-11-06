@@ -8,6 +8,9 @@
 
 namespace Slic3r { namespace csg {
 
+
+
+
 inline CSGType get_operation(const indexed_triangle_set &part)
 {
     return CSGType::Union;

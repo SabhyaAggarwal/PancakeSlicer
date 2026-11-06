@@ -1,4 +1,6 @@
 import { Check } from './Check';
+
+
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { useStore } from '../state/store';
@@ -16,6 +18,7 @@ export default function BooleanPanel() {
   const [b, setB] = useState<PartKey>(parts[1]?.[0] ?? 'main');
   if (!o) return null;
   const has = (k: PartKey) => parts.some(([p]) => p === k);
+
   const first = has(a) ? a : 'main';
   const second = has(b) && b !== first ? b : parts.find(([k]) => k !== first)?.[0];
   const pick = (label: string, value: PartKey, set: (k: PartKey) => void) => (

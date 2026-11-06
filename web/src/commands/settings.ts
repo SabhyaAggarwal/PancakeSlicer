@@ -1,3 +1,7 @@
+
+
+
+
 import type { PresetType } from '../api/types';
 import { loadTab, OPTIONS, splitKey, TABS, isHidden, tooltipsReady, type OptionMode, type TabDesc } from '../options';
 import { lineMode, tabEnvironment } from '../settings-env';
@@ -21,6 +25,7 @@ interface Entry {
   label: string;
   tooltip: string;
   mode: OptionMode;
+
   path: string;
 }
 
@@ -41,6 +46,8 @@ function buildIndex(): Entry[] {
   return out;
 }
 
+
+
 export function fuzzy(pattern: string, text: string): { score: number; hits: number[] } | null {
   const p = pattern.toLowerCase(), t = text.toLowerCase();
   const hits: number[] = [];
@@ -60,7 +67,10 @@ export function fuzzy(pattern: string, text: string): { score: number; hits: num
 
 interface Found { entry: Entry; score: number; via?: 'key' | 'tooltip' }
 
+
 const MODE_BOOST: Partial<Record<OptionMode, number>> = { simple: 80, advanced: 20 };
+
+
 const PRIMARY: Record<string, string> = {
   layer: 'layer_height', wall: 'wall_loops', perimeter: 'wall_loops', infill: 'sparse_infill_density', density: 'sparse_infill_density',
   support: 'enable_support', supports: 'enable_support', brim: 'brim_type', raft: 'raft_layers', skirt: 'skirt_loops', seam: 'seam_position',
@@ -72,11 +82,14 @@ function search(index: Entry[], query: string): Found[] {
   const q = query.trim();
   if (!q) return [];
   const words = q.toLowerCase().split(/\s+/);
+
   const stem = q.length > 3 && /[^s]s$/i.test(q) ? q.slice(0, -1).toLowerCase() : '';
   const found: Found[] = [];
   for (const entry of index) {
+
     const own = fuzzy(q, entry.label), path = fuzzy(q, entry.path);
     const label = own && (!path || own.score >= path.score) ? own : path;
+
     const lower = entry.label.toLowerCase();
     let at = lower.indexOf(q.toLowerCase());
     if (at < 0 && stem) at = lower.indexOf(stem);
@@ -90,6 +103,7 @@ function search(index: Entry[], query: string): Found[] {
   }
   return found.sort((a, b) => b.score - a.score || a.entry.path.localeCompare(b.entry.path)).slice(0, 40);
 }
+
 
 function hiddenBySettings(entry: Entry, tab: TabDesc['tab']): string | undefined {
   const s = getState();
@@ -112,6 +126,7 @@ function reveal(entry: Entry) {
   setState({ ...patch, settingsFocus: { type: entry.type, page: entry.page, key: entry.key, nonce: Date.now() } });
 }
 
+
 function valueOf(e: Entry): string {
   const s = getState();
   const v = effectiveConfig(s, e.type, e.type === 'filament' && s.dialog?.type === 'filament' ? s.dialog.slot : 0)[e.key] ?? OPTIONS[e.key]?.default;
@@ -125,8 +140,10 @@ let index: Entry[] | null = null;
 let loading: Promise<Entry[]> | null = null;
 export const settingsLoaded = () => !!index;
 export function loadSettings(): Promise<Entry[]> {
+
   return loading ??= Promise.all(TYPES.map(([, tab]) => loadTab(tab))).then(tooltipsReady).then(() => (index = buildIndex()));
 }
+
 
 export async function settingCommands(query: string): Promise<Command[]> {
   const all = await loadSettings();
@@ -143,6 +160,7 @@ export async function settingCommands(query: string): Promise<Command[]> {
       group: 'Setting',
       detail: [valueOf(entry), `${tab[2]} · ${entry.page}`, reason].filter(Boolean).join('  ·  '),
       keywords: `${entry.path} ${entry.key}`,
+
       boost: (shown ? 200 : 0) + (f.via === 'tooltip' ? -150 : 0) - i,
       run: () => reveal(entry),
     };

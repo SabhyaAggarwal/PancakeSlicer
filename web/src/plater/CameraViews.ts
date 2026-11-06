@@ -5,9 +5,12 @@ import { getState, subscribeStore } from '../state/store';
 import { bedBounds } from './geometry';
 import { ownsKeys } from '../keys';
 
+
 const registry = new Set<CameraViews>();
 export const activeCamera = () => [...registry].find((v) => v.isActive())?.camera ?? null;
+
 let lastActive: CameraViews | null = null;
+
 
 export class CameraViews {
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -15,9 +18,11 @@ export class CameraViews {
   private area: THREE.Vector2[] = [];
   private width = 1;
   private height = 1;
+
   private insets = { left: 0, right: 0 };
   private axisView = false;
   private axisDirection = new THREE.Vector3();
+
   private handedOff = false;
   private focusRadius = 1;
   private bounds = new THREE.Box3();
@@ -30,10 +35,13 @@ export class CameraViews {
     this.camera.up.set(0, 0, 1);
     this.controls = new OrbitControls(this.camera, host);
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+
     this.controls.minDistance = 2;
+
     this.controls.minPolarAngle = THREE.MathUtils.degToRad(1);
     this.controls.maxPolarAngle = Math.PI - this.controls.minPolarAngle;
     this.applyPrefs();
+
     host.addEventListener('wheel', this.onWheel, { capture: true, passive: false });
     for (const type of ['gesturestart', 'gesturechange']) host.addEventListener(type, this.onGesture, { passive: false });
     this.unsubscribePrefs = subscribeCamera(this.applyPrefs);
@@ -56,11 +64,13 @@ export class CameraViews {
     });
   }
 
+
   private applyPrefs = () => {
     this.controls.zoomToCursor = cameraPrefs.zoomToMouse;
     this.controls.rotateSpeed = cameraPrefs.orbitMult;
     this.controls.zoomSpeed = cameraPrefs.reverseZoom ? -1 : 1;
   };
+
   private onTouchpadMove = (event: PointerEvent) => {
     if (cameraPrefs.style !== 'touchpad' || !this.controls.enabled || event.pointerType === 'touch' ||
         event.buttons || !this.active() || !(event.altKey || event.shiftKey)) return;
@@ -73,6 +83,10 @@ export class CameraViews {
     this.controls.dispatchEvent({ type: 'end' });
   };
 
+
+
+
+
   private zoomBy(scale: number, x: number, y: number) {
     const c = this.controls as unknown as { _updateZoomParameters(x: number, y: number): void; _dollyIn(s: number): void };
     this.controls.dispatchEvent({ type: 'start' });
@@ -81,6 +95,14 @@ export class CameraViews {
     this.controls.update();
     this.controls.dispatchEvent({ type: 'end' });
   }
+
+
+
+
+
+
+
+
 
   private wheelTrackpad = false;
   private wheelAt = -Infinity;
@@ -115,6 +137,7 @@ export class CameraViews {
     this.controls.pan(-e.deltaX * px, -e.deltaY * px);
     this.controls.dispatchEvent({ type: 'end' });
   };
+
   private gestureScale = 1;
   private onGesture = (e: Event) => {
     const scale = (e as Event & { scale?: number }).scale ?? 1;
@@ -136,11 +159,13 @@ export class CameraViews {
 
   private zoomLimits() {
     if (!(this.camera instanceof THREE.OrthographicCamera)) return;
+
     this.controls.minZoom = this.camera.top / (this.focusRadius * 12);
     this.controls.maxZoom = this.camera.top / 0.25;
     this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom, this.controls.minZoom, this.controls.maxZoom);
     this.camera.updateProjectionMatrix();
   }
+
 
   setBounds(box: THREE.Box3) {
     if (this.bounds.equals(box)) return;
@@ -163,6 +188,7 @@ export class CameraViews {
       try { this.controls.update(); } finally { this.adjusting = false; }
     }
   }
+
 
   private clip() {
     const c = this.camera;
@@ -196,17 +222,21 @@ export class CameraViews {
   private onKey = (event: KeyboardEvent) => {
     if (!this.active() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || ownsKeys(event) ||
         getState().dialog || getState().flushDialog || getState().appDialog || document.querySelector('dialog[open]')) return;
+
+
     if (event.key === 'i' || event.key === 'o') {
       event.preventDefault();
       this.zoom(event.key === 'i' ? 1.25 : 0.8);
       return;
     }
+
     if (event.key.toLowerCase() === 'z') {
       event.preventDefault();
       window.dispatchEvent(new Event('camera-fit'));
       return;
     }
     const view = VIEW_DIRECTIONS[Number(event.key)];
+
     if (!/^[0-6]$/.test(event.key) || !view || getState().gizmo === 'color' && event.key !== '0') return;
     event.preventDefault();
     this.view(view);
@@ -218,10 +248,12 @@ export class CameraViews {
     else this.view('plate');
   }
 
+
   private takePose(from: CameraViews) {
     this.copy(from);
     this.handedOff = true;
   }
+
 
   fit(box: THREE.Box3) {
     if (box.isEmpty() || ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)) return this.view('plate');
@@ -242,6 +274,7 @@ export class CameraViews {
     this.controls.update();
     this.changed();
   }
+
 
   shift(dx: number, dy: number) {
     const d = new THREE.Vector3(dx, dy, 0);
@@ -279,6 +312,8 @@ export class CameraViews {
         this.zoomLimits();
       }
     }
+
+
     const offsets = { plate: [0, -Math.SQRT1_2, Math.SQRT1_2], top: [0, -1e-4, 1], bottom: [0, -1e-4, -1],
       front: [0, -1, 0], rear: [0, 1, 0], left: [-1, 0, 0], right: [1, 0, 0] };
     this.axisView = false;
@@ -316,6 +351,7 @@ export class CameraViews {
     this.changed();
   }
 
+
   copy(from: CameraViews) {
     this.bounds.copy(from.bounds);
     this.projection(from.camera instanceof THREE.PerspectiveCamera);
@@ -336,6 +372,11 @@ export class CameraViews {
     this.clip();
     this.changed();
   }
+
+
+
+
+
 
   setInsets(left: number, right: number) {
     left = Math.max(0, Math.round(left)); right = Math.max(0, Math.round(right));

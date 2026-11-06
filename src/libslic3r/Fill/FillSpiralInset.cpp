@@ -26,14 +26,33 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
+
+
+
+
+
+
 static int find_spiral_start_corner(const Polygon& loop)
 {
     const size_t n = loop.points.size();
     if (n < 3)
         return 0;
 
+
     static const double right_angle_cos = 0.08716;
+
     static const double straight_cos = -0.99985;
+
+
+
+
+
 
     const double convex_turn = loop.is_counter_clockwise() ? 1.0 : -1.0;
 
@@ -55,6 +74,7 @@ static int find_spiral_start_corner(const Polygon& loop)
         if (convex_turn * (e_in.x() * e_out.y() - e_in.y() * e_out.x()) <= 0.0)
             continue;
 
+
         double cos_val = -e_in.dot(e_out) / (len1 * len2);
         if (std::abs(cos_val) < best_right_cos) {
             best_right_cos = std::abs(cos_val);
@@ -67,8 +87,12 @@ static int find_spiral_start_corner(const Polygon& loop)
     }
     if (best_right >= 0)
         return best_right;
+
     return best_wide < 0 ? 0 : best_wide;
 }
+
+
+
 
 static double loop_clip_length(const Polyline& loop_path, const double gap)
 {
@@ -81,14 +105,19 @@ static double loop_clip_length(const Polyline& loop_path, const double gap)
         return gap;
 
     double alpha = std::atan2(std::abs(v1.x() * v2.y() - v1.y() * v2.x()), v1.dot(v2));
+
     return (alpha > M_PI / 4 && alpha < 2 * M_PI / 3) ? gap / std::sin(alpha) : gap;
 }
+
+
+
 
 static Polyline open_loop(const Polygon& loop, int start_index) { return loop.split_at_index(start_index); }
 
 static ThickPolyline open_loop(const Arachne::ExtrusionLine& loop, int start_index)
 {
     ThickPolyline path = Arachne::to_thick_polyline(loop);
+
     if (path.points.front() != path.points.back()) {
         const coordf_t w_first = path.width.front(), w_last = path.width.back();
         path.points.emplace_back(path.points.front());
@@ -103,6 +132,7 @@ static void clip_path_end(Polyline& path, double distance) { path.clip_end(dista
 
 static void clip_path_end(ThickPolyline& path, double distance)
 {
+
     while (distance > 0 && path.points.size() >= 2) {
         const Point    last  = path.points.back();
         const coordf_t w_end = path.width.back();
@@ -134,9 +164,11 @@ static void append_path(ThickPolyline& dst, ThickPolyline&& src)
         return;
     }
     if (dst.points.back() == src.points.front()) {
+
         src.points.erase(src.points.begin());
         src.width.erase(src.width.begin(), src.width.begin() + 2);
     } else {
+
         const coordf_t w_from = dst.width.back(), w_to = src.width.front();
         dst.width.emplace_back(w_from);
         dst.width.emplace_back(w_to);
@@ -144,6 +176,10 @@ static void append_path(ThickPolyline& dst, ThickPolyline&& src)
     append(dst.points, std::move(src.points));
     append(dst.width, std::move(src.width));
 }
+
+
+
+
 
 static bool leaves_a_centre_hole(const Polygon&) { return true; }
 static bool leaves_a_centre_hole(const Arachne::ExtrusionLine&) { return false; }
@@ -158,6 +194,9 @@ static void append_path_point(ThickPolyline& path, const Point& point)
     path.width.emplace_back(w);
 }
 
+
+
+
 template<class LoopType, class PathType>
 static std::vector<PathType> generate_spiral_insets(const FillParams&                   params,
                                                          const std::vector<const LoopType*>& loops,
@@ -168,7 +207,19 @@ static std::vector<PathType> generate_spiral_insets(const FillParams&           
     std::vector<PathType> output;
     PathType              spiral;
     Point                 current_pos(0, 0);
+
     int innermost_loop = -1;
+
+
+
+
+
+
+
+
+
+
+
 
     const double free_hop = 1.5 * double(distance);
     const double max_hop  = 4.0 * double(distance);
@@ -179,11 +230,18 @@ static std::vector<PathType> generate_spiral_insets(const FillParams&           
         return hop <= free_hop || original_expoly.contains(Line(from, to));
     };
 
+
+
     const double max_center_stub = 2.0 * double(distance);
+
 
     auto flush_spiral = [&]() {
         if (spiral.empty())
             return;
+
+
+
+
         if (innermost_loop >= 0 && leaves_a_centre_hole(*loops[innermost_loop])) {
             const Polygon& innermost = loop_outlines[innermost_loop];
             const Point    centroid  = innermost.centroid();
@@ -203,10 +261,17 @@ static std::vector<PathType> generate_spiral_insets(const FillParams&           
         if (outline.points.empty())
             continue;
 
+
+
         PathType loop_path = open_loop(*loops[i], spiral.empty() ? find_spiral_start_corner(outline) :
                                                                   current_pos.nearest_point_index(outline.points));
         if (loop_path.size() < 3)
             continue;
+
+
+
+
+
 
         const bool same_island = innermost_loop >= 0 && loop_outlines[innermost_loop].contains(loop_path.points.front());
         if (!spiral.empty() && (!same_island || !reachable(spiral.last_point(), loop_path.points.front()))) {
@@ -216,7 +281,11 @@ static std::vector<PathType> generate_spiral_insets(const FillParams&           
                 continue;
         }
 
+
+
         clip_path_end(loop_path, loop_clip_length(loop_path, (i + 1 == loops.size() ? 0.5 : 1.0) * double(distance)));
+
+
         if (loop_path.size() < 2)
             continue;
 
@@ -226,6 +295,7 @@ static std::vector<PathType> generate_spiral_insets(const FillParams&           
     }
 
     flush_spiral();
+
 
     if (params.fill_order != SurfaceFillOrder::Inward) {
         for (PathType& path : output)
@@ -260,6 +330,7 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
         append(loops, to_polygons(last));
     }
 
+
     loops = union_pt_chained_outside_in(loops);
 
     std::vector<const Polygon*> loop_refs;
@@ -281,6 +352,9 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
     assert(params.use_arachne);
     assert(this->print_config != nullptr && this->print_object_config != nullptr);
 
+
+
+
     if (params.extrusion_role == erSolidInfill) {
         Polylines polylines;
         this->_fill_surface_single(params, thickness_layers, direction, expolygon, polylines);
@@ -288,12 +362,14 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
         return;
     }
 
+
     if (params.density <= 0.9999f || params.dont_adjust) {
         Polylines polylines;
         this->_fill_surface_single(params, thickness_layers, direction, expolygon, polylines);
         append(thick_polylines_out, to_thick_polylines(std::move(polylines), scaled<coord_t>(this->spacing)));
         return;
     }
+
 
     Point   bbox_size   = expolygon.contour.bounding_box().size();
     coord_t min_spacing = scaled<coord_t>(this->spacing);
@@ -313,6 +389,8 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
     Arachne::WallToolPaths wallToolPaths(polygons, min_spacing, min_spacing, loops_count, 0, params.layer_height, input_params);
     std::vector<Arachne::VariableWidthLines> walls_by_inset = wallToolPaths.getToolPaths();
 
+
+
     std::vector<const Arachne::ExtrusionLine*> walls;
     Polygons                                   wall_outlines;
     ThickPolylines                             open_walls;
@@ -328,6 +406,10 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
             }
         }
 
+
+
+
+
     const size_t      wall_count = walls.size();
     std::vector<int>  nesting_depth(wall_count, 0), parent(wall_count, -1);
     std::vector<char> inside(wall_count * wall_count, 0);
@@ -337,6 +419,7 @@ void FillSpiralInset::_fill_surface_single(const FillParams& params,
                 inside[i * wall_count + j] = 1;
                 ++nesting_depth[i];
             }
+
     for (size_t i = 0; i < wall_count; ++i)
         for (size_t j = 0; j < wall_count; ++j)
             if (inside[i * wall_count + j] && (parent[i] < 0 || nesting_depth[parent[i]] < nesting_depth[j]))

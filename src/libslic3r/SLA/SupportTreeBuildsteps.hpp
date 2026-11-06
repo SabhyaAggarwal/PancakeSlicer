@@ -30,7 +30,8 @@ namespace Slic3r::sla { struct SupportPoint; }
 namespace Slic3r {
 namespace sla {
 
-const double  D_SP = 0.1;
+
+const double   D_SP = 0.1;
 
 enum {
     X, Y, Z
@@ -69,9 +70,18 @@ inline Vec3d spheric_to_dir(const std::array<double, 2> &v)
     return spheric_to_dir(v[0], v[1]);
 }
 
+
+
+
 template<size_t N>
 class PointRing {
     std::array<double, N> m_phis;
+
+
+
+
+
+
 
     Vec3d a = {0, 1, 0}, b;
     double m_radius = 0.;
@@ -86,6 +96,11 @@ public:
     PointRing(const Vec3d &n)
     {
         m_phis = linspace_array<N>(0., 2 * PI);
+
+
+
+
+
 
         if(is_one(n(X)) || is_one(n(Y)) || is_one(n(Z))) {
             a = {n(Z), n(X), n(Y)};
@@ -106,11 +121,15 @@ public:
         double rpscos = r * cosphi;
         double rpssin = r * sinphi;
 
+
         return {src(X) + rpscos * a(X) + rpssin * b(X),
                 src(Y) + rpscos * a(Y) + rpssin * b(Y),
                 src(Z) + rpscos * a(Z) + rpssin * b(Z)};
     }
 };
+
+
+
 
 inline Vec3d dirv(const Vec3d& startp, const Vec3d& endp) {
     return (endp - startp).normalized();
@@ -161,6 +180,13 @@ public:
     }
 };
 
+
+
+
+
+
+
+
 template<class I, class DoubleI = IntegerOnly<I>>
 IntegerOnly<DoubleI> pairhash(I a, I b)
 {
@@ -170,6 +196,7 @@ IntegerOnly<DoubleI> pairhash(I a, I b)
     static const auto constexpr shift = DoubleIbits / 2 < Ibits ? Ibits / 2 : Ibits;
 
     I g = min(a, b), l = max(a, b);
+
 
     assert((g ? (ceil(log2(g))) : 0) <= shift);
     assert((l ? (ceil(log2(l))) : 0) <= shift);
@@ -187,28 +214,49 @@ class SupportTreeBuildsteps {
     PtIndices m_iheads;
     PtIndices m_iheads_onmodel;
     PtIndices m_iheadless;
-    
+
     std::map<unsigned, IndexedMesh::hit_result> m_head_to_ground_scans;
+
 
     PointSet  m_support_nmls;
 
+
+
     std::vector<PtIndices> m_pillar_clusters;
+
+
 
     SupportTreeBuilder& m_builder;
 
+
     PointSet m_points;
+
+
 
     ThrowOnCancel m_thr;
 
+
     PillarIndex m_pillar_index;
+
 
     ccr::BlockingMutex m_bridge_mutex;
 
-    inline IndexedMesh::hit_result ray_mesh_intersect(const Vec3d& s, 
+    inline IndexedMesh::hit_result ray_mesh_intersect(const Vec3d& s,
                                                       const Vec3d& dir)
     {
         return m_mesh.query_ray_hit(s, dir);
     }
+
+
+
+
+
+
+
+
+
+
+
 
     IndexedMesh::hit_result pinhead_mesh_intersect(
         const Vec3d& s,
@@ -230,6 +278,14 @@ class SupportTreeBuildsteps {
                                           m_cfg.head_back_radius_mm);
     }
 
+
+
+
+
+
+
+
+
     IndexedMesh::hit_result bridge_mesh_intersect(
         const Vec3d& s,
         const Vec3d& dir,
@@ -245,23 +301,34 @@ class SupportTreeBuildsteps {
                                      r * m_cfg.safety_distance_mm /
                                          m_cfg.head_back_radius_mm);
     }
-    
+
     template<class...Args>
     inline double bridge_mesh_distance(Args&&...args) {
         return bridge_mesh_intersect(std::forward<Args>(args)...).distance();
     }
 
+
     bool interconnect(const Pillar& pillar, const Pillar& nextpillar);
 
+
     bool connect_to_nearpillar(const Head& head, long nearpillar_id);
-    
+
+
+
+
+
     bool connect_to_ground(Head& head, const Vec3d &dir);
     inline bool connect_to_ground(Head& head);
-    
+
     bool connect_to_model_body(Head &head);
 
     bool search_pillar_and_connect(const Head& source);
-    
+
+
+
+
+
+
     bool create_ground_pillar(const Vec3d &jp,
                               const Vec3d &sourcedir,
                               double       radius,
@@ -280,13 +347,40 @@ class SupportTreeBuildsteps {
 public:
     SupportTreeBuildsteps(SupportTreeBuilder & builder, const SupportableMesh &sm);
 
+
+
+
+
+
+
+
     void filter();
+
+
 
     void add_pinheads();
 
+
+
+
+
+
+
+
+
     void classify();
 
+
+
+
+
+
     void routing_to_ground();
+
+
+
+
+
 
     void routing_to_model();
 

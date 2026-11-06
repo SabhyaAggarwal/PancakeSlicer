@@ -1,3 +1,8 @@
+
+
+
+
+
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/libslic3r.h"
@@ -20,6 +25,8 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/SLA/JobController.hpp"
+
+
 
 #define L(s) Slic3r::I18N::translate(s)
 
@@ -50,7 +57,7 @@ std::vector<ExPolygons> SupportTree::slice(const std::vector<float> &grid,
 
         auto bb = bounding_box(pad_mesh);
         auto maxzit = std::upper_bound(grid.begin(), grid.end(), bb.max.z());
-        
+
         auto cap = grid.end() - maxzit;
         auto padgrid = reserve_vector<float>(size_t(cap > 0 ? cap : 0));
         std::copy(grid.begin(), maxzit, std::back_inserter(padgrid));
@@ -60,6 +67,7 @@ std::vector<ExPolygons> SupportTree::slice(const std::vector<float> &grid,
 
     size_t len = grid.size();
     for (const Slices &slv : slices) { len = std::min(len, slv.size()); }
+
 
     if (slices.empty()) return {};
 
@@ -81,14 +89,16 @@ SupportTree::UPtr SupportTree::create(const SupportableMesh &sm,
 {
     auto builder = make_unique<SupportTreeBuilder>();
     builder->m_ctl = ctl;
-    
+
     if (sm.cfg.enabled) {
+
         SupportTreeBuildsteps::execute(*builder, sm);
         builder->merge_and_cleanup();
     } else {
+
         builder->ground_level = sm.emesh.ground_level();
     }
-    
+
     return std::move(builder);
 }
 

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 
+
 export function bambuChecks(): Plugin {
   const resources = fileURLToPath(new URL('../resources/', import.meta.url));
   const read = (relative: string) => JSON.parse(fs.readFileSync(path.join(resources, relative), 'utf8'));

@@ -41,6 +41,7 @@ template<class L> using Scalar = typename Traits<remove_cvref_t<L>>::Scalar;
 template<class L> auto get_a(L &&l) { return Traits<remove_cvref_t<L>>::get_a(l); }
 template<class L> auto get_b(L &&l) { return Traits<remove_cvref_t<L>>::get_b(l); }
 
+
 template<class L>
 double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *nearest_point)
 {
@@ -48,14 +49,20 @@ double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, V
     const Vec<Dim<L>, double>  va = (point  - get_a(line)).template cast<double>();
     const double  l2 = v.squaredNorm();
     if (l2 == 0.0) {
+
         *nearest_point = get_a(line);
         return va.squaredNorm();
     }
+
+
+
     const double t = va.dot(v) / l2;
     if (t <= 0.0) {
+
         *nearest_point = get_a(line);
         return va.squaredNorm();
     } else if (t >= 1.0) {
+
         *nearest_point = get_b(line);
         return (point - get_b(line)).template cast<double>().squaredNorm();
     }
@@ -63,6 +70,7 @@ double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, V
     *nearest_point = (get_a(line).template cast<double>() + t * v).template cast<Scalar<L>>();
     return (t * v - va).squaredNorm();
 }
+
 
 template<class L>
 double distance_to_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
@@ -77,6 +85,8 @@ double distance_to(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
     return std::sqrt(distance_to_squared(line, point));
 }
 
+
+
 template<class L>
 double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point, Vec<Dim<L>, Scalar<L>> *closest_point)
 {
@@ -84,13 +94,19 @@ double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> 
     const Vec<Dim<L>, double> va = (point - get_a(line)).template cast<double>();
     const double              l2 = v.squaredNorm();
     if (l2 == 0.) {
+
         *closest_point = get_a(line);
         return va.squaredNorm();
     }
+
+
+
     const double t = va.dot(v) / l2;
     *closest_point = (get_a(line).template cast<double>() + t * v).template cast<Scalar<L>>();
     return (t * v - va).squaredNorm();
 }
+
+
 
 template<class L>
 double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
@@ -98,6 +114,8 @@ double distance_to_infinite_squared(const L &line, const Vec<Dim<L>, Scalar<L>> 
     Vec<Dim<L>, Scalar<L>> nearest_point;
     return distance_to_infinite_squared<L>(line, point, &nearest_point);
 }
+
+
 
 template<class L>
 double distance_to_infinite(const L &line, const Vec<Dim<L>, Scalar<L>> &point)
@@ -114,6 +132,7 @@ template<class L> bool intersection(const L &l1, const L &l2, Vec<Dim<L>, Scalar
     Floating      denom = cross2(v1, v2);
     if (fabs(denom) < EPSILON)
 #if 0
+
         return ! (fabs(nume_a) < EPSILON && fabs(nume_b) < EPSILON);
 #else
         return false;
@@ -124,6 +143,7 @@ template<class L> bool intersection(const L &l1, const L &l2, Vec<Dim<L>, Scalar
     Floating t1     = nume_a / denom;
     Floating t2     = nume_b / denom;
     if (t1 >= 0 && t1 <= 1.0f && t2 >= 0 && t2 <= 1.0f) {
+
         (*intersection_pt) = (l1.a.template cast<Floating>() + t1 * v1).template cast<Scalar<L>>();
         return true;
     }
@@ -162,11 +182,15 @@ public:
     Vector vector() const { return this->b - this->a; }
     Vector normal() const { return Vector((this->b(1) - this->a(1)), -(this->b(0) - this->a(0))); }
     bool   intersection(const Line& line, Point* intersection) const;
+
 	bool   clip_with_bbox(const BoundingBox &bbox);
+
     void   extend(double offset);
     bool   overlap(const Line &line, double &overlap_length) const;
     static inline double distance_to_squared(const Point &point, const Point &a, const Point &b) { return line_alg::distance_to_squared(Line{a, b}, Vec<2, coord_t>{point}); }
     static double distance_to(const Point &point, const Point &a, const Point &b) { return sqrt(distance_to_squared(point, a, b)); }
+
+
 
     static inline double distance_to_infinite_squared(const Point &point, const Point &a, const Point &b) { return line_alg::distance_to_infinite_squared(Line{a, b}, Vec<2, coord_t>{point}); }
     static double distance_to_infinite(const Point &point, const Point &a, const Point &b) { return sqrt(distance_to_infinite_squared(point, a, b)); }
@@ -205,11 +229,13 @@ class Line3
 public:
     Line3() : a(Point3()), b(Point3()) {}
     Line3(const Point3& _a, const Point3& _b) : a(_a), b(_b) {}
+
     Line3(const Vec3crd& _a, const Vec3crd& _b) : a(Point3(_a)), b(Point3(_b)) {}
 
     double  length() const { return (this->a - this->b).cast<double>().norm(); }
     Point3 vector() const { Vec3crd v = this->b - this->a; return Point3(v.x(), v.y(), v.z()); }
     Point3 midpoint() const { return Point3((this->a.x() + this->b.x()) / 2, (this->a.y() + this->b.y()) / 2, (this->a.z() + this->b.z()) / 2); }
+
 
     Line to_line() const { return Line(this->a.to_point(), this->b.to_point()); }
 
@@ -261,9 +287,12 @@ public:
         const Vec3d va = point - this->a;
         const double l2 = v.squaredNorm();
         if (l2 == 0.) {
+
             *closest_point = this->a;
             return va.squaredNorm();
         }
+
+
         const double t = va.dot(v) / l2;
         *closest_point = this->a + t * v;
         return (point - *closest_point).squaredNorm();
@@ -291,6 +320,8 @@ using Linesf3 = std::vector<Linef3>;
 BoundingBox get_extents(const Lines &lines);
 
 }
+
+
 #include <boost/polygon/polygon.hpp>
 namespace boost { namespace polygon {
     template <>
@@ -300,11 +331,12 @@ namespace boost { namespace polygon {
     struct segment_traits<Slic3r::Line> {
         typedef coord_t coordinate_type;
         typedef Slic3r::Point point_type;
-    
+
         static inline point_type get(const Slic3r::Line& line, direction_1d dir) {
             return dir.to_int() ? line.b : line.a;
         }
     };
 } }
+
 
 #endif

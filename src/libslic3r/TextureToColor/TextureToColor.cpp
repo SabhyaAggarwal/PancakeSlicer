@@ -35,6 +35,8 @@ namespace Slic3r { namespace tex2color {
 
 using namespace color_utils;
 
+
+
 static void SaveToOFF(const std::string& path, const TriMesh& mesh, const std::vector<RGB>& face_colors)
 {
     std::filesystem::create_directories(std::filesystem::path(path).parent_path());
@@ -194,9 +196,11 @@ static bool ensure_all_cluster_centers_used(const std::vector<RGB>& source_face_
     return true;
 }
 
+
 static RGB get_pixel_color(float u, float v, const cv::Mat& texture) {
     u = u - std::floor(u);
     v = v - std::floor(v);
+
 
     float fx = u * (texture.cols - 1);
     float fy = v * (texture.rows - 1);
@@ -220,6 +224,7 @@ static RGB get_pixel_color(float u, float v, const cv::Mat& texture) {
     auto c01 = sample(y1, x0);
     auto c11 = sample(y1, x1);
 
+
     RGB color;
     for (int i = 0; i < 3; ++i) {
         float top = c00[i] * (1.0f - wx) + c10[i] * wx;
@@ -228,6 +233,7 @@ static RGB get_pixel_color(float u, float v, const cv::Mat& texture) {
     }
     return color;
 }
+
 
 static constexpr std::array<std::array<float, 3>, 7> GAUSS_TRI_BARY = {{
     {1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f},
@@ -249,6 +255,8 @@ static_assert(
     }(),
     "Sum of Gaussian quadrature weights must be 1.0");
 
+
+
 static RGB sample_face_color(const std::array<Vec2f, 3>& uvs, const cv::Mat& texture) {
     float r = 0.0f, g = 0.0f, b = 0.0f;
     for (int k = 0; k < 7; ++k) {
@@ -264,6 +272,7 @@ static RGB sample_face_color(const std::array<Vec2f, 3>& uvs, const cv::Mat& tex
                static_cast<std::size_t>(std::clamp(b, 0.0f, 255.0f))};
 }
 
+
 using FaceUVArray = std::array<Vec2f, 3>;
 
 static bool linear_subdivision(TriMesh& mesh, std::vector<FaceUVArray>& uv_coords, const std::function<void(int)>& sub_progress = nullptr) {
@@ -273,6 +282,8 @@ static bool linear_subdivision(TriMesh& mesh, std::vector<FaceUVArray>& uv_coord
     sub_vertices.reserve(original_vertices.size() + original_faces.size() * 3);
     TriFaces sub_faces;
     std::vector<FaceUVArray> sub_uv_coords;
+
+
 
     if (original_vertices.size() >= (1ULL << 32)) [[unlikely]] {
         BOOST_LOG_TRIVIAL(warning) << "[boundary] " << __FUNCTION__ << " vertex_count=" << original_vertices.size() << " exceeds 32-bit edge_key encoding range, skipping subdivision";
@@ -300,6 +311,7 @@ static bool linear_subdivision(TriMesh& mesh, std::vector<FaceUVArray>& uv_coord
     if (sub_progress) {
         sub_progress(50);
     }
+
 
     const std::size_t N = original_faces.size();
     sub_faces.resize(N * 4);
@@ -351,6 +363,7 @@ static bool linear_subdivision(TriMesh& mesh, std::vector<FaceUVArray>& uv_coord
             sub_uv_coords[base + 3] = {uv_e20, uv_e12, uv2};
         }
     });
+
     if (has_missing_edge.load(std::memory_order_relaxed)) {
         std::size_t write_idx = 0;
         for (std::size_t i = 0; i < sub_faces.size(); ++i) {
@@ -379,6 +392,10 @@ static bool linear_subdivision(TriMesh& mesh, std::vector<FaceUVArray>& uv_coord
 }
 
 using VertexColor = std::array<float, 4>;
+
+
+
+
 
 static bool quantize_vertex_colors(
     const std::vector<VertexColor>& vertex_colors,
@@ -427,6 +444,14 @@ static bool quantize_vertex_colors(
     return true;
 }
 
+
+
+
+
+
+
+
+
 static bool adaptive_split_by_vertex_clusters(
     TriMesh& mesh,
     const std::vector<std::size_t>& vertex_cluster_ids,
@@ -462,6 +487,8 @@ static bool adaptive_split_by_vertex_clusters(
     std::unordered_map<uint64_t, std::size_t> edge_to_mid;
     edge_to_mid.reserve(original_faces.size() * 3 / 2);
 
+
+
     auto midpoint_of_edge = [&](std::size_t a, std::size_t b) -> std::size_t {
         const uint64_t key = edge_key(a, b);
         auto it = edge_to_mid.find(key);
@@ -472,6 +499,8 @@ static bool adaptive_split_by_vertex_clusters(
         edge_to_mid.emplace(key, idx);
         return idx;
     };
+
+
     auto append_interior_midpoint = [&](std::size_t a, std::size_t b) -> std::size_t {
         const TriVertex mid = (out_vertices[a] + out_vertices[b]) * 0.5f;
         const std::size_t idx = out_vertices.size();
@@ -487,10 +516,14 @@ static bool adaptive_split_by_vertex_clusters(
         const std::size_t v[3] = {static_cast<std::size_t>(f[0]), static_cast<std::size_t>(f[1]), static_cast<std::size_t>(f[2])};
         const std::size_t c[3] = {vertex_cluster_ids[v[0]], vertex_cluster_ids[v[1]], vertex_cluster_ids[v[2]]};
 
+
         if (c[0] == c[1] && c[1] == c[2]) {
             emit(v[0], v[1], v[2], c[0]);
             continue;
         }
+
+
+
 
         int iso = -1;
         if (c[1] == c[2])      iso = 0;
@@ -505,6 +538,10 @@ static bool adaptive_split_by_vertex_clusters(
             emit(v[j], v[k],  m_ki, c[j]);
             continue;
         }
+
+
+
+
 
         const std::size_t m01 = midpoint_of_edge(v[0], v[1]);
         const std::size_t m12 = midpoint_of_edge(v[1], v[2]);
@@ -546,6 +583,9 @@ static bool adaptive_split_by_vertex_clusters(
     return true;
 }
 
+
+
+
 static bool repair_cluster_smooth(
     TriMesh& mesh,
     std::vector<RGB>& face_colors,
@@ -569,6 +609,7 @@ static bool repair_cluster_smooth(
 
     report(0, "Repairing mesh");
     if (cancelled()) return false;
+
 
     auto resample_face_colors = [&](TriMesh&& repaired_mesh) -> bool {
         TriVertices old_vertices = std::move(mesh.vertices);
@@ -611,6 +652,8 @@ static bool repair_cluster_smooth(
     {
         TriangleMesh stats_mesh(static_cast<const indexed_triangle_set&>(mesh));
         const auto& stats = stats_mesh.stats();
+
+
         if (!stats.manifold()) {
             BOOST_LOG_TRIVIAL(info) << log_prefix << ": mesh has non-manifold geometry or open boundaries, open_edges="
                                     << stats.open_edges;
@@ -624,7 +667,7 @@ static bool repair_cluster_smooth(
                 std::string repair_error;
                 bool repaired = settings.mesh_repair_callback && settings.mesh_repair_callback(
                     static_cast<const indexed_triangle_set&>(mesh), repaired_its,
-                    [&](const char* message, unsigned ) {
+                    [&](const char* message, unsigned  ) {
                         report(5, message ? message : "Repairing mesh");
                     },
                     [&]() { return cancelled(); }, &repair_error);
@@ -654,6 +697,7 @@ static bool repair_cluster_smooth(
 
     report(20, "Color clustering");
     if (cancelled()) return false;
+
 
     std::vector<RGB> cluster_centers;
     out_clustered_face_colors = face_colors;
@@ -685,6 +729,7 @@ static bool repair_cluster_smooth(
 
     report(40, "Assigning cluster labels");
     if (cancelled()) return false;
+
 
     {
         std::atomic<size_t> done{0};
@@ -820,11 +865,14 @@ bool TextureToColor(const TriMesh& texture_mesh, const std::vector<std::vector<V
         return false;
     }
 
+
+
     std::vector<FaceUVArray> color_mesh_uv_coords(texture_mesh_uv_coords.size());
     for (std::size_t i = 0; i < texture_mesh_uv_coords.size(); ++i) {
         color_mesh_uv_coords[i] = {texture_mesh_uv_coords[i][0], texture_mesh_uv_coords[i][1], texture_mesh_uv_coords[i][2]};
     }
     {
+
         size_t estimated_iters = 0;
         if (settings.oversampling_iters > 0) {
             estimated_iters = settings.oversampling_iters;
@@ -871,6 +919,7 @@ bool TextureToColor(const TriMesh& texture_mesh, const std::vector<std::vector<V
         return false;
     }
 
+
     {
         std::atomic<size_t> done_faces{0};
         std::atomic<bool> cancel_requested{false};
@@ -893,6 +942,7 @@ bool TextureToColor(const TriMesh& texture_mesh, const std::vector<std::vector<V
 #ifdef OUTPUT_TEST_RESULT
     SaveToOFF("texture_to_color_0_initialize.off", color_mesh, face_colors);
 #endif
+
 
     AlgoProgressCallback rcs_progress = nullptr;
     if (progress_callback) {
@@ -953,6 +1003,7 @@ bool ClusterAndSmooth(const TriMesh& mesh,
     report(0, "Initializing");
     if (cancelled()) return false;
 
+
     std::vector<RGB> face_colors(out_mesh.indices.size());
     for (size_t i = 0; i < out_mesh.indices.size(); ++i) {
         if (i < input_face_colors.size())
@@ -960,6 +1011,12 @@ bool ClusterAndSmooth(const TriMesh& mesh,
         else
             face_colors[i] = {128, 128, 128};
     }
+
+
+
+
+
+
 
     if (!vertex_colors.empty() &&
         vertex_colors.size() == out_mesh.vertices.size() &&

@@ -1,3 +1,7 @@
+
+
+
+
 import { useState } from 'react';
 import type { LayerRec } from '../preview/format';
 import { filamentColor } from '../plater/filamentColor';
@@ -21,6 +25,7 @@ export function eventLabel(e: LayerEvent): string {
 }
 
 const sameZ = (a: number, b: number) => Math.abs(a - b) < 1e-3;
+
 
 export function eventTicks(events: LayerEvent[], layers: LayerRec[]): SliderTick[] {
   return events.flatMap((e) => {
@@ -76,6 +81,7 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   return <ActionMenu label={`Layer ${layer + 1}`} at={{ x: anchor.left, y: anchor.top }} items={items} onClose={onClose}
     returnFocus={document.querySelector<HTMLElement>('.ls-plus')} />;
 }
+
 
 export function EventList({ onPick }: { onPick?(z: number): void }) {
   const events = useStore((s) => s.events);

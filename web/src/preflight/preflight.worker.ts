@@ -1,6 +1,8 @@
+
 import { analyze, type AnalyzeIn } from './analyze';
 
 export type PreflightIn = AnalyzeIn & { id: number };
+
 export interface PreflightOut {
   id: number;
   height: number;

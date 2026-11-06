@@ -37,6 +37,7 @@ function send(current: Connection, request: Exclude<WireRequest, { type: 'releas
   if (current.failed) return Promise.reject(unavailable('Project wire preparation was interrupted.'));
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+
       current.fail('Project wire worker timed out.');
     }, 120_000);
     current.pending.set(request.id, { resolve, reject, timer });

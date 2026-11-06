@@ -90,16 +90,16 @@ bool is_two_lines_interaction(gp_Pnt pL1, gp_Pnt pL2, gp_Pnt pR1, gp_Pnt pR2) {
     Vec3d point2(pL2.X(), pL2.Y(), 0);
     Vec3d point3(pR1.X(), pR1.Y(), 0);
     Vec3d point4(pR2.X(), pR2.Y(), 0);
-  
+
     Vec3d line1 = point2 - point1;
     Vec3d line2 = point4 - point3;
 
     Vec3d line_pos1 = point1 - point3;
     Vec3d line_pos2 = point2 - point3;
-    
+
     Vec3d line_pos3 = point3 - point1;
     Vec3d line_pos4 = point4 - point1;
-    
+
     Vec3d cross_1 = line2.cross(line_pos1);
     Vec3d cross_2 = line2.cross(line_pos2);
 
@@ -110,7 +110,7 @@ bool is_two_lines_interaction(gp_Pnt pL1, gp_Pnt pL2, gp_Pnt pR1, gp_Pnt pR2) {
 }
 
 bool is_profile_self_interaction(std::vector<std::pair<gp_Pnt, gp_Pnt>> profile_line_points)
-{ 
+{
     for (int i = 0; i < profile_line_points.size(); ++i) {
         for (int j = i + 2; j < profile_line_points.size(); ++j)
             if (is_two_lines_interaction(profile_line_points[i].first, profile_line_points[i].second, profile_line_points[j].first, profile_line_points[j].second))
@@ -158,6 +158,7 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
         int interpolation_precision = 10;
         float step = 1.0f / float(interpolation_precision - 1);
 
+
         std::vector<std::vector<std::vector<Point_2D>>> all_path_points;
         for (NSVGpath *path = shape->paths; path; path = path->next) {
             std::vector<std::vector<Point_2D>> profile_points;
@@ -169,6 +170,7 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
                 for (int v = 0; v < interpolation_precision; v++) {
                     float pt[2];
 
+
                     interp_v2_v2v2v2v2_cubic(pt, &p[0], &p[2], &p[4], &p[6], a);
 
                     Point_2D point(pt[0], -pt[1]);
@@ -176,7 +178,8 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
                     a += step;
                 }
 
-                profile_points.push_back(curve_points);   
+                profile_points.push_back(curve_points);
+
 
                 if (profile_points.size() > 1) {
                     profile_points[index - 1].back() = profile_points[index].front();
@@ -188,6 +191,7 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
             if (!profile_points.empty())
                 all_path_points.push_back(profile_points);
         }
+
 
         std::vector<std::vector<std::pair<gp_Pnt, gp_Pnt>>> path_line_points;
         for (auto profile_points : all_path_points) {
@@ -206,9 +210,10 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
             if (profile_line_points.empty())
                 continue;
 
+
             if (shape->fill.gradient != nullptr)
                 profile_line_points.back().second = profile_line_points[0].first;
-            
+
             if (is_profile_self_interaction(profile_line_points))
                 BOOST_LOG_TRIVIAL(warning) << "the profile is self interaction.";
 
@@ -253,6 +258,7 @@ bool get_svg_profile(const char *path, std::vector<Element_Info> &element_infos,
 
             path_line_points = new_path_line_points;
         }
+
 
         std::vector<TopoDS_Wire> wires;
         int index = 0;
@@ -307,8 +313,10 @@ bool load_svg(const char *path, Model *model, std::string &message)
 
     std::vector<stl_file> stl;
     stl.resize(namedSolids.size());
+
     for (size_t i = 0 ; i < namedSolids.size(); i++) {
         BRepMesh_IncrementalMesh mesh(namedSolids[i].shape, STEP_TRANS_CHORD_ERROR, false, STEP_TRANS_ANGLE_RES, true);
+
         int aNbNodes     = 0;
         int aNbTriangles = 0;
         for (TopExp_Explorer anExpSF(namedSolids[i].shape, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
@@ -321,6 +329,7 @@ bool load_svg(const char *path, Model *model, std::string &message)
         }
 
         if (aNbTriangles == 0 || aNbNodes == 0)
+
             continue;
 
         stl[i].stats.type                = inmemory;
@@ -330,7 +339,9 @@ bool load_svg(const char *path, Model *model, std::string &message)
 
         std::vector<Vec3f> points;
         points.reserve(aNbNodes);
+
         int aNbFacesNoTri = 0;
+
         int aNodeOffset    = 0;
         int aTriangleOffet = 0;
         for (TopExp_Explorer anExpSF(namedSolids[i].shape, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
@@ -341,12 +352,14 @@ bool load_svg(const char *path, Model *model, std::string &message)
                 ++aNbFacesNoTri;
                 continue;
             }
+
             gp_Trsf aTrsf = aLoc.Transformation();
             for (int aNodeIter = 1; aNodeIter <= aTriangulation->NbNodes(); ++aNodeIter) {
                 gp_Pnt aPnt = aTriangulation->Node(aNodeIter);
                 aPnt.Transform(aTrsf);
                 points.emplace_back(Vec3f(aPnt.X(), aPnt.Y(), aPnt.Z()));
             }
+
             const TopAbs_Orientation anOrientation = anExpSF.Current().Orientation();
             int anId[3];
             for (int aTriIter = 1; aTriIter <= aTriangulation->NbTriangles(); ++aTriIter) {
@@ -354,6 +367,7 @@ bool load_svg(const char *path, Model *model, std::string &message)
 
                 aTri.Get(anId[0], anId[1], anId[2]);
                 if (anOrientation == TopAbs_REVERSED) std::swap(anId[1], anId[2]);
+
                 stl_facet facet;
                 facet.vertex[0] = points[anId[0] + aNodeOffset - 1].cast<float>();
                 facet.vertex[1] = points[anId[1] + aNodeOffset - 1].cast<float>();
@@ -373,9 +387,11 @@ bool load_svg(const char *path, Model *model, std::string &message)
     }
 
     ModelObject *new_object = model->add_object();
+
     new_object->input_file = path;
     auto stage_unit3 = stl.size() / LOAD_STEP_STAGE_UNIT_NUM + 1;
     for (size_t i = 0; i < stl.size(); i++) {
+
         if (stl[i].stats.number_of_facets > 0) {
             TriangleMesh triangle_mesh;
             triangle_mesh.from_stl(stl[i]);

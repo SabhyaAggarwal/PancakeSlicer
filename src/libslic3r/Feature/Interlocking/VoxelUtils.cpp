@@ -99,6 +99,7 @@ bool VoxelUtils::walkLine(Vec3crd start, Vec3crd end, const std::function<bool(G
         assert(stepping_dim != -1);
         if (percentage_along_line > 1.0)
         {
+
             return true;
         }
         current_cell[stepping_dim] += (diff[stepping_dim] > 0) ? 1 : -1;

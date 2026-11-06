@@ -8,13 +8,18 @@ namespace Slic3r {
 
 namespace CustomGCode {
 
+
 #if 0
+
+
+
 extern void update_custom_gcode_per_print_z_from_config(Info& info, DynamicPrintConfig* config)
 {
 	auto *colorprint_heights = config->option<ConfigOptionFloats>("colorprint_heights");
     if (colorprint_heights == nullptr)
         return;
     if (info.gcodes.empty() && ! colorprint_heights->values.empty()) {
+
         const std::vector<std::string>& colors = ColorPrintColors::get();
         const auto& colorprint_values = colorprint_heights->values;
         info.gcodes.clear();
@@ -26,9 +31,13 @@ extern void update_custom_gcode_per_print_z_from_config(Info& info, DynamicPrint
         info.mode = SingleExtruder;
 	}
 
+
+
     config->erase("colorprint_heights");
 }
 #endif
+
+
 
 extern void check_mode_for_custom_gcode_per_print_z(Info& info)
 {
@@ -36,7 +45,7 @@ extern void check_mode_for_custom_gcode_per_print_z(Info& info)
         return;
 
     bool is_single_extruder = true;
-    for (auto item : info.gcodes) 
+    for (auto item : info.gcodes)
     {
         if (item.type == ToolChange) {
             info.mode = MultiAsSingle;
@@ -49,11 +58,14 @@ extern void check_mode_for_custom_gcode_per_print_z(Info& info)
     info.mode = is_single_extruder ? SingleExtruder : MultiExtruder;
 }
 
+
+
 std::vector<std::pair<double, unsigned int>> custom_tool_changes(const Info& custom_gcode_per_print_z, size_t num_extruders)
 {
     std::vector<std::pair<double, unsigned int>> custom_tool_changes;
     for (const Item& custom_gcode : custom_gcode_per_print_z.gcodes)
         if (custom_gcode.type == ToolChange) {
+
             assert(custom_gcode.extruder >= 0);
             custom_tool_changes.emplace_back(custom_gcode.print_z, static_cast<unsigned int>(size_t(custom_gcode.extruder) > num_extruders ? 1 : custom_gcode.extruder));
         }

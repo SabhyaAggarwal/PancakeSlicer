@@ -1,3 +1,8 @@
+
+
+
+
+
 import { useEffect, useState } from 'react';
 import { effectiveConfig, getState, useStore } from '../state/store';
 import { headShortName, loadHead, loadHeadIndex, slopeLimit, type Head } from '../heads';

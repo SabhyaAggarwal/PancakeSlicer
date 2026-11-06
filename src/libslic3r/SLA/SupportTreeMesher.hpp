@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <Eigen/Geometry>
 
+
 namespace Slic3r { namespace sla {
 
 using Portion = std::tuple<double, double>;
@@ -22,6 +23,11 @@ inline Portion make_portion(double a, double b)
 indexed_triangle_set sphere(double  rho,
                             Portion portion = make_portion(0., 2. * PI),
                             double  fa      = (2. * PI / 360.));
+
+
+
+
+
 
 indexed_triangle_set cylinder(double       r,
                               double       h,
@@ -47,6 +53,10 @@ inline indexed_triangle_set get_mesh(const Head &h, size_t steps)
 
     using Quaternion = Eigen::Quaternion<float>;
 
+
+
+
+
     auto quatern = Quaternion::FromTwoVectors(Vec3f{0.f, 0.f, -1.f},
                                               h.dir.cast<float>());
 
@@ -59,6 +69,8 @@ inline indexed_triangle_set get_mesh(const Head &h, size_t steps)
 inline indexed_triangle_set get_mesh(const Pillar &p, size_t steps)
 {
     if(p.height > EPSILON) {
+
+
         return cylinder(p.r, p.height, steps, p.endpoint());
     }
 
@@ -102,6 +114,10 @@ inline indexed_triangle_set get_mesh(const DiffBridge &br, size_t steps)
     indexed_triangle_set mesh = halfcone(h, br.r, br.end_r, Vec3d::Zero(), steps);
 
     using Quaternion = Eigen::Quaternion<float>;
+
+
+
+
 
     auto quatern = Quaternion::FromTwoVectors(Vec3f{0.f, 0.f, 1.f},
                                               br.get_dir().cast<float>());

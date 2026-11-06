@@ -2,6 +2,7 @@ import type { PresetType } from '../api/types';
 import { profileContext, type ProfileContextState } from './context';
 import { selectCompatibility } from './compatibility';
 import { ProfileResolutionError } from './model';
+
 export function validateProfileSubmission(s:ProfileContextState):void {
   const context=profileContext(s);
   const selections:[PresetType,typeof context.printer,number|undefined][]=[['machine',context.printer,undefined],['process',context.process,undefined],...context.filaments.map((p,i)=>['filament',p,i+1] as [PresetType,typeof p,number])];

@@ -19,24 +19,24 @@ elseif (APPLE)
     set(TBB_LINK_DEF_FILE_FLAG -Wl,-exported_symbols_list,)
     set(TBB_DEF_FILE_PREFIX mac${TBB_ARCH})
 
-    # For correct ucontext.h structures layout
+
     set(TBB_COMMON_COMPILE_FLAGS ${TBB_COMMON_COMPILE_FLAGS} -D_XOPEN_SOURCE)
 else()
     set(TBB_LINK_DEF_FILE_FLAG -Wl,--version-script=)
     set(TBB_DEF_FILE_PREFIX lin${TBB_ARCH})
 endif()
 
-# Add -Wno-error=stringop-overflow to fix GCC 12+ build as suggested on https://github.com/oneapi-src/oneTBB/issues/843#issuecomment-1152646035
+
 set(TBB_WARNING_LEVEL -Wall -Wextra $<$<BOOL:${TBB_STRICT}>:-Werror> -Wfatal-errors -Wno-error=stringop-overflow)
 set(TBB_TEST_WARNING_FLAGS -Wshadow -Wcast-qual -Woverloaded-virtual -Wnon-virtual-dtor)
 
-# Depfile options (e.g. -MD) are inserted automatically in some cases.
-# Don't add -MMD to avoid conflicts in such cases.
+
+
 if (NOT CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_CXX_DEPENDS_USE_COMPILER)
     set(TBB_MMD_FLAG -MMD)
 endif()
 
-# Enable Intel(R) Transactional Synchronization Extensions (-mrtm) and WAITPKG instructions support (-mwaitpkg) on relevant processors
+
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86|AMD64)")
     set(TBB_COMMON_COMPILE_FLAGS ${TBB_COMMON_COMPILE_FLAGS} -mrtm $<$<AND:$<NOT:$<CXX_COMPILER_ID:Intel>>,$<NOT:$<VERSION_LESS:${CMAKE_CXX_COMPILER_VERSION},11.0>>>:-mwaitpkg>)
 endif()
@@ -45,17 +45,17 @@ if (NOT MINGW)
     set(TBB_COMMON_LINK_LIBS dl)
 endif()
 
-# Ignore -Werror set through add_compile_options() or added to CMAKE_CXX_FLAGS if TBB_STRICT is disabled.
+
 if (NOT TBB_STRICT AND COMMAND tbb_remove_compile_flag)
     tbb_remove_compile_flag(-Werror)
 endif()
 
 if (NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL Intel)
-    # gcc 6.0 and later have -flifetime-dse option that controls elimination of stores done outside the object lifetime
+
     set(TBB_DSE_FLAG $<$<NOT:$<VERSION_LESS:${CMAKE_CXX_COMPILER_VERSION},6.0>>:-flifetime-dse=1>)
 endif()
 
-# Workaround for heavy tests and too many symbols in debug (rellocation truncated to fit: R_MIPS_CALL16)
+
 if ("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "mips")
     set(TBB_TEST_COMPILE_FLAGS ${TBB_TEST_COMPILE_FLAGS} -DTBB_TEST_LOW_WORKLOAD $<$<CONFIG:DEBUG>:-mxgot>)
 endif()
@@ -64,16 +64,16 @@ if (MINGW)
     list(APPEND TBB_COMMON_COMPILE_FLAGS -U__STRICT_ANSI__)
 endif()
 
-# For some reason GCC does not instrument code with Thread Sanitizer when lto is enabled and C linker is used.
+
 if (NOT TBB_SANITIZE MATCHES "thread")
     set(TBB_IPO_COMPILE_FLAGS $<$<NOT:$<CONFIG:Debug>>:-flto>)
     set(TBB_IPO_LINK_FLAGS $<$<NOT:$<CONFIG:Debug>>:-flto>)
 endif()
 
-# Disable lto flag
+
 set(TBB_IPO_COMPILE_FLAGS "")
 set(TBB_IPO_LINK_FLAGS "")
 
-# TBB malloc settings
+
 set(TBBMALLOC_LIB_COMPILE_FLAGS -fno-rtti -fno-exceptions)
 set(TBB_OPENMP_FLAG -fopenmp)

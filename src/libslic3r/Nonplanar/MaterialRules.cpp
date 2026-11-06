@@ -12,6 +12,9 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
+
+
 const MaterialTypeInfo *material_info(const std::string &filament_type, std::vector<std::string> &bases)
 {
     std::string type = filament_type;
@@ -51,6 +54,7 @@ RoadMaterial road_material(const std::string &filament_type)
 {
     std::vector<std::string> bases;
     const MaterialTypeInfo  *info = material_info(filament_type, bases);
+
     if ((info != nullptr && info->adhesion_coefficient < 1.) ||
         std::any_of(bases.begin(), bases.end(), [](const std::string &base) { return base == "TPE" || base == "PEBA"; }))
         return RoadMaterial::Flexible;

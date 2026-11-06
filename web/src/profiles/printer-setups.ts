@@ -1,3 +1,4 @@
+
 import { getState, subscribeStore, type State } from '../state/store';
 import { createMachine } from '../flow/fsm';
 import { saveProfileRecords } from './transactions';
@@ -5,6 +6,8 @@ import { documentGeneration } from '../state/history';
 import type { PrinterProfileLibrary } from './ownership';
 export interface PrinterSetupPersistence {state:'idle'|'saving'|'error';error:string|null;recovery?:'adopt_browser_inventory'|'reload_profiles'}
 interface SetupIntent {snapshot:State;baseline:PrinterProfileLibrary;isCurrent():boolean}
+
+
 type SetupState='unhydrated'|'blocked'|'idle'|'saving'|'failed';
 type SetupEvent={type:'HYDRATED'}|{type:'CHANGE';intent:SetupIntent}|{type:'DONE';request:number}|{type:'FAIL';request:number;error:string;changed:boolean};
 interface SetupContext {request:number;desired:SetupIntent|null;writing:SetupIntent|null;error:string|null}
@@ -23,6 +26,7 @@ const setups=createMachine<SetupState,SetupEvent,SetupContext>({
       entry:(c)=>{const intent=c.desired!,request=c.request+1;void write(intent,request);return{request,desired:null,writing:intent};},
       on:{HYDRATED:hydratedEdge,CHANGE:{action:(_,e)=>({desired:e.intent})},
         DONE:[{target:'saving',guard:(c,e)=>mine(c,e) && !!c.desired},{target:'idle',guard:mine,action:()=>({writing:null})},late],
+
         FAIL:[{target:'saving',guard:(c,e)=>mine(c,e) && e.changed && !!c.desired},
           {target:'failed',guard:mine,action:(c,e)=>({error:e.error,desired:c.desired ?? c.writing,writing:null})},late]}},
     failed:{on:{HYDRATED:hydratedEdge,CHANGE:change,DONE:late,FAIL:late}},
@@ -41,6 +45,7 @@ const listeners=new Set<()=>void>();
 setups.subscribe(()=>{status=view();listeners.forEach(l=>l());});
 export const printerSetupPersistence=()=>status;
 export const subscribePrinterSetupPersistence=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener);};};
+
 export function acceptHydratedPrinterSetups():void{baseline=getState().printerLibrary;generation++;setups.send({type:'HYDRATED'});watchPrinterSetups();}
 function schedule(s:State){
   const at=generation,document=documentGeneration();
@@ -53,6 +58,7 @@ export function watchPrinterSetups():void{
   subscribeStore(()=>{const current=getState(),before=previous;previous=current;
     if(current.profileLibraryLoad.state==='ready' && before.profileLibraryLoad.state==='ready' && current.printerLibrary!==before.printerLibrary)schedule(current);});
 }
+
 export function flushPrinterSetups():Promise<void>{
   return new Promise((resolve,reject)=>{
     let done=false,stop:(()=>void)|undefined;

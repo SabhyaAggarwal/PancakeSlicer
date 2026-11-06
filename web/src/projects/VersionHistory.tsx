@@ -1,3 +1,7 @@
+
+
+
+
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Glyph } from '../components/Glyph';
 import { createPortal } from 'react-dom';
@@ -7,6 +11,7 @@ import { backToLatest, changeLine, clockTime, closeHistory, dayOf, historyState,
 
 const short = (s: number) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 const long = (s: number) => { const t = Math.round(s), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60; return h ? `${h}h ${m}m ${t % 60}s` : `${m}m ${t % 60}s`; };
+
 
 const tails = (from: string, to: string): [string, string] => {
   let p = 0;
@@ -24,8 +29,11 @@ export default function VersionHistory() {
   return h.open && host ? createPortal(<Panel />, host) : null;
 }
 
+
+
 function Card({ projectId, v, current, close }: { projectId: string; v: ProjectVersion; current: boolean; close: () => void }) {
   const [setup, setSetup] = useState<VersionSetup | null>(null);
+
   useEffect(() => { let live = true; setSetup(null); versionSetup(projectId, v).then((s) => live && setSetup(s), () => live && setSetup({ printer: '', process: '', filaments: [] })); return () => { live = false; }; }, [projectId, v]);
   const s = v.slice;
   const stats = s ? ([[s.timeS != null && long(s.timeS), 'Time'], [s.grams != null && `${s.grams.toFixed(1)} g`, 'Weight'],
@@ -34,6 +42,7 @@ function Card({ projectId, v, current, close }: { projectId: string; v: ProjectV
     const [was, now] = c.from && c.to ? tails(c.from, c.to) : [c.from, c.to];
     return { ...c, full: c.to === undefined ? c.name : `${c.name}: ${c.from ? `${c.from} → ` : ''}${c.to}`, was, now };
   });
+
   const profiles = !setup ? [['Printer'], ['Filament'], ['Process']] as [string, string?, string?][] : ([['Printer', setup.printer], ...setup.filaments.filter((f) => f.name).map((f, i, all) => [all.length > 1 ? `Filament ${i + 1}` : 'Filament', f.name, f.colour]),
     ['Process', setup.process]] as [string, string, string?][]).filter(([, value]) => value);
   const restore = async () => {
@@ -66,6 +75,7 @@ function Card({ projectId, v, current, close }: { projectId: string; v: ProjectV
 function Panel() {
   const h = useHistory(), list = h.versions;
   const shown = h.loading ?? h.viewing?.id ?? list?.[0]?.id;
+
   const [card, setCard] = useState<{ id: number; pinned: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const later = (next: typeof card, ms: number) => { clearTimeout(timer.current); timer.current = setTimeout(() => setCard(next), ms); };
@@ -76,6 +86,7 @@ function Panel() {
   useEffect(() => () => clearTimeout(timer.current), []);
   const narrow = window.innerWidth < 600;
   const body = useRef<HTMLUListElement>(null);
+
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (h.projectId) list?.slice(0, 3).forEach((v) => prefetchSetup(h.projectId!, v)); }, [list, h.projectId]);
@@ -88,6 +99,7 @@ function Panel() {
     }
     return out;
   }, [list]);
+
   useEffect(() => { body.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [shown]);
   const step = (to: number) => {
     if (!list?.length) return;
@@ -111,6 +123,7 @@ function Panel() {
     <section className="vh-panel" aria-label="Version history" onKeyDown={keys}>
       <div className="outliner-heading">
         <h2 className="vh-title">History</h2>
+        {                                                                                                                     }
         <span id="vh-about" hidden>Details of</span>
         <button type="button" className="btn-ghost vh-close" aria-label="Close history" onClick={closeHistory}><Glyph name="close" size={14} /></button>
       </div>
@@ -122,6 +135,7 @@ function Panel() {
             {rows.map((v) => {
               const current = v.id === list[0].id, open = card?.id === v.id, time = current ? 'Current' : times.get(v.id);
               const print = v.slice?.timeS != null ? short(v.slice.timeS) : v.slice ? 'Sliced' : '';
+
               return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><li role="presentation" className="vh-item"
                 onPointerEnter={() => h.projectId && prefetchSetup(h.projectId, v)} onFocus={() => h.projectId && prefetchSetup(h.projectId, v)}>
                 <button type="button" role="option" className="vh-row" data-version={v.id} data-current={current || undefined} aria-selected={v.id === shown}

@@ -8,9 +8,13 @@
 
 namespace Slic3r {
 
+
+
 class Exception : public std::runtime_error { using std::runtime_error::runtime_error; };
 #define SLIC3R_DERIVE_EXCEPTION(DERIVED_EXCEPTION, PARENT_EXCEPTION) \
     class DERIVED_EXCEPTION : public PARENT_EXCEPTION { using PARENT_EXCEPTION::PARENT_EXCEPTION; }
+
+
 SLIC3R_DERIVE_EXCEPTION(CriticalException,  Exception);
 SLIC3R_DERIVE_EXCEPTION(RuntimeError,       CriticalException);
 SLIC3R_DERIVE_EXCEPTION(LogicError,         CriticalException);
@@ -22,7 +26,9 @@ SLIC3R_DERIVE_EXCEPTION(FileIOError,        IOError);
 SLIC3R_DERIVE_EXCEPTION(HostNetworkError,   IOError);
 SLIC3R_DERIVE_EXCEPTION(ExportError,        CriticalException);
 SLIC3R_DERIVE_EXCEPTION(PlaceholderParserError, RuntimeError);
-class SlicingError : public Exception 
+
+
+class SlicingError : public Exception
 {
 public:
     using Exception::Exception;

@@ -186,6 +186,8 @@ std::vector<unsigned int> parse_mixed_components(const std::string &str)
 
 namespace {
 
+
+
 inline double parse_tangent_token(const std::string& tok)
 {
     if (tok.empty()) return std::numeric_limits<double>::quiet_NaN();
@@ -201,6 +203,9 @@ inline double parse_tangent_token(const std::string& tok)
         return std::numeric_limits<double>::quiet_NaN();
     }
 }
+
+
+
 
 inline std::vector<std::string> split_commas(const std::string& seg)
 {
@@ -218,6 +223,10 @@ inline std::vector<std::string> split_commas(const std::string& seg)
 }
 
 }
+
+
+
+
 std::vector<double> compute_pchip_default_tangents(const std::vector<GradientAnchor>& pts)
 {
     const size_t n = pts.size();
@@ -234,6 +243,8 @@ std::vector<double> compute_pchip_default_tangents(const std::vector<GradientAnc
     m[n - 1] = d[n - 2];
     for (size_t i = 1; i + 1 < n; ++i)
         m[i] = 0.5 * (d[i - 1] + d[i]);
+
+
 
     for (size_t i = 0; i + 1 < n; ++i) {
         if (d[i] == 0.0) {
@@ -266,6 +277,8 @@ GradientCurve parse_gradient_curve(const std::string& s)
         if (segment.empty())
             continue;
         const auto fields = split_commas(segment);
+
+
         if (fields.size() != 2 && fields.size() != 4) {
             BOOST_LOG_TRIVIAL(warning) << "parse_gradient_curve: ignoring malformed segment \""
                                        << segment << "\" (expected 2 or 4 comma-separated fields, got "
@@ -320,6 +333,8 @@ std::string serialize_gradient_curve(const GradientCurve& c)
         const bool has_in  = std::isfinite(a.m_in);
         const bool has_out = std::isfinite(a.m_out);
         if (has_in || has_out) {
+
+
             char in_buf[32]  = {0};
             char out_buf[32] = {0};
             if (has_in)  std::snprintf(in_buf,  sizeof(in_buf),  "%.4f", a.m_in);
@@ -327,6 +342,9 @@ std::string serialize_gradient_curve(const GradientCurve& c)
             std::snprintf(buf, sizeof(buf), "%.4f,%.4f,%s,%s",
                           a.x, a.y, in_buf, out_buf);
         } else {
+
+
+
             std::snprintf(buf, sizeof(buf), "%.4f,%.4f", a.x, a.y);
         }
         out += buf;
@@ -344,8 +362,13 @@ double sample_gradient_curve(const GradientCurve& c, double t)
     if (t >= pts.back().x)
         return pts.back().y;
 
+
+
+
     const std::vector<double> m_def = compute_pchip_default_tangents(pts);
     const size_t n = pts.size();
+
+
 
     for (size_t i = 1; i < n; ++i) {
         const double x0 = pts[i - 1].x;
@@ -367,6 +390,8 @@ double sample_gradient_curve(const GradientCurve& c, double t)
         const double h11 =        u3 -       u2;
         double y = h00 * y0 + h10 * h * m_left
                  + h01 * y1 + h11 * h * m_right;
+
+
         if (y < kGradientMinRatio) y = kGradientMinRatio;
         if (y > kGradientMaxRatio) y = kGradientMaxRatio;
         return y;
@@ -440,6 +465,7 @@ int find_fixed_mixed_filament(const ConfigBase                &project_config,
     const auto *ratios   = project_config.option<ConfigOptionStrings>("filament_mixed_sublayer_ratios");
     if (is_mixed == nullptr || comps == nullptr || ratios == nullptr)
         return -1;
+
     const auto *gradient = project_config.option<ConfigOptionBools>("filament_mixed_gradient");
 
     const std::string comp_str  = format_mixed_components(components);
@@ -590,6 +616,8 @@ void sanitize_mixed_gradient_curve_array(std::vector<std::string>& vals)
     for (size_t i = 0; i < vals.size(); ++i) {
         if (vals[i].empty())
             continue;
+
+
         if (parse_gradient_curve(vals[i]).empty()) {
             BOOST_LOG_TRIVIAL(warning) << "sanitize_mixed_gradient_curve_array: slot "
                 << i << " curve \"" << vals[i]
@@ -770,14 +798,17 @@ std::map<std::string, std::string> validate_mixed_filament_params(
 
     const size_t slot_count = is_mixed.size();
 
+
     check_mixed_array_size_required(errors, "filament_mixed_components", comp_strs.size(), slot_count);
     check_mixed_array_size_required(errors, "filament_mixed_sublayer_ratios", ratio_strs.size(), slot_count);
+
 
     const bool gradient_specified = mixed_bool_array_was_specified(gradient_flags);
     if (gradient_specified) {
         check_mixed_array_size_required(errors, "filament_mixed_gradient", gradient_flags.size(), slot_count);
         check_mixed_array_size_required(errors, "filament_mixed_gradient_range", gradient_range_strs.size(), slot_count);
     }
+
 
     const bool curve_specified = mixed_string_array_was_specified(gradient_curve_strs);
     if (curve_specified)

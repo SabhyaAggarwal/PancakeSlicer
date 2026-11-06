@@ -1,11 +1,19 @@
+
+
+
+
+
+
 import { useEffect, useState } from 'react';
 import { Glyph } from './Glyph';
 import { unzipSync } from 'fflate';
 import { useStore } from '../state/store';
 
 const ROWS = 15;
+
 const BLOCK = 1024;
 interface Shown { first: number; lines: string[] }
+
 type Reader = (line: number) => Promise<Shown>;
 let cache: { key: string; read: Reader } | null = null;
 
@@ -47,6 +55,7 @@ function jobReader(id: string): Reader {
     const first = around(total, line), last = Math.min(total, first + ROWS - 1);
     const k0 = Math.floor((first - 1) / BLOCK), k1 = Math.floor((last - 1) / BLOCK);
     const parts = await Promise.all(Array.from({ length: k1 - k0 + 1 }, (_, i) => block(k0 + i)));
+
     if ((k1 + 1) * BLOCK < total) block(k1 + 1).catch(() => {});
     const at = first - 1 - k0 * BLOCK;
     return { first, lines: parts.flatMap((p) => p.lines).slice(at, at + ROWS) };
@@ -57,6 +66,7 @@ export function GcodeWindow({ line, file, onClose }: { line: number; file?: File
   const [shown, setShown] = useState<Shown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+
   const job = useStore((s) => s.job.id);
   const key = file ? `file:${file.name}:${file.size}` : job ? `job:${job}` : null;
   useEffect(() => {

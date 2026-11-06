@@ -15,6 +15,24 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 static Pointfs generate_one_cycle(double progress, coordf_t period)
 {
     Pointfs out;
@@ -35,21 +53,25 @@ static Polylines generate_transform_pattern(double inprogress, int direction, co
     double    progress  = inprogress;
     Polylines out_polylines;
 
+
     Pointfs one_cycle_points = generate_one_cycle(progress, grid_size);
 
     Polyline one_cycle;
     one_cycle.points.reserve(one_cycle_points.size());
     for (size_t i = 0; i < one_cycle_points.size(); i++) one_cycle.points.push_back(Point(one_cycle_points[i]));
 
+
     if (direction < 0) {
         width  = height;
         height = inwidth;
     }
 
+
     Polylines odd_polylines;
     Polyline  odd_poly;
     int       num_of_cycle = width / grid_size + 2;
     odd_poly.points.reserve(num_of_cycle * one_cycle.size());
+
 
     Point translate = Point(0, 0);
     for (size_t i = 0; i < num_of_cycle; i++) {
@@ -59,6 +81,7 @@ static Polylines generate_transform_pattern(double inprogress, int direction, co
         odd_poly.points.insert(odd_poly.points.end(), odd_points.begin(), odd_points.end());
     }
 
+
     int num_of_lines = height / grid_size + 2;
     odd_polylines.reserve(num_of_lines * odd_poly.size());
     for (size_t i = 0; i < num_of_lines; i++) {
@@ -66,7 +89,9 @@ static Polylines generate_transform_pattern(double inprogress, int direction, co
         poly.translate(Point(0.0, grid_size * i));
         odd_polylines.push_back(poly);
     }
+
     out_polylines.insert(out_polylines.end(), odd_polylines.begin(), odd_polylines.end());
+
 
     Polylines even_polylines;
     even_polylines.reserve(odd_polylines.size());
@@ -76,9 +101,12 @@ static Polylines generate_transform_pattern(double inprogress, int direction, co
         even_polylines.push_back(even);
     }
 
+
     out_polylines.insert(out_polylines.end(), even_polylines.begin(), even_polylines.end());
 
+
     if (direction < 0) {
+
         for (Polyline &poly : out_polylines) {
             for (Point &p : poly) { std::swap(p.x(), p.y()); }
         }
@@ -92,6 +120,7 @@ static Polylines generate_repeat_pattern(int direction, coordf_t grid_size, coor
     coordf_t  width  = inwidth;
     coordf_t  height = inheight;
     Polylines out_polylines;
+
 
     if (direction < 0) {
         width  = height;
@@ -109,7 +138,9 @@ static Polylines generate_repeat_pattern(int direction, coordf_t grid_size, coor
         out_polylines.push_back(poly);
     }
 
+
     if (direction < 0) {
+
         for (Polyline &poly : out_polylines) {
             for (Point &p : poly) { std::swap(p.x(), p.y()); }
         }
@@ -117,6 +148,8 @@ static Polylines generate_repeat_pattern(int direction, coordf_t grid_size, coor
 
     return out_polylines;
 }
+
+
 
 static Polylines generate_infill_layers(coordf_t z_height, double repeat_ratio, coordf_t grid_size, coordf_t width, coordf_t height)
 {
@@ -132,11 +165,14 @@ static Polylines generate_infill_layers(coordf_t z_height, double repeat_ratio, 
     int phase     = fmod(z_height, period * 2) - (period - 1);
     int direction = phase <= 0 ? -1 : 1;
 
+
     if (trans_z < 0) {
         result = generate_repeat_pattern(direction, grid_size, width, height);
     }
+
     else {
         double progress = fmod(trans_z, trans_layer_size) / trans_layer_size;
+
 
         if (progress < 0.5)
             result = generate_transform_pattern((progress + 0.1) * 2, direction, grid_size, width, height);
@@ -150,17 +186,23 @@ static Polylines generate_infill_layers(coordf_t z_height, double repeat_ratio, 
 void FillCrossHatch ::_fill_surface_single(
     const FillParams &params, unsigned int thickness_layers, const std::pair<float, Point> &direction, ExPolygon expolygon, Polylines &polylines_out)
 {
+
     auto infill_angle = float(this->angle);
     if (std::abs(infill_angle) >= EPSILON) expolygon.rotate(-infill_angle);
 
+
     BoundingBox bb = expolygon.contour.bounding_box();
+
 
     double density_adjusted = params.density / params.multiline;
     coord_t line_spacing = coord_t(scale_(this->spacing) / density_adjusted);
 
+
     if (params.density < 0.999) line_spacing *= 1.08;
 
     bb.merge(align_to_grid(bb.min, Point(line_spacing * 4, line_spacing * 4)));
+
+
 
     double repeat_ratio = 1.0;
     if (params.density < 0.3)
@@ -168,15 +210,21 @@ void FillCrossHatch ::_fill_surface_single(
 
     Polylines polylines = generate_infill_layers(scale_(this->z), repeat_ratio, line_spacing, bb.size()(0), bb.size()(1));
 
+
     for (Polyline &pl : polylines) { pl.translate(bb.min); }
 
+
     smooth_polylines_corners(polylines, params.smooth_factor, scaled<double>(params.resolution));
+
 
     multiline_fill(polylines, params, spacing);
 
     polylines = intersection_pl(std::move(polylines), to_polygons(expolygon));
 
+
     if (!polylines.empty()) {
+
+
         const double minlength = scale_(0.8 * this->spacing);
         polylines.erase(std::remove_if(polylines.begin(), polylines.end(), [minlength](const Polyline &pl)
             { return pl.length() < minlength; }), polylines.end());
@@ -184,7 +232,9 @@ void FillCrossHatch ::_fill_surface_single(
 
     if (!polylines.empty()) {
         int infill_start_idx = polylines_out.size();
+
         chain_or_connect_infill(std::move(polylines), expolygon, polylines_out, this->spacing, params);
+
 
         if (std::abs(infill_angle) >= EPSILON) {
             for (auto it = polylines_out.begin() + infill_start_idx; it != polylines_out.end(); ++it) it->rotate(infill_angle);

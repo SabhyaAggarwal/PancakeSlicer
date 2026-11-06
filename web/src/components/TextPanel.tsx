@@ -1,4 +1,7 @@
 import { Check } from './Check';
+
+
+
 import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type TextSpec } from '../state/store';
@@ -8,6 +11,7 @@ import { setTextPlacing, subscribeTextPlacing, textPlacing } from '../plater/tex
 const OPERATIONS = [['part', 'Join'], ['negative', 'Cut'], ['modifier', 'Modifier']] as const;
 
 export default function TextPanel() {
+
   const objectId = useStore((s) => editedText(s)?.object.id);
   const v = useStore((s) => editedText(s)?.volume);
   const current = useStore((s) => editedText(s)?.spec);
@@ -20,7 +24,9 @@ export default function TextPanel() {
   const key = objectId !== undefined ? `${objectId}:${v?.id ?? ''}` : '';
   const timer = useRef(0);
   useEffect(() => void loadFonts().then(setFonts), []);
+
   useEffect(() => setSpec(current ?? null), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => setSpec((sp) => (sp && current ? { ...sp, surface: current.surface } : sp)), [current?.surface]); // eslint-disable-line react-hooks/exhaustive-deps
   if (objectId === undefined || !spec) return null;
   const edit = (patch: Partial<TextSpec>) => {
@@ -67,7 +73,7 @@ export default function TextPanel() {
       {placing && <div className="cut-joint-hint">Click on the object's surface to place the text</div>}
       {v && (
         <label className="prefs-row cut-joint-row"><span>Operation</span>
-          <Dropdown className="combo" value={v.type} aria-label="Operation" onValueChange={(next) => { changeVolumeType(objectId, v.id, next as typeof v.type); if (spec.surface) void updateText(spec);  }} options={[...OPERATIONS.map(([t, label]) => ({ value: t, label, disabled: t === 'part' && !!spec.surface && !raises }))]} />
+          <Dropdown className="combo" value={v.type} aria-label="Operation" onValueChange={(next) => { changeVolumeType(objectId, v.id, next as typeof v.type); if (spec.surface) void updateText(spec);                          }} options={[...OPERATIONS.map(([t, label]) => ({ value: t, label, disabled: t === 'part' && !!spec.surface && !raises }))]} />
         </label>
       )}
       <div className="cut-joint-buttons"><span style={{ flex: 1 }} /><button type="button" className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button></div>

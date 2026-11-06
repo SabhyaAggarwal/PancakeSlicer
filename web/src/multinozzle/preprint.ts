@@ -3,6 +3,7 @@ import type { PrinterStatus, Tray } from '../printers/connections';
 import { extruderCount, extruderLabel, installedVariant, valueAt } from './config';
 import type { SendFilament } from './ams';
 
+
 export function preprintWarnings(machine: Config, status: PrinterStatus | undefined, filaments: SendFilament[], mapping: number[], trays: Tray[]): string[] {
   const warnings: string[] = [], count = extruderCount(machine);
   if (status?.online && status.nozzles?.length) for (let extruder = 0; extruder < count; extruder++) {

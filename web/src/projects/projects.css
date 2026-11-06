@@ -1,6 +1,5 @@
 :where(.orca-parity) .projects { --pj-actions-w: 64px; flex: 1; min-width: 0; min-height: 0; display: flex; container-type: inline-size; background: var(--panel); color: var(--text); overflow: hidden; }
 :where(.orca-parity) .pj-layout { flex: 1; min-width: 0; min-height: 0; display: flex; }
-
 :where(.orca-parity) .pj-side { flex: none; width: 184px; display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4) var(--s-3); border-right: 1px solid var(--line); background: var(--surface); overflow-y: auto; }
 :where(.orca-parity) .pj-filter { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--h-control); padding: 0 var(--s-3); border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); font: var(--t-body); text-align: left; cursor: pointer; }
 :where(.orca-parity) .pj-filter:hover { background: var(--hover-soft); color: var(--text); }
@@ -19,7 +18,6 @@
 :where(.orca-parity) .pj-side-end { margin-top: auto; padding-top: var(--s-3); display: flex; flex-direction: column; }
 :where(.orca-parity) .drop:is(.pj-filter, .pj-node, .pj-tile) { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--selected); }
 .pj-ghost { position: fixed; top: -200px; left: -200px; max-width: 240px; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font: var(--t-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 :where(.orca-parity) .pj-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 :where(.orca-parity) .pj-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .pj-bar h1 { margin: 0 auto 0 0; font: var(--t-title); color: var(--text); white-space: nowrap; }
@@ -36,7 +34,6 @@
 :where(.orca-parity) .pj-selection { gap: var(--s-2); }
 :where(.orca-parity) .pj-selection strong { margin-right: var(--s-3); }
 :where(.orca-parity) .pj-selection .pj-clear { margin-left: auto; }
-
 :where(.orca-parity) .pj-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 :where(.orca-parity) .pj-section { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-4) var(--s-5) 0; }
 :where(.orca-parity) .pj-section h2 { margin: 0; font: var(--t-label); color: var(--label); }
@@ -53,7 +50,6 @@
 :where(.orca-parity) .pj-tile .pj-icon { margin-right: var(--s-2); opacity: 0; }
 :where(.orca-parity) .pj-tile:hover .pj-icon, :where(.orca-parity) .pj-tile:focus-within .pj-icon { opacity: 1; }
 @media (hover: none), (pointer: coarse) { :where(.orca-parity) .pj-tile .pj-icon { opacity: 1; } }
-
 :where(.orca-parity) .pj-item { position: relative; min-width: 0; cursor: pointer; user-select: none; content-visibility: auto; }
 :where(.orca-parity) .pj-item.trash { cursor: default; }
 :where(.orca-parity) .pj-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -67,7 +63,6 @@
 :where(.orca-parity) .pj-item:hover .pj-check, :where(.orca-parity) .pj-item:hover .pj-icon, :where(.orca-parity) .pj-item:focus-within .pj-check, :where(.orca-parity) .pj-item:focus-within .pj-icon,
 :where(.orca-parity) .pj-item.selected .pj-check, :where(.orca-parity) .pj-item.selecting .pj-check { opacity: 1; }
 @media (hover: none), (pointer: coarse) { :where(.orca-parity) .pj-item .pj-check, :where(.orca-parity) .pj-item .pj-icon:not(.on), :where(.orca-parity) .pj-item .pj-icon { opacity: 1; } }
-
 :where(.orca-parity) .pj-grid { flex: none; display: grid; grid-auto-rows: max-content; gap: var(--s-3); padding: var(--s-4) var(--s-5) var(--s-5); align-content: start; }
 :where(.orca-parity) .pj-grid .pj-item { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--surface); overflow: hidden; contain-intrinsic-size: auto 172px; }
 :where(.orca-parity) .pj-grid .pj-item:hover { border-color: var(--border-control); }
@@ -82,7 +77,6 @@
 :where(.orca-parity) .pj-sub { display: flex; align-items: center; gap: var(--s-2); min-width: 0; color: var(--label); font: var(--t-small); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
 :where(.orca-parity) .pj-sub { display: block; text-overflow: ellipsis; }
 :where(.orca-parity) .pj-sub > * + *::before { content: '·'; margin: 0 var(--s-2); color: var(--muted); }
-
 :where(.orca-parity) .pj-list { flex: none; display: flex; flex-direction: column; }
 :where(.orca-parity) .pj-list .pj-item, :where(.orca-parity) .pj-head { flex: none; display: grid; grid-template-columns: 72px minmax(0,3fr) minmax(96px,1fr) minmax(112px,1fr) var(--pj-actions-w); align-items: center; gap: var(--s-4); padding: 0 var(--s-5); border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .pj-list .pj-item { min-height: 48px; contain-intrinsic-size: auto 48px; }
@@ -95,11 +89,9 @@
 :where(.orca-parity) .pj-row-actions { justify-content: flex-end; gap: var(--s-2); }
 :where(.orca-parity) .pj-mini { flex: none; width: 40px; height: 30px; display: grid; place-items: center; border-radius: var(--r-1); background: var(--sunken); overflow: hidden; }
 :where(.orca-parity) .pj-mini img { width: 100%; height: 100%; object-fit: cover; }
-
 :where(.orca-parity) .pj-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-4); padding: var(--s-6); text-align: center; color: var(--label); font: var(--t-body); }
 :where(.orca-parity) .pj-empty strong { color: var(--text); font: var(--t-title); }
 :where(.orca-parity) .pj-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-3); }
-
 :where(.orca-parity) .pj-place, :where(.orca-parity) .pj-scrim { display: none; }
 @container (max-width: 899px) {
   :where(.orca-parity) .pj-layout { position: relative; }
@@ -135,13 +127,10 @@
   :where(.orca-parity) .pj-list .pj-col-edited { display: none; }
   :where(.orca-parity) .pj-list .pj-item, :where(.orca-parity) .pj-head { grid-template-columns: 64px minmax(0,1fr) var(--pj-actions-w); }
 }
-
 :where(.orca-parity) .pj-status { position: absolute; z-index: 9; top: 56px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4); padding: var(--s-3) var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--panel); box-shadow: var(--shadow-pop); font: var(--t-body); color: var(--text); }
 :where(.orca-parity) .pj-status[role=alert] > span { color: var(--danger); }
 :where(.orca-parity) .pj-status > span { min-width: 0; overflow-wrap: anywhere; }
 :where(.orca-parity) .pj-status-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
-
-
 @media (pointer: coarse), (max-width: 599px) {
   :where(.orca-parity) .projects { --pj-actions-w: 96px; }
   :where(.orca-parity) .seg.pj-view:not(.slant-seg) > button { min-width: 44px; }

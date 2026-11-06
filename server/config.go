@@ -113,6 +113,7 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 			if kind != "strings" && strings.IndexFunc(part, unicode.IsControl) >= 0 {
 				return "", errors.New("scalar contains control characters")
 			}
+
 			if kind == "strings" && ((len(array) == 1 && part == "") || strings.ContainsAny(part, " \t;\\\"\r\n")) {
 				part = "\"" + escapeConfigString(part) + "\""
 			}
@@ -139,5 +140,6 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 	if kind != "string" && kind != "strings" && strings.IndexFunc(scalar, unicode.IsControl) >= 0 {
 		return "", errors.New("scalar contains control characters")
 	}
+
 	return scalar, nil
 }

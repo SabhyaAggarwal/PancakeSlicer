@@ -65,6 +65,8 @@ std::map<int, double> patch_times(const FirmwareTime &time, const Control &contr
                 const Vec2d p = mid.head<2>() - unscale(instance.shift) + first_shift;
                 const int k = cell_at(*control.grid, p);
                 if (k < 0 || control.region[size_t(k)] < 0) continue;
+
+
                 if (mid.z() < control.grid->mesh[size_t(k)] - 1. || mid.z() > control.grid->mesh[size_t(k)] + 1.) continue;
                 id = control.region[size_t(k)]; break;
             }
@@ -98,6 +100,7 @@ void build_control(Control &control, Print &print, const PrintObject &object)
     control.flat_bead = std::move(control.grid->bead);
     control.region.assign(control.grid->mesh.size(), -1);
     const Vec2d shift = unscale(object.instances().front().shift);
+
     std::map<int, ExPolygons> footprints;
     std::map<int, std::pair<double, double>> heights;
     for (const auto &surface : object.nonplanar_surfaces()) {
@@ -132,7 +135,10 @@ CurvedTopBudgetReport CurvedTopsBudget::report(const PrintObject &object) const
 std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print, const GCodeProcessorResult &result)
 {
     std::vector<std::pair<PrintObject *, int>> rejected;
+
+
     if (!firmware_time_supported(print.config(), print.is_BBL_printer())) return rejected;
+
     const auto priced = [](const PrintObject &o) {
         return curved_tops_stats(o).kept > 0 || (o.sublayer_walls_active() && !o.sublayer_walls_off()) || o.curved_fallback_zaa();
     };
@@ -153,6 +159,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
     for (size_t oi = 0; oi < print.objects().size(); ++oi) {
         PrintObject &object = *print.get_object(oi);
         if (object.config().nonplanar_mode.value != NonplanarMode::CurvedTops || object.instances().empty()) continue;
+
         auto old = m_impl->controls.find(&object);
         if (old == m_impl->controls.end() && !priced(object)) continue;
         Control &c = m_impl->controls[&object];
@@ -180,7 +187,11 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         }
         for (const auto &[id, height] : heights)
             if (height.second - height.first >= .03 - .001) active.insert(id);
+
+
         if (!fw.valid) for (const auto &surface : object.nonplanar_surfaces()) active.insert(surface.stable_id);
+
+
         if (object.curved_fallback_zaa()) {
             std::string why;
             if (!measured || !c.grid)
@@ -214,6 +225,9 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 continue;
             }
         }
+
+
+
         if (object.sublayer_walls_active() && !object.sublayer_walls_off() && c.air >= 0. && print.objects().size() == 1 &&
             object.instances().size() == 1) {
             const double air = floating_road(result, object).air;
@@ -225,6 +239,8 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 continue;
             }
         }
+
+
         if (measured && !report.within_budget && object.sublayer_walls_active() && !object.sublayer_walls_off()) {
             rejected.emplace_back(&object, Walls);
             report.reason = "half-height walls exceed the firmware time budget";
@@ -262,11 +278,16 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                     p.samples = e->second.count;
                     p.planar_rms_mm = std::sqrt(e->second.flat / p.samples);
                     p.curved_rms_mm = std::sqrt(e->second.curve / p.samples);
+
+
                     p.rms_gain_mm = std::sqrt(std::max(0., whole.curve + e->second.flat - e->second.curve) / whole.count) -
                                     std::sqrt(whole.curve / whole.count);
                 }
             }
         }
+
+
+
         const double coverage = curved_tops_stats(object).area_fraction;
         bool walls_win = false;
         if (measured && !active.empty() && coverage < .5 && print.objects().size() == 1 &&
@@ -302,6 +323,9 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
             BOOST_LOG_TRIVIAL(info) << std::setprecision(12) << "Curved top budget patch: " << object.model_object()->name
                 << " id " << id << " cost_s " << p.cost_s << " rms_gain_mm " << p.rms_gain_mm << " score " << score;
             if (score > worst_score) { worst = id; worst_score = score; }
+
+
+
             const double quality_loss = p.samples * (p.curved_rms_mm * p.curved_rms_mm -
                                                      p.planar_rms_mm * p.planar_rms_mm);
             if (measured && p.samples > 0 && p.curved_rms_mm > p.planar_rms_mm + 1e-9 &&
@@ -311,6 +335,9 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
             }
         }
         const auto *hints = object.nonplanar_repair();
+
+
+
         const bool native_offer = measured && !report.within_budget && !walls_win && worst_quality < 0 &&
             (hints == nullptr || hints->curved_finish != RepairHints::CurvedFinish::NativeMesh) &&
             std::any_of(patches.begin(), patches.end(), [](const auto &p) { return p.second.samples > 0 && p.second.rms_gain_mm > 0.; });
@@ -328,6 +355,8 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         }
         if (drop == -1 && hints != nullptr && hints->curved_finish != RepairHints::CurvedFinish::Blended)
             report.reason = "native curved roads retained within the firmware time and top RMS budgets";
+
+
         std::map<int, CurvedTopBudgetPatch> records;
         for (const auto &p : report.patches) if (p.dropped) records[p.id] = p;
         for (const auto &[id, p] : patches) records[id] = p;

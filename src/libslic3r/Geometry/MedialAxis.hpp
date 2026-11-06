@@ -18,21 +18,26 @@ public:
     MedialAxis(double min_width, double max_width, const ExPolygon &expolygon);
     void build(ThickPolylines* polylines);
     void build(Polylines* polylines);
-    
+
 private:
+
     const ExPolygon     &m_expolygon;
     Lines                m_lines;
+
     double               m_min_width;
     double               m_max_width;
 
+
     using VD = VoronoiDiagram;
     VD                   m_vd;
+
 
     struct EdgeData {
         bool    active      { false };
         double  width_start { 0 };
         double  width_end   { 0 };
     };
+
     std::pair<EdgeData&, bool> edge_data(const VD::edge_type &edge) {
         size_t edge_id = &edge - &m_vd.edges().front();
         return { m_edge_data[edge_id / 2], (edge_id & 1) != 0 };

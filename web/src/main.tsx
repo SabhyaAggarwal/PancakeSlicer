@@ -7,7 +7,11 @@ import { loadTab } from './options';
 import { initialiseSavedPreferences } from './saved-preferences';
 void initialiseSavedPreferences().catch(() => {});
 
+
+
 void loadTab('process').catch(() => {});
+
+
 void startProjects(init()).catch(() => {});
 
 

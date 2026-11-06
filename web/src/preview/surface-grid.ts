@@ -1,3 +1,7 @@
+
+
+
+
 import { useEffect, useReducer } from 'react';
 import type { JobStatus } from '../api/types';
 import { RANGE_PALETTE, type RGB } from './colors';
@@ -11,6 +15,7 @@ export interface SurfaceGrid {
   meshZ: Float32Array;
   eligible: Float32Array;
 }
+
 
 export const ERROR_BINS: { label: string; upTo: number; color: RGB }[] = [
   { label: '0–10', upTo: 10, color: RANGE_PALETTE[0] },
@@ -31,6 +36,7 @@ function f32(b64: unknown, n: number): Float32Array | null {
   return out;
 }
 
+
 function decode(g: Record<string, unknown>): SurfaceGrid | null {
   const nx = Number(g.nx), ny = Number(g.ny), n = nx * ny;
   const origin = g.origin as number[];
@@ -42,6 +48,7 @@ function decode(g: Record<string, unknown>): SurfaceGrid | null {
 
 const loaded = new Map<string, SurfaceGrid | null>();
 const pending = new Map<string, Promise<void>>();
+
 
 export function loadSurfaceGrid(id: string): Promise<void> {
   if (loaded.has(id)) return Promise.resolve();
@@ -58,6 +65,7 @@ export function loadSurfaceGrid(id: string): Promise<void> {
   }
   return p;
 }
+
 
 export function useSurfaceGrid(status: JobStatus | undefined, wanted: boolean): SurfaceGrid | null {
   const id = status?.has_surface_grid ? status.id : null;

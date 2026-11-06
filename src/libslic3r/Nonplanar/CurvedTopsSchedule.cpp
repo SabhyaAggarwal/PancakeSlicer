@@ -42,6 +42,8 @@ NonplanarClearanceModel NonplanarClearanceModel::from_print(const PrintConfig &c
     if (head.empty()) throw Slic3r::SlicingError("Curved tops requires a printer head envelope.");
     out.tip_radius_mm = head.tip_flat_radius;
     out.contact_allowance_mm = std::min(0.1, 0.5 * height);
+
+
     std::map<double, double> radius;
     for (const auto &box : head.boxes) {
         if (box.nozzle) {
@@ -66,6 +68,7 @@ const NonplanarDeferral::PathPlan* NonplanarDeferral::find(size_t layer_id, size
 {
     if (layer_id >= layers.size() || polyline3.points.size() < 2)
         return nullptr;
+
     const Polyline polyline = polyline3.to_polyline();
     const auto it = layers[layer_id].find(source_path_id);
     if (it == layers[layer_id].end())
@@ -100,6 +103,8 @@ struct Sample {
     int    group { -1 };
 };
 
+
+
 void collect_paths(const ExtrusionEntity *entity, std::vector<std::pair<const ExtrusionPath*, const ExtrusionEntity*>> &out)
 {
     if (auto *path = dynamic_cast<const ExtrusionPath*>(entity))
@@ -112,10 +117,13 @@ void collect_paths(const ExtrusionEntity *entity, std::vector<std::pair<const Ex
         for (const ExtrusionEntity *child : collection->entities) collect_paths(child, out);
 }
 
+
+
 void sample_path(const ExtrusionPath &path, double planar_z, int layer, int slot, double step,
                  int index, std::vector<Sample> &out)
 {
     const Points3 &pts = path.polyline.points;
+
     auto z_of = [planar_z, &path](const Point3 &p) { return path.nonplanar_source ? unscale<double>(p.z()) : planar_z; };
     const double hw = 0.5 * double(path.width);
     double walked = 0.;
@@ -127,6 +135,7 @@ void sample_path(const ExtrusionPath &path, double planar_z, int layer, int slot
         }
         const double x0 = unscale<double>(pts[i-1].x()), y0 = unscale<double>(pts[i-1].y()), z0 = z_of(pts[i-1]);
         const double length = std::hypot(x1 - x0, y1 - y0);
+
         const double scaled_length = (pts[i].to_point() - pts[i-1].to_point()).cast<double>().norm();
         const int n = std::max(1, int(std::ceil(length / step)));
         for (int k = 1; k <= n; ++ k) {
@@ -137,6 +146,8 @@ void sample_path(const ExtrusionPath &path, double planar_z, int layer, int slot
         walked += scaled_length;
     }
 }
+
+
 
 class Grid {
 public:
@@ -152,10 +163,12 @@ public:
             for (int iy = iy0; iy <= iy1; ++ iy)
                 for (int idx : m_cells[slot(ix, iy)]) f(idx);
     }
+
     template<typename Z> void sort_cells(Z &&z_of) {
         for (std::vector<int> &cell : m_cells)
             std::stable_sort(cell.begin(), cell.end(), [&z_of](int a, int b) { return z_of(a) < z_of(b); });
     }
+
     template<typename Z, typename F> void visit_z(double x, double y, double radius, double z_lo, double z_hi, Z &&z_of, F &&f) const {
         const int ix0 = std::max(index(x - radius), m_x0), ix1 = std::min(index(x + radius), m_x0 + m_nx - 1);
         const int iy0 = std::max(index(y - radius), m_y0), iy1 = std::min(index(y + radius), m_y0 + m_ny - 1);
@@ -175,6 +188,7 @@ public:
                 f(slot(ix, iy));
     }
     int    index(double v) const { return int(std::floor(v / m_cell)); }
+
     int    cell_slot(int ix, int iy) const {
         return ix < m_x0 || iy < m_y0 || ix >= m_x0 + m_nx || iy >= m_y0 + m_ny ? -1 : int(slot(ix, iy));
     }
@@ -199,6 +213,9 @@ std::string describe(const Sample &s, const char *what)
 }
 
 }
+
+
+
 struct UnitKeyHash
 {
     template<class T> static void mix(size_t &h, const T &v) { h ^= std::hash<T>{}(v) + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2); }
@@ -213,6 +230,8 @@ struct UnitKeyHash
 NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const NonplanarClearanceModel &model)
 {
     NonplanarDeferral result;
+
+
     const PrintBase *print = object.print();
     auto throw_if_canceled = [print]() {
         if (print != nullptr && print->canceled())
@@ -226,6 +245,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
 
     std::vector<Sample> conformal;
     std::vector<std::tuple<const ExtrusionPath*, const ExtrusionEntity*, int, double>> planar_paths;
+
     struct Sampled { const ExtrusionPath *path; const ExtrusionEntity *entity; int layer; };
     std::vector<Sampled> sampled;
     for (const Layer *layer : layers) {
@@ -250,6 +270,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     if (conformal.empty())
         return result;
 
+
+
+
     struct Model : NonplanarClearanceModel { std::vector<Ring> ring_list; };
     Model m_model;
     static_cast<NonplanarClearanceModel&>(m_model) = model;
@@ -265,7 +288,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         box_reach = std::max({ box_reach, std::abs(b.x_min), std::abs(b.x_max), std::abs(b.y_min), std::abs(b.y_max) });
     }
     const double threshold = min_bottom - model.safety_mm;
+
     auto blocks = [&m_model](const Sample &m, const Sample &t, bool tolerant = false) {
+
         const double dz = m.z - t.z - (tolerant ? m_model.safety_mm : 0.);
         const double grow = m.half_width + m_model.bead_margin + (tolerant ? 0. : m_model.safety_mm + m_model.sample_step);
         const double d = std::hypot(m.x - t.x, m.y - t.y);
@@ -290,6 +315,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     }
     bbox.offset(box_reach + ring_reach + 1.);
 
+
+
+
     std::vector<Sample> planar;
     double zmax = zmin;
     for (const auto &[path, unit, lid, z] : planar_paths) {
@@ -298,6 +326,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             continue;
         const size_t first = planar.size();
         sample_path(*path, z, lid, 2 * lid, model.sample_step, int(sampled.size()), planar);
+
+
         bool inside = false;
         for (size_t i = first; i < planar.size() && ! inside; ++ i)
             inside = bbox.contains(Vec2d(planar[i].x, planar[i].y));
@@ -310,6 +340,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     }
     result.conformal_samples = conformal.size();
     result.planar_samples    = planar.size();
+
+
 
     std::vector<Sample> all = std::move(planar);
     const size_t first_conformal = all.size();
@@ -326,6 +358,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     for (const Layer *layer : layers)
         max_layer = std::max(max_layer, int(layer->id()));
 
+
+
+
     double sx_min = 0., sy_min = 0., sx_max = 0., sy_max = 0.;
     for (size_t i = 0; i < all.size(); ++ i) {
         sx_min = i == 0 ? all[i].x : std::min(sx_min, all[i].x); sx_max = i == 0 ? all[i].x : std::max(sx_max, all[i].x);
@@ -341,6 +376,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     }
     auto z_of = [&all](int i) { return all[size_t(i)].z; };
     grid.sort_cells(z_of);
+
+
+
     double block_dz_min = std::numeric_limits<double>::max();
     for (const NonplanarClearanceModel::Ring &r : m_model.ring_list)
         block_dz_min = std::min(block_dz_min, r.bottom - m_model.safety_mm);
@@ -348,8 +386,10 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         block_dz_min = std::min(block_dz_min, b.bottom - m_model.safety_mm);
     block_dz_min -= 1e-6;
 
+
     constexpr double coarse_cell = 2.;
     Grid coarse(coarse_cell, sx_min, sy_min, sx_max, sy_max);
+
     auto coarse_key = [&coarse](double x, double y) { return coarse.cell_slot(coarse.index(x), coarse.index(y)); };
     std::vector<double> coarse_zmax(coarse.cell_count(), -std::numeric_limits<double>::max());
     std::vector<char>   coarse_used(coarse.cell_count(), 0);
@@ -361,10 +401,15 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         coarse_zmax[size_t(k)] = coarse_used[size_t(k)] ? std::max(coarse_zmax[size_t(k)], all[i].z) : all[i].z;
         coarse_used[size_t(k)] = 1;
     }
+
+
     std::vector<NonplanarClearanceModel::Box> boxes_by_bottom(model.boxes.begin(), model.boxes.end());
     std::stable_sort(boxes_by_bottom.begin(), boxes_by_bottom.end(),
         [](const NonplanarClearanceModel::Box &a, const NonplanarClearanceModel::Box &b) { return a.bottom < b.bottom; });
     const double full_ring_reach = ring_reach + 0.5 + model.sample_step;
+
+
+
     std::vector<double> local_top(grid.cell_count(), -std::numeric_limits<double>::max());
     for (int ix = grid.x0(); ix <= grid.x1(); ++ix)
         for (int iy = grid.y0(); iy <= grid.y1(); ++iy) {
@@ -379,6 +424,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         const double full = full_ring_reach;
         const size_t cell = size_t(grid.cell_slot(grid.index(tool.x), grid.index(tool.y)));
         const double dz = std::min(local_top[cell], material_top) - tool.z;
+
+
         if (!boxes_by_bottom.empty() && dz > boxes_by_bottom.front().bottom - model.safety_mm) return full;
         const double pad = std::max(0.5 + model.sample_step,
             max_half_width + model.bead_margin + model.safety_mm + model.sample_step);
@@ -387,6 +434,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             if (dz > ring.bottom - model.safety_mm) radius = std::max(radius, ring.radius + pad);
         return std::min(full, radius);
     };
+
+
+
     double box_x_min = 0., box_x_max = 0., box_y_min = 0., box_y_max = 0.;
     for (const NonplanarClearanceModel::Box &b : model.boxes) {
         box_x_min = std::min(box_x_min, b.x_min); box_x_max = std::max(box_x_max, b.x_max);
@@ -401,6 +451,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
         if (zmax <= lowest_floor)
             return;
+
         for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
              cx <= std::min(std::floor((s0.x + box_x_max + 0.5) / coarse_cell), double(coarse.x1())); cx += 1.)
             for (double cy = std::max(std::floor((s0.y + box_y_min - 0.5) / coarse_cell), double(coarse.y0()));
@@ -426,10 +477,25 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     };
     auto i_is_conformal = [&](int i) { return size_t(i) >= first_conformal; };
 
+
+
+
+
+
+
+
+
+
+
     constexpr double edge_band = 1.5;
     constexpr int    max_level = 4;
     std::vector<int> edge_level(all.size(), 0);
     auto chunk_length = [](int l) { return l <= 1 ? 1e30 : scaled<double>(l == 2 ? 1. : l == 3 ? 0.25 : 0.01); };
+
+
+
+
+
     std::vector<int> earliest(all.size());
     bool banded = false;
     auto compute_earliest = [&]() {
@@ -465,6 +531,11 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     std::vector<double> unit_zmin, unit_zmax;
     std::vector<std::vector<int>> members;
     std::vector<BoundingBoxf3> unit_bounds;
+
+
+
+
+
     auto visit_followers = [&](int t, auto &&wanted, auto &&found, bool with_boxes = true) {
         const Sample &s0 = all[size_t(t)];
         auto check = [&](int m) {
@@ -478,17 +549,28 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             visit_boxes(t, check);
         grid.visit_z(s0.x, s0.y, 2. * s0.half_width, s0.z + 0.1 - 1e-6, s0.z + 0.35 + 1e-6, z_of, [&](int r2) {
             const Sample &s1 = all[size_t(r2)];
+
+
             if (r2 != t && wanted(r2) && s1.z - s0.z > 0.1 && s1.z - s0.z < 0.35 &&
                 std::hypot(s1.x - s0.x, s1.y - s0.y) < 0.5 * (s1.half_width + s0.half_width))
                 found(r2);
         });
     };
+
     std::vector<int> collected_for;
+
+
+
     struct CellGroup { int unit; double zmax; int begin, end; };
     std::vector<std::vector<CellGroup>> cell_groups(coarse.cell_count());
     std::vector<int> cell_samples;
+
+
+
     std::vector<std::vector<CellGroup>> fine_groups(grid.cell_count());
     std::vector<int> fine_samples;
+
+
 
     auto collect_box_dependents = [&](int t, int u, std::vector<int> &out, const std::vector<char> *only, double material_top, std::vector<int> &marker) {
         if (model.boxes.empty())
@@ -499,6 +581,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
         if (material_top <= lowest_floor)
             return;
+
         for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
              cx <= std::min(std::floor((s0.x + box_x_max + 0.5) / coarse_cell), double(coarse.x1())); cx += 1.)
             for (double cy = std::max(std::floor((s0.y + box_y_min - 0.5) / coarse_cell), double(coarse.y0()));
@@ -536,6 +619,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 if (complete && !verify_dependents) marker[stamp] = u;
             }
     };
+
+
+
     auto visit_unit_followers = [&](int t, int unit, auto &&extra, auto &&found) {
         const Sample &s0 = all[size_t(t)];
         BoundingBoxf3 &bounds = unit_bounds[size_t(unit)];
@@ -586,6 +672,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         const int k = coarse_key((cx + 0.5) * coarse_cell, (cy + 0.5) * coarse_cell);
                         if (k < 0 || ! coarse_used[size_t(k)] || coarse_zmax[size_t(k)] <= lowest_floor)
                             continue;
+
                         const double cell_zmax = coarse_zmax[size_t(k)];
                         bool covered = false;
                         for (const NonplanarClearanceModel::Box &b : boxes_by_bottom) {
@@ -616,21 +703,36 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     std::vector<std::vector<int>> dependents;
     std::vector<char> dependents_known;
     std::vector<std::string> conflicts;
+
+
     int conflict_a = -1, conflict_b = -1;
+
+
+
+
+
+
+
     using Slot = std::pair<int, int>;
     const Slot before_all {-1, -1}, after_all {std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
     std::vector<Slot> raw_limit, old_limit;
     bool reset_raw = false;
     std::vector<std::vector<int>> raw, old_raw, old_members;
+
+
     std::vector<std::vector<std::pair<int, int>>> unit_runs, old_unit_runs;
     std::vector<char> raw_known, pending, old_known, changed;
     std::vector<int> old_unit_of;
     size_t refined_units = 0;
+
+
     std::set<std::pair<int, int>> dropped;
     size_t dropped_edges = 0;
     bool rebuild_units = true;
     for (int attempt = 0;; ++ attempt) {
         throw_if_canceled();
+
+
         if (rebuild_units || verify_dependents) {
             old_members = std::move(members);
             old_unit_runs = std::move(unit_runs);
@@ -668,6 +770,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 }
                 for (size_t i = first; i < last; ++i) {
                     const Sampled &src = sampled[size_t(all[i].path)];
+
                     if (edge_level[i] > 0 && ! (i > 0 && all[i - 1].path == all[i].path && edge_level[i - 1] > 0))
                         ++ edge_run;
                     if (i > 0 && edge_level[i] == 0 && edge_level[i - 1] == 0 &&
@@ -680,6 +783,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         const auto key = std::make_tuple(edge_run, edge_level[i], long(all[i].s / chunk_length(edge_level[i])));
                         unit_of[i] = chunks.try_emplace(key, next).first->second;
                     } else if (src.path->nonplanar_source) {
+
                         const auto key = std::make_tuple(src.layer, src.path->source_surface_id,
                             std::lround(src.path->distance_to_top * 1000.f), earliest[i]);
                         unit_of[i] = shells.try_emplace(key, next).first->second;
@@ -699,6 +803,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             unit_zmax.assign(size_t(next), -std::numeric_limits<double>::max());
             unit_base.assign(size_t(next), 0);
             changed.assign(size_t(next), 1);
+
             size_t covered = 0;
             for (const auto &r : runs) covered += size_t(r[2] - r[1]);
             if (covered != unit_of.size() || (!runs.empty() && runs.back()[2] != int(unit_of.size()))) {
@@ -716,6 +821,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             for (int u = 0; u < next; ++u) {
                 const int o = old_unit_of[first[size_t(u)]];
                 if (attempt > 0 && counts[size_t(u)] == old_members[size_t(o)].size() && unit_runs[size_t(u)] == old_unit_runs[size_t(o)]) {
+
                     members[size_t(u)] = std::move(old_members[size_t(o)]);
                     unit_zmin[size_t(u)] = old_zmin[size_t(o)];
                     unit_zmax[size_t(u)] = old_zmax[size_t(o)];
@@ -763,6 +869,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             cells[k].push_back({-1, 0., begin, int(samples.size())});
                     }
                 }
+
+
                 for (auto &groups : cells) {
                     if (groups.empty()) continue;
                     bool rebuild = false;
@@ -776,6 +884,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             g.unit = new_of[size_t(g.unit)];
                     }
                     if (!rebuild) {
+
                         auto by_unit = [](const CellGroup &a, const CellGroup &b) { return a.unit < b.unit; };
                         if (!std::is_sorted(groups.begin(), groups.end(), by_unit))
                             std::sort(groups.begin(), groups.end(), by_unit);
@@ -809,6 +918,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 std::sort(raw[size_t(u)].begin(), raw[size_t(u)].end());
                 raw_known[size_t(u)] = 1;
                 raw_limit[size_t(u)] = old_limit[size_t(o)];
+
+
                 pending[size_t(u)] = 1;
             }
         } else {
@@ -820,6 +931,12 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             std::fill(collected_for.begin(), collected_for.end(), -1);
         }
         rebuild_units = false;
+
+
+
+
+
+
         auto collect_samples = [&](int u, const std::vector<char> *only, double material_top, const int *first, const int *last, std::vector<int> &out, std::vector<int> &marker) {
             for (const int *t = first; t != last; ++ t) {
                 if (verify_dependents) {
@@ -866,8 +983,11 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 collect_box_dependents(*t, u, out, only, material_top, marker);
             }
         };
+
         tbb::enumerable_thread_specific<std::pair<std::vector<int>, std::vector<int>>> workers(
             [&]() { return std::make_pair(std::vector<int>(collected_for.size(), -1), std::vector<int>()); });
+
+
         auto collect_dependents = [&](int u, bool only_changed, Slot from, Slot to, std::vector<int> &out) {
             std::vector<char> eligible(members.size(), 0);
             double material_top = -std::numeric_limits<double>::max();
@@ -883,6 +1003,10 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             std::fill(collected_for.begin() + members.size(), collected_for.end(), -1);
             std::vector<int> affected;
             if (only_changed && !verify_dependents && members[size_t(u)].size() >= 256) {
+
+
+
+
                 auto query = [&](const Vec2d &lo, const Vec2d &hi, double top) {
                     if (top < unit_zmin[size_t(u)]) return;
                     const Vec2d center = 0.5 * (lo + hi);
@@ -934,6 +1058,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         out.push_back(v);
                     }
         };
+
+
+
         auto dependents_of = [&](int u) -> const std::vector<int>& {
             const Slot needed = verify_dependents ? after_all : Slot {unit_slot[size_t(u)], unit_base[size_t(u)]};
             if (!dependents_known[size_t(u)] || needed > raw_limit[size_t(u)]) {
@@ -972,16 +1099,26 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             }
             return dependents[size_t(u)];
         };
+
         auto unit_after = [&](int a, int b) {
             return unit_slot[size_t(a)] > unit_slot[size_t(b)] ||
                 (unit_slot[size_t(a)] == unit_slot[size_t(b)] && unit_base[size_t(a)] > unit_base[size_t(b)]);
         };
+
+
         auto slot_after = [&](int u, int v) {
             const int su = unit_slot[size_t(u)];
             if (su % 2 == 0)
                 return su + 1;
             return unit_base[size_t(v)] > unit_base[size_t(u)] ? su : su + 2;
         };
+
+
+
+
+
+
+
 
         if (attempt == 0) {
             auto rests_on = [](const Sample &upper, const Sample &lower) {
@@ -1000,6 +1137,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 double top_zmax = -std::numeric_limits<double>::max();
                 for (int t : members[T])
                     top_zmax = std::max(top_zmax, all[size_t(t)].z);
+
                 const double p_zmax = top_zmax - below_margin + 1e-6;
                 for (int t : members[T]) {
                     if (conflict_a >= 0)
@@ -1013,6 +1151,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         if (unit_after(v, int(T)))
                             return;
                         const Sample &sp = all[size_t(p)];
+
                         bool back = false;
                         const double rp = reach(p);
                         if (rp > 0)
@@ -1028,6 +1167,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                             conflict_b = p;
                         }
                     };
+
                     const double r = reach(t);
                     if (r > 0)
                         grid.visit_z(st.x, st.y, r, st.z + block_dz_min, p_zmax, z_of, [&](int p) {
@@ -1050,6 +1190,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         std::vector<int> parent(members.size(), -1);
         std::vector<int> worklist;
         std::vector<int> cycle;
+
+
         for (size_t u = 0; u < members.size(); ++ u)
             if (i_is_conformal(members[u].front()))
                 worklist.push_back(int(u));
@@ -1062,6 +1204,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             for (int v : dependents_of(u)) {
                 if (unit_after(v, u))
                     continue;
+
+
                 for (int w = u, steps = 0; w != -1 && steps < 100000; w = parent[size_t(w)], ++ steps)
                     if (w == v) {
                         for (int c = u; c != v; c = parent[size_t(c)])
@@ -1099,7 +1243,10 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 continue;
             }
         }
+
+
         bool progress = false;
+
         for (size_t k = 0; k < cycle.size(); ++ k) {
             throw_if_canceled();
             const int c = cycle[k];
@@ -1113,6 +1260,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             for (int t : members[size_t(c)])
                 all_edge &= edge_level[size_t(t)] > 0;
             if (all_edge) {
+
                 if (edge_level[size_t(i0)] < max_level) {
                     for (int t : members[size_t(c)])
                         ++ edge_level[size_t(t)];
@@ -1122,9 +1270,15 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 }
                 continue;
             }
+
+
             std::set<int> involved;
             const int leader   = cycle[(k + 1) % cycle.size()];
             const int follower = cycle[(k + cycle.size() - 1) % cycle.size()];
+
+
+
+
             std::set<int> entering, leaving;
             for (int t : members[size_t(leader)])
                 visit_unit_followers(t, c, [](int) { return true; },
@@ -1136,6 +1290,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 involved = leaving;
             else
                 involved = entering;
+
             bool marked = false;
             for (int t : members[size_t(c)]) {
                 if (edge_level[size_t(t)] > 0)
@@ -1155,6 +1310,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             }
         }
         if (! progress) {
+
+
             auto holds_strictly_needed = [&](int u, int v) {
                 for (int t : members[size_t(u)])
                     for (int m : members[size_t(v)]) {
@@ -1169,6 +1326,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             };
             const size_t n = cycle.size();
             for (size_t k = 0; k < n; ++ k) {
+
                 const int follower = cycle[k], leader = cycle[(k + 1) % n];
                 if (! holds_strictly_needed(leader, follower) &&
                     dropped.insert({ members[size_t(leader)].front(), members[size_t(follower)].front() }).second) {
@@ -1178,6 +1336,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             }
         }
         if (! progress) {
+
             const size_t n = cycle.size();
             for (size_t k = 0; k < n && conflicts.size() < 8; ++ k) {
                 const int follower = cycle[k], leader = cycle[(k + 1) % n];
@@ -1223,6 +1382,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     for (size_t i = 0; i < all.size(); ++ i)
         all[i].slot = unit_slot[size_t(unit_of[i])];
 
+
     if (const char *debug = std::getenv("NONPLANAR_PLAN_DEBUG")) {
         double dx = 0, dy = 0, dr = 0;
         if (std::sscanf(debug, "%lf,%lf,%lf", &dx, &dy, &dr) == 3) {
@@ -1236,10 +1396,14 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     }
 
     if (! conflicts.empty()) {
+
+
+
         std::string details = "Nonplanar deposition order: these units must each precede and follow one another: ";
         for (size_t i = 0; i < conflicts.size(); ++ i)
             details += (i ? "; " : "") + conflicts[i];
         BOOST_LOG_TRIVIAL(error) << details;
+
         auto kind = [&](int i) -> std::string {
             const ExtrusionPath &path = *sampled[size_t(all[size_t(i)].path)].path;
             if (path.nonplanar_source)
@@ -1271,6 +1435,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             throw CurvedTopsAccessError(message, object.id().id, std::move(surfaces));
         throw Slic3r::SlicingError(message, object.id().id);
     }
+
+
 
     for (size_t i = 0; i < all.size();) {
         size_t j = i;
@@ -1339,6 +1505,7 @@ static double distance_to_segment(const Vec2d &p, const Vec2d &a, const Vec2d &b
     return (a + t * d - p).norm();
 }
 
+
 static std::vector<std::pair<Vec2d, Vec2d>> pieces(const std::vector<Vec2d> &path, double step)
 {
     std::vector<std::pair<Vec2d, Vec2d>> out;
@@ -1401,6 +1568,7 @@ double NonplanarHeightMap::travel_height(const std::vector<Vec2d> &path, const N
     const double safety = model.safety_mm;
     if (m_fine.h.empty() || m_max_z + safety <= z)
         return z;
+
     std::vector<NonplanarClearanceModel::Ring> rings = model.rings();
     rings.front().bottom = 0.;
     const double half_diagonal = m_fine.cell * std::sqrt(0.5);
@@ -1418,6 +1586,8 @@ double NonplanarHeightMap::travel_height(const std::vector<Vec2d> &path, const N
                     continue;
                 const Vec2d  c(origin + (ix + 0.5) * m_fine.cell, origin + (iy + 0.5) * m_fine.cell);
                 const double d = distance_to_segment(c, a, b);
+
+
                 for (const NonplanarClearanceModel::Ring &ring : rings)
                     if (d <= ring.radius + half_diagonal) {
                         z = std::max(z, h - ring.bottom + safety);
@@ -1425,6 +1595,7 @@ double NonplanarHeightMap::travel_height(const std::vector<Vec2d> &path, const N
                     }
             }
     }
+
     for (const NonplanarClearanceModel::Box &box : model.boxes) {
         if (m_max_z - box.bottom + safety <= z)
             continue;
@@ -1491,6 +1662,8 @@ double NonplanarHeightMap::travel_lift(const Vec3d &from, const Vec3d &to, const
                     const double lo = std::max(0., centre - span), hi = std::min(1., centre + span);
                     if (lo <= hi)
                         require(h, i == 0 ? 0. : ring.bottom, height(lo, hi));
+
+
                 }
             }
     }

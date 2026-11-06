@@ -1,3 +1,4 @@
+
 import { createHash } from 'node:crypto';
 import { constants, type BigIntStats } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -25,6 +26,7 @@ export class LegacyWorkspaceSource {
   constructor(private readonly userData: string) {}
 
   inventory(): Promise<LegacyWorkspaceInventory> {
+
     if (this.scanning) return this.scanning;
     this.snapshot = null;
     const scan = this.scan();
@@ -34,6 +36,7 @@ export class LegacyWorkspaceSource {
   }
 
   private async scan(): Promise<LegacyWorkspaceInventory> {
+
     const names = (await fs.readdir(this.userData)).sort();
     const roots = ROOTS.map((name) => ({ name, paths: names.filter((n) => n.toLowerCase() === name) }));
     const files: LegacyFile[] = [], directories: string[] = [], stamps = new Map<string, string>();
@@ -97,6 +100,7 @@ export class LegacyWorkspaceSource {
   private async open(relative: string) {
     const segments = relative.split('/');
     if (segments.some((s) => !s || s === '.' || s === '..' || s.includes('\\')) || !ROOTS.includes(segments[0].toLowerCase())) throw incomplete('invalid source path');
+
     for (let i = 1; i < segments.length; i++) {
       const stat = await fs.lstat(path.join(this.userData, ...segments.slice(0, i)));
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw incomplete(`source ancestor changed: ${relative}`);

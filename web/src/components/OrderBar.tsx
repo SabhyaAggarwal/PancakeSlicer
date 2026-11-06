@@ -4,6 +4,9 @@ import { useStore } from '../state/store';
 import { droppedCurvedTop } from '../preview/explain-record';
 import { keepCurvedTop } from '../intent/surface';
 import { slice } from '../actions';
+
+
+
 import { Dropdown } from './Dropdown';
 import { Glyph } from './Glyph';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
@@ -14,7 +17,9 @@ import { ownsKeys } from '../keys';
 import { getState } from '../state/store';
 import { playback, usePlayback } from '../flow/playback';
 
+
 const RATES = [10, 60, 300, 1800];
+
 
 export function useElapsed(d: PreviewData): Float64Array {
   return useMemo(() => {
@@ -25,6 +30,7 @@ export function useElapsed(d: PreviewData): Float64Array {
     return e;
   }, [d, d.loaded]);
 }
+
 
 function vertexAt(e: Float64Array, t: number): number {
   let lo = 1, hi = e.length - 1;
@@ -37,10 +43,12 @@ function vertexAt(e: Float64Array, t: number): number {
 
 export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOneLayer }: {
   data: PreviewData;
+
   at: number;
   onSeek(vertex: number): void;
   gcodeOpen: boolean;
   onGcode(): void;
+
   oneLayer: boolean;
   onOneLayer(): void;
 }) {
@@ -55,6 +63,7 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
   atRef.current = at;
   useEffect(() => {
     if (!playing) return;
+
     if (atRef.current >= last) onSeek(1);
     clock.current = null;
     let frame = 0;
@@ -71,6 +80,7 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, rate, e, last, playback]);
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.repeat || ev.key !== ' ' || ownsKeys(ev) || ev.ctrlKey || ev.metaKey || ev.altKey || getState().tab !== 'preview') return;
@@ -94,6 +104,8 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
       window.removeEventListener('pagehide', pause);
     };
   }, [playing]);
+
+
   const bar = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = bar.current, area = el?.closest<HTMLElement>('.canvas-area');
@@ -110,6 +122,9 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
   const total = e[e.length - 1] ?? 0;
   const skipped = useStore((st) => st.job.state === 'done' && !st.job.stale ? droppedCurvedTop(st.job.status?.record as Record<string, unknown> | undefined) : null);
   return (
+
+
+
     <div ref={bar} className="order-bar" role="group" aria-label="Playback">
       <span className="ob-transport">
         <button type="button" className="ob-btn ob-step" aria-label="Previous move" onClick={() => step(-1)}><Glyph name="prev" /></button>
@@ -123,6 +138,7 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
       <span className="ob-time" aria-label="Total time">{shortTime(total)}</span>
       <span className="ob-layer">Layer {k == null ? '–' : k + 1}/{data.layers.length}</span>
       <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
+      {                                                                                                                        }
       {skipped != null && <button type="button" className="ob-budget" onClick={() => { keepCurvedTop(skipped); void slice(); }}
         aria-label={`Curved top skipped to stay within the time budget. Keep it: +${skipped} % time`}>Curved top skipped · +{skipped} %<span className="ob-budget-unit"> time</span></button>}
       <span className="ob-seg">

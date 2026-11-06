@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import { mutation, responseError } from '../api/access';
 import type { Config, ProfileOverlay } from '../api/types';
 import type { ProfileLibraryDocument, ProfileLibraryWrite, ProfileLibraryWriteResult } from '../profiles/ownership';
@@ -19,6 +25,7 @@ const v3Type = { printer: 'machine', filament: 'filament', print: 'process' } as
 const v4Type = { machine: 'printer', filament: 'filament', process: 'print' } as const;
 const first = (v: Config[string] | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 
+
 let printerCatalog: Promise<{ id: string; models: PrinterModel[] }[]> | undefined;
 const families = new Map<string, Promise<Family[]>>();
 const json = async <T,>(path: string): Promise<T> => {
@@ -35,9 +42,14 @@ const familiesOf = (vendor: string) => {
   return read;
 };
 const nozzleKey = (n: number) => String(n);
+
+
 const writtenFilaments = new Map<string, { family: string; base: ProfileOverlay['base']; metadata?: Config }>();
 const machineName = async (vendor: string, model: string, nozzle: number) =>
   (await vendors()).find((v) => v.id === vendor)?.models.find((m) => m.id === model)?.machines?.[nozzleKey(nozzle)];
+
+
+
 
 async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
   const printers = doc.profiles.filter((p) => p.type === 'printer');
@@ -64,6 +76,7 @@ async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
   }));
   return { schema: 1, revision: doc.revision, ...(doc.epoch ? { epoch: doc.epoch } : {}), profiles, printers: { schema: 1, revision: 0, setups: doc.setups ?? {} } };
 }
+
 
 async function toV4(p: ProfileOverlay): Promise<V4Record> {
   const type = v4Type[p.type], extra = p as ProfileOverlay & { printOverrides?: Config; auto?: { scales?: ScaleRow[]; preferredHeight?: number } };
@@ -93,6 +106,7 @@ async function toV4(p: ProfileOverlay): Promise<V4Record> {
 }
 
 export async function readProfileLibrary(_mock = false): Promise<ProfileLibraryDocument> {
+
   const response = await fetch('/api/library');
   if (!response.ok) throw await responseError(response);
   const doc = await response.json() as V4Document;

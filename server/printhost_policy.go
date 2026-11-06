@@ -169,6 +169,7 @@ func (h *hostPolicy) check(ip netip.Addr, named bool) string {
 		return ""
 	}
 	for _, p := range h.prefixes {
+
 		if p.Contains(ip) && (!ip.Is4() || p.Bits() >= 31 || ip != p.Addr() && ip != lastAddr(p)) {
 			return ""
 		}

@@ -1,3 +1,7 @@
+
+
+
+
 import { zipSync } from 'fflate';
 import { bakeStl, instanceMatrix } from './plater/geometry';
 import { selectionTargets } from './edit';
@@ -6,6 +10,7 @@ import { getState, toast, type PlateObject } from './state/store';
 const HEADER = 84, RECORD = 50;
 
 const bakeInstances = (o: PlateObject) => Promise.all(o.instances.map((i) => bakeStl(o, instanceMatrix(o, i))));
+
 
 async function oneStl(objects: PlateObject[]): Promise<Blob> {
   const parts = (await Promise.all(objects.map(bakeInstances))).flat();
@@ -27,6 +32,11 @@ function save(blob: Blob, name: string) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
+
+
+
+
+
 
 export async function exportStl(selection = false, multi = false) {
   const s = getState();

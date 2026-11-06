@@ -24,13 +24,27 @@
 
 namespace Slic3r { namespace tex2color {
 
+
+
+
+
+
+
 inline constexpr std::size_t MAX_REPAIRABLE_MESH_HOLE_EDGES = 500;
+
+
+
+
+
 
 inline constexpr std::size_t MAX_REPAIRABLE_MESH_BOUNDARY_EDGES = 5000;
 
 struct RepairSetting
 {
+
     std::size_t max_hole_edges = MAX_REPAIRABLE_MESH_HOLE_EDGES;
+
+
     std::size_t max_boundary_edges = MAX_REPAIRABLE_MESH_BOUNDARY_EDGES;
 };
 
@@ -40,6 +54,8 @@ struct BoundaryEdgeStats
     std::size_t max_cycle_edges      = 0;
     std::size_t cycle_count          = 0;
 };
+
+
 
 inline BoundaryEdgeStats ComputeBoundaryEdgeStats(const cgalutils::CGALMesh& cgal_mesh)
 {
@@ -64,6 +80,9 @@ inline BoundaryEdgeStats ComputeBoundaryEdgeStats(const cgalutils::CGALMesh& cga
     }
     return stats;
 }
+
+
+
 
 inline void CloseBoundariesAndRepairManifoldness(cgalutils::CGALMesh& cgal_mesh)
 {
@@ -100,6 +119,7 @@ inline bool RepairMesh(const TriMesh& mesh,
     };
 
     const Clock::time_point t_total = Clock::now();
+
 
     std::vector<cgalutils::Kernel::Point_3> soup_points;
     std::vector<std::vector<std::size_t>> soup_triangles;
@@ -172,6 +192,10 @@ inline bool RepairMesh(const TriMesh& mesh,
     if (cancel_callback && cancel_callback()) {
         return false;
     }
+
+
+
+
 
     BoundaryEdgeStats stats;
     {

@@ -23,6 +23,9 @@ bool color_is_equal(const RGBA a, const RGBA& b)
     }
     return true;
 }
+
+
+
 static void RGBtoHSV(float r, float g, float b, float& h, float& s, float& v)
 {
 	assert(0.0f <= r && r <= 1.0f);
@@ -56,6 +59,9 @@ static void RGBtoHSV(float r, float g, float b, float& h, float& s, float& v)
 	assert(0.0f <= v && v <= 1.0f);
 	assert(0.0f <= h && h <= 360.0f);
 }
+
+
+
 
 static void HSVtoRGB(float h, float s, float v, float& r, float& g, float& b)
 {
@@ -396,7 +402,7 @@ std::string encode_color(const ColorRGB& color)
 }
 
 std::string encode_color(const ColorRGBA& color) { return encode_color(to_rgb(color)); }
- 
+
 ColorRGB to_rgb(const ColorRGBA& other_rgba) { return { other_rgba.r(), other_rgba.g(), other_rgba.b() }; }
 ColorRGBA to_rgba(const ColorRGB& other_rgb) { return { other_rgb.r(), other_rgb.g(), other_rgb.b(), 1.0f }; }
 ColorRGBA to_rgba(const ColorRGB& other_rgb, float alpha) { return { other_rgb.r(), other_rgb.g(), other_rgb.b(), alpha }; }
@@ -415,10 +421,13 @@ unsigned int picking_encode(unsigned char r, unsigned char g, unsigned char b) {
 
 unsigned char picking_checksum_alpha_channel(unsigned char red, unsigned char green, unsigned char blue)
 {
+
 	unsigned char b = ((((37 * red) + green) & 0x0ff) * 37 + blue) & 0x0ff;
+
 	b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
 	b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
 	b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+
 	b ^= 0x55;
 	return b;
 }

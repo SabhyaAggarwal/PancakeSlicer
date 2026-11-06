@@ -27,6 +27,7 @@ function nozzleKnown(value: unknown): boolean {
   const values = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[,;]/) : [value];
   return values.length > 0 && values.every(v => (typeof v === 'number' || typeof v === 'string' && v.trim() !== '') && Number.isFinite(Number(v)) && Number(v) > 0);
 }
+
 export function deriveMethodAvailability(context: MethodContext): MethodAvailabilityResult {
   const config = context.printer.config, engine = context.engine, artifact = engine.artifact_manifest;
   const kinematics = String(config.nonplanar_kinematics ?? 'unknown');
@@ -64,6 +65,7 @@ export function methodSelectionProblem(result: MethodAvailabilityResult, config:
       reason: method?.reason ?? 'The saved method is not supported by this printer and engine.', recovery: method?.recovery ?? 'change_method' };
   }
 }
+
 export const isRetiredSetting = (key: string) => key.startsWith('nonplanar_oneshot_');
 export function isMethodSettingSupported(key: string, config: Config, result: MethodAvailabilityResult): boolean {
   if (key === 'nonplanar_mode') return true;

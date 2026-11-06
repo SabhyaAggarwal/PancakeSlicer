@@ -18,7 +18,19 @@ namespace Slic3r {
 namespace orientation {
 
 
+
+
+
 static const constexpr int UNORIENTD = -1;
+
+
+
+
+
+
+
+
+
 
 struct OrientMesh {
     TriangleMesh mesh;
@@ -35,13 +47,18 @@ struct OrientMesh {
     Vec3d euler_angles_vertical = {0, 0, 0};
     Vec3d cooling_direction = {0, 0, 0};
     bool has_cooling_fan{false};
+
+
     bool nonplanar{false};
     Nonplanar::OrientParams nonplanar_params;
+
     std::string nonplanar_decision;
 
     std::string name;
 
+
     std::function<void(const OrientMesh&)> setter = nullptr;
+
 
     void apply() const { if (setter) setter(*this); }
 
@@ -82,9 +99,13 @@ struct OrientParams {
     bool  min_volume         { false };
     Eigen::Vector3f fun_dir  {};
 
+
     bool parallel { false };
 
+
+
     std::function<void(unsigned, std::string)> progressind {};
+
 
     std::function<bool(void)> stopcondition {};
 
@@ -93,11 +114,21 @@ struct OrientParams {
 
 using OrientMeshs = std::vector<OrientMesh>;
 
+
+
+
+
+
+
+
 void orient(OrientMeshs &items, const OrientMeshs &excludes, const OrientParams &params = {});
+
 
 void orient(ModelObject* obj);
 
 void orient(ModelInstance* instance);
+
+
 
 struct CandidateScore {
     Vec3d  up{0, 0, 1};
@@ -110,6 +141,7 @@ struct CandidateScore {
     double float_volume{0};
     Vec3d  size{0, 0, 0};
 };
+
 
 std::vector<CandidateScore> score_candidates(const TriangleMesh &mesh, double overhang_angle);
 

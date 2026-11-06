@@ -36,6 +36,7 @@ static cv::Mat decode_texture_image(const TextureImage& img) {
     if (img.data.empty())
         return {};
 
+
     if (img.width <= 0 || img.height <= 0) {
         std::vector<unsigned char> buf(img.data.begin(), img.data.end());
         cv::Mat raw(1, static_cast<int>(buf.size()), CV_8UC1, buf.data());
@@ -135,6 +136,16 @@ static void extract_painted_mesh(
     painted.cluster_colors.assign(unique_colors.begin(), unique_colors.end());
 }
 
+
+
+
+
+
+
+
+
+
+
 static bool build_multi_texture_atlas(
     const TexturedMesh& textured,
     cv::Mat& out_atlas,
@@ -158,6 +169,7 @@ static bool build_multi_texture_atlas(
         return ti;
     };
 
+
     int atlas_w = 0;
     int atlas_h = 0;
     std::vector<int> y_offsets(decoded.size(), 0);
@@ -171,6 +183,9 @@ static bool build_multi_texture_atlas(
     }
     if (atlas_w == 0 || atlas_h == 0)
         return false;
+
+
+
 
     std::map<int, int>                 mat_solid_y;
     std::map<int, std::array<float,4>> mat_solid_color;
@@ -192,6 +207,7 @@ static bool build_multi_texture_atlas(
     }
     for (const auto& kv : mat_solid_color) {
         const auto& c = kv.second;
+
         out_atlas.at<cv::Vec3b>(mat_solid_y[kv.first], 0) = cv::Vec3b(
             static_cast<uchar>(std::clamp(c[2] * 255.f, 0.f, 255.f)),
             static_cast<uchar>(std::clamp(c[1] * 255.f, 0.f, 255.f)),
@@ -202,6 +218,7 @@ static bool build_multi_texture_atlas(
     for (size_t fi = 0; fi < nf; ++fi) {
         const int mat_idx = (fi < textured.material_ids.size()) ? textured.material_ids[fi] : -1;
         const int tex_idx = resolve_tex_idx(mat_idx);
+
 
         int  y_off = 0, x_off = 0, th = atlas_h, tw = atlas_w;
         bool use_solid = false;
@@ -215,6 +232,11 @@ static bool build_multi_texture_atlas(
             tw        = 1;
             use_solid = true;
         } else if (first_usable_tex >= 0) {
+
+
+
+
+
             y_off = y_offsets[first_usable_tex];
             th    = decoded[first_usable_tex].rows;
             tw    = decoded[first_usable_tex].cols;
@@ -237,10 +259,17 @@ static bool build_multi_texture_atlas(
                 }
             }
             if (use_solid) {
+
+
                 const float u_atlas = (x_off + 0.5f) / static_cast<float>(atlas_w);
                 const float v_atlas = (y_off + 0.5f) / static_cast<float>(atlas_h);
                 out_uv_coords[fi][vi] = Vec2f(u_atlas, v_atlas);
             } else {
+
+
+
+
+
                 u = u - std::floor(u);
                 v = v - std::floor(v);
                 const float u_atlas = (x_off + u * tw) / static_cast<float>(atlas_w);
@@ -271,6 +300,7 @@ bool texture_to_painting(
     if (multi_tex) {
         if (!build_multi_texture_atlas(textured, texture, uv_coords))
             return false;
+
         const size_t nv = textured.vertices.size();
         const size_t nf = textured.indices.size();
         input_mesh.vertices.resize(nv);
@@ -344,6 +374,7 @@ bool face_colors_to_painting(
     if (mesh.vertices.empty() || mesh.indices.empty() || mesh.precomputed_face_colors.empty())
         return false;
 
+
     tex2color::TriMesh input_mesh;
     input_mesh.vertices.resize(mesh.vertices.size());
     for (size_t i = 0; i < mesh.vertices.size(); ++i)
@@ -351,6 +382,7 @@ bool face_colors_to_painting(
     input_mesh.indices.resize(mesh.indices.size());
     for (size_t i = 0; i < mesh.indices.size(); ++i)
         input_mesh.indices[i] = Vec3i32(mesh.indices[i][0], mesh.indices[i][1], mesh.indices[i][2]);
+
 
     tex2color::TextureToColorSettings algo_settings;
     algo_settings.target_colors_num = settings.target_colors_num;
@@ -411,7 +443,7 @@ double compute_delta_e(
 std::vector<FilamentMatch> match_clusters_to_filaments(
     const std::vector<std::array<std::size_t,3>>& cluster_colors,
     const std::vector<std::array<float,4>>& filament_colors,
-    const std::vector<std::string>& )
+    const std::vector<std::string>&  )
 {
     std::vector<FilamentMatch> matches(cluster_colors.size());
 
@@ -465,6 +497,28 @@ bool apply_painted_mesh_to_volume(
 
     TriangleMesh new_mesh(std::move(its));
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     Vec3d mesh_offset = volume.source.mesh_offset;
     double unit_scale = 1.0;
     if (volume.source.is_converted_from_meters)
@@ -477,6 +531,9 @@ bool apply_painted_mesh_to_volume(
     if (!mesh_offset.isApprox(Vec3d::Zero()))
         new_mesh.translate(-mesh_offset.cast<float>());
     new_mesh.set_init_shift(mesh_offset);
+
+
+
 
     if (!new_mesh.empty() && !volume.mesh().empty()) {
         const Vec3d new_center = new_mesh.bounding_box().center();
@@ -500,8 +557,19 @@ bool apply_painted_mesh_to_volume(
     volume.set_mesh(std::move(new_mesh));
     volume.calculate_convex_hull();
 
+
+
+
+
+
+
     volume.center_geometry_after_creation(false);
     volume.invalidate_convex_hull_2d();
+
+
+
+
+
 
     volume.supported_facets.reset();
     volume.fuzzy_skin_facets.reset();
@@ -535,6 +603,7 @@ bool decode_texture_to_pixels(
     if (decoded.empty())
         return false;
 
+
     out_w = decoded.cols;
     out_h = decoded.rows;
     size_t nbytes = (size_t)out_w * out_h * 3;
@@ -548,6 +617,7 @@ bool decode_texture_to_pixels(
     }
     return true;
 }
+
 
 static std::array<std::size_t,3> sample_face_from_uvs(
     const cv::Mat& tex,
@@ -592,6 +662,7 @@ static std::array<std::size_t,3> sample_face_from_uvs(
     return color;
 }
 
+
 static std::array<std::size_t,3> sample_face_from_texture(
     const cv::Mat& tex,
     const std::vector<std::array<float,2>>& uvs,
@@ -610,6 +681,7 @@ bool sample_original_face_colors(
 {
     if (textured.indices.empty())
         return false;
+
 
     std::vector<cv::Mat> decoded_textures;
     decoded_textures.reserve(textured.textures.size());
@@ -648,6 +720,7 @@ bool sample_original_face_colors(
             }
         } else if (has_mapping && mat_idx >= 0
                    && static_cast<size_t>(mat_idx) < textured.material_colors.size()) {
+
             const auto& c = textured.material_colors[mat_idx];
             out_face_colors[fi] = {
                 static_cast<std::size_t>(std::clamp(c[0] * 255.f, 0.f, 255.f)),

@@ -117,9 +117,14 @@ void blend_rim(ExtrusionPath &path, const PrintObject &object)
             [](double height, const Layer *l) { return height < l->slice_z; });
         return layer == layers.begin() ? layers.front()->print_z : (*std::prev(layer))->print_z;
     };
+
+
+
     std::vector<std::pair<double, double>> events{{0., level_at(unscale<double>(original.front().z()))}};
     for (size_t i = 1; i < original.size(); ++i) {
         const double a = unscale<double>(original[i - 1].z()), b = unscale<double>(original[i].z());
+
+
         events.emplace_back(arc[i - 1], level_at(a + (b > a ? 1e-7 : b < a ? -1e-7 : 0.)));
         if (a == b) continue;
         auto layer = std::lower_bound(layers.begin(), layers.end(), std::min(a, b),
@@ -199,6 +204,10 @@ ExtrusionPaths flow_pieces(const ExtrusionPath &p, const Points3 &points, const 
     return out;
 }
 
+
+
+
+
 bool lift_rim(ExtrusionPath &path, const NonplanarClearanceModel &head)
 {
     auto &points = path.polyline.points;
@@ -275,6 +284,9 @@ bool lift_rim(ExtrusionPath &path, const NonplanarClearanceModel &head)
     points.back() = points.front();
     return true;
 }
+
+
+
 
 bool ramp_inset(ExtrusionEntityCollection &inset, const ExtrusionEntityCollection &rim,
                 const NonplanarClearanceModel &head)
@@ -367,6 +379,8 @@ bool ramp_inset(ExtrusionEntityCollection &inset, const ExtrusionEntityCollectio
                 const double original_z = unscale<double>(Point3::new_scale(q).z());
                 q.z() = blend_height(q, p.width);
                 const double height = required(q);
+
+
                 if (k > 0 && k < count && std::abs(height - original_z) < 1e-6 && !near_rim(q.head<2>())) continue;
                 points.emplace_back(Point3::new_scale(q));
                 nominal.push_back(original_z);
@@ -418,6 +432,8 @@ ExPolygons smooth_curved_top_footprint(const ExPolygons &area, double max_inset_
         const Points original = points;
         const int n = int(points.size());
         const int radius = std::clamp(int(std::lround(scale_(max_inset_mm) / pitch)), 1, n / 4);
+
+
         for (int pass = 0; pass < 2; ++pass) {
             Points filtered;
             for (int i = 0; i < n; ++i) {
@@ -460,6 +476,8 @@ ExPolygons smooth_curved_top_footprint(const ExPolygons &area, double max_inset_
         }
         BOOST_LOG_TRIVIAL(info) << "Curved top footprint: smoothed, factor " << low << "; filter displacement "
             << unscale<double>(displacement) << " mm, reach " << unscale<double>(reach) << " mm";
+
+
         append(out, intersection_ex(ExPolygons{fitted(low)}, ExPolygons{part}, ApplySafetyOffset::No));
     }
     return out;
@@ -519,6 +537,9 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
         const Flow flow = cap.home->flow(frExternalPerimeter);
         const double inset = .5 * flow.width();
         const ExPolygons area = union_ex(cap.area);
+
+
+
         const Vec2d cap_size = unscale(get_extents(area).size());
         const int transition_rings = std::max(2, int(.04 * cap_size.minCoeff() / flow.spacing()));
         const ExPolygons inside = offset_ex(area, -scale_(inset + transition_rings * flow.spacing() + .3 * flow.width()));
@@ -550,6 +571,9 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
                     }
                     fills->entities.push_back(new ExtrusionPath(std::move(line), source));
                 }
+
+
+
         for (int ring = 1; ring <= transition_rings; ++ring)
             for (const Polygon &polygon : to_polygons(offset_ex(area, -scale_(inset + ring * flow.spacing())))) {
                 ExtrusionPath p(erTopSolidInfill, flow.mm3_per_mm(), flow.width(), flow.height());
@@ -561,6 +585,8 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
             }
         if (fills->entities.empty()) continue;
         region->fills.entities.push_back(fills.release());
+
+
         {
             auto loop = std::make_unique<ExtrusionEntityCollection>();
             loop->no_sort = true;
@@ -593,6 +619,9 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
             collection->entities.clear();
             safe &= !loops.empty();
             for (auto &p : loops) {
+
+
+
                 if (same_projected_point(p.polyline.points.front(), p.polyline.points.back()))
                     p.polyline.points.back() = p.polyline.points.front();
                 const auto mesh_points = p.polyline.points;
@@ -604,6 +633,8 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
                         << ": points " << p.polyline.points.size() << " closed " << closed << " clear " << clear
                         << " gap " << unscale(Vec3crd(p.polyline.points.back() - p.polyline.points.front())).norm();
                 safe &= clear;
+
+
                 std::vector<double> nominal;
                 for (const Point3 &q : mesh_points) nominal.push_back(unscale<double>(q.z()));
                 auto connected = std::make_unique<ExtrusionMultiPath>();

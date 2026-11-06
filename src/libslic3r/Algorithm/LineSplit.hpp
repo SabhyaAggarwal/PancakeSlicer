@@ -16,7 +16,12 @@ struct SplitLineJunction
 {
     Point p;
 
+
     bool clipped;
+
+
+
+
 
     int64_t src_idx;
 
@@ -40,12 +45,14 @@ using SplittedLine = std::vector<SplitLineJunction>;
 
 SplittedLine do_split_line(const ClipperZUtils::ZPath& path, const ExPolygons& clip, bool closed);
 
+
 template<class PathType>
 SplittedLine split_line(const PathType& path, const ExPolygons& clip, bool closed)
 {
     if (path.empty()) {
         return {};
     }
+
 
     ClipperZUtils::ZPath p;
     p.reserve(path.size() + (closed ? 1 : 0));
@@ -55,6 +62,7 @@ SplittedLine split_line(const PathType& path, const ExPolygons& clip, bool close
         z++;
     }
     if (closed) {
+
         p.emplace_back(p.front());
         p.back().z() = z;
     }

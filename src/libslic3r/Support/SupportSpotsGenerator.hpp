@@ -20,7 +20,7 @@ struct Params
 {
     Params(
         const std::vector<std::string> &filament_types , int raft_layers_count, BrimType brim_type, float brim_width)
-        : raft_layers_count(raft_layers_count), brim_type(brim_type), brim_width(brim_width)
+        :  raft_layers_count(raft_layers_count), brim_type(brim_type), brim_width(brim_width)
     {
         if (filament_types.size() > 1) {
             BOOST_LOG_TRIVIAL(debug)
@@ -35,7 +35,10 @@ struct Params
         }
     }
 
+
     const float bridge_distance = 16.0f;
+
+
     const int raft_layers_count;
     std::string filament_type;
 
@@ -56,6 +59,8 @@ struct Params
     const double material_yield_strength = 33.0f * 1e6f;
     const float standard_extruder_conflict_force = 10.0f * gravity_constant;
     const float malformations_additive_conflict_extruder_force = 65.0f * gravity_constant;
+
+
     double get_bed_adhesion_yield_strength() const {
         if (raft_layers_count > 0) {
             return get_support_spots_adhesion_strength() * 2.0;
@@ -67,14 +72,14 @@ struct Params
     }
 
     double get_support_spots_adhesion_strength() const {
-         return 0.016f * 1e6; 
+         return 0.016f * 1e6;
     }
 };
 
 void estimate_malformations(std::vector<Layer *> &layers, const Params &params);
 
 
-enum class SupportPointCause { 
+enum class SupportPointCause {
     LongBridge,
     FloatingBridgeAnchor,
     FloatingExtrusion,
@@ -82,6 +87,73 @@ enum class SupportPointCause {
     UnstableFloatingPart,
     WeakObjectPart
     };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }}
 

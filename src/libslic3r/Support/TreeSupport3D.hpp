@@ -25,7 +25,11 @@
 namespace Slic3r { class TreeSupport; }
 
 
+
+
 #ifdef SLIC3R_TREESUPPORTS_PROGRESS
+
+
     #define TREE_PROGRESS_TOTAL 10000
     #define TREE_PROGRESS_PRECALC_COLL TREE_PROGRESS_TOTAL * 0.1
     #define TREE_PROGRESS_PRECALC_AVO TREE_PROGRESS_TOTAL * 0.4
@@ -40,6 +44,7 @@ namespace Slic3r { class TreeSupport; }
 namespace Slic3r
 {
 
+
 class Print;
 class PrintObject;
 struct SlicingParameters;
@@ -51,11 +56,12 @@ namespace TreeSupport3D
 struct AreaIncreaseSettings
 {
     AreaIncreaseSettings(
-        TreeModelVolumes::AvoidanceType type = TreeModelVolumes::AvoidanceType::Fast, coord_t increase_speed = 0, 
+        TreeModelVolumes::AvoidanceType type = TreeModelVolumes::AvoidanceType::Fast, coord_t increase_speed = 0,
         bool increase_radius = false, bool no_error = false, bool use_min_distance = false, bool move = false) :
         increase_speed{ increase_speed }, type{ type }, increase_radius{ increase_radius }, no_error{ no_error }, use_min_distance{ use_min_distance }, move{ move } {}
 
     coord_t         increase_speed;
+
     TreeModelVolumes::AvoidanceType type;
     bool            increase_radius  : 1;
     bool            no_error         : 1;
@@ -74,6 +80,7 @@ struct AreaIncreaseSettings
 
 #define TREE_SUPPORTS_TRACK_LOST
 
+
 struct SupportElementStateBits {
     SupportElementStateBits() :
         to_buildplate(false),
@@ -90,23 +97,45 @@ struct SupportElementStateBits {
         marked(false)
         {}
 
+
+
+
     bool to_buildplate : 1;
+
+
+
 
     bool to_model_gracious : 1;
 
+
+
+
     bool use_min_xy_dist : 1;
+
+
+
 
     bool supports_roof : 1;
 
+
+
+
     bool can_use_safe_radius : 1;
+
+
+
 
     bool skip_ovalisation : 1;
 
 #ifdef TREE_SUPPORTS_TRACK_LOST
+
     bool lost : 1;
     bool verylost : 1;
 #endif
+
+
     bool deleted : 1;
+
 
     bool marked : 1;
 };
@@ -117,29 +146,70 @@ struct SupportElementState : public SupportElementStateBits
     coordf_t radius = 0;
     float print_z = 0;
 
+
+
+
     LayerIndex  target_height;
+
+
+
 
     Point       target_position;
 
+
+
+
     Point       next_position;
+
+
+
 
     LayerIndex  layer_idx;
 
+
+
+
     uint32_t    effective_radius_height;
 
+
+
+
     uint32_t    distance_to_top;
+
+
+
+
 
     Point result_on_layer { std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max() };
     bool  result_on_layer_is_set() const { return this->result_on_layer != Point{ std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max() }; }
     void  result_on_layer_reset() { this->result_on_layer = Point{ std::numeric_limits<coord_t>::max(), std::numeric_limits<coord_t>::max() }; }
+
+
+
     coord_t     increased_to_model_radius;
+
+
+
+
     double      elephant_foot_increases;
+
+
+
 
     uint32_t    dont_move_until;
 
+
+
+
     AreaIncreaseSettings last_area_increase;
 
+
+
+
     uint32_t    missing_roof_layers = 0;
+
+
+
 
     uint32_t    roof_recovery_dtt = 0;
 
@@ -148,6 +218,7 @@ struct SupportElementState : public SupportElementStateBits
         this->missing_roof_layers = pending_layers;
         this->roof_recovery_dtt = pending_layers > 0 ? recovery_depth : 0;
     }
+
 
     [[nodiscard]] static SupportElementState propagate_down(const SupportElementState &src)
     {
@@ -158,6 +229,7 @@ struct SupportElementState : public SupportElementStateBits
             -- dst.missing_roof_layers;
             ++ dst.roof_recovery_dtt;
         }
+
         dst.result_on_layer_reset();
         dst.skip_ovalisation = false;
         return dst;
@@ -167,17 +239,32 @@ struct SupportElementState : public SupportElementStateBits
     [[nodiscard]] bool has_pending_roof_recovery() const { return this->missing_roof_layers > 0; }
 };
 
+
+
+
+
+
 [[nodiscard]] inline size_t getEffectiveDTT(const TreeSupportSettings &settings, const SupportElementState &elem)
 {
-    return elem.effective_radius_height < settings.increase_radius_until_layer ? 
-        (elem.distance_to_top < settings.increase_radius_until_layer ? elem.distance_to_top : settings.increase_radius_until_layer) : 
+    return elem.effective_radius_height < settings.increase_radius_until_layer ?
+        (elem.distance_to_top < settings.increase_radius_until_layer ? elem.distance_to_top : settings.increase_radius_until_layer) :
         elem.effective_radius_height;
 }
 
+
+
+
+
+
 [[nodiscard]] inline coord_t support_element_radius(const TreeSupportSettings &settings, const SupportElementState &elem)
-{ 
+{
     return settings.getRadius(getEffectiveDTT(settings, elem), elem.elephant_foot_increases);
 }
+
+
+
+
+
 
 [[nodiscard]] inline coord_t support_element_collision_radius(const TreeSupportSettings &settings, const SupportElementState &elem)
 {
@@ -188,17 +275,28 @@ struct SupportElement
 {
     using ParentIndices =
 #ifdef NDEBUG
+
         boost::container::small_vector<int32_t, 4>;
 #else
+
         std::vector<int32_t>;
 #endif
+
+
     SupportElement(const SupportElementState &state, Polygons &&influence_area) : state(state), influence_area(std::move(influence_area)) {}
     SupportElement(const SupportElementState &state, ParentIndices &&parents, Polygons &&influence_area) :
         state(state), parents(std::move(parents)), influence_area(std::move(influence_area)) {}
 
     SupportElementState         state;
 
+
+
+
     ParentIndices               parents;
+
+
+
+
 
     Polygons                    influence_area;
 };
@@ -215,15 +313,18 @@ using SupportElements = std::deque<SupportElement>;
     return support_element_collision_radius(settings, elem.state);
 }
 
+
 void organic_draw_branches(
     PrintObject                     &print_object,
-    TreeModelVolumes                &volumes, 
+    TreeModelVolumes                &volumes,
     const TreeSupportSettings       &config,
     std::vector<SupportElements>    &move_bounds,
+
 
     SupportGeneratorLayersPtr       &bottom_contacts,
     SupportGeneratorLayersPtr       &top_contacts,
     InterfacePlacer                 &interface_placer,
+
 
     SupportGeneratorLayersPtr       &intermediate_layers,
     SupportGeneratorLayerStorage    &layer_storage,

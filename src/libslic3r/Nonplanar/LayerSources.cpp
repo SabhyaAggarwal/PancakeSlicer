@@ -37,9 +37,13 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
+
 constexpr double ConeAngle = 15.;
+
 constexpr double TargetWeight = 1000.;
+
 constexpr double CappedOff = 0.05;
+
 
 double sample_clamped(const HeightField &f, const Vec2d &xy)
 {
@@ -51,6 +55,8 @@ double sample_clamped(const HeightField &f, const Vec2d &xy)
     return (1. - ty) * ((1. - tx) * f.at(ix, iy) + tx * f.at(jx, iy)) + ty * ((1. - tx) * f.at(ix, jy) + tx * f.at(jx, jy));
 }
 
+
+
 struct SourceParams
 {
     double h, first, nozzle;
@@ -58,6 +64,7 @@ struct SourceParams
     double cap;
     double min_ratio;
     double max_ratio;
+
     double ka() const { return 1. / min_ratio - 1.; }
     double kb() const { return 1. - 1. / max_ratio; }
 };
@@ -76,6 +83,8 @@ SourceParams source_params(const PrintObject &object)
     return P;
 }
 
+
+
 HeightField top_of(const indexed_triangle_set &mesh, double margin)
 {
     BoundingBoxf3 bb;
@@ -93,6 +102,7 @@ HeightField top_of(const indexed_triangle_set &mesh, double margin)
     return T;
 }
 
+
 std::pair<double, double> range_over(const HeightField &S, const std::vector<char> &foot)
 {
     double lo = Inf, hi = -Inf;
@@ -101,6 +111,9 @@ std::pair<double, double> range_over(const HeightField &S, const std::vector<cha
             lo = std::min(lo, double(S.data()[n])), hi = std::max(hi, double(S.data()[n]));
     return lo <= hi ? std::make_pair(lo, hi) : std::make_pair(0., 0.);
 }
+
+
+
 
 HeightField solve_surface(const HeightField &T, const std::vector<int> &comp, int ncomp, const std::vector<double> *fixed,
                           std::vector<double> &zc)
@@ -146,6 +159,7 @@ HeightField solve_surface(const HeightField &T, const std::vector<int> &comp, in
         tr.emplace_back(Eigen::Index(N) + c, Eigen::Index(N) + c, 1e-6);
     Eigen::SparseMatrix<double> A(Eigen::Index(N) + nz, Eigen::Index(N) + nz);
     A.setFromTriplets(tr.begin(), tr.end());
+
     double mean = 0.;
     size_t cnt  = 0;
     for (float v : T.data())
@@ -174,6 +188,7 @@ HeightField solve_surface(const HeightField &T, const std::vector<int> &comp, in
     }
     return S;
 }
+
 
 int label_components(const HeightField &T, const std::vector<char> &target, double cap, std::vector<int> &comp)
 {
@@ -207,6 +222,9 @@ int label_components(const HeightField &T, const std::vector<char> &target, doub
     return ncomp;
 }
 
+
+
+
 std::pair<double, double> ramp_of(double lo, double hi, bool balanced, const SourceParams &P)
 {
     if (!balanced)
@@ -214,6 +232,8 @@ std::pair<double, double> ramp_of(double lo, double hi, bool balanced, const Sou
     const double ramp = std::max((hi - lo) / (P.ka() + P.kb()), P.h);
     return { -lo - P.ka() * ramp, ramp };
 }
+
+
 
 std::unique_ptr<OffsetLayerField> offset_field(HeightField S, const std::vector<char> &foot, double shift, double top_z,
                                                const SourceParams &P, std::string *why)
@@ -231,6 +251,9 @@ std::unique_ptr<OffsetLayerField> offset_field(HeightField S, const std::vector<
     }
     return std::make_unique<OffsetLayerField>(std::move(S), P.z0, ramp);
 }
+
+
+
 
 std::vector<std::pair<double, double>> band_steps(const HeadEnvelope &head, const SourceParams &P)
 {
@@ -252,6 +275,8 @@ std::vector<std::pair<double, double>> band_steps(const HeadEnvelope &head, cons
     return steps;
 }
 
+
+
 struct QuickCurveSurface
 {
     HeightField       S;
@@ -265,6 +290,8 @@ QuickCurveSurface quickcurve_surface(const HeightField &T, const std::vector<cha
 {
     const HeightField Tcap = slope_cap_minorant(T, std::atan(cap));
     const size_t      N    = T.data().size();
+
+
     auto targets = [&](double z_f) {
         std::vector<char> t(N, 0);
         for (int iy = 1; iy + 1 < T.ny(); ++iy)
@@ -294,11 +321,14 @@ QuickCurveSurface quickcurve_surface(const HeightField &T, const std::vector<cha
         const auto [lo, hi] = range_over(out.S, foot);
         z_f                 = P.z0 + ramp_of(lo, hi, balanced, P).second + P.h;
     }
+
     const auto [lo, hi] = range_over(out.S, foot);
     out.shift           = ramp_of(lo, hi, balanced, P).first;
     for (double &z : zc)
         z = -(P.first + P.h * std::round((-z - out.shift - P.first) / P.h)) - out.shift;
     out.S = slope_cap_minorant(solve_surface(T, comp, out.components, &zc, zc), std::atan(cap));
+
+
     const double tan_min = std::tan(Geometry::deg2rad(1.));
     for (size_t n = 0; n < N; ++n)
         if (out.target[n] && T.gradient(T.node(int(n % size_t(T.nx())), int(n / size_t(T.nx())))).norm() >= tan_min) {
@@ -322,6 +352,10 @@ std::unique_ptr<LayerField> build_quickcurve(const PrintObject &object, const in
             top_z   = std::max(top_z, double(t));
             top_area += T.pitch() * T.pitch();
         }
+
+
+
+
     const HeadEnvelope                           head  = resolve_head_envelope(object.print()->config());
     const std::vector<std::pair<double, double>> steps = band_steps(head, P);
     struct Candidate { double cap, band; bool balanced; };
@@ -330,6 +364,7 @@ std::unique_ptr<LayerField> build_quickcurve(const PrintObject &object, const in
     double                         best = 0.;
     for (size_t i = 0; i < steps.size(); ++i)
         for (const bool balanced : { false, true }) {
+
             const double cap = i + 1 == steps.size() || !balanced ? steps[i].first : steps[i].first / P.max_ratio;
             candidates.push_back({ cap, steps[i].second, balanced });
             surfaces.push_back(quickcurve_surface(T, foot, P, cap, balanced));
@@ -393,6 +428,9 @@ std::unique_ptr<LayerField> build_conical(const indexed_triangle_set &mesh, cons
     return field;
 }
 
+
+
+
 class SolvedLayerField final : public LayerField
 {
 public:
@@ -424,6 +462,7 @@ std::unique_ptr<LayerField> build_optimized(const PrintObject &object, const ind
     BOOST_LOG_TRIVIAL(info) << "Optimized layer field " << object.model_object()->name << ": " << report.solve_seconds << " s, conformal top "
                             << report.planar.conformal_top << " -> " << report.field.conformal_top << ", overhang " << report.planar.overhang_area
                             << " -> " << report.field.overhang_area << " mm2";
+
     double dev = 0.;
     for (int k = 0; k < f.levels(); ++k)
         for (size_t n = 0; n < size_t(f.nx()) * f.ny(); ++n)
@@ -457,6 +496,7 @@ double OffsetLayerField::z_at(const Vec2d &xy, double level) const
     const double s = this->s(xy);
     if (level >= m_z0 + m_ramp - s)
         return level + s;
+
     return (level - s * m_z0 / m_ramp) / (1. - s / m_ramp);
 }
 
@@ -481,6 +521,9 @@ double OffsetLayerField::max_slope_near(const Vec2d &xy, double level) const
     const int  cx = int(std::floor((xy.x() - m_S.origin().x()) / m_S.pitch()));
     const int  cy = int(std::floor((xy.y() - m_S.origin().y()) / m_S.pitch()));
     const auto at = [this](int ix, int iy) { return double(m_S.at(std::clamp(ix, 0, m_S.nx() - 1), std::clamp(iy, 0, m_S.ny() - 1))); };
+
+
+
     double g = 0., s_max = -Inf;
     for (int iy = cy - 1; iy <= cy + 1; ++iy)
         for (int ix = cx - 1; ix <= cx + 1; ++ix) {

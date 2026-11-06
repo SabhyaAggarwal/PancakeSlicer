@@ -6,7 +6,6 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Parameters for the Brotli encoder with chosen quality levels. */
 type hasherParams struct {
 	type_                       int
 	bucket_bits                 int
@@ -22,7 +21,6 @@ type distanceParams struct {
 	max_distance              uint
 }
 
-/* Encoding parameters */
 type encoderParams struct {
 	mode                             int
 	quality                          int

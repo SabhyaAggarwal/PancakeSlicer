@@ -21,12 +21,12 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 #ifndef __GMP_H__
 
 #if defined (__cplusplus)
-#include <iosfwd>   /* for std::istream, std::ostream, std::string */
+#include <iosfwd>
 #include <cstdio>
 #endif
 
 
-/* Instantiated by configure. */
+
 #if ! defined (__GMP_WITHIN_CONFIGURE)
 #define __GMP_HAVE_HOST_CPU_FAMILY_power   0
 #define __GMP_HAVE_HOST_CPU_FAMILY_powerpc 0
@@ -39,51 +39,51 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 #define GMP_NAIL_MASK     (~ GMP_NUMB_MASK)
 
 
-/* The following (everything under ifndef __GNU_MP__) must be identical in
-   gmp.h and mp.h to allow both to be included in an application or during
-   the library build.  */
+
+
+
 #ifndef __GNU_MP__
 #define __GNU_MP__ 5
 
-#define __need_size_t  /* tell gcc stddef.h we only want size_t */
+#define __need_size_t
 #if defined (__cplusplus)
-#include <cstddef>     /* for size_t */
+#include <cstddef>
 #else
-#include <stddef.h>    /* for size_t */
+#include <stddef.h>
 #endif
 #undef __need_size_t
 
-/* Instantiated by configure. */
+
 #if ! defined (__GMP_WITHIN_CONFIGURE)
 #define _LONG_LONG_LIMB 1
 #define __GMP_LIBGMP_DLL  1
 #endif
 
 
-/* __STDC__ - some ANSI compilers define this only to 0, hence the use of
-       "defined" and not "__STDC__-0".  In particular Sun workshop C 5.0
-       sets __STDC__ to 0, but requires "##" for token pasting.
 
-   _AIX - gnu ansidecl.h asserts that all known AIX compilers are ANSI but
-       don't always define __STDC__.
 
-   __DECC - current versions of DEC C (5.9 for instance) for alpha are ANSI,
-       but don't define __STDC__ in their default mode.  Don't know if old
-       versions might have been K&R, but let's not worry about that unless
-       someone is still using one.
 
-   _mips - gnu ansidecl.h says the RISC/OS MIPS compiler is ANSI in SVR4
-       mode, but doesn't define __STDC__.
 
-   _MSC_VER - Microsoft C is ANSI, but __STDC__ is undefined unless the /Za
-       option is given (in which case it's 1).
 
-   _WIN32 - tested for by gnu ansidecl.h, no doubt on the assumption that
-      all w32 compilers are ansi.
 
-   Note: This same set of tests is used by gen-psqr.c and
-   demos/expr/expr-impl.h, so if anything needs adding, then be sure to
-   update those too.  */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if  defined (__STDC__)                                 \
   || defined (__cplusplus)                              \
@@ -111,45 +111,45 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 #endif
 
 
-/* __GMP_DECLSPEC supports Windows DLL versions of libgmp, and is empty in
-   all other circumstances.
 
-   When compiling objects for libgmp, __GMP_DECLSPEC is an export directive,
-   or when compiling for an application it's an import directive.  The two
-   cases are differentiated by __GMP_WITHIN_GMP defined by the GMP Makefiles
-   (and not defined from an application).
 
-   __GMP_DECLSPEC_XX is similarly used for libgmpxx.  __GMP_WITHIN_GMPXX
-   indicates when building libgmpxx, and in that case libgmpxx functions are
-   exports, but libgmp functions which might get called are imports.
 
-   libmp.la uses __GMP_DECLSPEC, just as if it were libgmp.la.  libgmp and
-   libmp don't call each other, so there's no conflict or confusion.
 
-   Libtool DLL_EXPORT define is not used.
 
-   There's no attempt to support GMP built both static and DLL.  Doing so
-   would mean applications would have to tell us which of the two is going
-   to be used when linking, and that seems very tedious and error prone if
-   using GMP by hand, and equally tedious from a package since autoconf and
-   automake don't give much help.
 
-   __GMP_DECLSPEC is required on all documented global functions and
-   variables, the various internals in gmp-impl.h etc can be left unadorned.
-   But internals used by the test programs or speed measuring programs
-   should have __GMP_DECLSPEC, and certainly constants or variables must
-   have it or the wrong address will be resolved.
 
-   In gcc __declspec can go at either the start or end of a prototype.
 
-   In Microsoft C __declspec must go at the start, or after the type like
-   void __declspec(...) *foo()".  There's no __dllexport or anything to
-   guard against someone foolish #defining dllexport.  _export used to be
-   available, but no longer.
 
-   In Borland C _export still exists, but needs to go after the type, like
-   "void _export foo();".  Would have to change the __GMP_DECLSPEC syntax to
-   make use of that.  Probably more trouble than it's worth.  */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if defined (__GNUC__)
 #define __GMP_DECLSPEC_EXPORT  __declspec(__dllexport__)
@@ -170,14 +170,14 @@ along with the GNU MP Library.  If not, see http://www.gnu.org/licenses/.  */
 
 #if __GMP_LIBGMP_DLL
 #if __GMP_WITHIN_GMP
-/* compiling to go into a DLL libgmp */
+
 #define __GMP_DECLSPEC  __GMP_DECLSPEC_EXPORT
 #else
-/* compiling to go into an application which will link to a DLL libgmp */
+
 #define __GMP_DECLSPEC  __GMP_DECLSPEC_IMPORT
 #endif
 #else
-/* all other cases */
+
 #define __GMP_DECLSPEC
 #endif
 
@@ -196,29 +196,29 @@ typedef long int		mp_limb_signed_t;
 #endif
 typedef unsigned long int	mp_bitcnt_t;
 
-/* For reference, note that the name __mpz_struct gets into C++ mangled
-   function names, which means although the "__" suggests an internal, we
-   must leave this name for binary compatibility.  */
+
+
+
 typedef struct
 {
-  int _mp_alloc;		/* Number of *limbs* allocated and pointed
-				   to by the _mp_d field.  */
-  int _mp_size;			/* abs(_mp_size) is the number of limbs the
-				   last field points to.  If _mp_size is
-				   negative this is a negative number.  */
-  mp_limb_t *_mp_d;		/* Pointer to the limbs.  */
+  int _mp_alloc;
+
+  int _mp_size;
+
+
+  mp_limb_t *_mp_d;
 } __mpz_struct;
 
-#endif /* __GNU_MP__ */
+#endif
 
 
-typedef __mpz_struct MP_INT;    /* gmp 1 source compatibility */
+typedef __mpz_struct MP_INT;
 typedef __mpz_struct mpz_t[1];
 
 typedef mp_limb_t *		mp_ptr;
 typedef __gmp_const mp_limb_t *	mp_srcptr;
 #if defined (_CRAY) && ! defined (_CRAYMPP)
-/* plain `int' is much faster (48 bits) */
+
 #define __GMP_MP_SIZE_T_INT     1
 typedef int			mp_size_t;
 typedef int			mp_exp_t;
@@ -234,45 +234,45 @@ typedef struct
   __mpz_struct _mp_den;
 } __mpq_struct;
 
-typedef __mpq_struct MP_RAT;    /* gmp 1 source compatibility */
+typedef __mpq_struct MP_RAT;
 typedef __mpq_struct mpq_t[1];
 
 typedef struct
 {
-  int _mp_prec;			/* Max precision, in number of `mp_limb_t's.
-				   Set by mpf_init and modified by
-				   mpf_set_prec.  The area pointed to by the
-				   _mp_d field contains `prec' + 1 limbs.  */
-  int _mp_size;			/* abs(_mp_size) is the number of limbs the
-				   last field points to.  If _mp_size is
-				   negative this is a negative number.  */
-  mp_exp_t _mp_exp;		/* Exponent, in the base of `mp_limb_t'.  */
-  mp_limb_t *_mp_d;		/* Pointer to the limbs.  */
+  int _mp_prec;
+
+
+
+  int _mp_size;
+
+
+  mp_exp_t _mp_exp;
+  mp_limb_t *_mp_d;
 } __mpf_struct;
 
-/* typedef __mpf_struct MP_FLOAT; */
+
 typedef __mpf_struct mpf_t[1];
 
-/* Available random number generation algorithms.  */
+
 typedef enum
 {
   GMP_RAND_ALG_DEFAULT = 0,
-  GMP_RAND_ALG_LC = GMP_RAND_ALG_DEFAULT /* Linear congruential.  */
+  GMP_RAND_ALG_LC = GMP_RAND_ALG_DEFAULT
 } gmp_randalg_t;
 
-/* Random state struct.  */
+
 typedef struct
 {
-  mpz_t _mp_seed;	  /* _mp_d member points to state of the generator. */
-  gmp_randalg_t _mp_alg;  /* Currently unused. */
+  mpz_t _mp_seed;
+  gmp_randalg_t _mp_alg;
   union {
-    void *_mp_lc;         /* Pointer to function pointers structure.  */
+    void *_mp_lc;
   } _mp_algdata;
 } __gmp_randstate_struct;
 typedef __gmp_randstate_struct gmp_randstate_t[1];
 
-/* Types for function declarations in gmp files.  */
-/* ??? Should not pollute user name space with these ??? */
+
+
 typedef __gmp_const __mpz_struct *mpz_srcptr;
 typedef __mpz_struct *mpz_ptr;
 typedef __gmp_const __mpf_struct *mpf_srcptr;
@@ -281,18 +281,18 @@ typedef __gmp_const __mpq_struct *mpq_srcptr;
 typedef __mpq_struct *mpq_ptr;
 
 
-/* This is not wanted in mp.h, so put it outside the __GNU_MP__ common
-   section. */
+
+
 #if __GMP_LIBGMP_DLL
 #if __GMP_WITHIN_GMPXX
-/* compiling to go into a DLL libgmpxx */
+
 #define __GMP_DECLSPEC_XX  __GMP_DECLSPEC_EXPORT
 #else
-/* compiling to go into a application which will link to a DLL libgmpxx */
+
 #define __GMP_DECLSPEC_XX  __GMP_DECLSPEC_IMPORT
 #endif
 #else
-/* all other cases */
+
 #define __GMP_DECLSPEC_XX
 #endif
 
@@ -307,53 +307,53 @@ typedef __mpq_struct *mpq_ptr;
 #if __GMP_HAVE_TOKEN_PASTE
 #define __MPN(x) __gmpn_##x
 #else
-#define __MPN(x) __gmpn_/**/x
+#define __MPN(x) __gmpn_ x
 #endif
 #endif
 
-/* For reference, "defined(EOF)" cannot be used here.  In g++ 2.95.4,
-   <iostream> defines EOF but not FILE.  */
+
+
 #if defined (FILE)                                              \
   || defined (H_STDIO)                                          \
-  || defined (_H_STDIO)               /* AIX */                 \
-  || defined (_STDIO_H)               /* glibc, Sun, SCO */     \
-  || defined (_STDIO_H_)              /* BSD, OSF */            \
-  || defined (__STDIO_H)              /* Borland */             \
-  || defined (__STDIO_H__)            /* IRIX */                \
-  || defined (_STDIO_INCLUDED)        /* HPUX */                \
-  || defined (__dj_include_stdio_h_)  /* DJGPP */               \
-  || defined (_FILE_DEFINED)          /* Microsoft */           \
-  || defined (__STDIO__)              /* Apple MPW MrC */       \
-  || defined (_MSL_STDIO_H)           /* Metrowerks */          \
-  || defined (_STDIO_H_INCLUDED)      /* QNX4 */		\
-  || defined (_ISO_STDIO_ISO_H)       /* Sun C++ */
+  || defined (_H_STDIO)                                 \
+  || defined (_STDIO_H)                     \
+  || defined (_STDIO_H_)                           \
+  || defined (__STDIO_H)                            \
+  || defined (__STDIO_H__)                             \
+  || defined (_STDIO_INCLUDED)                         \
+  || defined (__dj_include_stdio_h_)                  \
+  || defined (_FILE_DEFINED)                      \
+  || defined (__STDIO__)                      \
+  || defined (_MSL_STDIO_H)                      \
+  || defined (_STDIO_H_INCLUDED)       		\
+  || defined (_ISO_STDIO_ISO_H)
 #define _GMP_H_HAVE_FILE 1
 #endif
 
-/* In ISO C, if a prototype involving "struct obstack *" is given without
-   that structure defined, then the struct is scoped down to just the
-   prototype, causing a conflict if it's subsequently defined for real.  So
-   only give prototypes if we've got obstack.h.  */
-#if defined (_OBSTACK_H)   /* glibc <obstack.h> */
+
+
+
+
+#if defined (_OBSTACK_H)
 #define _GMP_H_HAVE_OBSTACK 1
 #endif
 
-/* The prototypes for gmp_vprintf etc are provided only if va_list is
-   available, via an application having included <stdarg.h> or <varargs.h>.
-   Usually va_list is a typedef so can't be tested directly, but C99
-   specifies that va_start is a macro (and it was normally a macro on past
-   systems too), so look for that.
 
-   <stdio.h> will define some sort of va_list for vprintf and vfprintf, but
-   let's not bother trying to use that since it's not standard and since
-   application uses for gmp_vprintf etc will almost certainly require the
-   whole <stdarg.h> or <varargs.h> anyway.  */
+
+
+
+
+
+
+
+
+
 
 #ifdef va_start
 #define _GMP_H_HAVE_VA_LIST 1
 #endif
 
-/* Test for gcc >= maj.min, as per __GNUC_PREREQ in glibc */
+
 #if defined (__GNUC__) && defined (__GNUC_MINOR__)
 #define __GMP_GNUC_PREREQ(maj, min) \
   ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
@@ -361,11 +361,11 @@ typedef __mpq_struct *mpq_ptr;
 #define __GMP_GNUC_PREREQ(maj, min)  0
 #endif
 
-/* "pure" is in gcc 2.96 and up, see "(gcc)Function Attributes".  Basically
-   it means a function does nothing but examine its arguments and memory
-   (global or via arguments) to generate a return value, but changes nothing
-   and has no side-effects.  __GMP_NO_ATTRIBUTE_CONST_PURE lets
-   tune/common.c etc turn this off when trying to write timing loops.  */
+
+
+
+
+
 #if __GMP_GNUC_PREREQ (2,96) && ! defined (__GMP_NO_ATTRIBUTE_CONST_PURE)
 #define __GMP_ATTRIBUTE_PURE   __attribute__ ((__pure__))
 #else
@@ -373,12 +373,12 @@ typedef __mpq_struct *mpq_ptr;
 #endif
 
 
-/* __GMP_CAST allows us to use static_cast in C++, so our macros are clean
-   to "g++ -Wold-style-cast".
 
-   Casts in "extern inline" code within an extern "C" block don't induce
-   these warnings, so __GMP_CAST only needs to be used on documented
-   macros.  */
+
+
+
+
+
 
 #ifdef __cplusplus
 #define __GMP_CAST(type, expr)  (static_cast<type> (expr))
@@ -387,22 +387,22 @@ typedef __mpq_struct *mpq_ptr;
 #endif
 
 
-/* An empty "throw ()" means the function doesn't throw any C++ exceptions,
-   this can save some stack frame info in applications.
 
-   Currently it's given only on functions which never divide-by-zero etc,
-   don't allocate memory, and are expected to never need to allocate memory.
-   This leaves open the possibility of a C++ throw from a future GMP
-   exceptions scheme.
 
-   mpz_set_ui etc are omitted to leave open the lazy allocation scheme
-   described in doc/tasks.html.  mpz_get_d etc are omitted to leave open
-   exceptions for float overflows.
 
-   Note that __GMP_NOTHROW must be given on any inlines the same as on their
-   prototypes (for g++ at least, where they're used together).  Note also
-   that g++ 3.0 demands that __GMP_NOTHROW is before other attributes like
-   __GMP_ATTRIBUTE_PURE.  */
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if defined (__cplusplus)
 #define __GMP_NOTHROW  throw ()
@@ -411,15 +411,15 @@ typedef __mpq_struct *mpq_ptr;
 #endif
 
 
-/* PORTME: What other compilers have a useful "extern inline"?  "static
-   inline" would be an acceptable substitute if the compiler (or linker)
-   discards unused statics.  */
 
- /* gcc has __inline__ in all modes, including strict ansi.  Give a prototype
-    for an inline too, so as to correctly specify "dllimport" on windows, in
-    case the function is called rather than inlined.
-    GCC 4.3 and above with -std=c99 or -std=gnu99 implements ISO C99
-    inline semantics, unless -fgnu89-inline is used.  */
+
+
+
+
+
+
+
+
 #ifdef __GNUC__
 #if (defined __GNUC_STDC_INLINE__) || (__GNUC__ == 4 && __GNUC_MINOR__ == 2)
 #define __GMP_EXTERN_INLINE extern __inline__ __attribute__ ((__gnu_inline__))
@@ -429,25 +429,25 @@ typedef __mpq_struct *mpq_ptr;
 #define __GMP_INLINE_PROTOTYPES  1
 #endif
 
-/* DEC C (eg. version 5.9) supports "static __inline foo()", even in -std1
-   strict ANSI mode.  Inlining is done even when not optimizing (ie. -O0
-   mode, which is the default), but an unnecessary local copy of foo is
-   emitted unless -O is used.  "extern __inline" is accepted, but the
-   "extern" appears to be ignored, ie. it becomes a plain global function
-   but which is inlined within its file.  Don't know if all old versions of
-   DEC C supported __inline, but as a start let's do the right thing for
-   current versions.  */
+
+
+
+
+
+
+
+
 #ifdef __DECC
 #define __GMP_EXTERN_INLINE  static __inline
 #endif
 
-/* SCO OpenUNIX 8 cc supports "static inline foo()" but not in -Xc strict
-   ANSI mode (__STDC__ is 1 in that mode).  Inlining only actually takes
-   place under -O.  Without -O "foo" seems to be emitted whether it's used
-   or not, which is wasteful.  "extern inline foo()" isn't useful, the
-   "extern" is apparently ignored, so foo is inlined if possible but also
-   emitted as a global, which causes multiple definition errors when
-   building a shared libgmp.  */
+
+
+
+
+
+
+
 #ifdef __SCO_VERSION__
 #if __SCO_VERSION__ > 400000000 && __STDC__ != 1 \
   && ! defined (__GMP_EXTERN_INLINE)
@@ -455,44 +455,44 @@ typedef __mpq_struct *mpq_ptr;
 #endif
 #endif
 
-/* Microsoft's C compiler accepts __inline */
+
 #ifdef _MSC_VER
 #define __GMP_EXTERN_INLINE  __inline
 #endif
 
-/* Recent enough Sun C compilers want "inline" */
+
 #if defined (__SUNPRO_C) && __SUNPRO_C >= 0x560 \
   && ! defined (__GMP_EXTERN_INLINE)
 #define __GMP_EXTERN_INLINE  inline
 #endif
 
-/* Somewhat older Sun C compilers want "static inline" */
+
 #if defined (__SUNPRO_C) && __SUNPRO_C >= 0x540 \
   && ! defined (__GMP_EXTERN_INLINE)
 #define __GMP_EXTERN_INLINE  static inline
 #endif
 
 
-/* C++ always has "inline" and since it's a normal feature the linker should
-   discard duplicate non-inlined copies, or if it doesn't then that's a
-   problem for everyone, not just GMP.  */
+
+
+
 #if defined (__cplusplus) && ! defined (__GMP_EXTERN_INLINE)
 #define __GMP_EXTERN_INLINE  inline
 #endif
 
-/* Don't do any inlining within a configure run, since if the compiler ends
-   up emitting copies of the code into the object file it can end up
-   demanding the various support routines (like mpn_popcount) for linking,
-   making the "alloca" test and perhaps others fail.  And on hppa ia64 a
-   pre-release gcc 3.2 was seen not respecting the "extern" in "extern
-   __inline__", triggering this problem too.  */
+
+
+
+
+
+
 #if defined (__GMP_WITHIN_CONFIGURE) && ! __GMP_WITHIN_CONFIGURE_INLINE
 #undef __GMP_EXTERN_INLINE
 #endif
 
-/* By default, don't give a prototype when there's going to be an inline
-   version.  Note in particular that Cray C++ objects to the combination of
-   prototype and inline.  */
+
+
+
 #ifdef __GMP_EXTERN_INLINE
 #ifndef __GMP_INLINE_PROTOTYPES
 #define __GMP_INLINE_PROTOTYPES  0
@@ -505,14 +505,14 @@ typedef __mpq_struct *mpq_ptr;
 #define __GMP_ABS(x)   ((x) >= 0 ? (x) : -(x))
 #define __GMP_MAX(h,i) ((h) > (i) ? (h) : (i))
 
-/* __GMP_USHRT_MAX is not "~ (unsigned short) 0" because short is promoted
-   to int by "~".  */
+
+
 #define __GMP_UINT_MAX   (~ (unsigned) 0)
 #define __GMP_ULONG_MAX  (~ (unsigned long) 0)
 #define __GMP_USHRT_MAX  ((unsigned short) ~0)
 
 
-/* __builtin_expect is in gcc 3.0, and not in 2.95. */
+
 #if __GMP_GNUC_PREREQ (3,0)
 #define __GMP_LIKELY(cond)    __builtin_expect ((cond) != 0, 1)
 #define __GMP_UNLIKELY(cond)  __builtin_expect ((cond) != 0, 0)
@@ -528,7 +528,7 @@ typedef __mpq_struct *mpq_ptr;
 #endif
 
 
-/* Allow direct user access to numerator and denominator of a mpq_t object.  */
+
 #define mpq_numref(Q) (&((Q)->_mp_num))
 #define mpq_denref(Q) (&((Q)->_mp_den))
 
@@ -558,9 +558,9 @@ __GMP_DECLSPEC extern int gmp_errno;
 __GMP_DECLSPEC extern __gmp_const char * __gmp_const gmp_version;
 
 
-/**************** Random number routines.  ****************/
 
-/* obsolete */
+
+
 #define gmp_randinit __gmp_randinit
 __GMP_DECLSPEC void gmp_randinit __GMP_PROTO ((gmp_randstate_t, gmp_randalg_t, ...));
 
@@ -597,7 +597,7 @@ __GMP_DECLSPEC unsigned long gmp_urandomb_ui __GMP_PROTO ((gmp_randstate_t, unsi
 __GMP_DECLSPEC unsigned long gmp_urandomm_ui __GMP_PROTO ((gmp_randstate_t, unsigned long));
 
 
-/**************** Formatted output routines.  ****************/
+
 
 #define gmp_asprintf __gmp_asprintf
 __GMP_DECLSPEC int gmp_asprintf __GMP_PROTO ((char **, __gmp_const char *, ...));
@@ -652,7 +652,7 @@ __GMP_DECLSPEC int gmp_vsprintf __GMP_PROTO ((char *, __gmp_const char *, va_lis
 #endif
 
 
-/**************** Formatted input routines.  ****************/
+
 
 #define gmp_fscanf __gmp_fscanf
 #ifdef _GMP_H_HAVE_FILE
@@ -681,7 +681,7 @@ __GMP_DECLSPEC int gmp_vsscanf __GMP_PROTO ((__gmp_const char *, __gmp_const cha
 #endif
 
 
-/**************** Integer (i.e. Z) routines.  ****************/
+
 
 #define _mpz_realloc __gmpz_realloc
 #define mpz_realloc __gmpz_realloc
@@ -885,7 +885,7 @@ __GMP_DECLSPEC double mpz_get_d __GMP_PROTO ((mpz_srcptr)) __GMP_ATTRIBUTE_PURE;
 __GMP_DECLSPEC double mpz_get_d_2exp __GMP_PROTO ((signed long int *, mpz_srcptr));
 
 #define mpz_get_si __gmpz_get_si
-__GMP_DECLSPEC /* signed */ long int mpz_get_si __GMP_PROTO ((mpz_srcptr)) __GMP_NOTHROW __GMP_ATTRIBUTE_PURE;
+__GMP_DECLSPEC   long int mpz_get_si __GMP_PROTO ((mpz_srcptr)) __GMP_NOTHROW __GMP_ATTRIBUTE_PURE;
 
 #define mpz_get_str __gmpz_get_str
 __GMP_DECLSPEC char *mpz_get_str __GMP_PROTO ((char *, int, mpz_srcptr));
@@ -949,7 +949,7 @@ __GMP_DECLSPEC void mpz_ior __GMP_PROTO ((mpz_ptr, mpz_srcptr, mpz_srcptr));
 #define mpz_jacobi __gmpz_jacobi
 __GMP_DECLSPEC int mpz_jacobi __GMP_PROTO ((mpz_srcptr, mpz_srcptr)) __GMP_ATTRIBUTE_PURE;
 
-#define mpz_kronecker mpz_jacobi  /* alias */
+#define mpz_kronecker mpz_jacobi
 
 #define mpz_kronecker_si __gmpz_kronecker_si
 __GMP_DECLSPEC int mpz_kronecker_si __GMP_PROTO ((mpz_srcptr, long)) __GMP_ATTRIBUTE_PURE;
@@ -969,7 +969,7 @@ __GMP_DECLSPEC void mpz_lcm __GMP_PROTO ((mpz_ptr, mpz_srcptr, mpz_srcptr));
 #define mpz_lcm_ui __gmpz_lcm_ui
 __GMP_DECLSPEC void mpz_lcm_ui __GMP_PROTO ((mpz_ptr, mpz_srcptr, unsigned long));
 
-#define mpz_legendre mpz_jacobi  /* alias */
+#define mpz_legendre mpz_jacobi
 
 #define mpz_lucnum_ui __gmpz_lucnum_ui
 __GMP_DECLSPEC void mpz_lucnum_ui __GMP_PROTO ((mpz_ptr, unsigned long int));
@@ -983,7 +983,7 @@ __GMP_DECLSPEC int mpz_millerrabin __GMP_PROTO ((mpz_srcptr, int)) __GMP_ATTRIBU
 #define mpz_mod __gmpz_mod
 __GMP_DECLSPEC void mpz_mod __GMP_PROTO ((mpz_ptr, mpz_srcptr, mpz_srcptr));
 
-#define mpz_mod_ui mpz_fdiv_r_ui /* same as fdiv_r because divisor unsigned */
+#define mpz_mod_ui mpz_fdiv_r_ui
 
 #define mpz_mul __gmpz_mul
 __GMP_DECLSPEC void mpz_mul __GMP_PROTO ((mpz_ptr, mpz_srcptr, mpz_srcptr));
@@ -1172,7 +1172,7 @@ __GMP_DECLSPEC void mpz_urandomm __GMP_PROTO ((mpz_ptr, gmp_randstate_t, mpz_src
 __GMP_DECLSPEC void mpz_xor __GMP_PROTO ((mpz_ptr, mpz_srcptr, mpz_srcptr));
 
 
-/**************** Rational (i.e. Q) routines.  ****************/
+
 
 #define mpq_abs __gmpq_abs
 #if __GMP_INLINE_PROTOTYPES || defined (__GMP_FORCE_mpq_abs)
@@ -1285,7 +1285,7 @@ __GMP_DECLSPEC void mpq_sub __GMP_PROTO ((mpq_ptr, mpq_srcptr, mpq_srcptr));
 __GMP_DECLSPEC void mpq_swap __GMP_PROTO ((mpq_ptr, mpq_ptr)) __GMP_NOTHROW;
 
 
-/**************** Float (i.e. F) routines.  ****************/
+
 
 #define mpf_abs __gmpf_abs
 __GMP_DECLSPEC void mpf_abs __GMP_PROTO ((mpf_ptr, mpf_srcptr));
@@ -1492,9 +1492,9 @@ __GMP_DECLSPEC void mpf_ui_sub __GMP_PROTO ((mpf_ptr, unsigned long int, mpf_src
 __GMP_DECLSPEC void mpf_urandomb __GMP_PROTO ((mpf_t, gmp_randstate_t, mp_bitcnt_t));
 
 
-/************ Low level positive-integer (i.e. N) routines.  ************/
 
-/* This is ugly, but we need to make user calls reach the prefixed function. */
+
+
 
 #define mpn_add __MPN(add)
 #if __GMP_INLINE_PROTOTYPES || defined (__GMP_FORCE_mpn_add)
@@ -1593,7 +1593,7 @@ __GMP_DECLSPEC mp_bitcnt_t mpn_popcount __GMP_PROTO ((mp_srcptr, mp_size_t)) __G
 #define mpn_pow_1 __MPN(pow_1)
 __GMP_DECLSPEC mp_size_t mpn_pow_1 __GMP_PROTO ((mp_ptr, mp_srcptr, mp_size_t, mp_limb_t, mp_ptr));
 
-/* undocumented now, but retained here for upward compatibility */
+
 #define mpn_preinv_mod_1 __MPN(preinv_mod_1)
 __GMP_DECLSPEC mp_limb_t mpn_preinv_mod_1 __GMP_PROTO ((mp_srcptr, mp_size_t, mp_limb_t, mp_limb_t)) __GMP_ATTRIBUTE_PURE;
 
@@ -1661,21 +1661,21 @@ __GMP_DECLSPEC void mpn_copyd __GMP_PROTO ((mp_ptr, mp_srcptr, mp_size_t));
 #define mpn_zero __MPN(zero)
 __GMP_DECLSPEC void mpn_zero __GMP_PROTO ((mp_ptr, mp_size_t));
 
-/**************** mpz inlines ****************/
 
-/* The following are provided as inlines where possible, but always exist as
-   library functions too, for binary compatibility.
 
-   Within gmp itself this inlining generally isn't relied on, since it
-   doesn't get done for all compilers, whereas if something is worth
-   inlining then it's worth arranging always.
 
-   There are two styles of inlining here.  When the same bit of code is
-   wanted for the inline as for the library version, then __GMP_FORCE_foo
-   arranges for that code to be emitted and the __GMP_EXTERN_INLINE
-   directive suppressed, eg. mpz_fits_uint_p.  When a different bit of code
-   is wanted for the inline than for the library version, then
-   __GMP_FORCE_foo arranges the inline to be suppressed, eg. mpz_abs.  */
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if defined (__GMP_EXTERN_INLINE) && ! defined (__GMP_FORCE_mpz_abs)
 __GMP_EXTERN_INLINE void
@@ -1743,15 +1743,15 @@ mpz_get_ui (mpz_srcptr __gmp_z) __GMP_NOTHROW
   mp_ptr __gmp_p = __gmp_z->_mp_d;
   mp_size_t __gmp_n = __gmp_z->_mp_size;
   mp_limb_t __gmp_l = __gmp_p[0];
-  /* This is a "#if" rather than a plain "if" so as to avoid gcc warnings
-     about "<< GMP_NUMB_BITS" exceeding the type size, and to avoid Borland
-     C++ 6.0 warnings about condition always true for something like
-     "__GMP_ULONG_MAX < GMP_NUMB_MASK".  */
+
+
+
+
 #if GMP_NAIL_BITS == 0 || defined (_LONG_LONG_LIMB)
-  /* limb==long and no nails, or limb==longlong, one limb is enough */
+
   return (__gmp_n != 0 ? __gmp_l : 0);
 #else
-  /* limb==long and nails, need two limbs when available */
+
   __gmp_n = __GMP_ABS (__gmp_n);
   if (__gmp_n <= 1)
     return (__gmp_n != 0 ? __gmp_l : 0);
@@ -1796,7 +1796,7 @@ mpz_perfect_square_p (mpz_srcptr __gmp_a)
   int       __gmp_result;
 
   __gmp_asize = __gmp_a->_mp_size;
-  __gmp_result = (__gmp_asize >= 0);  /* zero is a square, negatives are not */
+  __gmp_result = (__gmp_asize >= 0);
   if (__GMP_LIKELY (__gmp_asize > 0))
     __gmp_result = mpn_perfect_square_p (__gmp_a->_mp_d, __gmp_asize);
   return __gmp_result;
@@ -1844,7 +1844,7 @@ mpz_size (mpz_srcptr __gmp_z) __GMP_NOTHROW
 #endif
 
 
-/**************** mpq inlines ****************/
+
 
 #if defined (__GMP_EXTERN_INLINE) && ! defined (__GMP_FORCE_mpq_abs)
 __GMP_EXTERN_INLINE void
@@ -1867,32 +1867,32 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
 #endif
 
 
-/**************** mpn inlines ****************/
 
-/* The comments with __GMPN_ADD_1 below apply here too.
 
-   The test for FUNCTION returning 0 should predict well.  If it's assumed
-   {yp,ysize} will usually have a random number of bits then the high limb
-   won't be full and a carry out will occur a good deal less than 50% of the
-   time.
 
-   ysize==0 isn't a documented feature, but is used internally in a few
-   places.
 
-   Producing cout last stops it using up a register during the main part of
-   the calculation, though gcc (as of 3.0) on an "if (mpn_add (...))"
-   doesn't seem able to move the true and false legs of the conditional up
-   to the two places cout is generated.  */
+
+
+
+
+
+
+
+
+
+
+
+
 
 #define __GMPN_AORS(cout, wp, xp, xsize, yp, ysize, FUNCTION, TEST)     \
   do {                                                                  \
     mp_size_t  __gmp_i;                                                 \
     mp_limb_t  __gmp_x;                                                 \
                                                                         \
-    /* ASSERT ((ysize) >= 0); */                                        \
-    /* ASSERT ((xsize) >= (ysize)); */                                  \
-    /* ASSERT (MPN_SAME_OR_SEPARATE2_P (wp, xsize, xp, xsize)); */      \
-    /* ASSERT (MPN_SAME_OR_SEPARATE2_P (wp, xsize, yp, ysize)); */      \
+                                             \
+                                       \
+           \
+           \
                                                                         \
     __gmp_i = (ysize);                                                  \
     if (__gmp_i != 0)                                                   \
@@ -1926,29 +1926,29 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
                (((wp)[__gmp_i++] = (__gmp_x - 1) & GMP_NUMB_MASK), __gmp_x == 0))
 
 
-/* The use of __gmp_i indexing is designed to ensure a compile time src==dst
-   remains nice and clear to the compiler, so that __GMPN_COPY_REST can
-   disappear, and the load/add/store gets a chance to become a
-   read-modify-write on CISC CPUs.
 
-   Alternatives:
 
-   Using a pair of pointers instead of indexing would be possible, but gcc
-   isn't able to recognise compile-time src==dst in that case, even when the
-   pointers are incremented more or less together.  Other compilers would
-   very likely have similar difficulty.
 
-   gcc could use "if (__builtin_constant_p(src==dst) && src==dst)" or
-   similar to detect a compile-time src==dst.  This works nicely on gcc
-   2.95.x, it's not good on gcc 3.0 where __builtin_constant_p(p==p) seems
-   to be always false, for a pointer p.  But the current code form seems
-   good enough for src==dst anyway.
 
-   gcc on x86 as usual doesn't give particularly good flags handling for the
-   carry/borrow detection.  It's tempting to want some multi instruction asm
-   blocks to help it, and this was tried, but in truth there's only a few
-   instructions to save and any gain is all too easily lost by register
-   juggling setting up for the asm.  */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #if GMP_NAIL_BITS == 0
 #define __GMPN_AORS_1(cout, dst, src, n, v, OP, CB)		\
@@ -1956,8 +1956,8 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
     mp_size_t  __gmp_i;						\
     mp_limb_t  __gmp_x, __gmp_r;                                \
 								\
-    /* ASSERT ((n) >= 1); */					\
-    /* ASSERT (MPN_SAME_OR_SEPARATE_P (dst, src, n)); */	\
+                        \
+        \
 								\
     __gmp_x = (src)[0];						\
     __gmp_r = __gmp_x OP (v);                                   \
@@ -1995,8 +1995,8 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
     mp_size_t  __gmp_i;						\
     mp_limb_t  __gmp_x, __gmp_r;				\
 								\
-    /* ASSERT ((n) >= 1); */					\
-    /* ASSERT (MPN_SAME_OR_SEPARATE_P (dst, src, n)); */	\
+                        \
+        \
 								\
     __gmp_x = (src)[0];						\
     __gmp_r = __gmp_x OP (v);					\
@@ -2037,15 +2037,15 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
   __GMPN_AORS_1(cout, dst, src, n, v, -, __GMPN_SUBCB)
 
 
-/* Compare {xp,size} and {yp,size}, setting "result" to positive, zero or
-   negative.  size==0 is allowed.  On random data usually only one limb will
-   need to be examined to get a result, so it's worth having it inline.  */
+
+
+
 #define __GMPN_CMP(result, xp, yp, size)                                \
   do {                                                                  \
     mp_size_t  __gmp_i;                                                 \
     mp_limb_t  __gmp_x, __gmp_y;                                        \
                                                                         \
-    /* ASSERT ((size) >= 0); */                                         \
+                                              \
                                                                         \
     (result) = 0;                                                       \
     __gmp_i = (size);                                                   \
@@ -2055,7 +2055,7 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
         __gmp_y = (yp)[__gmp_i];                                        \
         if (__gmp_x != __gmp_y)                                         \
           {                                                             \
-            /* Cannot use __gmp_x - __gmp_y, may overflow an "int" */   \
+                \
             (result) = (__gmp_x > __gmp_y ? 1 : -1);                    \
             break;                                                      \
           }                                                             \
@@ -2066,32 +2066,32 @@ mpq_neg (mpq_ptr __gmp_w, mpq_srcptr __gmp_u)
 #if defined (__GMPN_COPY) && ! defined (__GMPN_COPY_REST)
 #define __GMPN_COPY_REST(dst, src, size, start)                 \
   do {                                                          \
-    /* ASSERT ((start) >= 0); */                                \
-    /* ASSERT ((start) <= (size)); */                           \
+                                     \
+                                \
     __GMPN_COPY ((dst)+(start), (src)+(start), (size)-(start)); \
   } while (0)
 #endif
 
-/* Copy {src,size} to {dst,size}, starting at "start".  This is designed to
-   keep the indexing dst[j] and src[j] nice and simple for __GMPN_ADD_1,
-   __GMPN_ADD, etc.  */
+
+
+
 #if ! defined (__GMPN_COPY_REST)
 #define __GMPN_COPY_REST(dst, src, size, start)                 \
   do {                                                          \
     mp_size_t __gmp_j;                                          \
-    /* ASSERT ((size) >= 0); */                                 \
-    /* ASSERT ((start) >= 0); */                                \
-    /* ASSERT ((start) <= (size)); */                           \
-    /* ASSERT (MPN_SAME_OR_SEPARATE_P (dst, src, size)); */     \
+                                      \
+                                     \
+                                \
+          \
     __GMP_CRAY_Pragma ("_CRI ivdep");                           \
     for (__gmp_j = (start); __gmp_j < (size); __gmp_j++)        \
       (dst)[__gmp_j] = (src)[__gmp_j];                          \
   } while (0)
 #endif
 
-/* Enhancement: Use some of the smarter code from gmp-impl.h.  Maybe use
-   mpn_copyi if there's a native version, and if we don't mind demanding
-   binary compatibility for it (on targets which use it).  */
+
+
+
 
 #if ! defined (__GMPN_COPY)
 #define __GMPN_COPY(dst, src, size)   __GMPN_COPY_REST (dst, src, size, 0)
@@ -2186,12 +2186,12 @@ mpn_neg (mp_ptr __gmp_rp, mp_srcptr __gmp_up, mp_size_t __gmp_n)
 #endif
 
 
-/* Allow faster testing for negative, zero, and positive.  */
+
 #define mpz_sgn(Z) ((Z)->_mp_size < 0 ? -1 : (Z)->_mp_size > 0)
 #define mpf_sgn(F) ((F)->_mp_size < 0 ? -1 : (F)->_mp_size > 0)
 #define mpq_sgn(Q) ((Q)->_mp_num._mp_size < 0 ? -1 : (Q)->_mp_num._mp_size > 0)
 
-/* When using GCC, optimize certain common comparisons.  */
+
 #if defined (__GNUC__) && __GNUC__ >= 2
 #define mpz_cmp_ui(Z,UI) \
   (__builtin_constant_p (UI) && (UI) == 0				\
@@ -2216,14 +2216,14 @@ mpn_neg (mp_ptr __gmp_rp, mp_srcptr __gmp_up, mp_size_t __gmp_n)
 #endif
 
 
-/* Using "&" rather than "&&" means these can come out branch-free.  Every
-   mpz_t has at least one limb allocated, so fetching the low limb is always
-   allowed.  */
+
+
+
 #define mpz_odd_p(z)   (((z)->_mp_size != 0) & __GMP_CAST (int, (z)->_mp_d[0]))
 #define mpz_even_p(z)  (! mpz_odd_p (z))
 
 
-/**************** C++ routines ****************/
+
 
 #ifdef __cplusplus
 __GMP_DECLSPEC_XX std::ostream& operator<< (std::ostream &, mpz_srcptr);
@@ -2235,11 +2235,11 @@ __GMP_DECLSPEC_XX std::istream& operator>> (std::istream &, mpf_ptr);
 #endif
 
 
-/* Source-level compatibility with GMP 2 and earlier. */
+
 #define mpn_divmod(qp,np,nsize,dp,dsize) \
   mpn_divrem (qp, __GMP_CAST (mp_size_t, 0), np, nsize, dp, dsize)
 
-/* Source-level compatibility with GMP 1.  */
+
 #define mpz_mdiv	mpz_fdiv_q
 #define mpz_mdivmod	mpz_fdiv_qr
 #define mpz_mmod	mpz_fdiv_r
@@ -2249,7 +2249,7 @@ __GMP_DECLSPEC_XX std::istream& operator>> (std::istream &, mpf_ptr);
 #define mpz_mmod_ui(r,n,d) \
   (((r) == 0) ? mpz_fdiv_ui (n,d) : mpz_fdiv_r_ui (r,n,d))
 
-/* Useful synonyms, but not quite compatible with GMP 1.  */
+
 #define mpz_div		mpz_fdiv_q
 #define mpz_divmod	mpz_fdiv_qr
 #define mpz_div_ui	mpz_fdiv_q_ui
@@ -2266,15 +2266,15 @@ enum
   GMP_ERROR_INVALID_ARGUMENT = 8
 };
 
-/* Define CC and CFLAGS which were used to build this version of GMP */
+
 #define __GMP_CC "gcc"
 #define __GMP_CFLAGS "-O2 -pedantic -m64 -std=gnu99 -mtune=k8 -march=k8"
 
-/* Major version number is the value of __GNU_MP__ too, above and in mp.h. */
+
 #define __GNU_MP_VERSION 5
 #define __GNU_MP_VERSION_MINOR 0
 #define __GNU_MP_VERSION_PATCHLEVEL 1
 #define __GMP_MP_RELEASE (__GNU_MP_VERSION * 10000 + __GNU_MP_VERSION_MINOR * 100 + __GNU_MP_VERSION_PATCHLEVEL)
 
 #define __GMP_H__
-#endif /* __GMP_H__ */
+#endif

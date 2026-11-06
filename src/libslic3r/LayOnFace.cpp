@@ -20,6 +20,7 @@ namespace Slic3r {
 
 std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const Transform3d &inst_matrix)
 {
+
     TriangleMesh ch;
     for (const ModelVolume* vol : object.volumes) {
         if (vol->type() != ModelVolumeType::MODEL_PART)
@@ -31,9 +32,13 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
     ch = ch.convex_hull_3d();
     std::vector<LayOnFacePlane> planes;
 
+
     const float minimal_area = 5.f;
     const float minimal_side = 1.f;
     const float minimal_angle = 1.f;
+
+
+
     const int                num_of_facets  = ch.facets_count();
     const std::vector<Vec3f> face_normals   = its_face_normals(ch.its);
     const std::vector<Vec3i32> face_neighbors = its_face_neighbors(ch.its);
@@ -43,6 +48,7 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
     const stl_normal*        normal_ptr      = nullptr;
     int                      facet_idx       = 0;
     while (1) {
+
         for (; facet_idx < num_of_facets; ++ facet_idx)
             if (!facet_visited[facet_idx]) {
                 facet_queue[facet_queue_cnt ++] = facet_idx;
@@ -71,7 +77,10 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
         planes.back().normal = normal_ptr->cast<double>();
 
         Pointf3s& verts = planes.back().outline;
+
+
         verts = transform(verts, inst_matrix);
+
 
         if (verts.size() == 3 &&
             ((verts[0] - verts[1]).norm() < minimal_side
@@ -80,13 +89,17 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
             planes.pop_back();
     }
 
+
     const Matrix3d normal_matrix = inst_matrix.matrix().block(0, 0, 3, 3).inverse().transpose();
+
 
     for (unsigned int polygon_id=0; polygon_id < planes.size(); ++polygon_id) {
         Pointf3s& polygon = planes[polygon_id].outline;
         const Vec3d& normal = planes[polygon_id].normal;
 
+
         const Vec3d normal_transformed = normal_matrix * normal;
+
 
         Eigen::Quaterniond q;
         Transform3d& m = planes[polygon_id].to_plane_frame;
@@ -94,12 +107,16 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
         m.matrix().block(0, 0, 3, 3) = q.setFromTwoVectors(normal_transformed, Vec3d::UnitZ()).toRotationMatrix();
         polygon = transform(polygon, m);
 
+
+
+
         Vec3d bb_size = BoundingBoxf3(polygon).size();
         float sf = std::min(1./bb_size(0), 1./bb_size(1));
         Transform3d tr = Geometry::scale_transform({ sf, sf, 1.f });
         polygon = transform(polygon, tr);
         polygon = Slic3r::Geometry::convex_hull(polygon);
         polygon = transform(polygon, tr.inverse());
+
 
         float& area = planes[polygon_id].area;
         area = 0.f;
@@ -111,6 +128,7 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
         if (area < minimal_area)
             discard = true;
         else {
+
             const double angle_threshold = ::cos(minimal_angle * (double)PI / 180.0);
 
             for (unsigned int i = 0; i < polygon.size(); ++i) {
@@ -141,7 +159,9 @@ std::vector<LayOnFacePlane> lay_on_face_planes(const ModelObject &object, const 
 
 int find_largest_plane(const std::vector<LayOnFacePlane> &planes)
 {
+
     auto downward = [](const LayOnFacePlane &plane) { return -plane.to_plane_frame.linear()(2, 2); };
+
     int best = -1;
     for (size_t i = 0; i < planes.size() && planes[i].area >= planes.front().area * (1. - 1e-3); ++i)
         if (best < 0 || downward(planes[i]) > downward(planes[best]))
@@ -171,9 +191,11 @@ int find_plane_at_point(const std::vector<LayOnFacePlane> &planes, const Transfo
         if (outline.empty())
             continue;
         const Vec3d p = planes[i].to_plane_frame * instance_point;
+
         const double z = std::accumulate(outline.begin(), outline.end(), 0., [](double sum, const Vec3d &v) { return sum + v.z(); }) / double(outline.size());
         if (std::abs(p.z() - z) > tolerance)
             continue;
+
         bool left = false, right = false;
         for (size_t j = 0; j < outline.size(); ++j) {
             const Vec2d  a    = outline[j].head<2>();
@@ -195,9 +217,11 @@ void lay_on_face(ModelObject &object, size_t instance_idx, const Vec3d &normal)
 {
     ModelInstance                  &instance = *object.instances[instance_idx];
     const Geometry::Transformation &trafo    = instance.get_transformation();
+
     const Vec3d       tnormal  = trafo.get_matrix().matrix().block(0, 0, 3, 3).inverse().transpose() * normal;
     const Transform3d rotation = Transform3d(Eigen::Quaterniond().setFromTwoVectors(tnormal, -Vec3d::UnitZ()));
     instance.set_transformation(Geometry::Transformation(trafo.get_offset_matrix() * rotation * trafo.get_matrix_no_offset()));
+
     object.translate_instance(instance_idx, -object.instance_bounding_box(instance_idx).min.z() * Vec3d::UnitZ());
 }
 

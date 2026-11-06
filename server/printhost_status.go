@@ -197,6 +197,7 @@ func statusHTTP(ctx context.Context, h *hostSession, base *url.URL) (PrinterStat
 		}
 		code, err := h.call(ctx, "GET", base.JoinPath("/printer/objects/query").String()+"?print_stats&virtual_sdcard&extruder&heater_bed", nil, &q)
 		if code == 503 || code == 400 {
+
 			st.State, st.Detail = "error", strings.TrimPrefix(err.Error(), "the printer answered ")
 			return st, nil
 		}
@@ -264,6 +265,7 @@ func statusHTTP(ctx context.Context, h *hostSession, base *url.URL) (PrinterStat
 				Target *float64 `json:"target"`
 			} `json:"temperature"`
 		}
+
 		if _, err := h.call(ctx, "GET", base.JoinPath("/api/printer").String(), nil, &printer); err == nil {
 			for key, into := range map[string]**Temp{"tool0": &st.Nozzle, "bed": &st.Bed} {
 				if t, ok := printer.Temperature[key]; ok && t.Actual != nil {

@@ -30,6 +30,7 @@ enum class PlatformFlavor
     OSXOnArm,
 };
 
+
 void 			detect_platform();
 
 Platform 		platform();

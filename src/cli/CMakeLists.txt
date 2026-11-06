@@ -1,0 +1,7 @@
+add_executable(nonplanar_slice_tool nonplanar_slice_tool.cpp)
+set_target_properties(nonplanar_slice_tool PROPERTIES MACOSX_BUNDLE FALSE WIN32_EXECUTABLE FALSE)
+target_link_libraries(nonplanar_slice_tool PRIVATE libslic3r)
+target_compile_definitions(nonplanar_slice_tool PRIVATE PROFILES_DIR=R"\(${CMAKE_SOURCE_DIR}/resources/profiles\)")
+if(APPLE)
+    target_link_libraries(nonplanar_slice_tool PRIVATE "-liconv -framework IOKit" "-framework CoreFoundation" -lc++)
+endif()

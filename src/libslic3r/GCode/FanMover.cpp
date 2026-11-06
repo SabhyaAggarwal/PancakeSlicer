@@ -16,23 +16,45 @@
 #include <iomanip>
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 namespace Slic3r {
 
 const std::string& FanMover::process_gcode(const std::string& gcode, bool flush)
 {
     m_process_output = "";
 
+
     m_buffer_time_size = 0;
     for (auto& data : m_buffer) m_buffer_time_size += data.time;
 
     if(!gcode.empty())
         m_parser.parse_buffer(gcode,
-            [this](GCodeReader& reader, const GCodeReader::GCodeLine& line) {  this->_process_gcode_line(reader, line); });
+            [this](GCodeReader& reader, const GCodeReader::GCodeLine& line) {   this->_process_gcode_line(reader, line); });
 
     if (flush) {
         while (!m_buffer.empty()) {
             BufferData &front = m_buffer.front();
             m_process_output += front.raw + "\n";
+
             if (front.fan_speed >= 0)
                 m_front_buffer_fan_speed = front.fan_speed;
             remove_from_buffer(m_buffer.begin());
@@ -56,11 +78,14 @@ float get_axis_value(const std::string& line, char axis)
         return NAN;
     }
     pos += 2;
+
+
     const char* c = line.c_str();
     char* pend = nullptr;
     errno = 0;
     double  v = strtod(c + pos, &pend);
     if (pend != nullptr && errno == 0 && pend != c) {
+
         return float(v);
     }
     return NAN;
@@ -85,6 +110,11 @@ int16_t get_fan_speed(const std::string &line, GCodeFlavor flavor) {
         if (flavor == (gcfMach3) || flavor == (gcfMachinekit)) {
             return (int16_t)get_axis_value(line, 'P');
         } else {
+
+
+
+
+
             const auto idx = get_axis_value(line, 'P');
             if (!isnan(idx) && idx != 1.0f) {
                 return -1;
@@ -104,8 +134,11 @@ int16_t get_fan_speed(const std::string &line, GCodeFlavor flavor) {
 void FanMover::_put_in_middle_G1(std::list<BufferData>::iterator item_to_split, float nb_sec_since_itemtosplit_start, BufferData &&line_to_write) {
     assert(item_to_split != m_buffer.end());
     if (nb_sec_since_itemtosplit_start > item_to_split->time * 0.9) {
+
         m_buffer.insert(next(item_to_split), line_to_write);
     } else if (nb_sec_since_itemtosplit_start < item_to_split->time * 0.1) {
+
+
         m_buffer.insert(item_to_split, line_to_write);
     } else if (item_to_split->raw.size() > 2
         && item_to_split->raw[0] == 'G' && item_to_split->raw[1] == '1' && item_to_split->raw[2] == ' ') {
@@ -144,19 +177,23 @@ void FanMover::_put_in_middle_G1(std::list<BufferData>::iterator item_to_split, 
                 change_axis_value(before.raw, 'E', before.e + before.de, 5);
             }
         }
+
         m_buffer.insert(item_to_split, before);
         m_buffer.insert(item_to_split, line_to_write);
 
     } else {
+
         m_buffer.insert(item_to_split, line_to_write);
     }
 }
 
 void FanMover::_print_in_middle_G1(BufferData& line_to_split, float nb_sec, const std::string &line_to_write) {
     if (nb_sec < line_to_split.time * 0.1) {
+
         m_process_output += line_to_write + (line_to_write.back() == '\n'?"":"\n");
         m_process_output += line_to_split.raw + "\n";
     } else if (nb_sec > line_to_split.time * 0.9) {
+
         m_process_output += line_to_split.raw + "\n";
         m_process_output += line_to_write + (line_to_write.back() == '\n' ? "" : "\n");
     }else if(line_to_split.raw.size() > 2
@@ -186,16 +223,20 @@ void FanMover::_print_in_middle_G1(BufferData& line_to_split, float nb_sec, cons
         m_process_output += line_to_split.raw + "\n";
 
     } else {
+
         m_process_output += line_to_write + (line_to_write.back() == '\n' ? "" : "\n");
         m_process_output += line_to_split.raw + "\n";
     }
 }
 
 void FanMover::_remove_slow_fan(int16_t min_speed, float past_sec) {
+
+
     auto it = m_buffer.begin();
     while (it != m_buffer.end() && past_sec > 0) {
         past_sec -= it->time;
         if (it->fan_speed >= 0 && it->fan_speed < min_speed){
+
             it = remove_from_buffer(it);
 
         } else {
@@ -206,6 +247,8 @@ void FanMover::_remove_slow_fan(int16_t min_speed, float past_sec) {
 }
 
 std::string FanMover::_set_fan(int16_t speed) {
+
+
     const int floor_pct = m_writer.config.part_cooling_fan_min_pwm.value;
     const unsigned int part_cooling_fan_min_pwm = floor_pct > 0 ? static_cast<unsigned int>(floor_pct) : 0u;
     return GCodeWriter::set_fan(m_writer.config.gcode_flavor.value, speed, part_cooling_fan_min_pwm);
@@ -215,6 +258,7 @@ std::string FanMover::_set_fan(int16_t speed) {
 bool parse_number(const std::string_view sv, int& out)
 {
     {
+
         try {
             assert(sv.size() < 1024);
             assert(sv.data() != nullptr);
@@ -229,14 +273,18 @@ bool parse_number(const std::string_view sv, int& out)
     }
 }
 
+
+
 void FanMover::_process_T(const std::string_view command)
 {
     if (command.length() > 1) {
         int eid = 0;
         if (!parse_number(command.substr(1), eid) || eid < 0 || eid > 255) {
             GCodeFlavor flavor = m_writer.config.gcode_flavor;
+
             if ((flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware) && (command == "Tx" || command == "Tc" || command == "T?"))
                 return;
+
 
             if ((flavor != gcfRepRapFirmware && flavor != gcfRepRapSprinter) || eid != -1)
                 m_currrent_extruder = static_cast<uint16_t>(0);
@@ -248,6 +296,7 @@ void FanMover::_process_T(const std::string_view command)
 
 void FanMover::_process_gcode_line(GCodeReader& reader, const GCodeReader::GCodeLine& line)
 {
+
     bool need_flush = false;
     std::string cmd(line.cmd());
     double time = 0;
@@ -280,43 +329,59 @@ void FanMover::_process_gcode_line(GCodeReader& reader, const GCodeReader::GCode
             if (fan_speed >= 0) {
                 const auto fan_baseline = 255.0;
                 fan_speed = 100 * fan_speed / fan_baseline;
+
                 m_current_kickstart.time = -1;
                 if (!m_is_custom_gcode) {
+
                     if (m_back_buffer_fan_speed < fan_speed) {
                         if (nb_seconds_delay > 0 && (!only_overhangs || current_role == ExtrusionRole::erOverhangPerimeter)) {
+
                             time = -1;
+
+
                             if (kickstart > 0 && fan_speed > m_front_buffer_fan_speed) {
+
                                 if (m_current_kickstart.time > 0) {
                                     m_current_kickstart.time = (-1);
                                 }
 
+
+
                                 _remove_slow_fan(fan_speed, m_buffer_time_size + 1);
+
                                 _remove_slow_fan(fan_baseline, kickstart);
+
                                 if (!m_buffer.empty() && (m_buffer_time_size - m_buffer.front().time * 0.1) > nb_seconds_delay) {
                                     _print_in_middle_G1(m_buffer.front(), m_buffer_time_size - nb_seconds_delay, _set_fan(100));
                                     remove_from_buffer(m_buffer.begin());
                                 } else {
                                     m_process_output += _set_fan(100);
                                 }
+
                                 const float kickstart_duration = kickstart * float(fan_speed - m_front_buffer_fan_speed) / 100.f;
                                 float time_count = kickstart_duration;
                                 auto it = m_buffer.begin();
                                 while (it != m_buffer.end() && time_count > 0) {
                                     time_count -= it->time;
                                     if (time_count< 0) {
+
                                         _put_in_middle_G1(it, it->time + time_count, BufferData(std::string(line.raw()), 0, fan_speed, true));
+
                                         break;
                                     }
                                     ++it;
                                 }
                                 if (time_count > 0) {
+
                                     m_current_kickstart.fan_speed = fan_speed;
                                     m_current_kickstart.time = time_count;
                                     m_current_kickstart.raw = line.raw();
                                 }
                                 m_front_buffer_fan_speed = fan_speed;
                             } else {
+
                                 _remove_slow_fan(fan_speed, m_buffer_time_size + 1);
+
                                 if (!m_buffer.empty() && (m_buffer_time_size - m_buffer.front().time * 0.1) > nb_seconds_delay) {
                                     _print_in_middle_G1(m_buffer.front(), m_buffer_time_size - nb_seconds_delay, line.raw());
                                     remove_from_buffer(m_buffer.begin());
@@ -327,29 +392,45 @@ void FanMover::_process_gcode_line(GCodeReader& reader, const GCodeReader::GCode
                             }
                         } else {
                             if (kickstart <= 0) {
+
+
                             } else if (m_current_kickstart.time > 0) {
+
                                 if (m_back_buffer_fan_speed >= fan_speed) {
+
                                     m_current_kickstart.time = -1;
+
                                 } else {
+
                                     float kickstart_duration = kickstart * float(fan_speed - m_back_buffer_fan_speed) / 100.f;
                                     m_current_kickstart.fan_speed = fan_speed;
                                     m_current_kickstart.time += kickstart_duration;
                                     m_current_kickstart.raw = line.raw();
+
                                     time = -1;
                                 }
                             } else if(m_back_buffer_fan_speed < fan_speed - 10){
+
                                 time = -1;
+
                                 float kickstart_duration = kickstart * float(fan_speed - m_back_buffer_fan_speed) / 100.f;
+
+
                                 put_in_buffer(BufferData(_set_fan(100)
                                     , 0, fan_speed, true));
+
+
+
                                 m_current_kickstart.fan_speed = fan_speed;
                                 m_current_kickstart.time = kickstart_duration;
                                 m_current_kickstart.raw = line.raw();
                             }
                         }
                     }
+
                     m_back_buffer_fan_speed = fan_speed;
                 } else {
+
                     need_flush = true;
                 }
             }
@@ -360,6 +441,7 @@ void FanMover::_process_gcode_line(GCodeReader& reader, const GCodeReader::GCode
         if(!line.raw().empty() && line.raw().front() == ';')
         {
             if (line.raw().size() > 10 && line.raw().rfind(";TYPE:", 0) == 0) {
+
                 std::string extrusion_string = line.raw().substr(6, line.raw().size() - 6);
                 current_role = ExtrusionEntity::string_to_role(extrusion_string);
             }
@@ -399,21 +481,48 @@ void FanMover::_process_gcode_line(GCodeReader& reader, const GCodeReader::GCode
         if (m_current_kickstart.time > 0 && time > 0) {
             m_current_kickstart.time -= time;
             if (m_current_kickstart.time < 0) {
+
                 _put_in_middle_G1(prev(m_buffer.end()), time + m_current_kickstart.time, BufferData{ m_current_kickstart.raw, 0, m_current_kickstart.fan_speed, true });
             }
         }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if (time >= 0) {
         while (!m_buffer.empty() && (need_flush || m_buffer_time_size - m_buffer.front().time > nb_seconds_delay - EPSILON) ){
             BufferData& frontdata = m_buffer.front();
             if (frontdata.fan_speed < 0 || frontdata.fan_speed != m_front_buffer_fan_speed || frontdata.is_kickstart) {
                 if (frontdata.is_kickstart && frontdata.fan_speed < m_front_buffer_fan_speed) {
+
                     m_process_output += _set_fan(frontdata.fan_speed);
-                        
+
                     m_front_buffer_fan_speed = frontdata.fan_speed;
                 } else {
                     m_process_output += frontdata.raw + "\n";
                     if (frontdata.fan_speed >= 0) {
+
+
                         m_front_buffer_fan_speed = frontdata.fan_speed;
                     }
                 }

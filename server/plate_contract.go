@@ -33,6 +33,7 @@ func validatePlatePlacement(raw []byte, saving, native, meshPlates bool) error {
 	if err := json.Unmarshal(raw, &plate); err != nil {
 		return err
 	}
+
 	plates := 1
 	for _, p := range plate.Plates {
 		plates = max(plates, p.Index)

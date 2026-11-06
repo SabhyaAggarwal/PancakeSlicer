@@ -47,12 +47,12 @@
 #include "xmlrole.h"
 #include "ascii.h"
 
-/* Doesn't check:
 
- that ,| are not mixed in a model group
- content of literals
 
-*/
+
+
+
+
 
 static const char KW_ANY[] = {ASCII_A, ASCII_N, ASCII_Y, '\0'};
 static const char KW_ATTLIST[]
@@ -111,9 +111,9 @@ static const char KW_SYSTEM[]
 #  define setTopLevel(state)                                                   \
     ((state)->handler                                                          \
      = ((state)->documentEntity ? internalSubset : externalSubset1))
-#else /* not XML_DTD */
+#else
 #  define setTopLevel(state) ((state)->handler = internalSubset)
-#endif /* not XML_DTD */
+#endif
 
 typedef int PTRCALL PROLOG_HANDLER(PROLOG_STATE *state, int tok,
                                    const char *ptr, const char *end,
@@ -128,7 +128,7 @@ static PROLOG_HANDLER prolog0, prolog1, prolog2, doctype0, doctype1, doctype2,
     element6, element7,
 #ifdef XML_DTD
     externalSubset0, externalSubset1, condSect0, condSect1, condSect2,
-#endif /* XML_DTD */
+#endif
     declClose, error;
 
 static int FASTCALL common(PROLOG_STATE *state, int tok);
@@ -175,13 +175,13 @@ prolog1(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
   case XML_TOK_COMMENT:
     return XML_ROLE_COMMENT;
   case XML_TOK_BOM:
-    /* This case can never arise.  To reach this role function, the
-     * parse must have passed through prolog0 and therefore have had
-     * some form of input, even if only a space.  At that point, a
-     * byte order mark is no longer a valid character (though
-     * technically it should be interpreted as a non-breaking space),
-     * so will be rejected by the tokenizing stages.
-     */
+
+
+
+
+
+
+
     return XML_ROLE_NONE; /* LCOV_EXCL_LINE */
   case XML_TOK_DECL_OPEN:
     if (! XmlNameMatchesAscii(enc, ptr + 2 * MIN_BYTES_PER_CHAR(enc), end,
@@ -406,7 +406,7 @@ externalSubset1(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
   return common(state, tok);
 }
 
-#endif /* XML_DTD */
+#endif
 
 static int PTRCALL
 entity0(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
@@ -851,7 +851,7 @@ attlist7(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
   return common(state, tok);
 }
 
-/* default value */
+
 static int PTRCALL
 attlist8(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
          const ENCODING *enc) {
@@ -1167,7 +1167,7 @@ condSect2(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
   return common(state, tok);
 }
 
-#endif /* XML_DTD */
+#endif
 
 static int PTRCALL
 declClose(PROLOG_STATE *state, int tok, const char *ptr, const char *end,
@@ -1236,7 +1236,7 @@ XmlPrologStateInit(PROLOG_STATE *state) {
   state->documentEntity = 1;
   state->includeLevel = 0;
   state->inEntityValue = 0;
-#endif /* XML_DTD */
+#endif
 }
 
 #ifdef XML_DTD
@@ -1248,4 +1248,4 @@ XmlPrologStateInitExternalEntity(PROLOG_STATE *state) {
   state->includeLevel = 0;
 }
 
-#endif /* XML_DTD */
+#endif

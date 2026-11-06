@@ -11,6 +11,7 @@
 
 namespace Slic3r {
 
+
 class GCode;
 class Layer;
 class Point;
@@ -18,6 +19,7 @@ class Point;
 class AvoidCrossingPerimeters
 {
 public:
+
     void        use_external_mp(bool use = true) { m_use_external_mp = use; };
     bool        used_external_mp() { return m_use_external_mp; }
     void        use_external_mp_once()  { m_use_external_mp_once = true; }
@@ -37,9 +39,13 @@ public:
     Polyline    travel_to(const GCode& gcodegen, const Point& point, bool* could_be_wipe_disabled);
 
     struct Boundary {
+
         Polygons                        boundaries;
+
         BoundingBoxf                    bbox;
+
         std::vector<std::vector<float>> boundaries_params;
+
         EdgeGrid::Grid                  grid;
 
         void clear()
@@ -51,13 +57,20 @@ public:
 
 private:
     bool           m_use_external_mp { false };
+
     bool           m_use_external_mp_once { false };
+
+
     bool           m_disabled_once { true };
+
 
     ExPolygons               m_lslices_offset;
     std::vector<BoundingBox> m_lslices_offset_bboxes;
+
     EdgeGrid::Grid m_grid_lslice;
+
     Boundary m_internal;
+
     Boundary m_external;
 };
 

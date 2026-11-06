@@ -23,15 +23,17 @@ public:
 
 protected:
 	void _fill_surface_single(
-	    const FillParams                &params, 
+	    const FillParams                &params,
 	    unsigned int                     thickness_layers,
-	    const std::pair<float, Point>   &direction, 
+	    const std::pair<float, Point>   &direction,
 	    ExPolygon    		             expolygon,
 	    Polylines                       &polylines_out) override;
 
 	coord_t _min_spacing;
 	coord_t _line_spacing;
+
 	coord_t _diagonal_distance;
+
 	coord_t _line_oscillation;
 
 	Line _line(int i, coord_t x, coord_t y_min, coord_t y_max) const {
@@ -42,9 +44,9 @@ protected:
 	bool _can_connect(coord_t dist_X, coord_t dist_Y)
 	{
 	    const auto TOLERANCE = coord_t(10 * SCALED_EPSILON);
-    	return (dist_X >= (this->_line_spacing - this->_line_oscillation) - TOLERANCE)
-        	&& (dist_X <= (this->_line_spacing + this->_line_oscillation) + TOLERANCE)
-        	&& (dist_Y <= this->_diagonal_distance);
+        return (dist_X >= (this->_line_spacing - this->_line_oscillation) - TOLERANCE)
+            && (dist_X <= (this->_line_spacing + this->_line_oscillation) + TOLERANCE)
+            && (dist_Y <= this->_diagonal_distance);
     }
 };
 

@@ -1,7 +1,20 @@
+
+
+
+
+
+
+
+
+
+
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { DevEnvironment, HtmlTagDescriptor, Plugin } from 'vite';
 import { parseAst } from 'vite';
+
+
+
 
 const STARTUP_MODULES = [
   '/@vite/client', '/src/bootstrap.ts', '/src/main.tsx', '/src/persist/preferences.ts', '/src/flush.ts', '/src/components/SavedPreferencesNotice.tsx',
@@ -12,15 +25,19 @@ const STARTUP_MODULES = [
   '/src/persist/wire-worker.ts', '/src/flow/boot.ts',
 ];
 
+
+
 const LATE_STARTUP = new Set(['src/plater/Plater3D.tsx', 'src/components/Navigator.tsx', 'src/preflight/marks.ts', 'src/plater/orientPrompt.ts']);
 
 const TIMESTAMP = /([?&])t=\d+&?/;
 const IMPORT = /([?&])import&?/;
 const strip = (url: string, re: RegExp) => url.replace(re, '$1').replace(/[?&]$/, '');
+
 const moduleId = (url: string) => {
   const plain = strip(strip(url, TIMESTAMP), IMPORT);
   return plain.startsWith('/@id/') ? plain.slice(5).replace('__x00__', '\0') : plain;
 };
+
 
 const parsed = new WeakMap<object, string[]>();
 function staticImports(result: { code: string }) {
@@ -35,6 +52,7 @@ function staticImports(result: { code: string }) {
   }
   return urls;
 }
+
 
 function served(env: DevEnvironment, url: string) {
   const time = env.moduleGraph.urlToModuleMap.get(url)?.lastHMRTimestamp;
@@ -57,7 +75,7 @@ async function staticGraph(env: DevEnvironment, roots: string[]) {
       order.push(url);
       try {
         next.push(...staticImports(result).filter((dep) => dep.startsWith('/') && !seen.has(dep)));
-      } catch {  }
+      } catch {                      }
     }));
     level = next;
   }
@@ -93,6 +111,8 @@ export function devStartup(): Plugin {
         }, next);
       });
     },
+
+
     transform: {
       order: 'post',
       handler(code, id) {
@@ -119,6 +139,7 @@ export function buildStartup(): Plugin {
         if (!bundle) return [];
         const startup = new Set(STARTUP_MODULES.map((url) => path.join(root, url)));
         const chunks = new Map(Object.values(bundle).flatMap((c) => c.type === 'chunk' ? [[c.fileName, c] as const] : []));
+
         const seen = new Set<string | undefined>();
         const vite = (name: string | undefined) => {
           if (seen.has(name)) return;
@@ -136,6 +157,8 @@ export function buildStartup(): Plugin {
           c.viteMetadata?.importedCss.forEach((css) => styles.add(css));
           c.imports.forEach((i) => visit(i, low));
         };
+
+
         const startupChunks = [...chunks.values()].filter((c) => c.facadeModuleId && startup.has(c.facadeModuleId));
         const deferred = (c: { facadeModuleId: string | null }) => LATE_STARTUP.has(path.relative(root, c.facadeModuleId!).replaceAll(path.sep, '/'));
         for (const c of startupChunks) if (!deferred(c)) visit(c.fileName, false);

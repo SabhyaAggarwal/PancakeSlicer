@@ -20,7 +20,7 @@ class MultiPoint
 {
 public:
     Points points;
-    
+
     MultiPoint() {}
     MultiPoint(const MultiPoint &other) : points(other.points) {}
     MultiPoint(MultiPoint &&other) noexcept : points(std::move(other.points)) {}
@@ -48,7 +48,11 @@ public:
     double length() const;
     bool   is_valid() const { return this->points.size() >= 2; }
 
+
+
     int  find_point(const Point &point) const;
+
+
     int  find_point(const Point &point, const double scaled_epsilon) const;
     bool has_boundary_point(const Point &point) const;
     int  closest_point_index(const Point &point) const {
@@ -67,12 +71,16 @@ public:
         return idx;
     }
     const Point* closest_point(const Point &point) const { return this->points.empty() ? nullptr : &this->points[this->closest_point_index(point)]; }
+
+
     double distance_to(const Point& point) const {
         const Point* cl = closest_point(point);
         return (*cl - point).cast<double>().norm();
     }
     BoundingBox bounding_box() const;
+
     bool has_duplicate_points() const;
+
     bool remove_duplicate_points();
     void clear() { this->points.clear(); }
     void append(const Point &point) { this->points.push_back(point); }
@@ -95,7 +103,8 @@ public:
     static Points _douglas_peucker(const Points &points, const double tolerance);
     static Points visivalingam(const Points& pts, const double tolerance);
     static Points concave_hull_2d(const Points& pts, const double tolerence);
-    
+
+
     static double minimumDistanceBetweenLinesDefinedByPoints(const Points& A, const Points& B);
 
     inline auto begin()        { return points.begin(); }
@@ -104,8 +113,9 @@ public:
     inline auto end()    const { return points.end();   }
     inline auto cbegin() const { return points.begin(); }
     inline auto cend()   const { return points.end();   }
-    
+
 private:
+
     static double squaredDistanceToLineSegment(const Point& p, const Point& v, const Point& w);
 };
 
@@ -147,12 +157,15 @@ public:
 
     BoundingBox3 bounding_box() const;
 
+
     int find_point(const Point &point) const;
     int find_point(const Point &point, const double scaled_epsilon) const;
     int find_point(const Point3 &point) const;
     int find_point(const Point3 &point, const double scaled_epsilon) const;
 
+
     bool remove_duplicate_points();
+
 
     static Points3 _douglas_peucker(const Points3 &points, double tolerance);
 };

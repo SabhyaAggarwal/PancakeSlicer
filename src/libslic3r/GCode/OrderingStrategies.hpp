@@ -1,3 +1,5 @@
+
+
 #ifndef slic3r_OrderingStrategies_hpp_
 #define slic3r_OrderingStrategies_hpp_
 
@@ -17,11 +19,19 @@ namespace Slic3r { enum class PrintOrder; }
 
 namespace Slic3r {
 
+
+
+
+
 bool tsp_2opt_improve(std::vector<size_t>& path, const Points& centers, int max_passes = 10);
+
+
 
 bool tsp_remove_crossings(std::vector<size_t>& path, const Points& centers);
 
+
 void tsp_rotate_minimize_closing(std::vector<size_t>& path, const Points& centers);
+
 
 inline double tsp_cycle_path_length(const std::vector<size_t>& path, const Points& centers)
 {
@@ -33,6 +43,7 @@ inline double tsp_cycle_path_length(const std::vector<size_t>& path, const Point
     }
     return total;
 }
+
 
 inline double tsp_max_edge_length(const std::vector<size_t>& path, const Points& centers)
 {
@@ -49,6 +60,10 @@ inline double tsp_max_edge_length(const std::vector<size_t>& path, const Points&
 
 
 #ifndef SLIC3R_TEST_HARNESS
+
+
+
+
 
 template<typename CoreFn>
 std::vector<const PrintInstance*> chain_instances_with_core(
@@ -68,6 +83,7 @@ std::vector<const PrintInstance*> chain_instances_with_core(
 
     if (instance_centers.empty()) return {};
 
+
     if (start_near != nullptr) {
         size_t best_start = 0;
         double best_d2 = std::numeric_limits<double>::max();
@@ -81,7 +97,12 @@ std::vector<const PrintInstance*> chain_instances_with_core(
 
     auto path = core_fn(instance_centers);
 
+
+
+
     if (start_near != nullptr && !path.empty()) {
+
+
         auto it = std::find(path.begin(), path.end(), size_t(0));
         if (it != path.begin())
             std::rotate(path.begin(), it, path.end());
@@ -98,15 +119,27 @@ std::vector<const PrintInstance*> chain_instances_with_core(
 }
 
 #endif
+
+
+
+
 std::vector<size_t> snake_core(const Points& centers);
 
 #ifndef SLIC3R_TEST_HARNESS
 
+
+
+
 std::vector<const PrintInstance*> chain_print_object_instances_snake(const std::vector<const PrintObject*>& print_objects, const Point* start_near);
 std::vector<const PrintInstance*> chain_print_object_instances_snake(const Print& print);
 
+
+
 std::vector<const PrintInstance*> chain_print_object_instances_best_of(const std::vector<const PrintObject*>& print_objects, const Point* start_near);
 std::vector<const PrintInstance*> chain_print_object_instances_best_of(const Print& print);
+
+
+
 
 std::vector<size_t> order_points_with_strategy(const Points& points, PrintOrder print_order, const Point* start_near);
 

@@ -59,7 +59,6 @@ func transformSuffix(t *transforms, I int) []byte {
 	return t.prefix_suffix[t.prefix_suffix_map[transformSuffixId(t, I)]:]
 }
 
-/* RFC 7932 transforms string data */
 const kPrefixSuffix string = "\001 \002, \010 of the \004 of \002s \001.\005 and \004 " + "in \001\"\004 to \002\">\001\n\002. \001]\005 for \003 a \006 " + "that \001'\006 with \006 from \004 by \001(\006. T" + "he \004 on \004 as \004 is \004ing \002\n\t\001:\003ed " + "\002=\"\004 at \003ly \001,\002='\005.com/\007. This \005" + " not \003er \003al \004ful \004ive \005less \004es" + "t \004ize \002\xc2\xa0\004ous \005 the \002e \000"
 
 var kPrefixSuffixMap = [50]uint16{
@@ -115,7 +114,6 @@ var kPrefixSuffixMap = [50]uint16{
 	0xD8,
 }
 
-/* RFC 7932 transforms */
 var kTransformsData = []byte{
 	49,
 	transformIdentity,
@@ -488,7 +486,7 @@ var kBrotliTransforms = transforms{
 	kPrefixSuffixMap[:],
 	121,
 	kTransformsData,
-	nil, /* no extra parameters */
+	nil,
 	[transformsMaxCutOff + 1]int16{0, 12, 27, 23, 42, 63, 56, 48, 59, 64},
 }
 
@@ -505,32 +503,30 @@ func toUpperCase(p []byte) int {
 		return 1
 	}
 
-	/* An overly simplified uppercasing model for UTF-8. */
 	if p[0] < 0xE0 {
 		p[1] ^= 32
 		return 2
 	}
 
-	/* An arbitrary transform for three byte characters. */
 	p[2] ^= 5
 
 	return 3
 }
 
 func shiftTransform(word []byte, word_len int, parameter uint16) int {
-	/* Limited sign extension: scalar < (1 << 24). */
+
 	var scalar uint32 = (uint32(parameter) & 0x7FFF) + (0x1000000 - (uint32(parameter) & 0x8000))
 	if word[0] < 0x80 {
-		/* 1-byte rune / 0sssssss / 7 bit scalar (ASCII). */
+
 		scalar += uint32(word[0])
 
 		word[0] = byte(scalar & 0x7F)
 		return 1
 	} else if word[0] < 0xC0 {
-		/* Continuation / 10AAAAAA. */
+
 		return 1
 	} else if word[0] < 0xE0 {
-		/* 2-byte rune / 110sssss AAssssss / 11 bit scalar. */
+
 		if word_len < 2 {
 			return 1
 		}
@@ -539,7 +535,7 @@ func shiftTransform(word []byte, word_len int, parameter uint16) int {
 		word[1] = byte(uint32(word[1]&0xC0) | scalar&0x3F)
 		return 2
 	} else if word[0] < 0xF0 {
-		/* 3-byte rune / 1110ssss AAssssss BBssssss / 16 bit scalar. */
+
 		if word_len < 3 {
 			return word_len
 		}
@@ -549,7 +545,7 @@ func shiftTransform(word []byte, word_len int, parameter uint16) int {
 		word[2] = byte(uint32(word[2]&0xC0) | scalar&0x3F)
 		return 3
 	} else if word[0] < 0xF8 {
-		/* 4-byte rune / 11110sss AAssssss BBssssss CCssssss / 21 bit scalar. */
+
 		if word_len < 4 {
 			return word_len
 		}

@@ -8,7 +8,6 @@ import "io"
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Brotli state for partial streaming decoding. */
 const (
 	stateUninited = iota
 	stateLargeWindowBits
@@ -88,8 +87,8 @@ const (
 
 type Reader struct {
 	src io.Reader
-	buf []byte // scratch space for reading from src
-	in  []byte // current chunk to decode; usually aliases buf
+	buf []byte
+	in  []byte
 
 	state        int
 	loop_counter int
@@ -179,7 +178,7 @@ type Reader struct {
 }
 
 func decoderStateInit(s *Reader) bool {
-	s.error_code = 0 /* BROTLI_DECODER_NO_ERROR */
+	s.error_code = 0
 
 	initBitReader(&s.br)
 	s.state = stateUninited

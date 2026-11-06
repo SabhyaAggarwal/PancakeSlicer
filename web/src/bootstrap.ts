@@ -11,6 +11,8 @@ import { registerServiceWorker } from './sw';
 const root = document.getElementById('root')!;
 registerServiceWorker();
 window.addEventListener('load', () => void import('./build-update').then((m) => m.watchForNewBuild()), { once: true });
+
+
 if (typeof Worker !== 'undefined') void import('./api/worker').then((m) => m.catalogWorker()).catch(() => {});
 checkBrowserSupport().then(() => {
   import('./main').catch(() => showBrowserNotice(root,

@@ -15,6 +15,7 @@
 
 namespace Slic3r {
 
+
 enum JoinType { jtSquare, jtRound, jtMiter };
 enum EndType { etClosedPolygon, etClosedLine, etOpenButt, etOpenSquare, etOpenRound };
 enum PolyFillType { pftEvenOdd, pftNonZero, pftPositive, pftNegative };
@@ -30,10 +31,16 @@ static constexpr const JoinType                     DefaultJoinType         = jt
 
 static constexpr const EndType                      DefaultEndType          = etOpenButt;
 
+
+
+
+
 static constexpr const double                       DefaultMiterLimit       = 3.;
 
 static constexpr const JoinType                     DefaultLineJoinType     = jtSquare;
+
 static constexpr const double                       DefaultLineMiterLimit   = 0.;
+
 
 static constexpr const double                       ClipperOffsetShortestEdgeFactor = 0.005;
 
@@ -57,6 +64,7 @@ namespace ClipperUtils {
         struct iterator : public PathsProviderIteratorBase {
         public:
             const Points& operator*() { assert(false); return s_empty_points; }
+
             constexpr bool operator==(const iterator &rhs) const { return true; }
             constexpr bool operator!=(const iterator &rhs) const { return false; }
             const Points& operator++(int) { assert(false); return s_empty_points; }
@@ -196,14 +204,14 @@ namespace ClipperUtils {
             const Points& operator*() const { return (m_idx_contour == 0) ? m_it_expolygon->contour.points : m_it_expolygon->holes[m_idx_contour - 1].points; }
             bool operator==(const iterator &rhs) const { return m_it_expolygon == rhs.m_it_expolygon && m_idx_contour == rhs.m_idx_contour; }
             bool operator!=(const iterator &rhs) const { return !(*this == rhs); }
-            iterator& operator++() { 
+            iterator& operator++() {
                 if (++ m_idx_contour == m_it_expolygon->holes.size() + 1) {
                     ++ m_it_expolygon;
                     m_idx_contour = 0;
                 }
                 return *this;
             }
-            const Points& operator++(int) { 
+            const Points& operator++(int) {
                 const Points &out = **this;
                 ++ (*this);
                 return out;
@@ -237,14 +245,14 @@ namespace ClipperUtils {
             const Points& operator*() const { return (m_idx_contour == 0) ? m_it_surface->expolygon.contour.points : m_it_surface->expolygon.holes[m_idx_contour - 1].points; }
             bool operator==(const iterator &rhs) const { return m_it_surface == rhs.m_it_surface && m_idx_contour == rhs.m_idx_contour; }
             bool operator!=(const iterator &rhs) const { return !(*this == rhs); }
-            iterator& operator++() { 
+            iterator& operator++() {
                 if (++ m_idx_contour == m_it_surface->expolygon.holes.size() + 1) {
                     ++ m_it_surface;
                     m_idx_contour = 0;
                 }
                 return *this;
             }
-            const Points& operator++(int) { 
+            const Points& operator++(int) {
                 const Points &out = **this;
                 ++ (*this);
                 return out;
@@ -278,14 +286,14 @@ namespace ClipperUtils {
             const Points& operator*() const { return (m_idx_contour == 0) ? (*m_it_surface)->expolygon.contour.points : (*m_it_surface)->expolygon.holes[m_idx_contour - 1].points; }
             bool operator==(const iterator &rhs) const { return m_it_surface == rhs.m_it_surface && m_idx_contour == rhs.m_idx_contour; }
             bool operator!=(const iterator &rhs) const { return !(*this == rhs); }
-            iterator& operator++() { 
+            iterator& operator++() {
                 if (++ m_idx_contour == (*m_it_surface)->expolygon.holes.size() + 1) {
                     ++ m_it_surface;
                     m_idx_contour = 0;
                 }
                 return *this;
             }
-            const Points& operator++(int) { 
+            const Points& operator++(int) {
                 const Points &out = **this;
                 ++ (*this);
                 return out;
@@ -306,9 +314,13 @@ namespace ClipperUtils {
         size_t             m_size;
     };
 
-    
+
+
     using ZPoint  = Vec3i32;
     using ZPoints = std::vector<Vec3i32>;
+
+
+
 
     void                   clip_clipper_polygon_with_subject_bbox(const Points &src, const BoundingBox &bbox, Points &out, const bool get_entire_polygons = false);
     void                   clip_clipper_polygon_with_subject_bbox(const ZPoints &src, const BoundingBox &bbox, ZPoints &out);
@@ -322,7 +334,12 @@ namespace ClipperUtils {
 
     }
 
+
+
 Slic3r::Polygons offset(const Slic3r::Polygon &polygon, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
+
+
+
 
 Slic3r::Polygons   offset(const Slic3r::Polyline &polyline, const float delta, JoinType joinType = DefaultLineJoinType, double miterLimit = DefaultLineMiterLimit, EndType end_type = DefaultEndType);
 Slic3r::Polygons   offset(const Slic3r::Polyline3 &polyline, const float delta, JoinType joinType = DefaultLineJoinType, double miterLimit = DefaultLineMiterLimit, EndType end_type = DefaultEndType);
@@ -337,6 +354,7 @@ Slic3r::ExPolygons offset_ex(const Slic3r::ExPolygon &expolygon, const float del
 Slic3r::ExPolygons offset_ex(const Slic3r::ExPolygons &expolygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::ExPolygons offset_ex(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::ExPolygons offset_ex(const Slic3r::SurfacesPtr &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
+
 inline Slic3r::ExPolygons offset_ex(const Slic3r::Polygon &polygon, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
 {
     Slic3r::Polygons temp;
@@ -344,6 +362,7 @@ inline Slic3r::ExPolygons offset_ex(const Slic3r::Polygon &polygon, const float 
 
     return offset_ex(temp, delta, joinType, miterLimit);
 }
+
 
 Polygons contour_to_polygons(const Polygon &polygon, const float line_width, JoinType join_type = DefaultJoinType, double miter_limit = DefaultMiterLimit);
 Polygons contour_to_polygons(const Polygons &polygon, const float line_width, JoinType join_type = DefaultJoinType, double miter_limit = DefaultMiterLimit);
@@ -358,59 +377,70 @@ Slic3r::Polygons   union_safety_offset(const Slic3r::ExPolygons &expolygons);
 Slic3r::ExPolygons union_safety_offset_ex(const Slic3r::Polygons &polygons);
 Slic3r::ExPolygons union_safety_offset_ex(const Slic3r::ExPolygons &expolygons);
 
-inline Slic3r::Polygons   expand(const Slic3r::Polygon &polygon, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+
+inline Slic3r::Polygons   expand(const Slic3r::Polygon &polygon, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset(polygon, delta, joinType, miterLimit); }
-inline Slic3r::Polygons   expand(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   expand(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset(polygons, delta, joinType, miterLimit); }
-inline Slic3r::Polygons   expand(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   expand(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset(polygons, delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons expand_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons expand_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset_ex(polygons, delta, joinType, miterLimit); }
-inline Slic3r::Polygons   shrink(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+
+inline Slic3r::Polygons   shrink(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset(polygons, -delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons shrink_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons shrink_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset_ex(polygons, -delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons shrink_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons shrink_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset_ex(polygons, -delta, joinType, miterLimit); }
+
+
 
 Slic3r::Polygons   offset2(const Slic3r::ExPolygons &expolygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::ExPolygons offset2_ex(const Slic3r::ExPolygons &expolygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::ExPolygons offset2_ex(const Slic3r::Surfaces &surfaces, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 
+
 Slic3r::ExPolygons _clipper_ex(ClipType clipType,
     const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, bool safety_offset_ = false);
 
 
+
 Slic3r::Polygons          closing(const Slic3r::Polygons &polygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
-inline Slic3r::Polygons   closing(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   closing(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { return closing(polygons, delta, delta, joinType, miterLimit); }
 Slic3r::ExPolygons        closing_ex(const Slic3r::Polygons &polygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
-inline Slic3r::ExPolygons closing_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons closing_ex(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { return closing_ex(polygons, delta, delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons closing_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons closing_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset2_ex(polygons, delta, - delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons closing_ex(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons closing_ex(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset2_ex(surfaces, delta, - delta, joinType, miterLimit); }
+
+
 
 Slic3r::Polygons          opening(const Slic3r::Polygons &polygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::Polygons          opening(const Slic3r::ExPolygons &expolygons, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
 Slic3r::Polygons          opening(const Slic3r::Surfaces &surfaces, const float delta1, const float delta2, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit);
-inline Slic3r::Polygons   opening(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   opening(const Slic3r::Polygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { return opening(polygons, delta, delta, joinType, miterLimit); }
-inline Slic3r::Polygons   opening(const Slic3r::ExPolygons &expolygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   opening(const Slic3r::ExPolygons &expolygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { return opening(expolygons, delta, delta, joinType, miterLimit); }
-inline Slic3r::Polygons   opening(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::Polygons   opening(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { return opening(surfaces, delta, delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons opening_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons opening_ex(const Slic3r::ExPolygons &polygons, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset2_ex(polygons, - delta, delta, joinType, miterLimit); }
-inline Slic3r::ExPolygons opening_ex(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit) 
+inline Slic3r::ExPolygons opening_ex(const Slic3r::Surfaces &surfaces, const float delta, JoinType joinType = DefaultJoinType, double miterLimit = DefaultMiterLimit)
     { assert(delta > 0); return offset2_ex(surfaces, - delta, delta, joinType, miterLimit); }
 
 Slic3r::Lines _clipper_ln(ClipType clipType, const Slic3r::Lines &subject, const Slic3r::Polygons &clip);
 
+
 Slic3r::Polygons   diff(const Slic3r::Polygon &subject, const Slic3r::Polygon &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   diff(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   diff(const Slic3r::Polygons &subject, const Slic3r::ExPolygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
+
+
 Slic3r::Polygons   diff_clipped(const Slic3r::Polygons &src, const Slic3r::Polygons &clipping, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::ExPolygons diff_clipped(const Slic3r::ExPolygons &src, const Slic3r::Polygons &clipping, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::ExPolygons diff_clipped(const Slic3r::ExPolygons &src, const Slic3r::ExPolygons &clipping, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
@@ -437,6 +467,7 @@ Slic3r::Polylines  diff_pl(const Slic3r::Polyline &subject, const Slic3r::ExPoly
 Slic3r::Polylines  diff_pl(const Slic3r::Polylines &subject, const Slic3r::ExPolygon &clip);
 Slic3r::Polylines  diff_pl(const Slic3r::Polylines &subject, const Slic3r::ExPolygons &clip);
 Slic3r::Polylines  diff_pl(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip);
+
 
 inline Slic3r::ExPolygons diff_ex(const Slic3r::ExPolygon& subject, const Slic3r::ExPolygon& clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No)
 {
@@ -469,16 +500,20 @@ inline Slic3r::Lines diff_ln(const Slic3r::Lines &subject, const Slic3r::Polygon
     return _clipper_ln(ctDifference, subject, clip);
 }
 
+
 Slic3r::Polygons   intersection(const Slic3r::Polygon &subject, const Slic3r::Polygon &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::Polygons &subject, const Slic3r::ExPolygon &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, PolyFillType fill_type);
 Slic3r::Polygons   intersection(const Slic3r::ExPolygon &subject, const Slic3r::ExPolygon &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
+
+
 Slic3r::Polygons   intersection_clipped(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::ExPolygons &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::ExPolygons &subject, const Slic3r::ExPolygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::Surfaces &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::Polygons   intersection(const Slic3r::Surfaces &subject, const Slic3r::ExPolygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
+
 Slic3r::Polygons   intersection(const Slic3r::Polygons& subject, const Slic3r::Polygon& clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::ExPolygons intersection_ex(const Slic3r::Polygons &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
 Slic3r::ExPolygons intersection_ex(const Slic3r::ExPolygon &subject, const Slic3r::Polygons &clip, ApplySafetyOffset do_safety_offset = ApplySafetyOffset::No);
@@ -502,6 +537,8 @@ Slic3r::Polylines  intersection_pl(const Slic3r::Polygons &subject, const Slic3r
 Slic3r::Polylines3 intersection_pl(const Slic3r::Polylines3 &subject, const Slic3r::Polygon &clip);
 Slic3r::Polylines3 intersection_pl(const Slic3r::Polylines3 &subject, const Slic3r::ExPolygon &clip);
 
+
+
 void restore_source_path_order(const Slic3r::Polyline &source, Slic3r::Polylines &fragments);
 
 inline Slic3r::Lines intersection_ln(const Slic3r::Lines &subject, const Slic3r::Polygons &clip)
@@ -520,6 +557,7 @@ Slic3r::Polygons union_(const Slic3r::Polygons &subject);
 Slic3r::Polygons union_(const Slic3r::ExPolygons &subject);
 Slic3r::Polygons union_(const Slic3r::Polygons &subject, const PolyFillType fillType);
 Slic3r::Polygons union_(const Slic3r::Polygons &subject, const Slic3r::Polygons &subject2);
+
 Slic3r::ExPolygons union_ex(const Slic3r::Polygons &subject, PolyFillType fill_type = pftNonZero);
 Slic3r::ExPolygons union_ex(const Slic3r::ExPolygons &subject);
 Slic3r::ExPolygons union_ex(const Slic3r::ExPolygons &subject, const Slic3r::Polygons &subject2);
@@ -532,10 +570,12 @@ Slic3r::ExPolygons xor_ex(const Slic3r::ExPolygons &subject, const Slic3r::ExPol
 
 Slic3r::Polygons union_pt_chained_outside_in(const Slic3r::Polygons &subject);
 
+
 Slic3r::Polygons simplify_polygons(const Slic3r::Polygons &subject);
 Slic3r::ExPolygons simplify_polygons_ex(const Slic3r::Polygons &subject);
 
 Polygons top_level_islands(const Slic3r::Polygons &polygons);
+
 ExPolygons top_level_expolygons(const ExPolygons &expolygons, ExPolygons *nested = nullptr);
 
 Points mittered_offset_path_scaled(const Points &contour, const std::vector<float> &deltas, double miter_limit);

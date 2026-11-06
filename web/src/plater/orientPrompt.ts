@@ -1,3 +1,7 @@
+
+
+
+
 import { flushReady } from '../flush-state';
 import { firstLayer, jobFields } from '../slice-input';
 import { loadMoves, supportGrams } from '../preview/data';
@@ -7,10 +11,12 @@ import { instanceBox, parsePoints, plateJson } from './geometry';
 import { orientJob } from './operations';
 import { axisAngle, withRotation } from './rotation';
 
+
 interface Score { object?: unknown; original?: unknown; best?: unknown; axis?: unknown; angle_deg?: unknown; support_area?: unknown; float_area?: unknown }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const pose = (o: PlateObject) => JSON.stringify([o.rotX, o.rotY, o.scale]);
+
 
 function fits(o: PlateObject, rotation: number[]) {
   const machine = printerPreset(getState());
@@ -21,6 +27,10 @@ function fits(o: PlateObject, rotation: number[]) {
   return box.max.x - box.min.x <= Math.max(...xs) - Math.min(...xs) && box.max.y - box.min.y <= Math.max(...ys) - Math.min(...ys) &&
     box.max.z - box.min.z < Number(machine.config.printable_height ?? 1e6) - 0.01;
 }
+
+
+
+
 
 function decide(o: PlateObject, scores: Score[]): OrientPrompt | null {
   const mine = scores.filter((x) => (num(x.object) ?? 0) === 0);
@@ -42,10 +52,16 @@ const without = (st: State, id: number) => {
   return next;
 };
 
+
+
+
+
+
 function fromProject(o: PlateObject) {
   const n = o.native;
   return !!n && o.source === n.files[String((n.entry.volumes as { file: string }[])[n.main].file)];
 }
+
 
 const scored = new Map<number, string>();
 let queue = Promise.resolve();
@@ -59,10 +75,12 @@ async function score(o: PlateObject, printer: string) {
     return;
   }
   const s = getState(), now = s.objects.find((x) => x.id === o.id);
+
   if (!now || s.printer !== printer || pose(now) !== pose(o) || s.orientDismissed.includes(o.id)) return;
   const prompt = decide(now, scores);
   setState((st) => ({ orientPrompts: prompt ? { ...st.orientPrompts, [o.id]: prompt } : without(st, o.id) }));
 }
+
 
 function check() {
   const s = getState();
@@ -85,6 +103,7 @@ export function startOrientPrompt() {
   check();
 }
 
+
 async function sliceAlone(o: PlateObject): Promise<OrientSlice> {
   const s = getState();
   const area = parsePoints(printerPreset(s)?.config.printable_area), xs = area.map((p) => p.x), ys = area.map((p) => p.y);
@@ -94,6 +113,7 @@ async function sliceAlone(o: PlateObject): Promise<OrientSlice> {
   alone.instances = [{ ...inst, x: inst.x + (Math.min(...xs) + Math.max(...xs)) / 2 - (box.min.x + box.max.x) / 2,
     y: inst.y + (Math.min(...ys) + Math.max(...ys)) / 2 - (box.min.y + box.max.y) / 2 }];
   const { plate, files } = await plateJson([alone], firstLayer(s));
+
   await flushReady();
   const id = await s.api!.submit({ ...jobFields(s), plate, files, output: 'gcode', priority: 'low', ...(s.features.floating ? { floating: true } : {}) });
   try {
@@ -112,6 +132,7 @@ async function sliceAlone(o: PlateObject): Promise<OrientSlice> {
     await s.api!.cancel(id);
   }
 }
+
 
 export async function confirmOrientPrompt(id: number) {
   const s = getState(), prompt = s.orientPrompts[id], o = s.objects.find((x) => x.id === id);
@@ -133,6 +154,7 @@ export async function confirmOrientPrompt(id: number) {
     if (getState().orientConfirm?.id === id) setState({ orientConfirm: { ...base, error: e instanceof Error ? e.message : String(e) } });
   }
 }
+
 
 export function standUp(id: number) {
   const s = getState(), prompt = s.orientPrompts[id], o = s.objects.find((x) => x.id === id);

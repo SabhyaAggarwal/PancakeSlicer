@@ -25,21 +25,22 @@ public:
 protected:
     Fill* clone() const override { return new FillHoneycomb(*this); };
 	void _fill_surface_single(
-	    const FillParams                &params, 
+	    const FillParams                &params,
 	    unsigned int                     thickness_layers,
-	    const std::pair<float, Point>   &direction, 
+	    const std::pair<float, Point>   &direction,
 	    ExPolygon                 		 expolygon,
 	    Polylines                       &polylines_out) override;
 
-	struct CacheID 
+
+	struct CacheID
 	{
-		CacheID(float adensity, coordf_t aspacing) : 
+		CacheID(float adensity, coordf_t aspacing) :
 			density(adensity), spacing(aspacing) {}
 		float		density;
 		coordf_t	spacing;
-		bool operator<(const CacheID &other) const 
+		bool operator<(const CacheID &other) const
 			{ return (density < other.density) || (density == other.density && spacing < other.spacing); }
-		bool operator==(const CacheID &other) const 
+		bool operator==(const CacheID &other) const
 			{ return density == other.density && spacing == other.spacing; }
 	};
 	struct CacheData

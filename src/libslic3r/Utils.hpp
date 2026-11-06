@@ -37,6 +37,8 @@
 #include "libslic3r.h"
 #include "Semver.hpp"
 
+
+
 #define CLI_SUCCESS                 0
 #define CLI_ENVIRONMENT_ERROR       -1
 #define CLI_INVALID_PARAMS          -2
@@ -101,24 +103,38 @@ extern unsigned int level_string_to_boost(std::string level);
 extern std::string  get_string_logging_level(unsigned level);
 extern unsigned get_logging_level();
 extern void trace(unsigned int level, const char *message);
+
 extern std::string format_memsize_MB(size_t n);
 extern std::string format_memsize(size_t bytes, unsigned int decimals = 1);
+
+
+
 extern std::string log_memory_info(bool ignore_loglevel = false);
 extern void disable_multi_threading();
+
 extern size_t total_physical_memory();
+
 extern double process_cpu_seconds();
 
+
 void set_var_dir(const std::string &path);
+
 const std::string& var_dir();
+
 std::string var(const std::string &file_name);
+
 
 std::string format_diameter_to_str(double diameter, int precision = 1);
 
+
 void set_resources_dir(const std::string &path);
+
 const std::string& resources_dir();
+
 
 void set_temporary_dir(const std::string &path);
 const std::string& temporary_dir();
+
 
 inline std::string convert_to_full_version(std::string short_version)
 {
@@ -166,41 +182,78 @@ std::vector<To> convert_vector(const std::vector<From>& src) {
     return dst;
 }
 
+
 void set_local_dir(const std::string &path);
+
 const std::string& localization_dir();
 
+
 void set_sys_shapes_dir(const std::string &path);
+
 const std::string& sys_shapes_dir();
+
 
 std::string custom_shapes_dir();
 
+
 std::string handy_models_dir();
 
+
 void set_custom_gcodes_dir(const std::string &path);
+
 const std::string& custom_gcodes_dir();
 
+
 void set_data_dir(const std::string &path);
+
 const std::string& data_dir();
+
 
 bool makedir(const std::string path);
 
+
+
+
 std::string debug_out_path(const char *name, ...);
+
 void set_log_path_and_level(const std::string& file, unsigned int level);
 void flush_logs();
 void shutdown_console_logging();
 boost::filesystem::path get_log_file_name();
 
+
+
 typedef std::string local_encoded_string;
+
+
 
 extern size_t get_utf8_sequence_length(const std::string& text, size_t pos = 0);
 extern size_t get_utf8_sequence_length(const char *seq, size_t size);
+
+
+
 
 extern local_encoded_string encode_path(const char *src);
 extern std::string decode_path(const char *src);
 extern std::string normalize_utf8_nfc(const char *src);
 extern std::vector<std::string> split_string(const std::string &str, char delimiter);
 
+
+
+
 extern std::error_code rename_file(const std::string &from, const std::string &to);
+
+
+
+
+
+
+
+
+
+
+
+
 extern std::error_code write_file_atomically(const std::string &path, std::initializer_list<std::string_view> chunks, bool binary = false);
 inline std::error_code write_file_atomically(const std::string &path, const std::string &content, bool binary = false)
 	{ return write_file_atomically(path, { std::string_view(content) }, binary); }
@@ -213,10 +266,18 @@ enum CopyFileResult {
 	FAIL_CHECK_ORIGIN_NOT_OPENED,
 	FAIL_CHECK_TARGET_NOT_OPENED
 };
+
 CopyFileResult copy_file_inner(const std::string &from, const std::string &to, std::string& error_message);
+
+
+
+
 extern CopyFileResult copy_file(const std::string &from, const std::string &to, std::string& error_message, const bool with_check = false);
 extern bool           copy_framework(const std::string &from, const std::string &to);
+
 extern CopyFileResult check_copy(const std::string& origin, const std::string& copy);
+
+
 
 extern bool is_plain_file(const boost::filesystem::directory_entry &path);
 extern bool is_ini_file(const boost::filesystem::directory_entry &path);
@@ -226,17 +287,30 @@ extern bool is_img_file(const std::string& path);
 extern bool is_gallery_file(const boost::filesystem::directory_entry& path, char const* type);
 extern bool is_gallery_file(const std::string& path, char const* type);
 extern bool is_shapes_dir(const std::string& dir);
+
 extern bool is_json_file(const std::string& path);
+
+
+
 extern bool is_path_within_root(const std::string &rel_path, const boost::filesystem::path &root);
+
+
 extern bool is_symlink_target_within_root(const std::string &link_rel_path, const std::string &target, const boost::filesystem::path &root);
+
+
 extern bool is_absolute_path_within_root(const boost::filesystem::path &path, const boost::filesystem::path &root);
+
+
 extern bool is_safe_to_open_file_name(const std::string &file_name);
+
+
 
 inline bool ascii_iequals(std::string_view a, std::string_view b)
 {
     auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c; };
     return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [&lower](char x, char y) { return lower(x) == lower(y); });
 }
+
 
 inline bool is_orca_open(const std::string& url) { return boost::starts_with(url, "orcaslicer://open"); }
 inline bool is_prusaslicer_open(const std::string& url) { return boost::starts_with(url, "prusaslicer://open"); }
@@ -256,36 +330,62 @@ inline bool is_thingiverse_link(const std::string& url) {
     return std::regex_match(url, url_regex);
 }
 
+
 inline std::string sanitize_filename(const std::string &filename){
     const std::regex special_chars("[/\\\\:*?\"<>|]");
     return std::regex_replace(filename, special_chars, "_");
 }
+
+
 inline std::string sanitize_file_basename(const std::string &name){
     const size_t sep = name.find_last_of("/\\");
     const std::string base = sanitize_filename(sep == std::string::npos ? name : name.substr(sep + 1));
+
     return base.find_first_not_of(". ") == std::string::npos ? std::string() : base;
 }
+
 boost::filesystem::path download_marker_path(const boost::filesystem::path &dest_folder, const std::string &filename);
+
+
+
 bool find_unused_filename(const boost::filesystem::path &dest_folder, const std::string &filename,
                           const boost::filesystem::path &ignored_marker, std::string &result);
+
+
 namespace PerlUtils {
+
     extern std::string path_to_filename(const char *src);
+
     extern std::string path_to_stem(const char *src);
+
     extern std::string path_to_extension(const char *src);
+
     extern std::string path_to_parent_path(const char *src);
 };
 
 std::string string_printf(const char *format, ...);
 
+
+
 std::string header_slic3r_generated();
+
+
 
 std::string header_gcodeviewer_generated();
 
+
 extern unsigned get_current_pid();
+
 std::string per_user_temp_id();
+
 std::string per_user_temp_dir(const std::string &base, const std::string &user_id);
+
+
 std::string resolve_cli_input_path(const std::string &path);
+
 std::string get_process_name(int pid);
+
+
 
 inline uint16_t next_highest_power_of_2(uint16_t v)
 {
@@ -320,6 +420,9 @@ inline uint64_t next_highest_power_of_2(uint64_t v)
     v |= v >> 32;
     return ++ v;
 }
+
+
+
 
 template<class T> size_t next_highest_power_of_2(T v,
     typename std::enable_if<std::is_same<T, size_t>::value, T>::type = 0,
@@ -367,6 +470,7 @@ inline INDEX_TYPE next_idx_modulo(INDEX_TYPE idx, const INDEX_TYPE count)
 		idx = 0;
 	return idx;
 }
+
 
 
 template<typename INDEX_TYPE>
@@ -417,10 +521,15 @@ extern std::string xml_unescape(std::string text);
 
 
 #if defined __GNUC__ && __GNUC__ < 5 && !defined __clang__
+
+
+
 template<typename T> struct IsTriviallyCopyable { static constexpr bool value = true; };
 #else
 template<typename T> struct IsTriviallyCopyable : public std::is_trivially_copyable<T> {};
 #endif
+
+
 
 struct FilePtr {
     FilePtr(FILE *f) : f(f) {}
@@ -439,6 +548,7 @@ class ScopeGuard
 public:
     typedef std::function<void()> Closure;
 private:
+
     Closure closure;
 
 public:
@@ -462,8 +572,11 @@ public:
     void reset() { closure = Closure(); }
 };
 
+
+
 inline std::string short_time(const std::string &time)
 {
+
     int days = 0;
     int hours = 0;
     int minutes = 0;
@@ -479,6 +592,7 @@ inline std::string short_time(const std::string &time)
         ::sscanf(time.c_str(), "%fs", &f_seconds);
         seconds = int(f_seconds);
     }
+
     if (days + hours > 0 && seconds >= 30) {
         if (++minutes == 60) {
             minutes = 0;
@@ -488,6 +602,7 @@ inline std::string short_time(const std::string &time)
             }
         }
     }
+
     char buffer[64];
     if (days > 0)
         ::sprintf(buffer, "%dd%dh%dm", days, hours, minutes);
@@ -503,6 +618,7 @@ inline std::string short_time(const std::string &time)
         ::sprintf(buffer, "0s");
     return buffer;
 }
+
 
 inline std::string get_time_dhms(float time_in_secs)
 {
@@ -681,19 +797,46 @@ void copy_directory_recursively(const boost::filesystem::path& source,
                                 std::function<bool(const std::string)> filter = nullptr,
                                 bool merge_mode                               = false);
 
+
+
+
+
+
+
+
+
+
 bool is_vendor_installed(const std::string& vendor);
+
+
+
 
 Semver installed_vendor_version(const std::string& vendor);
 
+
+
 void remove_installed_vendor(const std::string& vendor);
+
+
 
 std::set<std::string> vendor_names_in(const boost::filesystem::path& dir);
 
+
+
+
 Semver resource_vendor_version(const std::string& vendor);
+
+
+
+
+
+
+
 
 bool install_vendor_bundles_from_resources(const std::vector<std::string>& bundle_names,
                                            const std::string& resource_subdir = "profiles",
                                            const std::string& data_subdir     = "system");
+
 
 void save_string_file(const boost::filesystem::path& p, const std::string& str);
 void load_string_file(const boost::filesystem::path& p, std::string& str);
@@ -704,9 +847,11 @@ bool check_layer_id_pattern(const std::string& pattern, int layer_id);
 
 #if WIN32
     #define SLIC3R_STDVEC_MEMSIZE(NAME, TYPE) NAME.capacity() * ((sizeof(TYPE) + __alignof(TYPE) - 1) / __alignof(TYPE)) * __alignof(TYPE)
+
     #define SLIC3R_STDUNORDEREDSET_MEMSIZE(NAME, TYPE) NAME.size() * ((sizeof(TYPE) + __alignof(TYPE) - 1) / __alignof(TYPE)) * __alignof(TYPE)
 #else
     #define SLIC3R_STDVEC_MEMSIZE(NAME, TYPE) NAME.capacity() * ((sizeof(TYPE) + alignof(TYPE) - 1) / alignof(TYPE)) * alignof(TYPE)
+
     #define SLIC3R_STDUNORDEREDSET_MEMSIZE(NAME, TYPE) NAME.size() * ((sizeof(TYPE) + alignof(TYPE) - 1) / alignof(TYPE)) * alignof(TYPE)
 #endif
 

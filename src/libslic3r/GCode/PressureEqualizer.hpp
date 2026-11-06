@@ -18,12 +18,20 @@ struct LayerResult;
 
 class GCodeG1Formatter;
 
+
+
+
+
+
 class PressureEqualizer
 {
 public:
     PressureEqualizer() = delete;
     explicit PressureEqualizer(const Slic3r::GCodeConfig &config);
     ~PressureEqualizer() = default;
+
+
+
 
     LayerResult process_layer(LayerResult &&input);
 private:
@@ -56,6 +64,8 @@ private:
     struct Statistics m_stat;
 #endif
 
+
+
     struct ExtrusionRateSlope {
         float positive;
         float negative;
@@ -64,7 +74,11 @@ private:
     float                           m_max_volumetric_extrusion_rate_slope_positive;
     float                           m_max_volumetric_extrusion_rate_slope_negative;
 
+
+
     std::vector<float>              m_filament_crossections;
+
+
 
     float                           m_current_pos[5];
     size_t                          m_current_extruder;
@@ -72,9 +86,14 @@ private:
     bool                            m_retracted;
     bool                            m_use_relative_e_distances;
 
+
+
     float                           m_max_segment_length;
-    
+
+
     bool                           m_extrusion_rate_smoothing_external_perimeter_only;
+
+
 
     bool                            opened_extrude_set_speed_block = false;
 
@@ -91,14 +110,14 @@ private:
 
     struct GCodeLine
     {
-        GCodeLine() : 
+        GCodeLine() :
             type(GCODELINETYPE_INVALID),
             raw_length(0),
             modified(false),
-            extruder_id(0), 
-            volumetric_extrusion_rate(0.f), 
-            volumetric_extrusion_rate_start(0.f), 
-            volumetric_extrusion_rate_end(0.f) 
+            extruder_id(0),
+            volumetric_extrusion_rate(0.f),
+            volumetric_extrusion_rate_start(0.f),
+            volumetric_extrusion_rate_end(0.f)
             {}
 
         bool        moving_xy()     const { return fabs(pos_end[0] - pos_start[0]) > 0.f || fabs(pos_end[1] - pos_start[1]) > 0.f; }
@@ -116,8 +135,9 @@ private:
         float       feedrate()      const { return pos_end[4]; }
         float       time()          const { return dist_xyz() / feedrate(); }
         float       time_inv()      const { return feedrate() / dist_xyz(); }
-        float       volumetric_correction_avg() const { 
-            float avg_correction = std::max(0.05f,0.5f * (volumetric_extrusion_rate_start + volumetric_extrusion_rate_end) / volumetric_extrusion_rate); 
+        float       volumetric_correction_avg() const {
+
+            float avg_correction = std::max(0.05f,0.5f * (volumetric_extrusion_rate_start + volumetric_extrusion_rate_end) / volumetric_extrusion_rate);
             assert(avg_correction > 0.f);
             assert(avg_correction <= 1.00000001f);
             return avg_correction;
@@ -125,20 +145,32 @@ private:
 
         GCodeLineType type;
 
+
         std::vector<char>   raw;
         size_t              raw_length;
+
+
         bool                modified;
+
 
         float       pos_start[5];
         float       pos_end[5];
+
         bool        pos_provided[5];
 
+
         size_t      extruder_id;
+
         ExtrusionRole extrusion_role;
 
+
         float       volumetric_extrusion_rate;
+
         float       volumetric_extrusion_rate_start;
+
         float       volumetric_extrusion_rate_end;
+
+
 
         float       max_volumetric_extrusion_rate_slope_positive;
         float       max_volumetric_extrusion_rate_slope_negative;
@@ -149,11 +181,13 @@ private:
         bool        extrude_end_tag       = false;
     };
 
+
     std::vector<char>               output_buffer;
     size_t                          output_buffer_length;
     size_t                          output_buffer_prev_length;
 
 #ifdef PRESSURE_EQUALIZER_DEBUG
+
     size_t                          line_idx;
 #endif
 
@@ -161,11 +195,15 @@ private:
     long advance_segment_beyond_small_gap(long idx_cur_pos);
     void output_gcode_line(size_t line_idx);
 
+
+
     void adjust_volumetric_rate(size_t first_line_idx, size_t last_line_idx);
+
 
     inline void push_to_output(GCodeG1Formatter &formatter);
     inline void push_to_output(const std::string &text, bool add_eol);
     inline void push_to_output(const char *text, size_t len, bool add_eol = true);
+
     void push_line_to_output(size_t line_idx, float new_feedrate, const char *comment);
 
 public:

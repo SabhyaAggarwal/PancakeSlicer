@@ -70,8 +70,10 @@ ExtrusionEntity *ExtrusionEntityCollection::clone() const
 void ExtrusionEntityCollection::reverse()
 {
     for (ExtrusionEntity *ptr : this->entities)
+
+
         if (! ptr->is_loop())
-        	ptr->reverse();
+            ptr->reverse();
     std::reverse(this->entities.begin(), this->entities.end());
 }
 
@@ -89,8 +91,10 @@ void ExtrusionEntityCollection::remove(size_t i)
 
 ExtrusionEntityCollection ExtrusionEntityCollection::chained_path_from(const ExtrusionEntitiesPtr& extrusion_entities, const Point &start_near, ExtrusionRole role)
 {
+
     ExtrusionEntityCollection out;
     out.entities = filter_by_extrusion_role(extrusion_entities, role);
+
 	for (auto &ptr : out.entities)
 		ptr = ptr->clone();
 	chain_and_reorder_extrusion_entities(out.entities, &start_near);
@@ -109,6 +113,7 @@ void ExtrusionEntityCollection::polygons_covered_by_spacing(Polygons &out, const
         entity->polygons_covered_by_spacing(out, scaled_epsilon);
 }
 
+
 size_t ExtrusionEntityCollection::items_count() const
 {
     size_t count = 0;
@@ -120,6 +125,7 @@ size_t ExtrusionEntityCollection::items_count() const
     return count;
 }
 
+
 ExtrusionEntityCollection ExtrusionEntityCollection::flatten(bool preserve_ordering) const
 {
 	struct Flatten {
@@ -128,7 +134,8 @@ ExtrusionEntityCollection ExtrusionEntityCollection::flatten(bool preserve_order
 		bool   					  preserve_ordering;
 		void recursive_do(const ExtrusionEntityCollection &collection) {
 		    if (collection.no_sort && preserve_ordering) {
-		    	out.append(collection);
+
+                out.append(collection);
 		    } else {
 				for (const ExtrusionEntity *entity : collection.entities)
 					if (entity->is_collection())
@@ -147,7 +154,7 @@ double ExtrusionEntityCollection::min_mm3_per_mm() const
 {
     double min_mm3_per_mm = std::numeric_limits<double>::max();
     for (const ExtrusionEntity *entity : this->entities)
-    	min_mm3_per_mm = std::min(min_mm3_per_mm, entity->min_mm3_per_mm());
+        min_mm3_per_mm = std::min(min_mm3_per_mm, entity->min_mm3_per_mm());
     return min_mm3_per_mm;
 }
 

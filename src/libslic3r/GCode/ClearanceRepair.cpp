@@ -56,9 +56,16 @@ namespace {
 using MoveVertex = GCodeProcessorResult::MoveVertex;
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
+
+
 constexpr double UniformRadius = 3.;
+
+
 constexpr double UprightRadius = 1.5;
+
 constexpr double SkinUprightRadius = 0.6;
+
+
 
 bool adaptive_top(const PrintObject &object, int patch)
 {
@@ -68,7 +75,9 @@ bool adaptive_top(const PrintObject &object, int patch)
     return p.kind == PatchKind::Top && p.region_id >= 0 &&
            object.printing_region(size_t(p.region_id)).config().nonplanar_adaptive_bands.value;
 }
+
 constexpr double Extra = 0.05;
+
 constexpr double CellSlack = 0.25;
 
 bool physical(const MoveVertex &m)
@@ -81,6 +90,8 @@ Vec3d tip_of(const GCodeProcessorResult &result, size_t i)
 {
     return result.has_joints() ? result.joints[i].xyz : Vec3d(result.moves[i].position.cast<double>());
 }
+
+
 
 struct Box { std::string name; Vec3d min, max; bool inf_x, inf_y, nozzle; };
 std::vector<Box> verifier_boxes(const HeadEnvelope &head, bool allowance)
@@ -103,10 +114,14 @@ std::vector<Box> verifier_boxes(const HeadEnvelope &head, bool allowance)
     return out;
 }
 
+
 struct Segment { size_t move; size_t run; Vec3d a, b; double half_width; };
 class SegmentGrid
 {
 public:
+
+
+
     SegmentGrid(const GCodeProcessorResult &result, const std::vector<BoundingBoxf> *reach, const std::vector<size_t> &blamed)
     {
         std::unordered_set<int64_t> cells;
@@ -140,6 +155,7 @@ public:
     }
     size_t run_of(size_t move) const { auto it = m_run_of.find(move); return it == m_run_of.end() ? size_t(-1) : it->second; }
     const std::vector<Segment> &segments() const { return m_segments; }
+
     template<class Fn> void query(const BoundingBoxf &rect, Fn fn) const
     {
         if (!rect.min.allFinite() || !rect.max.allFinite()) {
@@ -175,6 +191,7 @@ private:
     std::unordered_map<int64_t, std::vector<size_t>> m_cells;
     std::unordered_map<size_t, size_t>               m_run_of;
 };
+
 
 struct Blame
 {
@@ -217,6 +234,7 @@ Blame blame(const GCodeProcessorResult &result, const SegmentGrid &grid, size_t 
     return best;
 }
 
+
 struct Site
 {
     PrintObject *object   = nullptr;
@@ -233,6 +251,7 @@ public:
         m_offset = Vec2d(print.get_plate_origin().head<2>()) + print.get_imex_slice_offset();
         m_z_offset = print.config().z_offset.value;
     }
+
     Vec2d to_object(const Vec3d &tip, const PrintObject &object, size_t instance, unsigned extruder) const
     {
         const Vec2d extruder_offset = extruder < m_print.config().extruder_offset.values.size() ?
@@ -240,6 +259,8 @@ public:
         return tip.head<2>() + m_offset + extruder_offset - unscale(object.instances()[instance].shift);
     }
     double to_object_z(double z) const { return z - m_z_offset; }
+
+
     Vec3d from_preview(const MoveVertex &m) const
     {
         const Vec2d extruder_offset = m.extruder_id < m_print.config().extruder_offset.values.size() ?
@@ -248,6 +269,7 @@ public:
         return Vec3d(xy.x(), xy.y(), double(m.position.z()) + m_z_offset);
     }
     double to_gcode_z(double z) const { return z + m_z_offset; }
+
     PrintObject *object_at(const Vec3d &tip, unsigned extruder) const
     {
         for (PrintObject *object : m_print.objects())
@@ -257,6 +279,7 @@ public:
                         return object;
         return nullptr;
     }
+
     Site locate(const GCodeProcessorResult &result, size_t move_id, const Vec3d &tip) const
     {
         Site best;
@@ -270,6 +293,7 @@ public:
             for (size_t instance = 0; instance < object->instances().size(); ++instance) {
                 const Vec2d q = to_object(tip, *object, instance, m.extruder_id);
                 for (const ConformalPatch &patch : object->conformal().patches) {
+
                     if (patch.kind == PatchKind::Skin) {
                         if (best.object == nullptr && unscaled(object->bounding_box()).contains(q))
                             best = Site { object, patch.id, shell, q };
@@ -278,6 +302,7 @@ public:
                     const float s = patch.surface.sample(q);
                     if (std::isnan(s) || shell > patch.shells)
                         continue;
+
                     const double expected = patch.kind == PatchKind::Top ? s - std::max(0, patch.shells - 1 - shell) * patch.shell_height :
                                                                            s + (shell + 1) * patch.shell_height;
                     if (const double dz = std::abs(z - expected); dz < best_dz)
@@ -315,6 +340,7 @@ CurvedTopBudgetReport ClearanceRepair::curved_budget_report(const Print &print, 
 
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
+
     trim_free_memory();
     if (wave_enabled(print)) {
         ClearanceParams params;
@@ -333,6 +359,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         }
         return;
     }
+
+
     if (rotary_auto_measurement() || rotary_measurement_unverified() ||
         rotary_measurement_too_slow(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time))
         return;
@@ -343,6 +371,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     if (self != nullptr)
         for (const std::string &warning : self->m_guard_warnings)
             print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+
+
     for (const PrintObject *object : print.objects())
         if (object->m_auto_planar && !object->auto_plain_reason().empty()) {
             const auto *set  = object->model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
@@ -357,6 +387,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
                 self->contact_guard(result);
             return;
         }
+
+
         if (self != nullptr && result.nonplanar && effective_collision_check(print) != NonplanarCollisionCheck::Off &&
             self->m_pass < self->m_max_passes) {
             ClearanceParams params;
@@ -389,12 +421,19 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
             self->contact_guard(result);
         return;
     }
+
+
     if (self != nullptr && self->oneshot_step(result))
         return;
     if (self == nullptr || !result.nonplanar || mode == NonplanarCollisionCheck::Off) {
         check_export_clearance(print, result);
         return;
     }
+
+
+
+
+
     const bool auto_only = std::any_of(print.objects().begin(), print.objects().end(),
                                        [](const PrintObject *o) { return o->config().nonplanar_mode.value == NonplanarMode::Auto; }) &&
                            std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *o) {
@@ -403,12 +442,21 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     ClearanceParams params;
     params.head        = resolve_head_envelope(print.config());
     params.contact_bar = auto_only;
+
     if (const char *tol = std::getenv("NP_CONTACT_CONE_TOL"); tol != nullptr)
         params.cone_tolerance = std::max(0., std::atof(tol));
     ClearanceReport report = verify_clearance(result, params, ThreeAxisKinematics(), [&print] { print.throw_if_canceled(); });
     const size_t hits = report.hit_moves;
     self->m_planned.clear();
+
+
     const bool stalled = self->m_pass > 0 && hits == self->m_last_hits && report.min_clearance == self->m_last_min;
+
+
+
+
+
+
     std::string stop;
     if (params.contact_bar && hits > 0) {
         self->m_stale_passes = self->m_pass > 0 && hits >= self->m_best_hits ? self->m_stale_passes + 1 : 0;
@@ -432,8 +480,12 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     }
     self->m_last_hits  = hits;
     self->m_last_min   = report.min_clearance;
+
+
+
     constexpr int BarRepairPasses = 5;
     int           max_passes      = params.contact_bar && self->m_max_passes > 0 ? std::max(self->m_max_passes, BarRepairPasses) : self->m_max_passes;
+
     if (const char *passes = std::getenv("NP_BAR_REPAIR_PASSES"); passes != nullptr && params.contact_bar)
         max_passes = std::max(0, std::atoi(passes));
     if (hits > 0 && !stalled && stop.empty() && self->plan(result, report, params.head, params.contact_bar) && self->m_pass < max_passes) {
@@ -442,6 +494,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         return;
     }
     self->m_planned.clear();
+
+
     size_t conformal_hits = 0;
     for (size_t i = 0; i < result.moves.size(); ++i)
         if (report.per_move[i] < 0.f && result.state(result.moves[i]).nonplanar_patch_shell != 0xFF && result.moves[i].type == EMoveType::Extrude)
@@ -450,6 +504,10 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     result.clearance        = result.clearance_report.per_move;
     if (self->m_pass == 0 && hits == 0)
         return;
+
+
+
+
     if (params.contact_bar && hits > 0 && self->contact_guard(result, hits))
         return;
     std::string message = self->summary(hits);
@@ -469,11 +527,14 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 
 bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head, bool bar)
 {
+
+
     const std::vector<Box> contact_boxes = verifier_boxes(head, !bar), travel_boxes = verifier_boxes(head, false);
     auto component_of = [](const ClearanceHit &hit) {
         const std::string &c = hit.component;
         return c.size() > 5 && c.compare(c.size() - 5, 5, "_fine") == 0 ? c.substr(0, c.size() - 5) : c;
     };
+
     auto previous_physical = [&](size_t i) { while (i > 0 && !physical(result.moves[--i])) {} return i; };
     auto next_extrusion    = [&](size_t i) {
         while (++i < result.moves.size())
@@ -485,6 +546,8 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             if (const auto &move = result.moves[--i]; !move.timing_only && move.type == EMoveType::Extrude) return i;
         return size_t(0);
     };
+
+
     std::vector<BoundingBoxf> reach;
     std::vector<size_t>       blamed;
     bool                      unbounded = false;
@@ -520,8 +583,14 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
     };
 
     size_t caps = 0, bands = 0, drops = 0, lifts = 0, planars = 0, unrepaired = 0;
+
     constexpr double PlanarRadius = 2.5;
+
+
     auto droppable = [](PatchKind kind) { return kind == PatchKind::Top || kind == PatchKind::Overhang || kind == PatchKind::Bottom; };
+
+
+
     auto disc_radius = [&head](double depth) {
         double r = 0.;
         for (const HeadBox &box : head.boxes)
@@ -530,9 +599,15 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         return PlanarRadius + r;
     };
     std::map<std::string, size_t> unrepaired_by_cause;
+
+
+
     if (bar) {
         std::map<const PrintObject *, std::set<std::pair<int, int>>> placed;
         const double cell = 0.5 * PlanarRadius;
+
+
+
         auto planar_site = [&](size_t i) {
             const Vec3d tip = tip_of(result, i);
             for (PrintObject *object : m_print.objects())
@@ -557,6 +632,8 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             ++planars;
         }
     }
+
+
     for (const ClearanceHit &hit : report.worst) {
         size_t move_id = hit.move_id;
         const MoveVertex *m = &result.moves[move_id];
@@ -565,6 +642,8 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         const Vec3d  a = tip_of(result, prev), b = tip_of(result, move_id);
         const double penetration = hit.penetration;
 
+
+
         if (!extruding) {
             const size_t next = next_extrusion(move_id);
             const bool vertical = (b.head<2>() - a.head<2>()).norm() < 1e-3;
@@ -572,18 +651,24 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                 move_id = next;
                 m = &result.moves[move_id];
             } else {
+
                 const size_t last = previous_extrusion(move_id);
                 Site site = locator.locate(result, last, tip_of(result, last));
                 if (site.object == nullptr && next != 0)
                     site = locator.locate(result, next, tip_of(result, next));
+
+
                 if (site.object == nullptr)
                     site.object = locator.object_at(b, m->extruder_id);
                 if (site.object != nullptr) {
                     RepairHints &h = hints_of(site.object);
+
+
                     if (adaptive_top(*site.object, site.patch))
                         h.uniform_beads.push_back({ site.xy, UniformRadius });
                     const double base = site.object->nonplanar_repair() ? site.object->nonplanar_repair()->travel_lift : 0.;
                     h.travel_lift = std::max(h.travel_lift, base + penetration + Extra);
+
                     const auto &layers = site.object->layers();
                     const double z     = locator.to_object_z(b.z());
                     const auto   it    = std::lower_bound(layers.begin(), layers.end(), z - EPSILON,
@@ -591,6 +676,9 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                     if (it != layers.end())
                         h.travel_layers.push_back((*it)->id());
                     ++lifts;
+
+
+
                     static const bool travel_disc = std::getenv("NP_CT1_TRAVEL_DISC") != nullptr;
                     if (travel_disc && bar && site.patch >= 0 &&
                         size_t(site.patch) < site.object->conformal().patches.size() &&
@@ -606,6 +694,7 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         }
 
         const Site site = locator.locate(result, move_id, tip_of(result, move_id));
+
         if (site.object != nullptr) {
             const ConformalPatch &patch = site.object->conformal().patches[size_t(site.patch)];
             if (site.shell == patch.shells) {
@@ -614,6 +703,7 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                 continue;
             }
         }
+
 
         if (bar && extruding && site.object != nullptr && droppable(site.object->conformal().patches[size_t(site.patch)].kind)) {
             hints_of(site.object).planar.push_back({ site.xy, disc_radius(penetration) });
@@ -627,16 +717,20 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             continue;
         }
         const Site        source  = locator.locate(result, what.culprit->move, what.culprit->b);
+
         if (bar && source.object != nullptr && droppable(source.object->conformal().patches[size_t(source.patch)].kind)) {
             hints_of(source.object).planar.push_back({ source.xy, disc_radius(penetration) });
             ++planars;
             continue;
         }
         if (source.object != nullptr && source.object->conformal().patches[size_t(source.patch)].kind == PatchKind::Top) {
+
             const ConformalPatch &patch = source.object->conformal().patches[size_t(source.patch)];
             const double drop = std::max(0, patch.shells - 1 - std::min(source.shell, patch.shells - 1)) * patch.shell_height;
+
             const double cap  = locator.to_object_z(what.floor - 2. * Extra) + drop;
             RepairHints &h    = hints_of(source.object);
+
             if (adaptive_top(*source.object, source.patch))
                 h.uniform_beads.push_back({ source.xy, UniformRadius });
             if (site.object == source.object && adaptive_top(*site.object, site.patch))
@@ -653,14 +747,18 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                 else if ((p.head<2>() - what.rect.center()).norm() < (nearest.head<2>() - what.rect.center()).norm())
                     nearest = p;
             }
+
             if (!inside)
                 h.surface_caps.push_back({ source.xy + (nearest - sb).head<2>(), radius, cap });
             ++caps;
         } else if (site.object != nullptr && site.object->conformal().patches[size_t(site.patch)].kind == PatchKind::Top) {
+
+
             double layer_height = 0.;
             for (const Layer *layer : site.object->layers())
                 layer_height = std::max(layer_height, layer->height);
             const double height = what.box_lift - Extra - layer_height;
+
             if (height < layer_height) {
                 ++unrepaired, ++unrepaired_by_cause["material beside the nozzle"];
                 continue;
@@ -697,6 +795,7 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
         const MoveVertex &m = result.moves[i];
         if (report.per_move[i] >= 0.f || result.state(m).nonplanar_patch_shell == 0xFF)
             continue;
+
         const Vec3d tip  = locator.from_preview(m);
         const Site  site = locator.locate(result, i, tip);
         if (site.object == nullptr)
@@ -712,10 +811,13 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
         size_t previous = i;
         while (previous > 0 && !physical(result.moves[--previous])) {}
         const Vec2d from = site.xy + (result.moves[previous].position - m.position).head<2>().cast<double>();
+
         const bool   skin = site.patch >= 0 && site.object->conformal().patches[size_t(site.patch)].kind == PatchKind::Skin;
         const double nan  = std::numeric_limits<double>::quiet_NaN();
         const double z_at = skin ? locator.to_object_z(tip.z()) : nan;
         const double z_from = skin ? locator.to_object_z(double(result.moves[previous].position.z())) : nan;
+
+
         const double r = skin ? SkinUprightRadius : radius;
         for (const auto &[p, z] : { std::make_pair(from, z_from), std::make_pair(site.xy, z_at) })
             if (std::none_of(upright->begin(), upright->end(), [&p = p, z = z, r](const RepairHints::Disc &d) {
@@ -730,6 +832,8 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
 
 bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
 {
+
+
     for (const PrintObject *object : m_print.m_objects)
         if (const OneShotState *s = object->oneshot_state(); s != nullptr)
             if (const std::string why = may_need_support(object->model_object()->name, Floating{ s->planar_air < 0. ? -1. : 0., 0., s->planar_air });
@@ -741,7 +845,12 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
             objects.push_back(object);
     if (objects.empty())
         return false;
+
+
+
     const double    time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+
+
     ClearanceParams params;
     params.head            = resolve_head_envelope(m_print.config());
     params.contact_bar     = true;
@@ -749,6 +858,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     const size_t    hits   = report.hit_moves;
     for (PrintObject *object : objects) {
         OneShotState &s = object->oneshot_state();
+
         s.decision      = Slic3r::format("one-shot field: %1% clearance hits, time ratio %2$.3f (model) %6% cap %3$.3f, slicer %4$.0f s%5%", hits,
                                          s.time_ratio(), s.time_cap(), time, std::string(s.z_only ? ", z-only: planar layers of varying height" : "") + s.offers(),
                                          s.time_ratio() <= s.time_cap() ? "<=" : ">");
@@ -760,10 +870,22 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
             s.decision += (s.route ? ", a tilted route; " : ", the body over its routes; ") + s.route_log;
         BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": " << s.decision;
     }
+
+
+
     for (const ClearanceHit &hit : report.worst)
         BOOST_LOG_TRIVIAL(warning) << "One-shot field: hit at G-code line " << hit.gcode_line << ", layer " << hit.layer << ", "
                                    << hit.component << " " << hit.penetration << " mm into material, role "
                                    << (hit.move_id < result.moves.size() ? ExtrusionEntity::role_to_string(result.moves[hit.move_id].extrusion_role) : "-");
+
+
+
+
+
+
+
+
+
     if (hits > 0) {
         for (PrintObject *object : objects) {
             OneShotState &s = object->oneshot_state();
@@ -789,6 +911,11 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% moves strike printed material (a solver bug: the solved field must "
                                                        "satisfy its constraints)."),
                                                   hits));
+
+
+
+
+
     const bool exported_support = std::any_of(result.moves.begin(), result.moves.end(), [](const auto &mv) {
         return mv.type == EMoveType::Extrude && is_support(mv.extrusion_role);
     });
@@ -796,6 +923,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         const bool planned = std::any_of(object->support_layers().begin(), object->support_layers().end(),
                                          [](const SupportLayer *layer) { return !layer->support_fills.empty(); }) ||
                              (!object->native_summary().empty() && exported_support);
+
         if (object->auto_support_need() != NoNeedSupp && !planned && object->config().enable_support.value)
             throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% needs support (%2%), and it prints none (support blockers "
                                                            "or settings forbid it)."),
@@ -809,6 +937,16 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                     Slic3r::format(", support added: it would float without it (%1$.0f mm3)", object->auto_support_volume()) :
                     std::string(", support on (the user's)");
     }
+
+
+
+
+
+
+
+
+
+
     auto refuse_forced_route = [](const OneShotState &s) {
         if (const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE"); force != nullptr && *force != 0 && s.route && route_forced(s.route_cuts))
             throw Slic3r::SlicingError(Slic3r::format("FORCED %1% NOT ADOPTED: %2% did not print (the export's checks re-pick it%3%%4%)",
@@ -820,14 +958,21 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         OneShotState &s      = object->oneshot_state();
         const MeasureDeadline deadline(measure_deadline(s));
         const MeasureWork     work(measure_work(*object, s));
+
+
+
         const Floating floating = floating_road(result, *object);
         const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
                                               [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
         if (s.z_only) {
             const auto     t0       = std::chrono::steady_clock::now();
             const double   t_ps     = measured_time(*object, NonplanarMode::Off, {}, {}, false);
+
+
             const bool     budget   = m_repicks[object] <= MaxRepicks;
             bool           repick   = budget && measured_repick(*object, s, time / t_ps, floating, support);
+
+
             if (budget && !repick && !m_band_tried[object]) {
                 m_band_tried[object] = true;
                 repick               = band_control(*object, s);
@@ -845,6 +990,8 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                                          s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds) +
                           s.floating_decision() + s.band_note + s.auto_note;
         } else {
+
+
             if (m_repicks[object] <= MaxRepicks && (measured_repick(*object, s, std::numeric_limits<double>::quiet_NaN(), floating, support) ||
                                                     planar_keeps_pick(*object, s, floating, net_support_mm3(m_print, result)))) {
                 refuse_forced_route(s);
@@ -875,13 +1022,19 @@ size_t ClearanceRepair::curved_contacts(const Print &print, const GCodeProcessor
 
 bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t contacts)
 {
+
     std::vector<PrintObject *> guarded;
     for (PrintObject *object : m_print.m_objects)
         if (oneshot_requested(*object) || object->config().nonplanar_mode.value == NonplanarMode::Auto || object->m_auto_planar ||
             auto_rotary_requested(*object))
             guarded.push_back(object);
+
+
     if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()) || std::getenv("NP_CONTACT_GUARD_OFF") != nullptr)
         return false;
+
+
+
     if (contacts == 0) {
         ClearanceParams params;
         params.head        = resolve_head_envelope(m_print.config());
@@ -894,6 +1047,7 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
         const std::string name = object->model_object()->name;
         if (OneShotState *s = object->m_oneshot.get(); s != nullptr && oneshot_requested(*object)) {
             if (s->offer == OneShotState::Offer::Auto) {
+
                 s->offer = OneShotState::Offer::Body;
                 s->decision += Slic3r::format(", Auto's print dropped: %1% moves the contact bar strikes", contacts);
             } else if (!s->measured_anchor) {
@@ -905,6 +1059,8 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
         } else {
             if (object->m_auto_floating_planar)
                 continue;
+
+
             object->m_auto_floating_planar = true;
             object->m_auto_planar_exact    = true;
             object->m_nonplanar_repair.reset();
@@ -913,6 +1069,7 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
         }
         BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " moves strike printed material under the "
                                    << "contact bar; it prints without them";
+
         if (oneshot_requested(*object))
             m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: the non-planar print would touch printed plastic with the nozzle in %2% "
                                                            "moves, so it prints planar layers with support instead."),
@@ -945,6 +1102,8 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 << " component " << hit.component << " depth " << hit.penetration
                 << " tip " << hit.tip.x() << "," << hit.tip.y() << "," << hit.tip.z();
         }
+
+
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
             if (report.per_move[i] >= -1e-5f || result.moves[i].extrusion_role == erCustom) continue;
             const Vec3d tip = tip_of(result, i);
@@ -971,6 +1130,8 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
         }
         if (m_curved_pass >= 3)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after three surface repair passes; export blocked.");
+
+
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
             const auto &move = result.moves[i];
             if (report.per_move[i] >= -1e-5f || move.extrusion_role == erCustom) continue;
@@ -999,6 +1160,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             }
             if (owner == nullptr) continue;
             if (m_curved_pass < 2) {
+
+
+
                 double radius = 2.5 * (m_curved_pass + 1);
                 for (const HeadBox &box : params.head.boxes)
                     if (box.nozzle && !box.infinite_x && !box.infinite_y &&
@@ -1038,6 +1202,8 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
         ++m_curved_pass;
     }
     restore_planar_remainders();
+
+
     if (report.hit_moves == 0 && m_repick.empty()) {
         if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
         for (const auto &entry : m_curved_budget->reject(m_print, result)) {
@@ -1046,6 +1212,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             if (id == CurvedTopsBudget::NativeRoads) {
                 if (!object->m_nonplanar_repair) object->m_nonplanar_repair = std::make_shared<RepairHints>();
                 auto &finish = object->m_nonplanar_repair->curved_finish;
+
+
+
                 finish = finish == RepairHints::CurvedFinish::Blended && curved_tops_stats(*object).area_fraction >= .5 ?
                     RepairHints::CurvedFinish::NativeFitted : RepairHints::CurvedFinish::NativeMesh;
                 if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
@@ -1064,6 +1233,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             if (id == CurvedTopsBudget::Walls) {
                 object->m_sublayer_walls_off = true;
                 if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+
                 const bool air = m_curved_budget->report(*object).reason == "half-height walls add road over air";
                 m_guard_warnings.push_back(object->model_object()->name + (air ?
                     ": half-height walls print as single beads, where half-beads would lie over air." :
@@ -1074,6 +1244,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             const auto decision = m_curved_budget->report(*object);
             if (std::all_of(decision.patches.begin(), decision.patches.end(),
                             [](const CurvedTopBudgetPatch &patch) { return patch.dropped; })) {
+
+
+
                 for (const auto &surface : object->nonplanar_surfaces())
                     object->m_curved_planar_surfaces.insert(surface.stable_id);
             }
@@ -1104,6 +1277,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
 
 bool ClearanceRepair::restore_planar_remainders()
 {
+
+
+
     bool restored = false;
     for (PrintObject *object : m_print.objects()) {
         if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops ||
@@ -1130,16 +1306,28 @@ bool ClearanceRepair::apply()
 {
     if (!m_repick.empty()) {
         for (PrintObject *object : m_repick) {
+
+
+
+
+
+
             if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops) {
                 auto &surfaces = object->m_nonplanar_surfaces;
                 surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(), [object](const NonplanarSurface &surface) {
                     return object->m_curved_planar_surfaces.count(surface.stable_id) != 0; }), surfaces.end());
+
+
+
+
                 bool walls = false;
                 for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id)
                     walls |= object->printing_region(region_id).config().nonplanar_sublayer_walls.value;
                 if (surfaces.empty() && !object->m_curved_planar_surfaces.empty() && !walls)
                     object->m_curved_fallback_zaa = !object->m_curved_fallback_off;
                 const auto scaffold = object->m_nonplanar_repair ? object->m_nonplanar_repair->curved_scaffold : nullptr;
+
+
                 if (scaffold && scaffold->owner == object && !scaffold->regions.empty() &&
                     !object->need_z_contouring() && !m_print.m_pipeline_plugin_active) {
                     scaffold->restore();
@@ -1160,6 +1348,7 @@ bool ClearanceRepair::apply()
         if (!object.m_nonplanar_repair)
             object.m_nonplanar_repair = std::make_shared<RepairHints>();
         RepairHints &h = *object.m_nonplanar_repair;
+
         const bool skin = std::any_of(object.conformal().patches.begin(), object.conformal().patches.end(),
                                       [](const ConformalPatch &patch) { return patch.kind == PatchKind::Skin; });
         const bool regenerate = !p.hints.surface_caps.empty() || !p.hints.ironing_drops.empty() || !p.hints.order_bands.empty() ||
@@ -1174,6 +1363,8 @@ bool ClearanceRepair::apply()
         h.travel_layers.insert(h.travel_layers.end(), p.hints.travel_layers.begin(), p.hints.travel_layers.end());
         std::sort(h.travel_layers.begin(), h.travel_layers.end());
         h.travel_layers.erase(std::unique(h.travel_layers.begin(), h.travel_layers.end()), h.travel_layers.end());
+
+
         if (regenerate)
             object.invalidate_step(posPerimeters);
         else
@@ -1186,6 +1377,7 @@ bool ClearanceRepair::apply()
 
 std::string ClearanceRepair::summary(size_t hits_now) const
 {
+
     std::ostringstream detail;
     detail << std::setprecision(2);
     for (const PrintObject *object : m_print.objects()) {

@@ -4,6 +4,7 @@ import { Glyph } from './Glyph';
 
 const snaps: SettingsSnap[] = ['peek', 'half', 'full'];
 
+
 export default function WorkspaceRail({ children }: { children: ReactNode }) {
   const overlay = useOverlayRail(), phone = usePhoneSheet(), snap = useSettingsSnap();
   const open = overlay && snap !== 'peek', modal = open && (!phone || snap === 'full');
@@ -53,7 +54,9 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
       const nearest = stops.reduce((best, value, i) => Math.abs(value - height) < Math.abs(stops[best] - height) ? i : best, 0);
       setSettingsSnap(snaps[nearest]);
       suppressClick.current = true;
+
     } else if (event.type === 'pointerup' && event.pointerType === 'touch') {
+
       setSettingsSnap(snaps[(snaps.indexOf(snap) + 1) % snaps.length]);
       suppressClick.current = true;
     }

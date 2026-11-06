@@ -2,7 +2,6 @@ package brotli
 
 import "github.com/andybalholm/brotli/matchfinder"
 
-// An Encoder implements the matchfinder.Encoder interface, writing in Brotli format.
 type Encoder struct {
 	wroteHeader bool
 	bw          bitWriter
@@ -23,7 +22,7 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 
 	if len(src) == 0 {
 		if lastBlock {
-			e.bw.writeBits(2, 3) // islast + isempty
+			e.bw.writeBits(2, 3)
 			e.bw.jumpToByteBoundary()
 			return e.bw.dst
 		}
@@ -41,10 +40,8 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 		e.distCache = make([]distanceCode, len(matches))
 	}
 
-	// first pass: build the histograms
 	pos := 0
 
-	// d is the ring buffer of the last 4 distances.
 	d := [4]int{-10, -10, -10, -10}
 	for i, m := range matches {
 		if m.Unmatched > 0 {
@@ -57,7 +54,7 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 		insertCode := getInsertLengthCode(uint(m.Unmatched))
 		copyCode := getCopyLengthCode(uint(m.Length))
 		if m.Length == 0 {
-			// If the stream ends with unmatched bytes, we need a dummy copy length.
+
 			copyCode = 2
 		}
 		command := combineLengthCodes(insertCode, copyCode, i > 0 && m.Distance == matches[i-1].Distance)
@@ -87,8 +84,6 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 				distCode.code = 8
 			case d[3] + 3:
 				distCode.code = 9
-
-				// In my testing, codes 10–15 actually reduced the compression ratio.
 
 			default:
 				distCode = getDistanceCode(m.Distance)
@@ -124,7 +119,7 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 		insertCode := getInsertLengthCode(uint(m.Unmatched))
 		copyCode := getCopyLengthCode(uint(m.Length))
 		if m.Length == 0 {
-			// If the stream ends with unmatched bytes, we need a dummy copy length.
+
 			copyCode = 2
 		}
 		command := combineLengthCodes(insertCode, copyCode, i > 0 && m.Distance == matches[i-1].Distance)
@@ -154,7 +149,7 @@ func (e *Encoder) Encode(dst []byte, src []byte, matches []matchfinder.Match, la
 	}
 
 	if lastBlock {
-		e.bw.writeBits(2, 3) // islast + isempty
+		e.bw.writeBits(2, 3)
 		e.bw.jumpToByteBoundary()
 	}
 	return e.bw.dst

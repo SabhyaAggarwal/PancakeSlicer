@@ -21,15 +21,17 @@ public:
     Fill* clone() const override { return new Fill3DHoneycomb(*this); };
     ~Fill3DHoneycomb() override {}
 
+
+
     bool use_bridge_flow() const override { return false; }
     bool is_self_crossing() override { return false; }
     bool aligned_to_origin() const override { return true; }
 
 protected:
 	void _fill_surface_single(
-	    const FillParams                &params, 
+	    const FillParams                &params,
 	    unsigned int                     thickness_layers,
-	    const std::pair<float, Point>   &direction, 
+	    const std::pair<float, Point>   &direction,
 	    ExPolygon                 		 expolygon,
 	    Polylines                       &polylines_out) override;
 };

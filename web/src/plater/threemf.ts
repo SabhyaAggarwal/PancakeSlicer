@@ -1,7 +1,12 @@
+
+
+
+
+
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 
-export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config;  locked?: boolean }
+export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config;                                                                  locked?: boolean }
 
 export interface ProjectMaterials {
   plates: ProjectPlate[];
@@ -9,12 +14,16 @@ export interface ProjectMaterials {
   colours: string[];
   matrix: number[] | null;
   multiplier: number | null;
+
   hasConfig: boolean;
+
   builds: { object: number; instance: number }[];
 }
 
 export interface ProjectItem {
+
   id: string;
+
   instance: number;
   buildIndex: number;
   plateIndex: number;
@@ -22,13 +31,23 @@ export interface ProjectItem {
   extruder: number;
   printable: boolean;
   settings: Config;
+
   origin: [number, number, number];
+
   rotZ: number;
+
+
+
   transform: number[];
+
   parts: number;
+
+
   paint?: ArchivePaint;
+
   partTris?: number[];
 }
+
 
 export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy' | 'color', Record<string, string>>>;
 const PAINT_ATTRS = [['support', 'paint_supports'], ['seam', 'paint_seam'], ['fuzzy', 'paint_fuzzy_skin'], ['color', 'paint_color']] as const;
@@ -43,10 +62,12 @@ interface Obj {
 
 const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
 
+
 function parseTransform(t: string | undefined): number[] {
   const v = (t ?? '').trim().split(/\s+/).map(Number);
   return v.length === 12 && v.every(Number.isFinite) ? v : IDENTITY;
 }
+
 
 function compose(a: number[], b: number[]): number[] {
   const out = new Array(12).fill(0);
@@ -106,6 +127,7 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
   return { objects, build };
 }
 
+
 function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }> {
   const out = new Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }>();
   if (!text) return out;
@@ -123,6 +145,11 @@ function parseSettings(text: string | undefined): Map<string, { name?: string; e
 }
 
 const unescapeXml = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+
+
+
+
 
 export async function readProject(file: File, partsOnly = false): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -145,6 +172,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
   const root = model(rootPath);
   const settings = parseSettings(entry('Metadata/model_settings.config') && strFromU8(entry('Metadata/model_settings.config')!));
 
+
   const collect = (path: string, id: string, t: number[], out: number[], depth = 0) => {
     const o = model(path).objects.get(id);
     if (!o || depth > 8) return;
@@ -159,6 +187,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     for (const c of o.components)
       if (!skip?.has(c.objectid)) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
   };
+
 
   const leaves = (path: string, id: string, out: Obj[] = [], depth = 0): Obj[] => {
     const o = model(path).objects.get(id);
@@ -184,6 +213,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     const index = Number(values.plater_id);
     if (!Number.isInteger(index) || index < 1) continue;
     const settings = { ...values };
+
     for (const [stored, native] of [['filament_maps', 'filament_map'], ['filament_volume_maps', 'filament_volume_map'], ['filament_nozzle_maps', 'filament_nozzle_map']]) {
       if (settings[stored] !== undefined) { settings[native] = settings[stored]; delete settings[stored]; }
     }
@@ -227,6 +257,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
   function volumesOf(id: string): { parts: number; paint?: ArchivePaint; partTris?: number[] } {
     const list = leaves(rootPath, id);
     if (list.length === 1) return { parts: 1, ...(list[0].paint ? { paint: list[0].paint } : {}) };
+
     const nonParts = settings.get(id)?.volumes;
     const comps = root.objects.get(id)?.components ?? [];
     if (!list.length || root.objects.get(id)?.vertices || comps.length !== list.length || comps.some((c) => nonParts?.has(c.objectid)))
@@ -240,6 +271,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     }
     return { parts: list.length, partTris: list.map((leaf) => leaf.triangles!.length / 3), ...(Object.keys(paint).length ? { paint } : {}) };
   }
+
   function loadedItem(b: { objectid: string; transform: number[] }) {
     const comps = root.objects.get(b.objectid)?.components ?? [];
     if (comps.length !== 1) return b.transform;

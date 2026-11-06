@@ -31,6 +31,7 @@ public:
     {
         m_triangle_ray_epsilon = 0.000001;
         if (calculate_epsilon) {
+
             double l = its_average_edge_length(its);
             if (l > 0)
                 m_triangle_ray_epsilon = 0.000001 * l * l;
@@ -76,6 +77,7 @@ public:
 
 template<class M> void AABBMesh::init(const M &mesh, bool calculate_epsilon)
 {
+
     m_aabb->init(*m_tm, calculate_epsilon);
 }
 
@@ -165,6 +167,8 @@ AABBMesh::query_ray_hit(const Vec3d &s, const Vec3d &dir) const
 #ifdef SLIC3R_HOLE_RAYCASTER
     if (! m_holes.empty()) {
 
+
+
         return filter_hits(query_ray_hits(s, dir));
     }
 #endif
@@ -189,13 +193,17 @@ AABBMesh::query_ray_hits(const Vec3d &s, const Vec3d &dir) const
     std::vector<igl::Hit<float>> hits;
     m_aabb->intersect_ray(*m_tm, s, dir, hits);
 
+
     std::sort(hits.begin(), hits.end(),
               [](const igl::Hit<float>& a, const igl::Hit<float>& b) { return a.t < b.t; });
+
+
 
     hits.erase(std::unique(hits.begin(), hits.end(),
                            [](const igl::Hit<float>& a, const igl::Hit<float>& b)
                            { return a.t == b.t; }),
                hits.end());
+
 
     outs.reserve(hits.size());
     for (const igl::Hit<float>& hit : hits) {
@@ -226,6 +234,7 @@ AABBMesh::hit_result IndexedMesh::filter_hits(
     const Vec3d& s = object_hits.front().source();
     const Vec3d& dir = object_hits.front().direction();
 
+
     struct HoleHit {
         HoleHit(float t_p, const Vec3d& normal_p, bool entry_p) :
             t(t_p), normal(normal_p), entry(entry_p) {}
@@ -239,16 +248,24 @@ AABBMesh::hit_result IndexedMesh::filter_hits(
     auto sf = s.cast<float>();
     auto dirf = dir.cast<float>();
 
+
     for (const sla::DrainHole& hole : m_holes) {
         std::array<std::pair<float, Vec3d>, 2> isects;
         if (hole.get_intersections(sf, dirf, isects)) {
+
             if (isects[0].first > 0.f) hole_isects.emplace_back(isects[0].first, isects[0].second, true);
             if (isects[1].first > 0.f) hole_isects.emplace_back(isects[1].first, isects[1].second, false);
         }
     }
 
+
     std::sort(hole_isects.begin(), hole_isects.end(),
               [](const HoleHit& a, const HoleHit& b) { return a.t < b.t; });
+
+
+
+
+
 
     int hole_nested = 0;
     int object_nested = 0;
@@ -266,13 +283,17 @@ AABBMesh::hit_result IndexedMesh::filter_hits(
                 is_hole = (next_hole_hit->t < next_mesh_hit->m_t);
             else
                 is_hole = next_hole_hit;
+
+
             is_entry = is_hole ? next_hole_hit->entry : ! next_mesh_hit->is_inside();
 
             if (! dry_run) {
                 if (! is_hole && hole_nested == 0) {
+
                     return *next_mesh_hit;
                 }
                 if (is_hole && ! is_entry && object_nested != 0) {
+
                     out.m_t = next_hole_hit->t;
                     out.m_normal = next_hole_hit->normal;
                     out.m_source = s;
@@ -281,7 +302,9 @@ AABBMesh::hit_result IndexedMesh::filter_hits(
                 }
             }
 
+
             (is_hole ? hole_nested : object_nested) += (is_entry ? 1 : -1);
+
 
             if (is_hole && next_hole_hit++ == &hole_isects.back())
                 next_hole_hit = nullptr;
@@ -289,6 +312,7 @@ AABBMesh::hit_result IndexedMesh::filter_hits(
                 next_mesh_hit = nullptr;
         }
     }
+
 
     return out;
 }

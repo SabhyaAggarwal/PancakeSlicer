@@ -36,6 +36,8 @@
 #include <vector>
 #include <utility>
 
+
+
 #ifdef SLAPRINT_DO_BENCHMARK
 #include <libnest2d/tools/benchmark.h>
 #endif
@@ -44,6 +46,8 @@
 #include "PlaceholderParser.hpp"
 
 namespace Slic3r { class Polygon; }
+
+
 
 #define L(s) Slic3r::I18N::translate(s)
 
@@ -54,6 +58,7 @@ bool is_zero_elevation(const SLAPrintObjectConfig &c)
 {
     return c.pad_enable.getBool() && c.pad_around_object.getBool();
 }
+
 
 sla::SupportTreeConfig make_support_cfg(const SLAPrintObjectConfig& c)
 {
@@ -122,6 +127,7 @@ sla::PadConfig make_pad_cfg(const SLAPrintObjectConfig& c)
     pcfg.wall_height_mm = c.pad_wall_height.getFloat();
     pcfg.brim_size_mm = c.pad_brim_size.getFloat();
 
+
     pcfg.embed_object = builtin_pad_cfg(c);
 
     return pcfg;
@@ -129,18 +135,22 @@ sla::PadConfig make_pad_cfg(const SLAPrintObjectConfig& c)
 
 bool validate_pad(const indexed_triangle_set &pad, const sla::PadConfig &pcfg)
 {
+
+
     return !pad.empty() || (pcfg.embed_object.enabled && !pcfg.embed_object.everywhere);
 }
 
 void SLAPrint::clear()
 {
     std::scoped_lock<std::mutex> lock(this->state_mutex());
+
     this->invalidate_all_steps();
     for (SLAPrintObject *object : m_objects)
         delete object;
     m_objects.clear();
     m_model.clear_objects();
 }
+
 
 Transform3d SLAPrint::sla_trafo(const ModelObject &model_object) const
 {
@@ -171,6 +181,7 @@ Transform3d SLAPrint::sla_trafo(const ModelObject &model_object) const
     return trafo;
 }
 
+
 static std::vector<SLAPrintObject::Instance> sla_instances(const ModelObject &model_object)
 {
     std::vector<SLAPrintObject::Instance> instances;
@@ -192,6 +203,7 @@ static std::vector<SLAPrintObject::Instance> sla_instances(const ModelObject &mo
 std::vector<ObjectID> SLAPrint::print_object_ids() const
 {
     std::vector<ObjectID> out;
+
     out.reserve(m_objects.size() + 1);
     for (const SLAPrintObject *print_object : m_objects)
         out.emplace_back(print_object->id());
@@ -203,14 +215,18 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif
+
+
     config.option("sla_print_settings_id",        true);
     config.option("sla_material_settings_id",     true);
     config.option("printer_settings_id",          true);
+
     t_config_option_keys print_diff    = m_print_config.diff(config);
     t_config_option_keys printer_diff  = m_printer_config.diff(config);
     t_config_option_keys material_diff = m_material_config.diff(config);
     t_config_option_keys object_diff   = m_default_object_config.diff(config);
     t_config_option_keys placeholder_parser_diff = m_placeholder_parser.config_diff(config);
+
 
     unsigned int apply_status = APPLY_STATUS_UNCHANGED;
     auto update_apply_status = [&apply_status](bool invalidated)
@@ -218,7 +234,9 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     if (! (print_diff.empty() && printer_diff.empty() && material_diff.empty() && object_diff.empty()))
         update_apply_status(false);
 
+
     std::scoped_lock<std::mutex> lock(this->state_mutex());
+
 
     bool invalidate_all_model_objects = false;
     if (! print_diff.empty())
@@ -228,16 +246,23 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     if (! material_diff.empty())
         update_apply_status(this->invalidate_state_by_config_options(material_diff, invalidate_all_model_objects));
 
+
+
     if (! placeholder_parser_diff.empty()) {
+
         m_placeholder_parser.apply_config(config);
+
         m_placeholder_parser.set("print_preset",            config.option("sla_print_settings_id")->clone());
         m_placeholder_parser.set("material_preset",         config.option("sla_material_settings_id")->clone());
         m_placeholder_parser.set("printer_preset",          config.option("printer_settings_id")->clone());
     }
 
+
     m_print_config.apply_only(config, print_diff, true);
     m_printer_config.apply_only(config, printer_diff, true);
+
     m_material_config.apply_only(config, material_diff, true);
+
     m_default_object_config.apply_only(config, object_diff, true);
 
     if (m_printer) m_printer->apply(m_printer_config);
@@ -253,11 +278,15 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         ModelObjectStatus(ObjectID id, Status status = Unknown) : id(id), status(status) {}
         ObjectID                id;
         Status                  status;
+
         bool operator<(const ModelObjectStatus &rhs) const { return id < rhs.id; }
     };
     std::set<ModelObjectStatus> model_object_status;
 
+
     if (model.id() != m_model.id() || invalidate_all_model_objects) {
+
+
         this->call_cancel_callback();
         update_apply_status(this->invalidate_all_steps());
         for (SLAPrintObject *object : m_objects) {
@@ -271,9 +300,11 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
             model_object_status.emplace(model_object->id(), ModelObjectStatus::New);
     } else {
         if (model_object_list_equal(m_model, model)) {
+
             for (const ModelObject *model_object : m_model.objects)
                 model_object_status.emplace(model_object->id(), ModelObjectStatus::Old);
         } else if (model_object_list_extended(m_model, model)) {
+
             update_apply_status(this->invalidate_step(slapsMergeSlicesAndEval));
             for (const ModelObject *model_object : m_model.objects)
                 model_object_status.emplace(model_object->id(), ModelObjectStatus::Old);
@@ -283,8 +314,11 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
                 m_model.objects.back()->set_model(&m_model);
             }
         } else {
+
+
             this->call_cancel_callback();
             update_apply_status(this->invalidate_step(slapsMergeSlicesAndEval));
+
             std::vector<ModelObject*> model_objects_old(std::move(m_model.objects));
             m_model.objects.clear();
             m_model.objects.reserve(model.objects.size());
@@ -293,10 +327,12 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
             for (const ModelObject *mobj : model.objects) {
                 auto it = std::lower_bound(model_objects_old.begin(), model_objects_old.end(), mobj, by_id_lower);
                 if (it == model_objects_old.end() || (*it)->id() != mobj->id()) {
+
                     m_model.objects.emplace_back(ModelObject::new_copy(*mobj));
                     m_model.objects.back()->set_model(&m_model);
                     model_object_status.emplace(mobj->id(), ModelObjectStatus::New);
                 } else {
+
                     m_model.objects.emplace_back(*it);
                     model_object_status.emplace(mobj->id(), ModelObjectStatus::Moved);
                 }
@@ -307,9 +343,11 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
                     model_object_status.emplace(model_object->id(), ModelObjectStatus::Deleted);
                     deleted_any = true;
                 } else
+
                     model_object = nullptr;
             }
             if (deleted_any) {
+
                 std::vector<SLAPrintObject*> print_objects_old = std::move(m_objects);
                 m_objects.clear();
                 m_objects.reserve(print_objects_old.size());
@@ -328,6 +366,7 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         }
     }
 
+
     struct PrintObjectStatus {
         enum Status {
             Unknown,
@@ -341,15 +380,20 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
             trafo(print_object->trafo()),
             status(status) {}
         PrintObjectStatus(ObjectID id) : id(id), print_object(nullptr), trafo(Transform3d::Identity()), status(Unknown) {}
+
         ObjectID         id;
+
         SLAPrintObject  *print_object;
+
         Transform3d      trafo;
         Status           status;
+
         bool operator<(const PrintObjectStatus &rhs) const { return id < rhs.id; }
     };
     std::multiset<PrintObjectStatus> print_object_status;
     for (SLAPrintObject *print_object : m_objects)
         print_object_status.emplace(PrintObjectStatus(print_object));
+
 
     std::vector<SLAPrintObject*> print_objects_new;
     print_objects_new.reserve(std::max(m_objects.size(), m_model.objects.size()));
@@ -359,13 +403,16 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         auto it_status = model_object_status.find(ModelObjectStatus(model_object.id()));
         assert(it_status != model_object_status.end());
         assert(it_status->status != ModelObjectStatus::Deleted);
+
         auto it_print_object_status = print_object_status.end();
         if (it_status->status != ModelObjectStatus::New) {
+
             assert(it_status->status == ModelObjectStatus::Old || it_status->status == ModelObjectStatus::Moved);
             const ModelObject &model_object_new       = *model.objects[idx_model_object];
             it_print_object_status = print_object_status.lower_bound(PrintObjectStatus(model_object.id()));
             if (it_print_object_status != print_object_status.end() && it_print_object_status->id != model_object.id())
                 it_print_object_status = print_object_status.end();
+
             bool model_parts_differ = model_volume_list_changed(model_object, model_object_new, ModelVolumeType::MODEL_PART);
             bool sla_trafo_differs  =
                 model_object.instances.empty() != model_object_new.instances.empty() ||
@@ -373,12 +420,15 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
                   (! sla_trafo(model_object).isApprox(sla_trafo(model_object_new)) ||
                     model_object.instances.front()->is_left_handed() != model_object_new.instances.front()->is_left_handed()));
             if (model_parts_differ || sla_trafo_differs) {
+
                 if (it_print_object_status != print_object_status.end()) {
                     update_apply_status(it_print_object_status->print_object->invalidate_all_steps());
                     const_cast<PrintObjectStatus&>(*it_print_object_status).status = PrintObjectStatus::Deleted;
                 }
+
                 model_object.assign_copy(model_object_new);
             } else {
+
                 bool object_config_changed = ! model_object.config.timestamp_matches(model_object_new.config);
                 if (object_config_changed)
                     model_object.config.assign_config(model_object_new.config);
@@ -406,11 +456,13 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
                 }
                 model_object.sla_points_status = model_object_new.sla_points_status;
 
+
                 if (model_object.sla_drain_holes != model_object_new.sla_drain_holes)
                 {
                     model_object.sla_drain_holes = model_object_new.sla_drain_holes;
                     update_apply_status(it_print_object_status->print_object->invalidate_step(slaposDrillHoles));
                 }
+
 
                 model_object.name       = model_object_new.name;
                 model_object.input_file = model_object_new.input_file;
@@ -425,10 +477,12 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
 
         std::vector<SLAPrintObject::Instance> new_instances = sla_instances(model_object);
         if (it_print_object_status != print_object_status.end() && it_print_object_status->status != PrintObjectStatus::Deleted) {
+
             if (new_instances.empty()) {
                 const_cast<PrintObjectStatus&>(*it_print_object_status).status = PrintObjectStatus::Deleted;
             } else {
                 if (new_instances != it_print_object_status->print_object->instances()) {
+
                     it_print_object_status->print_object->set_instances(new_instances);
                     update_apply_status(this->invalidate_step(slapsMergeSlicesAndEval));
                 }
@@ -437,6 +491,8 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
             }
         } else if (! new_instances.empty()) {
             auto print_object = new SLAPrintObject(this, &model_object);
+
+
 
             print_object->set_trafo(sla_trafo(model_object), model_object.instances.front()->is_left_handed());
 
@@ -453,6 +509,7 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
         this->call_cancel_callback();
         update_apply_status(this->invalidate_all_steps());
         m_objects = print_objects_new;
+
         for (auto &pos : print_object_status)
             if (pos.status == PrintObjectStatus::Unknown || pos.status == PrintObjectStatus::Deleted) {
                 update_apply_status(pos.print_object->invalidate_all_steps());
@@ -475,8 +532,10 @@ SLAPrint::ApplyStatus SLAPrint::apply(const Model &model, DynamicPrintConfig con
     return static_cast<ApplyStatus>(apply_status);
 }
 
+
 void SLAPrint::set_task(const TaskParams &params)
 {
+
     std::scoped_lock<std::mutex> lock(this->state_mutex());
 
     int n_object_steps = int(params.to_object_step) + 1;
@@ -484,6 +543,7 @@ void SLAPrint::set_task(const TaskParams &params)
         n_object_steps = int(slaposCount);
 
     if (params.single_model_object.valid()) {
+
         SLAPrintObject *print_object = nullptr;
         size_t          idx_print_object = 0;
         for (; idx_print_object < m_objects.size(); ++ idx_print_object)
@@ -492,11 +552,14 @@ void SLAPrint::set_task(const TaskParams &params)
                 break;
             }
         assert(print_object != nullptr);
+
         bool running = false;
         for (int istep = 0; istep < n_object_steps; ++ istep) {
             if (! print_object->m_stepmask[size_t(istep)])
+
                 break;
             if (print_object->is_step_started_unguarded(SLAPrintObjectStep(istep))) {
+
                 running = true;
                 break;
             }
@@ -504,26 +567,35 @@ void SLAPrint::set_task(const TaskParams &params)
         if (! running)
             this->call_cancel_callback();
 
+
         if (params.single_model_instance_only) {
+
             for (SLAPrintObject *po : m_objects)
                 for (size_t istep = 0; istep < slaposCount; ++ istep)
                     po->m_stepmask[istep] = false;
         } else if (! running) {
+
+
             if (idx_print_object != 0)
                 std::swap(m_objects.front(), m_objects[idx_print_object]);
         }
+
         for (int istep = 0; istep < n_object_steps; ++ istep)
             print_object->m_stepmask[size_t(istep)] = true;
         for (int istep = n_object_steps; istep < int(slaposCount); ++ istep)
             print_object->m_stepmask[size_t(istep)] = false;
     } else {
+
         bool running = false;
         for (SLAPrintObject *print_object : m_objects)
             for (int istep = 0; istep < n_object_steps; ++ istep) {
                 if (! print_object->m_stepmask[size_t(istep)]) {
+
                     goto loop_end;
                 }
                 if (print_object->is_step_started_unguarded(SLAPrintObjectStep(istep))) {
+
+
                     running = true;
                     goto loop_end;
                 }
@@ -540,11 +612,14 @@ void SLAPrint::set_task(const TaskParams &params)
     }
 
     if (params.to_object_step != -1 || params.to_print_step != -1) {
+
         size_t istep = (params.to_object_step != -1) ? 0 : size_t(params.to_print_step) + 1;
         for (; istep < m_stepmask.size(); ++ istep)
             m_stepmask[istep] = false;
     }
 }
+
+
 
 void SLAPrint::finalize()
 {
@@ -554,6 +629,9 @@ void SLAPrint::finalize()
     for (size_t istep = 0; istep < slapsCount; ++ istep)
         m_stepmask[istep] = true;
 }
+
+
+
 
 std::string SLAPrint::output_filename(const std::string &filename_base) const
 {
@@ -626,6 +704,7 @@ bool SLAPrint::invalidate_step(SLAPrintStep step)
 {
     bool invalidated = Inherited::invalidate_step(step);
 
+
     if (step == slapsMergeSlicesAndEval) {
         invalidated |= this->invalidate_all_steps();
     }
@@ -640,11 +719,16 @@ void SLAPrint::process(long long *time_cost_with_cache, bool use_cache)
 
     name_tbb_thread_pool_threads_set_locale();
 
+
+
+
     Steps printsteps(this);
+
 
     std::vector<SLAPrintObjectStep> level1_obj_steps = {
         slaposHollowing, slaposDrillHoles, slaposObjectSlice, slaposSupportPoints, slaposSupportTree, slaposPad
     };
+
 
     std::vector<SLAPrintObjectStep> level2_obj_steps = {
         slaposSliceSupports
@@ -674,6 +758,10 @@ void SLAPrint::process(long long *time_cost_with_cache, bool use_cache)
         for (SLAPrintObject *po : m_objects) {
             for (SLAPrintObjectStep step : steps) {
 
+
+
+
+
                 throw_if_canceled();
 
                 st += incr;
@@ -696,6 +784,9 @@ void SLAPrint::process(long long *time_cost_with_cache, bool use_cache)
     apply_steps_on_objects(level1_obj_steps);
     apply_steps_on_objects(level2_obj_steps);
 
+
+
+
     st = Steps::max_objstatus;
     for(SLAPrintStep currentstep : print_steps) {
         throw_if_canceled();
@@ -712,6 +803,7 @@ void SLAPrint::process(long long *time_cost_with_cache, bool use_cache)
 
         st += printsteps.progressrange(currentstep);
     }
+
 
     m_report_status(*this, 100, L("Slicing done"));
 
@@ -752,6 +844,8 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
         "gamma_correction"
     };
 
+
+
     static std::unordered_set<std::string> steps_rasterize = {
         "min_exposure_time",
         "max_exposure_time",
@@ -788,13 +882,17 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
 
     for (const t_config_option_key &opt_key : opt_keys) {
         if (steps_rasterize.find(opt_key) != steps_rasterize.end()) {
+
+
             steps.emplace_back(slapsMergeSlicesAndEval);
         } else if (steps_ignore.find(opt_key) != steps_ignore.end()) {
+
         } else if (steps_full.find(opt_key) != steps_full.end()) {
             steps.emplace_back(slapsMergeSlicesAndEval);
             osteps.emplace_back(slaposObjectSlice);
             invalidate_all_model_objects = true;
         } else {
+
             assert(false);
         }
     }
@@ -808,6 +906,7 @@ bool SLAPrint::invalidate_state_by_config_options(const std::vector<t_config_opt
             invalidated |= object->invalidate_step(ostep);
     return invalidated;
 }
+
 
 bool SLAPrint::is_step_done(SLAPrintObjectStep step) const
 {
@@ -832,6 +931,8 @@ SLAPrintObject::SLAPrintObject(SLAPrint *print, ModelObject *model_object)
 {}
 
 SLAPrintObject::~SLAPrintObject() {}
+
+
 
 bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_config_option_key> &opt_keys)
 {
@@ -892,6 +993,7 @@ bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_conf
             ) {
             steps.emplace_back(slaposPad);
         } else {
+
             assert(false);
         }
     }
@@ -905,6 +1007,7 @@ bool SLAPrintObject::invalidate_state_by_config_options(const std::vector<t_conf
 bool SLAPrintObject::invalidate_step(SLAPrintObjectStep step)
 {
     bool invalidated = Inherited::invalidate_step(step);
+
     if (step == slaposHollowing) {
         invalidated |= this->invalidate_all_steps();
     } else if (step == slaposDrillHoles) {
@@ -943,6 +1046,10 @@ double SLAPrintObject::get_elevation() const {
     double ret = en ? m_config.support_object_elevation.getFloat() : 0.;
 
     if(m_config.pad_enable.getBool()) {
+
+
+
+
         sla::PadConfig pcfg = make_pad_cfg(m_config);
         if(!pcfg.embed_object) ret += pcfg.required_elevation();
     }
@@ -1002,6 +1109,7 @@ const std::vector<sla::SupportPoint>& SLAPrintObject::get_support_points() const
 
 const std::vector<ExPolygons> &SLAPrintObject::get_support_slices() const
 {
+
     if (!m_supportdata) return EMPTY_SLICES;
     return m_supportdata->support_slices;
 }
@@ -1075,6 +1183,14 @@ const indexed_triangle_set &SLAPrintObject::hollowed_interior_mesh() const
 
 const TriangleMesh &SLAPrintObject::transformed_mesh() const {
 
+
+
+
+
+
+
+
+
     return m_transformed_rmesh.get();
 }
 
@@ -1100,9 +1216,14 @@ sla::DrainHoles SLAPrintObject::transformed_drainhole_points() const
         hl.pos = tr * hl.pos;
         hl.normal = tr * hl.normal - tr.translation();
 
+
+
         hl.normal = Vec3f(hl.normal(0)/(sc(0)*sc(0)),
                           hl.normal(1)/(sc(1)*sc(1)),
                           hl.normal(2)/(sc(2)*sc(2)));
+
+
+
 
         hl.pos -= hl.normal.normalized() * sla::HoleStickOutLength;
         hl.height += sla::HoleStickOutLength;

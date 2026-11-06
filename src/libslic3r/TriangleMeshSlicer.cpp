@@ -8,6 +8,7 @@
 #include "TriangleMesh.hpp"
 #include "TriangleMeshSlicer.hpp"
 #include "Utils.hpp"
+
 #include "libslic3r.h"
 
 #include <algorithm>
@@ -31,6 +32,7 @@
 #include <vector>
 
 #ifndef NDEBUG
+
 #endif
 
 #if 0
@@ -38,11 +40,14 @@
     #define _DEBUG
     #undef NDEBUG
     #define SLIC3R_DEBUG
+
 #endif
 
 #include <assert.h>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/lock_guard.hpp>
+
+
 
 #if defined(SLIC3R_DEBUG) || defined(SLIC3R_DEBUG_SLICE_PROCESSING)
 #include "SVG.hpp"
@@ -59,7 +64,7 @@ bool is_equal_for_sort(float lh, float rh) {
     return abs(lh - rh) <= 1e-8;
 }
 
-bool is_equal(const Vec3f &lh, const Vec3f &rh) { 
+bool is_equal(const Vec3f &lh, const Vec3f &rh) {
     return is_equal(lh[0], rh[0]) && is_equal(lh[1], rh[1]) && is_equal(lh[2], rh[2]);
 }
 
@@ -68,7 +73,11 @@ class IntersectionReference
 public:
     IntersectionReference() = default;
     IntersectionReference(int point_id, int edge_id) : point_id(point_id), edge_id(edge_id) {}
+
+
+
     int point_id { -1 };
+
     int edge_id { -1 };
 };
 
@@ -78,6 +87,7 @@ public:
     IntersectionPoint() = default;
     IntersectionPoint(int point_id, int edge_id, const Point &pt) : IntersectionReference(point_id, edge_id), Point(pt) {}
     IntersectionPoint(const IntersectionReference &ir, const Point &pt) : IntersectionReference(ir), Point(pt) {}
+
 };
 
 class IntersectionLine : public Line
@@ -92,29 +102,46 @@ public:
     void set_no_seed(bool set) { if (set) this->flags |= NO_SEED; else this->flags &= ~NO_SEED; }
 
     void reverse() { std::swap(a, b); std::swap(a_id, b_id); std::swap(edge_a_id, edge_b_id); }
-    
+
+
+
+
     int             a_id { -1 };
     int             b_id { -1 };
+
     int             edge_a_id { -1 };
     int             edge_b_id { -1 };
 
-    enum class FacetEdgeType { 
+    enum class FacetEdgeType {
+
         General,
+
         Top,
+
         Bottom,
+
+
+
         TopBottom,
+
         Horizontal,
+
         Slab,
     };
 
+
     FacetEdgeType   edge_type { FacetEdgeType::General };
+
     enum {
+
         EDGE0_NO_NEIGHBOR   = 0x001,
         EDGE1_NO_NEIGHBOR   = 0x002,
         EDGE2_NO_NEIGHBOR   = 0x004,
+
         EDGE0_FOLD          = 0x010,
         EDGE1_FOLD          = 0x020,
         EDGE2_FOLD          = 0x040,
+
         NO_SEED             = 0x100,
         SKIP                = 0x200,
     };
@@ -132,6 +159,11 @@ public:
 
 using IntersectionLines = std::vector<IntersectionLine>;
 
+
+
+
+
+
 using CoplanarEdges = std::vector<bool>;
 
 static CoplanarEdges coplanar_edges(const indexed_triangle_set &mesh, const std::vector<Vec3i32> &face_edge_ids,
@@ -142,6 +174,7 @@ static CoplanarEdges coplanar_edges(const indexed_triangle_set &mesh, const std:
         Vec3d normal { Vec3d::Zero() };
         bool  valid { false };
     };
+
 
     int num_edges = 0;
     for (const Vec3i32 &edge_ids : face_edge_ids)
@@ -155,6 +188,8 @@ static CoplanarEdges coplanar_edges(const indexed_triangle_set &mesh, const std:
     auto transformed_vertex = [&mesh, &trafo](int vertex_idx) {
         return trafo * mesh.vertices[vertex_idx].cast<double>();
     };
+
+
     auto face_plane = [&mesh, &face_planes, &face_plane_computed, &transformed_vertex](int face_idx) -> const FacePlane& {
         if (! face_plane_computed[face_idx]) {
             const Vec3i32 &face = mesh.indices[face_idx];
@@ -190,6 +225,10 @@ static CoplanarEdges coplanar_edges(const indexed_triangle_set &mesh, const std:
                 const int second_opposite_idx = mesh.indices[face_idx]((edge_idx + 2) % 3);
                 const Vec3d first_opposite = transformed_vertex(first_opposite_idx);
                 const Vec3d second_opposite = transformed_vertex(second_opposite_idx);
+
+
+
+
                 coplanar[edge_id] = first_plane.valid && second_plane.valid && first_plane.normal.dot(second_plane.normal) > 0. &&
                     std::abs(first_plane.normal.dot(second_opposite - first_plane.origin)) <= plane_distance_tolerance &&
                     std::abs(second_plane.normal.dot(first_opposite - second_plane.origin)) <= plane_distance_tolerance;
@@ -205,8 +244,11 @@ enum class FacetSliceType {
     Cutting = 2
 };
 
+
 static FacetSliceType slice_facet(
+
     float                                slice_z,
+
     const stl_vertex                    *vertices,
     const stl_triangle_vertex_indices   &indices,
     const Vec3i32                         &edge_ids,
@@ -217,6 +259,9 @@ static FacetSliceType slice_facet(
     IntersectionPoint points[3];
     size_t            num_points = 0;
     auto              point_on_layer = size_t(-1);
+
+
+
 
     for (int j = 0; j < 3; ++ j) {
         int               edge_id;
@@ -233,21 +278,33 @@ static FacetSliceType slice_facet(
             c       = vertices + (k + 2) % 3;
         }
 
+
         if (a->z() == slice_z && b->z() == slice_z) {
+
+
             const stl_vertex &v0 = vertices[0];
             const stl_vertex &v1 = vertices[1];
             const stl_vertex &v2 = vertices[2];
+
             FacetSliceType    result = FacetSliceType::Slicing;
             if (horizontal) {
+
                 line_out.edge_type = IntersectionLine::FacetEdgeType::Horizontal;
                 result = FacetSliceType::Cutting;
                 double normal = (v1.x() - v0.x()) * (v2.y() - v1.y()) - (v1.y() - v0.y()) * (v2.x() - v1.x());
                 if (normal < 0) {
+
                     std::swap(a, b);
                     std::swap(a_id, b_id);
                 }
             } else {
+
+
                 bool third_below = v0.z() < slice_z || v1.z() < slice_z || v2.z() < slice_z;
+
+
+
+
                 result = third_below ? FacetSliceType::Slicing : FacetSliceType::Cutting;
                 if (third_below) {
                     line_out.edge_type = IntersectionLine::FacetEdgeType::Top;
@@ -267,6 +324,7 @@ static FacetSliceType slice_facet(
         }
 
         if (a->z() == slice_z) {
+
             if (point_on_layer == size_t(-1) || points[point_on_layer].point_id != a_id) {
                 point_on_layer = num_points;
                 IntersectionPoint &point = points[num_points ++];
@@ -275,6 +333,7 @@ static FacetSliceType slice_facet(
                 point.point_id = a_id;
             }
         } else if (b->z() == slice_z) {
+
             if (point_on_layer == size_t(-1) || points[point_on_layer].point_id != b_id) {
                 point_on_layer = num_points;
                 IntersectionPoint &point = points[num_points ++];
@@ -283,7 +342,9 @@ static FacetSliceType slice_facet(
                 point.point_id = b_id;
             }
         } else if ((a->z() < slice_z && b->z() > slice_z) || (b->z() < slice_z && a->z() > slice_z)) {
+
             assert(a_id != b_id);
+
             if (a_id > b_id) {
                 std::swap(a_id, b_id);
                 std::swap(a, b);
@@ -313,6 +374,7 @@ static FacetSliceType slice_facet(
         }
     }
 
+
     assert(num_points < 3);
     if (num_points == 2) {
         line_out.edge_type  = IntersectionLine::FacetEdgeType::General;
@@ -322,10 +384,17 @@ static FacetSliceType slice_facet(
         line_out.b_id       = points[0].point_id;
         line_out.edge_a_id  = points[1].edge_id;
         line_out.edge_b_id  = points[0].edge_id;
+
+
+
+
         assert(line_out.a_id == -1 || line_out.b_id == -1);
         assert(line_out.edge_a_id != -1 || line_out.edge_b_id != -1);
+
 #if 0
         if (line_out.a_id != -1 && line_out.b_id != -1) {
+
+
             int i = indices[0];
             if (i == line_out.a_id || i == line_out.b_id)
                 i = indices[1];
@@ -342,8 +411,11 @@ static FacetSliceType slice_facet(
     return FacetSliceType::NoSlice;
 }
 
+
 static FacetSliceType slice_facet_for_cut_mesh(
+
     float slice_z,
+
     const stl_vertex *                 vertices,
     const stl_triangle_vertex_indices &indices,
     const Vec3i32 &                      edge_ids,
@@ -354,6 +426,9 @@ static FacetSliceType slice_facet_for_cut_mesh(
     IntersectionPoint points[3];
     size_t            num_points     = 0;
     auto              point_on_layer = size_t(-1);
+
+
+
 
     for (int j = 0; j < 3; ++j) {
         int               edge_id;
@@ -370,21 +445,33 @@ static FacetSliceType slice_facet_for_cut_mesh(
             c       = vertices + (k + 2) % 3;
         }
 
+
         if (is_equal(a->z(), slice_z) && is_equal(b->z(), slice_z)) {
+
+
             const stl_vertex &v0 = vertices[0];
             const stl_vertex &v1 = vertices[1];
             const stl_vertex &v2 = vertices[2];
+
             FacetSliceType result = FacetSliceType::Slicing;
             if (horizontal) {
+
                 line_out.edge_type = IntersectionLine::FacetEdgeType::Horizontal;
                 result             = FacetSliceType::Cutting;
                 double normal      = (v1.x() - v0.x()) * (v2.y() - v1.y()) - (v1.y() - v0.y()) * (v2.x() - v1.x());
                 if (normal < 0) {
+
                     std::swap(a, b);
                     std::swap(a_id, b_id);
                 }
             } else {
+
+
                 bool third_below = c->z() < slice_z;
+
+
+
+
                 result = third_below ? FacetSliceType::Slicing : FacetSliceType::Cutting;
                 if (third_below) {
                     line_out.edge_type = IntersectionLine::FacetEdgeType::Top;
@@ -404,6 +491,7 @@ static FacetSliceType slice_facet_for_cut_mesh(
         }
 
         if (is_equal(a->z(), slice_z)) {
+
             if (point_on_layer == size_t(-1) || points[point_on_layer].point_id != a_id) {
                 point_on_layer           = num_points;
                 IntersectionPoint &point = points[num_points++];
@@ -412,6 +500,7 @@ static FacetSliceType slice_facet_for_cut_mesh(
                 point.point_id           = a_id;
             }
         } else if (is_equal(b->z(), slice_z)) {
+
             if (point_on_layer == size_t(-1) || points[point_on_layer].point_id != b_id) {
                 point_on_layer           = num_points;
                 IntersectionPoint &point = points[num_points++];
@@ -420,7 +509,9 @@ static FacetSliceType slice_facet_for_cut_mesh(
                 point.point_id           = b_id;
             }
         } else if ((a->z() < slice_z && b->z() > slice_z) || (b->z() < slice_z && a->z() > slice_z)) {
+
             assert(a_id != b_id);
+
             if (a_id > b_id) {
                 std::swap(a_id, b_id);
                 std::swap(a, b);
@@ -450,6 +541,7 @@ static FacetSliceType slice_facet_for_cut_mesh(
         }
     }
 
+
     assert(num_points < 3);
     if (num_points == 2) {
         line_out.edge_type = IntersectionLine::FacetEdgeType::General;
@@ -459,8 +551,13 @@ static FacetSliceType slice_facet_for_cut_mesh(
         line_out.b_id      = points[0].point_id;
         line_out.edge_a_id = points[1].edge_id;
         line_out.edge_b_id = points[0].edge_id;
+
+
+
+
         assert(line_out.a_id == -1 || line_out.b_id == -1);
         assert(line_out.edge_a_id != -1 || line_out.edge_b_id != -1);
+
 
         return FacetSliceType::Slicing;
     }
@@ -469,18 +566,22 @@ static FacetSliceType slice_facet_for_cut_mesh(
 
 template<typename TransformVertex>
 void slice_facet_at_zs(
+
     const std::vector<Vec3f>                         &mesh_vertices,
     const TransformVertex                            &transform_vertex_fn,
     const stl_triangle_vertex_indices                &indices,
     const Vec3i32                                      &edge_ids,
+
     const std::vector<float>                         &zs,
     std::vector<IntersectionLines>                   &lines,
     std::array<std::mutex, 64>                       &lines_mutex)
 {
     stl_vertex vertices[3] { transform_vertex_fn(mesh_vertices[indices(0)]), transform_vertex_fn(mesh_vertices[indices(1)]), transform_vertex_fn(mesh_vertices[indices(2)]) };
 
+
     const float min_z = fminf(vertices[0].z(), fminf(vertices[1].z(), vertices[2].z()));
     const float max_z = fmaxf(vertices[0].z(), fmaxf(vertices[1].z(), vertices[2].z()));
+
 
     auto min_layer = std::lower_bound(zs.begin(), zs.end(), min_z);
     auto max_layer = std::upper_bound(min_layer, zs.end(), max_z);
@@ -488,6 +589,7 @@ void slice_facet_at_zs(
 
     for (auto it = min_layer; it != max_layer; ++ it) {
         IntersectionLine il;
+
         if (min_z != max_z && slice_facet(*it, vertices, indices, edge_ids, idx_vertex_lowest, false, il) == FacetSliceType::Slicing) {
             assert(il.edge_type != IntersectionLine::FacetEdgeType::Horizontal);
             size_t slice_id = it - zs.begin();
@@ -518,6 +620,9 @@ static inline std::vector<IntersectionLines> slice_make_lines(
             }
         }
     );
+
+
+
     tbb::parallel_for(tbb::blocked_range<size_t>(0, lines.size()),
         [&lines](const tbb::blocked_range<size_t> &range) {
             for (size_t i = range.begin(); i < range.end(); ++ i)
@@ -535,7 +640,7 @@ static inline IntersectionLines slice_make_lines(
     const TransformVertex                           &transform_vertex_fn,
     const std::vector<stl_triangle_vertex_indices>  &mesh_faces,
     const std::vector<Vec3i32>                        &face_edge_ids,
-    const float                                      plane_z, 
+    const float                                      plane_z,
     FaceFilter                                       face_filter)
 {
     IntersectionLines lines;
@@ -543,11 +648,13 @@ static inline IntersectionLines slice_make_lines(
         if (face_filter(face_idx)) {
             const Vec3i32 &indices = mesh_faces[face_idx];
             stl_vertex vertices[3] { transform_vertex_fn(mesh_vertices[indices(0)]), transform_vertex_fn(mesh_vertices[indices(1)]), transform_vertex_fn(mesh_vertices[indices(2)]) };
+
             const float min_z = fminf(vertices[0].z(), fminf(vertices[1].z(), vertices[2].z()));
             const float max_z = fmaxf(vertices[0].z(), fmaxf(vertices[1].z(), vertices[2].z()));
             assert(min_z <= plane_z && max_z >= plane_z);
             int              idx_vertex_lowest = (vertices[1].z() == min_z) ? 1 : ((vertices[2].z() == min_z) ? 2 : 0);
             IntersectionLine il;
+
             if (min_z != max_z && slice_facet(plane_z, vertices, indices, face_edge_ids[face_idx], idx_vertex_lowest, false, il) == FacetSliceType::Slicing) {
                 assert(il.edge_type != IntersectionLine::FacetEdgeType::Horizontal);
                 lines.emplace_back(il);
@@ -556,25 +663,39 @@ static inline IntersectionLines slice_make_lines(
     return lines;
 }
 
+
 struct SlabLines {
+
     std::vector<IntersectionLines>  at_slice;
+
+
+
     std::vector<IntersectionLines>  between_slices;
 };
 
+
 enum class FaceOrientation : char {
+
     Up,
+
     Down,
+
     Vertical,
+
+
     Degenerate
 };
 
 template<bool ProjectionFromTop>
 void slice_facet_with_slabs(
+
     const std::vector<Vec3f>                         &mesh_vertices,
     const std::vector<stl_triangle_vertex_indices>   &mesh_triangles,
     const size_t                                      facet_idx,
     const Vec3i32                                      &facet_neighbors,
     const Vec3i32                                      &facet_edge_ids,
+
+
     const int                                         num_edges,
     const std::vector<float>                         &zs,
     SlabLines                                        &lines,
@@ -583,9 +704,11 @@ void slice_facet_with_slabs(
     const stl_triangle_vertex_indices &indices = mesh_triangles[facet_idx];
     stl_vertex vertices[3] { mesh_vertices[indices(0)], mesh_vertices[indices(1)], mesh_vertices[indices(2)] };
 
+
     const float min_z = fminf(vertices[0].z(), fminf(vertices[1].z(), vertices[2].z()));
     const float max_z = fmaxf(vertices[0].z(), fmaxf(vertices[1].z(), vertices[2].z()));
     const bool  horizontal = min_z == max_z;
+
 
     auto min_layer = std::lower_bound(zs.begin(), zs.end(), min_z);
     auto max_layer = std::upper_bound(min_layer, zs.end(), max_z);
@@ -600,14 +723,22 @@ void slice_facet_with_slabs(
     };
 
     if (min_layer == max_layer || horizontal) {
+
         assert(horizontal || zs.empty() || max_z < zs.front() || min_z > zs.back() ||
             (min_layer == max_layer && min_layer != zs.end() && min_layer != zs.begin() && *(min_layer - 1) < min_z && *min_layer > max_z));
         if (horizontal && min_layer != zs.end() && *min_layer == min_z) {
+
+
             assert(min_layer != max_layer);
+
             size_t slice_id = min_layer - zs.begin();
 #if 0
+
+
             size_t line_id = slice_id;
 #else
+
+
             if (size_t line_id = ProjectionFromTop ? slice_id : slice_id + 1; ProjectionFromTop || line_id < lines.at_slice.size())
 #endif
                 for (int iedge = 0; iedge < 3; ++ iedge)
@@ -618,24 +749,33 @@ void slice_facet_with_slabs(
                         assert(vertices[j].z() == zs[slice_id]);
                         IntersectionLine il {
                             { to_2d(vertices[i]).cast<coord_t>(), to_2d(vertices[j]).cast<coord_t>() },
-                            indices(i), indices(j), -1, -1, 
+                            indices(i), indices(j), -1, -1,
                             ProjectionFromTop ? IntersectionLine::FacetEdgeType::Bottom : IntersectionLine::FacetEdgeType::Top
                         };
+
+
                         boost::lock_guard<std::mutex> l(lines_mutex[line_id % lines_mutex.size()]);
                         lines.at_slice[line_id].emplace_back(il);
                     }
         } else {
+
+
             size_t slab_id;
             if (ProjectionFromTop) {
                 if (max_layer == zs.begin()) {
+
                     return;
                 } else {
+
                     slab_id = max_layer - zs.begin();
                 }
             } else {
+
                 if (min_layer == zs.end()) {
+
                     return;
                 } else {
+
                     slab_id = min_layer - zs.begin();
                 }
             }
@@ -656,23 +796,31 @@ void slice_facet_with_slabs(
                 }
         }
     } else {
+
         int idx_vertex_lowest = (vertices[1].z() == min_z) ? 1 : ((vertices[2].z() == min_z) ? 2 : 0);
         IntersectionLine il_prev;
         for (auto it = min_layer; it != max_layer; ++ it) {
             IntersectionLine il;
             auto type = slice_facet(*it, vertices, indices, facet_edge_ids, idx_vertex_lowest, false, il);
             if (type == FacetSliceType::NoSlice) {
+
             } else {
                 if (il.edge_type == IntersectionLine::FacetEdgeType::Top || il.edge_type == IntersectionLine::FacetEdgeType::Bottom) {
+
+
+
                     assert(il.a_id != -1 && il.b_id != -1);
                     assert(il.edge_a_id == -1 && il.edge_b_id == -1);
+
                     int edge_id;
                     if (type == FacetSliceType::Cutting) {
+
                         assert(il.edge_type == IntersectionLine::FacetEdgeType::Bottom);
                         edge_id = il.a_id == indices(0) ? 0 : il.a_id == indices(1) ? 1 : 2;
                         assert(il.a_id == indices(edge_id));
                         assert(il.b_id == indices(next_idx_modulo(edge_id, 3)));
                     } else {
+
                         assert(type == FacetSliceType::Slicing);
                         assert(il.edge_type == IntersectionLine::FacetEdgeType::Top);
                         edge_id = il.b_id == indices(0) ? 0 : il.b_id == indices(1) ? 1 : 2;
@@ -681,6 +829,7 @@ void slice_facet_with_slabs(
                     }
                     int neighbor_idx = facet_neighbors(edge_id);
                     if (neighbor_idx == -1) {
+
                         type = FacetSliceType::Slicing;
                     } else {
 #ifndef NDEBUG
@@ -691,19 +840,30 @@ void slice_facet_with_slabs(
 #endif
 #if 0
                         if (mesh_vertices[neighbor(0)].z() == z && mesh_vertices[neighbor(1)].z() == z && mesh_vertices[neighbor(2)].z() == z) {
+
+
+
+
                             if (il.edge_type == (ProjectionFromTop ? IntersectionLine::FacetEdgeType::Top : IntersectionLine::FacetEdgeType::Bottom)) {
+
+
                                 type = FacetSliceType::Slicing;
                                 il.edge_type = IntersectionLine::FacetEdgeType::TopBottom;
                             } else {
+
                                 type = FacetSliceType::Cutting;
                             }
-                        } else 
+                        } else
 #else
+
+
 #endif
                         if (il.edge_type == IntersectionLine::FacetEdgeType::Top) {
+
                             assert(type == FacetSliceType::Slicing);
                             il.edge_type = IntersectionLine::FacetEdgeType::TopBottom;
                         } else {
+
                             assert(type == FacetSliceType::Cutting);
                             assert(il.edge_type == IntersectionLine::FacetEdgeType::Bottom);
                         }
@@ -721,8 +881,10 @@ void slice_facet_with_slabs(
                 size_t slab_id = it - zs.begin();
                 if (ProjectionFromTop)
                     -- slab_id;
+
                 for (int iedge = 0; iedge < 3; ++ iedge)
                     if (facet_neighbors(iedge) == -1) {
+
                         int  edge_id         = facet_edge_ids(iedge);
                         bool intersects_this = il.edge_a_id == edge_id || il.edge_b_id == edge_id;
                         bool intersects_prev = il_prev.edge_a_id == edge_id || il_prev.edge_b_id == edge_id;
@@ -731,12 +893,14 @@ void slice_facet_with_slabs(
                         assert((! intersects_this && ! intersects_prev) || vertices[j].z() != vertices[i].z());
                         bool edge_up = vertices[j].z() > vertices[i].z();
                         if (intersects_this && intersects_prev) {
-                            Line l(il_prev.edge_a_id == edge_id ? il_prev.a : il_prev.b, 
+
+                            Line l(il_prev.edge_a_id == edge_id ? il_prev.a : il_prev.b,
                                    il.edge_a_id == edge_id ? il.a : il.b);
                             emit_slab_edge(
                                 IntersectionLine { l, -1, -1, edge_id, edge_id + num_edges, IntersectionLine::FacetEdgeType::Slab },
                                 slab_id, ProjectionFromTop != edge_up);
                         } else if (intersects_this) {
+
                             assert((vertices[i].z() > *it && vertices[j].z() < *it) || (vertices[i].z() < *it && vertices[j].z() > *it));
                             assert(il.edge_a_id == edge_id || il.edge_b_id == edge_id);
                             emit_slab_edge(
@@ -748,6 +912,7 @@ void slice_facet_with_slabs(
                                 },
                                 slab_id, ProjectionFromTop != edge_up);
                         } else if (intersects_prev) {
+
                             assert(*it <= max_z);
 #ifndef NDEBUG
                             {
@@ -765,19 +930,25 @@ void slice_facet_with_slabs(
                                 },
                                 slab_id, ProjectionFromTop != edge_up);
                         } else if (float zi = vertices[i].z(), zj = vertices[j].z(); zi < *it || zj < *it) {
+
+
                             assert(zi <= *it && zj <= *it);
 #ifndef NDEBUG
                             if (type == FacetSliceType::Slicing || type == FacetSliceType::Cutting) {
+
                                 assert(indices(i) != il.b_id || indices(j) != il.a_id);
                                 assert(indices(i) != il.a_id || indices(j) != il.b_id);
                             }
 #endif
+
                             bool inside_slab = true;
                             if (it != min_layer) {
                                 auto it_prev = it;
                                 -- it_prev;
                                 assert(*it_prev >= *min_layer && *it_prev < *it);
+
                                 inside_slab = zi > *it_prev || zj > *it_prev;
+
                                 assert(! inside_slab || (zi >= *it_prev && zj >= *it_prev));
                             }
                             if (inside_slab) {
@@ -796,16 +967,20 @@ void slice_facet_with_slabs(
             il_prev = il;
         }
         if (ProjectionFromTop || max_layer != zs.end()) {
+
+
             auto   it      = max_layer - 1;
             size_t slab_id = max_layer - zs.begin();
             if (ProjectionFromTop)
                 -- slab_id;
             for (int iedge = 0; iedge < 3; ++ iedge)
                 if (facet_neighbors(iedge) == -1) {
+
                     int edge_id = facet_edge_ids(iedge);
                     int i = iedge;
                     int j = next_idx_modulo(i, 3);
                     if (il_prev.edge_a_id == edge_id || il_prev.edge_b_id == edge_id) {
+
                         assert((vertices[i].z() > *it && vertices[j].z() < *it) || (vertices[i].z() < *it && vertices[j].z() > *it));
                         bool edge_up = vertices[j].z() > vertices[i].z();
                         emit_slab_edge(
@@ -817,6 +992,8 @@ void slice_facet_with_slabs(
                             },
                             slab_id, ProjectionFromTop != edge_up);
                     } else if (float zi = vertices[i].z(), zj = vertices[j].z(); zi > *it || zj > *it) {
+
+
                         assert(zi >= *it && zj >= *it);
                         assert(max_layer == zs.end() || (zi < *max_layer && zj < *max_layer));
                         emit_slab_edge(
@@ -831,12 +1008,16 @@ void slice_facet_with_slabs(
     }
 }
 
+
+
 template<typename ThrowOnCancel>
 inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
     const std::vector<stl_vertex>                   &vertices,
     const std::vector<stl_triangle_vertex_indices>  &indices,
     const std::vector<Vec3i32>                        &face_neighbors,
     const std::vector<Vec3i32>                        &face_edge_ids,
+
+
     const int                                        num_edges,
     const std::vector<FaceOrientation>              &face_orientation,
     const std::vector<float>                        &zs,
@@ -856,7 +1037,7 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
     }
     if (bottom) {
         lines_bottom.at_slice.assign(zs.size(), IntersectionLines());
-        lines_bottom.between_slices.assign(zs.size(), IntersectionLines());        
+        lines_bottom.between_slices.assign(zs.size(), IntersectionLines());
     }
 
     tbb::parallel_for(
@@ -870,6 +1051,7 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
                 Vec3i32           edge_ids = face_edge_ids[face_idx];
                 if (top && (fo == FaceOrientation::Up || fo == FaceOrientation::Degenerate)) {
                     Vec3i32 neighbors = face_neighbors[face_idx];
+
                     for (int i = 0; i < 3; ++ i)
                         if (neighbors(i) != -1) {
                             FaceOrientation fo2 = face_orientation[neighbors(i)];
@@ -880,6 +1062,7 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
                 }
                 if (bottom && (fo == FaceOrientation::Down || fo == FaceOrientation::Degenerate)) {
                     Vec3i32 neighbors = face_neighbors[face_idx];
+
                     for (int i = 0; i < 3; ++ i)
                         if (neighbors(i) != -1) {
                             FaceOrientation fo2 = face_orientation[neighbors(i)];
@@ -891,6 +1074,9 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
             }
         }
     );
+
+
+
     auto sort_canonically = [](std::vector<IntersectionLines> &lines_per_slab) {
         tbb::parallel_for(tbb::blocked_range<size_t>(0, lines_per_slab.size()),
             [&lines_per_slab](const tbb::blocked_range<size_t> &range) {
@@ -909,14 +1095,20 @@ inline std::pair<SlabLines, SlabLines> slice_slabs_make_lines(
 }
 
 #if 0
+
+
+
+
 static inline void remove_tangent_edges(std::vector<IntersectionLine> &lines)
 {
     std::vector<IntersectionLine*> by_vertex_pair;
     by_vertex_pair.reserve(lines.size());
     for (IntersectionLine& line : lines)
         if (line.edge_type != IntersectionLine::FacetEdgeType::General && line.a_id != -1)
+
             by_vertex_pair.emplace_back(&line);
     auto edges_lower_sorted = [](const IntersectionLine *l1, const IntersectionLine *l2) {
+
         int l1a = l1->a_id;
         int l1b = l1->b_id;
         int l2a = l2->a_id;
@@ -925,13 +1117,16 @@ static inline void remove_tangent_edges(std::vector<IntersectionLine> &lines)
             std::swap(l1a, l1b);
         if (l2a > l2b)
             std::swap(l2a, l2b);
+
         return l1a < l2a || (l1a == l2a && l1b < l2b);
     };
     std::sort(by_vertex_pair.begin(), by_vertex_pair.end(), edges_lower_sorted);
     for (auto line = by_vertex_pair.begin(); line != by_vertex_pair.end(); ++ line) {
         IntersectionLine &l1 = **line;
         if (! l1.skip()) {
+
             for (auto line2 = line + 1; line2 != by_vertex_pair.end() && ! edges_lower_sorted(*line, *line2); ++ line2) {
+
                 assert(! edges_lower_sorted(*line, *line2));
                 assert(! edges_lower_sorted(*line2, *line));
                 IntersectionLine &l2 = **line2;
@@ -940,12 +1135,19 @@ static inline void remove_tangent_edges(std::vector<IntersectionLine> &lines)
                 if (l1.a_id == l2.a_id) {
                     assert(l1.b_id == l2.b_id);
                     l2.set_skip();
+
+
+
+
+
+
                     if (l1.edge_type == l2.edge_type) {
                         l1.set_skip();
                         break;
                     }
                 } else {
                     assert(l1.a_id == l2.b_id && l1.b_id == l2.a_id);
+
                     if (l1.edge_type == IntersectionLine::FacetEdgeType::Horizontal && l2.edge_type == IntersectionLine::FacetEdgeType::Horizontal) {
                         l1.set_skip();
                         l2.set_skip();
@@ -960,7 +1162,7 @@ static inline void remove_tangent_edges(std::vector<IntersectionLine> &lines)
 
 struct OpenPolyline {
     OpenPolyline() = default;
-    OpenPolyline(const IntersectionReference &start, const IntersectionReference &end, Points &&points) : 
+    OpenPolyline(const IntersectionReference &start, const IntersectionReference &end, Points &&points) :
         start(start), end(end), points(std::move(points)), consumed(false) { this->length = Slic3r::length(this->points); }
     void reverse() {
         std::swap(start, end);
@@ -973,9 +1175,12 @@ struct OpenPolyline {
     bool                    consumed;
 };
 
+
+
 static void chain_lines_by_triangle_connectivity(IntersectionLines &lines, const CoplanarEdges &coplanar_edges,
                                                  Polygons &loops, std::vector<OpenPolyline> &open_polylines)
 {
+
     std::vector<IntersectionLine*> by_edge_a_id;
     std::vector<IntersectionLine*> by_a_id;
     by_edge_a_id.reserve(lines.size());
@@ -992,11 +1197,14 @@ static void chain_lines_by_triangle_connectivity(IntersectionLines &lines, const
     auto by_vertex_lower = [](const IntersectionLine* il1, const IntersectionLine *il2) { return il1->a_id < il2->a_id; };
     std::sort(by_edge_a_id.begin(), by_edge_a_id.end(), by_edge_lower);
     std::sort(by_a_id.begin(), by_a_id.end(), by_vertex_lower);
+
     IntersectionLines::iterator it_line_seed = lines.begin();
     for (;;) {
+
         IntersectionLine *first_line = nullptr;
         for (; it_line_seed != lines.end(); ++ it_line_seed)
             if (it_line_seed->is_seed_candidate()) {
+
                 first_line = &(*it_line_seed ++);
                 break;
             }
@@ -1006,10 +1214,16 @@ static void chain_lines_by_triangle_connectivity(IntersectionLines &lines, const
         Points loop_pts;
         loop_pts.emplace_back(first_line->a);
         IntersectionLine *last_line = first_line;
-        
-        
+
+
+
+
+
+
+
         IntersectionLine key;
         for (;;) {
+
             IntersectionLine* next_line = nullptr;
             if (last_line->edge_b_id != -1) {
                 key.edge_a_id = last_line->edge_b_id;
@@ -1036,9 +1250,13 @@ static void chain_lines_by_triangle_connectivity(IntersectionLines &lines, const
                 }
             }
             if (next_line == nullptr) {
-                if ((first_line->edge_a_id != -1 && first_line->edge_a_id == last_line->edge_b_id) || 
+
+                if ((first_line->edge_a_id != -1 && first_line->edge_a_id == last_line->edge_b_id) ||
                     (first_line->a_id      != -1 && first_line->a_id      == last_line->b_id)) {
+
                     assert(first_line->a == last_line->b);
+
+
                     if (first_line->edge_a_id >= 0 && first_line->edge_a_id < int(coplanar_edges.size()) &&
                         coplanar_edges[first_line->edge_a_id])
                         loop_pts.erase(loop_pts.begin());
@@ -1047,14 +1265,23 @@ static void chain_lines_by_triangle_connectivity(IntersectionLines &lines, const
                     printf("  Discovered %s polygon of %d points\n", (p.is_counter_clockwise() ? "ccw" : "cw"), (int)p.points.size());
                     #endif
                 } else {
+
                     loop_pts.emplace_back(last_line->b);
                     open_polylines.emplace_back(OpenPolyline(
-                        IntersectionReference(first_line->a_id, first_line->edge_a_id), 
+                        IntersectionReference(first_line->a_id, first_line->edge_a_id),
                         IntersectionReference(last_line->b_id, last_line->edge_b_id), std::move(loop_pts)));
                 }
                 break;
             }
+
+
+
+
+
             assert(last_line->b == next_line->a);
+
+
+
             if (next_line->edge_a_id < 0 || next_line->edge_a_id >= int(coplanar_edges.size()) ||
                 ! coplanar_edges[next_line->edge_a_id])
                 loop_pts.emplace_back(next_line->a);
@@ -1078,13 +1305,19 @@ std::vector<OpenPolyline*> open_polylines_sorted(std::vector<OpenPolyline> &open
     return out;
 }
 
+
+
 static void chain_open_polylines_exact(std::vector<OpenPolyline> &open_polylines, Polygons &loops, bool try_connect_reversed)
 {
+
     struct OpenPolylineEnd {
         OpenPolylineEnd(OpenPolyline *polyline, bool start) : polyline(polyline), start(start) {}
         OpenPolyline    *polyline;
+
         bool             start;
         const IntersectionReference& ipref() const { return start ? polyline->start : polyline->end; }
+
+
         int id() const { const IntersectionReference &r = ipref(); return (r.point_id >= 0) ? r.point_id : - r.edge_id; }
         bool operator==(const OpenPolylineEnd &rhs) const { return this->polyline == rhs.polyline && this->start == rhs.start; }
     };
@@ -1098,6 +1331,7 @@ static void chain_open_polylines_exact(std::vector<OpenPolyline> &open_polylines
             by_id.emplace_back(OpenPolylineEnd(&opl, false));
     }
     std::sort(by_id.begin(), by_id.end(), by_id_lower);
+
     auto find_polyline_end = [&by_id, by_id_lower](const OpenPolylineEnd &end) -> std::vector<OpenPolylineEnd>::iterator {
         for (auto it = std::lower_bound(by_id.begin(), by_id.end(), end, by_id_lower);
                   it != by_id.end() && it->id() == end.id(); ++ it)
@@ -1105,6 +1339,7 @@ static void chain_open_polylines_exact(std::vector<OpenPolyline> &open_polylines
                 return it;
         return by_id.end();
     };
+
     std::vector<OpenPolyline*> sorted_by_length = open_polylines_sorted(open_polylines, false);
     for (OpenPolyline *opl : sorted_by_length) {
         if (opl->consumed)
@@ -1112,13 +1347,16 @@ static void chain_open_polylines_exact(std::vector<OpenPolyline> &open_polylines
         opl->consumed = true;
         OpenPolylineEnd end(opl, false);
         for (;;) {
+
             auto it_next_start = std::lower_bound(by_id.begin(), by_id.end(), end, by_id_lower);
             for (; it_next_start != by_id.end() && it_next_start->id() == end.id(); ++ it_next_start)
                 if (! it_next_start->polyline->consumed)
                     goto found;
+
             opl->consumed = false;
             break;
         found:
+
             if (it_next_start->start) {
                 auto it = it_next_start->polyline->points.begin();
                 std::copy(++ it, it_next_start->polyline->points.end(), back_inserter(opl->points));
@@ -1127,39 +1365,60 @@ static void chain_open_polylines_exact(std::vector<OpenPolyline> &open_polylines
                 std::copy(++ it, it_next_start->polyline->points.rend(), back_inserter(opl->points));
             }
             opl->length += it_next_start->polyline->length;
+
             it_next_start->polyline->points.clear();
             it_next_start->polyline->length = 0.;
             it_next_start->polyline->consumed = true;
             if (try_connect_reversed) {
+
+
                 auto it_end      = find_polyline_end(end);
                 auto it_next_end = find_polyline_end(OpenPolylineEnd(it_next_start->polyline, !it_next_start->start));
+
                 std::swap(opl->end, it_next_end->start ? it_next_end->polyline->start : it_next_end->polyline->end);
+
                 std::swap(*it_end, *it_next_end);
             }
+
             if ((opl->start.edge_id  != -1 && opl->start.edge_id  == opl->end.edge_id) ||
                 (opl->start.point_id != -1 && opl->start.point_id == opl->end.point_id)) {
+
+
+
+
                 opl->points.pop_back();
                 if (opl->points.size() >= 3) {
                     if (try_connect_reversed && area(opl->points) < 0)
+
+
+
                         std::reverse(opl->points.begin(), opl->points.end());
                     loops.emplace_back(std::move(opl->points));
                 }
                 opl->points.clear();
                 break;
             }
+
         }
     }
 }
+
+
+
 
 static void chain_open_polylines_close_gaps(std::vector<OpenPolyline> &open_polylines, Polygons &loops, double max_gap, bool try_connect_reversed)
 {
     const coord_t max_gap_scaled = (coord_t)scale_(max_gap);
 
+
+
     std::vector<OpenPolyline*> sorted_by_length = open_polylines_sorted(open_polylines, true);
+
 
     struct OpenPolylineEnd {
         OpenPolylineEnd(OpenPolyline *polyline, bool start) : polyline(polyline), start(start) {}
         OpenPolyline    *polyline;
+
         bool             start;
         const Point&     point() const { return start ? polyline->points.front() : polyline->points.back(); }
         bool operator==(const OpenPolylineEnd &rhs) const { return this->polyline == rhs.polyline && this->start == rhs.start; }
@@ -1174,31 +1433,44 @@ static void chain_open_polylines_close_gaps(std::vector<OpenPolyline> &open_poly
         if (try_connect_reversed)
             closest_end_point_lookup.insert(OpenPolylineEnd(opl, false));
     }
+
     for (OpenPolyline *opl : sorted_by_length) {
         if (opl->consumed)
             continue;
         OpenPolylineEnd end(opl, false);
         if (try_connect_reversed)
+
             closest_end_point_lookup.erase(end);
         opl->consumed = true;
         size_t n_segments_joined = 1;
         for (;;) {
+
             std::pair<const OpenPolylineEnd*, double> next_start_and_dist = closest_end_point_lookup.find(end.point());
             const OpenPolylineEnd *next_start = next_start_and_dist.first;
+
             double current_loop_closing_distance2 = (opl->points.back() - opl->points.front()).cast<double>().squaredNorm();
             bool   loop_closed = current_loop_closing_distance2 < coordf_t(max_gap_scaled) * coordf_t(max_gap_scaled);
             if (next_start != nullptr && loop_closed && current_loop_closing_distance2 < next_start_and_dist.second) {
+
+
                 loop_closed = sqrt(current_loop_closing_distance2) < 0.3 * length(opl->points);
             }
             if (loop_closed) {
+
+
                 opl->consumed = false;
                 closest_end_point_lookup.erase(OpenPolylineEnd(opl, true));
                 if (current_loop_closing_distance2 == 0.) {
+
                     opl->points.pop_back();
                 } else {
+
                 }
                 if (opl->points.size() >= 3) {
                     if (try_connect_reversed && n_segments_joined > 1 && area(opl->points) < 0)
+
+
+
                         std::reverse(opl->points.begin(), opl->points.end());
                     loops.emplace_back(std::move(opl->points));
                 }
@@ -1207,11 +1479,14 @@ static void chain_open_polylines_close_gaps(std::vector<OpenPolyline> &open_poly
                 break;
             }
             if (next_start == nullptr) {
+
                 opl->consumed = false;
                 if (try_connect_reversed)
+
                     closest_end_point_lookup.insert(OpenPolylineEnd(opl, false));
                 break;
             }
+
             if (next_start->start) {
                 auto it = next_start->polyline->points.begin();
                 if (*it == opl->points.back())
@@ -1224,25 +1499,34 @@ static void chain_open_polylines_close_gaps(std::vector<OpenPolyline> &open_poly
                 std::copy(it, next_start->polyline->points.rend(), back_inserter(opl->points));
             }
             ++ n_segments_joined;
+
             OpenPolyline *opl2 = next_start->polyline;
             closest_end_point_lookup.erase(OpenPolylineEnd(opl2, true));
             if (try_connect_reversed)
                 closest_end_point_lookup.erase(OpenPolylineEnd(opl2, false));
             opl2->points.clear();
             opl2->consumed = true;
+
         }
     }
 }
 
 static Polygons make_loops(
+
     IntersectionLines   &lines,
     const CoplanarEdges &coplanar_edges)
 {
     Polygons loops;
 #if 0
+
+
     for (const Line &l : lines)
         assert(l.a != l.b);
 #endif
+
+
+
+
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
         BoundingBox bbox_svg;
@@ -1272,6 +1556,10 @@ static Polygons make_loops(
             svg.Close();
         }
 #endif
+
+
+
+
     chain_open_polylines_exact(open_polylines, loops, false);
     chain_open_polylines_exact(open_polylines, loops, true);
 
@@ -1290,6 +1578,10 @@ static Polygons make_loops(
         svg.Close();
     }
 #endif
+
+
+
+
 #if 0
     for (double max_gap : { EPSILON, 0.001, 0.1, 1., 2. }) {
         chain_open_polylines_close_gaps(open_polylines, *loops, max_gap, false);
@@ -1322,9 +1614,10 @@ static Polygons make_loops(
 
 template<typename ThrowOnCancel>
 static std::vector<Polygons> make_loops(
-    std::vector<IntersectionLines> &lines, 
+
+    std::vector<IntersectionLines> &lines,
     const CoplanarEdges             &coplanar_edges,
-    const MeshSlicingParams        &params, 
+    const MeshSlicingParams        &params,
     ThrowOnCancel                   throw_on_cancel)
 {
     std::vector<Polygons> layers;
@@ -1342,10 +1635,12 @@ static std::vector<Polygons> make_loops(
                 auto this_mode = line_idx < params.slicing_mode_normal_below_layer ? params.mode_below : params.mode;
                 if (! polygons.empty()) {
                     if (this_mode == MeshSlicingParams::SlicingMode::Positive) {
+
                         for (Polygon& p : polygons)
                             p.make_counter_clockwise();
                     }
                     else if (this_mode == MeshSlicingParams::SlicingMode::PositiveLargestContour) {
+
                         double   max_area = 0.;
                         Polygon* max_area_polygon = nullptr;
                         for (Polygon& p : polygons) {
@@ -1370,9 +1665,12 @@ static std::vector<Polygons> make_loops(
     return layers;
 }
 
+
 template<bool ProjectionFromTop, typename ThrowOnCancel>
 static std::vector<Polygons> make_slab_loops(
-    SlabLines                      &lines, 
+
+    SlabLines                      &lines,
+
     int                             num_edges,
     ThrowOnCancel                   throw_on_cancel)
 {
@@ -1412,9 +1710,11 @@ static std::vector<Polygons> make_slab_loops(
                             }
                     }
                     {
+
 #ifndef NDEBUG
                         size_t old_size = in.size();
 #endif
+
                         append(in, lines.between_slices[line_idx]);
 #ifndef NDEBUG
                         for (auto it = in.begin() + old_size; it != in.end(); ++ it) {
@@ -1429,6 +1729,7 @@ static std::vector<Polygons> make_slab_loops(
                                 in.emplace_back(lsrc);
                                 auto &l = in.back();
                                 l.reverse();
+
                                 if (l.edge_a_id >= 0)
                                     l.edge_a_id += num_edges;
                                 if (l.edge_b_id >= 0)
@@ -1492,6 +1793,7 @@ static std::vector<Polygons> make_slab_loops(
     return layers;
 }
 
+
 static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
 {
     ExPolygons slices;
@@ -1503,10 +1805,13 @@ static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
         else
             holes.emplace_back(std::move(loop));
 
+
     assert(holes.empty() || ! slices.empty());
     if (! slices.empty())
     {
+
         for (Polygon &hole : holes) {
+
             int     slice_idx            = -1;
             double  current_contour_area = std::numeric_limits<double>::max();
             for (ExPolygon &slice : slices)
@@ -1517,13 +1822,17 @@ static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
                         current_contour_area = area;
                     }
                 }
+
             if (slice_idx == -1)
+
                 continue;
             assert(current_contour_area < std::numeric_limits<double>::max() && current_contour_area >= -hole.area());
             slices[slice_idx].holes.emplace_back(std::move(hole));
         }
 
 #if 0
+
+
         Polygons poly;
         for (auto it_slice = slices->begin(); it_slice != slices->end(); ++ it_slice) {
             if (it_slice->holes.empty()) {
@@ -1536,10 +1845,13 @@ static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
                 polygons_append(poly, diff(contours, it_slice->holes));
             }
         }
+
         *slices = union_ex(poly);
 #endif
 
 #if 0
+
+
         ExPolygons poly;
         for (auto it_slice = slices->begin(); it_slice != slices->end(); ++ it_slice) {
             Polygons contours;
@@ -1548,6 +1860,7 @@ static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
                 it->reverse();
             expolygons_append(poly, diff_ex(contours, it_slice->holes));
         }
+
         *slices = std::move(poly);
 #endif
     }
@@ -1557,7 +1870,62 @@ static ExPolygons make_expolygons_simple(std::vector<IntersectionLine> &lines)
 
 static void make_expolygons(const Polygons &loops, const float closing_radius, const float extra_offset, PolyFillType fill_type, ExPolygons* slices)
 {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     assert(closing_radius >= 0);
+
+
     double offset_out;
     double offset_in;
     if (closing_radius >= extra_offset) {
@@ -1568,6 +1936,10 @@ static void make_expolygons(const Polygons &loops, const float closing_radius, c
         offset_in  = 0.;
     }
 
+
+
+
+
     #ifdef SLIC3R_TRIANGLEMESH_DEBUG
     size_t holes_count = 0;
     for (ExPolygons::const_iterator e = ex_slices.begin(); e != ex_slices.end(); ++ e)
@@ -1575,13 +1947,15 @@ static void make_expolygons(const Polygons &loops, const float closing_radius, c
     printf("%zu surface(s) having %zu holes detected from %zu polylines\n",
         ex_slices.size(), holes_count, loops.size());
     #endif
-    
+
+
     expolygons_append(*slices,
         offset_out > 0 && offset_in < 0 ? offset2_ex(union_ex(loops, fill_type), offset_out, offset_in) :
         offset_out > 0 ? offset_ex(union_ex(loops, fill_type), offset_out) :
         offset_in  < 0 ? offset_ex(union_ex(loops, fill_type), offset_in) :
         union_ex(loops, fill_type));
 }
+
 
 static inline Transform3f make_trafo_for_slicing(const Transform3d &trafo)
 {
@@ -1598,14 +1972,19 @@ static inline bool is_identity(const Transform3d &trafo)
 
 static std::vector<stl_vertex> transform_mesh_vertices_for_slicing(const indexed_triangle_set &mesh, const Transform3d &trafo)
 {
+
+
     const double   s = 1. / SCALING_FACTOR;
     std::vector<stl_vertex>         out(mesh.vertices);
     if (is_identity(trafo)) {
+
         for (stl_vertex &v : out) {
+
             v.x() *= float(s);
             v.y() *= float(s);
         }
     } else {
+
         auto t = trafo;
         t.prescale(Vec3d(s, s, 1.));
         auto tf = t.cast<float>();
@@ -1617,30 +1996,39 @@ static std::vector<stl_vertex> transform_mesh_vertices_for_slicing(const indexed
 
 std::vector<Polygons> slice_mesh(
     const indexed_triangle_set       &mesh,
+
     const std::vector<float>         &zs,
     const MeshSlicingParams          &params,
     std::function<void()>             throw_on_cancel)
 {
     BOOST_LOG_TRIVIAL(debug) << "slice_mesh to polygons";
-       
+
     std::vector<IntersectionLines> lines;
     CoplanarEdges                  coplanar;
 
     {
+
+
+
+
         std::vector<Vec3i32> face_edge_ids = its_face_edge_ids(mesh);
+
         coplanar = coplanar_edges(mesh, face_edge_ids, params.trafo);
         if (zs.size() <= 1) {
+
             if (is_identity(params.trafo)) {
                 lines = slice_make_lines(
-                    mesh.vertices, [](const Vec3f &p) { return Vec3f(scaled<float>(p.x()), scaled<float>(p.y()), p.z()); }, 
+                    mesh.vertices, [](const Vec3f &p) { return Vec3f(scaled<float>(p.x()), scaled<float>(p.y()), p.z()); },
                     mesh.indices, face_edge_ids, zs, throw_on_cancel);
             } else {
+
                 Transform3f tf = make_trafo_for_slicing(params.trafo);
                 lines = slice_make_lines(mesh.vertices, [tf](const Vec3f &p) { return tf * p; }, mesh.indices, face_edge_ids, zs, throw_on_cancel);
             }
         } else {
+
             lines = slice_make_lines(
-                transform_mesh_vertices_for_slicing(mesh, params.trafo), 
+                transform_mesh_vertices_for_slicing(mesh, params.trafo),
                 [](const Vec3f &p) { return p; },  mesh.indices, face_edge_ids, zs, throw_on_cancel);
         }
     }
@@ -1670,6 +2058,7 @@ std::vector<Polygons> slice_mesh(
                 svg.Close();
             }
 #if 0
+
             for (Polygon &poly : polygons) {
                 for (size_t i = 1; i < poly.points.size(); ++ i)
                     assert(poly.points[i-1] != poly.points[i]);
@@ -1684,8 +2073,10 @@ std::vector<Polygons> slice_mesh(
     return layers;
 }
 
+
 Polygons slice_mesh(
     const indexed_triangle_set       &mesh,
+
     const float                       plane_z,
     const MeshSlicingParams          &params)
 {
@@ -1698,6 +2089,7 @@ Polygons slice_mesh(
         std::vector<bool>   face_mask(mesh.indices.size(), false);
 
         {
+
             std::vector<char> vertex_side(mesh.vertices.size(), 0);
             if (trafo_identity) {
                 for (size_t i = 0; i < mesh.vertices.size(); ++ i) {
@@ -1708,11 +2100,13 @@ Polygons slice_mesh(
             } else {
                 tf = make_trafo_for_slicing(params.trafo);
                 for (size_t i = 0; i < mesh.vertices.size(); ++ i) {
+
                     float z = (tf * mesh.vertices[i]).z();
                     char  s = z < plane_z ? -1 : z == plane_z ? 0 : 1;
                     vertex_side[i] = s;
                 }
             }
+
 
             for (size_t i = 0; i < mesh.indices.size(); ++ i) {
                 const Vec3i32 &face = mesh.indices[i];
@@ -1721,18 +2115,24 @@ Polygons slice_mesh(
             }
         }
 
+
         std::vector<Vec3i32> face_edge_ids = its_face_edge_ids(mesh, face_mask);
+
         coplanar = coplanar_edges(mesh, face_edge_ids, params.trafo);
+
+
 
         if (trafo_identity) {
             lines.emplace_back(slice_make_lines(
-                mesh.vertices, [](const Vec3f &p) { return Vec3f(scaled<float>(p.x()), scaled<float>(p.y()), p.z()); }, 
+                mesh.vertices, [](const Vec3f &p) { return Vec3f(scaled<float>(p.x()), scaled<float>(p.y()), p.z()); },
                 mesh.indices, face_edge_ids, plane_z, [&face_mask](int face_idx) { return face_mask[face_idx]; }));
         } else {
+
             lines.emplace_back(slice_make_lines(mesh.vertices, [tf](const Vec3f& p) { return tf * p; }, mesh.indices, face_edge_ids, plane_z,
                 [&face_mask](int face_idx) { return face_mask[face_idx]; }));
         }
     }
+
 
     std::vector<Polygons> layers = make_loops(lines, coplanar, params, [](){});
     assert(layers.size() == 1);
@@ -1754,7 +2154,8 @@ std::vector<ExPolygons> slice_mesh_ex(
             slicing_params.mode_below = MeshSlicingParams::SlicingMode::Positive;
         layers_p = slice_mesh(mesh, zs, slicing_params, throw_on_cancel);
     }
-    
+
+
     std::vector<ExPolygons> layers(layers_p.size(), ExPolygons{});
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, layers_p.size()),
@@ -1767,9 +2168,10 @@ std::vector<ExPolygons> slice_mesh_ex(
                 const auto this_mode = layer_id < params.slicing_mode_normal_below_layer ? params.mode_below : params.mode;
                 Slic3r::make_expolygons(
                     layers_p[layer_id], params.closing_radius, params.extra_offset,
-                    this_mode == MeshSlicingParams::SlicingMode::EvenOdd ? pftEvenOdd : 
+                    this_mode == MeshSlicingParams::SlicingMode::EvenOdd ? pftEvenOdd :
                     this_mode == MeshSlicingParams::SlicingMode::PositiveLargestContour ? pftPositive : pftNonZero,
                     &expolygons);
+
                 if (this_mode == MeshSlicingParams::SlicingMode::PositiveLargestContour)
                     keep_largest_contour_only(expolygons);
                 if (resolution != 0.) {
@@ -1782,11 +2184,19 @@ std::vector<ExPolygons> slice_mesh_ex(
             }
         });
 
+
     return layers;
 }
 
+
+
+
+
+
+
 void slice_mesh_slabs(
     const indexed_triangle_set       &mesh,
+
     const std::vector<float>         &zs,
     const Transform3d                &trafo,
     std::vector<Polygons>            *out_top,
@@ -1798,6 +2208,7 @@ void slice_mesh_slabs(
 
 #ifdef EXPENSIVE_DEBUG_CHECKS
     {
+
         auto v = mesh.vertices;
         std::sort(v.begin(), v.end(), [](auto &l, auto &r) {
                 return l.x() < r.x() || (l.x() == r.x() && (l.y() < r.y() || (l.y() == r.y() && l.z() < r.z())));
@@ -1807,6 +2218,8 @@ void slice_mesh_slabs(
     }
     if (0)
     {
+
+
         for (const auto &tri : mesh.indices)
             for (int i = 0; i < 3; ++ i) {
                 int j = next_idx_modulo(i, 3);
@@ -1856,6 +2269,7 @@ void slice_mesh_slabs(
         else if (d < 0)
             fo = FaceOrientation::Down;
         else {
+
             assert(d == 0);
             fo = fa == fb || fa == fc || fb == fc ? FaceOrientation::Degenerate : FaceOrientation::Vertical;
             if(vertical_points && fo==FaceOrientation::Vertical)
@@ -1871,7 +2285,7 @@ void slice_mesh_slabs(
     int                num_edges;
     std::vector<Vec3i32> face_edge_ids  = its_face_edge_ids(mesh, face_neighbors, true, &num_edges);
     std::pair<SlabLines, SlabLines> lines = slice_slabs_make_lines(
-        vertices_transformed, mesh.indices, face_neighbors, face_edge_ids, num_edges, face_orientation, zs, 
+        vertices_transformed, mesh.indices, face_neighbors, face_edge_ids, num_edges, face_orientation, zs,
         out_top != nullptr, out_bottom != nullptr, throw_on_cancel);
 
     throw_on_cancel();
@@ -1882,11 +2296,14 @@ void slice_mesh_slabs(
         *out_bottom = make_slab_loops<false>(lines.second, num_edges, throw_on_cancel);
 }
 
+
 static void triangulate_slice(
     indexed_triangle_set    &its,
     IntersectionLines       &lines,
     std::vector<int>        &slice_vertices,
+
     int                      num_original_vertices,
+
     float                    z,
     bool                     triangulate,
     bool                     normals_down,
@@ -1894,16 +2311,20 @@ static void triangulate_slice(
 {
     sort_remove_duplicates(slice_vertices);
 
+
+
     std::vector<std::pair<Vec2f, int>> map_vertex_to_index;
     map_vertex_to_index.reserve(slice_vertices.size());
     for (int i : slice_vertices)
         map_vertex_to_index.emplace_back(to_2d(its.vertices[i]), i);
     std::sort(map_vertex_to_index.begin(), map_vertex_to_index.end(),
         [](const std::pair<Vec2f, int> &l, const std::pair<Vec2f, int> &r) {
-            return l.first.x() < r.first.x() || 
-                   (is_equal_for_sort(l.first.x(), r.first.x()) && (l.first.y()< r.first.y() || 
+            return l.first.x() < r.first.x() ||
+                   (is_equal_for_sort(l.first.x(), r.first.x()) && (l.first.y()< r.first.y() ||
                                                           (is_equal_for_sort(l.first.y(), r.first.y()) && l.second < r.second)));
     });
+
+
 
     {
         std::vector<int> map_duplicate_vertex(int(its.vertices.size()) - num_original_vertices, -1);
@@ -1914,12 +2335,14 @@ static void triangulate_slice(
             const Vec2f &ipos = map_vertex_to_index[i].first;
             const int    iidx = map_vertex_to_index[i].second;
             if (iidx >= num_original_vertices)
+
                 map_duplicate_vertex[iidx - num_original_vertices] = iidx;
             int j = i;
             for (++ j; j < int(map_vertex_to_index.size()) && is_equal(ipos.x(), map_vertex_to_index[j].first.x()) && is_equal(ipos.y(), map_vertex_to_index[j].first.y()); ++ j) {
                 const int jidx = map_vertex_to_index[j].second;
                 assert(jidx >= num_original_vertices);
                 if (jidx >= num_original_vertices)
+
                     map_duplicate_vertex[jidx - num_original_vertices] = iidx;
             }
             i = j;
@@ -1927,13 +2350,16 @@ static void triangulate_slice(
         map_vertex_to_index.erase(map_vertex_to_index.begin() + k, map_vertex_to_index.end());
         for (i = 0; i < int(its.indices.size());) {
             stl_triangle_vertex_indices &f = its.indices[i];
+
             for (k = 0; k < 3; ++ k)
                 if (f(k) >= num_original_vertices)
                     f(k) = map_duplicate_vertex[f(k) - num_original_vertices];
             if (f(0) == f(1) || f(0) == f(2) || f(1) == f(2)) {
+
                 f = its.indices.back();
                 its.indices.pop_back();
             } else
+
                 ++ i;
         }
     }
@@ -1959,6 +2385,7 @@ static void triangulate_slice(
                         break;
                     }
                 }
+
                 if (!exist) {
                     for (; it != map_vertex_to_index.end(); it++) {
                         if (is_equal(it->first.x(), v.x()) && is_equal(it->first.y(), v.y())) {
@@ -1968,6 +2395,7 @@ static void triangulate_slice(
                         }
                     }
                 }
+
                 if (!exist) {
                     it = back_it;
                     for (; it != map_vertex_to_index.begin(); it--) {
@@ -1979,6 +2407,7 @@ static void triangulate_slice(
                     }
                 }
                 if (!exist){
+
                     for (size_t k = idx_vertex_new_first; k < its.vertices.size(); ++ k)
                         if (its.vertices[k] == v) {
                             idx = int(k);
@@ -1996,7 +2425,10 @@ static void triangulate_slice(
         }
     }
 
+
     its_compactify_vertices(its);
+
+
 
 }
 
@@ -2050,6 +2482,8 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
 #ifndef NDEBUG
     size_t num_open_edges_old = triangulate_caps ? its_num_open_edges(mesh) : 0;
 #endif
+
+
     IntersectionLines  upper_lines, lower_lines;
     std::vector<int>   upper_slice_vertices, lower_slice_vertices;
     std::vector<Vec3i32> facets_edge_ids = its_face_edge_ids(mesh);
@@ -2066,6 +2500,7 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
                 section_vertices_map.emplace(facet(i), vertices[i]);
             }
         }
+
         IntersectionLine line;
         int              idx_vertex_lowest = is_equal(vertices[1].z(), min_z) ? 1 : (is_equal(vertices[2].z() , min_z) ? 2 : 0);
         FacetSliceType   slice_type = FacetSliceType::NoSlice;
@@ -2082,6 +2517,7 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
         }
 
         if (slice_type != FacetSliceType::NoSlice) {
+
             if (line.edge_type == IntersectionLine::FacetEdgeType::Top) {
                 lower_lines.emplace_back(line);
                 lower_slice_vertices.emplace_back(line.a_id);
@@ -2097,16 +2533,20 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
         }
 
         if (min_z > z || (is_equal(min_z , z) && max_z > z)) {
+
             if (upper != nullptr)
                 upper->indices.emplace_back(facet);
         } else if (max_z < z || (is_equal(max_z, z) && min_z < z)) {
+
             if (lower != nullptr)
                 lower->indices.emplace_back(facet);
         } else if (min_z < z && max_z > z) {
+
             assert(slice_type == FacetSliceType::Slicing);
             assert(line.edge_type == IntersectionLine::FacetEdgeType::General);
             assert(line.edge_a_id != -1);
             assert(line.edge_b_id != -1);
+
 
             int              isolated_vertex, isolated_vertex_option = -1;
             std::vector<int> list{0, 1, 2};
@@ -2130,11 +2570,13 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
             } else {
                 isolated_vertex = (vertices[0].z() > z) == (vertices[1].z() > z) ? 2 : (vertices[1].z() > z) == (vertices[2].z() > z) ? 0 : 1;
             }
+
             stl_vertex v0v1, v2v0;
             auto       calc_isolated_vertex = [&v0v1, &v2v0, &line, &facet_idx, &facets_edge_ids, &z](int iv, bool &is_find) {
                 assert(facets_edge_ids[facet_idx](iv) == line.edge_a_id || facets_edge_ids[facet_idx](iv) == line.edge_b_id);
                 is_find = true;
                 if (facets_edge_ids[facet_idx](iv) == line.edge_a_id) {
+
                     v0v1 = to_3d(unscaled<double>(line.a).cast<float>().eval(), z);
                     v2v0 = to_3d(unscaled<double>(line.b).cast<float>().eval(), z);
                 } else if (facets_edge_ids[facet_idx](iv) == line.edge_b_id) {
@@ -2168,6 +2610,7 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
             const stl_vertex &v2  = vertices[iv];
             const int         iv2 = facet[iv];
 
+
             auto new_vertex = [upper, lower, &upper_slice_vertices, &lower_slice_vertices](const Vec3f &a, const int ia, const Vec3f &b, const int ib, const Vec3f &c,
                                                                                            const int ic, const Vec3f &new_pt, bool &is_new_vertex) {
                 int iupper = 0, ilower = 0;
@@ -2179,6 +2622,7 @@ void cut_mesh(const indexed_triangle_set& mesh, float z, indexed_triangle_set* u
                 else if (is_equal(new_pt, c))
                     iupper = ilower = ic;
                 else {
+
                     is_new_vertex = true;
                     if (upper) {
                         iupper = int(upper->vertices.size());

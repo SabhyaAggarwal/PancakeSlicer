@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <math.h>
 #include "FlushVolPredictor.hpp"
-#include "slic3r/Utils/ColorSpaceConvert.hpp"
+#include "ColorSpaceConvert.hpp"
 #include "FlushVolCalc.hpp"
 
 
@@ -13,6 +13,7 @@ const int g_min_flush_volume_from_support = 700;
 const int g_flush_volume_to_support = 230;
 
 const int g_max_flush_volume = 20000;
+
 
 static float to_radians(float degree)
 {
@@ -73,9 +74,12 @@ int FlushVolCalculator::calc_flush_vol_rgb(unsigned char src_r, unsigned char sr
     dst_g_f = (float)dst_g / 255.f;
     dst_b_f = (float)dst_b / 255.f;
 
+
     RGB2HSV(src_r_f, src_g_f, src_b_f, &from_hsv_h, &from_hsv_s, &from_hsv_v);
     RGB2HSV(dst_r_f, dst_g_f, dst_b_f, &to_hsv_h, &to_hsv_s, &to_hsv_v);
     float hs_dist = DeltaHS_BBS(from_hsv_h, from_hsv_s, from_hsv_v, to_hsv_h, to_hsv_s, to_hsv_v);
+
+
 
     float from_lumi = get_luminance(src_r_f, src_g_f, src_b_f);
     float to_lumi = get_luminance(dst_r_f, dst_g_f, dst_b_f);
@@ -100,6 +104,7 @@ int FlushVolCalculator::calc_flush_vol_rgb(unsigned char src_r, unsigned char sr
 int FlushVolCalculator::calc_flush_vol(unsigned char src_a, unsigned char src_r, unsigned char src_g, unsigned char src_b,
     unsigned char dst_a, unsigned char dst_r, unsigned char dst_g, unsigned char dst_b)
 {
+
     if (src_a == 0) {
         src_r = src_g = src_b = 255;
     }

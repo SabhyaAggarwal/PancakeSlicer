@@ -10,6 +10,7 @@
 #include "libslic3r/libslic3r.h"
 
 #ifdef _MSC_VER
+
 #pragma warning(push)
 #pragma warning(disable : 4146)
 #endif
@@ -123,6 +124,8 @@ public:
         m_issue_type = IssueType::UNKNOWN;
     }
 
+
+
     template<typename SegmentIterator>
     static typename boost::polygon::enable_if<
         typename boost::polygon::gtl_if<typename boost::polygon::is_segment_concept<
@@ -156,12 +159,19 @@ private:
 
     void copy_to_local(voronoi_diagram_type &voronoi_diagram);
 
+
+
+
+
     template<typename SegmentIterator>
     static typename boost::polygon::enable_if<
         typename boost::polygon::gtl_if<typename boost::polygon::is_segment_concept<
             typename boost::polygon::geometry_concept<typename std::iterator_traits<SegmentIterator>::value_type>::type>::type>::type,
         IssueType>::type
     detect_known_voronoi_cell_issues(const VoronoiDiagram &voronoi_diagram, SegmentIterator segment_begin, SegmentIterator segment_end);
+
+
+
 
     static IssueType detect_known_voronoi_edge_issues(const VoronoiDiagram &voronoi_diagram);
 

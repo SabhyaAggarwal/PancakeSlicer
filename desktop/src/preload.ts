@@ -1,3 +1,5 @@
+
+
 import { contextBridge, ipcRenderer } from 'electron';
 import type { LegacyRead, LegacyWorkspaceInventory } from './legacy-workspace';
 import type { LegacyRendererInventory, LegacyRendererPartRead } from './legacy-renderer';
@@ -23,6 +25,7 @@ const editable = (el: Element | null) =>
     || (el as HTMLElement).isContentEditable);
 
 ipcRenderer.on('orca-desktop:menu', (_e, command: string) => {
+
   if ((command === 'undo' || command === 'redo') && editable(document.activeElement)) {
     document.execCommand(command);
     return;
@@ -34,12 +37,15 @@ ipcRenderer.on('orca-desktop:menu', (_e, command: string) => {
 contextBridge.exposeInMainWorld('orcaDesktop', {
   version: 1,
   platform: process.platform,
+
+
   exportLegacyWorkspace: inventory,
   legacyProjects: {
     version: 1,
     inventory,
     readFile: (request: LegacyRead): Promise<Uint8Array> => ipcRenderer.invoke('orca-desktop:legacy-projects:read-file', request),
   },
+
   bambuConnect: (jobId: string, filename: string): Promise<void> => ipcRenderer.invoke('orca-desktop:bambu-connect', jobId, filename),
   legacyRendererStorage: {
     version: 1,
@@ -52,6 +58,7 @@ contextBridge.exposeInMainWorld('orcaDesktop', {
     return () => { beforeClose.delete(handler); };
   },
   async flushBeforeClose() {
+
     await closeReady;
     await Promise.all([...beforeClose].map((handler) => handler()));
   },

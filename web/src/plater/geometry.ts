@@ -1,3 +1,5 @@
+
+
 import type * as THREE from 'three';
 import { T3, T3Utils, threeReady } from '../three-runtime';
 
@@ -13,10 +15,13 @@ import { paintJson } from './paint';
 
 const DEG = Math.PI / 180;
 
+
+
 let worker: Worker | null = null;
 let nextRequest = 1;
 const pending = new Map<number, (m: MeshOut) => void>();
 const importedShells = new Map<string, THREE.BufferGeometry>();
+
 
 export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) => void, transfer: Transferable[] = []) {
   if (!worker) {
@@ -33,6 +38,8 @@ export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) =>
       if (e.data.type === 'done' || e.data.type === 'error' || e.data.type === 'stats') pending.delete(e.data.id);
       h?.(e.data);
     };
+
+
     const fail = (message: string) => {
       worker?.terminate();
       worker = null;
@@ -48,6 +55,7 @@ export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) =>
   worker.postMessage({ ...msg, id }, transfer);
 }
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+
 
 function toGeometry(d: MeshData & { id: number; item?: number }): THREE.BufferGeometry {
   const geo = new T3.BufferGeometry();
@@ -74,14 +82,22 @@ function toGeometry(d: MeshData & { id: number; item?: number }): THREE.BufferGe
   return geo;
 }
 
+
+
 let shellsChecked: ((geo: THREE.BufferGeometry) => void) | null = null;
+
 export const onShellsChecked = (f: (geo: THREE.BufferGeometry) => void) => void (shellsChecked = f);
+
 
 
 function setBvh(geo: THREE.BufferGeometry, m: { bvh: Bvh; ms: number }) {
   geo.userData.bvh = m.bvh;
   geo.userData.bvhMs = m.ms;
 }
+
+
+
+
 
 export async function loadMesh(file: File, progress?: (pct: number) => void, simplify = true): Promise<THREE.BufferGeometry> {
   await threeReady;
@@ -96,6 +112,10 @@ export async function loadMesh(file: File, progress?: (pct: number) => void, sim
     });
   });
 }
+
+
+
+
 
 export async function loadProject(file: File, on: {
   items(items: ProjectItem[], materials: ProjectMaterials): void;
@@ -124,12 +144,14 @@ export async function loadProject(file: File, on: {
   });
 }
 
+
 export function placeholderGeometry(size = 20): THREE.BufferGeometry {
   const geo = new T3.BoxGeometry(size, size, size).translate(0, 0, size / 2);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
   return geo;
 }
+
 
 function tiltScale(o: PlateObject): THREE.Matrix4 {
   const m = new T3.Matrix4().makeScale(...o.scale);
@@ -150,6 +172,8 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
   if (!per) boxCache.set(geo, (per = new Map()));
   let b = per.get(key);
   if (!b) {
+
+
     const e = m.elements;
     const axisAligned = [0, 4, 8].every((c) => [e[c], e[c + 1], e[c + 2]].filter((v) => Math.abs(v) > 1e-12).length === 1);
     const bvh = geo.userData.bvh as Bvh | undefined;
@@ -182,22 +206,27 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
   return b;
 }
 
+
 export function objectMatrix(o: PlateObject): THREE.Matrix4 {
   const m = tiltScale(o);
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale}`);
   return m.premultiply(new T3.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z));
 }
 
+
 export const earsJson = (o: PlateObject) => o.brimEars?.map(({ p, r }) => {
   const q = new T3.Vector3(...p).applyMatrix4(objectMatrix(o));
   return { x: +q.x.toFixed(4), y: +q.y.toFixed(4), z: +q.z.toFixed(4), radius: r };
 });
+
 
 export function instanceMatrix(o: PlateObject, inst: Instance): THREE.Matrix4 {
   const m = objectMatrix(o).premultiply(new T3.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`);
   return m.premultiply(new T3.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, inst.z ?? 0));
 }
+
+
 
 export const objectHeight = (o: PlateObject) => { const b = instanceBox(o, o.instances[0]); return b.max.z - b.min.z; };
 
@@ -210,6 +239,9 @@ export function instanceBox(o: PlateObject, inst: Instance): THREE.Box3 {
   return b;
 }
 
+
+
+
 export function volumeWorld(o: PlateObject, inst: Instance, v: Volume): THREE.Matrix4 {
   return instanceMatrix(o, inst).multiply(new T3.Matrix4().fromArray(v.matrix));
 }
@@ -218,6 +250,7 @@ export function volumeBox(o: PlateObject, inst: Instance, v: Volume): THREE.Box3
   const m = volumeWorld(o, inst, v);
   return transformedBox(v.geometry, m, m.elements.join());
 }
+
 
 export function volumeGeometry(position: Float32Array, index: Uint32Array | Uint16Array | null, normal?: Float32Array): THREE.BufferGeometry {
   const geo = new T3.BufferGeometry();
@@ -235,6 +268,10 @@ export function volumeGeometry(position: Float32Array, index: Uint32Array | Uint
   return geo;
 }
 
+
+
+
+
 export function primitiveGeometry(shape: 'Cube' | 'Cylinder' | 'Sphere' | 'Cone' | 'Disc' | 'Torus', side: number): THREE.BufferGeometry {
   const r = side / 2;
   const g = shape === 'Cube' ? new T3.BoxGeometry(side, side, side)
@@ -243,6 +280,7 @@ export function primitiveGeometry(shape: 'Cube' | 'Cylinder' | 'Sphere' | 'Cone'
     : shape === 'Cone' ? new T3.ConeGeometry(r, side, 120).rotateX(Math.PI / 2)
     : shape === 'Disc' ? new T3.CylinderGeometry(r, r, 0.2, 120).rotateX(Math.PI / 2)
     : new T3.TorusGeometry(r, side / 8, 60, 120);
+
   const welded = T3Utils.mergeVertices(new T3.BufferGeometry().setAttribute('position', g.getAttribute('position')).setIndex(g.index), 1e-4);
   g.dispose();
   return volumeGeometry(welded.attributes.position.array as Float32Array, welded.index!.array as Uint32Array);
@@ -253,13 +291,21 @@ export function objectSize(o: PlateObject): THREE.Vector3 {
   return b.getSize(new T3.Vector3());
 }
 
+
+
+
+
 export function bakeStl(o: PlateObject, matrix = objectMatrix(o)): Promise<Blob> {
   return bake(o.geometry, matrix);
 }
 
+
 function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
   return bake(v.geometry, objectMatrix(o).multiply(new T3.Matrix4().fromArray(v.matrix)));
 }
+
+
+
 
 const baked = new WeakMap<THREE.BufferGeometry, Map<string, Promise<Blob>>>();
 function bake(g: THREE.BufferGeometry, matrix: THREE.Matrix4): Promise<Blob> {
@@ -268,6 +314,7 @@ function bake(g: THREE.BufferGeometry, matrix: THREE.Matrix4): Promise<Blob> {
   baked.set(g, cache);
   const hit = cache.get(key);
   if (hit) return hit;
+
   const index = (g.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
   const blob = new Promise<Blob>((resolve, reject) =>
     request({ type: 'bake', positions: g.attributes.position.array as Float32Array, index, matrix: matrix.elements }, (m) => {
@@ -275,17 +322,20 @@ function bake(g: THREE.BufferGeometry, matrix: THREE.Matrix4): Promise<Blob> {
       else if (m.type === 'error') reject(new Error(m.message));
     }),
   );
+
   if (cache.size >= 4) cache.delete(cache.keys().next().value!);
   cache.set(key, blob);
   blob.catch(() => cache.delete(key));
   return blob;
 }
 
+
 type NativePlate = (o: PlateObject, settings: (c: PlateObject['settings']) => Record<string, string>, profile: () => number[] | undefined, prefix: string) =>
   { entry: PlateJson['objects'][number]; files: { name: string; blob: () => Blob | Promise<Blob> }[] } | null;
 let nativePlate: NativePlate | null = null;
 export const setNativePlate = (f: NativePlate) => { nativePlate = f; };
 const nativeFiles = new WeakMap<PlateJson['objects'][number], { name: string; blob: () => Blob | Promise<Blob> }[]>();
+
 
 export function plateDescription(objects: PlateObject[], firstLayer = 0.2): PlateJson {
   const used = new Set<string>();
@@ -301,6 +351,7 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
       plate.objects.push(native.entry);
       continue;
     }
+
     const place = (i: Instance) => {
       if (!o.volumes?.some((v) => v.type === 'part')) return { x: i.x, y: i.y, z: i.z ?? 0 };
       const b = instanceBox(o, i);
@@ -343,11 +394,17 @@ export async function plateJson(objects: PlateObject[], firstLayer?: number): Pr
   return { plate, files: [...files].map(([name, blob]) => ({ name, blob })) };
 }
 
+
+
+
 export function meshSignature(o: PlateObject): unknown[] {
   return [o.geometry.userData.contentSignature ?? o.geometry.uuid, objectMatrix(o).elements, ...(o.volumes ?? []).map((v) => [meshSignature({ ...o, geometry: v.geometry, volumes: [] })[0], v.matrix])];
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
+
+
+
 
 export function parsePoints(v: ConfigValue | undefined): THREE.Vector2[] {
   const list = Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(/[,;]/) : [];
@@ -366,6 +423,12 @@ export function bedBounds(area: THREE.Vector2[]): { min: THREE.Vector2; max: THR
   if (!area.length) min.set(0, 0), max.set(200, 200);
   return { min, max, center: min.clone().add(max).multiplyScalar(0.5) };
 }
+
+
+
+
+
+
 
 export function arrange(objects: PlateObject[], area: THREE.Vector2[], spacing = 6): PlateObject[] {
   const { min, max, center } = bedBounds(area);
@@ -400,6 +463,7 @@ export function arrange(objects: PlateObject[], area: THREE.Vector2[], spacing =
   return objects.map((o) => ({ ...o, instances: o.instances.map((i) => ({ ...i, ...(placed.get(i.id) ?? {}) })) }));
 }
 
+
 export function nextFreeSpot(objects: PlateObject[], o: PlateObject, area: THREE.Vector2[]): { x: number; y: number } | null {
   const { min, max } = bedBounds(area);
   const size = objectSize(o);
@@ -412,6 +476,10 @@ export function nextFreeSpot(objects: PlateObject[], o: PlateObject, area: THREE
     }
   return null;
 }
+
+
+
+
 
 export function nearestFreeSpot(objects: PlateObject[], size: THREE.Vector2, from: THREE.Vector2, area: THREE.Vector2[]): THREE.Vector2 | null {
   const { min, max } = bedBounds(area);
@@ -452,6 +520,7 @@ export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height
     }
   return out;
 }
+
 
 export function centred(g: THREE.BufferGeometry): [THREE.BufferGeometry, THREE.Matrix4] {
   const copy = g.clone();

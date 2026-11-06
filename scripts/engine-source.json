@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "engine_source_sha": "78fd47f7e0a5ed738a4a95b05c6f539fed26fca0",
+  "source_snapshot_sha": "d534c4f567d0d8c47bf61be3475e5b835af2eeee",
+  "source_overlays": {},
+  "reference_release": "engine-reference-78fd47f7e0",
+  "reference_asset": "engine-reference-78fd47f7e0.tar.gz",
+  "reference_sha256": "bda99cba9f0a12d5bfa064bc5f8c02bf449adc5851fd286d81dc6d76e212f6ef",
+  "reference_binary_sha256": "ff3a951d165604e7aa973f43ffa18716857fa74c2aaa4d0de9516176321c2ee0",
+  "reference_live_resources_sha256": "c8ad30792264a26dd5662a413939e7f2f6516add337450c0b70d2bce7a6a683f"
+}

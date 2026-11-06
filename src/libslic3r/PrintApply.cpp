@@ -43,7 +43,11 @@
 namespace Slic3r {
 
 
- void model_volume_list_update_supports_and_seams(ModelObject &model_object_dst, const ModelObject &model_object_new)
+
+
+
+
+  void model_volume_list_update_supports_and_seams(ModelObject &model_object_dst, const ModelObject &model_object_new)
 {
     typedef std::pair<const ModelVolume*, bool> ModelVolumeWithStatus;
     std::vector<ModelVolumeWithStatus> old_volumes;
@@ -59,9 +63,11 @@ namespace Slic3r {
         ModelVolumeWithStatus key(model_volume_src, false);
         auto it = std::lower_bound(old_volumes.begin(), old_volumes.end(), key, model_volume_lower);
         if (it != old_volumes.end() && model_volume_equal(*it, key)) {
+
             assert(! it->second);
             it->second = true;
             ModelVolume *model_volume_dst = const_cast<ModelVolume*>(it->first);
+
             assert((model_volume_dst->is_support_modifier() && model_volume_src->is_support_modifier()) ||
                    (model_volume_dst->is_precise_seam()     && model_volume_src->is_precise_seam())     ||
                    (model_volume_dst->is_support_modifier() && model_volume_src->is_precise_seam())     ||
@@ -69,20 +75,25 @@ namespace Slic3r {
                    model_volume_dst->type() == model_volume_src->type());
             model_object_dst.volumes.emplace_back(model_volume_dst);
             if (model_volume_dst->is_support_modifier() || model_volume_dst->is_precise_seam()) {
+
                 model_volume_dst->set_type(model_volume_src->type());
                 model_volume_dst->set_transformation(model_volume_src->get_transformation());
             }
             assert(model_volume_dst->get_matrix().isApprox(model_volume_src->get_matrix()));
         } else {
+
             assert(model_volume_src->is_support_modifier() || model_volume_src->is_precise_seam());
             model_object_dst.volumes.emplace_back(new ModelVolume(*model_volume_src));
             model_object_dst.volumes.back()->set_model_object(&model_object_dst);
         }
     }
+
     for (ModelVolumeWithStatus &mv_with_status : old_volumes)
         if (! mv_with_status.second)
             delete mv_with_status.first;
 }
+
+
 
 template<typename TypeFilterFn>
 static inline void model_volume_list_copy_configs(ModelObject &model_object_dst, const ModelObject &model_object_src, TypeFilterFn type_filter)
@@ -100,6 +111,7 @@ static inline void model_volume_list_copy_configs(ModelObject &model_object_dst,
             continue;
         }
         assert(mv_src.id() == mv_dst.id());
+
         mv_dst.name   = mv_src.name;
 		mv_dst.config.assign_config(mv_src.config);
         assert(mv_dst.supported_facets.id() == mv_src.supported_facets.id());
@@ -111,15 +123,19 @@ static inline void model_volume_list_copy_configs(ModelObject &model_object_dst,
         assert(mv_dst.fuzzy_skin_facets.id() == mv_src.fuzzy_skin_facets.id());
         mv_dst.fuzzy_skin_facets.assign(mv_src.fuzzy_skin_facets);
         mv_dst.nonplanar_facets.assign(mv_src.nonplanar_facets);
+
+
         ++ i_src;
         ++ i_dst;
     }
 }
 
+
 static inline void model_volume_list_copy_configs(ModelObject &model_object_dst, const ModelObject &model_object_src, const ModelVolumeType type)
 {
     model_volume_list_copy_configs(model_object_dst, model_object_src, [type](const ModelVolumeType t) { return t == type; });
 }
+
 
 static inline void model_volume_list_copy_configs(ModelObject &model_object_dst, const ModelObject &model_object_src, const std::initializer_list<ModelVolumeType> &types)
 {
@@ -136,6 +152,8 @@ static inline void layer_height_ranges_copy_configs(t_layer_config_ranges &lr_ds
         const auto &kvp_src = *it_src ++;
         assert(std::abs(kvp_dst.first.first  - kvp_src.first.first ) <= EPSILON);
         assert(std::abs(kvp_dst.first.second - kvp_src.first.second) <= EPSILON);
+
+
         kvp_dst.second = kvp_src.second;
     }
 }
@@ -172,32 +190,48 @@ struct PrintObjectTrafoAndInstances
     bool operator<(const PrintObjectTrafoAndInstances &rhs) const { return transform3d_lower(this->trafo, rhs.trafo); }
 };
 
+
+
 static std::vector<PrintObjectTrafoAndInstances> print_objects_from_model_object(const ModelObject &model_object, const Vec3d &shrinkage_compensation, bool force_separate_instances = false)
 {
     std::set<PrintObjectTrafoAndInstances> trafos;
     PrintObjectTrafoAndInstances           trafo;
+
     int index = 0;
     int unique_counter = 0;
     for (ModelInstance *model_instance : model_object.instances) {
         if (model_instance->is_printable()) {
+
             Geometry::Transformation model_instance_transformation = model_instance->get_transformation();
             trafo.trafo = model_instance_transformation.get_matrix_with_applied_shrinkage_compensation(shrinkage_compensation);
 
             auto shift = Point::new_scale(trafo.trafo.data()[12], trafo.trafo.data()[13]);
+
             trafo.trafo.data()[12] = 0;
             trafo.trafo.data()[13] = 0;
+
+
+
+
             if (force_separate_instances)
                 trafo.trafo.data()[14] += 1e-10 * (++unique_counter);
+
             auto it = trafos.emplace(trafo).first;
             const_cast<PrintObjectTrafoAndInstances&>(*it).instances.emplace_back(PrintInstance{ nullptr, model_instance, shift });
+
         }
         else {
+
+
         }
         index++;
     }
 
+
     return std::vector<PrintObjectTrafoAndInstances>(trafos.begin(), trafos.end());
 }
+
+
 
 static bool layer_height_ranges_equal(const t_layer_config_ranges &lr1, const t_layer_config_ranges &lr2, bool check_layer_height)
 {
@@ -216,30 +250,38 @@ static bool layer_height_ranges_equal(const t_layer_config_ranges &lr1, const t_
     return true;
 }
 
+
 static bool custom_per_printz_gcodes_tool_changes_differ(const std::vector<CustomGCode::Item> &va, const std::vector<CustomGCode::Item> &vb)
 {
 	auto it_a = va.begin();
 	auto it_b = vb.begin();
 	while (it_a != va.end() || it_b != vb.end()) {
 		if (it_a != va.end() && it_a->type != CustomGCode::ToolChange) {
+
 			++ it_a;
 			continue;
 		}
 		if (it_b != vb.end() && it_b->type != CustomGCode::ToolChange) {
+
 			++ it_b;
 			continue;
 		}
 		if (it_a == va.end() || it_b == vb.end())
+
 			return true;
 		assert(it_a->type == CustomGCode::ToolChange);
 		assert(it_b->type == CustomGCode::ToolChange);
 		if (*it_a != *it_b)
+
 			return true;
 		++ it_a;
 		++ it_b;
 	}
+
 	return false;
 }
+
+
 
 static t_config_option_keys print_config_diffs(
     const PrintConfig        &current_config,
@@ -247,6 +289,9 @@ static t_config_option_keys print_config_diffs(
     DynamicPrintConfig       &filament_overrides,
     int                      plate_index,
     std::vector<int>&        filament_maps,
+
+
+
     const std::vector<int>*  dynamic_override_indices = nullptr)
 {
     const std::vector<std::string> &extruder_retract_keys = print_config_def.extruder_retract_keys();
@@ -256,7 +301,9 @@ static t_config_option_keys print_config_diffs(
         const ConfigOption *opt_old = current_config.option(opt_key);
         assert(opt_old != nullptr);
         const ConfigOption *opt_new = new_full_config.option(opt_key);
+
         if (opt_new == nullptr)
+
             continue;
         const ConfigOption *opt_new_filament = std::binary_search(extruder_retract_keys.begin(), extruder_retract_keys.end(), opt_key) ? new_full_config.option(filament_prefix + opt_key) : nullptr;
 
@@ -271,6 +318,7 @@ static t_config_option_keys print_config_diffs(
             }
             compute_filament_override_value(opt_key, opt_old, opt_new, opt_new_filament, new_full_config, print_diff, filament_overrides, filament_map_indices);
         } else if (*opt_new != *opt_old) {
+
             if (!opt_key.compare("wipe_tower_x") || !opt_key.compare("wipe_tower_y")) {
                 const ConfigOptionFloats* option_new = dynamic_cast<const ConfigOptionFloats*>(opt_new);
                 const ConfigOptionFloats* option_old = dynamic_cast<const ConfigOptionFloats*>(opt_old);
@@ -292,6 +340,8 @@ static t_config_option_keys print_config_diffs(
     return print_diff;
 }
 
+
+
 static t_config_option_keys full_print_config_diffs(const DynamicPrintConfig &current_full_config, const DynamicPrintConfig &new_full_config, int plate_index)
 {
     t_config_option_keys full_config_diff;
@@ -299,6 +349,7 @@ static t_config_option_keys full_print_config_diffs(const DynamicPrintConfig &cu
         const ConfigOption *opt_old = current_full_config.option(opt_key);
         const ConfigOption *opt_new = new_full_config.option(opt_key);
         if (opt_old == nullptr || *opt_new != *opt_old) {
+
             if (opt_old && (!opt_key.compare("wipe_tower_x") || !opt_key.compare("wipe_tower_y"))) {
                 const ConfigOptionFloats* option_new = dynamic_cast<const ConfigOptionFloats*>(opt_new);
                 const ConfigOptionFloats* option_old = dynamic_cast<const ConfigOptionFloats*>(opt_old);
@@ -364,11 +415,14 @@ static bool is_printable_filament_changed(const DynamicPrintConfig& new_full_con
     return false;
 }
 
+
+
 class LayerRanges
 {
 public:
     struct LayerRange {
         t_layer_height_range        layer_height_range;
+
         const DynamicPrintConfig*   config { nullptr };
 
         bool operator<(const LayerRange &rhs) const throw() { return this->layer_height_range < rhs.layer_height_range; }
@@ -377,9 +431,11 @@ public:
     LayerRanges() = default;
     LayerRanges(const t_layer_config_ranges &in) { this->assign(in); }
 
+
     void assign(const t_layer_config_ranges &in) {
         m_ranges.clear();
         m_ranges.reserve(in.size());
+
         coordf_t last_z = 0;
         for (const std::pair<const t_layer_height_range, ModelConfig> &range : in)
             if (range.first.second > last_z) {
@@ -404,6 +460,10 @@ public:
 
     const DynamicPrintConfig* config(const t_layer_height_range &range) const {
         auto it = std::lower_bound(m_ranges.begin(), m_ranges.end(), LayerRange{ { range.first - EPSILON, range.second - EPSILON } });
+
+
+
+
         if (it == m_ranges.end() ||
             std::abs(it->layer_height_range.first - range.first) > EPSILON ||
             std::abs(it->layer_height_range.second - range.second) > EPSILON )
@@ -416,8 +476,11 @@ public:
     size_t                                  size () const { return m_ranges.size(); }
 
 private:
+
     std::vector<LayerRange>  m_ranges;
 };
+
+
 
 struct ModelObjectStatus {
     enum Status {
@@ -437,11 +500,17 @@ struct ModelObjectStatus {
     ModelObjectStatus(ObjectID id, Status status = Unknown) : id(id), status(status) {}
     ~ModelObjectStatus() { if (print_object_regions) print_object_regions->ref_cnt_dec(); }
 
+
     ObjectID                                    id;
+
     Status                                      status;
+
     std::vector<PrintObjectTrafoAndInstances>   print_instances;
+
     PrintObjectRegions                         *print_object_regions { nullptr };
+
     PrintObjectRegionsStatus                    print_object_regions_status { PrintObjectRegionsStatus::Invalid };
+
 
     bool operator<(const ModelObjectStatus &rhs) const { return id < rhs.id; }
 };
@@ -492,10 +561,14 @@ struct PrintObjectStatus {
         status(status) {}
     PrintObjectStatus(ObjectID id) : id(id), print_object(nullptr), trafo(Transform3d::Identity()), status(Unknown) {}
 
+
     ObjectID         id;
+
     PrintObject     *print_object;
+
     Transform3d      trafo;
     Status           status;
+
 
     bool operator<(const PrintObjectStatus &rhs) const { return id < rhs.id; }
 };
@@ -550,6 +623,7 @@ static inline bool model_volume_solid_or_modifier(const ModelVolume &mv)
 
 static inline Transform3f trafo_for_bbox(const Transform3d &object_trafo, const Transform3d &volume_trafo)
 {
+
     Transform3d object_trafo_local = object_trafo;
     object_trafo_local.translation().x() = 0.;
     object_trafo_local.translation().y() = 0.;
@@ -560,13 +634,16 @@ static inline Transform3f trafo_for_bbox(const Transform3d &object_trafo, const 
 static inline bool trafos_differ_in_rotation_by_z_and_mirroring_by_xy_only(const Transform3d &t1, const Transform3d &t2)
 {
     if (std::abs(t1.translation().z() - t2.translation().z()) > EPSILON)
+
         return false;
     Matrix3d m1 = t1.matrix().block<3, 3>(0, 0);
     Matrix3d m2 = t2.matrix().block<3, 3>(0, 0);
     Matrix3d m = m2.inverse() * m1;
     Vec3d    z = m.block<3, 1>(0, 2);
     if (std::abs(z.x()) > EPSILON || std::abs(z.y()) > EPSILON || std::abs(z.z() - 1.) > EPSILON)
+
         return false;
+
     Vec3d    x = m.block<3, 1>(0, 0);
     Vec3d    y = m.block<3, 1>(0, 1);
     if (std::abs(x.z()) > EPSILON || std::abs(y.z()) > EPSILON)
@@ -575,6 +652,7 @@ static inline bool trafos_differ_in_rotation_by_z_and_mirroring_by_xy_only(const
     double   ly2 = y.squaredNorm();
     if (lx2 - 1. > EPSILON * EPSILON || ly2 - 1. > EPSILON * EPSILON)
         return false;
+
     double   d   = x.dot(y);
     return std::abs(d * d) < EPSILON * lx2 * ly2;
 }
@@ -617,11 +695,14 @@ static void transformed_its_bboxes_in_z_ranges(
             for (int iedge = 0; iedge < 3; ++ iedge) {
                 const Vec3f *p1 = &pts[iprev];
                 const Vec3f *p2 = &pts[iedge];
+
                 if (p1->z() > p2->z())
                     std::swap(p1, p2);
                 if (p2->z() <= z_range.first || p1->z() >= z_range.second) {
+
                 } else if (p1->z() < z_range.first) {
                     if (p2->z() > z_range.second) {
+
                         float zspan = p2->z() - p1->z();
                         float t1 = (z_range.first - p1->z())  / zspan;
                         float t2 = (z_range.second - p1->z()) / zspan;
@@ -630,17 +711,20 @@ static void transformed_its_bboxes_in_z_ranges(
                         bbox_extend(to_3d((p + v * t1).eval(), float(z_range.first)));
                         bbox_extend(to_3d((p + v * t2).eval(), float(z_range.second)));
                     } else {
+
                         float t = (z_range.first - p1->z()) / (p2->z() - p1->z());
                         Vec2f v(p2->x() - p1->x(), p2->y() - p1->y());
                         bbox_extend(to_3d((to_2d(*p1) + v * t).eval(), float(z_range.first)));
                         bbox_extend(*p2);
                     }
                 } else if (p2->z() > z_range.second) {
+
                     float t = (z_range.second - p1->z()) / (p2->z() - p1->z());
                     Vec2f v(p2->x() - p1->x(), p2->y() - p1->y());
                     bbox_extend(to_3d((to_2d(*p1) + v * t).eval(), float(z_range.second)));
                     bbox_extend(*p1);
                 } else {
+
                     bbox_extend(*p1);
                     bbox_extend(*p2);
                 }
@@ -654,6 +738,9 @@ static void transformed_its_bboxes_in_z_ranges(
         bbox.first.max() += Vec3f(offset, offset, float(EPSILON));
     }
 }
+
+
+
 
 void print_objects_regions_invalidate_keep_some_volumes(PrintObjectRegions &print_object_regions, ModelVolumePtrs old_volumes, ModelVolumePtrs new_volumes)
 {
@@ -670,19 +757,25 @@ void print_objects_regions_invalidate_keep_some_volumes(PrintObjectRegions &prin
             for (; i_old < old_volumes.size(); ++ i_old)
                 if (old_volumes[i_old]->id() >= new_volumes[i_new]->id())
                     break;
+
+
             if (i_old != old_volumes.size() && old_volumes[i_old]->id() == new_volumes[i_new]->id() &&
                 model_volume_solid_or_modifier(*old_volumes[i_old])) {
                 if (old_volumes[i_old]->get_matrix().isApprox(new_volumes[i_new]->get_matrix())) {
+
                     for (; print_object_regions.cached_volume_ids[i_cached_volume] < old_volumes[i_old]->id(); ++ i_cached_volume)
                         assert(i_cached_volume < print_object_regions.cached_volume_ids.size());
                     assert(i_cached_volume < print_object_regions.cached_volume_ids.size() && print_object_regions.cached_volume_ids[i_cached_volume] == old_volumes[i_old]->id());
                     print_object_regions.cached_volume_ids[last_cached_volume ++] = print_object_regions.cached_volume_ids[i_cached_volume ++];
                 } else {
+
                 }
             }
         }
     print_object_regions.cached_volume_ids.erase(print_object_regions.cached_volume_ids.begin() + last_cached_volume, print_object_regions.cached_volume_ids.end());
 }
+
+
 
 const PrintObjectRegions::BoundingBox* find_volume_extents(const PrintObjectRegions::LayerRangeRegions &layer_range, const ModelVolume &volume)
 {
@@ -690,8 +783,10 @@ const PrintObjectRegions::BoundingBox* find_volume_extents(const PrintObjectRegi
     return it != layer_range.volumes.end() && it->volume_id == volume.id() ? &it->bbox : nullptr;
 }
 
+
 PrintObjectRegions::BoundingBox find_modifier_volume_extents(const PrintObjectRegions::LayerRangeRegions &layer_range, const int this_region_id)
 {
+
     const PrintObjectRegions::VolumeRegion &this_region = layer_range.volume_regions[this_region_id];
     const PrintObjectRegions::BoundingBox *this_extents = find_volume_extents(layer_range, *this_region.model_volume);
     assert(this_extents);
@@ -716,6 +811,9 @@ void print_region_ref_inc(PrintRegion &r) { ++ r.m_ref_cnt; }
 void print_region_ref_reset(PrintRegion &r) { r.m_ref_cnt = 0; }
 int  print_region_ref_cnt(const PrintRegion &r) { return r.m_ref_cnt; }
 
+
+
+
 bool verify_update_print_object_regions(
     ModelVolumePtrs                     model_volumes,
     const PrintRegionConfig            &default_region_config,
@@ -724,18 +822,28 @@ bool verify_update_print_object_regions(
     const std::function<void(const PrintRegionConfig&, const PrintRegionConfig&, const t_config_option_keys&)> &callback_invalidate,
     std::vector<int>& variant_index)
 {
+
     model_volumes_sort_by_id(model_volumes);
 
     for (std::unique_ptr<PrintRegion> &region : print_object_regions.all_regions)
         print_region_ref_reset(*region);
 
+
     for (PrintObjectRegions::LayerRangeRegions &layer_range : print_object_regions.layer_ranges) {
+
+
+
+
         auto it_model_volume_modifier_last = model_volumes.end();
         for (PrintObjectRegions::VolumeRegion &region : layer_range.volume_regions)
             if (region.model_volume->is_model_part() || region.model_volume->is_modifier()) {
                 auto it_model_volume = lower_bound_by_predicate(model_volumes.begin(), model_volumes.end(), [&region](const ModelVolume *l){ return l->id() < region.model_volume->id(); });
                 assert(it_model_volume != model_volumes.end() && (*it_model_volume)->id() == region.model_volume->id());
                 if (region.model_volume->is_modifier() && it_model_volume != it_model_volume_modifier_last) {
+
+
+
+
                     it_model_volume_modifier_last = it_model_volume;
                     int next_region_id = int(&region - layer_range.volume_regions.data());
                     const PrintObjectRegions::BoundingBox *bbox = find_volume_extents(layer_range, *region.model_volume);
@@ -744,16 +852,22 @@ bool verify_update_print_object_regions(
                         const PrintObjectRegions::VolumeRegion &parent_region = layer_range.volume_regions[parent_region_id];
                         assert(parent_region.model_volume != region.model_volume);
                         if (parent_region.model_volume->is_model_part() || parent_region.model_volume->is_modifier()) {
+
+
                             assert(next_region_id == int(layer_range.volume_regions.size()) ||
                                    layer_range.volume_regions[next_region_id].model_volume != region.model_volume ||
                                    layer_range.volume_regions[next_region_id].parent <= parent_region_id);
                             if (next_region_id < int(layer_range.volume_regions.size()) &&
                                 layer_range.volume_regions[next_region_id].model_volume == region.model_volume &&
                                 layer_range.volume_regions[next_region_id].parent == parent_region_id) {
+
                                 ++ next_region_id;
                             } else if (PrintObjectRegions::BoundingBox parent_bbox = find_modifier_volume_extents(layer_range, parent_region_id); parent_bbox.intersects(*bbox))
+
+
                                 if (PrintRegionConfig config = region_config_from_model_volume(parent_region.region->config(), nullptr, **it_model_volume, num_extruders, variant_index);
                                     config != parent_region.region->config())
+
                                     return false;
                         }
                     }
@@ -762,17 +876,22 @@ bool verify_update_print_object_regions(
                     region_config_from_model_volume(default_region_config, layer_range.config, **it_model_volume, num_extruders, variant_index) :
                     region_config_from_model_volume(layer_range.volume_regions[region.parent].region->config(), nullptr, **it_model_volume, num_extruders, variant_index);
                 if (cfg != region.region->config()) {
+
                     if (print_region_ref_cnt(*region.region) == 0) {
+
+
                         t_config_option_keys diff = region.region->config().diff(cfg);
                         callback_invalidate(region.region->config(), cfg, diff);
                         region.region->config_apply_only(cfg, diff, false);
                     } else {
+
                         return false;
                     }
                 }
                 print_region_ref_inc(*region.region);
             }
     }
+
 
     for (const PrintObjectRegions::LayerRangeRegions &layer_range : print_object_regions.layer_ranges)
         for (const PrintObjectRegions::PaintedRegion &region : layer_range.painted_regions) {
@@ -785,16 +904,21 @@ bool verify_update_print_object_regions(
             cfg.bottom_surface_filament_id.value = region.extruder_id;
             cfg.sparse_infill_filament_id.value       = region.extruder_id;
             if (cfg != region.region->config()) {
+
                 if (print_region_ref_cnt(*region.region) == 0) {
+
+
                     t_config_option_keys diff = region.region->config().diff(cfg);
                     callback_invalidate(region.region->config(), cfg, diff);
                     region.region->config_apply_only(cfg, diff, false);
                 } else {
+
                     return false;
                 }
             }
             print_region_ref_inc(*region.region);
         }
+
 
     for (const PrintObjectRegions::LayerRangeRegions &layer_range : print_object_regions.layer_ranges) {
         for (const PrintObjectRegions::FuzzySkinPaintedRegion &region : layer_range.fuzzy_skin_painted_regions) {
@@ -802,17 +926,22 @@ bool verify_update_print_object_regions(
             PrintRegionConfig  cfg                 = parent_print_region.config();
             if (cfg.fuzzy_skin.value != FuzzySkinType::Disabled_fuzzy) cfg.fuzzy_skin.value = FuzzySkinType::All;
             if (cfg != region.region->config()) {
+
                 if (print_region_ref_cnt(*region.region) == 0) {
+
+
                     t_config_option_keys diff = region.region->config().diff(cfg);
                     callback_invalidate(region.region->config(), cfg, diff);
                     region.region->config_apply_only(cfg, diff, false);
                 } else {
+
                     return false;
                 }
             }
             print_region_ref_inc(*region.region);
         }
     }
+
 
     {
         std::vector<const PrintRegion*> regions;
@@ -826,8 +955,13 @@ bool verify_update_print_object_regions(
             size_t hash = regions[i]->config_hash();
             size_t j = i;
             for (++ j; j < regions.size() && regions[j]->config_hash() == hash; ++ j)
+
+
+
+
                 if (regions[i]->config() == regions[j]->config()
                     && regions[i]->gradient_volume_id() == regions[j]->gradient_volume_id()) {
+
                     return false;
                 }
         }
@@ -836,6 +970,7 @@ bool verify_update_print_object_regions(
     return true;
 }
 
+
 void update_volume_bboxes(
     std::vector<PrintObjectRegions::LayerRangeRegions>  &layer_ranges,
     std::vector<ObjectID>                               &cached_volume_ids,
@@ -843,6 +978,7 @@ void update_volume_bboxes(
     const Transform3d                                   &object_trafo,
     const float                                          offset)
 {
+
     model_volumes_sort_by_id(model_volumes);
 
     if (layer_ranges.size() == 1) {
@@ -904,6 +1040,8 @@ void update_volume_bboxes(
             cached_volume_ids.emplace_back(v->id());
 }
 
+
+
 static PrintObjectRegions* generate_print_object_regions(
     PrintObjectRegions                          *print_object_regions_old,
     const ModelVolumePtrs                       &model_volumes,
@@ -915,8 +1053,11 @@ static PrintObjectRegions* generate_print_object_regions(
     const std::vector<unsigned int>             &painting_extruders,
     std::vector<int>                            &variant_index,
     const bool                                   has_painted_fuzzy_skin,
+
+
     const std::vector<bool>                     &slot_per_part_enabled = {})
 {
+
     auto out = print_object_regions_old ? std::unique_ptr<PrintObjectRegions>(print_object_regions_old) : std::make_unique<PrintObjectRegions>();
     auto &all_regions          = out->all_regions;
     auto &layer_ranges_regions = out->layer_ranges;
@@ -926,10 +1067,13 @@ static PrintObjectRegions* generate_print_object_regions(
     bool reuse_old = print_object_regions_old && !print_object_regions_old->layer_ranges.empty();
 
     if (reuse_old) {
+
+
         assert(model_layer_ranges.size() == layer_ranges_regions.size());
         for (const auto &range : model_layer_ranges) {
             PrintObjectRegions::LayerRangeRegions &r = layer_ranges_regions[&range - &*model_layer_ranges.begin()];
             assert(range.layer_height_range == r.layer_height_range);
+
             r.config = range.config;
             r.volume_regions.clear();
             r.painted_regions.clear();
@@ -946,6 +1090,10 @@ static PrintObjectRegions* generate_print_object_regions(
     update_volume_bboxes(layer_ranges_regions, out->cached_volume_ids, model_volumes, out->trafo_bboxes, is_mm_painted ? 0.f : std::max(0.f, xy_contour_compensation));
 
     std::vector<PrintRegion*> region_set;
+
+
+
+
     auto get_create_region = [&region_set, &all_regions](PrintRegionConfig &&config, ObjectID volume_tag = ObjectID()) -> PrintRegion* {
         size_t hash = config.hash();
         auto it = Slic3r::lower_bound_by_predicate(region_set.begin(), region_set.end(), [&config, hash, volume_tag](const PrintRegion* l) {
@@ -954,11 +1102,17 @@ static PrintObjectRegions* generate_print_object_regions(
         if (it != region_set.end() && (*it)->config_hash() == hash && (*it)->config() == config
             && (*it)->gradient_volume_id() == volume_tag)
             return *it;
+
         all_regions.emplace_back(std::make_unique<PrintRegion>(std::move(config), hash, int(all_regions.size()), volume_tag));
         PrintRegion *region = all_regions.back().get();
         region_set.emplace(it, region);
         return region;
     };
+
+
+
+
+
 
     std::vector<int> per_part_volume_users;
     if (!slot_per_part_enabled.empty()) {
@@ -1001,12 +1155,14 @@ static PrintObjectRegions* generate_print_object_regions(
         return ObjectID();
     };
 
+
     for (int volume_id = 0; volume_id < int(model_volumes.size()); ++ volume_id) {
         const ModelVolume &volume = *model_volumes[volume_id];
         if (model_volume_solid_or_modifier(volume)) {
             for (PrintObjectRegions::LayerRangeRegions &layer_range : layer_ranges_regions)
                 if (const PrintObjectRegions::BoundingBox *bbox = find_volume_extents(layer_range, volume); bbox) {
                     if (volume.is_model_part()) {
+
                         PrintRegionConfig vol_cfg = region_config_from_model_volume(default_region_config, layer_range.config, volume, num_extruders, variant_index);
                         ObjectID volume_tag = compute_volume_tag(vol_cfg, volume);
                         layer_range.volume_regions.push_back({
@@ -1015,9 +1171,11 @@ static PrintObjectRegions* generate_print_object_regions(
                             bbox
                         });
                     } else if (volume.is_negative_volume()) {
+
                         layer_range.volume_regions.push_back({ &volume, -1, nullptr, bbox });
                     } else {
                         assert(volume.is_modifier());
+
                         bool added = false;
                         int  parent_model_part_id = -1;
                         for (int parent_region_id = int(layer_range.volume_regions.size()) - 1; parent_region_id >= 0; -- parent_region_id) {
@@ -1025,6 +1183,7 @@ static PrintObjectRegions* generate_print_object_regions(
                             const ModelVolume                      &parent_volume = *parent_region.model_volume;
                             if (parent_volume.is_model_part() || parent_volume.is_modifier())
                                 if (PrintObjectRegions::BoundingBox parent_bbox = find_modifier_volume_extents(layer_range, parent_region_id); parent_bbox.intersects(*bbox)) {
+
                                     if (PrintRegionConfig config = region_config_from_model_volume(parent_region.region->config(), nullptr, volume, num_extruders, variant_index);
                                         config != parent_region.region->config()) {
                                         added = true;
@@ -1034,11 +1193,14 @@ static PrintObjectRegions* generate_print_object_regions(
                                 }
                         }
                         if (! added && parent_model_part_id >= 0)
+
+
                             layer_range.volume_regions.push_back({ &volume, parent_model_part_id, layer_range.volume_regions[parent_model_part_id].region, bbox });
                     }
                 }
             }
     }
+
 
     for (PrintObjectRegions::LayerRangeRegions &layer_range : layer_ranges_regions) {
         for (unsigned int painted_extruder_id : painting_extruders)
@@ -1054,6 +1216,7 @@ static PrintObjectRegions* generate_print_object_regions(
                     cfg.sparse_infill_filament_id.value       = painted_extruder_id;
                     layer_range.painted_regions.push_back({ painted_extruder_id, parent_region_id, get_create_region(std::move(cfg))});
                 }
+
         std::sort(layer_range.painted_regions.begin(), layer_range.painted_regions.end(), [&layer_range](auto &l, auto &r) {
             int lid = layer_range.volume_regions[l.parent].region->print_object_region_id();
             int rid = layer_range.volume_regions[r.parent].region->print_object_region_id();
@@ -1064,6 +1227,8 @@ static PrintObjectRegions* generate_print_object_regions(
         using FuzzySkinParentType = PrintObjectRegions::FuzzySkinPaintedRegion::ParentType;
 
         for (PrintObjectRegions::LayerRangeRegions &layer_range : layer_ranges_regions) {
+
+
             for (int parent_volume_region_id = 0; parent_volume_region_id < int(layer_range.volume_regions.size()); ++parent_volume_region_id) {
                 if (const PrintObjectRegions::VolumeRegion &parent_volume_region = layer_range.volume_regions[parent_volume_region_id]; parent_volume_region.model_volume->is_model_part() || parent_volume_region.model_volume->is_modifier()) {
                     PrintRegionConfig cfg = parent_volume_region.region->config();
@@ -1080,11 +1245,16 @@ static PrintObjectRegions* generate_print_object_regions(
                 layer_range.fuzzy_skin_painted_regions.push_back({FuzzySkinParentType::PaintedRegion, parent_painted_regions_id, get_create_region(std::move(cfg))});
             }
 
+
             std::sort(layer_range.fuzzy_skin_painted_regions.begin(), layer_range.fuzzy_skin_painted_regions.end(), [&layer_range](auto &l, auto &r) {
                 return l.parent_print_object_region_id(layer_range) < r.parent_print_object_region_id(layer_range);
             });
         }
     }
+
+
+
+
 
 
     out->last_slot_per_part_enabled = slot_per_part_enabled;
@@ -1098,13 +1268,19 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif
+
+
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", Line %1%: enter")%__LINE__;
+
 	new_full_config.option("print_settings_id",            true);
 	new_full_config.option("filament_settings_id",         true);
 	new_full_config.option("printer_settings_id",          true);
 
+
     std::vector <unsigned int> used_filaments = this->extruders(true);
     std::unordered_set <unsigned int> used_filament_set(used_filaments.begin(), used_filaments.end());
+
+
 
     {
         auto* is_mixed_opt  = new_full_config.option<ConfigOptionBools>("filament_is_mixed");
@@ -1115,8 +1291,12 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
 
+
     new_full_config.normalize_fdm_1();
     t_config_option_keys changed_keys = new_full_config.normalize_fdm_2(objects().size(), used_filaments.size());
+
+
+
     if (keep_conformal_tower && new_full_config.option<ConfigOptionFloats>("filament_diameter")->values.size() > 1 &&
         Nonplanar::requests_conformal_shells(*this)) {
         new_full_config.option<ConfigOptionBool>("enable_prime_tower")->value = true;
@@ -1129,6 +1309,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", i=%1%, key=%2%")%i %changed_keys[i];
         }
     }
+
+
     if (const auto *belt_opt = new_full_config.option<ConfigOptionBool>("belt_printer"); belt_opt && belt_opt->value) {
         const auto *axis_opt  = new_full_config.option<ConfigOptionEnum<BeltRotationAxis>>("belt_slice_rotation");
         const auto *angle_opt = new_full_config.option<ConfigOptionFloat>("belt_slice_rotation_angle");
@@ -1162,18 +1344,23 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ", has_scarf_joint_seam:" << has_scarf_joint_seam;
     }
 
+
     std::vector<int> print_variant_index;
     std::vector<std::vector<NozzleVolumeType>> nozzle_volume_types;
     int extruder_count = 1, extruder_volume_type_count = 1;
     bool different_extruder = false;
+
+
     std::vector<int> dynamic_slot_indices;
 
     different_extruder = new_full_config.support_different_extruders(extruder_count);
     extruder_volume_type_count = new_full_config.get_extruder_nozzle_volume_count(extruder_count, nozzle_volume_types);
     if (!extruder_applied) {
         if ((extruder_count > 1) || different_extruder) {
+
             new_full_config.update_values_to_printer_extruders(new_full_config, extruder_count, extruder_volume_type_count, nozzle_volume_types, printer_options_with_variant_2, "printer_extruder_id", "printer_extruder_variant", 2);
             new_full_config.update_values_to_printer_extruders(new_full_config, extruder_count, extruder_volume_type_count, nozzle_volume_types, printer_options_with_variant_1, "printer_extruder_id", "printer_extruder_variant");
+
             print_variant_index = new_full_config.update_values_to_printer_extruders(new_full_config, extruder_count, extruder_volume_type_count, nozzle_volume_types, print_options_with_variant, "print_extruder_id", "print_extruder_variant");
         }
         else
@@ -1183,6 +1370,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 
         std::set<std::string> filament_keys = filament_options_with_variant;
         filament_keys.insert("filament_self_index");
+
+
+
+
+
         auto group_result = this->get_layered_nozzle_group_result();
         std::unordered_map<int, std::vector<FilamentVariantUse>> filament_variant_uses;
         if (group_result && group_result->is_support_dynamic_nozzle_map()
@@ -1191,11 +1383,15 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                                                                                  extruder_count, extruder_volume_type_count, filament_keys,
                                                                                  "filament_self_index", "filament_extruder_variant",
                                                                                  &dynamic_slot_indices);
+
+
         else if ((extruder_count > 1) || different_extruder || new_full_config.has_multi_variant_filament())
             new_full_config.update_values_to_printer_extruders_for_multiple_filaments(m_ori_full_print_config, extruder_count, extruder_volume_type_count, filament_keys,
                                                                                       "filament_self_index", "filament_extruder_variant");
     }
     else {
+
+
         auto variant_opt = dynamic_cast<const ConfigOptionStrings *>(new_full_config.option("printer_extruder_variant"));
         print_variant_index.resize(variant_opt->values.size());
         for (int e_index = 0; e_index < variant_opt->values.size(); e_index++)
@@ -1204,11 +1400,30 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const auto* is_imex_opt = new_full_config.option<ConfigOptionBool>("is_imex");
     if (is_imex_opt && is_imex_opt->value) {
         auto* pem = new_full_config.option<ConfigOptionInts>("physical_extruder_map", true);
         if (pem) {
             pem->values = effective_physical_extruder_map(pem, extruder_count).values;
+
+
+
+
+
             if (auto* ori_pem = m_ori_full_print_config.option<ConfigOptionInts>("physical_extruder_map", true))
                 ori_pem->values = pem->values;
         }
@@ -1217,13 +1432,23 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     auto opt_filament_map = new_full_config.option<ConfigOptionInts>("filament_map");
     std::vector<int> filament_maps = opt_filament_map ? opt_filament_map->values : std::vector<int>();
 
+
     DynamicPrintConfig   filament_overrides;
+
     t_config_option_keys print_diff       = print_config_diffs(m_config, new_full_config, filament_overrides, this->m_plate_index, filament_maps,
                                                                 dynamic_slot_indices.empty() ? nullptr : &dynamic_slot_indices);
+
+
+
+
+
+
     print_diff.erase(std::remove(print_diff.begin(), print_diff.end(), "filament_map_2"), print_diff.end());
     t_config_option_keys full_config_diff = full_print_config_diffs(m_full_print_config, new_full_config, this->m_plate_index);
+
     t_config_option_keys object_diff      = m_default_object_config.diff(new_full_config);
     t_config_option_keys region_diff      = m_default_region_config.diff(new_full_config);
+
 
     std::unordered_set<std::string> print_diff_set(print_diff.begin(), print_diff.end());
     if (!print_diff_set.empty() && print_diff_set.find("filament_map_mode") == print_diff_set.end())
@@ -1232,6 +1457,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         if (is_auto_filament_map_mode(map_mode)) {
             if (print_diff_set.find("filament_map") != print_diff_set.end()) {
                 print_diff_set.erase("filament_map");
+
                 ConfigOptionInts* old_opt = m_full_print_config.option<ConfigOptionInts>("filament_map", true);
                 ConfigOptionInts* new_opt = new_full_config.option<ConfigOptionInts>("filament_map", true);
                 old_opt->set(new_opt);
@@ -1239,6 +1465,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
             if (print_diff_set.find("filament_volume_map") != print_diff_set.end()) {
                 print_diff_set.erase("filament_volume_map");
+
                 ConfigOptionInts* old_opt = m_full_print_config.option<ConfigOptionInts>("filament_volume_map", true);
                 ConfigOptionInts* new_opt = new_full_config.option<ConfigOptionInts>("filament_volume_map", true);
                 old_opt->set(new_opt);
@@ -1246,6 +1473,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
             if (print_diff_set.find("filament_nozzle_map") != print_diff_set.end()) {
                 print_diff_set.erase("filament_nozzle_map");
+
                 ConfigOptionInts* old_opt = m_full_print_config.option<ConfigOptionInts>("filament_nozzle_map", true);
                 ConfigOptionInts* new_opt = new_full_config.option<ConfigOptionInts>("filament_nozzle_map", true);
                 old_opt->set(new_opt);
@@ -1255,6 +1483,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         else {
             print_diff_set.erase("extruder_ams_count");
             if (map_mode == fmmManual) {
+
                 print_diff_set.erase("filament_nozzle_map");
             }
             std::vector<int> old_filament_map = m_config.filament_map.values;
@@ -1275,6 +1504,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 }
                 if (same_map) {
                     print_diff_set.erase("filament_map");
+
+
+
 
                     const auto& retract_keys = print_config_def.extruder_retract_keys();
                     const std::string filament_prefix = "filament_";
@@ -1302,55 +1534,86 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             print_diff.assign(print_diff_set.begin(), print_diff_set.end());
     }
 
+
+
+
+
     m_config.filament_map_2.values = filament_maps;
     for (auto& v : m_config.filament_map_2.values)
         --v;
     auto opt_extruder_type = dynamic_cast<const ConfigOptionEnumsGeneric*>(new_full_config.option("extruder_type"));
     auto opt_filament_volume_maps = dynamic_cast<const ConfigOptionInts*>(new_full_config.option("filament_volume_map"));
     auto opt_nozzle_volume_type = dynamic_cast<const ConfigOptionEnumsGeneric*>(new_full_config.option("nozzle_volume_type"));
+
     for (int index = 0; opt_extruder_type && !opt_extruder_type->values.empty() &&
                         opt_nozzle_volume_type && !opt_nozzle_volume_type->values.empty() && index < filament_maps.size(); index++)
     {
         ExtruderType extruder_type = (ExtruderType)(opt_extruder_type->get_at(filament_maps[index] - 1));
         NozzleVolumeType nozzle_volume_type = (NozzleVolumeType)(opt_nozzle_volume_type->get_at(filament_maps[index] - 1));
+
+
+
+
         if ((extruder_volume_type_count > extruder_count) && opt_filament_volume_maps
             && opt_filament_volume_maps->values.size() == filament_maps.size())
             nozzle_volume_type = (NozzleVolumeType)(opt_filament_volume_maps->values[index]);
+
+
+
         int slot_index = new_full_config.get_index_for_extruder(filament_maps[index], "print_extruder_id", extruder_type, nozzle_volume_type, "print_extruder_variant");
         m_config.filament_map_2.values[index] = slot_index >= 0 ? slot_index : filament_maps[index] - 1;
     }
+
 
     unsigned int apply_status = APPLY_STATUS_UNCHANGED;
     auto update_apply_status = [&apply_status](bool invalidated)
         { apply_status = std::max<unsigned int>(apply_status, invalidated ? APPLY_STATUS_INVALIDATED : APPLY_STATUS_CHANGED); };
     if (! (print_diff.empty() && object_diff.empty() && region_diff.empty())) {
         update_apply_status(false);
+
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", got print_diff %1%, object_diff %2%, region_diff %3%, set status to APPLY_STATUS_CHANGED")%print_diff.size() %object_diff.size() %region_diff.size();
     }
 
+
 	std::scoped_lock<std::mutex> lock(this->state_mutex());
+
 
     if (! print_diff.empty())
         update_apply_status(this->invalidate_state_by_config_options(new_full_config, print_diff));
 
+
+
     size_t num_extruders  = m_config.filament_diameter.size();
     bool   num_extruders_changed  = false;
+
     const bool native_printer_changed = std::any_of(print_diff.begin(), print_diff.end(), [](const t_config_option_key &key) {
         return key == "nonplanar_head" || key == "nonplanar_head_snapshot" || key == "nonplanar_kinematics";
     });
     if (! full_config_diff.empty()) {
+
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: found full_config_diff changed.")%__LINE__;
         update_apply_status(this->invalidate_step(psGCodeExport));
         m_placeholder_parser.clear_config();
+
         m_placeholder_parser.set("version", std::string(SoftFever_VERSION));
+
 		m_placeholder_parser.set("print_preset",              new_full_config.option("print_settings_id")->clone());
 		m_placeholder_parser.set("filament_preset",           new_full_config.option("filament_settings_id")->clone());
 		m_placeholder_parser.set("printer_preset",            new_full_config.option("printer_settings_id")->clone());
+
+
 		m_placeholder_parser.apply_config(filament_overrides);
+
 	    m_config.apply_only(new_full_config, print_diff, true);
+
+
+
 	    m_config.apply(filament_overrides);
+
 	    m_default_object_config.apply_only(new_full_config, object_diff, true);
+
 	    m_default_region_config.apply_only(new_full_config, region_diff, true);
+
         m_full_print_config = new_full_config;
         update_filament_self_index_cache();
         if (num_extruders  != m_config.filament_diameter.size()) {
@@ -1359,6 +1622,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
     else if (! print_diff.empty()) {
+
+
+
+
+
         m_placeholder_parser.apply_config(filament_overrides);
         m_config.apply_only(new_full_config, print_diff, true);
         m_config.apply(filament_overrides);
@@ -1366,8 +1634,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 
     ModelObjectStatusDB model_object_status_db;
 
+
     bool print_regions_reshuffled = false;
     if (model.id() != m_model.id()) {
+
+
         this->call_cancel_callback();
         update_apply_status(this->invalidate_all_steps());
         for (PrintObject *object : m_objects) {
@@ -1381,18 +1652,28 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 		for (const ModelObject *model_object : m_model.objects)
 			model_object_status_db.add(*model_object, ModelObjectStatus::New);
     } else {
+
         m_model.curr_plate_index = model.curr_plate_index;
         if (m_model.get_curr_plate_custom_gcodes() != model.get_curr_plate_custom_gcodes()) {
             update_apply_status(num_extruders_changed ||
+
+
+
                 (num_extruders > 1 && custom_per_printz_gcodes_tool_changes_differ(m_model.get_curr_plate_custom_gcodes().gcodes, model.get_curr_plate_custom_gcodes().gcodes)) ?
+
                 this->invalidate_steps({ psWipeTower, psGCodeExport }) :
+
                 this->invalidate_step(psGCodeExport));
             m_model.plates_custom_gcodes[m_model.curr_plate_index] = model.get_curr_plate_custom_gcodes();
         }
         if (model_object_list_equal(m_model, model)) {
+
 			for (const ModelObject *model_object : m_model.objects)
 				model_object_status_db.add(*model_object, ModelObjectStatus::Old);
         } else if (model_object_list_extended(m_model, model)) {
+
+
+
             for (const ModelObject *model_object : m_model.objects)
                 model_object_status_db.add(*model_object, ModelObjectStatus::Old);
             for (size_t i = m_model.objects.size(); i < model.objects.size(); ++ i) {
@@ -1400,10 +1681,17 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 m_model.objects.emplace_back(ModelObject::new_copy(*model.objects[i]));
 				m_model.objects.back()->set_model(&m_model);
             }
+
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: new model objects added.")%__LINE__;
         } else {
+
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: model object changed.")%__LINE__;
+
+
             this->call_cancel_callback();
+
+
+
             std::vector<ModelObject*> model_objects_old(std::move(m_model.objects));
             m_model.objects.clear();
             m_model.objects.reserve(model.objects.size());
@@ -1412,10 +1700,12 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             for (const ModelObject *mobj : model.objects) {
                 auto it = std::lower_bound(model_objects_old.begin(), model_objects_old.end(), mobj, by_id_lower);
                 if (it == model_objects_old.end() || (*it)->id() != mobj->id()) {
+
 					m_model.objects.emplace_back(ModelObject::new_copy(*mobj));
 					m_model.objects.back()->set_model(&m_model);
                     model_object_status_db.add(*mobj, ModelObjectStatus::New);
                 } else {
+
                     m_model.objects.emplace_back(*it);
                     model_object_status_db.add(*mobj, ModelObjectStatus::Moved);
                 }
@@ -1425,8 +1715,10 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 if (model_object_status_db.add_if_new(*model_object, ModelObjectStatus::Deleted))
                     deleted_any = true;
                 else
+
                     model_object = nullptr;
             if (deleted_any) {
+
                 PrintObjectPtrs print_objects_old = std::move(m_objects);
                 m_objects.clear();
                 m_objects.reserve(print_objects_old.size());
@@ -1445,7 +1737,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
 
+
     PrintObjectStatusDB print_object_status_db(m_objects);
+
 
     const std::initializer_list<ModelVolumeType> solid_or_modifier_types { ModelVolumeType::MODEL_PART, ModelVolumeType::NEGATIVE_VOLUME, ModelVolumeType::PARAMETER_MODIFIER };
     const std::initializer_list<ModelVolumeType> precise_seam_types {
@@ -1458,8 +1752,12 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         ModelObjectStatus &model_object_status = const_cast<ModelObjectStatus&>(model_object_status_db.reuse(model_object));
 		const ModelObject &model_object_new    = *model.objects[idx_model_object];
         if (model_object_status.status == ModelObjectStatus::New)
+
             continue;
+
         assert(model_object_status.status == ModelObjectStatus::Old || model_object_status.status == ModelObjectStatus::Moved);
+
+
         bool solid_or_modifier_differ   = model_volume_list_changed(model_object, model_object_new, solid_or_modifier_types) ||
                                           model_mmu_segmentation_data_changed(model_object, model_object_new) ||
                                           (model_object_new.is_mm_painted() && num_extruders_changed) ||
@@ -1472,42 +1770,56 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         bool model_origin_translation_differ = model_object.origin_translation != model_object_new.origin_translation;
         bool brim_points_differ = model_brim_points_data_changed(model_object, model_object_new);
         auto print_objects_range        = print_object_status_db.get_range(model_object);
+
+
+
         if (print_objects_range.begin() != print_objects_range.end()) {
             model_object_status.print_object_regions = print_objects_range.begin()->print_object->m_shared_regions;
             model_object_status.print_object_regions->ref_cnt_inc();
         }
         if (solid_or_modifier_differ || model_origin_translation_differ || layer_height_ranges_differ ||
             ! model_object.layer_height_profile.timestamp_matches(model_object_new.layer_height_profile)) {
+
             model_object_status.print_object_regions_status =
                 model_object_status.print_object_regions == nullptr || model_origin_translation_differ || layer_height_ranges_differ ?
+
                 ModelObjectStatus::PrintObjectRegionsStatus::Invalid :
+
                 ModelObjectStatus::PrintObjectRegionsStatus::PartiallyValid;
             for (const PrintObjectStatus &print_object_status : print_objects_range) {
                 update_apply_status(print_object_status.print_object->invalidate_all_steps());
                 const_cast<PrintObjectStatus&>(print_object_status).status = PrintObjectStatus::Deleted;
             }
             if (model_object_status.print_object_regions_status == ModelObjectStatus::PrintObjectRegionsStatus::PartiallyValid)
+
                 print_objects_regions_invalidate_keep_some_volumes(*model_object_status.print_object_regions, model_object.volumes, model_object_new.volumes);
             else if (model_object_status.print_object_regions != nullptr)
                 model_object_status.print_object_regions->clear();
+
             model_object.assign_copy(model_object_new);
         } else {
             model_object_status.print_object_regions_status = ModelObjectStatus::PrintObjectRegionsStatus::Valid;
             if (supports_differ || model_custom_supports_data_changed(model_object, model_object_new)) {
+
                 if (supports_differ) {
                     this->call_cancel_callback();
                     update_apply_status(false);
                 }
+
                 for (const PrintObjectStatus &print_object_status : print_objects_range)
                     update_apply_status(print_object_status.print_object->invalidate_step(posSupportMaterial));
             }
             if (precise_seam_differ) {
+
                 this->call_cancel_callback();
                 update_apply_status(false);
+
                 update_apply_status(this->invalidate_step(psGCodeExport));
             } else if (model_custom_seam_data_changed(model_object, model_object_new)) {
                 update_apply_status(this->invalidate_step(psGCodeExport));
             }
+
+
             if (supports_differ || precise_seam_differ)
                 model_volume_list_update_supports_and_seams(model_object, model_object_new);
             if (brim_points_differ) {
@@ -1516,6 +1828,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
         }
         if (! solid_or_modifier_differ) {
+
             bool object_config_changed = ! model_object.config.timestamp_matches(model_object_new.config);
 			if (object_config_changed)
 				model_object.config.assign_config(model_object_new.config);
@@ -1529,15 +1842,21 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                     }
                 }
             }
-			model_volume_list_copy_configs(model_object , model_object_new , ModelVolumeType::MODEL_PART);
-			model_volume_list_copy_configs(model_object , model_object_new , ModelVolumeType::PARAMETER_MODIFIER);
-			model_volume_list_copy_configs(model_object , model_object_new , precise_seam_types);
-            layer_height_ranges_copy_configs(model_object.layer_config_ranges , model_object_new.layer_config_ranges );
+
+
+			model_volume_list_copy_configs(model_object  , model_object_new  , ModelVolumeType::MODEL_PART);
+			model_volume_list_copy_configs(model_object  , model_object_new  , ModelVolumeType::PARAMETER_MODIFIER);
+
+			model_volume_list_copy_configs(model_object  , model_object_new  , precise_seam_types);
+            layer_height_ranges_copy_configs(model_object.layer_config_ranges  , model_object_new.layer_config_ranges  );
+
             model_object.name       = model_object_new.name;
             model_object.input_file = model_object_new.input_file;
+
             if (model_object.instances.size() != model_object_new.instances.size() ||
-            	! std::equal(model_object.instances.begin(), model_object.instances.end(), model_object_new.instances.begin(), [](auto l, auto r){ return l->id() == r->id(); })) {
-            	update_apply_status(this->invalidate_step(psGCodeExport));
+                ! std::equal(model_object.instances.begin(), model_object.instances.end(), model_object_new.instances.begin(), [](auto l, auto r){ return l->id() == r->id(); })) {
+
+                update_apply_status(this->invalidate_step(psGCodeExport));
 	            model_object.clear_instances();
 	            model_object.instances.reserve(model_object_new.instances.size());
 	            for (const ModelInstance *model_instance : model_object_new.instances) {
@@ -1545,10 +1864,13 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 	                model_object.instances.back()->set_model_object(&model_object);
 	            }
 	        } else if (! std::equal(model_object.instances.begin(), model_object.instances.end(), model_object_new.instances.begin(),
-	        		[](auto l, auto r){ return l->print_volume_state == r->print_volume_state && l->printable == r->printable &&
-	        						           l->get_transformation().get_matrix().isApprox(r->get_transformation().get_matrix()); })) {
-	 			model_object.invalidate_bounding_box();
-	        	auto new_instance = model_object_new.instances.begin();
+                    [](auto l, auto r){ return l->print_volume_state == r->print_volume_state && l->printable == r->printable &&
+                                               l->get_transformation().get_matrix().isApprox(r->get_transformation().get_matrix()); })) {
+
+
+                model_object.invalidate_bounding_box();
+
+                auto new_instance = model_object_new.instances.begin();
 				for (auto old_instance = model_object.instances.begin(); old_instance != model_object.instances.end(); ++ old_instance, ++ new_instance) {
                     if (is_printable_filament_changed(new_full_config, (*old_instance)->convex_hull_2d(), (*new_instance)->convex_hull_2d())) {
                         update_apply_status(this->invalidate_steps({psWipeTower, psGCodeExport}));
@@ -1556,18 +1878,23 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                     (*old_instance)->set_transformation((*new_instance)->get_transformation());
                     (*old_instance)->print_volume_state = (*new_instance)->print_volume_state;
                     (*old_instance)->printable 		    = (*new_instance)->printable;
-  				}
+                }
 	        }
         }
     }
+
 
     {
         PrintObjectPtrs print_objects_new;
         print_objects_new.reserve(std::max(m_objects.size(), m_model.objects.size()));
         bool new_objects = false;
         bool belt_instances_shifted = false;
+
         for (ModelObject *model_object : m_model.objects) {
             ModelObjectStatus &model_object_status = const_cast<ModelObjectStatus&>(model_object_status_db.reuse(*model_object));
+
+
+
             bool belt_force_separate = m_config.belt_printer.value;
             model_object_status.print_instances = print_objects_from_model_object(*model_object, this->shrinkage_compensation(), belt_force_separate);
             std::vector<const PrintObjectStatus*> old;
@@ -1575,6 +1902,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             for (const PrintObjectStatus &print_object_status : print_object_status_db.get_range(*model_object))
                 if (print_object_status.status != PrintObjectStatus::Deleted)
                     old.emplace_back(&print_object_status);
+
+
             const PrintObject *print_object_last = nullptr;
             auto print_object_apply_config = [this, &print_object_last, model_object, num_extruders, &print_variant_index](PrintObject *print_object) {
                 print_object->config_apply(print_object_last ?
@@ -1583,26 +1912,34 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 print_object_last = print_object;
             };
             if (old.empty()) {
+
                 for (PrintObjectTrafoAndInstances &print_instances : model_object_status.print_instances) {
                     PrintObject *print_object = new PrintObject(this, model_object, print_instances.trafo, std::move(print_instances.instances));
                     print_object_apply_config(print_object);
                     print_objects_new.emplace_back(print_object);
+
                     new_objects = true;
                 }
                 continue;
             }
+
+
             std::sort(old.begin(), old.end(), [](const PrintObjectStatus *lhs, const PrintObjectStatus *rhs){ return transform3d_lower(lhs->trafo, rhs->trafo); });
+
             auto it_old = old.begin();
             for (PrintObjectTrafoAndInstances &new_instances : model_object_status.print_instances) {
 				for (; it_old != old.end() && transform3d_lower((*it_old)->trafo, new_instances.trafo); ++ it_old);
 				if (it_old == old.end() || ! transform3d_equal((*it_old)->trafo, new_instances.trafo)) {
+
                     PrintObject *print_object = new PrintObject(this, model_object, new_instances.trafo, std::move(new_instances.instances));
                     print_object_apply_config(print_object);
                     print_objects_new.emplace_back(print_object);
+
                     new_objects = true;
                     if (it_old != old.end())
                         const_cast<PrintObjectStatus*>(*it_old)->status = PrintObjectStatus::Deleted;
                 } else {
+
 					PrintBase::ApplyStatus status = (*it_old)->print_object->set_instances(std::move(new_instances.instances));
                     if (status != PrintBase::APPLY_STATUS_UNCHANGED) {
                         size_t extruder_num = new_full_config.option<ConfigOptionFloats>("nozzle_diameter")->size();
@@ -1615,10 +1952,12 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
         }
         if (m_objects != print_objects_new) {
+
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: found print object changed.")%__LINE__;
             this->call_cancel_callback();
 			update_apply_status(this->invalidate_all_steps());
             m_objects = print_objects_new;
+
             bool deleted_objects = false;
             for (const PrintObjectStatus &pos : print_object_status_db)
                 if (pos.status == PrintObjectStatus::Unknown || pos.status == PrintObjectStatus::Deleted) {
@@ -1628,6 +1967,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                 }
 			if (new_objects || deleted_objects)
                 update_apply_status(this->invalidate_steps({ psSkirtBrim, psWipeTower, psGCodeExport }));
+
+
+
             if ((new_objects || deleted_objects) && m_config.belt_printer.value)
                 for (PrintObject *object : m_objects)
                     if (object->has_belt_brim())
@@ -1638,12 +1980,16 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
         print_object_status_db.clear();
 
+
         for (PrintObject* object : m_objects) {
             auto ept_iter = std::find(print_diff.begin(), print_diff.end(), "enable_prime_tower");
-            if ( ept_iter != print_diff.end()) {
+            if (  ept_iter != print_diff.end()) {
                 update_apply_status(object->invalidate_step(posSlice));
             }
         }
+
+
+
 
         if (belt_instances_shifted && m_config.belt_printer.value) {
             for (PrintObject *object : m_objects)
@@ -1651,11 +1997,17 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
 
+
     int new_used_filaments = this->extruders(true).size();
     t_config_option_keys new_changed_keys = new_full_config.normalize_fdm_2(objects().size(), new_used_filaments);
+
+
+
     if (keep_conformal_tower && new_full_config.option<ConfigOptionFloats>("filament_diameter")->values.size() > 1 &&
         Nonplanar::requests_conformal_shells(*this)) {
         new_full_config.option<ConfigOptionBool>("enable_prime_tower")->value = true;
+
+
         new_changed_keys.erase(std::remove(new_changed_keys.begin(), new_changed_keys.end(), "enable_prime_tower"), new_changed_keys.end());
         if (!m_config.enable_prime_tower)
             new_changed_keys.emplace_back("enable_prime_tower");
@@ -1669,27 +2021,42 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 
         update_apply_status(false);
 
+
         update_apply_status(this->invalidate_state_by_config_options(new_full_config, new_changed_keys));
 
         update_apply_status(this->invalidate_step(psGCodeExport));
 
         if (full_config_diff.empty()) {
+
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: full_config_diff previous empty, need to apply now.")%__LINE__;
 
             m_placeholder_parser.clear_config();
+
             m_placeholder_parser.set("version", std::string(SoftFever_VERSION));
+
             m_placeholder_parser.set("print_preset",              new_full_config.option("print_settings_id")->clone());
             m_placeholder_parser.set("filament_preset",           new_full_config.option("filament_settings_id")->clone());
             m_placeholder_parser.set("printer_preset",            new_full_config.option("printer_settings_id")->clone());
 
+
         }
+
         m_config.apply_only(new_full_config, new_changed_keys, true);
+
         m_default_object_config.apply_only(new_full_config, new_changed_keys, true);
+
         m_default_region_config.apply_only(new_full_config, new_changed_keys, true);
+
+
+
+
+
         m_ori_full_print_config.apply_only(new_full_config, new_changed_keys, true);
         m_full_print_config = std::move(new_full_config);
         update_filament_self_index_cache();
     }
+
+
 
     std::vector<bool> slot_per_part_enabled;
     {
@@ -1712,7 +2079,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         }
     }
 
+
+
+
     for (auto it_print_object = m_objects.begin(); it_print_object != m_objects.end();) {
+
         auto                it_print_object_end  = it_print_object;
         PrintObject        &print_object         = *(*it_print_object);
         const ModelObject  &model_object         = *print_object.model_object();
@@ -1734,6 +2105,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             for (const ModelVolume *volume : volumes) {
                 const std::vector<bool> &volume_used_facet_states = volume->mmu_segmentation_facets.get_data().used_states;
 
+
+
                 for (size_t state_idx = 0; state_idx < std::min(volume_used_facet_states.size(), used_facet_states.size()); ++state_idx)
                     used_facet_states[state_idx] |= volume_used_facet_states[state_idx];
             }
@@ -1744,6 +2117,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
         }
         if (model_object_status.print_object_regions_status == ModelObjectStatus::PrintObjectRegionsStatus::Valid) {
+
             auto invalidate = [it_print_object, it_print_object_end, update_apply_status]() {
                 for (auto it = it_print_object; it != it_print_object_end; ++ it)
                     if ((*it)->m_shared_regions != nullptr)
@@ -1766,18 +2140,27 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                                 update_apply_status((*it)->invalidate_state_by_config_options(old_config, new_config, diff_keys));
                     },
                     print_variant_index)) {
+
+
+
+
                 if (print_object_regions->last_slot_per_part_enabled != slot_per_part_enabled) {
                     invalidate();
                     model_object_status.print_object_regions_status = ModelObjectStatus::PrintObjectRegionsStatus::PartiallyValid;
                     print_regions_reshuffled = true;
                 }
+
             } else {
+
                 invalidate();
+
                 model_object_status.print_object_regions_status = ModelObjectStatus::PrintObjectRegionsStatus::PartiallyValid;
                 print_regions_reshuffled = true;
             }
         }
         if (print_object_regions == nullptr || model_object_status.print_object_regions_status != ModelObjectStatus::PrintObjectRegionsStatus::Valid) {
+
+
             print_object_regions = generate_print_object_regions(
                 print_object_regions,
                 print_object.model_object()->volumes,
@@ -1802,6 +2185,7 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     }
 
     if (print_regions_reshuffled) {
+
         struct cmp { bool operator() (const PrintRegion *l, const PrintRegion *r) const { return l->config_hash() == r->config_hash() && l->config() == r->config(); } };
         std::set<const PrintRegion*, cmp> region_set;
         m_print_regions.clear();
@@ -1820,16 +2204,27 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
             }
     }
 
+
+
     if (apply_status != APPLY_STATUS_UNCHANGED)
         for (PrintObject *object : m_objects)
             if (Nonplanar::auto_rotary_requested(*object))
                 update_apply_status(object->invalidate_step(posSlice));
+
+
+
 
     for (PrintObject *object : m_objects)
     {
         object->update_slicing_parameters();
         m_support_used |= object->config().enable_support;
     }
+
+
+
+
+
+
     for (PrintObject *object : m_objects)
         if (const Nonplanar::ConformalResult &conformal = object->conformal();
             object->is_step_done_unguarded(posNonplanar) && !conformal.patches.empty() &&
@@ -1843,6 +2238,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 #ifdef _DEBUG
     check_model_ids_equal(m_model, model);
 #endif
+
+
 	if (apply_status != APPLY_STATUS_UNCHANGED)
 		m_modified_count++;
 	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: finished,  this %2%, m_modified_count %3%, apply_status %4%, m_support_used %5%")%__LINE__ %this %m_modified_count %apply_status %m_support_used;

@@ -41,13 +41,24 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 constexpr double Deg = M_PI / 180.;
+
+
 constexpr double MinFaceTilt = 39. * Deg;
+
+
 constexpr double MaxFaceTilt = 80. * Deg;
+
 constexpr double MinCoverage = 0.9;
+
 constexpr double MinNormalZ = -0.1;
+
+
 constexpr double SharpEdge    = 20. * Deg;
 constexpr double MinEdgeBound = 0.8;
+
+
 constexpr double MaxResidual = 32. * Deg;
+
 constexpr double TiltReserve = 1. * Deg;
 constexpr double Sample = 0.5;
 constexpr double MinRun = 3.;
@@ -69,6 +80,7 @@ double polyline_length(const std::vector<Vec2d> &p, bool closed)
     return l;
 }
 
+
 Vec2d point_at(const std::vector<Vec2d> &p, const std::vector<double> &cum, bool closed, double s)
 {
     const double total = cum.back();
@@ -84,6 +96,7 @@ Vec2d point_at(const std::vector<Vec2d> &p, const std::vector<double> &cum, bool
     return seg > 1e-12 ? a + (b - a) * ((s - cum[i - 1]) / seg) : a;
 }
 
+
 Vec2d tangent_at(const std::vector<Vec2d> &p, const std::vector<double> &cum, bool closed, double s)
 {
     const double total = cum.back();
@@ -93,6 +106,7 @@ Vec2d tangent_at(const std::vector<Vec2d> &p, const std::vector<double> &cum, bo
     const Vec2d d = (closed && i == p.size() ? p.front() : p[std::min(i, p.size() - 1)]) - p[i - 1];
     return d.norm() > 1e-12 ? Vec2d(d.normalized()) : Vec2d(Vec2d::UnitX());
 }
+
 
 struct Stretch
 {
@@ -116,6 +130,7 @@ void finish(Stretch &s)
         s.cum.emplace_back(s.cum.back() + (s.pts.front() - s.pts.back()).norm());
 }
 
+
 std::pair<double, double> project(const Stretch &s, const Vec2d &p)
 {
     double best = std::numeric_limits<double>::infinity(), at = 0.;
@@ -131,6 +146,11 @@ std::pair<double, double> project(const Stretch &s, const Vec2d &p)
     }
     return { best, at };
 }
+
+
+
+
+
 
 std::vector<int> steep_surfaces(const indexed_triangle_set &its, const Matrix3d &frame, size_t &count)
 {
@@ -150,6 +170,7 @@ std::vector<int> steep_surfaces(const indexed_triangle_set &its, const Matrix3d 
         for (int k = 0; k < 3; ++k)
             if (const int g = neighbours[f][k]; g >= 0 && parent[f] >= 0 && parent[size_t(g)] >= 0)
                 parent[size_t(find(int(f)))] = find(g);
+
     std::map<int, std::pair<double, double>> outline;
     for (size_t f = 0; f < n; ++f) {
         if (parent[f] < 0)
@@ -178,6 +199,7 @@ std::vector<int> steep_surfaces(const indexed_triangle_set &its, const Matrix3d 
     return surface;
 }
 
+
 struct Pose
 {
     bool  ok = false;
@@ -192,10 +214,14 @@ struct Pose
 class Planner
 {
 public:
+
     Planner(const PrintObject &object, const ObjectMesh &mesh, const std::vector<int> &band_of)
         : m_object(object), m_mesh(mesh), m_kin(make_tool_kinematics(object.print()->config())),
           m_head(resolve_head_envelope(object.print()->config())), m_nozzle(object.print()->config().nozzle_diameter.get_at(0))
     {
+
+
+
         m_check = m_head;
         m_check.boxes.clear();
         for (HeadBox box : m_head.boxes) {
@@ -212,8 +238,10 @@ public:
             m_table.emplace_back(box);
         }
         m_check.margin = m_check.lateral_margin = 0.;
+
         const indexed_triangle_set &its = mesh.mesh.its;
         m_component = steep_surfaces(its, Matrix3d::Identity(), m_components);
+
         BoundingBoxf bbox;
         for (const Layer *layer : object.layers())
             for (const ExPolygon &e : layer->lslices)
@@ -231,6 +259,8 @@ public:
                 Polylines hatch;
                 for (coord_t y = lb.min.y() + scale_(0.5 * Pitch); y < lb.max.y(); y += scale_(Pitch))
                     hatch.emplace_back(Point(lb.min.x() - coord_t(scale_(1.)), y), Point(lb.max.x() + coord_t(scale_(1.)), y));
+
+
                 for (const Polyline &pl : intersection_pl(hatch, offset_ex(layer->lslices, -scale_(0.6 * Pitch))))
                     for (size_t i = 1; i < pl.points.size(); ++i) {
                         const Vec2d a = unscale(pl.points[i - 1]), b = unscale(pl.points[i]);
@@ -242,9 +272,14 @@ public:
         }
     }
 
+
+
+
     Pose pose(const Vec2d &q, const Vec2d &outward, double print_z, double height, double width, int band) const
     {
         Pose out;
+
+
         const double z_mid = print_z - 0.5 * height;
         const Vec2d  edge  = q + 0.5 * width * outward;
         const Vec3d  query(edge.x(), edge.y(), z_mid - m_mesh.ground_offset);
@@ -253,6 +288,7 @@ public:
         const double d2 = m_mesh.imesh.squared_distance(query, face, c);
         if (face < 0)
             return out;
+
         if (std::sqrt(d2) > width + height)
             return out;
         Vec3d n = m_mesh.imesh.normal_by_face_id(face).normalized();
@@ -263,6 +299,7 @@ public:
         if (beta < MinFaceTilt || beta > MaxFaceTilt || nz < MinNormalZ || m_component[size_t(face)] < 0)
             return out;
         out.component = m_component[size_t(face)];
+
         if (const RepairHints *repair = m_object.nonplanar_repair(); repair != nullptr)
             for (const RepairHints::Disc &disc : repair->upright)
                 if ((q - disc.p).squaredNorm() <= disc.radius * disc.radius && (std::isnan(disc.z) || std::abs(z_mid - disc.z) <= disc.radius))
@@ -271,6 +308,7 @@ public:
         const double phi = std::atan2(nh.y(), nh.x());
         out.surface = c + Vec3d(0., 0., m_mesh.ground_offset);
         out.normal  = n;
+
         const double cap = std::min(beta, m_kin->max_tilt(phi) - TiltReserve);
         for (double tau = cap; tau >= beta - MaxResidual - 1e-9 && tau >= 0.; tau -= 2. * Deg) {
             const Vec3d axis(std::sin(tau) * nh.x(), std::sin(tau) * nh.y(), std::cos(tau));
@@ -280,6 +318,8 @@ public:
             out.ok       = true;
             out.axis     = axis;
             out.residual = beta - tau;
+
+
             out.thickness = std::min((width - height * (1. - 0.25 * M_PI)) * std::sin(beta), 0.9 * m_nozzle);
             return out;
         }
@@ -289,6 +329,7 @@ public:
 private:
     bool clears(const Vec3d &tip, const Matrix3d &frame, int band) const
     {
+
         for (const HeadBox &box : m_table)
             for (int k = 0; k < 8; ++k) {
                 const Vec3d v = tip + frame.transpose() * Vec3d(k & 1 ? box.max.x() : box.min.x(), k & 2 ? box.max.y() : box.min.y(),
@@ -311,6 +352,7 @@ private:
     std::vector<HeadBox>           m_table;
     std::vector<std::unique_ptr<MaterialColumns>> m_columns;
 };
+
 
 struct WallLoop
 {
@@ -360,14 +402,17 @@ void collect_loops(ExtrusionEntityCollection &collection, std::vector<WallLoop> 
     }
 }
 
+
 void remove_skinned(WallLoop &wl)
 {
     auto *loop = dynamic_cast<ExtrusionLoop *>(wl.owner->entities[wl.index]);
     const double total = wl.cum.back();
+
     std::vector<std::pair<double, double>> skinned = wl.skinned;
     std::sort(skinned.begin(), skinned.end());
     std::vector<std::pair<double, double>> keep;
     if (skinned.size() == 1 && skinned.front().second - skinned.front().first >= total - 1e-6) {
+
     } else
         for (size_t i = 0; i < skinned.size(); ++i) {
             const double from = skinned[i].second;
@@ -375,6 +420,8 @@ void remove_skinned(WallLoop &wl)
             if (to - from > 1e-3)
                 keep.emplace_back(from, to);
         }
+
+
     ExtrusionEntitiesPtr replacement;
     for (const auto &[from, to] : keep) {
         ExtrusionPaths pieces;
@@ -453,6 +500,7 @@ bool rotary_skin_claims(const PrintObject &object)
         if (len <= 1e-12)
             continue;
         const double nz = n.z() / len, beta = std::acos(std::clamp(nz, -1., 1.));
+
         if (nz < -0.999 && std::max({ a.z(), b.z(), c.z() }) < z_min + 0.05)
             continue;
         visible += 0.5 * len;
@@ -467,10 +515,13 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
     const auto &layers = object.layers();
     if (layers.size() < 4)
         return;
+
+
     const double band_height = 0.;
     std::vector<int> band_of(layers.size(), 0);
     for (size_t l = 0; l < layers.size(); ++l)
         band_of[l] = band_height > 0. ? int(std::floor(layers[l]->print_z / band_height + 1e-6)) : 0;
+
     {
         int next = 0, last = band_of[0];
         band_of[0] = 0;
@@ -485,6 +536,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
     const ObjectMesh &mesh  = object_mesh(object, result);
     const Planner     planner(object, mesh, band_of);
 
+
     std::vector<std::vector<WallLoop>> loops(layers.size());
     std::vector<std::vector<Stretch>>  stretches(layers.size());
     int region_id = -1;
@@ -497,6 +549,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         }
     if (region_id < 0)
         return;
+
     for (size_t l = 1; l < layers.size(); ++l)
         for (WallLoop &wl : loops[l]) {
             size_t best = 0;
@@ -512,6 +565,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         const Vec2d d = tangent_at(pts, cum, closed, at);
         return right_out ? Vec2d(d.y(), -d.x()) : Vec2d(-d.y(), d.x());
     };
+
     std::vector<std::vector<std::vector<Pose>>> samples(layers.size());
     tbb::parallel_for(size_t(1), layers.size(), [&](size_t l) {
         const Layer &layer = *layers[l];
@@ -526,6 +580,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                                                         wl.height, wl.width, band_of[l]));
         }
     });
+
     std::vector<size_t> steep_total(planner.m_components, 0), steep_ok(planner.m_components, 0);
     for (const auto &layer_samples : samples)
         for (const auto &loop_samples : layer_samples)
@@ -548,6 +603,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 wl.skinned.emplace_back(0., total);
                 continue;
             }
+
             const size_t start = size_t(std::find(ok.begin(), ok.end(), uint8_t(0)) - ok.begin());
             for (size_t k = 1; k <= n; ++k) {
                 const size_t i = (start + k) % n;
@@ -556,6 +612,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 size_t j = k;
                 while (j + 1 <= n && ok[(start + j + 1) % n])
                     ++j;
+
                 const double s0 = (double(start + k) - 0.5) * step, s1 = (double(start + j) + 0.5) * step;
                 if (s1 - s0 >= MinRun)
                     wl.skinned.emplace_back(s0, s1);
@@ -579,6 +636,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 for (size_t k = 0; k < (s.closed ? n : n + 1); ++k)
                     s.pts.emplace_back(point_at(wl.pts, wl.cum, true, iv.first + length * k / n));
                 finish(s);
+
+
+
                 const double total = wl.cum.back();
                 const size_t m     = size_t(std::ceil(total / 0.05));
                 std::vector<uint8_t> turning(m);
@@ -601,6 +661,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 stretches[l].emplace_back(std::move(s));
             }
 
+
+
     std::vector<Road> roads;
     struct Live { int road; size_t stretch; double s; };
     std::vector<Live> live;
@@ -618,6 +680,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             if (to.stretch != size_t(-1))
                 next.emplace_back(to);
         }
+
         std::vector<Live> placed;
         for (size_t k = 0; k < stretches[l].size(); ++k) {
             const Stretch &st = stretches[l][k];
@@ -633,6 +696,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                     kept.emplace_back(lv);
             if (st.closed && kept.size() > 1 && kept.front().s + total - kept.back().s < 0.55 * Spacing)
                 kept.pop_back();
+
             std::vector<double> at;
             for (const Live &lv : kept)
                 at.emplace_back(lv.s);
@@ -664,6 +728,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 kept.push_back({ int(roads.size()) - 1, k, st.closed ? std::fmod(s + total, total) : s });
             }
             std::sort(kept.begin(), kept.end(), [](const Live &a, const Live &b) { return a.s < b.s; });
+
             for (size_t i = 0; i < kept.size(); ++i) {
                 const bool   wrap_l = st.closed && kept.size() > 1, has_l = i > 0 || wrap_l, has_r = i + 1 < kept.size() || wrap_l;
                 const double gl = has_l ? (i > 0 ? kept[i].s - kept[i - 1].s : kept[i].s + total - kept.back().s) : 2. * kept[i].s;
@@ -694,7 +759,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         live = std::move(placed);
     }
 
+
     tbb::parallel_for(size_t(0), roads.size(), [&](size_t r) {
+
         Road &road = roads[r];
         size_t reached = 0;
         Vec2d  sum     = Vec2d::Zero();
@@ -705,6 +772,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             if (rp.pose.ok)
                 ++reached, sum += rp.pose.normal.head<2>();
         }
+
+
+
         std::vector<size_t> okay;
         for (size_t i = 0; i < road.points.size(); ++i)
             if (road.points[i].pose.ok)
@@ -720,12 +790,18 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         road.azimuth = std::atan2(sum.y(), sum.x());
     });
 
+
+
+
     std::vector<uint8_t> corner(roads.size(), 0);
     for (size_t r = 0; r < roads.size(); ++r)
         for (const auto &[to, count] : roads[r].next)
             if (roads[r].alive && roads[size_t(to)].alive &&
                 std::abs(std::remainder(roads[r].azimuth - roads[size_t(to)].azimuth, 2. * M_PI)) > 30. * Deg)
                 corner[r] = corner[size_t(to)] = 1;
+
+
+
 
     std::vector<uint8_t> rim(roads.size(), 0);
     {
@@ -746,6 +822,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             rim[r] = hops[r] <= 2;
     }
 
+
+
+
     {
         constexpr double Cell = 0.05;
         for (size_t l = 1; l < layers.size(); ++l)
@@ -759,6 +838,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             const double    total = wl.cum.back();
             const long      n = long(wl.cover.size());
             const double    at = st.s0 + rp.s;
+
             double lo = at - 0.5 * rp.spacing, hi = at + 0.5 * rp.spacing;
             if (std::abs(rp.corner) < rp.spacing)
                 (rp.corner > 0. ? hi : lo) = at + rp.corner;
@@ -766,6 +846,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 fn(wl, size_t(((c % n) + n) % n));
             (void) total;
         };
+
+
         for (Road &road : roads)
             for (size_t i = road.points.size(); i-- > 0;)
                 if (road.points[i].pose.ok) {
@@ -804,6 +886,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 }
                 wl.cover.swap(kept);
             }
+
         for (Road &road : roads)
             for (RoadPoint &rp : road.points)
                 if (rp.pose.ok) {
@@ -816,6 +899,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 }
     }
     size_t removed = 0;
+
     for (size_t l = 1; l < layers.size(); ++l)
         for (size_t i = loops[l].size(); i-- > 0;)
             if (!loops[l][i].skinned.empty()) {
@@ -824,6 +908,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             }
     if (removed == 0)
         return;
+
+
 
     const auto  kin = make_tool_kinematics(object.print()->config());
     double      wrap_azimuth = 0., wrap_c = -1.;
@@ -857,6 +943,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         }
     }
 
+
+
     struct Tip { Vec3d tip, axis; float h, w, layer; };
     for (int band = 0; band < bands; ++band) {
         size_t host_layer = 0;
@@ -874,6 +962,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
         patch.z_min      = std::numeric_limits<double>::infinity();
         patch.z_max      = -std::numeric_limits<double>::infinity();
         std::vector<int> inner_seq;
+
+
+
         for (int pass = 0; pass < SkinPasses; ++pass) {
             ExtrusionEntityCollection shell;
             shell.no_sort = true;
@@ -905,6 +996,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
             };
             std::optional<Tip> last;
             JointPose          last_joints;
+
+
+
             auto run = [&](std::vector<Tip> &tips, bool end_front, bool end_back) {
                 if (tips.size() < 2)
                     return;
@@ -914,9 +1008,14 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                     Tip        &a = end == 0 ? tips[0] : tips.back();
                     const Tip  &b = end == 0 ? tips[1] : tips[tips.size() - 2];
                     const Vec3d d = a.tip - b.tip;
+
+
                     const double shift = std::min(0.5 * double(a.layer), 0.5 * d.norm());
                     a.tip += shift * d.normalized();
                 }
+
+
+
                 {
                     std::vector<Tip> smooth = tips;
                     for (size_t i = 0; i < tips.size(); ++i) {
@@ -928,6 +1027,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                     }
                     std::vector<Tip> kept { smooth.front() };
                     for (size_t a = 0, b = 2; b <= smooth.size(); ++b) {
+
+
                         bool fits = b < smooth.size() && (smooth[b].tip - smooth[a].tip).norm() <= 1.5;
                         for (size_t m = a + 1; fits && m < b; ++m) {
                             const double t  = double(m - a) / double(b - a);
@@ -945,8 +1046,13 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                         kept.emplace_back(smooth.back());
                     tips.swap(kept);
                 }
+
                 if (last && (tips.back().tip - last->tip).norm() < (tips.front().tip - last->tip).norm())
                     std::reverse(tips.begin(), tips.end());
+
+
+
+
                 auto jump = [](const JointPose &a, const JointPose &b) {
                     return std::max(std::abs(a.rot[0] - b.rot[0]), std::abs(a.rot[1] - b.rot[1]));
                 };
@@ -958,12 +1064,16 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 }
                 if (!join) {
                     flush();
+
+
                     if (tips.back().tip.z() > tips.front().tip.z())
                         std::reverse(tips.begin(), tips.end());
                 }
                 bool have = join;
                 if (join) {
                     cur = last_joints;
+
+
                     add(last->tip + GlideRaise * last->axis, last->axis, 0.f, last->w);
                     add(tips.front().tip + GlideRaise * tips.front().axis, tips.front().axis, 0.f, tips.front().w);
                 }
@@ -984,6 +1094,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 last_joints = cur;
                 last = tips.back();
             };
+
+
             std::vector<int> seq = order;
             auto jumps = [&](const std::vector<int> &sq, size_t *first = nullptr) {
                 int       n = 0;
@@ -1014,6 +1126,8 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 std::vector<int> back(order.rbegin(), order.rend());
                 if (jumps(back) < jumps(order))
                     seq = back;
+
+
                 size_t k = 0;
                 if (jumps(seq, &k) > 0 && k > 0) {
                     std::vector<int> turned(seq.begin() + long(k), seq.end());
@@ -1026,6 +1140,9 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                 seq.assign(inner_seq.rbegin(), inner_seq.rend());
             for (int r : seq) {
                 const Road      &road = roads[size_t(r)];
+
+
+
                 std::vector<double> below_top(road.points.size(), std::numeric_limits<double>::infinity());
                 for (size_t i = 0; i < road.points.size();) {
                     if (!road.points[i].pose.ok) {
@@ -1058,6 +1175,7 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                         continue;
                     }
                     if (band_of[rp.layer] != band || !p.ok) {
+
                         const bool cut = band_of[rp.layer] != band && p.ok;
                         run(tips, front, !cut);
                         tips.clear();
@@ -1070,9 +1188,12 @@ void build_rotary_skin(PrintObject &object, ConformalResult &result)
                         front = true;
                     }
                     const double t = (top_band ? double(SkinPasses - pass) : 1.) * share * p.thickness;
+
                     const float h = float(t / std::max(std::cos(p.residual), 0.2));
+
                     const float w = float(std::abs(rp.corner) < rp.spacing ? std::min(2. * std::abs(rp.corner), 2. * nozzle) : rp.spacing + t * (1. - 0.25 * M_PI));
                     if (w < 0.15f) {
+
                         run(tips, front, true);
                         tips.clear();
                         front = true;

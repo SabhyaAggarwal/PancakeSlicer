@@ -17,6 +17,10 @@ bool MachineFrameTransform::init_from_config(const PrintConfig &config)
     if (!config.belt_printer.value)
         return false;
 
+
+
+
+
     const BeltRotationAxis axis = config.belt_slice_rotation.value;
     if (axis == BeltRotationAxis::None || axis == BeltRotationAxis::Z)
         return false;
@@ -34,6 +38,15 @@ bool MachineFrameTransform::init_from_config(const PrintConfig &config)
     const double cot_a   = std::cos(angle_rad) / sin_a;
     const double inv_sin = 1.0 / std::abs(sin_a);
 
+
+
+
+
+
+
+
+
+
     Matrix3d shear = Matrix3d::Identity();
     Matrix3d scale = Matrix3d::Identity();
     if (axis == BeltRotationAxis::X) {
@@ -43,6 +56,9 @@ bool MachineFrameTransform::init_from_config(const PrintConfig &config)
         shear(2, 0) = -cot_a;
         scale(0, 0) =  inv_sin;
     }
+
+
+
 
     Transform3d combined = Transform3d::Identity();
     combined.linear() = scale * shear;

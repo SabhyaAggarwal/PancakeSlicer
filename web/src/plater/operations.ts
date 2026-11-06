@@ -1,3 +1,4 @@
+
 import { beginBusy } from '../state/busy';
 import { Box3, Matrix4, Vector3, type BufferGeometry } from 'three';
 import { arrangeSettings } from './arrangeSettings';
@@ -13,6 +14,7 @@ import { axisAngle, withRotation } from './rotation';
 import { attachFiles, postJob } from '../api/blobs';
 
 let busy = false;
+
 
 export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-scores'): Promise<Record<string, unknown> | undefined> {
   const s = getState();
@@ -39,6 +41,8 @@ export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-sc
 }
 
 async function orient(o: PlateObject): Promise<PlateObject> {
+
+
   if (getState().features.orient_scores) {
     const scores = (await orientJob(o, 'orient-scores'))?.scores;
     if (!Array.isArray(scores)) throw new Error('The native tool did not return orientation scores.');
@@ -67,6 +71,8 @@ async function splitObject(o: PlateObject): Promise<PlateObject[]> {
     const geometry = await loadMesh(source);
     const centre = new Vector3(...geometry.userData.sourceCentre as [number, number, number]);
     const instances = o.instances.map((i) => {
+
+
       const m = instanceMatrix(o, i).multiply(objectMatrix(o).invert()).multiply(new Matrix4().makeTranslation(...centre.toArray()));
       const box = new Box3();
       const p = geometry.attributes.position;
@@ -80,6 +86,11 @@ async function splitObject(o: PlateObject): Promise<PlateObject[]> {
   return result;
 }
 
+
+
+
+
+
 async function splitParts(o: PlateObject): Promise<PlateObject[]> {
   if (o.volumes?.length) throw new Error('Split to parts needs an object of one part.');
   const file = await bakeStl(o, new Matrix4());
@@ -91,14 +102,18 @@ async function splitParts(o: PlateObject): Promise<PlateObject[]> {
   const base = o.name.replace(/\.(stl|obj|3mf|stp|step)$/i, '');
   const files = [...blobs].sort((a, b) => b.size - a.size).map((blob, k) => new File([blob], `${base}_${k + 1}.stl`, { type: 'model/stl' }));
   const pieces = await Promise.all(files.map((f) => loadMesh(f)));
+
   const centre = (g: BufferGeometry) => new Vector3(...g.userData.sourceCentre as [number, number, number]);
   const c0 = centre(pieces[0]);
   const volumes: Volume[] = pieces.slice(1).map((g, k) => {
+
     const [geometry, back] = centred(g);
     return { id: newId(), name: `${base}_${k + 2}`, type: 'part', geometry,
       matrix: new Matrix4().makeTranslation(...centre(g).sub(c0).toArray()).multiply(back).elements, extruder: 0, settings: {} };
   });
+
   const next: PlateObject = { ...o, geometry: pieces[0], source: files[0], volumes, paint: undefined };
+
   return [{ ...next, instances: o.instances.map((i) => {
     const before = c0.clone().applyMatrix4(instanceMatrix(o, i)), after = new Vector3().applyMatrix4(instanceMatrix(next, i));
     return { ...i, x: i.x + before.x - after.x, y: i.y + before.y - after.y, z: (i.z ?? 0) + before.z - after.z };
@@ -109,12 +124,14 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
   const s = getState();
   if (busy || s.project || s.tab !== 'prepare') return;
   const plateWide = operation === 'orient' && (all || !s.selected);
+
   if (plateWide && s.projectPlates.find((p) => p.index === s.plateIndex)?.locked) return toast('The plate is locked');
   const objects = plateWide ? s.objects : s.objects.filter((o) => o.id === s.selected?.object);
   if (!objects.length) return;
   busy = true;
   const signature = plateSignature(s);
   const created: PlateObject[] = [];
+
   const overlay = beginBusy(operation === 'orient' ? 'Orienting objects' : 'Splitting object');
   try {
     setState({ toast: null });
@@ -138,6 +155,7 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
   }
 }
 
+
 export async function plateForm(s: State, operation: string): Promise<FormData> {
   await flushReady();
   const { plate, files } = await plateJson(s.objects, firstLayer(s));
@@ -150,6 +168,11 @@ export async function plateForm(s: State, operation: string): Promise<FormData> 
 }
 
 interface ArrangeResult { schema: string; plates: number; unplaced: number; objects: { instances: { plate: number | null; x?: number; y?: number; rot?: number }[] }[] }
+
+
+
+
+
 
 export async function arrangeNative() {
   const s = getState();
@@ -178,6 +201,7 @@ export async function arrangeNative() {
       await s.api.cancel(id);
     }
     if (result?.schema !== 'orca.arrange.v1' || result.objects?.length !== s.objects.length) throw new Error('The native tool did not return an arrangement.');
+
     if (getState().objects !== s.objects) return;
     const area = bedArea(), xs = area.map((p) => p.x), width = Math.max(...xs) - Math.min(...xs);
     let away = 0;
@@ -186,6 +210,7 @@ export async function arrangeNative() {
       if (!r || r.plate === null || r.x === undefined || r.y === undefined) { away++; return inst; }
       if (r.plate > 1) away++;
       const turned = { ...inst, rotZ: r.rot ?? inst.rotZ };
+
       const b = instanceBox(o, turned), cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2;
       return { ...turned, x: turned.x + r.x - cx + (r.plate - 1) * width * 1.2, y: turned.y + r.y - cy };
     }) }));

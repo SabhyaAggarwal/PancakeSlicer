@@ -40,6 +40,7 @@ func sendBambu(ctx context.Context, u *upload) (string, error) {
 	if _, err := u.file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
+
 	tlsConfig := p.tlsConfig(p.Serial)
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(4)
 	host, err := p.resolvedHost(ctx)
@@ -98,6 +99,7 @@ func dialTLS(ctx context.Context, host string, port int, config *tls.Config) (*t
 		}
 		return nil, handshakeError(err, port)
 	}
+
 	context.AfterFunc(ctx, func() { conn.SetDeadline(time.Unix(1, 0)) })
 	return conn, nil
 }
@@ -248,6 +250,7 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return err
 		}
 	}
+
 	if u.resend {
 		if text, err := c.cmd(213, 15*time.Second, "SIZE %s", u.filename); err == nil && strings.TrimSpace(text) == strconv.FormatInt(u.size, 10) {
 			u.onCard = true
@@ -266,6 +269,7 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 	}
 	hi, _ := strconv.Atoi(m[5])
 	lo, _ := strconv.Atoi(m[6])
+
 	step = "data connection"
 	raw, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(hi<<8|lo)))
 	if err != nil {
@@ -302,6 +306,7 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return rerr
 		}
 	}
+
 	if err = data.CloseWrite(); err != nil {
 		return err
 	}
@@ -404,6 +409,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	defer conn.Close()
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	name := strings.TrimSuffix(u.filename, ".gcode.3mf")
+
 	mapping := []int{}
 	if u.options.amsMapping != nil {
 		mapping = u.options.amsMapping
@@ -423,6 +429,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	}}); err != nil {
 		return fail(err)
 	}
+
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
 	for {
 		kind, body, err := mqttRead(r)
@@ -633,14 +640,15 @@ func bambuModel(product, code string) string {
 }
 
 type AMSTray struct {
-	Kind       string `json:"kind,omitempty"`
-	Extruder   *int   `json:"extruder,omitempty"`
-	ID         int    `json:"id"`
-	AMS        int    `json:"ams"`
-	Slot       int    `json:"slot"`
-	Type       string `json:"type"`
-	Color      string `json:"color"`
-	Name       string `json:"name,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Extruder *int   `json:"extruder,omitempty"`
+	ID       int    `json:"id"`
+	AMS      int    `json:"ams"`
+	Slot     int    `json:"slot"`
+	Type     string `json:"type"`
+	Color    string `json:"color"`
+	Name     string `json:"name,omitempty"`
+
 	FilamentID string `json:"filament_id,omitempty"`
 }
 
@@ -889,6 +897,7 @@ func bambuCommand(ctx context.Context, p *PrinterConfig, secret string, command 
 	for {
 		kind, body, err := mqttRead(r)
 		if err != nil {
+
 			mqttWrite(conn, 0xE0, nil)
 			return nil
 		}

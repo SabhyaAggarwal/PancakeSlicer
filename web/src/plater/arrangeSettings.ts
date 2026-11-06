@@ -1,4 +1,7 @@
 import { observePreference, preferenceJson, savePreferences } from '../saved-preferences';
+
+
+
 const KEY = 'orca.arrange';
 
 export interface ArrangeSettings { distance: number; rotation: boolean; multiMaterials: boolean }
@@ -14,6 +17,7 @@ export function setArrangeSettings(patch: Partial<ArrangeSettings>) {
   savePreferences({[KEY]: {...settings}});
   listeners.forEach((l) => l());
 }
+
 export function resetArrangeSettings() {
   settings = { ...ARRANGE_DEFAULTS };
   savePreferences({[KEY]: {...ARRANGE_DEFAULTS}});

@@ -18,13 +18,11 @@ const (
 	prime6Bytes = 227718039650203
 )
 
-// ZFast is a MatchFinder based on the "Fastest" setting in
-// github.com/klauspost/compress/zstd.
 type ZFast struct {
 	MaxDistance int
 
 	history []byte
-	// current is the offset at the start of history
+
 	current int32
 	table   [zfastTableSize]tableEntry
 }
@@ -40,7 +38,6 @@ func (z *ZFast) FindMatches(dst []Match, src []byte) []Match {
 		z.MaxDistance = 1 << 16
 	}
 
-	// Protect against overflow of current.
 	if int(z.current) >= int(math.MaxInt32)-2*z.MaxDistance-len(z.history) {
 		minOffset := z.current + int32(len(z.history)) - int32(z.MaxDistance)
 		for i := range z.table {
@@ -56,12 +53,12 @@ func (z *ZFast) FindMatches(dst []Match, src []byte) []Match {
 	}
 
 	if len(z.history)+len(src) > cap(z.history) {
-		// history doesn't have enough capacity to hold the new block.
+
 		if cap(z.history) == 0 {
 			historySize := max(2*z.MaxDistance, 1<<20, len(src))
 			z.history = make([]byte, 0, historySize)
 		} else {
-			// Move down
+
 			offset := len(z.history) - z.MaxDistance
 			copy(z.history[:z.MaxDistance], z.history[offset:])
 			z.current += int32(offset)
@@ -88,8 +85,7 @@ func (z *ZFast) FindMatches(dst []Match, src []byte) []Match {
 
 mainLoop:
 	for {
-		// t will contain the match offset when we find one.
-		// When exiting the search loop, we have already checked 4 bytes.
+
 		var t int32
 
 		for {
@@ -103,7 +99,7 @@ mainLoop:
 			z.table[nextHash2] = tableEntry{offset: s + z.current + 1, val: uint32(cv >> 8)}
 
 			if offset1 != 0 && repIndex >= 0 && binary.LittleEndian.Uint32(src[repIndex:]) == uint32(cv>>16) {
-				// There is a repeated match at s+2.
+
 				end := extendMatch(src, int(repIndex+4), int(s+6))
 				start := s + 2
 				for repIndex > 0 && start > nextEmit && src[repIndex-1] == src[start-1] {
@@ -129,7 +125,7 @@ mainLoop:
 			if coffset0 < int32(z.MaxDistance) && uint32(cv) == candidate.val {
 				t = candidate.offset - z.current
 				if binary.LittleEndian.Uint32(src[t:]) == uint32(cv) {
-					// found a regular match
+
 					break
 				}
 			}
@@ -148,8 +144,6 @@ mainLoop:
 			cv = binary.LittleEndian.Uint64(src[s:])
 		}
 
-		// A 4-byte match has been found. We'll later see if more than
-		// 4 bytes.
 		offset2 = offset1
 		offset1 = s - t
 
@@ -171,11 +165,9 @@ mainLoop:
 		}
 		cv = binary.LittleEndian.Uint64(src[s:])
 
-		// Check offset 2
 		if o2 := s - offset2; offset2 != 0 && binary.LittleEndian.Uint32(src[o2:]) == uint32(cv) {
 			end := extendMatch(src, int(o2+4), int(s+4))
 
-			// Store the hash, since we have it.
 			nextHash := z.hash(cv)
 			z.table[nextHash] = tableEntry{offset: s + z.current, val: uint32(cv)}
 			dst = append(dst, Match{

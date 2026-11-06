@@ -1,3 +1,6 @@
+
+
+
 import { useMemo, useRef, useState } from 'react';
 import { confirmDialog } from '../components/Ask';
 import { Dropdown } from '../components/Dropdown';
@@ -15,6 +18,7 @@ const STAGE: Record<string, string> = {
   developer_mode: 'Developer Mode is off', address: 'Address not allowed', invalid: 'Check the address',
 };
 const DESKTOP = typeof window !== 'undefined' && !!(window as { orcaDesktop?: unknown }).orcaDesktop;
+
 
 function defaultKind(printer: string): ConnectionKind {
   const { base, config } = resolvePreset(getState(), 'machine', printer);
@@ -51,6 +55,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
   const hasSecret = !!saved?.has_secret && sameKind;
   const ready = kind === 'bambu-connect' || (bambu ? !!host.trim() && !!serial.trim() && (!!secret || hasSecret)
     : !!url.trim() && (keyOptional || !!secret || hasSecret) && (!digest || !!user.trim()));
+
   const fields = useRef(0);
   const touched = () => { fields.current++; setTest(null); };
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); touched(); };
@@ -59,6 +64,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
     setWorking(what); setError('');
     try { await action(); } catch (e) { setError(errorText(e)); } finally { setWorking(''); }
   };
+
   const modelOf = (preset?: string) => preset ? machines.find((m) => m.name === preset)?.model : undefined;
   const setupModel = useStore((s) => String(resolvePreset(s, 'machine', printer).config?.printer_model ?? '')) || undefined;
   const use = async (d: Discovered) => {
@@ -70,6 +76,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
     if (d.kind === 'bambu-lan') { setHost(d.host ?? ''); setSerial(d.serial ?? ''); setModel(d.model ?? ''); }
     else setUrl((d.url ?? '').replace(/^http:\/\//, ''));
   };
+
   const addAsNew = (d: Discovered) => run('add', async () => {
     const { createProfileFromBase } = await import('../profiles/catalog');
     const key = await createProfileFromBase('machine', d.preset!, d.name || `My ${d.model ?? KIND_LABEL[d.kind]}`);

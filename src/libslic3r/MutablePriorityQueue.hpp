@@ -14,9 +14,10 @@ class MutablePriorityQueue
 public:
 	static_assert(std::is_trivially_copyable<T>::value, "Template argument T must be a trivially copiable type in class template MutablePriorityQueue");
 
+
 	MutablePriorityQueue(IndexSetter &&index_setter, LessPredicate &&less_predicate) :
-		m_index_setter(std::forward<IndexSetter>(index_setter)), 
-		m_less_predicate(std::forward<LessPredicate>(less_predicate)) 
+		m_index_setter(std::forward<IndexSetter>(index_setter)),
+		m_less_predicate(std::forward<LessPredicate>(less_predicate))
 		{}
 	~MutablePriorityQueue()	{ clear(); }
 
@@ -55,17 +56,19 @@ template<typename T, const bool ResetIndexWhenRemoved, typename IndexSetter, typ
 MutablePriorityQueue<T, IndexSetter, LessPredicate, ResetIndexWhenRemoved> make_mutable_priority_queue(IndexSetter &&index_setter, LessPredicate &&less_predicate)
 {
     return MutablePriorityQueue<T, IndexSetter, LessPredicate, ResetIndexWhenRemoved>(
-    	std::forward<IndexSetter>(index_setter), std::forward<LessPredicate>(less_predicate));
+        std::forward<IndexSetter>(index_setter), std::forward<LessPredicate>(less_predicate));
 }
 
 template<class T, class LessPredicate, class IndexSetter, const bool ResetIndexWhenRemoved>
 inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRemoved>::clear()
-{ 
+{
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
 		for (size_t idx = 0; idx < m_heap.size(); ++ idx)
+
 			m_index_setter(m_heap[idx], std::numeric_limits<size_t>::max());
 	}
 	m_heap.clear();
@@ -94,9 +97,11 @@ inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRe
 {
 	assert(! m_heap.empty());
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
+
 		m_index_setter(m_heap.front(), std::numeric_limits<size_t>::max());
 	}
 	if (m_heap.size() > 1) {
@@ -113,9 +118,11 @@ inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRe
 {
 	assert(idx < m_heap.size());
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
+
 		m_index_setter(m_heap[idx], std::numeric_limits<size_t>::max());
 	}
 	if (idx + 1 == m_heap.size()) {
@@ -139,6 +146,7 @@ inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRe
 		if (childIdx == 0 || parentIdx < top)
 			break;
 		T *parent = &m_heap[parentIdx];
+
 		if (! m_less_predicate(*parent, *child)) {
 			T tmp = *parent;
 			m_index_setter(tmp,    childIdx);
@@ -146,6 +154,7 @@ inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRe
 			m_heap[parentIdx] = *child;
 			m_heap[childIdx]  = tmp;
 		}
+
 		childIdx = parentIdx;
 		child = parent;
 	}
@@ -171,11 +180,13 @@ inline void MutablePriorityQueue<T, LessPredicate, IndexSetter, ResetIndexWhenRe
 		}
 		if (m_less_predicate(*parent, *child))
 			return;
+
 		T tmp = *parent;
 		m_index_setter(tmp,    childIdx);
 		m_index_setter(*child, parentIdx);
 		m_heap[parentIdx] = *child;
 		m_heap[childIdx] = tmp;
+
 		parentIdx = childIdx;
 		parent = child;
 	}
@@ -191,29 +202,49 @@ public:
 	static_assert((block_size & block_mask) == 0U, "block size must be 2^n for some integer n");
 
 	static inline std::size_t child_of(std::size_t node_no) noexcept {
-  		if (! is_block_leaf(node_no))
+        if (! is_block_leaf(node_no))
+
+
+
 			return node_no + block_offset(node_no);
+
 		return (block_base(node_no) + 1 + child_no(node_no) * 2) * block_size + 1;
 	}
 
 	static inline std::size_t parent_of(std::size_t node_no) noexcept {
-  		auto const node_root = block_base(node_no);
-  		if (! is_block_root(node_no))
+        auto const node_root = block_base(node_no);
+        if (! is_block_root(node_no))
+
 			return node_root + block_offset(node_no) / 2;
+
+
 		auto const parent_base = block_base(node_root / block_size - 1);
+
 		auto const child       = ((node_no - block_size) / block_size - parent_base) / 2;
-		return 
-			parent_base + 
+		return
+
+			parent_base +
+
 			block_size / 2 + child;
 	}
 
+
 	static inline bool 			is_block_leaf(std::size_t node_no) noexcept { return (node_no & (block_size >> 1)) != 0U; }
+
 	static inline bool 			is_padding   (std::size_t node_no) noexcept { return block_offset(node_no) == 0U; }
+
+
+
 	static inline bool 			is_block_root(std::size_t node_no) noexcept { return block_offset(node_no) == 1U; }
+
 	static inline std::size_t 	block_offset (std::size_t node_no) noexcept { return node_no & block_mask; }
+
 	static inline std::size_t 	block_base   (std::size_t node_no) noexcept { return node_no & ~block_mask; }
+
 	static inline std::size_t 	child_no     (std::size_t node_no) noexcept { assert(is_block_leaf(node_no)); return node_no & (block_mask >> 1); }
 };
+
+
 
 template<typename T, typename IndexSetter, typename LessPredicate, std::size_t blocking = 32, const bool ResetIndexWhenRemoved = false>
 class MutableSkipHeapPriorityQueue
@@ -222,13 +253,15 @@ public:
 	static_assert(std::is_trivially_copyable<T>::value, "Template argument T must be a trivially copiable type in class template MutableSkipHeapPriorityQueue");
 	using address = SkipHeapAddressing<blocking>;
 
+
 	MutableSkipHeapPriorityQueue(IndexSetter &&index_setter, LessPredicate &&less_predicate) :
-		m_index_setter(std::forward<IndexSetter>(index_setter)), 
-		m_less_predicate(std::forward<LessPredicate>(less_predicate)) 
+		m_index_setter(std::forward<IndexSetter>(index_setter)),
+		m_less_predicate(std::forward<LessPredicate>(less_predicate))
 		{}
 	~MutableSkipHeapPriorityQueue()	{ clear(); }
 
 	void		clear();
+
 	void		reserve(size_t cnt) 				{ m_heap.reserve(cnt + ((cnt + (address::block_size - 1)) / (address::block_size - 1))); }
 	void		push(const T &item);
 	void		push(T &&item);
@@ -236,6 +269,7 @@ public:
 	T&			top()								{ return m_heap[1]; }
 	void		remove(size_t idx);
 	void		update(size_t idx) 					{ assert(! address::is_padding(idx)); T item = m_heap[idx]; remove(idx); push(item); }
+
 	size_t 		size() const noexcept 				{ return m_heap.size() - (m_heap.size() + address::block_size - 1) / address::block_size; }
 	bool		empty() const						{ return m_heap.empty(); }
 	T&			operator[](std::size_t idx) noexcept { assert(! address::is_padding(idx)); return m_heap[idx]; }
@@ -259,21 +293,23 @@ private:
 };
 
 template<typename T, std::size_t BlockSize, const bool ResetIndexWhenRemoved, typename IndexSetter, typename LessPredicate>
-MutableSkipHeapPriorityQueue<T, IndexSetter, LessPredicate, BlockSize, ResetIndexWhenRemoved> 
+MutableSkipHeapPriorityQueue<T, IndexSetter, LessPredicate, BlockSize, ResetIndexWhenRemoved>
 	make_miniheap_mutable_priority_queue(IndexSetter &&index_setter, LessPredicate &&less_predicate)
 {
     return MutableSkipHeapPriorityQueue<T, IndexSetter, LessPredicate, BlockSize, ResetIndexWhenRemoved>(
-    	std::forward<IndexSetter>(index_setter), std::forward<LessPredicate>(less_predicate));
+        std::forward<IndexSetter>(index_setter), std::forward<LessPredicate>(less_predicate));
 }
 
 template<class T, class LessPredicate, class IndexSetter, std::size_t blocking, const bool ResetIndexWhenRemoved>
 inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking, ResetIndexWhenRemoved>::clear()
-{ 
+{
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
 		for (size_t idx = 0; idx < m_heap.size(); ++ idx)
+
 			if (! address::is_padding(idx))
 				m_index_setter(m_heap[idx], std::numeric_limits<size_t>::max());
 	}
@@ -307,11 +343,14 @@ inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking
 {
 	assert(! m_heap.empty());
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
+
 		m_index_setter(m_heap[1], std::numeric_limits<size_t>::max());
 	}
+
 	if (m_heap.size() > 2) {
 		m_heap[1] = m_heap.back();
 		this->pop_back();
@@ -327,9 +366,11 @@ inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking
 	assert(idx < m_heap.size());
 	assert(! address::is_padding(idx));
 #ifdef NDEBUG
+
 	if (ResetIndexWhenRemoved)
 #endif
 	{
+
 		m_index_setter(m_heap[idx], std::numeric_limits<size_t>::max());
 	}
 	if (idx + 1 == m_heap.size()) {
@@ -355,6 +396,7 @@ inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking
 		if (childIdx == 1 || parentIdx < top)
 			break;
 		T *parent = &m_heap[parentIdx];
+
 		if (! m_less_predicate(*parent, *child)) {
 			T tmp = *parent;
 			m_index_setter(tmp,    childIdx);
@@ -362,6 +404,7 @@ inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking
 			m_heap[parentIdx] = *child;
 			m_heap[childIdx]  = tmp;
 		}
+
 		childIdx = parentIdx;
 		child = parent;
 	}
@@ -389,11 +432,13 @@ inline void MutableSkipHeapPriorityQueue<T, LessPredicate, IndexSetter, blocking
 		}
 		if (m_less_predicate(*parent, *child))
 			return;
+
 		T tmp = *parent;
 		m_index_setter(tmp,    childIdx);
 		m_index_setter(*child, parentIdx);
 		m_heap[parentIdx] = *child;
 		m_heap[childIdx]  = tmp;
+
 		parentIdx = childIdx;
 		parent = child;
 	}

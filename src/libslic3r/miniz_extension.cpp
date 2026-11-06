@@ -21,6 +21,8 @@
 
 #include "I18N.hpp"
 
+
+
 #define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
@@ -77,6 +79,9 @@ bool open_zip(mz_zip_archive *zip, const char *fname, bool isread)
     {
         res = mz_zip_reader_init_cfile(zip, f, 0, 0);
         if (!res)
+
+
+
             fclose(f);
     }
     else
@@ -134,6 +139,7 @@ bool extract_archive_confined(const std::string &zip_path_utf8, const std::strin
     const mz_uint num_entries = mz_zip_reader_get_num_files(&archive);
     mz_zip_archive_file_stat stat;
 
+
     const boost::filesystem::path root(dest_dir);
     for (mz_uint i = 0; i < num_entries; ++i) {
         if (mz_zip_reader_file_stat(&archive, i, &stat) && !is_path_within_root(stat.m_filename, root)) {
@@ -160,6 +166,7 @@ bool extract_archive_confined(const std::string &zip_path_utf8, const std::strin
                 BOOST_LOG_TRIVIAL(warning) << "Unzip: invalid size for file " << stat.m_filename;
                 continue;
             }
+
             const boost::filesystem::path dest_path(dest_file);
             if (boost::filesystem::is_symlink(boost::filesystem::symlink_status(dest_path)))
                 boost::filesystem::remove(dest_path);

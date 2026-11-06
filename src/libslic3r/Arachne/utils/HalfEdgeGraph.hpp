@@ -23,6 +23,8 @@ class HalfEdgeGraph
 public:
     using edge_t = derived_edge_t;
     using node_t = derived_node_t;
+
+
     using Edges = std::list<edge_t, tbb::scalable_allocator<edge_t>>;
     using Nodes = std::list<node_t, tbb::scalable_allocator<node_t>>;
     Edges edges;

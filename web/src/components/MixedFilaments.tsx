@@ -1,5 +1,7 @@
 import { Check } from './Check';
 import { Range } from './Range';
+
+
 import { Dropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import { ActionMenu } from './Menu';
@@ -17,6 +19,8 @@ const ramp = (s: State, m: Mix) => {
   return `linear-gradient(to bottom, ${m.gradient ? b : a}, ${m.gradient ? a : b})`;
 };
 const swatch = (s: State, m: Mix, i: number) => (m.gradient !== null && m.components.length === 2 ? ramp(s, m) : filamentColor(s, i + 1));
+
+
 
 export default function MixedFilaments({ close }: { close(): void }) {
   const mixes = useStore((s) => s.mixes);
@@ -68,6 +72,7 @@ export default function MixedFilaments({ close }: { close(): void }) {
     </Modal>
   );
 }
+
 
 function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
   const s = getState();

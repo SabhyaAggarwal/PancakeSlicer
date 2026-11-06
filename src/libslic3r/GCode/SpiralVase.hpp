@@ -30,8 +30,8 @@ public:
     };
 
     void 		enable(bool en) {
-   		m_transition_layer = en && ! m_enabled;
-    	m_enabled 		   = en;
+        m_transition_layer = en && ! m_enabled;
+        m_enabled 		   = en;
     }
 
     std::string process_layer(const std::string &gcode, bool last_layer);
@@ -44,7 +44,9 @@ private:
     float               m_max_xy_smoothing = 0.f;
 
     bool 				m_enabled = false;
+
     bool 				m_transition_layer = false;
+
     bool                m_smooth_spiral = false;
     std::vector<SpiralPoint> * m_previous_layer;
 };

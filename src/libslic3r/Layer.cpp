@@ -36,10 +36,12 @@ Layer::~Layer()
     m_regions.clear();
 }
 
+
 bool Layer::empty() const
 {
 	for (const LayerRegion *layerm : m_regions)
         if (layerm != nullptr && ! layerm->slices.empty())
+
             return false;
     return true;
 }
@@ -50,10 +52,12 @@ LayerRegion* Layer::add_region(const PrintRegion *print_region)
     return m_regions.back();
 }
 
+
 void Layer::make_slices()
 {
     ExPolygons slices;
     if (m_regions.size() == 1) {
+
         slices = to_expolygons(m_regions.front()->slices.surfaces);
     } else {
         Polygons slices_p;
@@ -65,12 +69,15 @@ void Layer::make_slices()
     this->lslices.clear();
     this->lslices.reserve(slices.size());
 
+
     Points ordering_points;
     ordering_points.reserve(slices.size());
     for (const ExPolygon &ex : slices)
         ordering_points.push_back(ex.contour.first_point());
 
+
     std::vector<Points::size_type> order = chain_points(ordering_points);
+
 
     for (size_t i : order)
         this->lslices.emplace_back(std::move(slices[i]));
@@ -78,6 +85,8 @@ void Layer::make_slices()
 
 static inline bool layer_needs_raw_backup(const Layer *layer)
 {
+
+
     return true;
 }
 
@@ -103,21 +112,30 @@ void Layer::restore_untyped_slices()
     }
 }
 
+
+
+
+
 void Layer::restore_untyped_slices_no_extra_perimeters()
 {
     if (layer_needs_raw_backup(this)) {
         for (LayerRegion *layerm : m_regions)
-            	layerm->slices.set(layerm->raw_slices, stInternal);
+
+
+                layerm->slices.set(layerm->raw_slices, stInternal);
     } else {
-    	assert(m_regions.size() == 1);
-    	LayerRegion *layerm = m_regions.front();
-        	layerm->slices.set(this->lslices, stInternal);
+        assert(m_regions.size() == 1);
+        LayerRegion *layerm = m_regions.front();
+
+
+            layerm->slices.set(this->lslices, stInternal);
     }
 }
 
 ExPolygons Layer::merged(float offset_scaled) const
 {
 	assert(offset_scaled >= 0.f);
+
 	float offset_scaled2 = 0;
 	if (offset_scaled == 0.f) {
 		offset_scaled  = float(  EPSILON);
@@ -126,6 +144,7 @@ ExPolygons Layer::merged(float offset_scaled) const
     Polygons polygons;
 	for (LayerRegion *layerm : m_regions) {
 		const PrintRegionConfig &config = layerm->region().config();
+
 		if (config.bottom_shell_layers > 0 || config.top_shell_layers > 0 || config.sparse_infill_density > 0. || config.wall_loops > 0)
 			append(polygons, offset(layerm->slices.surfaces, offset_scaled));
 	}
@@ -161,6 +180,9 @@ bool Layer::is_perimeter_compatible(const Print& print, const PrintRegion& a, co
 		&& config.detect_thin_wall                  == other_config.detect_thin_wall
 		&& config.infill_wall_overlap              == other_config.infill_wall_overlap
         && config.top_bottom_infill_wall_overlap              == other_config.top_bottom_infill_wall_overlap
+
+
+
         && config.only_one_wall_first_layer == other_config.only_one_wall_first_layer
         && config.only_one_wall_top         == other_config.only_one_wall_top
         && config.min_width_top_surface     == other_config.min_width_top_surface
@@ -177,6 +199,9 @@ bool Layer::is_perimeter_compatible(const Print& print, const PrintRegion& a, co
         && config.seam_slope_inner_walls  == other_config.seam_slope_inner_walls;
 }
 
+
+
+
 void Layer::make_perimeters()
 {
     BOOST_LOG_TRIVIAL(trace) << "Generating perimeters for layer " << this->id();
@@ -187,14 +212,15 @@ void Layer::make_perimeters()
         layer_region->thin_fills.clear();
     };
 
+
     std::vector<unsigned char> done(m_regions.size(), false);
 
     for (LayerRegionPtrs::iterator layerm = m_regions.begin(); layerm != m_regions.end(); ++ layerm)
-    	if ((*layerm)->slices.empty()) {
- 			(*layerm)->perimeters.clear();
- 			(*layerm)->fills.clear();
- 			(*layerm)->thin_fills.clear();
-    	} else {
+        if ((*layerm)->slices.empty()) {
+            (*layerm)->perimeters.clear();
+            (*layerm)->fills.clear();
+            (*layerm)->thin_fills.clear();
+        } else {
 	        size_t region_id = layerm - m_regions.begin();
 	        if (done[region_id])
 	            continue;
@@ -202,12 +228,17 @@ void Layer::make_perimeters()
 	        done[region_id] = true;
 	        const PrintRegion &this_region = (*layerm)->region();
 
+
 	        LayerRegionPtrs layerms;
 	        layerms.push_back(*layerm);
 	        for (LayerRegionPtrs::const_iterator it = layerm + 1; it != m_regions.end(); ++it)
 	            if (! (*it)->slices.empty()) {
 		            LayerRegion* other_layerm = *it;
 		            const PrintRegion &other_region = other_layerm->region();
+
+
+
+
                     if (this_region.gradient_volume_id() != other_region.gradient_volume_id())
                         continue;
                     if (is_perimeter_compatible(*m_object->print(), this_region, other_region))
@@ -223,33 +254,48 @@ void Layer::make_perimeters()
                 (*layerm)->make_perimeters((*layerm)->slices, {*layerm}, &(*layerm)->fill_surfaces, &(*layerm)->fill_no_overlap_expolygons);
 	            (*layerm)->fill_expolygons = to_expolygons((*layerm)->fill_surfaces.surfaces);
 	        } else {
+
+
 	            clear_generated_extrusions(*layerm);
 
 	            SurfaceCollection new_slices;
+
 	            LayerRegion *layerm_config = layerms.front();
 	            {
+
 	                std::map<unsigned short, Surfaces> slices;
 	                for (LayerRegion *layerm : layerms) {
 	                    for (const Surface &surface : layerm->slices.surfaces)
 	                        slices[surface.extra_perimeters].emplace_back(surface);
 	                    if (layerm->region().config().sparse_infill_density > layerm_config->region().config().sparse_infill_density)
-	                    	layerm_config = layerm;
+                            layerm_config = layerm;
 	                }
+
 	                for (std::pair<const unsigned short,Surfaces> &surfaces_with_extra_perimeters : slices)
 	                    new_slices.append(offset_ex(surfaces_with_extra_perimeters.second, ClipperSafetyOffset), surfaces_with_extra_perimeters.second.front());
 	            }
 
+
 	            SurfaceCollection fill_surfaces;
+
                 ExPolygons fill_no_overlap;
 	            layerm_config->make_perimeters(new_slices, layerms, &fill_surfaces, &fill_no_overlap);
 
+
 	            if (!fill_surfaces.surfaces.empty()) {
 	                for (LayerRegionPtrs::iterator l = layerms.begin(); l != layerms.end(); ++l) {
+
 	                    ExPolygons expp = intersection_ex(fill_surfaces.surfaces, (*l)->slices.surfaces);
 	                    (*l)->fill_expolygons = expp;
 	                    (*l)->fill_surfaces.set(std::move(expp), fill_surfaces.surfaces.front());
+
                         (*l)->fill_no_overlap_expolygons = intersection_ex((*l)->slices.surfaces, fill_no_overlap);
 	                }
+
+
+
+
+
 
 	                if (layerm_config->region().config().counterbore_hole_bridging.value != chbNone) {
 	                    Polygons all_region_slices_p;
@@ -287,6 +333,7 @@ void Layer::export_region_slices_to_svg(const char *path) const
     svg.Close();
 }
 
+
 void Layer::export_region_slices_to_svg_debug(const char *name) const
 {
     static size_t idx = 0;
@@ -312,6 +359,7 @@ void Layer::export_region_fill_surfaces_to_svg(const char *path) const
     svg.Close();
 }
 
+
 void Layer::simplify_support_entity_collection(ExtrusionEntityCollection* entity_collection)
 {
     for (size_t i = 0; i < entity_collection->entities.size(); i++) {
@@ -327,6 +375,7 @@ void Layer::simplify_support_entity_collection(ExtrusionEntityCollection* entity
             throw Slic3r::InvalidArgument("Invalid extrusion entity supplied to simplify_support_entity_collection()");
     }
 }
+
 void Layer::simplify_support_path(ExtrusionPath * path)
 {
     const auto &print_config = this->object()->print()->config();
@@ -341,6 +390,7 @@ void Layer::simplify_support_path(ExtrusionPath * path)
         path->simplify(scaled_resolution);
     }
 }
+
 void Layer::simplify_support_multi_path(ExtrusionMultiPath* multipath)
 {
     const auto &print_config = this->object()->print()->config();
@@ -357,6 +407,7 @@ void Layer::simplify_support_multi_path(ExtrusionMultiPath* multipath)
         }
     }
 }
+
 void Layer::simplify_support_loop(ExtrusionLoop* loop)
 {
     const auto &print_config = this->object()->print()->config();
@@ -374,6 +425,7 @@ void Layer::simplify_support_loop(ExtrusionLoop* loop)
     }
 }
 
+
 void Layer::export_region_fill_surfaces_to_svg_debug(const char *name) const
 {
     static size_t idx = 0;
@@ -390,8 +442,10 @@ coordf_t Layer::get_sparse_infill_max_void_area()
         InfillPattern pattern = config.sparse_infill_pattern;
         if (density == 0.)
             return -1;
+
         if (density < 100.f && config.tpms_adaptive != TpmsAdaptiveMode::Disabled && is_tpms_adaptive_pattern(pattern))
             density = std::min(density, std::max(1.f, float(config.tpms_interior_density)));
+
 
         double spacing = flow.scaled_spacing() * (100 - density) / density;
         switch (pattern) {
@@ -438,6 +492,10 @@ size_t Layer::get_extruder_id(unsigned int filament_id) const
 
 void
 LayerRegion::remove_nonplanar_slices(SurfaceCollection topNonplanar) {
+
+
+
+
     Surfaces planar;
     Surfaces kept_nonplanar;
     for (const Surface &s : this->slices.surfaces)
@@ -453,6 +511,10 @@ LayerRegion::remove_nonplanar_slices(SurfaceCollection topNonplanar) {
 
 void
 LayerRegion::merge_nonplanar_shell_slices() {
+
+
+
+
     Surfaces out;
     Surfaces nonplanar;
     for (Surface &s : this->slices.surfaces)
@@ -472,6 +534,7 @@ LayerRegion::merge_nonplanar_shell_slices() {
             Polygons polygons;
             for (size_t k = i; k < j; ++ k)
                 polygons_append(polygons, to_polygons(nonplanar[k].expolygon));
+
             Surface templ(nonplanar[i], ExPolygon());
             for (size_t k = i; k < j; ++ k)
                 if (nonplanar[k].surface_type == stTopNonplanar)

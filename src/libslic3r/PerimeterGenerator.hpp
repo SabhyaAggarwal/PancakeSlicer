@@ -83,12 +83,16 @@ namespace Slic3r {
 
 class PerimeterGenerator {
 public:
+
     const SurfaceCollection     *slices;
     const LayerRegionPtrs       *compatible_regions;
     const ExPolygons            *upper_slices;
     const SurfaceCollection     *upper_slices_same_region;
     const ExPolygons            *lower_slices;
     double                       layer_height;
+
+
+
     double                       top_width_scale = 1.;
     int                          layer_id;
     coordf_t                     slice_z;
@@ -99,10 +103,13 @@ public:
     const PrintRegionConfig     *config;
     const PrintObjectConfig     *object_config;
     const PrintConfig           *print_config;
+
     ExtrusionEntityCollection   *loops;
     ExtrusionEntityCollection   *gap_fill;
     SurfaceCollection           *fill_surfaces;
+
     ExPolygons                  *fill_no_overlap;
+
 
     Flow                        smaller_ext_perimeter_flow;
     std::vector<Polygons>       m_lower_polygons_series;
@@ -111,15 +118,28 @@ public:
 
     bool                                            has_fuzzy_skin = false;
     bool                                            has_fuzzy_hole = false;
+
     std::vector<std::pair<FuzzySkinConfig, ExPolygons>> regions_by_fuzzify;
+
     std::optional<ExPolygons>                       fuzzy_supported_area;
 
+
+
+
+
     Polygons                                        out_wave_overhang_floor_polygons;
+
     bool                                            wave_overhangs { false };
 
+
+
+
+
+
     Polygons                                        out_wave_overhang_covered_polygons;
-    
+
     PerimeterGenerator(
+
         const SurfaceCollection*    slices,
         const LayerRegionPtrs       *compatible_regions,
         double                      layer_height,
@@ -130,9 +150,14 @@ public:
         const PrintConfig*          print_config,
         const bool                  spiral_mode,
         const double                model_rotation_rad,
+
+
         ExtrusionEntityCollection*  loops,
+
         ExtrusionEntityCollection*  gap_fill,
+
         SurfaceCollection*          fill_surfaces,
+
         ExPolygons*                 fill_no_overlap)
         : slices(slices), compatible_regions(compatible_regions), upper_slices(nullptr), lower_slices(nullptr), layer_height(layer_height),
             slice_z(slice_z), layer_id(-1), perimeter_flow(flow), ext_perimeter_flow(flow),
@@ -153,8 +178,10 @@ public:
     double      ext_mm3_per_mm()        const { return m_ext_mm3_per_mm; }
     double      mm3_per_mm()            const { return m_mm3_per_mm; }
     double      mm3_per_mm_overhang()   const { return m_mm3_per_mm_overhang; }
+
     double      smaller_width_ext_mm3_per_mm()   const { return m_ext_mm3_per_mm_smaller_width; }
     Polygons    lower_slices_polygons() const { return m_lower_slices_polygons; }
+
     ExPolygons  printable_slices(const ExPolygons &slices) const;
 
 private:
@@ -170,8 +197,11 @@ private:
     double      m_ext_mm3_per_mm;
     double      m_mm3_per_mm;
     double      m_mm3_per_mm_overhang;
+
     double      m_ext_mm3_per_mm_smaller_width;
     Polygons    m_lower_slices_polygons;
+
+
     size_t      m_island_loops_begin = 0;
 };
 

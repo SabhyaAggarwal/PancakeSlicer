@@ -10,6 +10,12 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
 struct InferenceSnap {
     enum class Kind { None, Endpoint, Center, Midpoint, OnEdge, Origin };
     Kind            kind{Kind::None};
@@ -20,14 +26,30 @@ struct InferenceSnap {
     bool snapped() const { return kind != Kind::None; }
 };
 
+
+
+
+
 InferenceSnap infer_point_snap(const std::vector<SketchEntity>& entities,
                                const Vec2d& query, double tol,
                                bool include_origin = true);
+
+
+
+
+
+
 
 inline constexpr double kSketchInferAngleTol = 3.0 * M_PI / 180.0;
 
 std::optional<SketchConstraintType>
 infer_axis_constraint(const Vec2d& anchor, const Vec2d& tip, double ang_tol_rad = kSketchInferAngleTol);
+
+
+
+
+
+
 
 std::vector<SketchEntityConstraintDef>
 infer_relations(const std::vector<SketchEntity>& entities, int new_ei,

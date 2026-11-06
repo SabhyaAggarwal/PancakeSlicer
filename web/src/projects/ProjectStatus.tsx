@@ -4,6 +4,7 @@ import { keepProjectVersion, reloadProject, retryProject, showProjects, useProje
 import { projectsHref } from '../flow/routes';
 import './projects.css';
 
+
 export function ProjectStatus() {
   return <><LifecycleStatus /><NoticeLog /></>;
 }

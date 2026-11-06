@@ -1,5 +1,7 @@
 import { Check } from './Check';
 import { ColorPicker } from './ColorPicker';
+
+
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
@@ -13,6 +15,7 @@ import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
 import { ScopeMark } from '../profiles/Scope';
 import type { ChangeTarget } from '../state/changes';
+
 
 const LabelId = createContext<string | undefined>(undefined);
 const useLabel = () => ({ 'aria-labelledby': useContext(LabelId) });
@@ -34,6 +37,7 @@ function withElement(v: ConfigValue | undefined, idx: number, el: ConfigValue): 
 
 const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map(asText).join(', ') : typeof v === 'object' && 'value' in v ? `${v.value}${'percent' in v && v.percent ? '%' : ''}` : String(v);
 
+
 const CHOICE_HINTS: Record<string, Record<string, string>> = {
   nonplanar_mode: {
     off: 'Standard: flat layers, like any slicer.',
@@ -43,10 +47,13 @@ const CHOICE_HINTS: Record<string, Record<string, string>> = {
   },
 };
 
+
 const PROMPTED = new Set(['spiral_mode', 'wall_loops', 'top_shell_layers', 'sparse_infill_density', 'enable_support', 'enforce_support_layers', 'detect_thin_wall',
   'overhang_reverse', 'timelapse_type', 'enable_wrapping_detection', 'layer_height', 'nozzle_temperature', 'nozzle_temperature_initial_layer',
   'nozzle_temperature_range_low', 'nozzle_temperature_range_high', 'alternate_extra_wall', 'ensure_vertical_shell_thickness', 'seam_slope_type',
   'seam_slope_start_height', 'filament_max_volumetric_speed']);
+
+
 
 const sameValue = (a: unknown, b: unknown) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]));
 const sameFieldProps = (a: Record<string, unknown>, b: Record<string, unknown>) => {
@@ -67,15 +74,24 @@ export const Field = memo(function Field(props: {
   definition?: Partial<OptionDef>;
   inheritedValue?: ConfigValue;
   overrideDisabled?: boolean;
+
   onSet?: (key: string, value: ConfigValue) => void;
   onReset?: (key: string) => void;
   resetTitle?: string;
+
   extra?: React.ReactNode;
+
   scope?: { target?: ChangeTarget };
+
   widget?: React.ReactNode;
+
+
   source?: 'auto' | 'set' | 'printer';
+
   sourceText?: string;
+
   onResetToBase?: (key: string) => void;
+
   mixed?: string;
 }) {
   useTooltips();
@@ -90,7 +106,9 @@ export const Field = memo(function Field(props: {
   const vector = def.type.endsWith('s') && (props.optKey.includes('#') || !['points', 'points_groups', 'ints_groups'].includes(def.type));
   const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
   const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
+
   const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
+
   const prompt = (k: string) => { if (PROMPTED.has(k)) void import('../configPrompts').then((m) => m.checkSetting(props.type, k, props.slot)); };
   const set = props.onSet ?? ((k: string, v: ConfigValue) => { setOption(props.type, k, v, props.slot); prompt(k); });
   const reset = props.onReset ?? ((k: string) => { resetOption(props.type, k, props.slot); prompt(k); });
@@ -102,6 +120,8 @@ export const Field = memo(function Field(props: {
   const fullLabel = props.label ?? (def.label || def.full_label || key);
   const label = props.label === undefined ? displayLabel(key, fullLabel) : fullLabel;
   const modified = props.dirty || props.source === 'set';
+
+
   const sourced = props.source === 'auto' || props.source === 'printer', glyph = <SourceGlyph text={props.sourceText}/>;
   const glyphInUnit = sourced && !props.widget && NUMERIC.has(def.type) && !def.multiline && !(props.mixed && !unmixed);
   const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
@@ -116,6 +136,7 @@ export const Field = memo(function Field(props: {
 
   return (
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''} ${isSwitch ? 'is-switch' : ''}`} data-opt={key} data-source={props.source} onClick={isSwitch && !locked ? (e) => {
+
       if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
     } : undefined}>
       <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
@@ -150,8 +171,10 @@ export const Field = memo(function Field(props: {
   );
 }, sameFieldProps);
 
+
 const FILAMENT_SLOT_KEYS = new Set(['support_filament', 'support_interface_filament', 'wipe_tower_filament', 'outer_wall_filament_id',
   'inner_wall_filament_id', 'sparse_infill_filament_id', 'internal_solid_filament_id', 'top_surface_filament_id', 'bottom_surface_filament_id']);
+
 
 function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigValue) => void }) {
   const slots = useStore((s) => s.filamentSlots);
@@ -195,25 +218,35 @@ function Widget({ def, value, onCommit, glyph }: { def: OptionDef; value: Config
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
     return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
   }
+
   return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} />;
 }
+
+
 
 const segmented = (labels: string[]) => labels.length >= 2 && labels.length <= 4 && labels.every((l) => l.trim())
   && labels.reduce((w, l) => w + l.length * 7 + 16, 0) <= 150;
 
+
 const floatStep = (n: number) => (n ? 10 ** (Math.floor(Math.log10(Math.abs(n))) - 1) : 0.1);
+
+
+
 
 let pendingCommit: (() => void) | null = null;
 const flushCommit = () => { const run = pendingCommit; pendingCommit = null; run?.(); };
 if (typeof window !== 'undefined') for (const type of ['pointerdown', 'keydown', 'pagehide'] as const) window.addEventListener(type, flushCommit, true);
 const afterPaint = (run: () => void) => { flushCommit(); pendingCommit = run; requestAnimationFrame(() => setTimeout(flushCommit, 0)); };
 
+
 function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
+
   const percentOnly = !!props.numeric && /^percents?$/.test(props.def?.type ?? '') && props.def?.sidetext?.trim() === '%';
   const shown = (v: string) => percentOnly ? v.replace(/\s*%\s*$/, '') : v;
   const [text, setText] = useState(shown(props.value));
   const [bad, setBad] = useState(false);
+
   const latest = useRef(text), byKey = useRef(false);
   latest.current = text;
   useEffect(() => setText(shown(props.value)), [props.value]);
@@ -232,6 +265,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
     if (keyed) { const commitText = props.onCommit; afterPaint(() => commitText(text)); }
     else props.onCommit(text);
   };
+
   const stepNumber = (direction: number, big = false, keyboard = false) => {
     if (props.readOnly || !props.def) return;
     const raw = latest.current.trim(), pct = percentOnly || raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
@@ -247,6 +281,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   useEffect(() => {
     const el = input.current;
     if (!el || !props.numeric) return;
+
     const wheel = (e: WheelEvent) => { if (document.activeElement !== el || !e.deltaY) return; e.preventDefault(); stepRef.current(e.deltaY < 0 ? 1 : -1, e.shiftKey); };
     el.addEventListener('wheel', wheel, { passive: false });
     return () => el.removeEventListener('wheel', wheel);
@@ -259,6 +294,8 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
         onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
     </span>
   );
+
+
   const side = props.def?.sidetext?.trim(), either = side?.match(/^(.+?) or %$/)?.[1], pct = text.trim().endsWith('%');
   const unit = !side ? undefined : pct ? (side === '%' || either ? undefined : side) : either ?? side;
   return (

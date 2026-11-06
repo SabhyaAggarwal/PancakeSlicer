@@ -1,3 +1,4 @@
+
 import type { Api } from '../api/client';
 import type { JobStatus, ProgressEvent } from '../api/types';
 import { mutation, responseError } from '../api/access';
@@ -43,6 +44,7 @@ export function waitForJob(api: Api, id: string, signal?: AbortSignal, progress?
     } catch (e) { finish(e); }
   });
 }
+
 
 export type JobLifecycle = 'idle' | 'queued' | 'preparing' | 'slicing' | 'progress' | 'storing' | 'done' | 'failed'
   | 'canceling' | 'cancelled' | 'interrupted' | 'stale';
@@ -110,6 +112,8 @@ export function jobSnapshot(machine = job): JobSnapshot {
     : { ...identity, value, error: c.error };
 }
 
+
+
 export function readJobEvents(id: string, seq: number, signal: AbortSignal,
   receive: (data: Record<string, unknown>, seq: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -123,6 +127,7 @@ export function readJobEvents(id: string, seq: number, signal: AbortSignal,
     signal.addEventListener('abort', abort, { once: true });
   });
 }
+
 
 export function followJob(api: Api, tracked: TrackedJob, options: {
   machine?: ReturnType<typeof createJob>; seq?: number;
@@ -178,11 +183,12 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
         }
         options.checkpoint?.(last, m.get().value);
         if (typeof data.state === 'string' || typeof data.lifecycle_state === 'string') {
+
           if (data.lifecycle_state === 'done' || data.state === 'done') void status().catch(() => {});
           else apply({ ...data, id } as CanonicalJobStatus);
         }
       });
-    } catch {  }
+    } catch {                                                                   }
     if (owner === ctl && alive()) streamTimer = setTimeout(() => void stream(), 1000);
   };
   const connect = async () => {
@@ -214,13 +220,14 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
     retrying = true;
     try {
       ctl.abort(); clearTimeout(timer); clearTimeout(streamTimer);
+
       let existing: CanonicalJobStatus | null = null;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         existing = await Promise.race([api.status(current.id), new Promise<never>((_, reject) => {
           timeout = setTimeout(() => reject(new Error('Job service stopped responding')), 10_000);
         })]) as CanonicalJobStatus;
-      } catch {  }
+      } catch {                                                                               }
       finally { clearTimeout(timeout); }
       if (stopped) return;
       if (existing && jobTerminal(jobLifecycle(existing))) {

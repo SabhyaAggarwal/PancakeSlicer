@@ -19,9 +19,9 @@ def traverse_files(path):
     for file in os.listdir(path):
         file_path = os.path.join(path, file)
         if os.path.isdir(file_path):
-            traverse_files(file_path)  # 递归遍历子文件夹
+            traverse_files(file_path)
         elif file_path.endswith('.json'):
-            # 解析 JSON 文件并提取 setting_id 的值
+
             with open(file_path) as f:
                 data = json.load(f)
                 if 'setting_id' in data:

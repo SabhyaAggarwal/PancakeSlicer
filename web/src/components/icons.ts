@@ -1,3 +1,6 @@
+
+
+
 const line = (x1: number, y1: number, x2: number, y2: number, c = 'g') => `<line class="${c}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
 const path = (d: string, c = 't', w = 1.3) => `<path class="${c}" d="${d}" stroke-width="${w}"/>`;
 const base = line(2, 21.5, 22, 21.5);
@@ -30,6 +33,7 @@ const ICONS = {
 export type IconId = keyof typeof ICONS;
 
 const cache = new Map<IconId, string>();
+
 export function styleIcon(id: IconId, size = 24) {
   if (!cache.has(id)) cache.set(id, ICONS[id]());
   return `<svg class="ps-icon" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${cache.get(id)}</svg>`;

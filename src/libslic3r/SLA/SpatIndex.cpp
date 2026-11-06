@@ -1,6 +1,7 @@
 #include "SpatIndex.hpp"
 #include "libslic3r/BoundingBox.hpp"
 
+
 #include <boost/geometry/index/parameters.hpp>
 #include <functional>
 #include <boost/geometry/index/predicates.hpp>
@@ -24,10 +25,14 @@
 
 namespace Slic3r { namespace sla {
 
+
+
+
+
 class PointIndex::Impl {
 public:
     using BoostIndex = boost::geometry::index::rtree< PointIndexEl,
-                                                     boost::geometry::index::rstar<16, 4>  >;
+                                                     boost::geometry::index::rstar<16, 4>   >;
 
     BoostIndex m_store;
 };
@@ -93,10 +98,14 @@ void PointIndex::foreach(std::function<void (const PointIndexEl &)> fn) const
     for(const auto &el : m_impl->m_store) fn(el);
 }
 
+
+
+
+
 class BoxIndex::Impl {
 public:
     using BoostIndex = boost::geometry::index::
-        rtree<BoxIndexEl, boost::geometry::index::rstar<16, 4> >;
+        rtree<BoxIndexEl, boost::geometry::index::rstar<16, 4>  >;
 
     BoostIndex m_store;
 };

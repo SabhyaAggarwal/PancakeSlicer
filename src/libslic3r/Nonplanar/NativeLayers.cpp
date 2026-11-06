@@ -33,6 +33,8 @@ struct EdgeHash
     size_t operator()(const Edge &e) const { return std::hash<uint64_t>()((uint64_t(uint32_t(e.first)) << 32) | uint32_t(e.second)); }
 };
 
+
+
 indexed_triangle_set refine(const indexed_triangle_set &in, double max_len)
 {
     indexed_triangle_set its = in;
@@ -69,6 +71,7 @@ indexed_triangle_set refine(const indexed_triangle_set &in, double max_len)
                 out.emplace_back(m[2], m[1], f[2]);
                 out.emplace_back(m[0], m[1], m[2]);
             } else {
+
                 int r = 0;
                 while (m[r] < 0)
                     ++r;
@@ -93,6 +96,8 @@ indexed_triangle_set refine(const indexed_triangle_set &in, double max_len)
     return its;
 }
 
+
+
 Vec3d edge_crossing(const LayerField &field, double level, Vec3d a, Vec3d b, double fa, double fb, double eps)
 {
     for (int i = 0; i < 40; ++i) {
@@ -113,6 +118,7 @@ Vec3d edge_crossing(const LayerField &field, double level, Vec3d a, Vec3d b, dou
     }
     return a + (fa / (fa - fb)) * (b - a);
 }
+
 
 std::vector<std::vector<Vec3d>> contours(const indexed_triangle_set &its, const std::vector<double> &phi, const LayerField &field,
                                          double level, double eps)
@@ -143,6 +149,12 @@ std::vector<std::vector<Vec3d>> contours(const indexed_triangle_set &its, const 
             below += f(t[i]) < 0.;
         if (below == 0 || below == 3)
             continue;
+
+
+
+
+
+
         Edge e0, e1;
         for (int i = 0; i < 3; ++i) {
             const int  a = t[i], b = t[(i + 1) % 3];
@@ -191,6 +203,7 @@ std::pair<Vec3d, Vec3d> frame(const Vec3d &n)
 {
     if (n.z() > 1. - 1e-12)
         return { Vec3d::UnitX(), Vec3d::UnitY() };
+
     Vec3d u = Vec3d::UnitZ().cross(n);
     u       = u.squaredNorm() < 1e-18 ? Vec3d::UnitX() : u.normalized();
     return { u, n.cross(u).normalized() };
@@ -223,6 +236,7 @@ std::vector<Layer> extract_layers(const indexed_triangle_set &mesh, const LayerF
                 layer.pieces.push_back(std::move(piece));
                 continue;
             }
+
             auto mean_normal = [&field](const std::vector<const std::vector<Vec3d> *> &ls) {
                 Vec3d g = Vec3d::Zero();
                 for (const std::vector<Vec3d> *l : ls)
@@ -252,6 +266,7 @@ std::vector<Layer> extract_layers(const indexed_triangle_set &mesh, const LayerF
             for (const std::vector<Vec3d> &l : loops)
                 polys.push_back(project(l, o0, u0, v0));
             const ExPolygons comps = union_ex(polys);
+
             auto boundary_dist = [](const Polygon &b, const Point &p) {
                 double d = std::numeric_limits<double>::max();
                 for (size_t j = 0; j < b.points.size(); ++j)
@@ -303,6 +318,7 @@ Vec3d lift(const Piece &piece, const Vec2d &plane_pt, const LayerField &field, d
     }
     const auto [u, v] = frame(piece.n);
     const Vec3d q0    = piece.o + plane_pt.x() * u + plane_pt.y() * v;
+
     double t = 0., lo = -1e9, hi = 1e9;
     for (int i = 0; i < 50; ++i) {
         const Vec3d  q  = q0 + t * piece.n;
@@ -325,6 +341,7 @@ std::vector<Vec3d> lift_polyline(const Piece &piece, const Polyline &road, const
     if (road.points.empty())
         return out;
     auto plane = [](const Point &p) { return Vec2d(unscaled(p.x()), unscaled(p.y())); };
+
     std::function<void(const Vec2d &, const Vec3d &, const Vec2d &, const Vec3d &, int)> seg =
         [&](const Vec2d &a, const Vec3d &la, const Vec2d &b, const Vec3d &lb, int depth) {
             const Vec2d m  = 0.5 * (a + b);
@@ -354,6 +371,7 @@ double bead_height(const LayerField &field, const Vec3d &p, double level_below, 
         const Vec2d xy = p.head<2>();
         return field.z_at(xy, level) - field.z_at(xy, level_below);
     }
+
     double hi = 0., lo = -0.05;
     while (field.phi(p + lo * axis) > level_below && lo > -50.)
         lo *= 2.;
@@ -368,6 +386,8 @@ Vec3d tool_axis(const LayerField &field, const Vec3d &p, double tilt_cap)
 {
     if (tilt_cap <= 0.)
         return Vec3d::UnitZ();
+
+
     static const bool given = [] { const char *v = std::getenv("NP_FIELD_AXIS"); return v != nullptr && *v == '1'; }();
     const std::optional<Vec3d> axis = given ? field.given_axis(p) : std::nullopt;
     Vec3d                      g    = axis ? *axis : field.gradient(p);
@@ -410,6 +430,8 @@ std::vector<Vec3f> smooth_axes(const std::vector<Vec3d> &tips, const std::vector
 
 std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, double tilt_cap, double rate_b, double rate_c)
 {
+
+
     struct Pose { double tilt, azimuth; };
     const auto axis_of = [](const Pose &p) {
         return Vec3d(std::sin(p.tilt) * std::cos(p.azimuth), std::sin(p.tilt) * std::sin(p.azimuth), std::cos(p.tilt));
@@ -418,11 +440,13 @@ std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, doubl
         const double tilt = std::acos(std::clamp(a.z(), -1., 1.));
         return Pose{ tilt, tilt < 1e-9 ? from.azimuth : from.azimuth + std::remainder(std::atan2(a.y(), a.x()) - from.azimuth, 2. * M_PI) };
     };
+
     const auto cost = [&](const Pose &a, const Pose &b) {
         const double dc = a.tilt < 1e-9 || b.tilt < 1e-9 ? 0. : std::abs(b.azimuth - a.azimuth);
         return std::max(std::abs(b.tilt - a.tilt) / rate_b, dc / rate_c) + 1e-4 * b.tilt / rate_b;
     };
     const double cos_tube = std::cos(tube);
+
     const auto step = [&](const Pose &from, const Vec3d &e) {
         if (axis_of(from).dot(e) >= cos_tube - 1e-12)
             return from;
@@ -452,6 +476,7 @@ std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, doubl
                 t_best = t;
             }
         }
+
         for (double span = M_PI / samples; span > 1e-4; span *= 0.5)
             for (const double t : { t_best - span, t_best + span })
                 if (const double c = consider(rim(t)); c < c_best) {
@@ -464,6 +489,7 @@ std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, doubl
     std::vector<Vec3f> out(m);
     if (m == 0)
         return out;
+
     Pose p{ 0., 0. };
     p = pose_of(Vec3d(exact.back().cast<double>()), p);
     p.tilt = 0.;

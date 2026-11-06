@@ -11,23 +11,80 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
+
+
+
+
+
 struct ImexZoneLayout
 {
+
     int primary_head = -1;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     std::map<int, Vec2d> head_zone_centers;
 
+
     std::optional<BoundingBoxf> primary_zone_box;
+
+
+
+
 
     std::vector<BoundingBoxf> copy_zones;
     std::vector<BoundingBoxf> mirror_zones;
 
+
+
     std::vector<BoundingBoxf3> secondary_zone_boxes;
+
+
+
+
+
 
     std::vector<BoundingBoxf3> collision_zones;
 
+
+
     std::vector<BoundingBoxf> margin_bands;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
                                         const std::string&        plate_mode,

@@ -190,7 +190,7 @@ bool Stitcher::connectRegions(float period, bool showProgress) {
         bool positive = (++parity) % 2;
         if (positiveRegion == connectedRegionCount) positive = false;
         if (negativeRegion == connectedRegionCount) positive = true;
-            
+
         bool success = connectRegion(period, positive);
         if (!success) {
             return false;
@@ -349,7 +349,7 @@ bool Stitcher::connectRegion(float period, bool positives) {
     uint32_t curr = startId;
     while (test(scalars[curr])) {
         curr = nextHop[curr][0];
-    } 
+    }
     uint32_t closeID = prevID[curr][0][0];
 
     pathIds.clear();
@@ -359,7 +359,7 @@ bool Stitcher::connectRegion(float period, bool positives) {
         pathIds.push_back(curr);
         regionID[curr] = closeID;
         curr = nextHop[curr][0];
-    } 
+    }
     scalars[curr] = positives ? 1.0f : -1.0f;
 
     curr = nextHop[startId][1];
@@ -368,7 +368,7 @@ bool Stitcher::connectRegion(float period, bool positives) {
         pathIds.push_back(curr);
         regionID[curr] = closeID;
         curr = prevID[curr][0][0] != closeID ? nextHop[curr][0] : nextHop[curr][1];
-    } 
+    }
     scalars[curr] = positives ? 1.0f : -1.0f;
     uint32_t farID = prevID[curr][0][0];
 
@@ -438,7 +438,7 @@ void Stitcher::widthenStitch(float period, bool positives, uint32_t id) {
             toRetryDeleted.clear();
         }
     }
-    
+
     for (auto i : frontier) {
         if (getRingNumber(i) == 2) {
             float weigths = 0;

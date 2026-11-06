@@ -1,8 +1,11 @@
+
 import type { RendererDatabase, RendererDecodedValue } from '../legacy-renderer';
 import { Cursor, Incomplete, LIMITS, requireSource, type CurrentRecord } from './leveldb';
 import { Parts, screenLogical, utf16 } from './values';
 import { encodedKey, prefix, stringBytes } from './indexeddb-comparator';
 import { approveExternal, blinkValue, externalObjects } from './indexeddb-blobs';
+
+
 
 export function decodeIDBKey(bytes: Buffer, parts: Parts): RendererDecodedValue {
   const c = new Cursor(bytes); let nodes = 0;
@@ -25,6 +28,8 @@ export function decodeIDBKey(bytes: Buffer, parts: Parts): RendererDecodedValue 
   };
   const result = key(0); c.done(); return result;
 }
+
+
 
 const integer = (raw: Buffer) => {
   requireSource(raw.length > 0 && raw.length <= 8); let n = 0n;
@@ -68,6 +73,8 @@ export async function recoverIDB(records: CurrentRecord[], partsFor: (origin: st
       exists: new Map(), blobs: new Map(), indexRows: [], names: new Map(), freeIndexes: [] }); return d.stores.get(id)!;
   };
   const put = <K>(map: Map<K, Buffer>, key: K, value: Buffer) => { requireSource(!map.has(key), 'Duplicate logical IndexedDB metadata.'); map.set(key, value); };
+
+
   for (const row of records) {
     const c = new Cursor(row.key), p = prefix(c);
     if (p.database === 0n) {
@@ -154,6 +161,7 @@ export async function recoverIDB(records: CurrentRecord[], partsFor: (origin: st
       for (const [tag, field] of [[4, 'lastVersion'], [5, 'maxIndexId'], [7, 'keyGeneratorCurrentNumber']] as const)
         if (s.fields.has(tag)) meta[field] = jsonInteger(integer(s.fields.get(tag)!));
       if (s.fields.has(6)) { meta.hasKeyPath = bool(s.fields.get(6)!); requireSource(meta.hasKeyPath || meta.keyPath === null || meta.keyPath === ''); }
+
       const indexes: Record<string, RendererDecodedValue>[] = [], indexNames = new Set<string>();
       for (const [iid, fields] of s.indexes) {
         requireSource(fields.has(0) && !s.freeIndexes.includes(iid));

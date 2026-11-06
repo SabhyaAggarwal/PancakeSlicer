@@ -1,5 +1,7 @@
 import { savePreferences } from '../saved-preferences';
 import { Check } from './Check';
+
+
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
@@ -24,10 +26,13 @@ const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
 const THEMES: [ThemePref, string][] = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
 
+
 function setDeveloperMode(developerMode: boolean) {
   savePreferences({'orca.developer_mode':developerMode ? '1' : '0'});
   setState({ developerMode });
 }
+
+
 
 function setMixedTemperatures(on: boolean) {
   savePreferences({'orca.enable_high_low_temp_mixed_printing':on ? '1' : '0'});
@@ -64,6 +69,7 @@ function Preferences() {
   );
 }
 
+
 const SHORTCUTS: [string, [string, string][]][] = [
   ['Global', [
     [`${mod}+N`, 'New project'], [`${mod}+O`, 'Open project'], [`${mod}+S`, 'Save'], [`${mod}+Shift+S`, 'Save as'],
@@ -91,6 +97,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
   ]],
 ];
 
+
 function Keys({ keys }: { keys: string }) {
   return (
     <span className="keys">
@@ -108,6 +115,7 @@ function Shortcuts() {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
   const tab = useStore((s) => s.tab);
+
   const pages = [...SHORTCUTS].sort(([a], [b]) => Number(b.toLowerCase() === tab) - Number(a.toLowerCase() === tab))
     .map(([page, rows]) => [page, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || k.toLowerCase().includes(q))] as const)
     .filter(([, rows]) => rows.length);

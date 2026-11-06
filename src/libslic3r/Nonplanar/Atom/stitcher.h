@@ -18,7 +18,7 @@ class Stitcher {
 public:
     Stitcher(const float *vertsPosition, const float *vertsNormal, const uint32_t *triangles, uint32_t vertsCount, uint32_t facesCount, const std::set<std::array<uint32_t, 2>>& borderEdges);
     Stitcher() = default;
-    
+
     void stitch(const float *vertsScalars, float period, bool showProgress = false);
     void repulse();
 
@@ -73,7 +73,7 @@ private:
     std::vector<std::array<std::array<uint32_t, 2>, 2>> prevID;
     std::vector<std::array<uint32_t, 2>> nextHop;
     std::vector<uint32_t> pathIds;
-    
+
     uint32_t positiveRegion;
     uint32_t negativeRegion;
     std::vector<float> position;

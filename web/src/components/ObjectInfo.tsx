@@ -1,9 +1,13 @@
+
+
+
 import { useEffect, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { getState, setState, useStore, type PlateObject } from '../state/store';
 import { instanceBox, instanceMatrix } from '../plater/geometry';
 import { meshStats, subscribeMeshStats, meshStatsVersion, type MeshStats as Stats } from '../plater/meshStats';
 import { Copyable } from './Copyable';
+
 
 function objectStats(o: PlateObject): Stats {
   const det = (m: THREE.Matrix4) => Math.abs(m.determinant());
@@ -28,6 +32,7 @@ export default function ObjectInfo() {
   const sel = useStore((s) => s.selected);
   const gizmo = useStore((s) => s.gizmo);
   const fix = useStore((s) => !!s.features.mesh_repair);
+
   useEffect(() => {
     let stop = false;
     const queue = objects.filter((o) => !o.project?.placeholder && !o.native);
@@ -47,6 +52,7 @@ export default function ObjectInfo() {
   const st = objectStats(o), inst = o.instances.find((i) => i.id === sel!.instance) ?? o.instances[0];
   const size = instanceBox(o, inst).getSize(new THREE.Vector3());
   return (
+
     <div className="object-info" role="status" aria-label="Object info">
       <span><Copyable value={`${num(size.x)} × ${num(size.y)} × ${num(size.z)} mm`} /></span>
       <span><Copyable value={`${num(st.volume)} mm³`} /></span>

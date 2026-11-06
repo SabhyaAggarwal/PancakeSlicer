@@ -1,3 +1,4 @@
+
 import { newKey, type ProjectMeta, type ProjectStore, type StoredDocBase, type ProjectCommandAck, type ProjectCommandStatus, type ProfileReferenceDocuments } from './backend';
 import { jsonWrite, routeKey, serviceRequest } from './service';
 import { captureProjectWire, prepareOnce, projectJson as serviceJson, projectWrite } from './project-wire';
@@ -22,12 +23,14 @@ interface PendingCommand {
   command: Readonly<Command>; status: ProjectCommandStatus; request: RequestInit | null;
   running: Promise<ProjectCommandAck | ProjectMeta> | null; result: ProjectCommandAck | ProjectMeta | null;
 }
+
 const commands = new Map<string, PendingCommand>(), commandListeners = new Set<() => void>();
 let commandSnapshot: readonly Readonly<ProjectCommandStatus>[] = [];
 function publishCommands() {
   commandSnapshot = Object.freeze([...commands.values()].map((entry) => Object.freeze({ ...entry.status })));
   commandListeners.forEach((listener) => listener());
 }
+
 async function alreadyRestored(entry: PendingCommand, error: unknown): Promise<ProjectCommandAck> {
   const { status, code } = error as { status?: number; code?: string };
   if (entry.command.kind !== 'restore' || status !== 409 || code !== 'project_not_archived' && code !== 'revision_conflict') throw error;
@@ -40,6 +43,7 @@ function executeCommand(entry: PendingCommand): Promise<ProjectCommandAck | Proj
   if (entry.result) return Promise.resolve(entry.result);
   if (entry.running) return entry.running;
   const task = Promise.resolve().then(async () => {
+
     for (const older of commands.values()) {
       if (older === entry) break;
       if (older.command.id === entry.command.id) await executeCommand(older);
@@ -88,6 +92,9 @@ export const serviceStore: ProjectStore = {
   async save(id, meta, doc, thumbnail) {
     const capture = await captureProjectWire({ doc, name: meta.name, objects: meta.objects });
     let revision = meta.revision ?? 0;
+
+
+
     for (const [prior, preparation] of [...pendingSaves]) {
       if (!prior.startsWith(`${id}/${revision}/`) || prior === `${id}/${revision}/${capture.digest}`) continue;
       const request = await preparation.then((p) => p.request, () => null);
@@ -120,6 +127,7 @@ export const serviceStore: ProjectStore = {
     if (!found || found[1].status.state !== 'conflict' || found[1].running) throw new Error('Only an explicitly rejected conflict can be discarded. Retry ambiguous commands unchanged.');
     commands.delete(found[0]); publishCommands();
   },
+
   referenceDocuments: () => required<ProfileReferenceDocuments>('/api/projects/references'),
   async putBlob(_id, key, data) { await serviceRequest(`/api/assets/${routeKey(key)}`, { method: 'PUT', body: data }); },
   async getBlob(_id, key) { const response = await serviceRequest(`/api/assets/${routeKey(key)}`, undefined, true); return response && response.blob(); },

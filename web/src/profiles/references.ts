@@ -1,4 +1,5 @@
 import { preferenceText, savedPreferencesSnapshot, subscribeSavedPreferences } from '../saved-preferences';
+
 import { projectDraftStore, projectDraftMutationSnapshot, subscribeProjectDraftMutations, settleDraftWriters } from '../persist/drafts';
 import type { PresetType } from '../api/types';
 import { projectStore, projectReferenceWritePending, subscribeProjectStorageChanges, type ProfileReferenceDocuments, type StoredDocBase } from '../persist/backend';
@@ -15,6 +16,7 @@ export interface ProfileReferenceSnapshot {
 export interface ProfileReferenceDefaults { complete: boolean; machine: readonly string[]; process: readonly string[]; filament: readonly string[] }
 type ReferenceDoc = StoredDocBase & { printer?: string; process?: string; filamentSlots?: string[] };
 
+
 export function buildProfileReferenceSource(s: State, projects: ProfileReferenceDocuments, defaults: ProfileReferenceDefaults): ProfileReferenceSource {
   const references: ProfileReferenceSource['references'][number][] = [];
   let complete = projects.complete && defaults.complete;
@@ -25,6 +27,9 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
     if (!key) return;
     let profile = findProfile(s, type, key);
     if (!profile) {
+
+
+
       const wrappers = s.userPresets.filter((p) => p.type === type && (p.base?.name ?? p.inherits) === key && !p.parent && !p.parentId && !Object.keys(p.overlay ?? p.overrides).length);
       if (wrappers.length > 1) { complete = false; return; }
       profile = wrappers[0];
@@ -35,6 +40,7 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
   for (const type of ['machine', 'process', 'filament'] as const)
     for (const key of defaults[type]) add(type, key, { kind: 'default', label: type === 'machine' ? 'Default printer' : type === 'process' ? 'Default process' : 'Default filament' });
   for (const child of s.userPresets) {
+
     const rule = child.applicability, worksWith = {kind:'inheritance' as const,label:`Works with: ${child.name}`,owner:profileKey(child)};
     if (rule?.printers && 'printerIds' in rule.printers) for (const id of rule.printers.printerIds) add('machine', id, worksWith);
     for (const id of rule?.exclude ?? []) add('machine', id, worksWith);
@@ -47,6 +53,7 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
       else if (masters[0]) add(child.type,profileKey(masters[0]),{kind:'inheritance',label:child.name,owner:profileKey(child)});
     }
   }
+
   for (const material of s.userPresets) if (material.type === 'filament' && material.printerId)
     add('machine', material.printerId, { kind: 'inheritance', label: material.name, owner: profileKey(material) });
   for (const [ownerId, setup] of Object.entries(s.printerLibrary?.setups ?? {})) {
@@ -103,7 +110,9 @@ function publish(s: State, status: ProfileReferenceSnapshot['status'], error: st
   notify();
 }
 
+
 export async function refreshProfileReferences(): Promise<ProfileReferenceSnapshot> {
+
   await settleDraftWriters().catch(() => {});
   const mine = ++generation, draftRevision = projectDraftMutationSnapshot().revision;
   defaults = readDefaults(); publish(getState(), 'loading');
@@ -122,6 +131,11 @@ export async function refreshProfileReferences(): Promise<ProfileReferenceSnapsh
   }
   return snapshot;
 }
+
+
+
+
+
 let stale = false;
 const refreshWatched = () => {
   if (listeners.size) void refreshProfileReferences();
@@ -161,6 +175,7 @@ export function subscribeProfileReferences(listener: () => void): () => void {
   start();
   return () => { listeners.delete(listener); };
 }
+
 export function profileAccess(type: PresetType): ProfileAccess {
   start();
   const s = getState(), current = snapshot;

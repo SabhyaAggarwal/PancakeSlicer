@@ -11,6 +11,8 @@
 
 namespace Slic3r {
 
+
+
 namespace {
 struct Cand {
     InferenceSnap::Kind kind{InferenceSnap::Kind::None};
@@ -19,6 +21,7 @@ struct Cand {
     Vec2d               point{0, 0};
     double              dist{0.0};
 };
+
 
 int tier(InferenceSnap::Kind k)
 {
@@ -58,6 +61,7 @@ InferenceSnap infer_point_snap(const std::vector<SketchEntity>& entities,
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P0, e.p0);
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P1, e.p1);
             offer(InferenceSnap::Kind::Midpoint, ei, SketchPointRole::P0, 0.5 * (e.p0 + e.p1));
+
             const Vec2d d = e.p1 - e.p0;
             const double L2 = d.squaredNorm();
             if (L2 > 1e-12) {
@@ -71,10 +75,13 @@ InferenceSnap infer_point_snap(const std::vector<SketchEntity>& entities,
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P0, e.p0);
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P1, e.p1);
             offer(InferenceSnap::Kind::Center,   ei, SketchPointRole::Center, e.center);
+
             const double am = 0.5 * (e.start_angle + e.end_angle);
             offer(InferenceSnap::Kind::Midpoint, ei, SketchPointRole::P0,
                   Vec2d(e.center.x() + e.radius * std::cos(am),
                         e.center.y() + e.radius * std::sin(am)));
+
+
             const Vec2d v = query - e.center;
             const double n = v.norm();
             const double sweep = e.end_angle - e.start_angle;
@@ -89,6 +96,7 @@ InferenceSnap infer_point_snap(const std::vector<SketchEntity>& entities,
         }
         case SketchEntity::Type::Circle: {
             offer(InferenceSnap::Kind::Center, ei, SketchPointRole::Center, e.center);
+
             const Vec2d v = query - e.center;
             const double n = v.norm();
             if (n > 1e-9 && e.radius > 1e-9)
@@ -108,6 +116,7 @@ InferenceSnap infer_point_snap(const std::vector<SketchEntity>& entities,
             offer(InferenceSnap::Kind::Center, ei, SketchPointRole::Center, e.center);
             break;
         case SketchEntity::Type::BSpline:
+
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P0, e.p0);
             offer(InferenceSnap::Kind::Endpoint, ei, SketchPointRole::P1, e.p1);
             break;
@@ -133,6 +142,10 @@ infer_axis_constraint(const Vec2d& anchor, const Vec2d& tip, double ang_tol_rad)
     return std::nullopt;
 }
 
+
+
+
+
 static double unsigned_angle(const Vec2d& a, const Vec2d& b)
 {
     const double cross = a.x() * b.y() - a.y() * b.x();
@@ -146,8 +159,16 @@ infer_relations(const std::vector<SketchEntity>& entities, int new_ei,
 {
     std::vector<SketchEntityConstraintDef> out;
     if (new_ei <= 0 || new_ei >= int(entities.size())) return out;
+
+
     const double weld = std::max(sketch_join_tol(), 1e-7);
     auto joined = [weld](const Vec2d& a, const Vec2d& b) { return (a - b).squaredNorm() <= weld * weld; };
+
+
+
+
+
+
 
     int    best_ang_j = -1, best_rad_j = -1, best_tan_j = -1;
     double best_ang_err = 1e30, best_rad_err = 1e30, best_tan_err = 1e30;
@@ -169,6 +190,9 @@ infer_relations(const std::vector<SketchEntity>& entities, int new_ei,
         if (o_curve && o.radius < 1e-9)                      continue;
 
         if (n_line && o_line) {
+
+
+
             const bool connected = joined(n.p0, o.p0) || joined(n.p0, o.p1) ||
                                    joined(n.p1, o.p0) || joined(n.p1, o.p1);
             if (!connected) continue;
@@ -183,10 +207,13 @@ infer_relations(const std::vector<SketchEntity>& entities, int new_ei,
                 best_ang_type = SketchConstraintType::Perpendicular;
             }
         } else if (n_curve && o_curve) {
+
             const double larger = n.radius > o.radius ? n.radius : o.radius;
             const double err = std::abs(n.radius - o.radius) / larger;
             if (err <= len_tol_frac && err < best_rad_err) { best_rad_err = err; best_rad_j = j; }
         } else {
+
+
             const SketchEntity& ln = n_line ? n : o;
             const SketchEntity& cv = n_line ? o : n;
             const Vec2d ldir = ln.p1 - ln.p0;

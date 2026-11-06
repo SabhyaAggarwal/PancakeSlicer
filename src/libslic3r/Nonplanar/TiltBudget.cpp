@@ -15,6 +15,7 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 double table_position(double phi, size_t n)
 {
     double u = phi / (2. * M_PI) * double(n);
@@ -29,6 +30,7 @@ TiltBudget::TiltBudget(const ToolKinematics &kinematics, std::vector<double> slo
 {
     if (kinematics.rotary_count() == 0)
         return;
+
     m_reach.resize(Azimuths);
     for (int k = 0; k < Azimuths; ++k)
         m_reach[k] = std::min(kinematics.max_tilt(2. * M_PI * k / Azimuths), max_tilt);

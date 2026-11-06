@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { switchPreset } from '../actions';
 import { selectChanges } from '../state/changes';
@@ -15,16 +21,20 @@ import { scalesOf } from './auto-rules';
 const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
 
+
 export function autoOf(source: unknown, scales: ScaleRow[]): { auto?: object } {
   const prior = (source as { auto?: { preferredHeight?: number } } | undefined)?.auto;
   return scales.length || prior?.preferredHeight ? { auto: { ...prior, schema: 3, scales } } : {};
 }
+
 export type ValueChoice = 'formula' | 'fix' | 'project' | 'printer';
 export interface ValueSource { source: 'formula' | 'printer'; row?: ScaleRow; printer?: string }
+
 export const scaleContext = (s: State) => {
   const nozzle = Number([effectiveProfileValues(s, 'machine', s.printer).nozzle_diameter].flat()[0]) || 0;
   return { nozzle, layerHeight: effectiveLayerHeight(s) };
 };
+
 export function valueSources(s: State, type: PresetType, slot: number): Record<string, ValueSource> {
   if (type !== 'process') return {};
   const p = findProfile(s, type, selectedKey(s, type, slot)), own = p?.overlay ?? {}, printer = findProfile(s, 'machine', s.printer)?.name ?? 'printer';
@@ -33,6 +43,8 @@ export function valueSources(s: State, type: PresetType, slot: number): Record<s
   return out;
 }
 const round = (v: number, d = 4) => Math.round(v * 10 ** d) / 10 ** d;
+
+
 export function solveFactor(row: ScaleRow, value: ConfigValue, ctx: { nozzle: number; layerHeight: number }): number | undefined {
   const v = Number([value].flat()[0]), h = clampHeight(ctx.layerHeight, ctx.nozzle);
   if (!Number.isFinite(v) || !(ctx.nozzle > 0) || !(h > 0)) return undefined;
@@ -42,7 +54,10 @@ export function solveFactor(row: ScaleRow, value: ConfigValue, ctx: { nozzle: nu
   return n < 1 ? undefined : round(Math.floor((n - 1) * h * 100 + 1e-6) / 100 + 0.01, 2);
 }
 export const formulaText = (row: ScaleRow) => row.basis === 'nozzle' ? `${row.factor} × nozzle` : row.basis === 'layer' ? `${row.factor} × layer height` : `${row.factor} mm ÷ layer height`;
+
 export const defaultChoice = (v: ValueSource): ValueChoice => v.source === 'formula' ? 'formula' : 'printer';
+
+
 
 function applyChoices(scales: ScaleRow[], deltas: Config, sources: Record<string, ValueSource>, choices: Record<string, ValueChoice>, ctx: { nozzle: number; layerHeight: number }) {
   const own: Config = {}, toPrinter: Config = {}, kept: Config = {};
@@ -57,6 +72,7 @@ function applyChoices(scales: ScaleRow[], deltas: Config, sources: Record<string
   }
   return { rows, own, toPrinter, kept };
 }
+
 function printerWith(s: State, values: Config): UserPreset | undefined {
   const printer = findProfile(s, 'machine', s.printer);
   if (!printer || !Object.keys(values).length) return undefined;
@@ -70,6 +86,7 @@ export function savesInPlace(s: State, type: PresetType, slot: number): boolean 
   return !!p && p.kind !== 'master';
 }
 
+
 function changesOf(s: State, type: PresetType, slot: number) {
   return { edits: presetEdits(s, type, slot), project: (type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type]) ?? null };
 }
@@ -82,6 +99,8 @@ function restoreChanges(type: PresetType, slot: number, key: string, c: ReturnTy
   }));
 }
 
+
+
 export async function saveToProfile(type: PresetType, slot = 0, choices: Record<string, ValueChoice> = {}): Promise<void> {
   const s = getState();
   if (!s.api) throw new Error('Not connected. Your changes are kept.');
@@ -90,6 +109,7 @@ export async function saveToProfile(type: PresetType, slot = 0, choices: Record<
   const before = changesOf(s, type, slot), prior = structuredClone(source), printerBefore = structuredClone(findProfile(s, 'machine', s.printer));
   const scales = scalesOf(source), { rows, own, toPrinter, kept } = applyChoices(scales, stage.deltas, valueSources(s, type, slot), choices, scaleContext(s));
   if (Object.keys(kept).length === Object.keys(stage.deltas).length) throw new Error('Every change stays in this project. Choose where to save one.');
+
   const values = { ...resolved.config, ...own };
   for (const r of rows) delete values[r.key];
   const saved = { ...values, ...stage.deltas };
@@ -100,6 +120,7 @@ export async function saveToProfile(type: PresetType, slot = 0, choices: Record<
   if (type === 'process' && !autoOf(source, rows).auto) delete (record as { auto?: unknown }).auto;
   const printer = printerWith(s, toPrinter);
   await commitProfileRecords([record, ...(printer ? [printer] : [])], { apply: (st) => acknowledgeProjectProfileChanges(st, stage, saved) });
+
   toast(`Saved to ${source.name}${printer ? ` and ${printer.name}` : ''}`, { label: 'Undo', run: () => {
     const now = getState(), back = [{ ...prior, revision: findProfile(now, type, stage.key)?.revision }];
     if (printer && printerBefore) back.push({ ...printerBefore, revision: findProfile(now, 'machine', profileKey(printerBefore))?.revision });
@@ -107,10 +128,12 @@ export async function saveToProfile(type: PresetType, slot = 0, choices: Record<
   } });
 }
 
+
 export const newProfileName = (s: State, type: PresetType, slot: number) => {
   const r = resolvePreset(s, type, selectedKey(s, type, slot)), name = r.source?.name ?? r.base?.name ?? '';
   return name.startsWith('My ') ? name : `My ${name}`;
 };
+
 
 export function newProfileNameError(s: State, type: PresetType, name: string): string | null {
   const n = name.trim();
@@ -118,7 +141,11 @@ export function newProfileNameError(s: State, type: PresetType, name: string): s
   return s.userPresets.some((p) => p.type === type && !p.archived && p.name === n) ? `“${n}” is already taken` : null;
 }
 
+
+
 export type NewKind = 'same' | 'dynamic' | 'regular';
+
+
 export async function saveAsNewProfile(type: PresetType, slot: number, name: string, kind: NewKind = 'same', choices: Record<string, ValueChoice> = {}): Promise<void> {
   const s = getState();
   if (!s.api) throw new Error('Not connected. Your changes are kept.');
@@ -128,6 +155,7 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
   if (!resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
   const deltas = Object.fromEntries(selectChanges(s, type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined).map((c) => [c.key, c.now]));
   const before = changesOf(s, type, slot), source = findProfile(s, type, key), ctx = scaleContext(s);
+
   const scales = scalesOf(source), dynamic = type === 'process' && kind === 'dynamic' && scales.length > 0;
   const chosen = dynamic ? applyChoices(scales, deltas, valueSources(s, type, slot), choices, ctx) : undefined;
   const frozen = type === 'process' && kind === 'regular' ? { ...scaleValues(scales, ctx), layer_height: String(ctx.layerHeight) } : {};
@@ -143,6 +171,7 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
   const printer = chosen && printerWith(getState(), chosen.toPrinter);
   if (printer) await commitProfileRecords([printer]);
   switchPreset(type, slot, created, 'discard');
+
   if (chosen && Object.keys(chosen.kept).length) setState((st) => ({ dirty: { ...st.dirty, process: { ...st.dirty.process, ...chosen.kept } } }));
   toast(`Saved as ${name.trim()}`, { label: 'Undo', run: () => {
     switchPreset(type, slot, key, 'discard');
@@ -150,6 +179,8 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
     void archiveProfiles(type, [created]).catch((e) => toast(message(e)));
   } });
 }
+
+
 
 export function createPrintProfile(kind: 'dynamic' | 'regular', name: string): Promise<string> {
   return profileCreation((s) => {

@@ -7,12 +7,24 @@
 
 namespace Slic3r {
 
+
+
+
+
+
+
+
+
 class BeltBackTransform
 {
 public:
     BeltBackTransform() = default;
 
+
+
     bool init_from_config(const PrintConfig &config);
+
+
 
     Vec3d apply(const Vec3d &pos) const;
 

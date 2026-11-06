@@ -1,3 +1,5 @@
+
+
 import { printInPlaceGap } from './shells';
 
 export interface ShellsIn { id: number; positions: Float32Array; index: Uint32Array }
@@ -9,6 +11,7 @@ self.onmessage = (e: MessageEvent<ShellsIn>) => {
   try {
     gap = printInPlaceGap(positions, index);
   } catch {
+
   }
   (self as unknown as Worker).postMessage({ id, gap } satisfies ShellsOut);
 };

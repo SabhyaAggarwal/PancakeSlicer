@@ -43,10 +43,10 @@ class TreeModelVolumes
 public:
     TreeModelVolumes() = default;
     explicit TreeModelVolumes(const PrintObject &print_object, const BuildVolume &build_volume,
-        coord_t max_move, coord_t max_move_slow, size_t current_mesh_idx, 
+        coord_t max_move, coord_t max_move_slow, size_t current_mesh_idx,
 #ifdef SLIC3R_TREESUPPORTS_PROGRESS
-        double progress_multiplier, 
-        double progress_offset, 
+        double progress_multiplier,
+        double progress_offset,
 #endif
         const std::vector<Polygons> &additional_excluded_areas = {});
     TreeModelVolumes(TreeModelVolumes&&) = default;
@@ -55,12 +55,13 @@ public:
     TreeModelVolumes(const TreeModelVolumes&) = delete;
     TreeModelVolumes& operator=(const TreeModelVolumes&) = delete;
 
-    void clear() { 
+    void clear() {
         this->clear_all_but_object_collision();
         m_collision_cache.clear();
         m_placeable_areas_cache.clear();
     }
-    void clear_all_but_object_collision() { 
+    void clear_all_but_object_collision() {
+
         m_collision_cache_holefree.clear();
         m_avoidance_cache.clear();
         m_avoidance_cache_slow.clear();
@@ -81,21 +82,88 @@ public:
         Count
     };
 
+
+
+
+
+
+
     void precalculate(const PrintObject& print_object, const coord_t max_layer, std::function<void()> throw_on_cancel);
+
+
+
+
+
+
+
+
+
+
+
 
     const Polygons& getCollision(const coord_t radius, LayerIndex layer_idx, bool min_xy_dist) const;
 
+
+
+
     std::optional<std::pair<coord_t, std::reference_wrapper<const Polygons>>> get_collision_lower_bound_area(LayerIndex layer_id, coord_t max_radius) const;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const Polygons& getAvoidance(coord_t radius, LayerIndex layer_idx, AvoidanceType type, bool to_model, bool min_xy_dist) const;
+
+
+
+
+
+
     const Polygons& getPlaceableAreas(coord_t radius, LayerIndex layer_idx, std::function<void()> throw_on_cancel) const;
+
+
+
+
+
+
+
     const Polygons& getWallRestriction(coord_t radius, LayerIndex layer_idx, bool min_xy_dist) const;
+
+
+
+
+
+
+
+
+
     coord_t ceilRadius(const coord_t radius, const bool min_xy_dist) const {
         assert(radius >= 0);
-        return min_xy_dist ? 
+        return min_xy_dist ?
             this->ceilRadius(radius) :
+
             radius > 0 ? this->ceilRadius(radius + m_current_min_xy_dist_delta) : m_current_min_xy_dist_delta;
     }
+
+
+
+
+
+
+
     coord_t getRadiusNextCeil(coord_t radius, bool min_xy_dist) const {
         assert(radius > 0);
         return min_xy_dist ?
@@ -104,9 +172,12 @@ public:
     }
 
     Polygon m_bed_area;
+
+
     std::vector<Polygons> m_belt_floor;
 
 private:
+
     class LayerPolygonCache {
     public:
         void allocate(LayerIndex aidx_begin, LayerIndex aidx_end) {
@@ -129,9 +200,15 @@ private:
         LayerIndex            m_idx_end;
     };
 
+
+
+
     using RadiusLayerPair             = std::pair<coord_t, LayerIndex>;
     class RadiusLayerPolygonCache {
+
         using LayerData = std::map<coord_t, Polygons>;
+
+
         using Layers = std::vector<LayerData>;
     public:
         RadiusLayerPolygonCache() = default;
@@ -146,6 +223,7 @@ private:
             for (auto &d : in)
                 this->get_allocate_layer_data(d.first.second).emplace(d.first.first, std::move(d.second));
         }
+
         void insert(std::vector<std::pair<coord_t, Polygons>> &&in, coord_t radius) {
             std::lock_guard<std::mutex> guard(m_mutex);
             for (auto &d : in)
@@ -164,15 +242,21 @@ private:
             for (auto &d : in.polygons_mutable())
                 m_data[i ++].emplace(radius, std::move(d));
         }
+
+
+
+
+
         std::optional<std::reference_wrapper<const Polygons>> getArea(const TreeModelVolumes::RadiusLayerPair &key) const {
             std::lock_guard<std::mutex> guard(m_mutex);
             if (key.second >= LayerIndex(m_data.size()))
                 return std::optional<std::reference_wrapper<const Polygons>>{};
             const auto &layer = m_data[key.second];
             auto it = layer.find(key.first);
-            return it == layer.end() ? 
+            return it == layer.end() ?
                 std::optional<std::reference_wrapper<const Polygons>>{} : std::optional<std::reference_wrapper<const Polygons>>{ it->second };
         }
+
         std::optional<std::pair<coord_t, std::reference_wrapper<const Polygons>>> get_lower_bound_area(const TreeModelVolumes::RadiusLayerPair &key) const {
             std::lock_guard<std::mutex> guard(m_mutex);
             if (key.second >= LayerIndex(m_data.size()))
@@ -188,19 +272,28 @@ private:
             }
             return std::make_pair(it->first, std::reference_wrapper<const Polygons>(it->second));
         }
+
+
+
+
+
+
+
         LayerIndex getMaxCalculatedLayer(coord_t radius) const {
             std::lock_guard<std::mutex> guard(m_mutex);
             auto layer_idx = LayerIndex(m_data.size()) - 1;
             for (; layer_idx > 0; -- layer_idx)
                 if (const auto &layer = m_data[layer_idx]; layer.find(radius) != layer.end())
                     break;
+
             return layer_idx == 0 ? -1 : layer_idx;
         }
+
 
         [[nodiscard]] std::vector<std::pair<RadiusLayerPair, std::reference_wrapper<const Polygons>>> sorted() const;
 
         void clear() { m_data.clear(); }
-        void clear_all_but_radius0() { 
+        void clear_all_but_radius0() {
             for (LayerData &l : m_data) {
                 auto begin = l.begin();
                 auto end = l.end();
@@ -221,62 +314,195 @@ private:
     };
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     const Polygons& getCollisionHolefree(coord_t radius, LayerIndex layer_idx) const;
+
+
+
+
+
 
     coord_t ceilRadius(const coord_t radius) const;
 
+
+
+
+
+
+
+
     void calculateCollision(const std::vector<RadiusLayerPair> &keys, std::function<void()> throw_on_cancel);
     void calculateCollision(const coord_t radius, const LayerIndex max_layer_idx, std::function<void()> throw_on_cancel);
+
+
+
+
+
+
+
+
     void calculateCollisionHolefree(const std::vector<RadiusLayerPair> &keys, std::function<void()> throw_on_cancel);
+
+
+
+
+
+
+
+
 
     void calculateCollisionHolefree(RadiusLayerPair key)
     {
         calculateCollisionHolefree(std::vector<RadiusLayerPair>{ RadiusLayerPair(key) }, []{});
     }
 
+
+
+
+
+
+
+
     void calculateAvoidance(const std::vector<RadiusLayerPair> &keys, bool to_build_plate, bool to_model, std::function<void()> throw_on_cancel);
+
+
+
+
+
+
+
 
     void calculateAvoidance(RadiusLayerPair key, bool to_build_plate, bool to_model)
     {
         calculateAvoidance(std::vector<RadiusLayerPair>{ RadiusLayerPair(key) }, to_build_plate, to_model, []{});
     }
 
+
+
+
+
+
     void calculatePlaceables(const coord_t radius, const LayerIndex max_required_layer, std::function<void()> throw_on_cancel);
+
+
+
+
+
 
 
     void calculatePlaceables(const std::vector<RadiusLayerPair> &keys, std::function<void()> throw_on_cancel);
 
+
+
+
+
+
+
+
     void calculateWallRestrictions(const std::vector<RadiusLayerPair> &keys, std::function<void()> throw_on_cancel);
+
+
+
+
+
 
     void calculateWallRestrictions(RadiusLayerPair key)
     {
         calculateWallRestrictions(std::vector<RadiusLayerPair>{ RadiusLayerPair(key) }, []{});
     }
 
+
+
+
     coord_t m_max_move;
+
+
+
+
     coord_t m_max_move_slow;
+
+
+
     coord_t m_min_resolution;
 
     bool m_precalculated = false;
+
+
+
     size_t m_current_outline_idx;
+
+
+
     coord_t m_current_min_xy_dist;
+
+
+
     coord_t m_current_min_xy_dist_delta;
+
+
+
     bool m_support_rests_on_model;
 #ifdef SLIC3R_TREESUPPORTS_PROGRESS
+
+
+
     coord_t m_precalculation_progress = 0;
+
+
+
+
     double m_progress_multiplier;
+
+
+
+
     double m_progress_offset;
 #endif
+
+
+
     coord_t m_increase_until_radius;
 
+
+
+
+
     Polygons m_machine_border;
+
+
+
     std::vector<std::pair<TreeSupportMeshGroupSettings, std::vector<Polygons>>> m_layer_outlines;
+
+
+
     std::vector<Polygons> m_anti_overhang;
+
+
+
     std::vector<coord_t> m_ignorable_radii;
+
+
+
 
     coord_t m_radius_0;
 
+
     std::vector<double>         m_raft_layers;
+
+
+
+
 
     RadiusLayerPolygonCache     m_collision_cache;
     RadiusLayerPolygonCache     m_collision_cache_holefree;
@@ -285,6 +511,10 @@ private:
     RadiusLayerPolygonCache     m_avoidance_cache_to_model;
     RadiusLayerPolygonCache     m_avoidance_cache_to_model_slow;
     RadiusLayerPolygonCache     m_placeable_areas_cache;
+
+
+
+
 
     RadiusLayerPolygonCache     m_avoidance_cache_holefree;
     RadiusLayerPolygonCache     m_avoidance_cache_holefree_to_model;
@@ -312,7 +542,13 @@ private:
         return const_cast<TreeModelVolumes*>(this)->avoidance_cache(type, to_model);
     }
 
+
+
+
     RadiusLayerPolygonCache     m_wall_restrictions_cache;
+
+
+
 
     RadiusLayerPolygonCache     m_wall_restrictions_cache_min;
 

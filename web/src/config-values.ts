@@ -1,3 +1,5 @@
+
+
 import { vectors as shippedVectors } from 'virtual:option-bootstrap';
 import type { Config, ConfigValue } from './api/types';
 
@@ -10,6 +12,7 @@ export function vectorType(type: string): string | undefined {
   return vectorTypes.get(name);
 }
 
+
 export function setOptionTypes(options: Record<string, { type: string }>) {
   for (const key of Object.keys(types)) delete types[key];
   for (const [key, def] of Object.entries(options)) {
@@ -21,6 +24,7 @@ export function setOptionTypes(options: Record<string, { type: string }>) {
 
 const escapeConfigString = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 export const unescapeConfigString = (text: string) => text.replace(/\\([\s\S])/g, (_, c: string) => c === 'n' ? '\n' : c === 'r' ? '\r' : c);
+
 
 function stringVector(text: string): string[] {
   const result: string[] = [];
@@ -62,6 +66,9 @@ const scalar = (v: unknown): string => {
   return String(v);
 };
 
+
+
+
 export function normalizeConfigValue(key: string, value: ConfigValue, type = types[key]): ConfigValue {
   if (!type || type === 'String') return value;
   if (type === 'Point' || type === 'Point3') {
@@ -96,14 +103,17 @@ export function normalizeConfig(config: Config, native = false): Config {
   ]));
 }
 
+
 export function toolValue(key: string, value: ConfigValue): string {
   if (!Array.isArray(value)) return types[key] === 'String' ? escapeConfigString(scalar(value)) : scalar(value);
+
   const parts = types[key] === 'Percents' ? value.map(scalar).map((text) => text && !text.endsWith('%') ? `${text}%` : text) : value.map(scalar);
   if (types[key] === 'Strings' || !types[key]) return parts.map((text) =>
     (parts.length === 1 && text === '') || /[ \t;\\"\r\n]/.test(text)
       ? `"${escapeConfigString(text)}"` : text).join(';');
   return parts.join((types[key] === 'PointsGroups' || types[key] === 'IntsGroups') ? '#' : ',');
 }
+
 
 export function jobValue(key: string, value: ConfigValue): ConfigValue {
   return types[key] === 'String' || Array.isArray(value) && types[key] && types[key] !== 'Strings' ? toolValue(key, value) : value;

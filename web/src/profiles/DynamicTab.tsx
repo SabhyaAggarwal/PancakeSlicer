@@ -1,3 +1,5 @@
+
+
 import { useMemo, useState } from 'react';
 import { Choice } from '../components/kit';
 import { OPTIONS, splitKey, TABS } from '../options';
@@ -6,6 +8,7 @@ import { Glyph } from '../components/Glyph';
 import { effectiveShells, heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
 import type { Config } from '../api/types';
 import { labelOf } from './PrintOverrides';
+
 
 const GROUPS: { name: string; basis: ScaleBasis; keys: string[] }[] = [
   { name: 'Line widths', basis: 'nozzle', keys: ['line_width', 'inner_wall_line_width', 'sparse_infill_line_width', 'internal_solid_infill_line_width', 'top_surface_line_width', 'support_line_width'] },
@@ -24,13 +27,16 @@ const mm = (v: number) => String(Math.round(v * 1000) / 1000);
 const isWidth = (key: string) => key === 'line_width' || key.endsWith('_line_width');
 
 interface Formula { name: string; keys: string[]; basis: ScaleBasis; factor: number }
+
 const SCALAR = new Set(['float', 'int', 'percent', 'float_or_percent']);
 interface Section { title: string; keys: string[] }
+
 function numericSections(): Section[] {
   return (TABS.process?.pages ?? []).flatMap((page) => page.groups.map((g) => ({ title: `${page.title} · ${g.title}`,
     keys: [...new Set(g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0])))].filter((k) => k !== 'layer_height' && OPTIONS[k]?.label && SCALAR.has(OPTIONS[k].type)) })))
     .filter((sec) => sec.keys.length);
 }
+
 
 function SettingFinder({ exclude, onPick, onCancel }: { exclude: ReadonlySet<string>; onPick(key: string): void; onCancel(): void }) {
   const loaded = useTabLoaded('process'), [query, setQuery] = useState('');
@@ -48,6 +54,7 @@ function SettingFinder({ exclude, onPick, onCancel }: { exclude: ReadonlySet<str
     <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
   </div>;
 }
+
 function formulasOf(rows: ScaleRow[], split: ReadonlySet<string>): Formula[] {
   const out: Formula[] = [], used = new Set<string>(), named = new Set<string>();
   for (const row of rows) {
@@ -55,6 +62,7 @@ function formulasOf(rows: ScaleRow[], split: ReadonlySet<string>): Formula[] {
     const group = GROUPS.find((g) => g.basis === row.basis && g.keys.includes(row.key) && !split.has(row.key));
     const members = group ? rows.filter((r) => r.basis === group.basis && group.keys.includes(r.key) && !split.has(r.key) && r.factor === row.factor) : [row];
     members.forEach((m) => used.add(m.key));
+
     const name = !group || members.length < 2 ? nameOf(row.key) : named.has(group.name) ? members.map((m) => nameOf(m.key)).join(', ') : group.name;
     if (group) named.add(group.name);
     out.push({ name, keys: members.map((m) => m.key), basis: row.basis, factor: row.factor });
@@ -75,8 +83,8 @@ function FormulaLine({ f, readOnly, onFactor, onRemove }: { f: Formula; readOnly
 
 export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter, config = {} }: {
   rows: ScaleRow[]; nozzle: number; height: number; minHeight?: number; maxHeight?: number; readOnly?: boolean; onChange(rows: ScaleRow[]): void;
-   config?: Config;
-   fromPrinter?: { name: string; values: Record<string, unknown> };
+                                                                                                        config?: Config;
+                                                                                                    fromPrinter?: { name: string; values: Record<string, unknown> };
 }) {
   const [split, setSplit] = useState<ReadonlySet<string>>(() => new Set());
   const [adding, setAdding] = useState<{ key: string; basis: ScaleBasis } | null>(null);
@@ -88,10 +96,12 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     if (!adding) return;
     const existing = rows.find((r) => r.key === adding.key);
     setSplit(new Set([...split, adding.key]));
+
     if (!existing) onChange([...rows, { key: adding.key, basis: adding.basis, factor: 1 }]);
     else if (existing.basis !== adding.basis) onChange(rows.map((r) => (r.key === adding.key ? { ...r, basis: adding.basis, factor: 1 } : r)));
     setAdding(null);
   };
+
   const own = new Set(formulas.filter((f) => f.keys.length === 1).map((f) => f.keys[0]));
   const cell = (f: Formula, n: number, h: number) => {
     const row: ScaleRow = { key: f.keys[0], basis: f.basis, factor: f.factor }, v = scaledValue(row, { nozzle: n, layerHeight: h });
@@ -99,10 +109,13 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     const why = isWidth(row.key) ? 'Kept within 90–150 % of the nozzle' : 'Kept within 75 % of the nozzle';
     return <td key={f.keys.join()} className="n" {...(clamped ? { 'data-clamped': true, 'data-truncated': 'true', 'data-full-text': why } : {})}>{f.basis === 'perLayer' ? v : mm(v)}</td>;
   };
+
+
   const shells = (n: number, h: number) => { const row = rows.find((r) => r.key === 'top_shell_layers');
     const e = effectiveShells(row ? { ...config, top_shell_layers: String(scaledValue(row, { nozzle: n, layerHeight: h })) } : config, 'top', h);
     return <td className="n" {...(e.lifted ? { 'data-clamped': true, 'data-truncated': 'true', 'data-full-text': `${e.layers} raised to keep ≥ ${e.thickness} mm` } : {})}>{e.effective}</td>; };
   return <section className="dyn-tab" aria-label="Dynamic">
+    {                                                                                                     }
     <div className="dyn-rows"><ul className="dyn-formulas">
       {formulas.map((f) => <FormulaLine key={f.keys.join(',')} f={f} readOnly={readOnly} onFactor={(v) => setFactor(f.keys, v)} onRemove={() => remove(f.keys)}/>)}
       {!readOnly && <li className="dyn-formula dyn-add">{adding
@@ -119,6 +132,7 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     <div className="dyn-table-scroll"><table className="dyn-table">
       <thead><tr><th>Layer</th>{formulas.map((f) => <th key={f.keys.join()} className="n">{f.name}</th>)}<th className="n">Top shells</th></tr></thead>
       {NOZZLES.map((n) => {
+
         const own = Math.abs(n - nozzle) < 1e-6, heights = heightsFor(n, own ? minHeight : Math.ceil(n * 0.25 / 0.04 - 1e-6) * 0.04, own ? maxHeight : undefined).filter((h) => h <= n * 0.75 + 1e-6), open = !folded.has(n);
         return <tbody key={n}>
           <tr className="dyn-nozzle"><th colSpan={formulas.length + 2}><button type="button" aria-expanded={open} onClick={() => setFolded(open ? new Set([...folded, n]) : new Set([...folded].filter((x) => x !== n)))}>{n} mm nozzle</button></th></tr>

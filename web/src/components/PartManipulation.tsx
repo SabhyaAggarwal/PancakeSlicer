@@ -1,3 +1,7 @@
+
+
+
+
 import * as THREE from 'three';
 import { updateVolume, useStore, type Instance, type PlateObject, type Volume } from '../state/store';
 import { instanceMatrix, volumeBox } from '../plater/geometry';
@@ -5,10 +9,12 @@ import { Row } from './Transform';
 
 export default function PartManipulation({ o, inst, v, local, lock }: { o: PlateObject; inst: Instance; v: Volume; local: boolean; lock: React.ReactNode }) {
   const uniform = useStore((s) => s.uniformScale);
+
   const box = volumeBox(o, inst, v);
   const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
   const toWorld = instanceMatrix(o, inst), toObject = toWorld.clone().invert();
   const inObject = centre.clone().applyMatrix4(toObject);
+
   const change = (m: THREE.Matrix4, name: string) => updateVolume(o.id, v.id,
     { matrix: toObject.clone().multiply(m).multiply(toWorld).multiply(new THREE.Matrix4().fromArray(v.matrix)).elements }, name);
   const move = (axis: number, value: number) => {

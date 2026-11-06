@@ -31,7 +31,9 @@ public:
     bool is_self_crossing() override { return false; }
 
 protected:
+
 	bool fill_surface_by_lines(const Surface *surface, const FillParams &params, float angleBase, float pattern_shift, Polylines &polylines_out);
+
 
 
     struct SweepParams {
@@ -49,6 +51,7 @@ public:
     ~FillAlignedRectilinear() override = default;
 
 protected:
+
     virtual float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -79,6 +82,7 @@ public:
     bool is_self_crossing() override { return true; }
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -90,6 +94,7 @@ public:
     Polylines fill_surface(const Surface *surface, const FillParams &params) override;
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -102,6 +107,7 @@ public:
     bool is_self_crossing() override { return true; }
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -114,6 +120,7 @@ public:
     bool is_self_crossing() override { return true; }
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -126,8 +133,10 @@ public:
     bool is_self_crossing() override { return true; }
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
+
 
 class FillQuarterCubic : public FillRectilinear
 {
@@ -137,6 +146,7 @@ public:
     Polylines fill_surface(const Surface *surface, const FillParams &params) override;
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
 
@@ -157,8 +167,11 @@ public:
     Polylines fill_surface(const Surface *surface, const FillParams &params) override;
 
 protected:
+
     float _layer_angle(size_t idx) const override { return 0.f; }
 };
+
+
 
 class FillMonotonicLines : public FillRectilinear
 {
@@ -168,6 +181,22 @@ public:
     Polylines fill_surface(const Surface *surface, const FillParams &params) override;
     bool no_sort() const override { return true; }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class FillZigZag : public FillRectilinear
 {

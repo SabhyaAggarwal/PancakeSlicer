@@ -1,4 +1,5 @@
 import { splitFilamentConfig } from '../multinozzle/config';
+
 import type { Config, PresetType } from '../api/types';
 import type { State } from '../state/store';
 import { normalizeConfig } from '../config-values';
@@ -9,6 +10,7 @@ import { parseProjectProfiles } from './project-snapshot-codec';
 import { restoreProjectProfiles } from './project';
 import { selectCompatibility } from './compatibility';
 import type { ProjectProfileReferences, ProjectProfileSnapshot, ProfileRecovery } from './ownership';
+
 
 export function prepareProjectProfileImport(s:State,config:Config,slots:number,plateKeys:ReadonlySet<string>):Partial<State>{
   const saved=normalizeConfig(config),extension=parseProjectProfiles(saved.orca_web_profiles);
@@ -22,6 +24,7 @@ export function prepareProjectProfileImport(s:State,config:Config,slots:number,p
     return keys;
   };
   const machineKeys=scopeKeys('machine'),filamentKeys=scopeKeys('filament');
+
   for(const key of ['printer_model','printer_variant','nozzle_diameter','nonplanar_kinematics','nonplanar_rotary_axes'])machineKeys.add(key);
   const take=(scope:PresetType,index=0):Config=>Object.fromEntries(Object.entries(scope==='filament'?splitFilamentConfig(saved,index):saved).filter(([key])=>
     key!=='orca_web_profiles' && !PRESET_META.test(key) && !plateKeys.has(key) && (scope==='machine'?machineKeys.has(key):scope==='filament'?filamentKeys.has(key)&&!machineKeys.has(key):!machineKeys.has(key)&&!filamentKeys.has(key)))
@@ -30,6 +33,7 @@ export function prepareProjectProfileImport(s:State,config:Config,slots:number,p
   const capture=(type:PresetType,reference:string,values:Config):ProjectProfileSnapshot=>{
     const lookup=lookupProfile(s,type,reference),source=lookup.profile;
     const found=source?undefined:findCatalogBase(s,type,reference),resolved=source?resolveProfile(s,type,profileKey(source)):undefined;
+
     const id=source?profileKey(source):`project-profile:${crypto.randomUUID()}`;
     const base=source?.base ?? (found?.base?catalogAnchor(found.base):{name:reference,version:''});
     const row:ProjectProfileSnapshot={id,name:(source && reference===profileKey(source)?source.name:reference) || (type==='machine'?'Project printer':type==='filament'?'Project filament':'Project print settings'),type,

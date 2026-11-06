@@ -25,9 +25,15 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
+
 constexpr double KappaFull = 0.05;
+
+
 constexpr double AspectFull = 2.;
+
 constexpr double MinCoherence = 0.5;
+
 constexpr int Step = 2;
 
 }
@@ -40,11 +46,13 @@ bool strength_roads_enabled(const PrintRegionConfig &config, const PrintObjectCo
 
 StrengthField::StrengthField(const PrintObject &object)
 {
+
     double a = 0., sx = 0., sy = 0., sxx = 0., syy = 0., sxy = 0.;
     Vec2d  o(0., 0.);
     bool   has_origin = false;
     for (const Layer *layer : object.layers())
         for (const ExPolygon &expoly : layer->lslices)
+
             for (const Polygon &ring : to_polygons(expoly)) {
                 const Points &pts = ring.points;
                 if (pts.size() < 3)
@@ -93,16 +101,20 @@ std::vector<Vec2d> StrengthField::node_vectors(const HeightField &layer, const E
             const float a0 = z_at(ix - Step, iy - Step), a1 = z_at(ix + Step, iy - Step), a2 = z_at(ix - Step, iy + Step),
                         a3 = z_at(ix + Step, iy + Step);
             if (!std::isnan(xm + xp + ym + yp + a0 + a1 + a2 + a3)) {
+
+
                 const double fx = (xp - xm) / (2. * h), fy = (yp - ym) / (2. * h);
                 const double fxx = (xp - 2. * z + xm) / (h * h), fyy = (yp - 2. * z + ym) / (h * h), fxy = (a3 - a1 - a2 + a0) / (4. * h * h);
                 const double w = std::sqrt(1. + fx * fx + fy * fy);
                 const double E = 1. + fx * fx, F = fx * fy, G = 1. + fy * fy, det = E * G - F * F;
                 const double L = fxx / w, M = fxy / w, N = fyy / w;
+
                 const double s11 = (G * L - F * M) / det, s12 = (G * M - F * N) / det, s21 = (E * M - F * L) / det, s22 = (E * N - F * M) / det;
                 const double tr = 0.5 * (s11 + s22), disc = std::sqrt(std::max(0., 0.25 * (s11 - s22) * (s11 - s22) + s12 * s21));
                 const double k1 = tr + disc, k2 = tr - disc;
                 const double kmin = std::abs(k1) < std::abs(k2) ? k1 : k2;
                 const double w_curv = std::clamp((std::max(std::abs(k1), std::abs(k2)) - std::abs(kmin)) / KappaFull, 0., 1.);
+
                 Vec2d u(s12, kmin - s11);
                 if (Vec2d alt(kmin - s22, s21); alt.squaredNorm() > u.squaredNorm())
                     u = alt;
@@ -137,6 +149,7 @@ double StrengthField::aligned_share(const HeightField &layer, const ExPolygons &
     for (const Vec2d &v : node_vectors(layer, area))
         if (v.norm() >= MinCoherence) {
             ++directed;
+
             aligned += std::cos(std::atan2(v.y(), v.x()) - 2. * angle) >= 0.5;
         }
     return directed > 0 ? double(aligned) / double(directed) : 0.;
@@ -144,6 +157,7 @@ double StrengthField::aligned_share(const HeightField &layer, const ExPolygons &
 
 bool level_enough(const HeightField &surface, const ExPolygons &area, double angle, double reference)
 {
+
     const double spacing = 1.;
     const Flow   flow(float(spacing), 0.2f, float(spacing));
     auto tilt = [&](double a) { return path_tilt(fill_solid(area, ipRectilinear, spacing, a, false, flow, 0.), surface, surface.pitch()).mean; };

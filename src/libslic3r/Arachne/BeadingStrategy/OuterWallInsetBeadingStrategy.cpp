@@ -46,12 +46,15 @@ BeadingStrategy::Beading OuterWallInsetBeadingStrategy::compute(coord_t thicknes
 {
     Beading ret = parent->compute(thickness, bead_count);
 
+
     bead_count = std::count_if(ret.bead_widths.begin(), ret.bead_widths.end(), [](const coord_t width) { return width > 0; });
+
 
     if (bead_count < 2)
     {
         return ret;
     }
+
 
     ret.toolpath_locations[0] = std::min(ret.toolpath_locations[0] + outer_wall_offset, thickness / 2);
     return ret;

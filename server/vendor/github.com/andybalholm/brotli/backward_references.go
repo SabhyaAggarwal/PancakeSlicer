@@ -10,8 +10,6 @@ import (
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Function to find backward reference copies. */
-
 func computeDistanceCode(distance uint, max_distance uint, dist_cache []int) uint {
 	if distance <= max_distance {
 		var distance_plus_3 uint = distance + 3
@@ -50,13 +48,9 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 	var random_heuristics_window_size uint = literalSpreeLengthForSparseSearch(params)
 	var apply_random_heuristics uint = position + random_heuristics_window_size
 	var gap uint = 0
-	/* Set maximum distance, see section 9.1. of the spec. */
 
 	const kMinScore uint = scoreBase + 100
 
-	/* For speed up heuristics for random data. */
-
-	/* Minimum score to accept a backward reference. */
 	hasher.PrepareDistanceCache(dist_cache)
 	sr2, _ := hasherSearchResultPool.Get().(*hasherSearchResult)
 	if sr2 == nil {
@@ -76,7 +70,7 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 		sr.score = kMinScore
 		hasher.FindLongestMatch(&params.dictionary, ringbuffer, ringbuffer_mask, dist_cache, position, max_length, max_distance, gap, params.dist.max_distance, sr)
 		if sr.score > kMinScore {
-			/* Found a match. Let's look for something even better ahead. */
+
 			var delayed_backward_references_in_row int = 0
 			max_length--
 			for ; ; max_length-- {
@@ -92,8 +86,7 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 				max_distance = brotli_min_size_t(position+1, max_backward_limit)
 				hasher.FindLongestMatch(&params.dictionary, ringbuffer, ringbuffer_mask, dist_cache, position+1, max_length, max_distance, gap, params.dist.max_distance, sr2)
 				if sr2.score >= sr.score+cost_diff_lazy {
-					/* Ok, let's just write one byte for now and start a match from the
-					   next byte. */
+
 					position++
 
 					insert_length++
@@ -110,8 +103,7 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 			apply_random_heuristics = position + 2*sr.len + random_heuristics_window_size
 			max_distance = brotli_min_size_t(position, max_backward_limit)
 			{
-				/* The first 16 codes are special short-codes,
-				   and the minimum offset is 1. */
+
 				var distance_code uint = computeDistanceCode(sr.distance, max_distance+gap, dist_cache)
 				if (sr.distance <= (max_distance + gap)) && distance_code > 0 {
 					dist_cache[3] = dist_cache[2]
@@ -126,10 +118,7 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 
 			*num_literals += insert_length
 			insert_length = 0
-			/* Put the hash keys into the table, if there are enough bytes left.
-			   Depending on the hasher implementation, it can push all positions
-			   in the given range or only a subset of them.
-			   Avoid hash poisoning with RLE data. */
+
 			{
 				var range_start uint = position + 2
 				var range_end uint = brotli_min_size_t(position+sr.len, store_end)
@@ -145,20 +134,10 @@ func createBackwardReferences(num_bytes uint, position uint, ringbuffer []byte, 
 			insert_length++
 			position++
 
-			/* If we have not seen matches for a long time, we can skip some
-			   match lookups. Unsuccessful match lookups are very very expensive
-			   and this kind of a heuristic speeds up compression quite
-			   a lot. */
 			if position > apply_random_heuristics {
-				/* Going through uncompressible data, jump. */
+
 				if position > apply_random_heuristics+4*random_heuristics_window_size {
 					var kMargin uint = brotli_max_size_t(hasher.StoreLookahead()-1, 4)
-					/* It is quite a long time since we saw a copy, so we assume
-					   that this data is not compressible, and store hashes less
-					   often. Hashes of non compressible data are less likely to
-					   turn out to be useful in the future, too, so we store less of
-					   them to not to flood out the hash table of good compressible
-					   data. */
 
 					var pos_jump uint = brotli_min_size_t(position+16, pos_end-kMargin)
 					for ; position < pos_jump; position += 4 {

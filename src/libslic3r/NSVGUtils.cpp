@@ -20,9 +20,11 @@
 #include "Point.hpp"
 #include "libslic3r.h"
 
-namespace {    
+namespace {
 using namespace Slic3r;
+
 bool is_line(const float *p, float precision = 1e-4f);
+
 struct LinesPath{
     Polygons polygons;
     Polylines polylines; };
@@ -43,7 +45,7 @@ ExPolygonsWithIds create_shape_with_ids(const NSVGimage &image, const NSVGLinePa
             continue;
 
         bool is_fill_used = shape.fill.type != NSVG_PAINT_NONE;
-        bool is_stroke_used = 
+        bool is_stroke_used =
             shape.stroke.type != NSVG_PAINT_NONE &&
             shape.strokeWidth > 1e-5f;
 
@@ -56,13 +58,15 @@ ExPolygonsWithIds create_shape_with_ids(const NSVGimage &image, const NSVGLinePa
             unsigned unique_id = static_cast<unsigned>(2 * shape_id);
             HealedExPolygons expoly = fill_to_expolygons(lines_path, shape, param);
             result.push_back({unique_id, expoly.expolygons, expoly.is_healed});
-        }        
+        }
         if (is_stroke_used) {
             unsigned unique_id = static_cast<unsigned>(2 * shape_id + 1);
             HealedExPolygons expoly = stroke_to_expolygons(lines_path, shape, param);
             result.push_back({unique_id, expoly.expolygons, expoly.is_healed});
         }
     }
+
+
 
     center(result);
     return result;
@@ -78,7 +82,8 @@ Polygons to_polygons(const NSVGimage &image, const NSVGLineParams &param)
             continue;
         const LinesPath lines_path = linearize_path(shape->paths, param);
         polygons_append(result, lines_path.polygons);
-        polygons_append(result, to_polygons(lines_path.polylines));        
+
+        polygons_append(result, to_polygons(lines_path.polylines));
     }
     return result;
 }
@@ -115,7 +120,9 @@ std::unique_ptr<std::string> read_from_disk(const std::string &path)
 }
 
 NSVGimage_ptr nsvgParse(const std::string& file_data, const char *units, float dpi){
+
     size_t size = file_data.size();
+
     std::unique_ptr<char[]> data_copy(new char[size+1]);
     memcpy(data_copy.get(), file_data.c_str(), size);
     data_copy[size]  = '\0';
@@ -124,16 +131,19 @@ NSVGimage_ptr nsvgParse(const std::string& file_data, const char *units, float d
 }
 
 NSVGimage *init_image(EmbossShape::SvgFile &svg_file){
+
     if (svg_file.image.get() != nullptr)
         return svg_file.image.get();
 
     if (svg_file.file_data == nullptr) {
+
         if (svg_file.path.empty())
             return nullptr;
         svg_file.file_data = read_from_disk(svg_file.path);
         if (svg_file.file_data == nullptr)
             return nullptr;
     }
+
 
     svg_file.image = nsvgParse(*svg_file.file_data);
     if (svg_file.image.get() == NULL)
@@ -150,6 +160,106 @@ size_t get_shapes_count(const NSVGimage &image)
     return count;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
 
 namespace {
@@ -157,8 +267,10 @@ namespace {
 Point::coord_type to_coor(float val, double scale) { return static_cast<Point::coord_type>(std::round(val * scale)); }
 
 bool need_flattening(float tessTol, const Vec2f &p1, const Vec2f &p2, const Vec2f &p3, const Vec2f &p4) {
+
+
     auto det = [](const Vec2f &f, const Vec2f &s) {
-        return std::fabs(f.x() * s.y() - f.y() * s.x()); 
+        return std::fabs(f.x() * s.y() - f.y() * s.x());
     };
 
     Vec2f pd  = (p4 - p1);
@@ -171,16 +283,33 @@ bool need_flattening(float tessTol, const Vec2f &p1, const Vec2f &p2, const Vec2
     return (d23 * d23) >= tessTol * pd.squaredNorm();
 }
 
+
 bool is_line(const float *p, float precision){
+
+
+
+
     float dx_3 = (p[6] - p[0]) / 3.f;
     float dy_3 = (p[7] - p[1]) / 3.f;
 
-    return 
-        is_approx(p[2], p[0] + dx_3, precision) && 
-        is_approx(p[4], p[6] - dx_3, precision) && 
+    return
+        is_approx(p[2], p[0] + dx_3, precision) &&
+        is_approx(p[4], p[6] - dx_3, precision) &&
         is_approx(p[3], p[1] + dy_3, precision) &&
         is_approx(p[5], p[7] - dy_3, precision);
 }
+
+
+
+
+
+
+
+
+
+
+
+
 
 void flatten_cubic_bez(Points &points, float tessTol, const Vec2f& p1, const Vec2f& p2, const Vec2f& p3, const Vec2f& p4, int level)
 {
@@ -194,7 +323,7 @@ void flatten_cubic_bez(Points &points, float tessTol, const Vec2f& p1, const Vec
     --level;
     if (level == 0)
         return;
-    
+
     Vec2f p12  = (p1 + p2) * 0.5f;
     Vec2f p23  = (p2 + p3) * 0.5f;
     Vec2f p34  = (p3 + p4) * 0.5f;
@@ -211,8 +340,10 @@ LinesPath linearize_path(NSVGpath *first_path, const NSVGLineParams &param)
     Polygons  &polygons  = result.polygons;
     Polylines &polylines = result.polylines;
 
+
     Points points;
     for (NSVGpath *path = first_path; path != NULL; path = path->next) {
+
         Point::coord_type x = to_coor(path->pts[0], param.scale);
         Point::coord_type y = to_coor(path->pts[1], param.scale);
         points.emplace_back(x, y);
@@ -220,6 +351,7 @@ LinesPath linearize_path(NSVGpath *first_path, const NSVGLineParams &param)
         for (size_t i = 0; i < path_size; i += 3) {
             const float *p = &path->pts[i * 2];
             if (is_line(p)) {
+
                 Point::coord_type xx = to_coor(p[6], param.scale);
                 Point::coord_type yy = to_coor(p[7], param.scale);
                 points.emplace_back(xx, yy);
@@ -229,12 +361,12 @@ LinesPath linearize_path(NSVGpath *first_path, const NSVGLineParams &param)
             Vec2f p2(p[2], p[3]);
             Vec2f p3(p[4], p[5]);
             Vec2f p4(p[6], p[7]);
-            flatten_cubic_bez(points, param.tesselation_tolerance, 
-                p1 * param.scale, p2 * param.scale, p3 * param.scale, p4 * param.scale, 
+            flatten_cubic_bez(points, param.tesselation_tolerance,
+                p1 * param.scale, p2 * param.scale, p3 * param.scale, p4 * param.scale,
                 param.max_level);
         }
         assert(!points.empty());
-        if (points.empty()) 
+        if (points.empty())
             continue;
 
         if (param.is_y_negative)
@@ -246,6 +378,7 @@ LinesPath linearize_path(NSVGpath *first_path, const NSVGLineParams &param)
         } else {
             polylines.emplace_back(points);
         }
+
         points.clear();
     }
     remove_same_neighbor(polygons);
@@ -256,9 +389,12 @@ LinesPath linearize_path(NSVGpath *first_path, const NSVGLineParams &param)
 HealedExPolygons fill_to_expolygons(const LinesPath &lines_path, const NSVGshape &shape, const NSVGLineParams &param)
 {
     Polygons fill = lines_path.polygons;
+
+
     polygons_append(fill, to_polygons(lines_path.polylines));
     if (fill.empty())
         return {};
+
 
     bool is_non_zero = true;
     if (shape.fillRule == NSVGfillRule::NSVG_FILLRULE_EVENODD)
@@ -268,8 +404,13 @@ HealedExPolygons fill_to_expolygons(const LinesPath &lines_path, const NSVGshape
 }
 
 struct DashesParam{
+
     float dash_length = 1.f;
+
+
+
     bool is_line = true;
+
 
     unsigned char dash_index = 0;
     static constexpr size_t max_dash_array_size = 8;
@@ -283,13 +424,15 @@ struct DashesParam{
         assert(dash_count <= max_dash_array_size);
         for (size_t i = 0; i < dash_count; ++i)
             dash_array[i] = static_cast<float>(shape.strokeDashArray[i] * scale);
-        
+
+
         float all_dash_length = 0;
         for (unsigned char j = 0; j < dash_count; ++j)
             all_dash_length += dash_array[j];
 
         if (dash_count%2 == 1)
             all_dash_length *= 2.0f;
+
 
         float dash_offset = fmodf(static_cast<float>(shape.strokeDashOffset * scale), all_dash_length);
         if (dash_offset < 0.0f)
@@ -309,13 +452,14 @@ Polylines to_dashes(const Polyline &polyline, const DashesParam& param)
 {
     Polylines dashes;
     Polyline dash;
-    Point prev_point;        
-    
+    Point prev_point;
+
     bool is_line = param.is_line;
     unsigned char dash_index = param.dash_index;
     float dash_length = param.dash_length;
     for (const Point &point : polyline.points) {
         if (&point == &polyline.points.front()) {
+
             prev_point = point;
             continue;
         }
@@ -323,10 +467,12 @@ Polylines to_dashes(const Polyline &polyline, const DashesParam& param)
         Point diff = point - prev_point;
         float line_segment_length = diff.cast<float>().norm();
         while (dash_length < line_segment_length) {
+
             float d = dash_length / line_segment_length;
             Point move_point   = diff * d;
             Point intermediate = prev_point + move_point;
-            
+
+
             if (is_line) {
                 if (dash.empty()) {
                     dashes.emplace_back(Points{prev_point, intermediate});
@@ -342,6 +488,7 @@ Polylines to_dashes(const Polyline &polyline, const DashesParam& param)
             line_segment_length -= dash_length;
             prev_point = intermediate;
 
+
             is_line = !is_line;
             dash_index = (dash_index + 1) % param.dash_count;
             dash_length = param.dash_array[dash_index];
@@ -353,6 +500,7 @@ Polylines to_dashes(const Polyline &polyline, const DashesParam& param)
         prev_point = point;
     }
 
+
     if (is_line){
         assert(!dash.empty());
         dash.append(prev_point);
@@ -363,6 +511,7 @@ Polylines to_dashes(const Polyline &polyline, const DashesParam& param)
 
 HealedExPolygons stroke_to_expolygons(const LinesPath &lines_path, const NSVGshape &shape, const NSVGLineParams &param)
 {
+
     JoinType join_type = jtSquare;
     switch (static_cast<NSVGlineJoin>(shape.strokeLineJoin)) {
     case NSVGlineJoin::NSVG_JOIN_BEVEL: join_type = jtSquare; break;
@@ -372,6 +521,8 @@ HealedExPolygons stroke_to_expolygons(const LinesPath &lines_path, const NSVGsha
 
     double mitter = shape.miterLimit * param.scale;
     if (join_type == jtRound) {
+
+
         mitter = std::pow(param.tesselation_tolerance, 1/3.);
     }
     float stroke_width = static_cast<float>(shape.strokeWidth * param.scale);
@@ -394,7 +545,7 @@ HealedExPolygons stroke_to_expolygons(const LinesPath &lines_path, const NSVGsha
         result = offset(dashes, stroke_width / 2, join_type, mitter, end_type);
     } else {
         result = contour_to_polygons(lines_path.polygons, stroke_width, join_type, mitter);
-        polygons_append(result, offset(lines_path.polylines, stroke_width / 2, join_type, mitter, end_type));    
+        polygons_append(result, offset(lines_path.polylines, stroke_width / 2, join_type, mitter, end_type));
     }
 
     bool is_non_zero = true;

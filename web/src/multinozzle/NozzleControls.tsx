@@ -23,6 +23,7 @@ export function VariantSelector({ type, config, machine, selection, onChange }: 
   </span></div>;
 }
 
+
 export function FilamentNozzleAssignment({ slot, disabled }: { slot: number; disabled?: boolean }) {
   const s = useStore((state) => state);
   const machine = effectiveConfig(s, 'machine'), count = extruderCount(machine);

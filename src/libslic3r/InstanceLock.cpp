@@ -26,8 +26,13 @@
 namespace Slic3r {
 
 #ifdef _WIN32
+
 using NativeFileLock = boost::interprocess::file_lock;
 #else
+
+
+
+
 class NativeFileLock
 {
 public:
@@ -41,6 +46,7 @@ public:
     {
         if (::flock(m_fd, LOCK_EX | LOCK_NB) == 0)
             return true;
+
         if (errno == EWOULDBLOCK || errno == EINTR)
             return false;
         throw std::system_error(errno, std::generic_category(), "flock");
@@ -51,16 +57,29 @@ private:
 };
 #endif
 
+
+
+
+
+
+
+
+
+
 struct InstanceLock::Slot
 {
     std::recursive_mutex mutex;
+
     std::unique_ptr<NativeFileLock> file_lock;
     int  depth{0};
+
+
     std::chrono::steady_clock::time_point cooldown_until{};
 };
 
 InstanceLock::Slot &InstanceLock::slot_for(const std::string &lock_file_path)
 {
+
     static auto *registry_mutex = new std::mutex();
     static auto *registry       = new std::map<std::string, std::unique_ptr<Slot>>();
 
@@ -71,16 +90,20 @@ InstanceLock::Slot &InstanceLock::slot_for(const std::string &lock_file_path)
     return *slot;
 }
 
+
 void InstanceLock::defer(Slot &slot, const std::string &reason)
 {
     slot.cooldown_until = std::chrono::steady_clock::now() + cooldown;
     BOOST_LOG_TRIVIAL(warning) << reason << "; proceeding without the lock for the next " << cooldown.count() << " ms";
 }
 
+
+
 bool InstanceLock::open_lock_file(Slot &slot, const std::string &lock_file_path)
 {
     try {
 #ifdef _WIN32
+
         const std::wstring wide_path = boost::nowide::widen(lock_file_path);
         try {
             slot.file_lock = std::make_unique<NativeFileLock>(wide_path.c_str());
@@ -125,6 +148,7 @@ InstanceLock::InstanceLock(const std::string &lock_file_path, std::chrono::milli
         if (! taken)
             m_slot->file_lock.reset();
     }
+
     ++ m_slot->depth;
     m_locked = m_slot->file_lock != nullptr;
 }

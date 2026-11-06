@@ -4,6 +4,7 @@ export function unsupportedBrowserMessage(detail: string): string {
   return `Use ${SUPPORTED_BROWSERS}. ${detail}`;
 }
 
+
 export type GraphicsCapability = { webgl2: true } | { webgl2: false; reason: string };
 let graphics: GraphicsCapability | undefined;
 export function graphicsCapability(): GraphicsCapability {
@@ -13,6 +14,7 @@ export function graphicsCapability(): GraphicsCapability {
   return graphics = gl ? { webgl2: true }
     : { webgl2: false, reason: 'The 3D view needs WebGL2. Enable hardware acceleration or update your graphics driver.' };
 }
+
 
 export function showBrowserNotice(root: HTMLElement, detail: string, title = 'Unsupported browser'): void {
   const doc = root.ownerDocument;
@@ -35,6 +37,8 @@ export async function checkBrowserSupport(): Promise<void> {
       typeof Blob === 'undefined' || typeof Blob.prototype.stream !== 'function')
     throw new Error('Required worker, streaming or resize features are unavailable.');
   graphicsCapability();
+
+
 
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('./browser-support.worker.ts', import.meta.url), { type: 'module' });

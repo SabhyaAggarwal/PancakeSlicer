@@ -8,11 +8,14 @@ import { Num } from './Num';
 
 const PartManipulation = lazy(() => import('./PartManipulation'));
 
+
 let moveCoordinates: 'world' | 'object' = 'world';
 const DEG = Math.PI / 180;
 const AX = ['X', 'Y', 'Z'];
+
 const rotationOf = (rot: [number, number, number]) => new THREE.Matrix4().makeRotationZ(rot[2] * DEG)
   .multiply(new THREE.Matrix4().makeRotationY(rot[1] * DEG)).multiply(new THREE.Matrix4().makeRotationX(rot[0] * DEG));
+
 
 function setRotation(objectId: number, instanceId: number, rot: [number, number, number]) {
   undoable('Reset rotation', () => setState((s) => ({
@@ -22,6 +25,7 @@ function setRotation(objectId: number, instanceId: number, rot: [number, number,
     job: markStale(s.job),
   })));
 }
+
 
 export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'object'; onChange: (v: 'world' | 'object') => void; enabled: boolean }) {
   return (
@@ -35,6 +39,7 @@ export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'ob
   );
 }
 
+
 function RowButton({ d, title, onClick, disabled, pressed }: { d: string; title: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
   return (
     <button type="button" className="xf-btn" aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
@@ -42,6 +47,7 @@ function RowButton({ d, title, onClick, disabled, pressed }: { d: string; title:
     </button>
   );
 }
+
 
 export function Row({ label, values, onCommit, names, action }: { label: string; values?: number[]; onCommit: (axis: number, v: number) => void; names: string; action?: React.ReactNode }) {
   return (
@@ -64,10 +70,13 @@ export function TransformPanel() {
   const valid = !!o && !!inst && !sel?.all && !o.project?.placeholder;
   const close = () => setState({gizmo: 'none'});
   useEffect(() => { if (active && !valid) setState({gizmo: 'none'}); }, [active, valid]);
+
+
   const openKey = `${gizmo}|${o?.id}|${inst?.id}`;
   const [opened, setOpened] = useState<{ key: string; pos: THREE.Vector3; rot: [number, number, number] } | null>(null);
   if (o && inst && opened?.key !== openKey) setOpened({ key: openKey, pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot: [o.rotX, o.rotY, inst.rotZ] });
   const title = gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : gizmo === 'scale' ? 'Scale' : 'Transform';
+
   const toggle = gizmo === 'move' && inst ? <CoordToggle value={coordinates} enabled onChange={(c) => { moveCoordinates = c; setCoordinates(c); }} /> : null;
   const v = o?.volumes?.find((vv) => vv.id === sel?.volume);
   const live = o && inst && !o.project?.placeholder ? o : undefined;
@@ -77,6 +86,8 @@ export function TransformPanel() {
   if (live && inst && v) body = <Suspense fallback={null}><PartManipulation o={live} inst={inst} v={v} local={coordinates === 'object' && gizmo === 'move'} lock={lock} /></Suspense>;
   else if (live && inst) {
     const o = live;
+
+
     const mesh = o.geometry.boundingBox!.getSize(new THREE.Vector3());
     const rescale = (axis: number, factor: number) => updateObject(o.id, {
       scale: o.scale.map((s, k) => (uniform || k === axis ? s * factor : s)) as [number, number, number],
@@ -91,6 +102,7 @@ export function TransformPanel() {
       const p = relative.clone().setComponent(axis, value).applyMatrix4(axes).add(start.pos);
       updateInstance(o.id, inst.id, { x: p.x, y: p.y, z: p.z });
     };
+
     const back = gizmo === 'rotate' && rot.some((r, k) => Math.abs(r - start.rot[k]) > 1e-9);
     const reset = <RowButton disabled={!back && rot.every((r) => r === 0)} d="M3.5 8a4.5 4.5 0 1 0 1.4-3.3M3.5 2.5v2.5H6"
       title={back ? 'Reset current rotation to the value when open the rotation tool.' : 'Reset current rotation to real zeros.'}
@@ -107,6 +119,7 @@ export function TransformPanel() {
       </>
     );
   } else {
+
     const none = () => undefined;
     body = (
       <>

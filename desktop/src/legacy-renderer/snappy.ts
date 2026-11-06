@@ -1,3 +1,6 @@
+
+
+
 export function unsnappy(input: Buffer, limit: number): Buffer {
   let at = 0, size = 0, shift = 0;
   for (;;) {
@@ -35,6 +38,7 @@ export function unsnappy(input: Buffer, limit: number): Buffer {
       if (kind === 1) offset = (tag & 224) * 8 + input[at++];
       else for (let i = 0; i < count; i++) offset += input[at++] * 2 ** (8 * i);
       if (offset < 1 || offset > written || written + length > size) throw new Error('Invalid Snappy copy.');
+
       for (let i = 0; i < length; i++) output[written + i] = output[written + i - offset];
     }
     written += length;

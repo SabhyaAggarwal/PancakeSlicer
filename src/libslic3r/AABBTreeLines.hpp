@@ -44,6 +44,9 @@ namespace AABBTreeLines {
             }
         };
 
+
+
+
         template <typename LineType, typename TreeType, typename VectorType, int coordinate>
         inline std::tuple<int, int> coordinate_aligned_ray_hit_count(size_t node_idx,
             const TreeType& tree,
@@ -58,6 +61,8 @@ namespace AABBTreeLines {
             if (node.is_leaf()) {
                 const LineType& line = lines[node.idx];
                 if (ray_origin[other_coordinate] < std::min(line.a[other_coordinate], line.b[other_coordinate]) || ray_origin[other_coordinate] >= std::max(line.a[other_coordinate], line.b[other_coordinate])) {
+
+
                     return { 0, 0 };
                 }
 
@@ -68,6 +73,13 @@ namespace AABBTreeLines {
                 } else if (ray_origin[coordinate] < line_min) {
                     return { 0, 1 };
                 } else {
+
+
+
+
+
+
+
                     Floating distance_oc = line.b[other_coordinate] - line.a[other_coordinate];
                     Floating t = (ray_origin[other_coordinate] - line.a[other_coordinate]) / distance_oc;
                     Floating val_c = line.a[coordinate] + t * (line.b[coordinate] - line.a[coordinate]);
@@ -151,11 +163,17 @@ namespace AABBTreeLines {
         }
 
     }
+
+
+
+
+
     template<typename LineType>
     inline AABBTreeIndirect::Tree<LineType::Dim, typename LineType::Scalar> build_aabb_tree_over_indexed_lines(
         const std::vector<LineType>& lines)
     {
         using TreeType = AABBTreeIndirect::Tree<LineType::Dim, typename LineType::Scalar>;
+
         using VectorType = typename TreeType::VectorType;
         using BoundingBox = typename TreeType::BoundingBox;
 
@@ -186,6 +204,9 @@ namespace AABBTreeLines {
         return out;
     }
 
+
+
+
     template <typename LineType, typename TreeType, typename VectorType>
     inline typename VectorType::Scalar squared_distance_to_indexed_lines(
         const std::vector<LineType>& lines,
@@ -203,6 +224,7 @@ namespace AABBTreeLines {
             hit_idx_out, hit_point_out);
     }
 
+
     template <typename LineType, typename TreeType, typename VectorType>
     inline std::vector<size_t> all_lines_in_radius(const std::vector<LineType>& lines,
         const TreeType& tree,
@@ -219,7 +241,8 @@ namespace AABBTreeLines {
         AABBTreeIndirect::detail::indexed_primitives_within_distance_squared_recurisve(distancer, size_t(0), max_distance_squared, found_lines);
         return found_lines;
     }
-    
+
+
 
     template <typename LineType, typename TreeType, typename VectorType>
     inline int point_outside_closed_contours(const std::vector<LineType>& lines, const TreeType& tree, const VectorType& point)
@@ -305,7 +328,9 @@ namespace AABBTreeLines {
 
         LinesDistancer() = default;
 
+
         int outside(const Vec<LineType::Dim, Scalar>& point) const { return point_outside_closed_contours(lines, tree, point); }
+
 
         template<bool SIGNED_DISTANCE>
         std::tuple<Floating, size_t, Vec<LineType::Dim, Floating>> distance_from_lines_extra(const Vec<LineType::Dim, Scalar>& point) const

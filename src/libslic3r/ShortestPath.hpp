@@ -17,6 +17,7 @@ namespace Slic3r { class Line; }
 namespace Slic3r {
 
 std::vector<size_t> 				 chain_points(const Points &points, const Point *start_near = nullptr);
+
 std::vector<size_t> 				 chain_points_with_postprocessing(const Points &points, const Point *start_near = nullptr);
 std::vector<size_t> 				 chain_expolygons(const ExPolygons &input_exploy);
 
@@ -24,6 +25,7 @@ std::vector<std::pair<size_t, bool>> chain_extrusion_entities(std::vector<Extrus
 void                                 reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entities, const std::vector<std::pair<size_t, bool>> &chain);
 void                                 chain_and_reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entities, const Point &start_near);
 void                                 chain_and_reorder_extrusion_entities(std::vector<ExtrusionEntity*> &entities, const Point *start_near = nullptr);
+
 void                                 chain_and_reorder_extrusion_entities(std::vector<const ExtrusionEntity*> &entities, const Point &start_near,
                                                                           std::vector<std::unique_ptr<ExtrusionEntity>> &reversed_clones);
 
@@ -48,11 +50,15 @@ template<typename T> inline void reorder_by_shortest_traverse(std::vector<T> &po
 }
 
 
+
+
 class Print;
 struct PrintInstance;
+
 class PrintObject;
 std::vector<const PrintInstance*> chain_print_object_instances(const std::vector<const PrintObject*>& print_objects, const Point* start_near);
 std::vector<const PrintInstance*> 	 chain_print_object_instances(const Print &print);
+
 
 Polylines 							 chain_lines(const std::vector<Line> &lines, const double point_distance_epsilon);
 

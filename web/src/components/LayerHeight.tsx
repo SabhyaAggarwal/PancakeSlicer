@@ -1,11 +1,14 @@
 import { Check } from './Check';
 import { Range } from './Range';
+
+
 import { useRef, useState } from 'react';
 import { effectiveConfig, getState, setState, useStore, type PlateObject, type State } from '../state/store';
 import { beginStep, undoable } from '../state/history';
 import { instanceMatrix, objectHeight } from '../plater/geometry';
 import { adaptiveProfile, adjustProfile, baseProfile, fitProfile, heightAt, slicingParams, smoothProfile, type EditAction, type SlicingParams } from '../plater/layerProfile';
 import { firstLayer } from '../slice-input';
+
 
 export const canEditLayers = (s: State) => !!s.features.layer_profile && !!s.selected && !s.selected.all && !s.project &&
   !!s.objects.find((o) => o.id === s.selected!.object && !o.project);
@@ -25,6 +28,7 @@ export const layerProfileOf = (s: State, o: PlateObject, p = layerParams(s, o)) 
 function setProfile(id: number, layerProfile: number[] | undefined) {
   setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, layerProfile } : o)) }));
 }
+
 
 let cursor: { z: number; band: number } | null = null;
 const cursorListeners = new Set<() => void>();
@@ -75,6 +79,7 @@ export function LayerHeightPanel() {
     </div>
   );
 }
+
 
 export function LayerHeightBar() {
   const o = useLayerObject();

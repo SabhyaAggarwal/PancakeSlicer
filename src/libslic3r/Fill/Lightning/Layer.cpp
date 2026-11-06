@@ -72,6 +72,8 @@ void Layer::generateNewTrees
     SparseNodeGrid tree_node_locator;
     fillLocator(tree_node_locator, current_outlines_bbox);
 
+
+
     size_t unsupported_cell_idx = 0;
     Point  unsupported_location;
     while (distance_field.tryGetNextPoint(&unsupported_location, &unsupported_cell_idx, unsupported_cell_idx)) {
@@ -85,6 +87,7 @@ void Layer::generateNewTrees
         tree_node_locator.insert(std::make_pair(to_grid_point(new_child->getLocation(), current_outlines_bbox), new_child));
         if (new_parent)
             tree_node_locator.insert(std::make_pair(to_grid_point(new_parent->getLocation(), current_outlines_bbox), new_parent));
+
         distance_field.update(grounding_loc.p(), unsupported_location);
     }
 
@@ -102,14 +105,17 @@ static bool polygonCollidesWithLineSegment(const Point &from, const Point &to, c
         explicit Visitor(const EdgeGrid::Grid &grid, const Line &line) : grid(grid), line(line) {}
 
         bool operator()(coord_t iy, coord_t ix) {
+
             auto cell_data_range = grid.cell_data_range(iy, ix);
             for (auto it_contour_and_segment = cell_data_range.first; it_contour_and_segment != cell_data_range.second; ++ it_contour_and_segment) {
+
                 auto segment = grid.segment(*it_contour_and_segment);
                 if (Geometry::segments_intersect(segment.first, segment.second, line.a, line.b)) {
                     this->intersect = true;
                     return false;
                 }
             }
+
             return true;
         }
 
@@ -134,6 +140,7 @@ GroundingLocation Layer::getBestGroundingLocation
     const NodeSPtr& exclude_tree
 )
 {
+
     Point node_location;
     {
         double d2 = std::numeric_limits<double>::max();
@@ -181,6 +188,12 @@ GroundingLocation Layer::getBestGroundingLocation
                             }
                         }
                     }
+
+
+
+
+
+
                     {
                         std::lock_guard<std::mutex> lock(current_dist_mutex);
                         if (local_current_dist < current_dist ||
@@ -206,6 +219,7 @@ bool Layer::attach(
     NodeSPtr& new_child,
     NodeSPtr& new_root)
 {
+
     if (grounding_loc.boundary_location) {
         new_root = Node::create(grounding_loc.p(), std::make_optional(grounding_loc.p()));
         new_child = new_root->addChild(unsupported_location);
@@ -243,6 +257,7 @@ void Layer::reconnectRoots
             if (ground_loc != root_ptr->getLocation())
             {
                 Point new_root_pt;
+
                 if (lineSegmentPolygonsIntersection(root_ptr->getLocation(), ground_loc, outline_locator, new_root_pt, within_max_dist)) {
                     auto new_root = Node::create(new_root_pt, new_root_pt);
                     root_ptr->addChild(new_root);
@@ -295,6 +310,7 @@ void Layer::reconnectRoots
 
             ground.tree_node->addChild(attach_ptr);
 
+
             *old_root_it = std::move(tree_roots.back());
             tree_roots.pop_back();
         }
@@ -302,6 +318,19 @@ void Layer::reconnectRoots
 }
 
 #if 0
+
+
+
+
+
+
+
+
+
+
+
+
+
 static unsigned int moveInside(const Polygons& polygons, Point& from, int distance, int64_t maxDist2)
 {
     Point   ret                                    = from;
@@ -315,9 +344,14 @@ static unsigned int moveInside(const Polygons& polygons, Point& from, int distan
             continue;
         Point p0 = poly[poly.size() - 2];
         Point p1 = poly.back();
+
+
         bool projected_p_beyond_prev_segment = (p1 - p0).cast<int64_t>().dot((from - p0).cast<int64_t>()) >= (p1 - p0).cast<int64_t>().squaredNorm();
         for (const Point& p2 : poly)
         {
+
+
+
             const Point& a = p1;
             const Point& b = p2;
             const Point& p = from;
@@ -342,10 +376,12 @@ static unsigned int moveInside(const Polygons& polygons, Point& from, int distan
                     {
                         bestDist2 = dist2;
                         bestPoly = poly_idx;
-                        if (distance == 0) { 
+                        if (distance == 0) {
                             ret = x;
                         } else {
+
                             Point inward_dir = perp((ab.cast<double>().normalized() * scaled<double>(10.0) + (p1 - p0).cast<double>().normalized() * scaled<double>(10.0)).eval()).cast<coord_t>();
+
                             ret = x + (inward_dir.cast<double>().normalized() * distance).cast<coord_t>();
                             is_already_on_correct_side_of_boundary = inward_dir.cast<int64_t>().dot((p - x).cast<int64_t>()) * distance >= 0;
                         }
@@ -379,6 +415,7 @@ static unsigned int moveInside(const Polygons& polygons, Point& from, int distan
                     if (distance == 0) { ret = x; }
                     else
                     {
+
                         Vec2d inward_dir = perp((ab.cast<double>().normalized() * distance).eval());
                         ret = x + inward_dir.cast<coord_t>();
                         is_already_on_correct_side_of_boundary = inward_dir.dot((p - x).cast<double>()) >= 0;
@@ -397,6 +434,7 @@ static unsigned int moveInside(const Polygons& polygons, Point& from, int distan
         }
         else
         {
+
         }
         return bestPoly;
     }

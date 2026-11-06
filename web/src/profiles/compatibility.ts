@@ -1,3 +1,4 @@
+
 import type { Config, PresetType, SystemPreset } from '../api/types';
 import { normalizeConfigValue } from '../config-values';
 import { resolveProfile } from './model';
@@ -11,13 +12,16 @@ const strings = (key: string, value: Config[string] | undefined): string[] => {
 };
 const allowed = (): Compatibility => ({ok:true,reason:''});
 const denied = (reason: string, unknown = false): Compatibility => ({ok:false,reason,...(unknown ? {unknown:true} : {})});
+
 export function isCompatible(p: SystemPreset, printer: string, process?: string): boolean {
   if (p.compatible_evaluated) return !!p.compatible_printers?.includes(printer) && (!process || !p.compatible_prints || p.compatible_prints.includes(process));
   const list = strings('compatible_printers',p.config.compatible_printers ?? p.compatible_printers);
+
   return list.length ? list.includes(printer) : !p.config.compatible_printers_condition;
 }
 function nativeConstraint(config: Config, kind: 'printers' | 'prints', active: ContextProfile): Compatibility {
   const key = kind === 'printers' ? 'compatible_printers' : 'compatible_prints', list = strings(key, config[key]);
+
   if (list.length) return list.includes(active.name ?? '') || kind === 'printers' && !!active.source && !!active.parentName && list.includes(active.parentName)
     ? allowed() : denied(kind === 'printers' ? 'Other printer' : 'Other print settings');
   const expression = String(config[`${key}_condition`] ?? '');
@@ -26,6 +30,7 @@ function nativeConstraint(config: Config, kind: 'printers' | 'prints', active: C
   const result = evaluateProfileCondition(expression,env);
   return !result.ok ? denied(`Compatibility needs repair: ${result.error}`,true) : result.value ? allowed() : denied(kind === 'printers' ? 'Printer settings do not match' : 'Print settings do not match');
 }
+
 function resolvable(s: ProfileContextState, type: PresetType, key: string, printer: string, nozzle?: string | number) {
   const profile = resolveProfile(s,type,key);
   if (profile.issue) return {profile, failure: denied(profile.error ?? 'Profile unavailable',true)};
@@ -35,17 +40,24 @@ function resolvable(s: ProfileContextState, type: PresetType, key: string, print
   if (type === 'filament' && context.process.issue) return {profile, context, failure: denied(context.process.error ?? 'Print settings unavailable',true)};
   return {profile, context};
 }
+
 export function selectNativeCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {
   const {profile, context, failure} = resolvable(s,type,key,printer,nozzle);
   if (failure) return failure;
   if (!context) return allowed();
+
   if (type === 'process' && (profile.source as { auto?: unknown } | undefined)?.auto) return allowed();
+
+
   if (type === 'filament' && profile.source && profile.source.kind !== 'master') return allowed();
   const config = {...profile.config};
+
   if (config.compatible_printers === undefined && !profile.base?.compatible_evaluated && profile.base?.compatible_printers)
     config.compatible_printers = profile.base.compatible_printers;
   const printers = nativeConstraint(config,'printers',context.printer);
   if (!printers.ok) return printers;
+
+
   const raw = strings('compatible_printers',config.compatible_printers), expression = String(config.compatible_printers_condition ?? '');
   const overridden = !!profile.source && ['compatible_printers','compatible_printers_condition'].some(key => key in (profile.source!.overlay ?? profile.source!.overrides) || key in (profile.source!.metadata ?? {}));
   if (!raw.length && !expression && !overridden && profile.base?.compatible_evaluated
@@ -53,6 +65,7 @@ export function selectNativeCompatibility(s: ProfileContextState, type: PresetTy
   return printers;
 }
 export function selectCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {
+
   const native = type !== 'machine' && hasWorksWithRule(s,type,key) ? resolvable(s,type,key,printer,nozzle).failure ?? allowed()
     : selectNativeCompatibility(s,type,key,printer,nozzle);
   if (!native.ok || type === 'machine') return native;

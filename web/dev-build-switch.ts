@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -8,12 +14,13 @@ import type { Plugin } from 'vite';
 const COOKIE = 'orca-build';
 const COOKIE_VALUE = new RegExp(`(?:^|;\\s*)${COOKIE}=(on|off)(?:;|$)`);
 const LOOPBACK = /^(127\.\d+\.\d+\.\d+|localhost|\[::1\])(:\d+)?$/;
-const BUILDS = process.env.ORCA_USERBUILD_DIR ?? 'userbuild/builds';
+const BUILDS = process.env.ORCA_USERBUILD_DIR ?? path.resolve('.local/userbuild/builds');
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp',
   '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.stl': 'model/stl',
 };
+
 
 function wantsBuild(req: IncomingMessage) {
   const cookie = COOKIE_VALUE.exec(req.headers.cookie ?? '')?.[1];
@@ -21,6 +28,8 @@ function wantsBuild(req: IncomingMessage) {
   const h = req.headers;
   return !LOOPBACK.test(String(h['x-forwarded-host'] ?? h.host ?? '')) || !!(h['x-forwarded-for'] || h['cf-ray']);
 }
+
+
 
 const digests = new Map<string, Promise<string>>();
 const digest = (file: string) => {
@@ -46,6 +55,7 @@ async function send(req: IncomingMessage, res: ServerResponse, sha: string, name
   if (br) res.setHeader('Vary', 'Accept-Encoding');
   if (req.headers['if-none-match'] === etag) { res.statusCode = 304; res.end(); return true; }
   if (name === 'index.html') {
+
     const html = Buffer.from((await readFile(file, 'utf8')).replace('</head>', `<meta name="orca-build" content="${sha}"></head>`));
     res.setHeader('Content-Length', html.length);
     res.end(req.method === 'HEAD' ? undefined : html);
@@ -57,6 +67,7 @@ async function send(req: IncomingMessage, res: ServerResponse, sha: string, name
   else createReadStream(br ? file + '.br' : file).pipe(res);
   return true;
 }
+
 
 async function olderBuilds(current: string) {
   const dirs = await Promise.all((await readdir(BUILDS, { withFileTypes: true }).catch(() => []))
@@ -89,10 +100,12 @@ export function devBuildSwitch(): Plugin {
           if (await send(req, res, current, name)) return true;
           if (name.startsWith('assets' + path.sep)) {
             for (const sha of await olderBuilds(current)) if (await send(req, res, sha, name)) return true;
+
             res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Build': current });
             res.end('No build has this asset.');
             return true;
           }
+
           return !path.extname(name) && send(req, res, current, 'index.html');
         })().then((sent) => { if (!sent) next(); }, next);
       });

@@ -49,11 +49,17 @@ struct Calib_Params
     std::string shaper_type;
     std::vector<double> accelerations;
     std::vector<double> speeds;
+
+
     double vfa_layer_height = 0.0;
+
+
     bool nozzle_based_resize = true;
 
     CalibMode mode;
 };
+
+
 
 static constexpr int vfa_layers_per_block = 25;
 static constexpr double vfa_base_block_height = 5.0;
@@ -253,6 +259,7 @@ class CalibPressureAdvanceLine : public CalibPressureAdvance
 public:
     CalibPressureAdvanceLine(GCode* gcodegen);
     ~CalibPressureAdvanceLine(){};
+
     BoundingBoxf print_extents(const BoundingBoxf &bed_ext) const;
 
     std::string generate_test(double start_pa = 0, double step_pa = 0.002, int count = 50);
@@ -321,6 +328,7 @@ public:
     Vec3d get_start_offset();
 
 protected:
+
     double speed_first_layer() const { return m_config.get_abs_value_at("initial_layer_speed", m_params.extruder_id); };
     double speed_perimeter() const { return m_config.get_abs_value_at("outer_wall_speed", m_params.extruder_id); };
     double accel_perimeter() const { return m_config.get_abs_value_at("outer_wall_acceleration", m_params.extruder_id); }
@@ -337,6 +345,12 @@ private:
     double    height_z_offset() const { return m_config.option<ConfigOptionFloat>("z_offset")->value; };
     double    height_layer() const { return m_config.option<ConfigOptionFloat>("layer_height")->value; };
     const int get_num_patterns() const { return std::ceil((m_params.end - m_params.start) / m_params.step + 1); }
+
+
+
+
+
+
 
     double line_spacing() const { return line_width() - height_layer() * (1 - M_PI / 4); };
     double line_spacing_first_layer() const { return line_width_first_layer() - height_first_layer() * (1 - M_PI / 4); };
@@ -355,6 +369,9 @@ private:
     double pattern_shift() const;
 
     const Calib_Params &m_params;
+
+
+
 
     std::shared_ptr<GCodeWriter> m_writer{std::make_shared<GCodeWriter>()};
     Vec3d              m_starting_point;

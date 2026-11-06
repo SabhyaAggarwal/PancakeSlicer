@@ -13,9 +13,20 @@
 namespace Slic3r::Arachne
 {
 
+
+
+
+
+
+
+
+
 class WideningBeadingStrategy : public BeadingStrategy
 {
 public:
+
+
+
     WideningBeadingStrategy(BeadingStrategyPtr parent, coord_t min_input_width, coord_t min_output_width);
 
     ~WideningBeadingStrategy() override = default;

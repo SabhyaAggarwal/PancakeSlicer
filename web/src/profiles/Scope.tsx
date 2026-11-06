@@ -1,3 +1,8 @@
+
+
+
+
+
 import type { PresetType } from '../api/types';
 import { splitKey } from '../options';
 import { getState, removeObjectOptions, removeVolumeOptions, useStore, type State } from '../state/store';
@@ -5,6 +10,7 @@ import { undoable } from '../state/history';
 import { removeRangeOptions } from '../plater/ranges';
 import { selectChanges, type ChangeTarget, type SettingChange } from '../state/changes';
 import { revert } from './stack';
+
 
 const cache = new WeakMap<State, Map<string, SettingChange[]>>();
 const changesOf = (s: State, type: PresetType, slot: number) => {
@@ -14,6 +20,7 @@ const changesOf = (s: State, type: PresetType, slot: number) => {
   if (!m.has(id)) m.set(id, selectChanges(s, type, slot));
   return m.get(id)!;
 };
+
 
 interface Drop { below: 'preset' | 'project' | 'object'; run(): void }
 
@@ -33,6 +40,7 @@ interface Props { type: PresetType; slot?: number; optKey: string; target?: Chan
 
 export function ScopeMark({ type, slot = 0, optKey, target = {} }: Props) {
   const key = splitKey(optKey)[0];
+
   const below = useStore((s) => dropOf(s, type, key, slot, target)?.below);
   if (!below) return <span className="scope" />;
   const label = `Use ${below} value`;

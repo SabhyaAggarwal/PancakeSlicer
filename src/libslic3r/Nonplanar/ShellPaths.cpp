@@ -44,13 +44,16 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 constexpr int    LineAngles = 12;
 constexpr double AngleStep  = PI / LineAngles;
+
 
 bool link_inside(const Point &a, const Point &b, const AreaEdges &area)
 {
     if (a == b)
         return true;
+
     if (const int side = area.classify(a, b); side >= 0)
         return side == 1 || !(Polyline(a, b).length() > SCALED_EPSILON);
     for (const Polyline &outside : diff_pl(Polylines{ Polyline(a, b) }, area.area()))
@@ -58,6 +61,7 @@ bool link_inside(const Point &a, const Point &b, const AreaEdges &area)
             return false;
     return true;
 }
+
 
 std::pair<Point, size_t> project_on(const Polygon &rail, const Point &p)
 {
@@ -78,6 +82,7 @@ std::pair<Point, size_t> project_on(const Polygon &rail, const Point &p)
     return { Point(coord_t(std::lround(foot.x())), coord_t(std::lround(foot.y()))), best };
 }
 
+
 Polyline open_loop_at(const Polygon &loop, const Point &near)
 {
     const Points &pts         = loop.points;
@@ -93,6 +98,9 @@ Polyline open_loop_at(const Polygon &loop, const Point &near)
     return out;
 }
 
+
+
+
 Polyline glide_route(const Point &a, const Point &b, const AreaEdges &inside, const Polygons &rails, double reach, double max_length)
 {
     if ((b - a).cast<double>().norm() <= max_length && link_inside(a, b, inside))
@@ -107,6 +115,7 @@ Polyline glide_route(const Point &a, const Point &b, const AreaEdges &inside, co
         const size_t n = rail.points.size();
         for (const bool forward : { true, false }) {
             Polyline route(a, pa);
+
             if (forward) {
                 for (size_t i = (ia + 1) % n, k = 0; ia != ib && k < n; i = (i + 1) % n, ++k) {
                     route.points.emplace_back(rail.points[i]);
@@ -132,6 +141,7 @@ Polyline glide_route(const Point &a, const Point &b, const AreaEdges &inside, co
     return best;
 }
 
+
 Point crossing_near(const Polygon &loop, const Polyline &line, const Point &near)
 {
     Point  best = near;
@@ -148,12 +158,16 @@ Point crossing_near(const Polygon &loop, const Polyline &line, const Point &near
     return best;
 }
 
+
 void reverse_order(Polylines &polylines)
 {
     std::reverse(polylines.begin(), polylines.end());
     for (Polyline &pl : polylines)
         pl.reverse();
 }
+
+
+
 
 class AcrossStretch
 {
@@ -185,6 +199,7 @@ public:
         const double t  = fu - iu;
         return (1. - t) * this->column(iu, v) + t * this->column(iu + 1, v);
     }
+
     double unstretch(double u, double w) const
     {
         double lo = m_v0 - m_step, hi = m_v0 + m_nv * m_step;
@@ -196,6 +211,7 @@ public:
     }
 
 private:
+
     double column(int iu, double v) const
     {
         const double *w  = &m_w[size_t(iu) * m_nv];
@@ -213,6 +229,7 @@ private:
     int                 m_nu = 0, m_nv = 0;
     std::vector<double> m_w;
 };
+
 
 template<typename Map> Points map_resampled(const Points &pts, bool closed, double step, const Map &map)
 {
@@ -233,8 +250,16 @@ template<typename Map> Points map_resampled(const Points &pts, bool closed, doub
     return out;
 }
 
+
+
 constexpr int ContourDirectionBins = 12;
+
 constexpr double ContourDirectionWindow = 2.;
+
+
+
+
+
 
 Polylines fill_piece(const ExPolygons &piece, const ExPolygons &area, double angle, double spacing, const Flow &flow, bool monotonic,
                      double z)
@@ -250,6 +275,7 @@ Polylines fill_piece(const ExPolygons &piece, const ExPolygons &area, double ang
 Polylines fill_surface_spaced(const ExPolygons &area, const HeightField &surface, InfillPattern pattern, double spacing, double angle,
                               bool monotonic, const Flow &flow, double z)
 {
+
     const double line = angle;
     const double step = surface.pitch();
     const Vec2d  dir(std::cos(line), std::sin(line)), across(-std::sin(line), std::cos(line));
@@ -288,6 +314,7 @@ float surface_spaced_bead(float height, double width, const Vec2d &gradient, dou
 {
     if (std::isnan(gradient.x()) || std::isnan(gradient.y()))
         return height;
+
     const double s      = gradient.dot(Vec2d(-std::sin(angle), std::cos(angle)));
     return float(bead_height_for_area(width, bead_area(width, height) / std::sqrt(1. + s * s)));
 }
@@ -324,6 +351,7 @@ Polylines contour_fill(const HeightField &surface, const ExPolygons &area, doubl
                        double z, double cross, double strip_height)
 {
     const int nx = surface.nx(), ny = surface.ny();
+
     std::vector<double> sxx(size_t(nx + 1) * (ny + 1), 0.), sxy(sxx.size(), 0.), syy(sxx.size(), 0.);
     auto at = [nx](std::vector<double> &v, int ix, int iy) -> double & { return v[size_t(iy) * (nx + 1) + ix]; };
     for (int iy = 0; iy < ny; ++iy)
@@ -343,6 +371,7 @@ Polylines contour_fill(const HeightField &surface, const ExPolygons &area, doubl
             auto box = [&](std::vector<double> &v) { return at(v, x1, y1) - at(v, x0, y1) - at(v, x1, y0) + at(v, x0, y0); };
             const double jxx = box(sxx), jxy = box(sxy), jyy = box(syy);
             if (jxx + jyy > 1e-12) {
+
                 const double contour = std::fmod(0.5 * std::atan2(2. * jxy, jxx - jyy) + 1.5 * PI, PI);
                 direction[size_t(iy) * nx + ix] = std::min(ContourDirectionBins - 1, int(contour / PI * ContourDirectionBins));
             }
@@ -354,7 +383,9 @@ Polylines contour_fill(const HeightField &surface, const ExPolygons &area, doubl
             strips.add(std::isfinite(strip_height) ? int(std::floor((s - drop) / strip_height)) : 0, int(n % nx), int(n / nx));
     Polylines out;
     for (const auto &[strip, runs] : strips.groups())
+
         for (const ExPolygon &piece : intersection_ex(area, runs_to_expolygons(runs, surface))) {
+
             const BoundingBox bb  = get_extents(piece);
             const Vec2d       lo  = (unscale(bb.min) - surface.origin()) / surface.pitch();
             const Vec2d       hi  = (unscale(bb.max) - surface.origin()) / surface.pitch();
@@ -394,6 +425,8 @@ Polylines chain_nearest(Polylines &&polylines, const Point &start)
     const size_t n = polylines.size();
     if (n == 0)
         return out;
+
+
     BoundingBox bb;
     for (const Polyline &pl : polylines) {
         bb.merge(pl.first_point());
@@ -420,6 +453,7 @@ Polylines chain_nearest(Polylines &&polylines, const Point &start)
         cell_of(cursor, cx, cy);
         size_t best = size_t(-1);
         double best_d = std::numeric_limits<double>::max();
+
         for (int r = 0; r <= std::max(gx, gy); ++r) {
             if (best != size_t(-1) && double(r - 1) * double(cell) > std::sqrt(best_d))
                 break;
@@ -428,6 +462,7 @@ Polylines chain_nearest(Polylines &&polylines, const Point &start)
                     if (ix < 0 || iy < 0 || ix >= gx || iy >= gy || (std::abs(ix - cx) != r && std::abs(iy - cy) != r))
                         continue;
                     std::vector<size_t> &bucket = grid[size_t(iy) * gx + ix];
+
                     bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [&used](size_t e) { return used[e / 2]; }), bucket.end());
                     for (const size_t e : bucket)
                         if (const double d = (end_point(e) - cursor).cast<double>().squaredNorm(); d < best_d) {
@@ -449,8 +484,11 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
 {
     const int                 n       = patch.shells;
     std::vector<ShellFill>    fills(size_t(std::max(0, n)));
+
     const NonplanarTopPattern pattern = top_pattern(patch, config);
     const double              user    = patch.automatic ? -1. : config.nonplanar_top_direction.value;
+
+
     auto spirals = [&fills, n]() {
         for (int k = 1; k <= n; ++k) {
             fills[size_t(k - 1)].spiral  = true;
@@ -470,6 +508,8 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
         return fills;
     }
 
+
+
     const ExPolygons area = diff_ex(patch.footprint, patch.wall_band);
     const double     step = patch.surface.pitch();
     const Flow       flow(float(spacing), float(patch.shell_height), float(spacing));
@@ -478,6 +518,7 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
         lines[size_t(i)] = path_tilt(fill_solid(area, ipRectilinear, spacing, i * AngleStep, false, flow, 0.), patch.surface, step);
     const PathTilt spiral = path_tilt(fill_spiral(area, spacing, Point(0, 0)), patch.surface, step);
     auto better = [](const PathTilt &a, const PathTilt &b) {
+
         return a.mean < b.mean - 0.005 || (a.mean <= b.mean + 0.005 && a.max < b.max);
     };
     int best = 0;
@@ -487,6 +528,7 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
     if (better(spiral, lines[size_t(best)]))
         spirals();
     else {
+
         const double bound = lines[size_t(best)].mean + std::tan(Geometry::deg2rad(5.));
         int          cross = 3;
         for (int c : { 6, 4 })
@@ -496,10 +538,12 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
             }
         for (int k = 1; k <= n; ++k) {
             const int j = n - k;
+
             const int offset = j == 0 ? 0 : cross == 6 ? (j % 2) * cross : (j % 2 == 1 ? cross : -cross);
             fills[size_t(k - 1)].angle = (best + offset) * AngleStep;
         }
     }
+
     if (user >= 0.) {
         fills.back().spiral  = false;
         fills.back().outward = false;
@@ -515,6 +559,8 @@ ThickPolylines gap_fill(const ExPolygons &area, const Polygons &covered, double 
         gap.douglas_peucker(scale_(0.01));
         const size_t n = out.size();
         gap.medial_axis(scale_(0.25 * spacing), scale_(2. * spacing), &out);
+
+
         if (out.size() == n && gap.area() > sqr(scale_(0.5 * spacing))) {
             const BoundingBox bb   = get_extents(gap.contour);
             const Point       c    = bb.center();
@@ -534,9 +580,17 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0)
         return {};
+
+
+
+
+
+
     const coord_t chain = ring_spacing > 0. ? coord_t(scale_(ring_spacing)) : step;
     const int     every = std::max(1, int(std::lround(double(step) / double(chain))));
     const double  arc   = scale_(0.01);
+
+
     auto inward = [chain, arc](const ExPolygons &level, int rings) {
         ExPolygons out = level;
         for (int i = 0; i < rings && !out.empty(); ++i)
@@ -550,6 +604,10 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
     while (!level.empty()) {
         append(loops, to_polygons(level));
         ExPolygons next = inward(level, every);
+
+
+
+
         for (const ExPolygon &piece : level)
             if (intersection_ex(ExPolygons{ piece }, next).empty()) {
                 innermost.emplace_back(piece);
@@ -559,6 +617,11 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         level = std::move(next);
     }
     loops = union_pt_chained_outside_in(loops);
+
+
+
+
+
     Polyline line = seam_line != nullptr && seam_line->is_valid() ? *seam_line : Polyline(seam, seam);
     if (!innermost.empty()) {
         Vec2d  c    = Vec2d::Zero();
@@ -586,6 +649,16 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         opened.emplace_back(std::move(pl));
         rings.emplace_back(loop);
     }
+
+
+
+
+
+
+
+
+
+
     const Polygons edges = to_polygons(area);
     auto           along_edge = [&](const Point &p) {
         return first_ring == 0 && std::any_of(edges.begin(), edges.end(), [&](const Polygon &edge) {
@@ -625,6 +698,9 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
                 }
                 done += l;
             }
+
+
+
             const Vec2d miss = blended.empty() ? Vec2d(Vec2d::Zero()) : Vec2d((opened[k + 1].first_point() - blended.back()).cast<double>());
             if (parallel && !blended.empty() && miss.norm() <= 1.5 * double(step)) {
                 for (size_t i = 0; i < blended.size(); ++i)
@@ -635,6 +711,8 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
                 joined = true;
             }
         }
+
+
         if (!joined)
             pl.clip_end(double(step));
         out.emplace_back(std::move(pl));
@@ -642,7 +720,18 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
     if (!out.empty())
         pos = out.back().last_point();
     append(out, chain_polylines(std::move(centres), &pos));
+
+
+
+
+
+
+
+
+
     if (!innermost.empty()) {
+
+
         BoundingBox box = get_extents(innermost);
         box.offset(step);
         auto reaches = [&box](const Point &a, const Point &b) {
@@ -661,6 +750,7 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
                 reaches(out[i].last_point(), out[i + 1].first_point()))
                 near.emplace_back(out[i].last_point(), out[i + 1].first_point());
         }
+
         const float  eps      = float(scale_(0.005));
         ExPolygons   holes    = offset_ex(offset_ex(expolygons_simplify(diff_ex(innermost, offset(near, 0.5f * float(step))), scale_(0.01)), -eps), eps);
         const double min_hole = 0.25 * double(step) * double(step);
@@ -680,6 +770,8 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
                         }
                     continue;
                 }
+
+
                 const Points &pts = hole.contour.points;
                 Vec2d         c   = Vec2d::Zero();
                 for (const Point &q : pts)
@@ -726,16 +818,23 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         if (fill.outward)
             reverse_order(paths);
     } else {
+
+
+
+
+
         const ExPolygons inner  = fill.outline ? offset_ex(area, -float(scale_(spacing))) : area;
         const bool       seamed = fill.outline && seam_line != nullptr && seam_line->is_valid();
         Polylines        outline;
         auto             open_outline = [&](const Point &at) {
             for (const Polygon &loop : fill.outline ? to_polygons(offset_ex(area, -0.5f * float(scale_(spacing)))) : Polygons()) {
                 Polyline pl = open_loop_at(loop, at);
+
                 pl.clip_end(0.2 * scale_(spacing));
                 if (pl.is_valid())
                     outline.emplace_back(std::move(pl));
             }
+
             std::stable_sort(outline.begin(), outline.end(), [&at](const Polyline &l, const Polyline &r) {
                 return (l.first_point() - at).cast<double>().norm() > (r.first_point() - at).cast<double>().norm();
             });
@@ -747,10 +846,12 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
                     fill_surface_spaced(inner, *surface_spaced, line_pattern, spacing, fill.angle, monotonic, flow, z) :
                     fill_solid(inner, line_pattern, spacing, fill.angle, monotonic, flow, z);
         if (monotonic) {
+
             if (!paths.empty() && (paths.back().last_point() - from).cast<double>().norm() <
                                       (paths.front().first_point() - from).cast<double>().norm())
                 reverse_order(paths);
         } else
+
             paths = chain_nearest(std::move(paths), from);
         if (!seamed)
             open_outline(paths.empty() ? start : paths.front().first_point());
@@ -758,6 +859,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
     }
     return link_paths(std::move(paths), area, spacing, max_glide);
 }
+
 
 constexpr double TaperStep = 0.25;
 
@@ -787,6 +889,7 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
         return;
     const AABBTreeLines::LinesDistancer<Linef> tree(lines);
     const double parallel = std::cos(Geometry::deg2rad(30.));
+
     auto room = [&](size_t r, const Vec2d &p, const Vec2d &t, double arc, double s) {
         const Vec2d n(-t.y(), t.x());
         double      left = std::numeric_limits<double>::max(), right = left;
@@ -798,12 +901,16 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
                 continue;
             const double u = std::clamp((p - l.a).dot(d) / (len * len), 0., 1.);
             const Vec2d  v = l.a + u * d - p;
+
             const double at_line = arc0[i] + u * len;
             if (owner[i] == r && std::abs(at_line - arc) < 3. * s)
                 continue;
             const double lateral = v.dot(n);
+
             if (std::abs(v.dot(t)) > 0.5 * std::abs(lateral) + 0.02)
                 continue;
+
+
             if (owner[i] != r && std::min(at_line, length[i] - at_line) < TaperEnds)
                 return 1.;
             if (lateral > 0.)
@@ -811,6 +918,8 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
             else
                 right = std::min(right, -lateral);
         }
+
+
         const auto   side = [s](double d) { return d == std::numeric_limits<double>::max() ? TaperMissing * s : std::min(d, 1.25 * s); };
         const double mean = 0.5 * (side(left) + side(right)) / s;
         return mean < TaperFrom ? std::max(mean, TaperFloor) : 1.;
@@ -822,6 +931,7 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
             const std::vector<float> &w   = widths[r];
             if (pts.size() < 2)
                 continue;
+
             std::vector<Vec2d>  p, heading;
             std::vector<double> arc, share;
             std::vector<float>  width;
@@ -847,12 +957,15 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
             heading.emplace_back(heading.back());
             arc.emplace_back(at);
             width.emplace_back(w.back());
+
             share.reserve(p.size());
             for (size_t i = 0; i < p.size(); ++i)
                 share.emplace_back(std::min(arc[i], at - arc[i]) < TaperEnds ? 1. :
                                                                                 room(r, p[i], heading[i], arc[i], own_spacing(width[i])));
             if (std::all_of(share.begin(), share.end(), [](double s) { return s >= 1.; }))
                 continue;
+
+
             for (size_t j = 0, lo = 0, hi = 0; j < vertex.size(); ++j) {
                 const size_t i = vertex[j];
                 while (arc[lo] < arc[i] - 0.5 * TaperSmooth)
@@ -873,11 +986,16 @@ void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &w
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide)
 {
+
     const ExPolygons inside_area  = offset_ex(area, float(scale_(0.25 * spacing)));
     const AreaEdges  inside(inside_area);
     const double     extrude_link = scale_(2. * spacing);
     const double     glide_link   = scale_(max_glide);
+
+
     const Polygons   rails        = to_polygons(offset_ex(area, -float(scale_(spacing))));
+
+
     RoadGrid               roads;
     std::vector<Polylines> out;
     for (Polyline &pl : paths) {
@@ -888,6 +1006,7 @@ std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, dou
             const Point   a    = last.last_point(), b = pl.first_point();
             const double  d    = (b - a).cast<double>().norm();
             if (d <= extrude_link && link_inside(a, b, inside) && !roads.crosses(a, b)) {
+
                 roads.add(a, b);
                 roads.add(pl);
                 last.points.insert(last.points.end(), pl.points.begin() + (a == b ? 1 : 0), pl.points.end());
@@ -927,6 +1046,7 @@ bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linke
         bb.merge(unscale(b.min));
         bb.merge(unscale(b.max));
     }
+
     const HeightField grid = HeightField::layout(bb, pitch);
     const int         nx = grid.nx(), ny = grid.ny();
     Mask              open = rasterize(inner, grid);
@@ -955,6 +1075,7 @@ bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linke
     for (size_t i = 0; i < variable.size(); ++i)
         for (size_t j = 0; j + 1 < variable[i].points.size(); ++j)
             cover(variable[i].points[j], variable[i].points[j + 1], 0.5 * std::min(widths[i][j], widths[i][j + 1]));
+
     for (int iy = 1; iy + 1 < ny; ++iy)
         for (int ix = 1; ix + 1 < nx; ++ix) {
             const size_t n = size_t(iy) * nx + ix;
@@ -964,6 +1085,7 @@ bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linke
     return false;
 }
 
+
 constexpr double PinholeWidth = 0.4;
 
 Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, double spacing)
@@ -972,7 +1094,14 @@ Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, do
     const ExPolygons inner  = offset_ex(area, -float(scale_(0.5 * spacing)));
     const float      radius = float(scale_(0.5 * PinholeWidth * spacing));
     ExPolygons       last;
+
     for (int round = 0; round < 3 && !inner.empty(); ++round) {
+
+
+
+
+
+
         if (round > 0) {
             bool found = false;
             for (const ExPolygon &window : offset_ex(last, float(scale_(0.5 * width + 0.5)) + 8.f * radius)) {
@@ -991,12 +1120,15 @@ Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, do
         Polylines roads;
         for (const ExPolygon &hole : holes) {
             Polylines axis;
+
+
             try {
                 axis = hole.medial_axis(0., 2. * scale_(spacing));
             } catch (const Slic3r::LogicError &) {
                 axis.clear();
             }
             if (axis.empty()) {
+
                 const Points &pts = hole.contour.points;
                 Vec2d         c   = Vec2d::Zero();
                 for (const Point &p : pts)
@@ -1035,6 +1167,7 @@ void lift_linked(const std::vector<Polylines> &linked, const ExtrusionPath &prot
         bead          = 0.f;
         return ok;
     };
+
     auto trim_glides = [](ExtrusionPathConformal &path) {
         size_t end = path.bead_height.size();
         while (end > 1 && path.bead_height[end - 1] == 0.f && path.bead_height[end - 2] == 0.f)
@@ -1054,6 +1187,7 @@ void lift_linked(const std::vector<Polylines> &linked, const ExtrusionPath &prot
         ExtrusionEntitiesPtr pieces;
         for (size_t i = 0; i < runs.size(); ++i)
             lift_polylines({ runs[i] }, proto, i % 2 == 0 ? at : glide_at, host_z, resample, patch_id, shell, pieces);
+
         std::unique_ptr<ExtrusionPathConformal> current;
         auto flush = [&]() {
             if (current) {
@@ -1065,7 +1199,11 @@ void lift_linked(const std::vector<Polylines> &linked, const ExtrusionPath &prot
         };
         for (ExtrusionEntity *ee : pieces) {
             std::unique_ptr<ExtrusionPathConformal> piece(static_cast<ExtrusionPathConformal *>(ee));
+
+
             if (current && (current->polyline.points.back() - piece->polyline.points.front()).cast<double>().norm() <= SCALED_EPSILON) {
+
+
                 const bool same = current->bead_height.back() == piece->bead_height.front();
                 current->polyline.points.insert(current->polyline.points.end(), piece->polyline.points.begin() + (same ? 1 : 0),
                                                 piece->polyline.points.end());
@@ -1085,6 +1223,7 @@ bool prepend_glide(ExtrusionPathConformal &path, const Point3 &from, const ExPol
 {
     if (path.polyline.points.empty())
         return false;
+
     const Polyline route = glide_route(from.to_point(), path.polyline.points.front().to_point(), AreaEdges(area),
                                        to_polygons(offset_ex(area, -float(scale_(0.5)))), scale_(1.5), scale_(max_glide));
     if (!route.is_valid())
@@ -1101,6 +1240,7 @@ bool prepend_glide(ExtrusionPathConformal &path, const Point3 &from, const ExPol
             if (!at(p, z, bead))
                 return false;
             const Point3 q(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z - host_z)));
+
             if (i == 0 && j == 0 && q.z() < from.z() - scale_(0.01))
                 return false;
             if (q != pts.back()) {
@@ -1109,6 +1249,7 @@ bool prepend_glide(ExtrusionPathConformal &path, const Point3 &from, const ExPol
             }
         }
     }
+
     pts.emplace_back(path.polyline.points.front());
     heights.emplace_back(0.f);
     path.polyline.points.insert(path.polyline.points.begin(), pts.begin(), pts.end());

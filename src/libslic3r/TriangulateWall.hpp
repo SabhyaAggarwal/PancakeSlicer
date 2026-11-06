@@ -43,7 +43,7 @@ template<class Sc>
 static Sc sq_dst(const Vec<3, Sc> &v1, const Vec<3, Sc>& v2)
 {
     Vec<3, Sc> v = v1 - v2;
-    return v.x() * v.x() + v.y() * v.y() ;
+    return v.x() * v.x() + v.y() * v.y()  ;
 }
 
 template<class Sc>
@@ -141,6 +141,15 @@ void triangulate_wall(std::vector<Vec<3, Sc>> &pts,
     Triangulator t{&pts, lring, uring};
     t.run(ind);
 }
+
+
+
+
+
+
+
+
+
 
 }
 

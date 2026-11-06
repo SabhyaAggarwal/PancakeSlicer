@@ -1,3 +1,5 @@
+
+
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { SystemPreset } from '../api/types';
 import { requestPreset } from '../components/PresetCombo';
@@ -21,9 +23,11 @@ const send = setup.send;
 const VENDOR_NAMES: Record<string, string> = { BBL: 'Bambu Lab' };
 const vendorName = (id: string, name = id) => VENDOR_NAMES[id] ?? name;
 
+
 interface PrinterModel { id: string; vendor: string; vendorName: string; model: string; cover?: string; nozzles: number[]; machines: Record<string, string>; presets: SystemPreset[] }
 interface Choices { model: PrinterModel | null; nozzles: number[]; profiles: Set<string> | null; connection: ConnectionEdit | null; filaments: Set<string> | null; families: CatalogFamily[] }
 let choices: Choices = { model: null, nozzles: [], profiles: null, connection: null, filaments: null, families: [] };
+
 
 interface CatalogBody { vendors: { id: string; name: string; models: { id: string; name: string; cover?: string; nozzles: string[]; machines?: Record<string, string> }[] }[] }
 let catalogRead: Promise<PrinterModel[]> | null = null;
@@ -33,6 +37,8 @@ function printerCatalog(): Promise<PrinterModel[]> {
       nozzles: m.nozzles.map(Number).filter((n) => n > 0), machines: m.machines ?? {}, presets: [] }))))
     .catch((e) => { catalogRead = null; throw e; });
 }
+
+
 async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPreset[]> {
   const mine = () => getState().machines.filter((p) => p.vendor === m.vendor && (p.model ? p.model === m.model : /^(.*?)\s+[\d.]+\s*nozzle$/i.exec(p.name)?.[1] === m.model));
   if (!nozzles.every((n) => mine().some((p) => Math.abs(nozzleOf(p) - n) < 1e-6))) {
@@ -46,6 +52,7 @@ async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPres
   }
   return mine();
 }
+
 
 const STEPS = ['printer', 'profiles', 'connect', 'filaments'] as const;
 function Frame({ step, children, foot }: { step: string; children: ReactNode; foot: ReactNode }) {
@@ -68,11 +75,14 @@ const Back = () => <button type="button" className="btn-ghost" onClick={() => se
 const Next = ({ disabled, label = 'Next', onClick }: { disabled?: boolean; label?: string; onClick?(): void }) =>
   <button type="button" className="btn-primary" disabled={disabled} onClick={onClick ?? (() => send({ type: 'NEXT' }))}>{label}</button>;
 
+
 function Welcome() {
   return <Frame step="welcome" foot={<><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip to setup</button><span className="setup-grow" /><Next label="Take the tour" /></>}>
     <div className="setup-hero"><img src="/logo-256.png" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
   </Frame>;
 }
+
+
 function Shot({ src, caption }: { src: string; caption: string }) {
   const [ratio, setRatio] = useState<number>();
   return <figure className="setup-shot">
@@ -99,6 +109,7 @@ function Tour({ page }: { page: number }) {
     </div>
   </Frame>;
 }
+
 
 function Printer() {
   const [models, setModels] = useState<PrinterModel[] | null>(null);
@@ -140,6 +151,7 @@ function Printer() {
   </Frame>;
 }
 
+
 function Profiles() {
   const users = useStore((s) => s.userPresets);
   const rows = useMemo(() => users.filter((p) => p.type === 'process' && !p.archived && (p.kind ?? 'profile') === 'profile'), [users]);
@@ -152,6 +164,7 @@ function Profiles() {
       <label key={k} className="setup-check"><input type="checkbox" checked={on.has(k)} onChange={() => flip(k)} /><span>{p.name}</span></label>); })}</div>
   </Frame>;
 }
+
 
 const KINDS: [ConnectionKind, string][] = [['bambu-lan', 'Bambu LAN'], ['moonraker', 'Moonraker'], ['octoprint', 'OctoPrint']];
 function Connect() {
@@ -192,8 +205,12 @@ function Connect() {
   </Frame>;
 }
 
+
 interface FilamentRow { key: string; name: string; brand: string; material: string; tuned: boolean; family: CatalogFamily }
+
 const baseMaterial = (m: string) => { const b = m.toUpperCase().split(/[-+ ]/)[0].replace(/\d+$/, ''); return b || m; };
+
+
 function Filaments({ error }: { error: string | null }) {
   const model = choices.model;
   const machine = model ? (model.machines[String(choices.nozzles[0])] ?? Object.entries(model.machines).find(([k]) => Number(k) === choices.nozzles[0])?.[1] ?? '') : '';
@@ -210,6 +227,8 @@ function Filaments({ error }: { error: string | null }) {
   const [materials, setMaterials] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+
   const [on, setOn] = useState<Set<string> | null>(choices.filaments);
   useEffect(() => {
     if (!rows.length || on) return;
@@ -227,6 +246,7 @@ function Filaments({ error }: { error: string | null }) {
   const picked = shown.filter((r) => chosen.has(r.key)).length;
   const setMany = (keys: string[], value: boolean) => setOn((s) => { const n = new Set(s); keys.forEach((k) => value ? n.add(k) : n.delete(k)); return n; });
   const apply = () => { choices = { ...choices, filaments: chosen, families: rows.filter((r) => chosen.has(r.key))
+
     .sort((a, b) => materialRank(baseMaterial(a.material)) - materialRank(baseMaterial(b.material))).map((r) => r.family) }; send({ type: 'APPLY' }); void applyChoices(); };
   const active = brands.length + materials.length;
   const item = (r: FilamentRow) => <label key={r.key} className="setup-check"><Check checked={chosen.has(r.key)} onCheckedChange={(v) => setMany([r.key], v)} /><span>{r.name}</span><span className="setup-n">{r.material}</span></label>;
@@ -234,6 +254,7 @@ function Filaments({ error }: { error: string | null }) {
   return <Frame step="filaments" foot={<><Back /><span className="setup-grow" />{(error ?? readError) && <span className="setup-test bad">{error ?? readError}</span>}<span className="setup-count">{chosen.size} selected</span><Next label="Done" disabled={!chosen.size} onClick={apply} /></>}>
     <h2>Your filaments</h2>
     <div className={`setup-filaments${filtersOpen ? ' filters-open' : ''}`}>
+      {                                                                                              }
       <aside className="facets setup-facets" aria-label="Filters">
         <FacetsHead active={active} onClear={() => { setBrands([]); setMaterials([]); }} />
         <FacetGroup label="Brand" options={brandOptions} value={brands} onChange={setBrands} />
@@ -245,6 +266,7 @@ function Filaments({ error }: { error: string | null }) {
           <button type="button" className="btn setup-filters-btn" onClick={() => setFiltersOpen(true)}><Glyph name="filter" />{active ? `Filters · ${active}` : 'Filters'}</button>
           <input className="text setup-search" type="search" placeholder="Search filaments" aria-label="Search filaments" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        {                                                                      }
         <label className="setup-check setup-all"><Check checked={picked === 0 ? false : picked === shown.length ? true : 'indeterminate'} disabled={!shown.length}
           onCheckedChange={() => setMany(shown.map((r) => r.key), picked < shown.length)} /><span>Select all shown</span><span className="setup-n">{shown.length}</span></label>
         <div className="setup-grid">{shown.filter((r) => r.tuned).map(item)}
@@ -254,6 +276,7 @@ function Filaments({ error }: { error: string | null }) {
     </div>
   </Frame>;
 }
+
 
 async function applyChoices() {
   try {
@@ -271,10 +294,12 @@ async function applyChoices() {
       const drop = profiles ? live.filter((p) => !profiles.has(profileKey(p))).map((p) => profileKey(p)) : [];
       const keep = (profiles && [...profiles][0]) ?? live.map((p) => profileKey(p))[0];
       const current = s.userPresets.find((p) => p.type === 'process' && (p.name === s.process || profileKey(p) === s.process));
+
       if (keep && (!current || drop.includes(profileKey(current)))) requestPreset('process', 0, keep);
       if (drop.length) await archiveProfiles('process', drop);
     }
     if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Connection not saved: ${e instanceof Error ? e.message : e}`));
+
     let firstFilament: string | null = null;
     for (const family of choices.families) firstFilament ??= await addCatalogFamily(family);
     if (firstFilament) requestPreset('filament', 0, firstFilament);
@@ -291,6 +316,8 @@ function Done() {
 
 export default function Setup() {
   const { value, context } = useSetup();
+
+
   useEffect(() => {
     if (value === 'closed') return;
     const before = document.activeElement as HTMLElement | null;
@@ -310,12 +337,14 @@ export default function Setup() {
     document.addEventListener('keydown', trap, true);
     return () => { document.removeEventListener('keydown', trap, true); behind.forEach((el) => { el.inert = false; }); before?.focus?.(); };
   }, [value === 'closed']);
+
   useEffect(() => {
     if (value === 'closed') return;
     const root = document.querySelector<HTMLElement>('.setup');
     const visible = (el: HTMLElement) => el.offsetParent !== null;
     ([...(root?.querySelectorAll<HTMLElement>('.setup-body input, .setup-body button') ?? [])].find(visible) ?? root?.querySelector<HTMLElement>('.setup-foot .btn-primary'))?.focus();
   }, [value, context.page]);
+
   useEffect(() => {
     if (value === 'closed') return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && value !== 'applying') send({ type: 'CLOSE' }); };

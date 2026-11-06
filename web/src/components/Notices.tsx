@@ -1,3 +1,6 @@
+
+
+
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Glyph } from './Glyph';
@@ -18,6 +21,7 @@ export function Toast() {
   const given = useStore((s) => s.toastKind);
   const msg = toast ?? projectNotice;
   const [held, setHeld] = useState(false);
+
   useEffect(() => {
     if (!toast || held) return;
     const t = setTimeout(() => setState((s) => (s.toast === toast ? { toast: null } : {})), ms ?? noticeMs(toast));
@@ -25,6 +29,7 @@ export function Toast() {
   }, [toast, seq, held, ms]);
   useEffect(() => setHeld(false), [msg]);
   const lane = useNoticeLane(msg);
+
   const overDialog = useModalCount() > 0;
   const undoKey = overDialog && action?.label === 'Undo';
   useEffect(() => {
@@ -59,6 +64,9 @@ export function Toast() {
   return lane ? createPortal(card, lane) : <InTopLayer>{card}</InTopLayer>;
 }
 
+
+
+
 function useNoticeLane(msg: ReactNode): Element | null {
   const tab = useStore((s) => s.tab);
   const dialogOpen = useStore((s) => !!(s.dialog || s.appDialog || s.flushDialog || s.calibDialog || s.sessionDialog || s.presetUx));
@@ -68,6 +76,7 @@ function useNoticeLane(msg: ReactNode): Element | null {
   }, [msg, tab, dialogOpen]);
   return lane;
 }
+
 
 export function SliceFailed({ error, onClose }: { error: string; onClose(): void }) {
   const { title, step } = sliceFailure(error);
@@ -94,7 +103,9 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
   );
 }
 
+
 const LOADING_WORDS: Record<string, string> = { Connecting: 'Starting', 'Loading presets': 'Loading printers' };
+
 
 export function LoadingState({ text }: { text: string }) {
   const m = /^(.*?)\s+(\d+)%$/.exec(text);

@@ -1,4 +1,6 @@
 import { brand } from './brand';
+
+
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { quick, removed } from 'virtual:option-bootstrap';
 import optionsUrl from './options.generated.json?url&no-inline';
@@ -10,6 +12,7 @@ import { normalizeOptions } from './option-inventory';
 import { catalogWorker, onWorkerFailure, workerId } from './api/worker';
 import type { CatalogIn, CatalogOut } from './api/catalog.worker';
 import { engineCapabilities } from './api/health';
+
 
 export type OptionMode = 'simple' | 'advanced' | 'develop' | 'developer';
 
@@ -26,7 +29,9 @@ export interface OptionDef {
   mode: OptionMode;
   enum_values?: string[];
   enum_labels?: string[];
+
   enum_disabled?: string[];
+
   enum_notes?: (string | undefined)[];
   default?: unknown;
   readonly?: boolean;
@@ -66,11 +71,14 @@ export interface TabDesc {
   option_modes: Record<string, string>;
 }
 
+
 export const OPTIONS: Record<string, OptionDef> = normalizeOptions(quick);
 export const TABS: Partial<Record<TabDesc['tab'], TabDesc>> = {};
 const URLs = { process: processUrl, filament: filamentUrl, printer: printerUrl };
 const pending = new Map<TabDesc['tab'], Promise<void>>();
 const listeners = new Set<() => void>();
+
+
 
 let tooltips: Record<string, string> | null = null, tooltipsRevision = 0;
 let settleTooltips!: () => void;
@@ -87,7 +95,9 @@ function loadTooltips(url: string | null | undefined) {
     for (const listener of [...tooltipListeners, ...listeners]) listener();
   }).catch(() => {}).finally(settleTooltips);
 }
+
 export const tooltipsReady = () => tooltipsSettled;
+
 export function useTooltips() {
   return useSyncExternalStore((f) => { tooltipListeners.add(f); return () => { tooltipListeners.delete(f); }; }, () => tooltipsRevision);
 }
@@ -96,6 +106,7 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
   if (TABS[tab]) return Promise.resolve();
   const cached = pending.get(tab);
   if (cached) return cached;
+
   const mock = new URLSearchParams(location.search).has('mock');
   const promise = (mock ? Promise.resolve(null) : engineCapabilities()).then((engine) => new Promise<void>((resolve, reject) => {
     const worker = catalogWorker();
@@ -127,11 +138,13 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
     };
     const unsubscribe = onWorkerFailure(fail);
     worker.addEventListener('message', on);
+
     worker.postMessage({ id, type: 'settings', engine, optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href } satisfies CatalogIn);
   })).catch((error) => { pending.delete(tab); throw error; });
   pending.set(tab, promise);
   return promise;
 }
+
 
 export function useTab(tab: TabDesc['tab']) {
   const [, update] = useState(0);
@@ -141,6 +154,7 @@ export function useTab(tab: TabDesc['tab']) {
     const changed = () => update((n) => n + 1);
     listeners.add(changed);
     setError(null);
+
     void loadTab(tab).then(
       () => { if (active) changed(); },
       (e) => { if (active) setError(String(e)); },
@@ -150,6 +164,7 @@ export function useTab(tab: TabDesc['tab']) {
   return { desc: TABS[tab], error };
 }
 
+
 export function splitKey(k: string): [string, number] {
   const [key, idx] = k.split('#');
   return [key, idx === undefined ? 0 : Number(idx)];
@@ -158,10 +173,12 @@ export function splitKey(k: string): [string, number] {
 const MODE_RANK: Record<OptionMode, number> = { simple: 0, advanced: 1, develop: 2, developer: 3 };
 export const modeVisible = (opt: OptionMode, ui: OptionMode) => MODE_RANK[opt] <= MODE_RANK[ui];
 
+
 const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides/;
 const REMOVED_KEYS = new Set(removed);
 export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);
 
 export const isDeferred = (key: string) => key === 'post_process' || key === 'slicing_pipeline_plugin' || key.includes('_plugin_config');
+
 
 export { toolValue, jobValue } from './config-values';

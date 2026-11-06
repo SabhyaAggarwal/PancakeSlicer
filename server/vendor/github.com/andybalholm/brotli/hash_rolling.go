@@ -6,16 +6,10 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* NOTE: this hasher does not search in the dictionary. It is used as
-   backup-hasher, the main hasher already searches in it. */
-
 const kRollingHashMul32 uint32 = 69069
 
 const kInvalidPosHashRolling uint32 = 0xffffffff
 
-/* This hasher uses a longer forward length, but returning a higher value here
-   will hurt compression by the main hasher when combined with a composite
-   hasher. The hasher tests for forward itself instead. */
 func (*hashRolling) HashTypeLength() uint {
 	return 4
 }
@@ -24,8 +18,6 @@ func (*hashRolling) StoreLookahead() uint {
 	return 4
 }
 
-/* Computes a code from a single byte. A lookup table of 256 values could be
-   used, but simply adding 1 works about as good. */
 func (*hashRolling) HashByte(b byte) uint32 {
 	return uint32(b) + 1
 }
@@ -38,8 +30,6 @@ func (h *hashRolling) HashRollingFunction(state uint32, add byte, rem byte, fact
 	return uint32(factor*state + h.HashByte(add) - factor_remove*h.HashByte(rem))
 }
 
-/* Rolling hash for long distance long string matches. Stores one position
-   per bucket, bucket key is computed over a long region. */
 type hashRolling struct {
 	hasherCommon
 
@@ -58,8 +48,6 @@ func (h *hashRolling) Initialize(params *encoderParams) {
 
 	h.factor = kRollingHashMul32
 
-	/* Compute the factor of the oldest byte to remove: factor**steps modulo
-	   0xffffffff (the multiplications rely on 32-bit overflow) */
 	h.factor_remove = 1
 
 	for i := 0; i < 32; i += h.jump {
@@ -73,7 +61,7 @@ func (h *hashRolling) Initialize(params *encoderParams) {
 }
 
 func (h *hashRolling) Prepare(one_shot bool, input_size uint, data []byte) {
-	/* Too small size, cannot use this hasher. */
+
 	if input_size < 32 {
 		return
 	}
@@ -91,8 +79,6 @@ func (*hashRolling) StoreRange(data []byte, mask uint, ix_start uint, ix_end uin
 
 func (h *hashRolling) StitchToPreviousBlock(num_bytes uint, position uint, ringbuffer []byte, ring_buffer_mask uint) {
 	var position_masked uint
-	/* In this case we must re-initialize the hasher from scratch from the
-	   current position. */
 
 	var available uint = num_bytes
 	if position&uint(h.jump-1) != 0 {
@@ -107,7 +93,6 @@ func (h *hashRolling) StitchToPreviousBlock(num_bytes uint, position uint, ringb
 
 	position_masked = position & ring_buffer_mask
 
-	/* wrapping around ringbuffer not handled. */
 	if available > ring_buffer_mask-position_masked {
 		available = ring_buffer_mask - position_masked
 	}
@@ -127,7 +112,6 @@ func (h *hashRolling) FindLongestMatch(dictionary *encoderDictionary, data []byt
 		return
 	}
 
-	/* Not enough lookahead */
 	if max_length < 32 {
 		return
 	}
@@ -144,8 +128,7 @@ func (h *hashRolling) FindLongestMatch(dictionary *encoderDictionary, data []byt
 			found_ix = uint(h.table[code])
 			h.table[code] = uint32(pos)
 			if pos == cur_ix && uint32(found_ix) != kInvalidPosHashRolling {
-				/* The cast to 32-bit makes backward distances up to 4GB work even
-				   if cur_ix is above 4GB, despite using 32-bit values in the table. */
+
 				var backward uint = uint(uint32(cur_ix - found_ix))
 				if backward <= max_backward {
 					var found_ix_masked uint = found_ix & ring_buffer_mask

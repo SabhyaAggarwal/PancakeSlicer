@@ -1,3 +1,5 @@
+
+
 import { beginBusy, startupBusy } from '../state/busy';
 import type { PresetCatalog, PresetType, ProfileOverlay, SystemPreset, UserPreset } from '../api/types';
 import type { Api } from '../api/client';
@@ -15,6 +17,8 @@ import { ensureCompatibleSelection } from './material-library';
 import type { CatalogBaseDependency, CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
+
+
 function mergeCatalog(_vendor: string, cat: PresetCatalog) {
   const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
   const merge=(current:SystemPreset[],incoming:SystemPreset[])=>{
@@ -24,13 +28,17 @@ function mergeCatalog(_vendor: string, cat: PresetCatalog) {
   setState(s=>({
     machines:merge(s.machines,cat.machines),
     processes:merge(s.processes,cat.processes),
+
     filaments:[...new Map(merge(s.filaments,cat.filaments).map(p=>[catalogKey(p),p])).values()],
   }));
 }
 
 let catalogLoadGeneration = 0;
+
+
 const transient = (error: unknown) => error instanceof TypeError || [408, 429].includes((error as {status?:number}).status ?? 0) || ((error as {status?:number}).status ?? 0) >= 500;
 let retryDelay = 1000, armed: (() => void) | null = null;
+
 function disarmRetry() { armed?.(); armed = null; }
 function retryCatalog(generation: number) {
   disarmRetry();
@@ -40,6 +48,7 @@ function retryCatalog(generation: number) {
   retryDelay = Math.min(retryDelay * 2, 10_000);
 }
 let catalogLibraryTail: Promise<void> = Promise.resolve();
+
 export async function loadCatalog() {
   disarmRetry();
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
@@ -55,8 +64,11 @@ export async function loadCatalog() {
     try {
       const [storage,{prepareProfileLibraryHydration},{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite}]=await Promise.all([
         import('../persist/profile-library'),import('./library-hydration'),import('./printer-setups'),import('./transactions')]);
+
+
       await acknowledgePendingProfileWrite().catch(error=>{if((error as {code?:string}).code!=='library_reset')throw error;});
       if(!current())return;
+
       const [document]=await Promise.all([storage.readProfileLibrary(),settings]);
       if(!current())return;
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
@@ -65,6 +77,7 @@ export async function loadCatalog() {
       if(!unchanged())throw new Error('Your setup changed while profiles loaded. Your newer work is kept; reload profiles.');
       await ensureOwnedCatalogs(document,native,unchanged);
       if(!unchanged())throw new Error('Your setup changed while native profile bases loaded. Retry to preserve your newer work.');
+
       if(restoreStartupPlaceholder){
         busy.end();
         await initialiseSavedPreferences();
@@ -74,6 +87,8 @@ export async function loadCatalog() {
       const remembered=document.profiles.find(p=>p.type==='machine' && p.id===preferred && p.kind!=='master');
       const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
       if(restoreStartupPlaceholder && (!remembered || remembered.archived)){
+
+
         Object.assign(result.patch,{printer:remembered?.id ?? '',process:latest.process,filamentSlots:latest.filamentSlots,
           slotColours:latest.slotColours,filamentEdits:latest.filamentEdits,mixes:latest.mixes,
           profileRecoveries:remembered?.archived?[{type:'machine',key:remembered.id,reason:'archived'}]:[]});
@@ -82,6 +97,7 @@ export async function loadCatalog() {
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error){
         acceptHydratedPrinterSetups();retryDelay=1000;
+
         const fixed=ensureCompatibleSelection(getState());
         if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice,null,undefined,'warning');}
       }
@@ -105,6 +121,7 @@ interface CatalogSession {
   api: Api;
   current(): boolean;
   reads: Map<string, Promise<void>>;
+
   loadNames(vendor: string, names: string[]): Promise<void>;
 }
 let session: CatalogSession | null = null;
@@ -128,6 +145,7 @@ function withImportedCatalog(document?: ProfileLibraryDocument): ProfileCatalog 
   };
   return {...s,machines:merge(s.machines,'machine'),processes:merge(s.processes,'process'),filaments:merge(s.filaments,'filament')};
 }
+
 function dependencies(catalog: ProfileCatalog) {
   const bases:CatalogBaseDependency[]=[],visited=new Set<object>();let complete=true;
   const add=(type:PresetType,base:ProfileBaseAnchor|undefined)=>{
@@ -160,9 +178,12 @@ function dependencies(catalog: ProfileCatalog) {
 async function ensure(source:CatalogDependencySource,captured:CatalogSession,isCurrent:()=>boolean,document?:ProfileLibraryDocument) {
   if(!isCurrent())return;
   if(!captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
+
   const bases=source.bases.filter(d=>!(d.type==='process' && d.base.name==='Auto'));
   const available=(d:CatalogBaseDependency)=>!!findCatalogBase(withImportedCatalog(document),d.type,d.base).base;
   const missing=bases.filter(d=>!available(d));
+
+
   {
     const byVendor=(list:{vendor:string;name:string}[])=>{const m=new Map<string,Set<string>>();for(const {vendor,name} of list)m.set(vendor,(m.get(vendor) ?? new Set()).add(name));return m;};
     const read=(m:Map<string,Set<string>>)=>Promise.all([...m].map(([vendor,names])=>captured.loadNames(vendor,[...names])));
@@ -173,14 +194,17 @@ async function ensure(source:CatalogDependencySource,captured:CatalogSession,isC
     });
     await read(byVendor(standards));
   }
+
   if(isCurrent() && !captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
 }
 async function ensureOwnedCatalogs(document:ProfileLibraryDocument,captured:CatalogSession,isCurrent:()=>boolean) {
   const catalog=withImportedCatalog(document),collector=dependencies({...catalog,userPresets:document.profiles as UserPreset[]});
+
   document.profiles.forEach(collector.record);
   for(const setup of Object.values(document.printers.setups))for(const slot of setup.slots)if(slot.snapshot)collector.snapshot(slot.snapshot,'filament');
   await ensure(collector.source(),captured,isCurrent,document);
 }
+
 export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boolean):Promise<void> {
   const captured=session;if(!captured)throw new Error('Load the profile catalog before restoring this project.');
   if(!isCurrent())return;
@@ -193,6 +217,8 @@ export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boo
   }
   await ensure(collector.source(),captured,isCurrent);
 }
+
+
 export async function ensureLibraryPresets():Promise<void> {
   const captured=session;if(!captured)return;
   const s=getState();

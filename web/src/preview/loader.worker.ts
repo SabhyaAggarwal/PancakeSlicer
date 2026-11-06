@@ -1,8 +1,14 @@
+
+
+
+
+
 import { unzipSync } from 'fflate';
 import { gcodeToStream } from './gcode';
 import { BLOCK, CHUNK, MAGIC, PLANES_MAGIC, TRANSFER_FORM, TRANSFER_MAGIC, readHeader, transferBlockSize, readStates, readStatistics, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 
 const LOD_TOLERANCE = 0.05;
+
 const CUSTOM_ROLE = 18;
 
 export type WorkerIn = { url?: string; file?: Blob };
@@ -14,10 +20,12 @@ export type WorkerOut =
 
 const post = (m: WorkerOut, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(m, transfer);
 
+
 async function open(src: WorkerIn): Promise<{ stream: ReadableStream<Uint8Array>; total: number }> {
   let body: ReadableStream<Uint8Array>;
   let total = 0;
   if (src.file) {
+
     const peek = new Uint8Array(await src.file.slice(0, 8).arrayBuffer());
     const magic = String.fromCharCode(...peek);
     if (magic.startsWith('PK') || (magic !== MAGIC && magic !== TRANSFER_MAGIC && magic !== PLANES_MAGIC && !(peek[0] === 0x1f && peek[1] === 0x8b))) {
@@ -63,6 +71,7 @@ async function open(src: WorkerIn): Promise<{ stream: ReadableStream<Uint8Array>
   return { stream: rest, total };
 }
 
+
 class Bytes {
   buf = new Uint8Array(1 << 20);
   len = 0;
@@ -90,6 +99,7 @@ class Bytes {
   }
 }
 
+
 function unplane(q: Bytes, n: number, stride: number) {
   const src = q.buf.slice(q.pos, q.pos + n * stride);
   const out = q.view(n * stride);
@@ -101,6 +111,10 @@ function unplane(q: Bytes, n: number, stride: number) {
     }
   }
 }
+
+
+
+
 
 function untransfer(q: Bytes, first: number, n: number, m: number, t: number, words: number, diffs: Uint32Array, prev: Uint32Array, out: Uint32Array): DataView {
   const b = q.buf, at = q.pos + 8;
@@ -140,7 +154,12 @@ function allocChunk(start: number, count: number, extended: boolean, oriented: b
 }
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 0.05 * Math.max(Math.abs(a), Math.abs(b));
+
 const sameClearance = (a: number, b: number) => (Number.isNaN(a) ? Number.isNaN(b) : Math.abs(a - b) <= 0.05);
+
+
+
+
 
 function buildLod(c: MoveChunk, prev: [number, number, number]): { lod: Uint32Array; blocks: Uint32Array } {
   const out: number[] = [];
@@ -178,6 +197,7 @@ function buildLod(c: MoveChunk, prev: [number, number, number]): { lod: Uint32Ar
     let i = b0;
     while (i < b1) {
       const t = c.type[i] & 0x7f;
+
       if ((t !== MoveType.Extrude && t !== MoveType.Travel && t !== MoveType.Wipe) || c.start + i === 1) { ++i; continue; }
       let j = i + 1;
       while (j < b1 && (c.type[j] & 0x7f) === t && c.role[j] === c.role[i] && c.extruder[j] === c.extruder[i] &&
@@ -213,10 +233,12 @@ async function run(src: WorkerIn) {
   let stage: 'header' | 'states' | 'moves' | 'layers' | 'meta' | 'end' = 'header';
   const layers: LayerRec[] = [];
   const fileLayers: LayerRec[] = [];
+
   const vgcodeZ: number[] = [];
   let meta: StreamMeta = {};
   let prev: [number, number, number] = [0, 0, 0];
   let eof = false;
+
   let diffs = new Uint32Array(0), last = new Uint32Array(0), records = new Uint32Array(0);
   let block = 0;
 
@@ -225,6 +247,7 @@ async function run(src: WorkerIn) {
     while (parsed < h.moveCount) {
       const copies2 = h.transfer === 2;
       const n = Math.min(copies2 ? transferBlockSize(block) : CHUNK, h.moveCount - parsed);
+
       const counts = copies2 && q.avail >= 8 ? q.view(8) : null;
       const literals = counts?.getUint32(0, true) ?? 0, copies = counts?.getUint32(4, true) ?? 0;
       const size = !copies2 ? n * h.moveStride : counts ? 8 + 12 * copies + literals * h.moveStride : Infinity;
@@ -270,6 +293,8 @@ async function run(src: WorkerIn) {
           c.layer[i] = 0;
           continue;
         }
+
+
         let z = states!.printZ[st] ?? 0;
         if (z <= 0 && (type & 0x7f) === MoveType.Extrude && states!.shell[st] === 0xff) z = c.pos[i * 4 + 2];
         const last = layers[layers.length - 1];
@@ -343,6 +368,7 @@ async function run(src: WorkerIn) {
         const value = JSON.parse(new TextDecoder().decode(bytes));
         if (value && typeof value === 'object' && !Array.isArray(value)) {
           meta = value as StreamMeta;
+
           meta.statistics = readStatistics(meta.statistics);
         }
       } catch {
@@ -359,6 +385,8 @@ async function run(src: WorkerIn) {
   const matches = fileLayers.length === layers.length &&
     fileLayers.every((l, i) => l.id === layers[i].id && l.first === layers[i].first);
   const final = matches ? fileLayers : layers;
+
+
   if (!meta.belt_tilt_angle && final.some((l, i) => i > 0 && final[i - 1].z >= l.z))
     final.forEach((l, i) => (l.z = vgcodeZ[i]));
   post({ kind: 'done', layers: final, meta, ms: performance.now() - t0, bytes: received, layerTableMatches: matches });

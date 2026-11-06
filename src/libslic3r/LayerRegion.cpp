@@ -50,6 +50,10 @@
 
 namespace Slic3r {
 
+
+
+
+
 class NonplanarProjectionIndex {
 public:
     using Ref = std::pair<size_t, int>;
@@ -129,6 +133,7 @@ Flow LayerRegion::bridging_flow(FlowRole role, bool thick_bridge) const
     const PrintRegionConfig &region_config  = region.config();
     const PrintObject       &print_object   = *this->layer()->object();
     Flow bridge_flow;
+
     auto nozzle_diameter = float(nozzle_diameter_for_filament(print_object.print()->config(), region.extruder(role), print_object.print()->is_BBL_printer()));
     const ConfigOptionFloatOrPercent& bridge_width_opt = region_config.bridge_line_width;
     const double                      bridge_width      = bridge_width_opt.get_abs_value(nozzle_diameter);
@@ -136,11 +141,14 @@ Flow LayerRegion::bridging_flow(FlowRole role, bool thick_bridge) const
     const double                      bridge_flow_ratio = region_config.bridge_flow;
 
     if (thick_bridge) {
+
+
         float thread_diameter = has_bridge_width ? float(bridge_width) : nozzle_diameter;
         if (bridge_flow_ratio > 0.)
             thread_diameter *= float(sqrt(bridge_flow_ratio));
         bridge_flow = Flow::bridging_flow(thread_diameter, nozzle_diameter);
     } else {
+
         Flow base_flow = this->flow(role);
         if (has_bridge_width)
             base_flow = Flow(float(bridge_width), base_flow.height(), nozzle_diameter);
@@ -150,12 +158,21 @@ Flow LayerRegion::bridging_flow(FlowRole role, bool thick_bridge) const
 
 }
 
+
 void LayerRegion::slices_to_fill_surfaces_clipped()
 {
+
+
+
+
+
+
+
     std::array<SurfacesPtr, size_t(stCount)> by_surface;
     for (Surface &surface : this->slices.surfaces)
         if (! surface.is_nonplanar())
             by_surface[size_t(surface.surface_type)].emplace_back(&surface);
+
     this->fill_surfaces.surfaces.clear();
     for (size_t surface_type = 0; surface_type < size_t(stCount); ++ surface_type) {
         const SurfacesPtr &this_surfaces = by_surface[surface_type];
@@ -172,6 +189,12 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
     this->perimeters.clear();
     this->thin_fills.clear();
     m_nonplanar_perimeters_projected = false;
+
+
+
+
+
+
 
     SurfaceCollection planar;
     Surfaces          nonplanar;
@@ -195,6 +218,8 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
             if (surface.distance_to_top >= 0.f && surface.distance_to_top < 1e-4f)
                 shell_config.wall_loops.value = std::min(shell_config.wall_loops.value, 1);
             else
+
+
                 shell_config.wall_loops.value = 0;
             perimeters_begin = this->perimeters.entities.size();
             thin_begin       = this->thin_fills.entities.size();
@@ -205,6 +230,7 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         return;
     }
     this->make_perimeters_generator(slices, compatible_regions, fill_surfaces, fill_no_overlap, nullptr, true);
+
     const Surface planar_template(stInternal);
     for (ExtrusionEntity *entity : this->perimeters.entities)
         mark_nonplanar_provenance(entity, planar_template, this->layer()->id());
@@ -218,6 +244,8 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
 
     const PrintConfig       &print_config  = this->layer()->object()->print()->config();
     const PrintRegionConfig &base_config   = config_override ? *config_override : this->region().config();
+
+
     const bool               drop_overhang = !planar_neighbours && base_config.detect_overhang_wall.value;
     PrintRegionConfig        no_overhang_config;
     if (drop_overhang) {
@@ -226,7 +254,9 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
     }
     const PrintRegionConfig &region_config = drop_overhang ? no_overhang_config : base_config;
     const PrintObjectConfig& object_config = this->layer()->object()->config();
+
     bool spiral_mode = print_config.spiral_mode &&
+
         (this->layer()->id() >= size_t(region_config.bottom_shell_layers.value) &&
          this->layer()->print_z >= region_config.bottom_shell_thickness - EPSILON);
 
@@ -237,6 +267,7 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
     }
 
     PerimeterGenerator g(
+
         &slices,
         &compatible_regions,
         this->layer()->height,
@@ -247,13 +278,15 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
         &print_config,
         spiral_mode,
         model_rotation_rad,
-        
+
+
         &this->perimeters,
         &this->thin_fills,
         fill_surfaces,
+
         fill_no_overlap
     );
-    
+
     g.wave_overhangs = WaveOverhangs::enabled(region_config, *this->layer()->object());
     if (planar_neighbours && this->layer()->upper_layer != NULL)
         g.upper_slices = &this->layer()->upper_layer->lslices;
@@ -263,6 +296,8 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
         g.upper_slices_same_region = &this->layer()->upper_layer->get_region(region_id)->slices;
 
     g.layer_id              = (int)this->layer()->id();
+
+
     if (const PrintObject *object = this->layer()->object();
         Nonplanar::oneshot_requested(*object) && !(object->oneshot_state() && object->oneshot_state()->field_path()) &&
         object_config.layer_height.value > 0.)
@@ -270,6 +305,7 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
     g.ext_perimeter_flow    = this->flow(frExternalPerimeter);
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);
+
 
     ExPolygons lower_slices;
     if (this->layer()->lower_layer != nullptr) {
@@ -282,13 +318,20 @@ void LayerRegion::make_perimeters_generator(const SurfaceCollection &slices, con
     else
         g.process_classic();
 
+
+
+
+
     if (! g.out_wave_overhang_floor_polygons.empty())
         append(this->layer()->wave_overhang_floor_polygons, std::move(g.out_wave_overhang_floor_polygons));
+
+
     if (! g.out_wave_overhang_covered_polygons.empty())
         append(this->layer()->wave_overhang_covered_polygons, std::move(g.out_wave_overhang_covered_polygons));
 }
 
 #if 1
+
 
 static ExPolygons fill_surfaces_extract_expolygons(Surfaces &surfaces, std::initializer_list<SurfaceType> surface_types, double &thickness)
 {
@@ -316,12 +359,14 @@ struct ExpansionZone
     bool                                 expanded_into = false;
 };
 
+
 struct Bridge {
     ExPolygon expolygon;
     uint32_t group_id;
     std::vector<Algorithm::RegionExpansionEx>::const_iterator bridge_expansion_begin;
     std::optional<double> angle{std::nullopt};
 };
+
 
 uint32_t group_id(std::vector<Bridge> &bridges, uint32_t src_id) {
     uint32_t group_id = bridges[src_id].group_id;
@@ -348,6 +393,8 @@ std::vector<Bridge> get_grouped_bridges(
     }
 
 
+
+
     for (auto expansion_iterator = bridge_expansions.begin(); expansion_iterator != bridge_expansions.end();) {
         auto boundary_region_begin = expansion_iterator;
         auto boundary_region_end = std::find_if(
@@ -357,6 +404,7 @@ std::vector<Bridge> get_grouped_bridges(
                 return expansion.boundary_id != expansion_iterator->boundary_id;
             }
         );
+
 
         std::vector<BoundingBox> bounding_boxes;
         bounding_boxes.reserve(std::distance(boundary_region_begin, boundary_region_end));
@@ -368,6 +416,7 @@ std::vector<Bridge> get_grouped_bridges(
                 return get_extents(expansion.expolygon.contour);
             }
         );
+
 
         for (;expansion_iterator != boundary_region_end; ++expansion_iterator) {
             auto candidate_iterator = std::next(expansion_iterator);
@@ -381,8 +430,10 @@ std::vector<Bridge> get_grouped_bridges(
                 if (
                     expansion_iterator->src_id != candidate_iterator->src_id
                     && current_bounding_box.overlap(candidate_bounding_box)
+
                     && !intersection(expansion_iterator->expolygon.contour, candidate_iterator->expolygon.contour).empty()
                 ) {
+
                     uint32_t id  = group_id(result, expansion_iterator->src_id);
                     uint32_t id2 = group_id(result, candidate_iterator->src_id);
                     if (id < id2)
@@ -435,7 +486,7 @@ void detect_bridge_directions(
             bbox.merge(get_extents(bridge.expolygon));
             bbox.offset(scale_(1.));
             ::Slic3r::SVG
-                svg(debug_out_path(("bridge" + std::to_string(*bridge.angle) + "_" ).c_str()),
+                svg(debug_out_path(("bridge" + std::to_string(*bridge.angle) + "_"  ).c_str()),
                 bbox);
             svg.draw(bridge.expolygon, "cyan");
             svg.draw(lines, "green", stroke_width);
@@ -458,6 +509,7 @@ Surfaces merge_bridges(
     Surfaces result;
     for (uint32_t bridge_id = 0; bridge_id < uint32_t(bridges.size()); ++ bridge_id) {
         if (group_id(bridges, bridge_id) == bridge_id) {
+
             Polygons acc;
             for (uint32_t bridge_id2 = bridge_id; bridge_id2 < uint32_t(bridges.size()); ++ bridge_id2)
                 if (group_id(bridges, bridge_id2) == bridge_id) {
@@ -467,12 +519,18 @@ Surfaces merge_bridges(
                     for (; it_bridge_expansion != bridge_expansions.end() && it_bridge_expansion->src_id == bridge_id2; ++ it_bridge_expansion)
                         append(acc, to_polygons(it_bridge_expansion->expolygon));
                 }
+
             if (!bridges[bridge_id].angle) {
                 assert(false && "Bridge angle must be pre-calculated!");
             }
             Surface templ{ stBottomBridge, {} };
             templ.bridge_angle = bridges[bridge_id].angle ? *bridges[bridge_id].angle : -1;
+
+
+
             ExPolygons final = closing_ex(acc, closing_radius);
+
+
             for (ExPolygon &ex : final)
                 result.emplace_back(templ, std::move(ex));
         }
@@ -522,6 +580,9 @@ ExpansionResult expand_expolygons(
     return {bridge_anchors, bridge_expansions};
 }
 
+
+
+
 Surfaces expand_bridges_detect_orientations(
     Surfaces &surfaces,
     std::vector<ExpansionZone>& expansion_zones,
@@ -533,6 +594,7 @@ Surfaces expand_bridges_detect_orientations(
     ExPolygons bridge_expolygons = fill_surfaces_extract_expolygons(surfaces, {stBottomBridge}, thickness);
     if (bridge_expolygons.empty())
         return {};
+
 
     ExpansionResult expansion_result{expand_expolygons(
         bridge_expolygons,
@@ -548,10 +610,12 @@ Surfaces expand_bridges_detect_orientations(
     std::sort(expansion_result.anchors.begin(), expansion_result.anchors.end(), Algorithm::lower_by_src_and_boundary);
     detect_bridge_directions(expansion_result.anchors, bridges, expansion_zones);
 
+
     std::sort(expansion_result.expansions.begin(), expansion_result.expansions.end(), [](auto &l, auto &r) {
         return l.src_id < r.src_id || (l.src_id == r.src_id && l.boundary_id < r.boundary_id);
     });
     Surfaces out{merge_bridges(bridges, expansion_result.expansions, closing_radius)};
+
 
     for (ExpansionZone& expansion_zone : expansion_zones)
         if (expansion_zone.expanded_into)
@@ -588,7 +652,11 @@ Surfaces expand_merge_surfaces(
     }
 
     std::vector<ExPolygon> expanded = merge_expansions_into_expolygons(std::move(src), std::move(expansions));
+
+
+
     expanded = closing_ex(expanded, closing_radius);
+
     for (ExpansionZone& expansion_zone : expansion_zones)
         if (expansion_zone.expanded_into)
             expansion_zone.expolygons = diff_ex(expansion_zone.expolygons, expanded);
@@ -609,6 +677,8 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     export_region_fill_surfaces_to_svg_debug("4_process_external_surfaces-initial");
 #endif
+
+
     float shell_width = 0;
     float expansion_min = 0;
     if (int num_perimeters = this->region().config().wall_loops; num_perimeters > 0) {
@@ -618,16 +688,25 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
         shell_width += perimeter_flow.scaled_spacing() * (num_perimeters - 1);
         expansion_min = perimeter_flow.scaled_spacing();
     } else {
+
         shell_width   = float(SCALED_EPSILON);
         expansion_min = float(SCALED_EPSILON);;
     }
 
+
     float                           expansion_top           = shell_width * sqrt(2.);
     float                           expansion_bottom        = expansion_top;
     float                           expansion_bottom_bridge = expansion_top;
+
     const float                     expansion_step          = scaled<float>(0.1);
+
     static constexpr const size_t   max_nr_expansion_steps  = 5;
+
     const float closing_radius = 0.55f * 0.65f * 1.05f * this->flow(frSolidInfill).scaled_spacing();
+
+
+
+
 
     Surfaces nonplanar_shells;
     for (Surface &surface : this->fill_surfaces.surfaces)
@@ -637,6 +716,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
         std::remove_if(this->fill_surfaces.surfaces.begin(), this->fill_surfaces.surfaces.end(),
             [](const Surface &surface) { return surface.is_nonplanar(); }),
         this->fill_surfaces.surfaces.end());
+
 
     double     layer_thickness;
     ExPolygons shells = union_ex(fill_surfaces_extract_expolygons(this->fill_surfaces.surfaces, { stInternalSolid }, layer_thickness));
@@ -654,6 +734,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     SurfaceCollection bridges;
     {
         BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges. layer" << this->layer()->print_z;
+
         const auto  &region_config    = this->region().config();
         const double custom_angle_deg = region_config.bridge_angle.value;
         const bool   relative_angle   = region_config.relative_bridge_angle.value;
@@ -698,7 +779,9 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
     expansion_zones.at(0).parameters = RegionExpansionParameters::build(expansion_top, expansion_step, max_nr_expansion_steps);
     Surfaces tops = expand_merge_surfaces(this->fill_surfaces.surfaces, stTop, expansion_zones, closing_radius);
 
+
     if (!this->layer()->object()->print()->config().spiral_mode && this->region().config().sparse_infill_density.value > 0) {
+
         double min_area = scale_(scale_(this->region().config().minimum_sparse_infill_area.value));
         ExPolygons small_regions{};
         expansion_zones[1].expolygons.erase(std::remove_if(expansion_zones[1].expolygons.begin(), expansion_zones[1].expolygons.end(), [min_area, &small_regions](ExPolygon& ex_polygon) {
@@ -713,6 +796,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
             expansion_zones[0].expolygons = union_ex(expansion_zones[0].expolygons, small_regions);
         }
     }
+
 
     this->fill_surfaces.clear();
     unsigned zones_expolygons_count = 0;
@@ -740,60 +824,84 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
 }
 #else
 
+
+
 #define EXTERNAL_SURFACES_OFFSET_PARAMETERS jtSquare, 0.
 
 void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered)
 {
     const bool      has_infill = this->region().config().sparse_infill_density.value > 0.;
+
     auto nozzle_diameter = this->region().nozzle_dmr_avg(this->layer()->object()->print()->config());
     const float margin = float(scale_(EXTERNAL_INFILL_MARGIN));
     const float bridge_margin = std::min(float(scale_(BRIDGE_INFILL_MARGIN)), float(scale_(nozzle_diameter * BRIDGE_INFILL_MARGIN / 0.4)));
+
 
     const PrintObjectConfig& object_config = this->layer()->object()->config();
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
     export_region_fill_surfaces_to_svg_debug("3_process_external_surfaces-initial");
 #endif
+
+
+
+
     Surfaces                    bottom;
+
     Surfaces                    bridges;
+
     Surfaces                    top;
+
     Surfaces                    internal;
+
     Polygons                    fill_boundaries = to_polygons(this->fill_expolygons);
     Polygons  					lower_layer_covered_tmp;
 
+
+
+
+
     {
+
         Polygons voids;
 
         double max_grid_area = -1;
+
+
     if (planar_neighbours && this->layer()->lower_layer != nullptr)
             max_grid_area = this->layer()->lower_layer->get_sparse_infill_max_void_area();
         for (const Surface &surface : this->fill_surfaces.surfaces) {
             if (surface.is_top()) {
+
+
                 if (max_grid_area < 0 || surface.expolygon.area() < max_grid_area)
                     surfaces_append(top, offset_ex(surface.expolygon, margin, EXTERNAL_SURFACES_OFFSET_PARAMETERS), surface);
                 else
+
                     surfaces_append(top, intersection_ex(offset(surface.expolygon.contour, margin / 3.0, EXTERNAL_SURFACES_OFFSET_PARAMETERS),
                                                          offset_ex(surface.expolygon, margin, EXTERNAL_SURFACES_OFFSET_PARAMETERS)), surface);
             } else if (surface.surface_type == stBottom || (surface.surface_type == stBottomBridge && lower_layer == nullptr)) {
+
                 surfaces_append(bottom, offset_ex(surface.expolygon, margin, EXTERNAL_SURFACES_OFFSET_PARAMETERS), surface);
             } else if (surface.surface_type == stBottomBridge) {
                 if (! surface.empty())
                     bridges.emplace_back(surface);
             }
             if (surface.is_internal()) {
-            	assert(surface.surface_type == stInternal || surface.surface_type == stInternalSolid);
-            	if (! has_infill && lower_layer != nullptr)
-            		polygons_append(voids, surface.expolygon);
-            	internal.emplace_back(std::move(surface));
+                assert(surface.surface_type == stInternal || surface.surface_type == stInternalSolid);
+                if (! has_infill && lower_layer != nullptr)
+                    polygons_append(voids, surface.expolygon);
+                internal.emplace_back(std::move(surface));
             }
         }
         if (! has_infill && lower_layer != nullptr && ! voids.empty()) {
+
             if (lower_layer_covered == nullptr) {
-            	lower_layer_covered = &lower_layer_covered_tmp;
-            	lower_layer_covered_tmp = to_polygons(lower_layer->lslices);
+                lower_layer_covered = &lower_layer_covered_tmp;
+                lower_layer_covered_tmp = to_polygons(lower_layer->lslices);
             }
             if (! lower_layer_covered->empty())
-            	voids = diff(voids, *lower_layer_covered);
+                voids = diff(voids, *lower_layer_covered);
             fill_boundaries = diff(fill_boundaries, voids);
         }
     }
@@ -810,6 +918,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
         fill_boundaries = union_safety_offset(fill_boundaries);
     } else
     {
+
         ExPolygons               fill_boundaries_ex = union_safety_offset_ex(fill_boundaries);
         std::vector<Polygons>    bridges_grown;
         std::vector<BoundingBox> bridge_bboxes;
@@ -819,29 +928,36 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
             static int iRun = 0;
             SVG svg(debug_out_path("3_process_external_surfaces-fill_regions-%d.svg", iRun ++).c_str(), get_extents(fill_boundaries_ex));
             svg.draw(fill_boundaries_ex);
-            svg.draw_outline(fill_boundaries_ex, "black", "blue", scale_(0.05)); 
+            svg.draw_outline(fill_boundaries_ex, "black", "blue", scale_(0.05));
             svg.Close();
         }
 
+
 #endif
- 
+
         {
+
             std::vector<BoundingBox> fill_boundaries_ex_bboxes = get_extents_vector(fill_boundaries_ex);
             bridges_grown.reserve(bridges.size());
             bridge_bboxes.reserve(bridges.size());
             for (size_t i = 0; i < bridges.size(); ++ i) {
+
                 const Point pt = bridges[i].expolygon.contour.points.front();
                 int idx_island = -1;
                 for (int j = 0; j < int(fill_boundaries_ex.size()); ++ j)
-                    if (fill_boundaries_ex_bboxes[j].contains(pt) && 
+                    if (fill_boundaries_ex_bboxes[j].contains(pt) &&
                         fill_boundaries_ex[j].contains(pt)) {
                         idx_island = j;
                         break;
                     }
+
+
+
                 Polygons polys = offset2({ bridges[i].expolygon }, -scale_(nozzle_diameter * 0.1), bridge_margin, EXTERNAL_SURFACES_OFFSET_PARAMETERS);
                 if (idx_island == -1) {
 				    BOOST_LOG_TRIVIAL(trace) << "Bridge did not fall into the source region!";
                 } else {
+
                     polys = intersection(polys, fill_boundaries_ex[idx_island]);
                 }
                 bridge_bboxes.push_back(get_extents(polys));
@@ -849,17 +965,22 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
             }
         }
 
+
         std::vector<size_t> bridge_group(bridges.size(), (size_t)-1);
-        size_t n_groups = 0; 
+        size_t n_groups = 0;
         for (size_t i = 0; i < bridges.size(); ++ i) {
+
             size_t group_id = (bridge_group[i] == size_t(-1)) ? (n_groups ++) : bridge_group[i];
             bridge_group[i] = group_id;
+
             for (size_t j = i + 1; j < bridges.size(); ++ j) {
                 if (! bridge_bboxes[i].overlap(bridge_bboxes[j]))
                     continue;
                 if (intersection(bridges_grown[i], bridges_grown[j]).empty())
                     continue;
+
                 if (bridge_group[j] != size_t(-1)) {
+
                     size_t group_id_new = bridge_group[j];
                     for (size_t k = 0; k < j; ++ k)
                         if (bridge_group[k] == group_id)
@@ -869,6 +990,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                 bridge_group[j] = group_id;
             }
         }
+
 
         {
 			BOOST_LOG_TRIVIAL(trace) << "Processing external surface, detecting bridges. layer" << this->layer()->print_z << ", bridge groups: " << n_groups;
@@ -882,7 +1004,9 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                     }
                 }
                 if (n_bridges_merged == 0)
+
                     continue;
+
                 ExPolygons  initial;
                 Polygons    grown;
                 for (size_t i = 0; i < bridges.size(); ++ i) {
@@ -891,6 +1015,11 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                     initial.push_back(std::move(bridges[i].expolygon));
                     polygons_append(grown, bridges_grown[i]);
                 }
+
+
+
+
+
                 const auto &region_config   = this->region().config();
                 const double custom_angle_deg = region_config.bridge_angle.value;
                 const bool   relative_angle   = region_config.relative_bridge_angle.value;
@@ -911,6 +1040,28 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                         bridges[idx_last].bridge_angle += custom_angle_rad;
                 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 surfaces_append(bottom, union_safety_offset_ex(grown), bridges[idx_last]);
             }
 
@@ -928,7 +1079,9 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
 
     Surfaces new_surfaces;
     {
+
         surfaces_append(top, std::move(bottom));
+
         Polygons bottom_polygons = to_polygons(bottom);
         for (size_t i = 0; i < top.size(); ++ i) {
             Surface &s1 = top[i];
@@ -944,14 +1097,17 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
                 }
             }
             if (s1.is_top())
+
                 polys = diff(polys, bottom_polygons);
             surfaces_append(
                 new_surfaces,
+
                 intersection_ex(polys, fill_boundaries),
                 s1);
         }
     }
-    
+
+
     Polygons new_polygons = to_polygons(new_surfaces);
     for (size_t i = 0; i < internal.size(); ++ i) {
         Surface &s1 = internal[i];
@@ -970,7 +1126,7 @@ void LayerRegion::process_external_surfaces(const Layer *lower_layer, const Poly
         polygons_append(new_polygons, to_polygons(new_expolys));
         surfaces_append(new_surfaces, std::move(new_expolys), s1);
     }
-    
+
     this->fill_surfaces.surfaces = std::move(new_surfaces);
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
@@ -985,12 +1141,19 @@ void LayerRegion::prepare_fill_surfaces()
     export_region_slices_to_svg_debug("2_prepare_fill_surfaces-initial");
     export_region_fill_surfaces_to_svg_debug("2_prepare_fill_surfaces-initial");
 #endif
-    
+
+
+
+
+
     bool spiral_mode = this->layer()->object()->print()->config().spiral_mode;
+
 
     if (! spiral_mode && this->region().config().top_shell_layers == 0) {
         for (Surface &surface : this->fill_surfaces.surfaces)
             if (surface.is_top())
+
+
                 surface.surface_type = PrintObject::infill_only_where_needed ? stInternalVoid : stInternal;
     }
     if (this->region().config().bottom_shell_layers == 0) {
@@ -1000,6 +1163,7 @@ void LayerRegion::prepare_fill_surfaces()
     }
 
     if (!spiral_mode && fabs(this->region().config().sparse_infill_density.value - 100.) < EPSILON) {
+
         for (Surface &surface : this->fill_surfaces.surfaces)
             if (surface.surface_type == stInternal)
                 surface.surface_type = stInternalSolid;
@@ -1056,6 +1220,7 @@ void LayerRegion::export_region_slices_to_svg(const char *path) const
     svg.Close();
 }
 
+
 void LayerRegion::export_region_slices_to_svg_debug(const char *name) const
 {
     static std::map<std::string, size_t> idx_map;
@@ -1076,11 +1241,12 @@ void LayerRegion::export_region_fill_surfaces_to_svg(const char *path) const
     const float transparency = 0.5f;
     for (const Surface &surface : this->fill_surfaces.surfaces) {
         svg.draw(surface.expolygon, surface_type_to_color_name(surface.surface_type), transparency);
-        svg.draw_outline(surface.expolygon, "black", "blue", scale_(0.05)); 
+        svg.draw_outline(surface.expolygon, "black", "blue", scale_(0.05));
     }
     export_surface_type_legend_to_svg(svg, legend_pos);
     svg.Close();
 }
+
 
 void LayerRegion::export_region_fill_surfaces_to_svg_debug(const char *name) const
 {
@@ -1177,6 +1343,8 @@ LayerRegion::append_nonplanar_surface(const NonplanarSurface& surface)
 
 void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collection, const NonplanarProjectionIndex &index)
 {
+
+
     ExtrusionEntityCollection input, output;
     output.entities.reserve(collection->entities.size());
     input.entities.swap(collection->entities);
@@ -1203,6 +1371,8 @@ void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collect
                 for (auto &piece : pieces) projected.emplace_back(std::move(piece));
             }
             if (split) {
+
+
                 for (auto &piece : projected) append(std::make_unique<ExtrusionPath>(std::move(piece)));
             } else {
                 loop->paths = std::move(projected);
@@ -1223,6 +1393,8 @@ void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collect
                 append(std::move(entity));
             }
         } else if (auto *nested = dynamic_cast<ExtrusionEntityCollection*>(entity.get())) {
+
+
             project_nonplanar_extrusion(nested, index);
             append(std::move(entity));
         } else {
@@ -1232,12 +1404,16 @@ void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collect
     collection->entities.swap(output.entities);
 }
 
+
+
 static void check_nonplanar_projected(const ExtrusionEntity *entity, const Layer &layer)
 {
     const size_t layer_id = layer.id();
     auto check_path = [&layer, layer_id](const ExtrusionPath &path) {
         if (! path.nonplanar_source)
             return;
+
+
         for (const Point3 &p : path.polyline.points)
             if (p.z() <= 0)
                 throw_nonplanar_internal(nonplanar_location(layer.print_z, layer_id),
@@ -1268,6 +1444,8 @@ void LayerRegion::project_nonplanar_surfaces()
     check_nonplanar_projected(&perimeters, *this->layer());
     check_nonplanar_projected(&fills, *this->layer());
 }
+
+
 
 static bool nonplanar_triangle_height(const NonplanarFacet &facet, double x, double y,
                                       double margin, double &z, double &distance2)
@@ -1306,15 +1484,22 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
     if (!source.nonplanar_source || source.polyline.points.size() < 2)
         return {source};
 
+
+
     if (source.source_surface_id < 0 || source.distance_to_top < 0)
         throw_nonplanar_internal(nonplanar_location(this->layer()->print_z, this->layer()->id()),
             "path " + std::to_string(source.source_path_id) + " without target surface or shell offset", this->layer()->object()->id().id);
     const double offset = source.distance_to_top;
+
+
     const double margin = std::max(0.003, double(source.width) * 0.5 + 0.003);
     auto sample = [&](double x, double y, int &owner, int &facet_id, double &height) {
         double best = std::numeric_limits<double>::max();
         owner = -1;
         facet_id = -1;
+
+
+
         for (const auto &[si, candidate_facet_id] : index.query(x - margin, y - margin, x + margin, y + margin)) {
             const NonplanarSurface &surface = m_nonplanar_surfaces[si];
             if (surface.stable_id != source.source_surface_id)
@@ -1326,6 +1511,8 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
                 owner = int(si);
                 facet_id = candidate_facet_id;
                 height = z - offset;
+
+
                 if (d2 == 0.) break;
             }
         }
@@ -1347,6 +1534,11 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
         if (owner >= 0) {
             double h = 0.0;
             if (!sample_facet(x, y, owner, facet_id, h)) {
+
+
+
+
+
                 double outside_t = t, inside = inside_t;
                 for (int n = 0; n < 32; ++n) {
                     const double candidate = 0.5 * (outside_t + inside);
@@ -1411,6 +1603,8 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
             double height = 0.0;
             sample(ax+mid*dx, ay+mid*dy, owner, facet_id, height);
             if (owner < 0)
+
+
                 throw_nonplanar_internal(nonplanar_location(this->layer()->print_z, this->layer()->id()),
                     "no facet of surface " + std::to_string(source.source_surface_id) + " under X" +
                     std::to_string(ax+mid*dx) + " Y" + std::to_string(ay+mid*dy) +
@@ -1419,6 +1613,8 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
             Point3 p1 = point_at(a, b, ts[j], owner, facet_id, mid);
             if (p0 == p1) continue;
             if (owner >= 0) {
+
+
                 const double xy = std::hypot(unscale<double>(p1.x() - p0.x()),
                                              unscale<double>(p1.y() - p0.y()));
                 const double dz = std::abs(unscale<double>(p1.z() - p0.z()));
@@ -1429,6 +1625,10 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
                         " -> X" + std::to_string(unscale<double>(p1.x())) + " Y" + std::to_string(unscale<double>(p1.y())) +
                         ", XY " + std::to_string(xy) + " mm, Z " + std::to_string(dz) + " mm, surface " + std::to_string(owner));
             }
+
+
+
+
             if (owner == current_owner && !current.polyline.points.empty() &&
                 current.polyline.points.back().to_point() == p0.to_point() &&
                 std::abs(current.polyline.points.back().z() - p0.z()) <= scale_(0.003))
@@ -1452,4 +1652,3 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
 
 
 }
- 

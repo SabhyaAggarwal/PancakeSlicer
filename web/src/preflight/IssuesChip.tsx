@@ -1,3 +1,5 @@
+
+
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Glyph } from '../components/Glyph';
 import { currentResult } from '../flow/slice';
@@ -46,6 +48,7 @@ export default function IssuesChip() {
     window.addEventListener('pointerdown', away);
     return () => window.removeEventListener('pointerdown', away);
   }, [open]);
+
   const keys = issues.map((i) => i.key).join();
   useEffect(() => {
     if (!open) return;

@@ -12,7 +12,6 @@
 :where(.orca-parity) .pt-editing { display: inline-grid; align-items: center; border-color: var(--focus); }
 :where(.orca-parity) .pt-editing::after { content: attr(data-value); grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; padding-right: 16px; }
 :where(.orca-parity) .pt-input { grid-area: 1 / 1; width: 100%; min-width: 4ch; height: 20px; padding: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
-
 :where(.orca-parity) .pt-status { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-compact); padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink-3); font: var(--t-body); white-space: nowrap; }
 :where(.orca-parity) button.pt-status { cursor: pointer; }
 :where(.orca-parity) .pt-status svg { flex: none; display: block; }
@@ -29,9 +28,7 @@
   :where(.orca-parity) .pt-spinner { display: none; }
   :where(.orca-parity) .pt-saving > svg:not(.pt-spinner) { display: block; }
 }
-
 @media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .pt-editing { min-height: 44px; } }
-
 @media (max-width: 599px) {
   :where(.orca-parity) .project-title { grid-template-columns: 0 minmax(0, max-content) minmax(32px, 1fr); }
   :where(.orca-parity) .pt-folder { visibility: hidden; }

@@ -1,3 +1,5 @@
+
+
 import * as THREE from 'three';
 import { instanceMatrix } from '../plater/geometry';
 import { getState, subscribeStore } from '../state/store';
@@ -9,6 +11,7 @@ export function mountMarks(scene: THREE.Scene, render: () => void): () => void {
   const root = new THREE.Group();
   root.renderOrder = 3;
   scene.add(root);
+
   const tint = (opacity: number) => new THREE.MeshBasicMaterial({ color: css('--danger', '#c62828'), transparent: true, opacity, depthWrite: false, depthTest: false,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4, side: THREE.DoubleSide });
   const line = (opacity: number) => new THREE.LineBasicMaterial({ color: css('--danger', '#c62828'), transparent: true, opacity });

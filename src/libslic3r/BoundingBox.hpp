@@ -20,9 +20,9 @@ public:
     PointType min;
     PointType max;
     bool defined;
-    
+
     BoundingBoxBase() : min(PointType::Zero()), max(PointType::Zero()), defined(false) {}
-    BoundingBoxBase(const PointType &pmin, const PointType &pmax) : 
+    BoundingBoxBase(const PointType &pmin, const PointType &pmax) :
         min(pmin), max(pmax), defined(pmin.x() < pmax.x() && pmin.y() < pmax.y()) {}
     BoundingBoxBase(const PointType &p1, const PointType &p2, const PointType &p3) :
         min(p1), max(p1), defined(false) { merge(p2); merge(p3); }
@@ -86,10 +86,14 @@ public:
         os << "[" << bbox.max(0) - bbox.min(0) << " x " << bbox.max(1) - bbox.min(1) << "] from (" << bbox.min(0) << ", " << bbox.min(1) << ")";
         return os;
     }
-    
+
 private:
+
     friend BoundingBox get_extents<false>(const Points &pts);
     friend BoundingBox get_extents<true>(const Points &pts);
+
+
+
 
     template<bool IncludeBoundary = false, class BoundingBoxType, class It, class = IteratorOnly<It>>
     static void construct(BoundingBoxType &out, It from, It to)
@@ -115,8 +119,8 @@ public:
     using PointsType = std::vector<PointType>;
 
     BoundingBox3Base() : BoundingBoxBase<PointType>() {}
-    BoundingBox3Base(const PointType &pmin, const PointType &pmax) : 
-        BoundingBoxBase<PointType>(pmin, pmax) 
+    BoundingBox3Base(const PointType &pmin, const PointType &pmax) :
+        BoundingBoxBase<PointType>(pmin, pmax)
         { if (pmin.z() >= pmax.z()) BoundingBoxBase<PointType>::defined = false; }
     BoundingBox3Base(const PointType &p1, const PointType &p2, const PointType &p3) :
         BoundingBoxBase<PointType>(p1, p1) { merge(p2); merge(p3); }
@@ -162,11 +166,13 @@ public:
         return contains(other.min) && contains(other.max);
     }
 
+
     bool intersects(const BoundingBox3Base<PointType>& other) const {
-        return this->min.x() < other.max.x() && this->max.x() > other.min.x() && this->min.y() < other.max.y() && this->max.y() > other.min.y() && 
+        return this->min.x() < other.max.x() && this->max.x() > other.min.x() && this->min.y() < other.max.y() && this->max.y() > other.min.y() &&
             this->min.z() < other.max.z() && this->max.z() > other.min.z();
     }
 };
+
 
 extern template void     BoundingBoxBase<Point, Points>::scale(double factor);
 extern template void     BoundingBoxBase<Vec2d>::scale(double factor);
@@ -211,8 +217,10 @@ public:
     BoundingBox rotated(double angle, const Point &center) const;
     void rotate(double angle) { (*this) = this->rotated(angle); }
     void rotate(double angle, const Point &center) { (*this) = this->rotated(angle, center); }
+
+
     void align_to_grid(const coord_t cell_size);
-    
+
     BoundingBox() : BoundingBoxBase<Point, Points>() {}
     BoundingBox(const Point &pmin, const Point &pmax) : BoundingBoxBase<Point, Points>(pmin, pmax) {}
     BoundingBox(const Points &points) : BoundingBoxBase<Point, Points>(points) {}
@@ -226,7 +234,7 @@ public:
 
 using BoundingBoxes = std::vector<BoundingBox>;
 
-class BoundingBox3  : public BoundingBox3Base<Vec3crd> 
+class BoundingBox3  : public BoundingBox3Base<Vec3crd>
 {
 public:
     BoundingBox3() : BoundingBox3Base<Vec3crd>() {}
@@ -245,7 +253,7 @@ public:
     BoundingBox3(const std::vector<Vec3crd>& points) : BoundingBox3Base<Vec3crd>(points) {}
 };
 
-class BoundingBoxf : public BoundingBoxBase<Vec2d> 
+class BoundingBoxf : public BoundingBoxBase<Vec2d>
 {
 public:
     BoundingBoxf() : BoundingBoxBase<Vec2d>() {}
@@ -253,7 +261,7 @@ public:
     BoundingBoxf(const std::vector<Vec2d> &points) : BoundingBoxBase<Vec2d>(points) {}
 };
 
-class BoundingBoxf3 : public BoundingBox3Base<Vec3d> 
+class BoundingBoxf3 : public BoundingBox3Base<Vec3d>
 {
 public:
     using BoundingBox3Base::BoundingBox3Base;
@@ -302,6 +310,8 @@ auto cast(const BoundingBox3Base<Tin> &b)
 }
 
 }
+
+
 namespace cereal {
 	template<class Archive> void serialize(Archive& archive, Slic3r::BoundingBox   &bb) { archive(bb.min, bb.max, bb.defined); }
 	template<class Archive> void serialize(Archive& archive, Slic3r::BoundingBox3  &bb) { archive(bb.min, bb.max, bb.defined); }

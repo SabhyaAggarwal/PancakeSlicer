@@ -1,8 +1,10 @@
+
 import type { ProjectDraft, ProjectDraftStore, ProjectFailure } from '../persist/drafts';
 import type { DraftCheckpoint, DraftCodec } from './project-recovery';
 import type { ProjectDraftInventory } from './project';
 import { flushServiceSession, loadServiceSession, patchServiceSession } from '../persist/service-session';
 import { requireWorkspaceService } from '../persist/service';
+
 export async function draftSession(newOwner: string): Promise<{ owner: string; previousOwner: string | null; previousOwners: readonly string[] }> {
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Invalid service draft lineage');
@@ -11,18 +13,24 @@ export async function draftSession(newOwner: string): Promise<{ owner: string; p
 }
 async function registerDraftOwner(owner: string, storage: () => Promise<ProjectDraftStore>): Promise<void> {
   await requireWorkspaceService();
+
   await flushServiceSession(true);
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Invalid service draft lineage');
   if (lineage.includes(owner)) return;
   const next = [owner, ...new Set(lineage as string[])];
+
   if (next.length > 32) {
+
     const holding = new Set((await (await storage()).listMetadata()).map((draft) => draft.owner));
     for (let i = next.length - 1; i > 0 && next.length > 32; i--) if (!holding.has(next[i])) next.splice(i, 1);
   }
   await patchServiceSession({ projectDraftOwners: next.slice(0, 32) });
   await flushServiceSession();
 }
+
+
+
 export function createDraftJournal<D>(owner: string, storage: () => Promise<ProjectDraftStore>, codec: () => Promise<DraftCodec<D>>,
   beginMutation: (id: string) => (error?: unknown) => void = () => () => {}) {
   let serial = 0, tail = Promise.resolve(), registered: Promise<void> | null = null;

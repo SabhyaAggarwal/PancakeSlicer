@@ -27,6 +27,7 @@ export const blocksAutosave = (failure: ProjectFailure | null) => failure?.kind 
 export function checkpointCommitted(draft: Pick<ProjectDraftMeta, 'id' | 'sequence'>, doc: CheckpointDocument): boolean {
   return doc.recoveryCheckpoint?.id === draft.id && doc.recoveryCheckpoint.sequence >= draft.sequence;
 }
+
 export function recoveryDocument(doc: CheckpointDocument): StoredDocBase {
   const { recoveryCheckpoint: _checkpoint, ...document } = doc;
   return document;

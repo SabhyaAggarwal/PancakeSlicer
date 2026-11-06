@@ -1,3 +1,5 @@
+
+
 import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 
@@ -16,6 +18,7 @@ export function optionAssets(bootstrapTypes = true): Plugin {
       };
       const options = read('./src/options.generated.json');
       if (id === '\0virtual:option-hints') {
+
         const names = ['gui_type', 'multiline', 'full_width'];
         const hints = Object.fromEntries(Object.entries<Record<string, unknown>>(options)
           .filter(([, def]) => names.some((name) => def[name] !== undefined))

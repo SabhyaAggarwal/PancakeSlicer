@@ -61,6 +61,7 @@ namespace {
 std::mutex                                     g_override_mutex;
 std::map<std::string, std::vector<ExPolygons>> g_overrides;
 
+
 double tilt_budget(const ToolKinematics &kinematics)
 {
     double tilt = 0.5 * M_PI;
@@ -68,6 +69,7 @@ double tilt_budget(const ToolKinematics &kinematics)
         tilt = std::min(tilt, kinematics.max_tilt(2. * M_PI * s / 72.));
     return tilt;
 }
+
 
 class NativeChart : public FieldChart
 {
@@ -88,6 +90,8 @@ private:
 };
 
 using SeamCost = std::function<double(const Point &)>;
+
+
 
 void flatten(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out, const SeamCost *seam_cost = nullptr,
              std::deque<ExtrusionLoop> *seamed = nullptr)
@@ -178,6 +182,12 @@ const std::vector<ExPolygons> *NativeSliceOverride::find(const std::string &name
     return it == g_overrides.end() ? nullptr : &it->second;
 }
 
+
+
+
+
+
+
 double adaptive_level_ratio()
 {
     static const double r = [] {
@@ -217,6 +227,7 @@ std::vector<double> adaptive_levels(const indexed_triangle_set &mesh, const Laye
     while (tops.back() < top - 1e-6) {
         const double phi = tops.back();
         double       t   = std::min(t_max * h, 1.15 * prev);
+
         for (int it = 0; it < 8; ++it) {
             double       least = t;
             const size_t i0    = size_t(std::clamp((phi - first) / Bin, 0., double(nb - 1)));
@@ -227,6 +238,7 @@ std::vector<double> adaptive_levels(const indexed_triangle_set &mesh, const Laye
                 break;
             t = std::max(h, least);
         }
+
         if (phi + t > top - 0.5 * h)
             t = std::max(top - phi, 0.5 * h);
         tops.push_back(phi + t);
@@ -237,8 +249,19 @@ std::vector<double> adaptive_levels(const indexed_triangle_set &mesh, const Laye
     return tops;
 }
 
+
+
+
+
+
+
+
+
+
 bool native_planar_support()
 {
+
+
     static const bool on = [] { const char *v = std::getenv("NP_NATIVE_PLANAR_SUPPORT"); return v == nullptr || std::atoi(v) != 0; }();
     return on;
 }
@@ -264,6 +287,8 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         return out;
     bb.offset(scale_(3.));
     const HeightField grid = HeightField::layout(BoundingBoxf(Vec2d(unscale(bb.min) + grid_phase), Vec2d(unscale(bb.max) + grid_phase)), Cell);
+
+
     std::vector<Mask> inside(K);
     for (size_t k = 0; k < K; ++k)
         inside[k] = rasterize(offset_ex(domains[k], -float(scale_(0.5 * Cell))), grid);
@@ -273,7 +298,9 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         return ix >= 0 && iy >= 0 && ix < grid.nx() && iy < grid.ny();
     };
     auto key = [](int x, int y) { return (int64_t(x) << 32) ^ int64_t(uint32_t(y)); };
+
     std::unordered_map<int64_t, std::vector<std::pair<Vec3d, size_t>>> part_at;
+
     auto each_point = [&](const FieldRoad &r, auto &&fn) {
         const auto *cp = dynamic_cast<const ExtrusionPathConformal *>(r.path.get());
         auto bead = [&](size_t i) {
@@ -294,7 +321,17 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             if (cell_of(t.x(), t.y(), ix, iy))
                 part_at[key(ix, iy)].emplace_back(t, r.layer);
         });
+
+
+
+
+
     std::unordered_map<int64_t, std::vector<double>> under;
+
+
+
+
+
     static const char *bead_env = std::getenv("NP_PSUP_BEAD");
     bead_columns = bead_env != nullptr && *bead_env != 0 ? std::atoi(bead_env) != 0 : bead_columns;
     struct BeadBottom { double x, y, bottom, w; };
@@ -304,6 +341,9 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             int ix, iy;
             if (t.z() - bh <= first + 0.05 || !cell_of(t.x(), t.y(), ix, iy))
                 return;
+
+
+
             const double lateral = 0.5 * bw + bh - 0.025, window = 2. * std::max(bh, h) + 0.1;
             const int    reach   = int(std::ceil(lateral / Cell));
             for (int dy = -reach; dy <= reach; ++dy)
@@ -319,6 +359,10 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         });
     if (under.empty())
         return out;
+
+
+
+
     std::unordered_map<int64_t, std::vector<double>> tops_of;
     for (const auto &[k, bottoms] : under) {
         const int x = int(k >> 32), y = int(int32_t(uint32_t(k)));
@@ -333,6 +377,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             }
     }
     struct Column { int x, y; double base, top; Polygon foot; };
+
     std::FILE *dump = std::getenv("NP_NATIVE_PSUP_DUMP") ? std::fopen(std::getenv("NP_NATIVE_PSUP_DUMP"), "w") : nullptr;
     std::vector<Column> columns;
     for (auto &[k, cell_tops] : tops_of) {
@@ -345,6 +390,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             const double top = cell_tops[i];
             while (i < cell_tops.size() && cell_tops[i] < top + 0.3)
                 ++i;
+
             double base = 0.;
             for (size_t j = K; j-- > 0;)
                 if (inside[j][size_t(y) * grid.nx() + x]) {
@@ -354,6 +400,9 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                         break;
                     }
                 }
+
+
+
             if (top - base >= (base <= 0. ? first : 2. * h) - 1e-6)
                 columns.push_back({ x, y, base, top, {} });
             else if (dump)
@@ -361,9 +410,12 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         }
     }
     if (bead_columns) {
+
         std::unordered_map<int64_t, std::vector<double>> cell_top;
         for (const Column &col : columns)
             cell_top[key(col.x, col.y)].push_back(col.top);
+
+
         std::map<std::pair<int64_t, int64_t>, std::vector<const BeadBottom *>> buckets;
         for (const BeadBottom &b : bead_bottoms)
             buckets[{ std::llround(b.x / 0.2), std::llround(b.y / 0.2) }].push_back(&b);
@@ -423,6 +475,10 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                       Point::new_scale(c.x() + 0.5 * Cell, c.y() + 0.5 * Cell), Point::new_scale(c.x() - 0.5 * Cell, c.y() + 0.5 * Cell) };
         return sq;
     };
+
+
+
+
     auto grid_top = [&](double top) { return std::max(first, first + std::floor((top - first) / h + 1e-6) * h); };
     auto cap_of   = [&](const Column &c) {
         const double z = std::floor(c.top / 0.05 + 1e-6) * 0.05;
@@ -442,10 +498,20 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             specs.emplace_back(z, -(z - grid_top(z)));
         std::stable_sort(specs.begin(), specs.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     }
+
+
+
+
     const double xy_user = std::max(0., object.config().support_object_xy_distance.value);
     const double xy_wall = xy_user + 0.5 * w, xy_tip = std::min(xy_user, 0.5 * w) + 0.5 * w;
+
+
+
     const Flow   sup_flow      = support_material_flow(&object, float(h));
     const double ws            = sup_flow.width(), sup_pitch = sup_flow.spacing();
+
+
+
     const double iface_pitch   = std::min(sup_pitch + std::max(0., object.config().support_interface_spacing.value), w + h);
     const double base_pitch    = sup_pitch + std::max(0., object.config().support_base_pattern_spacing.value);
     const int    iface_layers  = std::max(0, object.config().support_interface_top_layers.value);
@@ -462,6 +528,11 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                             return true;
         return false;
     };
+
+
+
+
+
     auto keep_off = [&](const std::vector<std::pair<int, int>> &cells, double z, double lh, bool tip) {
         Polygons                     discs;
         std::unordered_set<int64_t>  seen_cells;
@@ -485,6 +556,11 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                 }
         return union_(discs);
     };
+
+
+
+
+
     constexpr int PadLayers = 3;
     Polygons      pad_feet;
     if (base_pad > 0.) {
@@ -521,9 +597,11 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
     std::vector<std::vector<size_t>> by_layer;
     int layer = 0;
     for (const auto &spec : specs) {
+
         const double z = spec.first, spec_h = spec.second;
         const bool   is_cap = spec_h < 0.;
         const double lh     = std::abs(spec_h);
+
         Polygons sparse, dense, contact;
         {
             std::vector<std::pair<int, int>> tip_cells, body_cells;
@@ -545,20 +623,29 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             }
         }
         std::vector<size_t> made;
+
+
         auto hatch = [&](const Polygons &cells, double spacing, int orient, ExtrusionRole role) {
             if (cells.empty())
                 return;
+
+
+
             for (const ExPolygon &ex : union_ex(cells)) {
                 const BoundingBox ebb = ex.contour.bounding_box();
                 Polylines         lines;
                 const bool        long_y  = ebb.size().y() >= ebb.size().x();
                 const bool        along_x = orient == 0 || (orient == 1) == long_y;
                 const coord_t     step    = coord_t(scale_(spacing));
+
+
                 const coord_t o  = along_x ? bb.min.y() : bb.min.x(), lo = along_x ? ebb.min.y() : ebb.min.x();
                 for (coord_t t = o + step / 2 + (lo > o ? (lo - o) / step * step : 0); t <= (along_x ? ebb.max.y() : ebb.max.x()); t += step)
                     lines.push_back(along_x ? Polyline(Point(ebb.min.x() - step, t), Point(ebb.max.x() + step, t)) :
                                               Polyline(Point(t, ebb.min.y() - step), Point(t, ebb.max.y() + step)));
                 Polylines clipped = intersection_pl(lines, ex);
+
+
                 if (std::none_of(clipped.begin(), clipped.end(), [](const Polyline &pl) { return pl.length() >= scale_(0.25); })) {
                     const coord_t t = along_x ? (ebb.min.y() + ebb.max.y()) / 2 : (ebb.min.x() + ebb.max.x()) / 2;
                     clipped = intersection_pl(Polylines{ along_x ? Polyline(Point(ebb.min.x() - step, t), Point(ebb.max.x() + step, t)) :
@@ -570,6 +657,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                     if (clipped[i].length() < scale_(0.25))
                         continue;
                     const double mm3 = lh * (ws - lh * (1. - 0.25 * M_PI));
+
                     std::vector<Vec2d> qs;
                     const Points      &src = clipped[i].points;
                     for (size_t k = 0; k < src.size(); ++k) {
@@ -597,6 +685,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         hatch(sparse, base_pitch, 0, erSupportMaterial);
         hatch(dense, iface_pitch, 2, erSupportMaterialInterface);
         hatch(contact, iface_pitch, 1, erSupportMaterialInterface);
+
         if (const int i = int(std::lround((z - first) / h)); !pad_feet.empty() && !is_cap && i < PadLayers) {
             Polygons near_part, own = sparse;
             for (size_t k = 0; k < K; ++k)
@@ -613,8 +702,16 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             by_layer.push_back(std::move(made));
         ++layer;
     }
+
+
     if (planar_order)
         return out;
+
+
+
+
+
+
     const size_t groups = K - 1;
     std::unordered_map<int64_t, size_t> support_g;
     std::vector<size_t>                 floor_of(out.size(), 0);
@@ -624,6 +721,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         for (size_t ri : layer_roads) {
             size_t g = groups - 1, floor_g = 0;
             for (const Vec3d &q : out[ri].tip) {
+
                 const double phi = field.phi(q);
                 const size_t own = size_t(std::max<ptrdiff_t>(0, std::lower_bound(tops.begin(), tops.end(), phi) - tops.begin() - 1));
                 g = std::min(g, std::min(own, groups - 1));
@@ -664,6 +762,10 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             }
         }
     }
+
+
+
+
     constexpr double Above = 4.;
     const double     land  = 0.8 + 0.5 * w, tan30 = std::tan(M_PI / 6.);
     const int        reach = int(std::ceil((land + Above * tan30) / Cell));
@@ -689,6 +791,8 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
             }
             if (cap < floor_of[ri]) {
                 ++head_cycles;
+
+
                 out[ri].path.reset();
                 out[ri].tip.clear();
                 continue;
@@ -713,10 +817,12 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
 
 bool generate_planar_native_support(PrintObject &object)
 {
+
     if (object.config().support_style.value != smsNative || !object.config().enable_support.value)
         return false;
     if (object.layers().size() < 3)
         return true;
+
 
     class PlanarField final : public LayerField
     {
@@ -726,6 +832,7 @@ bool generate_planar_native_support(PrintObject &object)
         Vec3d gradient(const Vec3d &) const override { return Vec3d::UnitZ(); }
     } field;
     Vec2d phase = Vec2d::Zero();
+
     const char *phase_x = std::getenv("NP_PLANAR_NATIVE_SUPPORT_PHASE_X");
     const char *phase_y = std::getenv("NP_PLANAR_NATIVE_SUPPORT_PHASE_Y");
     if (phase_x)
@@ -765,9 +872,11 @@ bool generate_planar_native_support(PrintObject &object)
             part.push_back(std::move(road));
         }
     }
+
     const double           base_pad = object.config().native_support_base_pad.value;
     std::vector<FieldRoad> roads    = native_planar_support_roads(object, field, part, domains, tops, tops.front(),
                                                                   object.config().layer_height.value, 0., 0., true, phase, true, base_pad);
+
     std::map<coord_t, std::vector<const FieldRoad *>> by_z;
     for (const FieldRoad &road : roads)
         if (road.path && road.tip.size() >= 2)
@@ -800,6 +909,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     if (!field || object.layers().empty())
         return;
     const auto   t0      = std::chrono::steady_clock::now();
+
+
     const size_t host_id = object.layers().size() - 1;
     Layer       *host    = object.layers()[host_id];
     const double raft    = host->print_z - (host->slice_z + 0.5 * host->height);
@@ -809,6 +920,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     if (!kinematics)
         return;
     const double tilt_cap = std::max(0., tilt_budget(*kinematics) - Geometry::deg2rad(5.));
+
 
     const indexed_triangle_set mesh = slicing_frame_mesh(object);
     double                     top  = 0.;
@@ -841,6 +953,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         return;
     throw_if_canceled(object);
 
+
     const Point            c_scaled = bbox.center();
     const Vec2d            c        = unscale(c_scaled);
     std::vector<ExPolygons> shifted = domains;
@@ -852,10 +965,14 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     DynamicPrintConfig      config = chunk_print_config(object);
     config.set_deserialize_strict("initial_layer_print_height", object.print()->config().opt_serialize("initial_layer_print_height"));
     config.set_deserialize_strict("ironing_type", "no ironing");
+
     for (const std::string &key : object.config().keys())
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
             config.set_key_value(key, object.config().option(key)->clone());
+
+
     config.set_deserialize_strict("independent_support_layer_height", "0");
+
     if (native_planar_support())
         config.set_key_value("enable_support", new ConfigOptionBool(false));
     const double            height = first + double(K - 1) * h;
@@ -897,10 +1014,14 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         BOOST_LOG_TRIVIAL(warning) << "Native layers " << object.model_object()->name << ": " << sliced.layers().size()
                                    << " nested layers for " << K << " field layers";
 
+
+
     std::vector<FieldRoad>  roads;
     std::vector<ExPolygons> internal;
     Native::Piece           over_xy;
     size_t                  points = 0;
+
+
     std::vector<std::vector<const ExtrusionPath *>> support(n);
     size_t                                          support_paths = 0;
     for (const SupportLayer *layer : sliced.support_layers()) {
@@ -910,6 +1031,13 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             support_paths += support[size_t(k)].size();
         }
     }
+
+
+
+
+
+
+
     const SeamPosition        seam_pos = object.config().seam_position.value;
     const Vec2d               rear(0., unscale<double>(bbox.max.y() - c_scaled.y()) + 10.);
     size_t                    seam_k   = 0;
@@ -942,12 +1070,17 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             std::vector<Vec3d> tips = Native::lift_polyline(over_xy, road, *field, tops[k], 0.02);
             if (tips.size() < 2)
                 continue;
+
+
             for (Vec3d &q : tips)
                 q.z() = std::max(q.z(), first + 0.5 * h);
             const size_t       m = tips.size();
             std::vector<float> heights(m), widths(m);
             std::vector<Vec3f> axes(m);
             Polyline3          polyline;
+
+
+
             static const bool  upright_support = [] { const char *v = std::getenv("NP_NATIVE_SUPPORT_UPRIGHT"); return !v || std::atoi(v) != 0; }();
             const bool         upright         = upright_support && is_support(path->role());
             for (size_t i = 0; i < m; ++i) {
@@ -966,6 +1099,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                 widths[i] = float(path->width * std::clamp(fac, 0.6, 1.6));
                 polyline.points.push_back(Point3::new_scale(tips[i].x(), tips[i].y(), tips[i].z() + raft - host->print_z));
             }
+
+
             const double             rate  = Geometry::deg2rad(is_infill(path->role()) && path->role() != erTopSolidInfill ? 3. : 5.);
             const std::vector<Vec3f> exact = axes;
             for (int pass = 0; pass < 2; ++pass)
@@ -984,7 +1119,13 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                 if (off > max_lag)
                     axes[i] = (Eigen::Quaterniond::Identity().slerp(1. - max_lag / off, Eigen::Quaterniond::FromTwoVectors(a, e)) * a).cast<float>();
             }
+
+
+
+
             const double axis_tube = Geometry::deg2rad(native_axis_key("NP_NATIVE_AXIS_TUBE", 0., kinematics->rotary_count() > 0));
+
+
             const double axis_smooth = native_axis_key("NP_NATIVE_AXIS_SMOOTH", 5., kinematics->rotary_count() > 0);
             if (axis_smooth > 0. && !upright)
                 axes = Native::smooth_axes(tips, exact, axis_smooth, max_lag);
@@ -1022,9 +1163,13 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     op.layer_height.resize(n - 1);
     for (size_t k = 1; k < n; ++k)
         op.layer_height[k - 1] = tops[k] - tops[k - 1];
+
+
     const char *road_ids_env = std::getenv("NP_NATIVE_ROAD_IDS");
     const bool road_ids = road_ids_env != nullptr && *road_ids_env != '\0' && std::string(road_ids_env) != "0";
     if (road_ids) {
+
+
         static std::atomic<uint64_t> next_road_id{0};
         for (FieldRoad &road : roads) {
             const uint64_t id = next_road_id.fetch_add(1, std::memory_order_relaxed);
@@ -1120,6 +1265,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                             << n_roads << " roads (" << support_paths << " support paths), " << points << " points, " << patch.shell_paths.size() << " groups, tilt cap "
                             << Geometry::rad2deg(tilt_cap) << " deg, "
                             << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << " s";
+
+
     for (size_t layer_id = 1; layer_id < object.layers().size(); ++layer_id) {
         Layer *layer = object.layers()[layer_id];
         layer->lslices.clear();

@@ -64,11 +64,26 @@ namespace pt = boost::property_tree;
 
 #include <fast_float/fast_float.h>
 
+
+
+
+
 #define EXPORT_3MF_USE_SPIRIT_KARMA_FP 0
 
+
+
+
+
+
+
 const unsigned int VERSION_3MF = 1;
+
 const unsigned int VERSION_3MF_COMPATIBLE = 2;
 const char* SLIC3RPE_3MF_VERSION = "slic3rpe:Version3mf";
+
+
+
+
 const unsigned int FDM_SUPPORTS_PAINTING_VERSION = 1;
 const unsigned int SEAM_PAINTING_VERSION         = 1;
 const unsigned int MM_PAINTING_VERSION           = 1;
@@ -139,7 +154,9 @@ static constexpr const char* VOLUME_TYPE = "volume";
 static constexpr const char* NAME_KEY = "name";
 static constexpr const char* MODIFIER_KEY = "modifier";
 static constexpr const char* VOLUME_TYPE_KEY = "volume_type";
+
 static constexpr const char* PRECISE_SEAM_TYPE_KEY = "precise_seam_type";
+
 static constexpr char PRECISE_SEAM_CONFIG_PREFIX[] = "precise_seam_config:";
 static constexpr const char* MATRIX_KEY = "matrix";
 static constexpr const char* SOURCE_FILE_KEY = "source_file";
@@ -222,9 +239,12 @@ bool get_attribute_value_bool(const char** attributes, unsigned int attributes_s
 
 Slic3r::Transform3d get_transform_from_3mf_specs_string(const std::string& mat_str)
 {
+
+
     Slic3r::Transform3d ret = Slic3r::Transform3d::Identity();
 
     if (mat_str.empty())
+
         return ret;
 
     std::vector<std::string> mat_elements_str;
@@ -232,9 +252,12 @@ Slic3r::Transform3d get_transform_from_3mf_specs_string(const std::string& mat_s
 
     unsigned int size = (unsigned int)mat_elements_str.size();
     if (size != 12)
+
         return ret;
 
     unsigned int i = 0;
+
+
     for (unsigned int c = 0; c < 4; ++c) {
         for (unsigned int r = 0; r < 3; ++r) {
             ret(r, c) = ::atof(mat_elements_str[i++].c_str());
@@ -258,11 +281,13 @@ float get_unit_factor(const std::string& unit)
     else if (::strcmp(text, "meter") == 0)
         return 1000.0f;
     else
+
         return 1.0f;
 }
 
 bool is_valid_object_type(const std::string& type)
 {
+
     if (type.empty())
         return true;
 
@@ -275,6 +300,8 @@ bool is_valid_object_type(const std::string& type)
 }
 
 namespace Slic3r {
+
+
 
 #define L(s) (s)
 #define _(s) Slic3r::I18N::translate(s)
@@ -295,6 +322,7 @@ bool PrusaFileParser::check_3mf_from_prusa(const std::string filename)
     mz_zip_archive archive;
     mz_zip_zero_struct(&archive);
     if (!open_zip_reader(&archive, filename)) {
+
         return false;
     }
 
@@ -312,6 +340,7 @@ bool PrusaFileParser::check_3mf_from_prusa(const std::string filename)
 
             mz_zip_archive_file_stat stat;
             if (!mz_zip_reader_file_stat(&archive, model_file_index, &stat)) goto EXIT;
+
             if (stat.m_uncomp_size > static_cast<mz_uint64>(std::numeric_limits<int>::max())) goto EXIT;
 
             const int xml_size = static_cast<int>(stat.m_uncomp_size);
@@ -367,20 +396,25 @@ std::string PrusaFileParser::get_attribute_value_string(const char **attributes,
 
 ModelVolumeType type_from_string(const std::string &s)
 {
+
     if (s == "1") return ModelVolumeType::PARAMETER_MODIFIER;
+
     if (s == "ModelPart") return ModelVolumeType::MODEL_PART;
     if (s == "NegativeVolume") return ModelVolumeType::NEGATIVE_VOLUME;
     if (s == "ParameterModifier") return ModelVolumeType::PARAMETER_MODIFIER;
     if (s == "SupportEnforcer") return ModelVolumeType::SUPPORT_ENFORCER;
     if (s == "SupportBlocker") return ModelVolumeType::SUPPORT_BLOCKER;
+
     if (s == "precise_seam_center")   return ModelVolumeType::PRECISE_SEAM_CENTER;
     if (s == "precise_seam_left")     return ModelVolumeType::PRECISE_SEAM_LEFT;
     if (s == "precise_seam_right")    return ModelVolumeType::PRECISE_SEAM_RIGHT;
     if (s == "precise_seam_enforced") return ModelVolumeType::PRECISE_SEAM_ENFORCED;
     if (s == "precise_seam_blocked")  return ModelVolumeType::PRECISE_SEAM_BLOCKED;
     if (s == "precise_seam_neutral")  return ModelVolumeType::PRECISE_SEAM_NEUTRAL;
+
     return ModelVolumeType::MODEL_PART;
 }
+
 
     class _3MF_Base
     {
@@ -445,7 +479,9 @@ ModelVolumeType type_from_string(const std::string &s)
 
         struct CurrentObject
         {
+
             int id;
+
             int model_object_idx;
             Geometry geometry;
             ModelObject* object;
@@ -516,6 +552,7 @@ ModelVolumeType type_from_string(const std::string &s)
             VolumeMetadataList volumes;
         };
 
+
         typedef std::map<int, int> IdToModelObjectMap;
         typedef std::map<int, ComponentsList> IdToAliasesMap;
         typedef std::vector<Instance> InstancesList;
@@ -526,8 +563,10 @@ ModelVolumeType type_from_string(const std::string &s)
         typedef std::map<int, std::vector<sla::SupportPoint>> IdToSlaSupportPointsMap;
         typedef std::map<int, std::vector<sla::DrainHole>> IdToSlaDrainHolesMap;
 
+
         unsigned int m_version;
         bool m_check_version;
+
 
         boost::optional<Semver> m_prusaslicer_generator_version;
         unsigned int m_fdm_supports_painting_version = 0;
@@ -535,6 +574,8 @@ ModelVolumeType type_from_string(const std::string &s)
         unsigned int m_mm_painting_version           = 0;
 
         XML_Parser m_xml_parser;
+
+
         bool m_parse_error { false };
         std::string m_parse_error_message;
         Model* m_model;
@@ -568,7 +609,9 @@ ModelVolumeType type_from_string(const std::string &s)
         bool        parse_error()         const { return m_parse_error; }
         const char* parse_error_message() const {
             return m_parse_error ?
+
                 (m_parse_error_message.empty() ? "Invalid 3MF format" : m_parse_error_message.c_str()) :
+
                 XML_ErrorString(XML_GetErrorCode(m_xml_parser));
         }
 
@@ -584,9 +627,11 @@ ModelVolumeType type_from_string(const std::string &s)
         void _extract_print_config_from_archive(mz_zip_archive& archive, const mz_zip_archive_file_stat& stat, DynamicPrintConfig& config, ConfigSubstitutionContext& subs_context, const std::string& archive_filename);
         bool _extract_model_config_from_archive(mz_zip_archive& archive, const mz_zip_archive_file_stat& stat, Model& model);
 
+
         void _handle_start_model_xml_element(const char* name, const char** attributes);
         void _handle_end_model_xml_element(const char* name);
         void _handle_model_xml_characters(const XML_Char* s, int len);
+
 
         void _handle_start_config_xml_element(const char* name, const char** attributes);
         void _handle_end_config_xml_element(const char* name);
@@ -650,9 +695,11 @@ ModelVolumeType type_from_string(const std::string &s)
 
         bool _generate_volumes(ModelObject& object, const Geometry& geometry, const ObjectMetadata::VolumeMetadataList& volumes, ConfigSubstitutionContext& config_substitutions);
 
+
         static void XMLCALL _handle_start_model_xml_element(void* userData, const char* name, const char** attributes);
         static void XMLCALL _handle_end_model_xml_element(void* userData, const char* name);
         static void XMLCALL _handle_model_xml_characters(void* userData, const XML_Char* s, int len);
+
 
         static void XMLCALL _handle_start_config_xml_element(void* userData, const char* name, const char** attributes);
         static void XMLCALL _handle_end_config_xml_element(void* userData, const char* name);
@@ -736,6 +783,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
         m_name = boost::filesystem::path(filename).stem().string();
 
+
         for (mz_uint i = 0; i < num_entries; ++i) {
             if (mz_zip_reader_file_stat(&archive, i, &stat)) {
                 std::string name(stat.m_filename);
@@ -744,6 +792,7 @@ ModelVolumeType type_from_string(const std::string &s)
                 if (boost::algorithm::istarts_with(name, MODEL_FOLDER) && boost::algorithm::iends_with(name, MODEL_EXTENSION)) {
                     try
                     {
+
                         if (!_extract_model_from_archive(archive, stat)) {
                             close_zip_reader(&archive);
                             add_error("Archive does not contain a valid model");
@@ -752,6 +801,7 @@ ModelVolumeType type_from_string(const std::string &s)
                     }
                     catch (const std::exception& e)
                     {
+
                         close_zip_reader(&archive);
                         throw Slic3r::FileIOError(e.what());
                     }
@@ -759,12 +809,41 @@ ModelVolumeType type_from_string(const std::string &s)
             }
         }
 
+
         for (mz_uint i = 0; i < num_entries; ++i) {
             if (mz_zip_reader_file_stat(&archive, i, &stat)) {
                 std::string name(stat.m_filename);
                 std::replace(name.begin(), name.end(), '\\', '/');
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 if (boost::algorithm::iequals(name, MODEL_CONFIG_FILE)) {
+
                     if (!_extract_model_config_from_archive(archive, stat, model)) {
                         close_zip_reader(&archive);
                         add_error("Archive does not contain a valid model config");
@@ -777,11 +856,14 @@ ModelVolumeType type_from_string(const std::string &s)
         close_zip_reader(&archive);
 
         if (m_version == 0) {
+
+
             size_t curr_models_count = m_model->objects.size();
             size_t i = 0;
             while (i < curr_models_count) {
                 ModelObject* model_object = m_model->objects[i];
                 if (model_object->instances.size() > 1) {
+
                     const Geometry* geometry = nullptr;
                     for (const IdToModelObjectMap::value_type& object : m_objects) {
                         if (object.second == int(i)) {
@@ -800,7 +882,10 @@ ModelVolumeType type_from_string(const std::string &s)
                         return false;
                     }
 
+
                     ObjectMetadata::VolumeMetadataList volumes(1, { 0, (unsigned int)geometry->triangles.size() - 1 });
+
+
 
                     while (model_object->instances.size() > 1) {
                         ModelObject* new_model_object = m_model->add_object(*model_object);
@@ -827,13 +912,16 @@ ModelVolumeType type_from_string(const std::string &s)
                 return false;
             }
 
+
             IdToLayerHeightsProfileMap::iterator obj_layer_heights_profile = m_layer_heights_profiles.find(object.second + 1);
             if (obj_layer_heights_profile != m_layer_heights_profiles.end())
                 model_object->layer_height_profile.set(std::move(obj_layer_heights_profile->second));
 
+
             IdToLayerConfigRangesMap::iterator obj_layer_config_ranges = m_layer_config_ranges.find(object.second + 1);
             if (obj_layer_config_ranges != m_layer_config_ranges.end())
                 model_object->layer_config_ranges = std::move(obj_layer_config_ranges->second);
+
 
             IdToSlaSupportPointsMap::iterator obj_sla_support_points = m_sla_support_points.find(object.second + 1);
             if (obj_sla_support_points != m_sla_support_points.end() && !obj_sla_support_points->second.empty()) {
@@ -851,6 +939,9 @@ ModelVolumeType type_from_string(const std::string &s)
 
             IdToMetadataMap::iterator obj_metadata = m_objects_metadata.find(object.first);
             if (obj_metadata != m_objects_metadata.end()) {
+
+
+
                 for (const Metadata& metadata : obj_metadata->second.metadata) {
                     if (metadata.key == "name")
                         model_object->name = metadata.value;
@@ -858,10 +949,15 @@ ModelVolumeType type_from_string(const std::string &s)
                         model_object->config.set_deserialize(metadata.key, metadata.value, config_substitutions);
                 }
 
+
                 volumes_ptr = &obj_metadata->second.volumes;
             }
             else {
+
+
+
                 volumes.emplace_back(0, (int)obj_geometry->second.triangles.size() - 1);
+
 
                 volumes_ptr = &volumes;
             }
@@ -886,6 +982,7 @@ ModelVolumeType type_from_string(const std::string &s)
             ++object_idx;
         }
 
+
         int object_size = model.objects.size();
         for (int obj_index = 0; obj_index < object_size; obj_index ++) {
             ModelObject* object = model.objects[obj_index];
@@ -896,6 +993,9 @@ ModelVolumeType type_from_string(const std::string &s)
                 object->delete_last_instance();
             }
         }
+
+
+
 
         return true;
     }
@@ -947,6 +1047,7 @@ ModelVolumeType type_from_string(const std::string &s)
         }
         catch (const version_error& e)
         {
+
             throw Slic3r::FileIOError(e.what());
         }
         catch (std::exception& e)
@@ -975,6 +1076,13 @@ ModelVolumeType type_from_string(const std::string &s)
                 add_error("Error while reading config data to buffer");
                 return;
             }
+
+
+
+
+
+
+
             ConfigBase::load_from_gcode_string_legacy(config, buffer.data(), config_substitutions);
         }
     }
@@ -1078,6 +1186,7 @@ ModelVolumeType type_from_string(const std::string &s)
                     double min_z = range_tree.get<double>("<xmlattr>.min_z");
                     double max_z = range_tree.get<double>("<xmlattr>.max_z");
 
+
                     DynamicPrintConfig config;
 
                     for (const auto& option : range_tree) {
@@ -1112,6 +1221,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
             std::vector<std::string> objects;
             boost::split(objects, buffer, boost::is_any_of("\n"), boost::token_compress_off);
+
 
             int version = 0;
             std::string key("support_points_format_version=");
@@ -1168,6 +1278,7 @@ ModelVolumeType type_from_string(const std::string &s)
                                                     float(std::atof(object_data_points[i+1].c_str())),
                                                     float(std::atof(object_data_points[i+2].c_str())),
                                                     float(std::atof(object_data_points[i+3].c_str())),
+
                                                     std::abs(std::atof(object_data_points[i+4].c_str()) - 1.) < EPSILON);
                 }
 
@@ -1192,6 +1303,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
             std::vector<std::string> objects;
             boost::split(objects, buffer, boost::is_any_of("\n"), boost::token_compress_off);
+
 
             int version = 0;
             std::string key("drain_holes_format_version=");
@@ -1246,6 +1358,10 @@ ModelVolumeType type_from_string(const std::string &s)
                                                       float(std::atof(object_data_points[i+7].c_str())));
                 }
 
+
+
+
+
                 for (sla::DrainHole& hole : sla_drain_holes) {
                     hole.pos += hole.normal.normalized();
                     hole.height -= 1.f;
@@ -1274,6 +1390,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
         XML_SetUserData(m_xml_parser, (void*)this);
         XML_SetElementHandler(m_xml_parser, _3MF_Importer::_handle_start_config_xml_element, _3MF_Importer::_handle_end_config_xml_element);
+
 
         if (stat.m_uncomp_size > static_cast<mz_uint64>(std::numeric_limits<int>::max())) {
             add_error("Found invalid size");
@@ -1305,6 +1422,61 @@ ModelVolumeType type_from_string(const std::string &s)
 
     void _3MF_Importer::_extract_custom_gcode_per_print_z_from_archive(::mz_zip_archive &archive, const mz_zip_archive_file_stat &stat)
     {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     }
 
     void _3MF_Importer::_handle_start_model_xml_element(const char* name, const char** attributes)
@@ -1442,6 +1614,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_model()
     {
+
         for (const IdToModelObjectMap::value_type& object : m_objects) {
             if (object.second >= int(m_model->objects.size())) {
                 add_error("Unable to find object");
@@ -1453,12 +1626,16 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
         if (m_version == 0) {
+
+
             if (m_model->objects.size() == 1)
                 m_model->objects.front()->name = m_name;
         }
 
+
         for (Instance& instance : m_instances) {
             if (instance.instance != nullptr && instance.instance->get_object() != nullptr)
+
                 _apply_transform(*instance.instance, instance.transform);
         }
 
@@ -1467,25 +1644,30 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_start_resources(const char** attributes, unsigned int num_attributes)
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_end_resources()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_object(const char** attributes, unsigned int num_attributes)
     {
+
         m_curr_object.reset();
 
         if (is_valid_object_type(get_attribute_value_string(attributes, num_attributes, TYPE_ATTR))) {
+
             m_curr_object.model_object_idx = (int)m_model->objects.size();
             m_curr_object.object = m_model->add_object();
             if (m_curr_object.object == nullptr) {
                 add_error("Unable to create object");
                 return false;
             }
+
 
             m_curr_object.object->name = get_attribute_value_string(attributes, num_attributes, NAME_ATTR);
             if (m_curr_object.object->name.empty())
@@ -1501,9 +1683,12 @@ ModelVolumeType type_from_string(const std::string &s)
     {
         if (m_curr_object.object != nullptr) {
             if (m_curr_object.geometry.empty()) {
+
+
                 m_model->delete_object(m_curr_object.object);
 
                 if (m_curr_object.components.empty()) {
+
                     IdToModelObjectMap::iterator object_item = m_objects.find(m_curr_object.id);
                     if (object_item != m_objects.end())
                         m_objects.erase(object_item);
@@ -1513,10 +1698,13 @@ ModelVolumeType type_from_string(const std::string &s)
                         m_objects_aliases.erase(alias_item);
                 }
                 else
+
                     m_objects_aliases.insert({ m_curr_object.id, m_curr_object.components });
             }
             else {
+
                 m_geometries.insert({ m_curr_object.id, std::move(m_curr_object.geometry) });
+
 
                 if (m_objects.find(m_curr_object.id) == m_objects.end()) {
                     m_objects.insert({ m_curr_object.id, m_curr_object.model_object_idx });
@@ -1534,28 +1722,34 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_start_mesh(const char** attributes, unsigned int num_attributes)
     {
+
         m_curr_object.geometry.reset();
         return true;
     }
 
     bool _3MF_Importer::_handle_end_mesh()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_vertices(const char** attributes, unsigned int num_attributes)
     {
+
         m_curr_object.geometry.vertices.clear();
         return true;
     }
 
     bool _3MF_Importer::_handle_end_vertices()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_vertex(const char** attributes, unsigned int num_attributes)
     {
+
+
         m_curr_object.geometry.vertices.emplace_back(
             m_unit_factor * get_attribute_value_float(attributes, num_attributes, X_ATTR),
             m_unit_factor * get_attribute_value_float(attributes, num_attributes, Y_ATTR),
@@ -1565,22 +1759,34 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_vertex()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_triangles(const char** attributes, unsigned int num_attributes)
     {
+
         m_curr_object.geometry.triangles.clear();
         return true;
     }
 
     bool _3MF_Importer::_handle_end_triangles()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_triangle(const char** attributes, unsigned int num_attributes)
     {
+
+
+
+
+
+
+
+
+
         m_curr_object.geometry.triangles.emplace_back(
             get_attribute_value_int(attributes, num_attributes, V1_ATTR),
             get_attribute_value_int(attributes, num_attributes, V2_ATTR),
@@ -1596,17 +1802,20 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_triangle()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_components(const char** attributes, unsigned int num_attributes)
     {
+
         m_curr_object.components.clear();
         return true;
     }
 
     bool _3MF_Importer::_handle_end_components()
     {
+
         return true;
     }
 
@@ -1631,21 +1840,30 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_component()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_build(const char** attributes, unsigned int num_attributes)
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_end_build()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_start_item(const char** attributes, unsigned int num_attributes)
     {
+
+
+
+
+
+
 
         int object_id = get_attribute_value_int(attributes, num_attributes, OBJECTID_ATTR);
         Transform3d transform = get_transform_from_3mf_specs_string(get_attribute_value_string(attributes, num_attributes, TRANSFORM_ATTR));
@@ -1656,6 +1874,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_item()
     {
+
         return true;
     }
 
@@ -1681,10 +1900,14 @@ ModelVolumeType type_from_string(const std::string &s)
         if (m_curr_metadata_name == SLIC3RPE_3MF_VERSION) {
             m_version = (unsigned int)atoi(m_curr_characters.c_str());
             if (m_check_version && (m_version > VERSION_3MF_COMPATIBLE)) {
+
+
                 const std::string msg = (boost::format(_(L("The selected 3mf file has been saved with a newer version of %1% and is not compatible."))) % std::string(SLIC3R_APP_NAME)).str();
                 throw version_error(msg);
             }
         } else if (m_curr_metadata_name == "Application") {
+
+
             if (boost::starts_with(m_curr_characters, "PrusaSlicer-"))
                 m_prusaslicer_generator_version = Semver::parse(m_curr_characters.substr(12));
         } else if (m_curr_metadata_name == SLIC3RPE_FDM_SUPPORTS_PAINTING_VERSION) {
@@ -1708,6 +1931,7 @@ ModelVolumeType type_from_string(const std::string &s)
     {
         static const unsigned int MAX_RECURSIONS = 10;
 
+
         if (recur_counter > MAX_RECURSIONS) {
             add_error("Too many recursions");
             return false;
@@ -1720,6 +1944,7 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
         if (it->second.size() == 1 && it->second[0].object_id == object_id) {
+
 
             IdToModelObjectMap::iterator object_item = m_objects.find(object_id);
             if (object_item == m_objects.end() || object_item->second == -1) {
@@ -1738,6 +1963,7 @@ ModelVolumeType type_from_string(const std::string &s)
             }
         }
         else {
+
             for (const Component& component : it->second) {
                 if (!_create_object_instance(component.object_id, transform * component.transform, printable, recur_counter + 1))
                     return false;
@@ -1749,6 +1975,8 @@ ModelVolumeType type_from_string(const std::string &s)
 
     void _3MF_Importer::_apply_transform(ModelInstance& instance, const Transform3d& transform)
     {
+
+
         if (!transform.matrix().allFinite() || !transform.linear().fullPivLu().isInvertible())
             return;
 
@@ -1757,11 +1985,13 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_start_config(const char** attributes, unsigned int num_attributes)
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_end_config()
     {
+
         return true;
     }
 
@@ -1774,6 +2004,9 @@ ModelVolumeType type_from_string(const std::string &s)
             return false;
         }
 
+
+
+
         m_objects_metadata.insert({ object_id, ObjectMetadata() });
         m_curr_config.object_id = object_id;
         return true;
@@ -1781,6 +2014,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_config_object()
     {
+
         return true;
     }
 
@@ -1828,11 +2062,13 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_config_volume()
     {
+
         return true;
     }
 
     bool _3MF_Importer::_handle_end_config_volume_mesh()
     {
+
         return true;
     }
 
@@ -1847,6 +2083,7 @@ ModelVolumeType type_from_string(const std::string &s)
         std::string type = get_attribute_value_string(attributes, num_attributes, TYPE_ATTR);
         std::string key = get_attribute_value_string(attributes, num_attributes, KEY_ATTR);
         std::string value = get_attribute_value_string(attributes, num_attributes, VALUE_ATTR);
+
 
         std::vector<std::string> valid_keys = {
             "name",
@@ -1865,6 +2102,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
         auto itor = std::find(valid_keys.begin(), valid_keys.end(), key);
         if (itor == valid_keys.end() && !(type == VOLUME_TYPE && boost::starts_with(key, PRECISE_SEAM_CONFIG_PREFIX))) {
+
             return true;
         }
 
@@ -1884,6 +2122,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
     bool _3MF_Importer::_handle_end_config_metadata()
     {
+
         return true;
     }
 
@@ -1905,6 +2144,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
             Transform3d volume_matrix_to_object = Transform3d::Identity();
             bool        has_transform 		    = false;
+
             for (const Metadata& metadata : volume_data.metadata) {
                 if (metadata.key == MATRIX_KEY) {
                     volume_matrix_to_object = Slic3r::Geometry::transform3d_from_string(metadata.value);
@@ -1912,6 +2152,7 @@ ModelVolumeType type_from_string(const std::string &s)
                     break;
                 }
             }
+
 
             indexed_triangle_set its;
             its.indices.assign(geometry.triangles.begin() + volume_data.first_triangle_id, geometry.triangles.begin() + volume_data.last_triangle_id + 1);
@@ -1936,6 +2177,7 @@ ModelVolumeType type_from_string(const std::string &s)
                 }
                 its.vertices.assign(geometry.vertices.begin() + min_id, geometry.vertices.begin() + max_id + 1);
 
+
                 for (Vec3i32& face : its.indices)
                     for (int& tri_id : face)
                         tri_id -= min_id;
@@ -1944,22 +2186,30 @@ ModelVolumeType type_from_string(const std::string &s)
             if (m_prusaslicer_generator_version &&
                 *m_prusaslicer_generator_version >= *Semver::parse("2.4.0-alpha1") &&
                 *m_prusaslicer_generator_version < *Semver::parse("2.4.0-alpha3"))
+
+
                 its_compactify_vertices(its, true);
 
             TriangleMesh triangle_mesh(std::move(its), volume_data.mesh_stats);
 
             if (m_version == 0) {
+
+
+
                 if (object.instances.size() == 1) {
                     triangle_mesh.transform(object.instances.front()->get_transformation().get_matrix(), false);
                     object.instances.front()->set_transformation(Slic3r::Geometry::Transformation());
+
                 }
             }
             if (triangle_mesh.volume() < 0)
                 triangle_mesh.flip_triangles();
 
 			ModelVolume* volume = object.add_volume(std::move(triangle_mesh));
+
             if (has_transform)
                 volume->source.transform = Slic3r::Geometry::Transformation(volume_matrix_to_object);
+
 
             volume->supported_facets.reserve(triangles_count);
             volume->seam_facets.reserve(triangles_count);
@@ -1978,7 +2228,7 @@ ModelVolumeType type_from_string(const std::string &s)
                 if (! geometry.mmu_segmentation[index].empty())
                     volume->mmu_segmentation_facets.set_triangle_from_string(i, geometry.mmu_segmentation[index]);
                 if (! geometry.fuzzy_skin[index].empty())
-                	volume->fuzzy_skin_facets.set_triangle_from_string(i, geometry.fuzzy_skin[index]);
+                    volume->fuzzy_skin_facets.set_triangle_from_string(i, geometry.fuzzy_skin[index]);
                 if (! geometry.nonplanar[index].empty())
                     volume->nonplanar_facets.set_triangle_from_string(i, geometry.nonplanar[index]);
             }
@@ -1988,7 +2238,9 @@ ModelVolumeType type_from_string(const std::string &s)
             volume->fuzzy_skin_facets.shrink_to_fit();
             volume->nonplanar_facets.shrink_to_fit();
 
+
             ModelVolumeType precise_seam_type = ModelVolumeType::INVALID;
+
             for (const Metadata& metadata : volume_data.metadata) {
                 if (metadata.key == NAME_KEY)
                     volume->name = metadata.value;
@@ -2020,8 +2272,11 @@ ModelVolumeType type_from_string(const std::string &s)
                     volume->config.set_deserialize(metadata.key, metadata.value, config_substitutions);
             }
 
+
+
             if (volume->is_modifier() && is_precise_seam(precise_seam_type))
                 volume->set_type(precise_seam_type);
+
 
             if (volume->is_precise_seam()) {
                 for (const Metadata& metadata : volume_data.metadata) {
@@ -2032,6 +2287,7 @@ ModelVolumeType type_from_string(const std::string &s)
                     }
                 }
             }
+
 
             if (volume->name.empty()) {
                 volume->name = object.name;
@@ -2167,6 +2423,8 @@ ModelVolumeType type_from_string(const std::string &s)
             return false;
         }
 
+
+
         if (!_add_content_types_file_to_archive(archive)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
@@ -2174,6 +2432,7 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
         if (thumbnail_data != nullptr && thumbnail_data->is_valid()) {
+
             if (!_add_thumbnail_file_to_archive(archive, *thumbnail_data)) {
                 close_zip_writer(&archive);
                 boost::filesystem::remove(filename);
@@ -2181,11 +2440,16 @@ ModelVolumeType type_from_string(const std::string &s)
             }
         }
 
+
+
+
         if (!_add_relationships_file_to_archive(archive)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
             return false;
         }
+
+
 
         IdToObjectDataMap objects_data;
         if (!_add_model_file_to_archive(filename, archive, model, objects_data)) {
@@ -2194,17 +2458,26 @@ ModelVolumeType type_from_string(const std::string &s)
             return false;
         }
 
+
+
+
         if (!_add_layer_height_profile_file_to_archive(archive, model)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
             return false;
         }
 
+
+
+
         if (!_add_layer_config_ranges_file_to_archive(archive, model)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
             return false;
         }
+
+
+
 
         if (!_add_sla_support_points_file_to_archive(archive, model)) {
             close_zip_writer(&archive);
@@ -2219,11 +2492,15 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
 
+
+
         if (!_add_custom_gcode_per_print_z_file_to_archive(archive, model, config)) {
             close_zip_writer(&archive);
             boost::filesystem::remove(filename);
             return false;
         }
+
+
 
         if (config != nullptr) {
             if (!_add_print_config_file_to_archive(archive, *config)) {
@@ -2232,6 +2509,10 @@ ModelVolumeType type_from_string(const std::string &s)
                 return false;
             }
         }
+
+
+
+
 
         if (!_add_model_config_file_to_archive(archive, model, objects_data)) {
             close_zip_writer(&archive);
@@ -2311,6 +2592,10 @@ ModelVolumeType type_from_string(const std::string &s)
     {
         stream.str("");
         stream.clear();
+
+
+
+
         stream << std::setprecision(std::numeric_limits<float>::max_digits10);
     }
 
@@ -2319,7 +2604,11 @@ ModelVolumeType type_from_string(const std::string &s)
         mz_zip_writer_staged_context context;
         if (!mz_zip_writer_add_staged_open(&archive, &context, MODEL_FILE.c_str(),
             m_zip64 ?
+
+
                 (uint64_t(1) << 30) * 16 :
+
+
                 (uint64_t(1) << 32) - 1,
             nullptr, nullptr, 0, MZ_DEFAULT_COMPRESSION, nullptr, 0, nullptr, 0)) {
             add_error("Unable to add model file to archive");
@@ -2349,6 +2638,7 @@ ModelVolumeType type_from_string(const std::string &s)
             stream << " <" << METADATA_TAG << " name=\"Copyright\">" << "</" << METADATA_TAG << ">\n";
             stream << " <" << METADATA_TAG << " name=\"LicenseTerms\">" << "</" << METADATA_TAG << ">\n";
             stream << " <" << METADATA_TAG << " name=\"Rating\">" << "</" << METADATA_TAG << ">\n";
+
             stream << " <" << METADATA_TAG << " name=\"CreationDate\">" << "</" << METADATA_TAG << ">\n";
             stream << " <" << METADATA_TAG << " name=\"ModificationDate\">" << "</" << METADATA_TAG << ">\n";
             stream << " <" << METADATA_TAG << " name=\"Application\">" << SLIC3R_APP_KEY << "-" << SLIC3R_VERSION << "</" << METADATA_TAG << ">\n";
@@ -2360,15 +2650,23 @@ ModelVolumeType type_from_string(const std::string &s)
             }
         }
 
+
         BuildItemsList build_items;
+
+
+
 
         unsigned int object_id = 1;
         for (ModelObject* obj : model.objects) {
             if (obj == nullptr)
                 continue;
 
+
             unsigned int curr_id = object_id;
             IdToObjectDataMap::iterator object_it = objects_data.insert({ curr_id, ObjectData(obj) }).first;
+
+
+
             if (!_add_object_to_model_stream(context, object_id, *obj, build_items, object_it->second.volumes_offsets)) {
                 add_error("Unable to add object to archive");
                 mz_zip_writer_add_staged_finish(&context);
@@ -2380,6 +2678,7 @@ ModelVolumeType type_from_string(const std::string &s)
             std::stringstream stream;
             reset_stream(stream);
             stream << " </" << RESOURCES_TAG << ">\n";
+
 
             if (!_add_build_to_model_stream(stream, build_items)) {
                 add_error("Unable to add build to archive");
@@ -2430,6 +2729,7 @@ ModelVolumeType type_from_string(const std::string &s)
             }
 
             Transform3d t = instance->get_matrix();
+
             assert(instance_id == build_items.size() + 1);
             build_items.emplace_back(instance_id, t, instance->printable);
 
@@ -2448,14 +2748,17 @@ ModelVolumeType type_from_string(const std::string &s)
     struct coordinate_policy_fixed : boost::spirit::karma::real_policies<Num>
     {
         static int floatfield(Num n) { return fmtflags::fixed; }
-        static unsigned precision(Num ) { return std::numeric_limits<Num>::max_digits10 + 1; }
-        static bool trailing_zeros(Num ) { return false; }
+
+        static unsigned precision(Num  ) { return std::numeric_limits<Num>::max_digits10 + 1; }
+
+        static bool trailing_zeros(Num  ) { return false; }
     };
     template <typename Num>
     struct coordinate_policy_scientific : coordinate_policy_fixed<Num>
     {
         static int floatfield(Num n) { return fmtflags::scientific; }
     };
+
     using coordinate_type_fixed      = boost::spirit::karma::real_generator<float, coordinate_policy_fixed<float>>;
     using coordinate_type_scientific = boost::spirit::karma::real_generator<float, coordinate_policy_scientific<float>>;
 #endif
@@ -2483,19 +2786,29 @@ ModelVolumeType type_from_string(const std::string &s)
         auto format_coordinate = [](float f, char *buf) -> char* {
             assert(is_decimal_separator_point());
 #if EXPORT_3MF_USE_SPIRIT_KARMA_FP
+
+
+
+
             coordinate_type_fixed      const coordinate_fixed      = coordinate_type_fixed();
             coordinate_type_scientific const coordinate_scientific = coordinate_type_scientific();
+
             char *ptr = buf;
             boost::spirit::karma::generate(ptr, coordinate_fixed, f);
+
             char *ptr2 = ptr;
             boost::spirit::karma::generate(ptr2, coordinate_scientific, f);
+
             auto len2 = ptr2 - ptr;
             if (ptr - buf > len2) {
+
                 memcpy(buf, ptr, len2);
                 ptr = buf + len2;
             }
+
             return ptr;
 #else
+
             return buf + sprintf(buf, "%.9g", f);
 #endif
         };
@@ -2551,6 +2864,7 @@ ModelVolumeType type_from_string(const std::string &s)
             assert(volume_it != volumes_offsets.end());
 
             const indexed_triangle_set &its = volume->mesh().its;
+
 
             volume_it->second.first_triangle_id = triangles_count;
             triangles_count += (int)its.indices.size();
@@ -2628,11 +2942,13 @@ ModelVolumeType type_from_string(const std::string &s)
         output_buffer += MESH_TAG;
         output_buffer += ">\n";
 
+
         return flush(true);
     }
 
     bool _3MF_Exporter::_add_build_to_model_stream(std::stringstream& stream, const BuildItemsList& build_items)
     {
+
         if (build_items.size() == 0) {
             add_error("No build item found");
             return true;
@@ -2671,6 +2987,7 @@ ModelVolumeType type_from_string(const std::string &s)
                 sprintf(buffer, "object_id=%d|", count);
                 out += buffer;
 
+
                 for (size_t i = 0; i < layer_height_profile.size(); ++i) {
                     sprintf(buffer, (i == 0) ? "%f" : ";%f", layer_height_profile[i]);
                     out += buffer;
@@ -2705,11 +3022,14 @@ ModelVolumeType type_from_string(const std::string &s)
 
                 obj_tree.put("<xmlattr>.id", object_cnt);
 
+
                 for (const auto& range : ranges) {
                     pt::ptree& range_tree = obj_tree.add("range", "");
 
+
                     range_tree.put("<xmlattr>.min_z", range.first.first);
                     range_tree.put("<xmlattr>.max_z", range.first.second);
+
 
                     const ModelConfig& config = range.second;
                     for (const std::string& opt_key : config.keys()) {
@@ -2725,11 +3045,13 @@ ModelVolumeType type_from_string(const std::string &s)
             pt::write_xml(oss, tree);
             out = oss.str();
 
+
             boost::replace_all(out, "><object",      ">\n <object");
             boost::replace_all(out, "><range",       ">\n  <range");
             boost::replace_all(out, "><option",      ">\n   <option");
             boost::replace_all(out, "></range>",     ">\n  </range>");
             boost::replace_all(out, "></object>",    ">\n </object>");
+
             boost::replace_all(out, "><",            ">\n<");
         }
 
@@ -2757,6 +3079,7 @@ ModelVolumeType type_from_string(const std::string &s)
                 sprintf(buffer, "object_id=%d|", count);
                 out += buffer;
 
+
                 for (size_t i = 0; i < sla_support_points.size(); ++i) {
                     sprintf(buffer, (i==0 ? "%f %f %f %f %f" : " %f %f %f %f %f"),  sla_support_points[i].pos(0), sla_support_points[i].pos(1), sla_support_points[i].pos(2), sla_support_points[i].head_front_radius, (float)sla_support_points[i].is_new_island);
                     out += buffer;
@@ -2766,6 +3089,7 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
         if (!out.empty()) {
+
             out = std::string("support_points_format_version=") + std::to_string(support_points_format_version) + std::string("\n") + out;
 
             if (!mz_zip_writer_add_mem(&archive, SLA_SUPPORT_POINTS_FILE.c_str(), (const void*)out.data(), out.length(), MZ_DEFAULT_COMPRESSION)) {
@@ -2787,6 +3111,10 @@ ModelVolumeType type_from_string(const std::string &s)
             ++count;
             sla::DrainHoles drain_holes = object->sla_drain_holes;
 
+
+
+
+
             for (sla::DrainHole& hole : drain_holes) {
                 hole.pos -= hole.normal.normalized();
                 hole.height += 1.f;
@@ -2794,6 +3122,7 @@ ModelVolumeType type_from_string(const std::string &s)
 
             if (!drain_holes.empty()) {
                 out += string_printf(fmt, count);
+
 
                 for (size_t i = 0; i < drain_holes.size(); ++i)
                     out += string_printf((i == 0 ? "%f %f %f %f %f %f %f %f" : " %f %f %f %f %f %f %f %f"),
@@ -2811,6 +3140,7 @@ ModelVolumeType type_from_string(const std::string &s)
         }
 
         if (!out.empty()) {
+
             out = std::string("drain_holes_format_version=") + std::to_string(drain_holes_format_version) + std::string("\n") + out;
 
             if (!mz_zip_writer_add_mem(&archive, SLA_DRAIN_HOLES_FILE.c_str(), static_cast<const void*>(out.data()), out.length(), mz_uint(MZ_DEFAULT_COMPRESSION))) {
@@ -2845,6 +3175,8 @@ ModelVolumeType type_from_string(const std::string &s)
     bool _3MF_Exporter::_add_model_config_file_to_archive(mz_zip_archive& archive, const Model& model, const IdToObjectDataMap &objects_data)
     {
         std::stringstream stream;
+
+
 		stream << std::setprecision(std::numeric_limits<double>::max_digits10);
         stream << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         stream << "<" << CONFIG_TAG << ">\n";
@@ -2852,10 +3184,13 @@ ModelVolumeType type_from_string(const std::string &s)
         for (const IdToObjectDataMap::value_type& obj_metadata : objects_data) {
             const ModelObject* obj = obj_metadata.second.object;
             if (obj != nullptr) {
+
                 stream << " <" << OBJECT_TAG << " " << ID_ATTR << "=\"" << obj_metadata.first << "\" " << INSTANCESCOUNT_ATTR << "=\"" << obj->instances.size() << "\">\n";
+
 
                 if (!obj->name.empty())
                     stream << "  <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << OBJECT_TYPE << "\" " << KEY_ATTR << "=\"name\" " << VALUE_ATTR << "=\"" << xml_escape(obj->name) << "\"/>\n";
+
 
                 for (const std::string& key : obj->config.keys()) {
                     stream << "  <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << OBJECT_TYPE << "\" " << KEY_ATTR << "=\"" << key << "\" " << VALUE_ATTR << "=\"" << obj->config.opt_serialize(key) << "\"/>\n";
@@ -2866,21 +3201,29 @@ ModelVolumeType type_from_string(const std::string &s)
                         const VolumeToOffsetsMap& offsets = obj_metadata.second.volumes_offsets;
                         VolumeToOffsetsMap::const_iterator it = offsets.find(volume);
                         if (it != offsets.end()) {
+
                             stream << "  <" << VOLUME_TAG << " ";
                             stream << FIRST_TRIANGLE_ID_ATTR << "=\"" << it->second.first_triangle_id << "\" ";
                             stream << LAST_TRIANGLE_ID_ATTR << "=\"" << it->second.last_triangle_id << "\">\n";
 
+
                             if (!volume->name.empty())
                                 stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << NAME_KEY << "\" " << VALUE_ATTR << "=\"" << xml_escape(volume->name) << "\"/>\n";
 
+
+
                             if (volume->is_modifier() || volume->is_precise_seam())
                                 stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << MODIFIER_KEY << "\" " << VALUE_ATTR << "=\"1\"/>\n";
+
+
+
                             const bool store_as_modifier = volume->is_modifier() || volume->is_precise_seam();
                             stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << VOLUME_TYPE_KEY << "\" " <<
                                 VALUE_ATTR << "=\"" << (store_as_modifier ? "ParameterModifier" : ModelVolume::type_to_string(volume->type())) << "\"/>\n";
                             if (volume->is_precise_seam())
                                 stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << PRECISE_SEAM_TYPE_KEY << "\" " <<
                                     VALUE_ATTR << "=\"" << ModelVolume::type_to_string(volume->type()) << "\"/>\n";
+
 
                             stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << MATRIX_KEY << "\" " << VALUE_ATTR << "=\"";
                             Transform3d matrix = volume->get_matrix() * volume->source.transform.get_matrix();
@@ -2892,6 +3235,7 @@ ModelVolumeType type_from_string(const std::string &s)
                                 }
                             }
                             stream << "\"/>\n";
+
 
                             {
                                 std::string input_file = xml_escape(m_fullpath_sources ? volume->source.input_file : boost::filesystem::path(volume->source.input_file).filename().string());
@@ -2911,12 +3255,16 @@ ModelVolumeType type_from_string(const std::string &s)
                                     stream << prefix << SOURCE_IN_METERS << "\" " << VALUE_ATTR << "=\"1\"/>\n";
                             }
 
+
                             for (const std::string& key : volume->config.keys()) {
+
                                 const bool dormant = volume->is_precise_seam();
                                 const std::string stored_key = dormant ? PRECISE_SEAM_CONFIG_PREFIX + key : key;
                                 const std::string value = volume->config.opt_serialize(key);
+
                                 stream << "   <" << METADATA_TAG << " " << TYPE_ATTR << "=\"" << VOLUME_TYPE << "\" " << KEY_ATTR << "=\"" << stored_key << "\" " << VALUE_ATTR << "=\"" << xml_escape_double_quotes_attribute_value(value) << "\"/>\n";
                             }
+
 
                             const RepairedMeshErrors& stats = volume->mesh().stats().repaired_errors;
                             stream << "   <" << MESH_TAG << " ";
@@ -2950,12 +3298,63 @@ ModelVolumeType type_from_string(const std::string &s)
 bool _3MF_Exporter::_add_custom_gcode_per_print_z_file_to_archive( mz_zip_archive& archive, Model& model, const DynamicPrintConfig* config)
 {
     return true;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
+
+
 
 static void handle_legacy_project_loaded(unsigned int version_project_file, DynamicPrintConfig& config)
 {
     if (! config.has("brim_object_gap")) {
         if (auto *opt_elephant_foot   = config.option<ConfigOptionFloat>("elefant_foot_compensation", false); opt_elephant_foot) {
+
             auto *opt_brim_separation = config.option<ConfigOptionFloat>("brim_object_gap", true);
             opt_brim_separation->value = opt_elephant_foot->value;
         }
@@ -2967,6 +3366,7 @@ bool load_3mf(const char* path, DynamicPrintConfig& config, ConfigSubstitutionCo
     if (path == nullptr || model == nullptr)
         return false;
 
+
     CNumericLocalesSetter locales_setter;
     _3MF_Importer         importer;
     bool res = importer.load_model_from_file(path, *model, config, config_substitutions, check_version);
@@ -2977,6 +3377,7 @@ bool load_3mf(const char* path, DynamicPrintConfig& config, ConfigSubstitutionCo
 
 bool store_3mf(const char* path, Model* model, const DynamicPrintConfig* config, bool fullpath_sources, const ThumbnailData* thumbnail_data, bool zip64)
 {
+
     CNumericLocalesSetter locales_setter;
 
     if (path == nullptr || model == nullptr)

@@ -34,11 +34,11 @@ if(NOT HAVE_ARC4RANDOM_BUF)
 endif()
 set(CMAKE_REQUIRED_LIBRARIES)
 
-#/* Define to 1 if you have the ANSI C header files. */
+
 check_include_files("stdlib.h;stdarg.h;string.h;float.h" STDC_HEADERS)
 
 test_big_endian(WORDS_BIGENDIAN)
-#/* 1234 = LIL_ENDIAN, 4321 = BIGENDIAN */
+
 if(WORDS_BIGENDIAN)
     set(BYTEORDER 4321)
 else(WORDS_BIGENDIAN)

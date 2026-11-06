@@ -1,4 +1,4 @@
-// Surface-local integration of AtomSlicer (MIT; see LICENSE.txt).
+// Surface-local integration of AtomSlicer (MIT; see LICENSE).
 #include "stripes.h"
 #include "stripe.h"
 #include "stitcher.h"
@@ -25,6 +25,8 @@ std::vector<std::vector<std::array<float, 3>>> continuous_stripes(const std::vec
                       stripe.getTriangleCount(), stripe.getBorderEdges());
     stitched.stitch(stripe.getScalars(), stripe.getPeriod());
     stitched.repulse();
+
+
 
     using Edge = std::array<uint32_t, 2>;
     std::map<Edge, std::vector<Edge>> adjacency;

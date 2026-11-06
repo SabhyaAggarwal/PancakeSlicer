@@ -1,3 +1,7 @@
+
+
+
+
 import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { getState, newId, setState, toast, type PlateObject, type State, type SvgSpec, type Volume, type VolumeType } from '../state/store';
@@ -7,6 +11,7 @@ import { bakeStl, bedBounds, nextFreeSpot } from './geometry';
 import { meshJob } from './meshOps';
 import { placeVolume } from './volumes';
 import { inFrame, surfaceFields } from './text';
+
 
 const NEW = { depth: 2, size: 30 };
 
@@ -18,6 +23,7 @@ const warn = (record: Record<string, unknown>, name: string) => {
   const w = (record.warnings as string[] | undefined) ?? [];
   if (w.length || record.best_effort) toast(`${name}: ${w.length ? w.join('; ') : 'best effort result'}`);
 };
+
 
 function pick(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -39,6 +45,7 @@ async function withService(work: () => Promise<void>) {
     overlay.end();
   }
 }
+
 
 export async function addSvg(objectId: number | null, type: VolumeType = 'part') {
   const file = await pick();
@@ -65,6 +72,7 @@ export async function addSvg(objectId: number | null, type: VolumeType = 'part')
   });
 }
 
+
 export function editedSvg(s = getState()): { object: PlateObject; volume?: Volume; spec: SvgSpec } | null {
   const o = s.objects.find((x) => x.id === s.selected?.object);
   if (!o) return null;
@@ -72,6 +80,7 @@ export function editedSvg(s = getState()): { object: PlateObject; volume?: Volum
   if (v?.svg) return { object: o, volume: v, spec: v.svg };
   return o.svg && !v ? { object: o, spec: o.svg } : null;
 }
+
 
 export async function updateSvg(spec: SvgSpec) {
   const target = editedSvg();
@@ -93,6 +102,7 @@ export async function updateSvg(spec: SvgSpec) {
     undoable('Edit SVG', () => setState((s) => ({ objects: s.objects.map((o) => (o.id === object.id ? { ...o, geometry, source: file, svg: spec, paint: undefined } : o)) })));
   });
 }
+
 
 export function placeOnSurface(at: [number, number, number], normal: [number, number, number]) {
   const t = editedSvg();

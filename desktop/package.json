@@ -1,17 +1,17 @@
 {
-  "name": "orca-desktop",
-  "productName": "OrcaSlicer Web",
-  "version": "0.2.0",
+  "name": "pancakeslicer-desktop",
+  "productName": "PancakeSlicer",
+  "version": "0.3.0-rc.1",
   "private": true,
-  "description": "OrcaSlicer web app as a desktop app with a local slicing engine",
-  "author": "OrcaSlicer",
+  "description": "PancakeSlicer desktop with a local slicing service and native engine",
+  "author": "Zimeng Xiong",
   "license": "AGPL-3.0-only",
   "main": "out/main.js",
   "scripts": {
     "compile": "tsc -p .",
     "start": "tsc -p . && electron .",
-    "dist:linux": "tsc -p . && electron-builder --linux --x64 --publish never",
-    "dist:mac": "tsc -p . && electron-builder --mac --arm64 --publish never"
+    "dist:mac": "tsc -p . && electron-builder --mac --arm64 --publish never",
+    "dist:win": "tsc -p . && electron-builder --win --x64 --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -23,16 +23,19 @@
     "electron@45.2.1": true
   },
   "build": {
-    "appId": "com.orcaslicer.web",
-    "productName": "OrcaSlicer Web",
-    "artifactName": "OrcaSlicer-Web-${version}-${os}-${arch}.${ext}",
+    "appId": "com.pancakeslicer.desktop",
+    "productName": "PancakeSlicer",
+    "artifactName": "PancakeSlicer-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
     },
     "files": [
       "out/**",
-      "package.json"
+      "package.json",
+      "!**/*.map",
+      "!**/*.pdb",
+      "!**/*.d.ts"
     ],
     "extraResources": [
       {
@@ -42,22 +45,16 @@
       {
         "from": "build/engine-${os}-${arch}",
         "to": "engine"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
       }
     ],
     "asarUnpack": [],
     "electronLanguages": [
       "en-US"
     ],
-    "linux": {
-      "target": [
-        "AppImage",
-        "tar.gz"
-      ],
-      "category": "Graphics",
-      "icon": "build/icon.png",
-      "executableName": "orcaslicer-web",
-      "syncDesktopName": true
-    },
     "mac": {
       "target": [
         "dmg",
@@ -67,12 +64,27 @@
       "icon": "build/icon.icns",
       "identity": "-",
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "signIgnore": [
+        "Contents/Resources/engine/.*"
+      ]
     },
     "dmg": {
       "writeUpdateInfo": false
     },
-    "publish": null
-  },
-  "desktopName": "orcaslicer-web.desktop"
+    "publish": null,
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
 }

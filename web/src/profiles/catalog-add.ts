@@ -1,3 +1,5 @@
+
+
 import { useEffect, useState } from 'react';
 import type { Config, UserPreset } from '../api/types';
 import { responseError } from '../api/access';
@@ -21,6 +23,7 @@ const printerCatalog = () => read<{ vendors: CatalogVendor[] }>('/api/printer-ca
 const filamentCatalog = (vendor: string) => read<{ families: CatalogFamily[] }>(`/api/filament-catalog?vendor=${encodeURIComponent(vendor)}`).then((b) => b.families);
 
 export type CatalogRead = { vendors: CatalogVendor[] } | { families: CatalogFamily[] };
+
 export function useCatalog(type: 'machine' | 'filament' | 'process', vendor: string, adding: boolean): { data?: CatalogRead; error?: string } {
   const [state, setState] = useState<{ key: string; data?: CatalogRead; error?: string }>({ key: '' });
   const key = adding && type !== 'process' ? `${type}:${type === 'filament' ? vendor : ''}` : '';
@@ -35,11 +38,14 @@ export function useCatalog(type: 'machine' | 'filament' | 'process', vendor: str
 }
 
 const plain = (name: string) => name.replace(/\s+@.*$/, '').trim();
+
 const anchor = (name: string, vendor: string) => ({ name, engineName: name, version: '', vendor });
+
 
 export async function addCatalogPrinter(vendor: string, model: CatalogModel, nozzle: string): Promise<string> {
   const machine = model.machines[nozzle], api = getState().api;
   if (!machine) throw new Error(`${model.name} has no ${nozzle} mm nozzle.`);
+
   const preset = findCatalogBase(getState(), 'machine', machine).base ?? (api && (await api.presets(vendor, [], undefined, [machine])).machines.find((p) => p.name === machine));
   const defaults = (preset as { print_defaults?: Config } | undefined)?.print_defaults;
   return profileCreation((s) => {
@@ -50,8 +56,10 @@ export async function addCatalogPrinter(vendor: string, model: CatalogModel, noz
   }).commit();
 }
 
+
 export function addCatalogFamily(family: CatalogFamily, colour?: string, label?: string): Promise<string> {
   return profileCreation((s) => {
+
     const machine = s.userPresets.find((p) => p.type === 'machine' && !p.archived)?.base?.name ?? '';
     const variant = family.variants[machine] ?? family.fallback ?? Object.values(family.variants)[0] ?? family.name;
     const overlay: Config = colour ? { filament_colour: [colour] } : {};

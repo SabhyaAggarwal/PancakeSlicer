@@ -27,15 +27,27 @@ struct TexturedMesh {
     std::vector<std::array<float,2>>  uvs;
     std::vector<TextureImage>         textures;
     std::vector<int>                  material_ids;
+
     std::vector<int>                  material_texture_map;
+
     std::vector<std::array<float,4>>  material_colors;
+
+
 
     std::vector<std::array<float,2>>  uv_coords;
     std::vector<std::array<int,3>>    uv_indices;
 
     bool has_face_uvs() const { return !uv_indices.empty() && !uv_coords.empty(); }
 
+
+
+
+
     std::vector<std::array<std::size_t,3>> precomputed_face_colors;
+
+
+
+
 
     std::vector<std::array<float,4>> precomputed_vertex_colors;
 };
@@ -83,6 +95,9 @@ bool texture_to_painting(
     const TexturePaintingSettings& settings = {},
     PaintProgressCallback progress = nullptr,
     PaintCancelCallback cancel = nullptr);
+
+
+
 bool face_colors_to_painting(
     const TexturedMesh& mesh,
     PaintedMesh& painted,
@@ -105,10 +120,15 @@ bool apply_painted_mesh_to_volume(
     const std::vector<FilamentMatch>& matches,
     ModelVolume& volume);
 
+
+
 bool decode_texture_to_pixels(
     const TextureImage& img,
     std::vector<unsigned char>& out_pixels,
     int& out_w, int& out_h);
+
+
+
 
 bool sample_original_face_colors(
     const TexturedMesh& textured,

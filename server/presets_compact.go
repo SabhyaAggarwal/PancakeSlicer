@@ -11,14 +11,16 @@ const compactPresetsSchema = "orca.presets.compact.v1"
 
 type compactPreset struct {
 	Preset
+
 	Config []int `json:"config"`
 	Base   int   `json:"base"`
 }
 
 type compactVendor struct {
-	Schema    string            `json:"schema"`
-	Vendor    string            `json:"vendor"`
-	Keys      []string          `json:"keys"`
+	Schema string   `json:"schema"`
+	Vendor string   `json:"vendor"`
+	Keys   []string `json:"keys"`
+
 	Values    []json.RawMessage `json:"values"`
 	ValueKeys []int             `json:"value_keys"`
 	Bases     [][]int           `json:"bases"`
@@ -50,6 +52,7 @@ func compactPresets(v *VendorPresets) compactVendor {
 	}
 	kind := func(presets []Preset) []compactPreset {
 		packed := make([]compactPreset, len(presets))
+
 		groups := map[string][]int{}
 		var order []string
 		for i, p := range presets {
@@ -104,6 +107,7 @@ func compactPresets(v *VendorPresets) compactVendor {
 		return packed
 	}
 	out.Machines, out.Processes, out.Filaments = kind(v.Machines), kind(v.Processes), kind(v.Filaments)
+
 	for i := range out.Processes {
 		out.Processes[i].Internal = true
 	}

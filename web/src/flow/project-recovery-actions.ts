@@ -1,3 +1,4 @@
+
 import { openingBusy } from '../state/busy';
 import { newKey, type ProjectMeta, type ProjectStore, type ProjectCommandStatus, type StoredDocBase } from '../persist/backend';
 import { changeForSave, savedVersionBase } from '../projects/versions';
@@ -25,6 +26,7 @@ export interface RecoveryRuntime {
   drafts(): Promise<ProjectDraftStore>; refreshDrafts(): Promise<ProjectDraftInventory>;
 }
 const codec = () => import('../persist/session');
+
 function keepCompatible() {
   const fixed = ensureCompatibleSelection(getState());
   if (!fixed) return;
@@ -54,9 +56,13 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   runtime.setRestored(draft); runtime.resetCaptured();
   project.send({ type: 'RECOVERED', meta, draft, failure });
   keepCompatible();
+
   runtime.checkpointRecovered(draft.projectId, draft.baseRevision, failure);
+
   writeProjectRoute(true);
 }
+
+
 export async function resumeUnsavedProject(runtime: RecoveryRuntime, id: string): Promise<boolean> {
   const mine = runtime.beginOpen();
   const [rec, drafts] = await Promise.all([runtime.storage()?.load(id) ?? null,
@@ -73,6 +79,7 @@ export async function resumeUnsavedProject(runtime: RecoveryRuntime, id: string)
   if (runtime.isCurrent(mine) && project.get().context.id === id) project.send({ type: 'RETRY' });
   return true;
 }
+
 export async function keepProjectVersion(runtime: RecoveryRuntime) {
   const id = project.get().context.id, gen = documentGeneration();
   try {
@@ -89,6 +96,7 @@ export async function keepProjectVersion(runtime: RecoveryRuntime) {
     if (id === project.get().context.id && gen === documentGeneration()) project.send({ type: 'ERROR', error: failure.message, failure });
   }
 }
+
 export async function reloadProject(runtime: RecoveryRuntime) {
   const id = project.get().context.id, gen = documentGeneration();
   const receipt = runtime.hasUnsaved() ? runtime.checkpoint() : null, source = runtime.restored();
@@ -101,6 +109,7 @@ export async function reloadProject(runtime: RecoveryRuntime) {
     void runtime.refreshDrafts();
   }
 }
+
 export async function recoverProjectDraft(runtime: RecoveryRuntime, draftId: string, options: { asCopy?: boolean } = {}) {
   await runtime.preserveSnapshot();
   const draft = await (await runtime.drafts()).load(draftId);
@@ -177,6 +186,7 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     busy.end();
   }
 }
+
 export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, record: { meta: ProjectMeta; doc: StoredDocBase }, enter: () => boolean) {
   const mine = runtime.beginOpen();
   await flushProject();
@@ -186,6 +196,7 @@ export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, r
   if (!runtime.isCurrent(mine)) return false;
   const fields = await (await codec()).decode(document, (k) => runtime.storage()!.getBlob(id, k));
   if (!runtime.isCurrent(mine)) return false;
+
   if (!enter()) return false;
   runtime.invalidateWrites();
   runtime.adopt(() => {
@@ -200,6 +211,7 @@ export async function renameProject(runtime: RecoveryRuntime, id: string, name: 
   const storage = runtime.storage();
   if (!storage) throw new Error('Project storage is unavailable');
   const current = id === project.get().context.id, gen = documentGeneration();
+
   let resumed = false;
   for (const pending of storage.commands()) if (pending.id === id && pending.kind === 'rename' && pending.name !== undefined) {
     await storage.rename(id, pending.name); resumed ||= pending.name === name.trim();
@@ -233,6 +245,7 @@ function attemptAction<T>(map: Map<string, PendingAction<T>>, id: string, create
   }
   return intent.task!;
 }
+
 export function discardRejectedProjectCommand(runtime: RecoveryRuntime, operationId: string): void {
   const storage = runtime.storage();
   if (!storage) throw new Error('Project storage is unavailable');
@@ -289,6 +302,7 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
       return restoring;
     };
     return { matches: (command) => command.kind === 'archive', run: async () => {
+
       if (!ack) { await runtime.waitForWrites(); ack = await storage.remove(id); }
       owner.revision = ack.revision; retainedOwners.set(id, owner); runtime.removed.add(id);
       if (current && id === project.get().context.id && gen === documentGeneration()) {
@@ -301,20 +315,25 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
   });
 }
 
+
 export async function restoreArchivedProject(runtime: RecoveryRuntime, id: string, expectedRevision?: number) {
   const storage = runtime.storage();
   if (!storage) throw new Error('Project storage is unavailable');
+
   const owner = removalOwners.get(runtime)?.get(id), removed = runtime.removed.has(id);
   await storage.restore(id, expectedRevision);
   if (removed && removalOwners.get(runtime)?.get(id) === owner) { removalOwners.get(runtime)?.delete(id); runtime.removed.delete(id); }
   runtime.publish('saved', id); runtime.refreshList();
 }
 
+
 export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
   id: string; document: Doc; gen: number; version: number; revision: number; storage: ProjectStore | null;
   receipt: { checkpoint: DraftCheckpoint; durable: Promise<ProjectDraft> };
 }) {
   const { id, document, gen, version, revision, storage, receipt } = capture;
+
+
     if (revision > 0) await receipt.durable.catch(() => null);
     if (!storage) throw new Error('Project storage is unavailable');
     if (runtime.removed.has(id)) return;
@@ -329,6 +348,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     if (runtime.removed.has(id)) return;
     const meta = { name: nameOf(document), savedAt: Date.now(), objects: plateCount(document), revision, change: changeForSave(id, document, revision) };
     const committed: CheckpointDocument = { ...stored, recoveryCheckpoint: receipt.checkpoint };
+
     const acknowledgement = await storage.save(id, meta, committed, meta.objects === 0 ? null : runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
     savedVersionBase(id, document);
     if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });

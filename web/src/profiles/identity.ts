@@ -1,3 +1,4 @@
+
 import type { PresetType, UserPreset } from '../api/types';
 import type { State } from '../state/store';
 
@@ -8,6 +9,7 @@ export interface ProfileReference {
   owner?: ProfileKey;
 }
 export interface ProfileReferenceSource {
+
   complete: boolean;
   references: readonly { type: PresetType; key: ProfileKey; reference: ProfileReference }[];
 }
@@ -28,6 +30,7 @@ const profileIndexes = new WeakMap<UserPreset[], Map<string, ProfileIndex>>();
 const indexProfile = (map: Map<string, UserPreset | null>, key: string, profile: UserPreset) => {
   if (!map.has(key)) map.set(key, profile); else map.set(key, null);
 };
+
 export function lookupProfile(s: Pick<State, 'userPresets'>, type: PresetType, key: ProfileKey, printerId?: ProfileKey): { profile?: UserPreset; ambiguous: boolean } {
   let scopes = profileIndexes.get(s.userPresets);
   if (!scopes) profileIndexes.set(s.userPresets, (scopes = new Map()));
@@ -49,6 +52,7 @@ export function lookupProfile(s: Pick<State, 'userPresets'>, type: PresetType, k
   return { ambiguous: false };
 }
 export const findProfile = (s: Pick<State, 'userPresets'>, type: PresetType, key: ProfileKey, printerId?: ProfileKey): UserPreset | undefined => lookupProfile(s, type, key, printerId).profile;
+
 
 export function profileReferenceInventory(s: State, type: PresetType, key: ProfileKey, external?: ProfileReferenceSource): ProfileReferenceInventory {
   const p = findProfile(s, type, key);

@@ -66,8 +66,15 @@ class NonplanarSurface
 
 };
 
+
+
+
+
 std::string nonplanar_location(double z, size_t layer_id);
+
 double      nonplanar_suggested_angle(double angle);
+
 [[noreturn]] void throw_nonplanar_too_steep(double z, size_t layer_id, double angle, size_t object_id, const std::string &detail);
+
 [[noreturn]] void throw_nonplanar_internal(const std::string &where, const std::string &detail, size_t object_id);
 };

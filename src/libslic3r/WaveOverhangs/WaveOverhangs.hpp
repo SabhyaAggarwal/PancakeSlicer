@@ -1,4 +1,12 @@
-///|/ Released under the terms of the AGPLv3 or higher.
+
+
+
+
+
+
+
+
+
 #ifndef slic3r_WaveOverhangs_hpp_
 #define slic3r_WaveOverhangs_hpp_
 
@@ -15,9 +23,14 @@ namespace Slic3r { class PrintObject; }
 
 namespace Slic3r::WaveOverhangs {
 
+
+
+
 bool enabled(const PrintRegionConfig &region, const PrintObject &object);
 
+
 enum class SpacingMode { Uniform, Progressive };
+
 
 enum class SeamMode { Alternating, Aligned, Random };
 
@@ -31,11 +44,19 @@ struct CommonParams {
     SeamMode    seam_mode              = SeamMode::Alternating;
     double      min_length_mm          = 0.0;
     int         max_iterations         = 0;
+
     double      perimeter_overlap      = 0.1;
     double      minimum_wave_width     = 0.7;
     WaveOverhangPattern pattern        = WaveOverhangPattern::Smart;
     double      min_new_area           = 0.01;
     bool        use_instead_of_bridges = false;
+
+
+
+
+
+
+
     bool        corner_taper_enable    = false;
     double      line_spacing_corner    = 0.0;
     double      corner_taper_distance  = 0.0;
@@ -51,11 +72,18 @@ GenerateResult generate(const ExPolygons   &overhang_area,
                         const Polygons     &lower_slices_polygons,
                         const CommonParams &params);
 
+
 namespace detail {
+
+
 
 Polylines reconnect_polylines(const Polylines &polylines, double limit_distance);
 
+
 Points detect_overhang_corners(const Polygons &polys, double angle_threshold_rad);
+
+
+
 
 Polygons painted_overhang_zone(const Polygons &island, const Polygons &lower, const Polygons &filled_area, coord_t sliver_radius);
 

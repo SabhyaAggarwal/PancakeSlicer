@@ -14,6 +14,7 @@ const gzipMinBytes = 1024
 
 func gzipJSON(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		switch encoding := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); encoding {
 		case "", "identity":
 		case "gzip":
@@ -53,10 +54,11 @@ func gzipJSON(next http.Handler) http.Handler {
 
 type gzipWriter struct {
 	http.ResponseWriter
-	status   int
-	decided  bool
-	plain    bool
-	pending  []byte
+	status  int
+	decided bool
+	plain   bool
+	pending []byte
+
 	encoding string
 	z        interface {
 		io.Writer

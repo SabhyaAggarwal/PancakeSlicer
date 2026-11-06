@@ -1,5 +1,7 @@
 import { ProfileLibraryNotice } from './ProfileLibraryNotice';
 import { nativeSurfaceSummary } from '../preview/explain-record';
+
+
 import { lazy, Suspense, useState, type ReactNode } from 'react';
 import type { PresetType } from '../api/types';
 import { effectiveMode, printerPreset, resolvePreset, setState, useStore } from '../state/store';
@@ -19,7 +21,9 @@ import { PrinterLive } from '../printers/PrinterLive';
 const ObjectScope = lazy(() => import('./ObjectOverrides'));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
+
 function RailSection({title, meta, actions, className = '', children}: {title: string; meta?: ReactNode; actions?: ReactNode; className?: string; children: ReactNode}) {
+
   const folded = (usePreference('orca.rail_folded') ? preferenceText('orca.rail_folded')! : '').split(',').includes(title);
   const fold = () => { const rest = (preferenceText('orca.rail_folded') ?? '').split(',').filter(t => t && t !== title); savePreferences({'orca.rail_folded': (folded ? rest : [...rest, title]).join(',')}); };
   return <section className={`rail-section ${className}${folded ? ' folded' : ''}`} aria-label={title}>
@@ -27,6 +31,7 @@ function RailSection({title, meta, actions, className = '', children}: {title: s
     {!folded && children}
   </section>;
 }
+
 function RailAction({glyph, label, disabled, onClick}: {glyph: GlyphName; label: string; disabled?: boolean; onClick(): void}) {
   return <button type="button" className="icon-btn rail-act" aria-label={label} disabled={disabled} onClick={onClick}><Glyph name={glyph}/></button>;
 }
@@ -37,6 +42,7 @@ function PrinterSection() {
   const [failedCover, setFailedCover] = useState<string>();
   const cover = ready && machine ? printerCover(machine.vendor, machine.config, machine.model) : undefined;
   return <RailSection title="Printer" actions={<RailAction glyph="edit" label="Edit printer" disabled={!ready} onClick={() => edit('machine', name)}/>}>
+    {                                                                           }
     <div className="rail-row">{cover && failedCover !== cover && <img className="rail-cover" src={cover} alt="" loading="lazy" width={40} height={40} onError={() => setFailedCover(cover)}/>}<PresetCombo type="machine"/></div>
     <PrinterLive/>
   </RailSection>;
@@ -48,13 +54,18 @@ function FilamentSection() {
   const max = capacity(machine);
   return <RailSection title="Filament" actions={<>
     {max > 1 && slots.length < max && <RailAction glyph="plus" label="Add filament slot" onClick={addFilament}/>}
+    {                                                                           }
     <RailAction glyph="edit" label="Edit filament" disabled={onlyError} onClick={() => edit('filament', only)}/>
     <FilamentMenu/>
   </>}>
+    {                                                                                              }
     {slots.map((_name, i) => <div key={i} className="rail-row rail-slot"><PresetCombo type="filament" slot={i}/>
       {slots.length > 1 && <button type="button" className="icon-btn rail-slot-remove" aria-label={`Remove filament slot ${i + 1}`} onClick={() => removeSlot(i)}><Glyph name="close" size={14}/></button>}</div>)}
   </RailSection>;
 }
+
+
+
 const DETAIL = [['simple', 'Simple'], ['advanced', 'Advanced'], ['develop', 'Expert']] as const;
 type Detail = (typeof DETAIL)[number][0];
 function useViewChoices() {
@@ -77,10 +88,12 @@ function ViewChoices() {
     <MenuButton className="icon-btn rail-act rail-menus-folded" label="View options" items={[...(v.hasObjects ? [{label: 'Apply to', header: true} as MenuEntry, ...v.scopeItems, 'sep' as const] : []), {label: 'Detail', header: true}, ...v.detailItems]}><Glyph name="settings"/></MenuButton>
   </>;
 }
+
 function SliceSummary() {
   const summary = useStore(s => s.tab !== 'preview' && s.job.state === 'done' && !s.job.stale && s.job.status?.record ? nativeSurfaceSummary(s.job.status.record) : null);
   return summary ? <div className="engine-line" role="status">{summary}</div> : null;
 }
+
 function RailSkeleton() {
   const bar = (k: number, wide?: boolean) => <div key={k} className={`rail-row rail-skel${wide ? ' rail-row-wide' : ''}`}><span className="skel-block"/></div>;
   return <div className="rail-skeleton" role="status" aria-label="Loading profiles">
@@ -88,6 +101,8 @@ function RailSkeleton() {
     <RailSection title="Print settings" className="process-section">{bar(1, true)}<div className="process-panel">{[2, 3, 4, 5, 6, 7].map(k => <div key={k} className="skel-line"/>)}</div></RailSection>
   </div>;
 }
+
+
 export function Sidebar() {
   const objects = useStore(s => s.processScope === 'objects' && !!s.objects.length);
   const ready = useStore(printerReady), process = useStore(s => s.process);
@@ -97,6 +112,7 @@ export function Sidebar() {
     <PrinterSection/>
     {ready && <>
       <FilamentSection/>
+      {                                                                                                                  }
       <RailSection title="Print settings" className="process-section" meta={!objects && <ChangesMark type="process"/>} actions={<><ViewChoices/>{!objects && <><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}</>}>
         {objects ? <Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}><ObjectScope/></Suspense> : <>
           <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>

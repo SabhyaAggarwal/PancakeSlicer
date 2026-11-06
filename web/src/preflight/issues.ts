@@ -1,3 +1,6 @@
+
+
+
 import * as THREE from 'three';
 import { arrangeAll, bedArea } from '../actions';
 import type { Config } from '../api/types';
@@ -16,14 +19,17 @@ export interface Issue {
   objectId: number;
   name: string;
   kind: IssueKind;
+
   tris: Uint32Array;
-  fix: { label: string; run(): void;  edit?: (s: State) => Partial<Doc> };
+  fix: { label: string; run(): void;                                                                                   edit?: (s: State) => Partial<Doc> };
 }
+
 
 const REACH_MM = 6, REGION_MM2 = 10, POINT_CONTACT_MM2 = 5, SMALL_FOOT_MM2 = 50, TALL_MM = 10;
 
 const on = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 const num = (v: unknown, d: number) => { const n = parseFloat(String(Array.isArray(v) ? v[0] : v)); return Number.isFinite(n) ? n : d; };
+
 
 let worker: Worker | null = null;
 let seq = 0;
@@ -34,6 +40,8 @@ function analysis(o: PlateObject, firstLayer: number, threshold: number, nozzle:
   const key = `${o.geometry.uuid}:${m.map((e) => e.toFixed(4)).join()}:${firstLayer}:${threshold}:${nozzle}`;
   let p = cache.get(key);
   if (p) return p;
+
+
   const fail = (e: Event) => {
     const error = new Error(e instanceof ErrorEvent && e.message ? e.message : 'The preflight worker stopped');
     worker?.terminate(); worker = null;
@@ -55,6 +63,7 @@ function analysis(o: PlateObject, firstLayer: number, threshold: number, nozzle:
   return p;
 }
 
+
 const withSettings = (s: State, id: number, patch: Config) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, settings: { ...o.settings, ...patch } } : o)) });
 const settingsFix = (label: string, id: number, patch: Config): Issue['fix'] => ({
   label, edit: (s) => withSettings(s, id, patch), run: () => undoable(label, () => setState((s) => withSettings(s, id, patch))),
@@ -68,6 +77,7 @@ function layFlat(o: PlateObject): Issue['fix'] | null {
   const next = (s: State) => ({ objects: s.objects.map((x) => (x.id === o.id ? layOnFace(x, inst.id, planes[best].normal) : x)) });
   return { label: 'Lay flat', edit: next, run: () => undoable('Lay flat', () => setState(next)) };
 }
+
 
 let issues: Issue[] = [];
 const dismissed = new Set<string>();
@@ -93,9 +103,11 @@ async function check(s: State) {
       const fits = size.x <= Math.max(...xs) - Math.min(...xs) && size.y <= Math.max(...ys) - Math.min(...ys) && size.z <= height;
       push('bed', new Uint32Array(), fits ? { label: 'Arrange', run: () => arrangeAll(false) } : { label: 'Scale to fit', run: () => scaleToBuildVolume(o.id) });
     }
+
     const a = await analysis(o, num(cfg.initial_layer_print_height, 0.2), num(cfg.support_threshold_angle, 30) || 30, num(machine.nozzle_diameter, 0.4)).catch(() => null);
     if (mine !== run) return;
     if (!a) continue;
+
     const point = a.height > 2 && a.contact < POINT_CONTACT_MM2;
     if (point) push('contact', new Uint32Array(), layFlat(o));
     else if (a.height > TALL_MM && a.contact < SMALL_FOOT_MM2 && String(cfg.brim_type) === 'no_brim')
@@ -114,6 +126,7 @@ async function check(s: State) {
 }
 
 let run = 0, timer = 0, last: unknown[] = [];
+
 subscribeStore(() => {
   const s = getState(), now = [s.objects, s.process, s.printer, s.projectPresets, s.projectPlates, s.plateIndex];
   if (now.every((v, i) => v === last[i])) return;
@@ -127,6 +140,7 @@ export const plateIssues = () => issues.filter((i) => !dismissed.has(i.key) && g
 export function dismissIssue(key: string) { dismissed.add(key); emit(); }
 export const subscribeIssues = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const issuesVersion = () => version;
+
 
 let hovered: string | null = null;
 export const hoveredIssue = () => hovered;

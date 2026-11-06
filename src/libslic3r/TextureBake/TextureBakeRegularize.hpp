@@ -1,5 +1,17 @@
 #pragma once
 
+
+
+
+
+
+
+
+
+
+
+
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -11,21 +23,35 @@ namespace TextureBake {
 
 struct RegularizeOptions
 {
+
+
     double aspect_threshold = 5.0;
+
+
+
 
     double slack            = 3.0;
     double aggressive_slack = 8.0;
 
+
     double extreme_sliver_aspect = 8.0;
+
+
+
+
 
     double max_normal_delta_cos        = 0.965925826289;
     double aggressive_normal_delta_cos = 0.906307787037;
+
+
     double sharp_edge_cos = 0.866025403784;
 
     int maxrounds = 8;
 
+
     bool preserve_excluded = false;
 };
+
 
 struct RegularizeRejectStats
 {

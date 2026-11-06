@@ -1,4 +1,7 @@
 import { modelLabel, nozzleField, printerCover, profileColour, rowDetail, vendorField, vendorLabel } from './metadata';
+
+
+
 import type { Config, PresetType } from '../api/types';
 import { getState, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
@@ -15,6 +18,8 @@ const first = (v: unknown) => String([v].flat()[0] ?? '');
 const shortName = (name: string) => name.replace(/\s*@.*$/, '') || name;
 export const presets = (type: PresetType, name?: string): PickerAction => ({ label: `Manage ${type === 'machine' ? 'printers' : type === 'filament' ? 'filaments' : 'print settings'}`, run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
 
+
+
 export function noPrinterGroup(type: 'filament' | 'process'): PickerGroup[] {
   const items = getState().userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && worksWithNone(type, p.applicability))
     .map((p): PickerItem => ({ id: profileKey(p), label: p.name, search: p.name })).sort((a, b) => a.label.localeCompare(b.label));
@@ -25,16 +30,22 @@ export function pickOrOpen(type: 'filament' | 'process', id: string, pick: (id: 
   else pick(id);
 }
 
+
 function brandName(name: string, c: Config) {
   const brand = first(c.filament_vendor) || 'Generic', short = shortName(name);
   const word = brand.split(/\s+/)[0];
   return { brand, name: short.toLowerCase().startsWith(word.toLowerCase() + ' ') ? short.slice(word.length + 1) : short };
 }
 
+
 const MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'PC', 'PA', 'PVA'];
 const RARE = /^(PVA|BVOH|HIPS|EVA|COPE|PVB|SUPPORT|OTHER)$/;
+
 export const materialRank = (t: string) => { const i = MATERIALS.indexOf(t.toUpperCase()); return i >= 0 ? i : RARE.test(t.toUpperCase()) ? 99 : 50; };
+
 const material = (type: string) => (type.toUpperCase().split(/[-+\s]/)[0] || 'Other').replace(/^PA\d+$/, 'PA');
+
+
 
 export function currentEntry(type: PresetType, key: string | undefined, entries: readonly PickerEntry[]): PickerEntry | undefined {
   if (!key || entries.some((e) => e.key === key)) return undefined;
@@ -43,11 +54,16 @@ export function currentEntry(type: PresetType, key: string | undefined, entries:
 }
 export const NOT_COMPATIBLE = 'Not compatible';
 
+
+
+
 export function usePickerPending(resolved: boolean): boolean {
   const load = useStore((s) => s.profileLibraryLoad.state), api = useStore((s) => !!s.api);
   return !api || load === 'loading' || load === 'failed' && !resolved;
 }
 export const PickerSkeleton = () => <><span className="pk-name" aria-label="Loading"><span className="skel-line pk-skel-name"/></span><span className="pk-sub"><span className="skel-line pk-skel-sub"/></span></>;
+
+
 
 const listCache = new Map<string, { at: unknown; value: PickerGroup[] }>();
 export const sameStateGroups = (key: string, build: () => PickerGroup[]) => (): PickerGroup[] => {
@@ -56,6 +72,7 @@ export const sameStateGroups = (key: string, build: () => PickerGroup[]) => (): 
   const value = build(); listCache.set(key, { at, value }); return value;
 };
 
+
 const addFilament: PickerAction = { label: 'Add filament', run: () => setState({ presetUx: { kind: 'presets', type: 'filament', add: true } }) };
 
 function filamentGroups(slot: number | null): PickerGroup[] {
@@ -63,6 +80,7 @@ function filamentGroups(slot: number | null): PickerGroup[] {
   let entries = listProfiles('filament');
   const hidden = slot === null ? undefined : currentEntry('filament', s.filamentSlots[slot], entries);
   if (hidden) entries = [...entries, hidden];
+
   const others = new Map<string, { n: number; colour: string }[]>();
   s.filamentSlots.forEach((name, i) => { if (i !== slot && name) others.set(name, [...(others.get(name) ?? []), { n: i + 1, colour: filamentColor(s, i + 1) }]); });
   const item = (e: PickerEntry): PickerItem => {
@@ -70,8 +88,10 @@ function filamentGroups(slot: number | null): PickerGroup[] {
     const label = e.mine ? e.name : b.name;
     return { id: e.key, label, sub: rowDetail(label, [vendorField(brand)]) || undefined, facet: brand, swatch: profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}`, slots: others.get(e.key) };
   };
+
   const seen = new Map<string, number>();
   for (const e of entries) { const k = item(e).label + first(e.config.filament_vendor); seen.set(k, (seen.get(k) ?? 0) + 1); }
+
   const types = new Map<string, PickerItem[]>(), loaded: PickerItem[] = [];
   for (const e of entries) {
     const it = item(e), at = e.name.match(/@\s*(.+)$/)?.[1];
@@ -83,11 +103,13 @@ function filamentGroups(slot: number | null): PickerGroup[] {
   }
   const rank = materialRank;
   const groups: PickerGroup[] = [];
+
   if (loaded.length > 1) groups.push({ id: 'loaded', title: 'Loaded', items: [...loaded].sort((a, b) => a.slots![0].n - b.slots![0].n), filter: true });
   for (const type of [...types.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)))
     groups.push({ id: `t:${type}`, title: type, items: types.get(type)!.sort((a, b) => a.facet!.localeCompare(b.facet!) || a.label.localeCompare(b.label)) });
   return [...groups, ...noPrinterGroup('filament')];
 }
+
 
 export function FilamentPicker({ slot }: { slot: number }) {
   const name = useStore((s) => s.filamentSlots[slot] ?? '');
@@ -109,6 +131,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
   );
 }
 
+
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
@@ -128,10 +151,12 @@ const byVendorRail = (byVendor: Map<string, PickerItem[]>): PickerGroup[] =>
   [...byVendor].sort((a, b) => vendorRank(a[0]) - vendorRank(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
     .map(([v, items]) => ({ id: `v:${v}`, title: v, items: items.sort((a, b) => a.label.localeCompare(b.label)) }));
 
+
 export function PrinterPicker() {
   const printer = useStore((s) => s.printer);
   useStore((s) => s.machines);
   useStore((s) => s.userPresets);
+
   const connections = useStore((s) => s.printerConnections);
   const profileGroups = (): PickerGroup[] => {
     const byVendor = new Map<string, PickerItem[]>();
@@ -150,6 +175,7 @@ export function PrinterPicker() {
     </Picker>
   );
 }
+
 
 export function PresetPicker({ type, slot = 0 }: { type: PresetType; slot?: number }) {
   if (type === 'machine') return <PrinterPicker />;

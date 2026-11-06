@@ -36,6 +36,7 @@ type Server struct {
 	workspace *workspaceStore
 	sends     *SendManager
 	blobs     *blobStore
+
 	fontsOnce sync.Once
 	fonts     []byte
 	fontsErr  error
@@ -43,6 +44,7 @@ type Server struct {
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	s := &Server{cfg: c, jobs: jobs, presets: presets, libraryV4: &libraryStore{dir: c.DataDir}, sends: NewSendManager(c.PrinterStore)}
+
 	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
@@ -75,6 +77,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 		writeJSON(w, 200, buildAbout(c))
 	})
 	mux.HandleFunc("POST /api/jobs", s.createJob)
+
 	mux.HandleFunc("POST /api/patch-preview", s.createJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
@@ -121,6 +124,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
 	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
+	mux.Handle("/profiles/", profileAssetFiles(c.Resources, c.StaticDir))
 	mux.Handle("/", spaFiles(c.StaticDir))
 	if c.Metrics {
 		mux.HandleFunc("GET /metrics", s.metrics)
@@ -138,6 +142,7 @@ func fail(w http.ResponseWriter, status int, message string) {
 }
 
 func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
+
 	q := r.URL.Query()
 	vendor, names := q.Get("vendor"), q["name"]
 	if vendor == "" || len(names) == 0 {
@@ -227,6 +232,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusRequestEntityTooLarge, "multipart upload exceeds max-upload")
 		return
 	}
+
 	controller := http.NewResponseController(w)
 	deadline := time.Now().Add(uploadIdleTimeout)
 	if err := controller.SetReadDeadline(deadline); err != nil {
@@ -257,12 +263,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+
 	if v := r.Header.Get(sessionHeader); len(v) <= 256 {
 		req.Session = v
 	}
 	if v := r.Header.Get("X-Slice-Group"); len(v) <= 256 {
 		req.SliceGroup = v
 	}
+
 	var resolved *sliceConfig
 	if raw := r.FormValue("library"); raw != "" {
 		var in resolveRequest
@@ -491,6 +499,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "budget must be 0.1 to 60 seconds")
 			return
 		}
+
 		req.Output, req.Priority, req.PreviewBudget = "patch-preview", "low", budget
 	} else if req.Output != "gcode" && req.Output != "gcode.3mf" && req.Output != "3mf" {
 		fail(w, 400, "output must be gcode, gcode.3mf or 3mf")
@@ -502,6 +511,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if raw := r.FormValue("overrides"); resolved != nil {
+
 		values := map[string]json.RawMessage{}
 		for k, v := range resolved.Config {
 			if (resolved.Sources[k] != "catalog" || resolved.engineOverrides[k]) && !hiddenSetting.MatchString(k) {
@@ -542,6 +552,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
 	var files []struct {
 		Name   string `json:"name"`
 		SHA256 string `json:"sha256"`
@@ -551,6 +562,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if kind := r.FormValue("calib"); kind != "" {
+
 		params := r.FormValue("calib_params")
 		switch {
 		case !s.cfg.Features.Calib:
@@ -570,6 +582,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.MeshOp == "text" && len(req.TextSurface) == 0 {
+
 		if len(files) > 0 || r.FormValue("plate") != "" || req.Output == "3mf" {
 			fail(w, 400, "text takes no files, plate or project output")
 			return
@@ -586,6 +599,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	for _, f := range files {
 		name := f.Name
 		ext := strings.ToLower(filepath.Ext(name))
+
 		other := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc" || req.MeshOp == "svg" && ext == ".svg"
 		if name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || name == "." || name == ".." || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !other) || names[name] {
 			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC, SVG or 3MF basenames")
@@ -610,6 +624,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	rawPlate := r.FormValue("plate")
 	if raw := rawPlate; raw != "" {
+
 		var plate map[string]json.RawMessage
 		var objects []map[string]json.RawMessage
 		if json.Unmarshal([]byte(raw), &plate) != nil || json.Unmarshal(plate["objects"], &objects) != nil || len(objects) == 0 {
@@ -623,6 +638,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				Type string `json:"type"`
 			}
 			if obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil ||
+
 				(obj["file"] != nil || len(volumes) == 0) && (json.Unmarshal(obj["file"], &file) != nil || !names[file]) {
 				fail(w, 400, "plate objects must reference uploaded basenames")
 				return
@@ -637,18 +653,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+
 			if obj["paint"] != nil && !s.cfg.Features.Paint {
 				fail(w, 400, "painting requires a tool with plate-JSON paint")
 				return
 			}
+
 			if obj["layer_height_profile"] != nil && !s.cfg.Features.LayerProfile {
 				fail(w, 400, "variable layer height requires a tool with plate-JSON layer height profiles")
 				return
 			}
+
 			if obj["ranges"] != nil && !s.cfg.Features.Ranges {
 				fail(w, 400, "height range modifiers require a tool with plate-JSON ranges")
 				return
 			}
+
 			if obj["brim_ears"] != nil && !s.cfg.Features.BrimEars {
 				fail(w, 400, "brim ears require a tool with plate-JSON brim_ears")
 				return
@@ -761,6 +781,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.ProjectSettings = settings
 	}
+
 	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 		machine := vendor.machines[req.Printer]
 		selected := make([][2]string, 0, len(machine.Config)+len(req.Overrides))
@@ -799,6 +820,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
+
 	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.MeshOp == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
@@ -810,6 +832,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 
 var calibKinds = map[string]bool{"cornering": true, "flow-rate": true, "input-shaping-freq": true, "input-shaping-damp": true,
 	"max-volumetric-speed": true, "pa-line": true, "pa-pattern": true, "pa-tower": true, "retraction": true, "temp-tower": true, "vfa": true,
+
 	"nonplanar-clearance": true, "nonplanar-tilt-flow": true, "nonplanar-curved-top": true, "nonplanar-verifier": true}
 var calibHead = regexp.MustCompile(`^[a-z0-9_-]{0,64}$`)
 var calibParams = regexp.MustCompile(`^([a-z_]+=[A-Za-z0-9_.;-]*(,[a-z_]+=[A-Za-z0-9_.;-]*)*)?$`)
@@ -850,6 +873,7 @@ func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
+
 	v, echo := j.View(), r.URL.Query().Get("request") != "0"
 	if echo {
 		writeJSON(w, 200, v)
@@ -933,6 +957,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Type", "application/octet-stream")
+
 	if strings.HasSuffix(path, ".3mf") || r.Header.Get("Range") != "" {
 		http.ServeContent(w, r, st.Name(), st.ModTime(), f)
 		return
@@ -975,6 +1000,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
+
 	path := j.MovesPath()
 	if r.URL.Query().Get("extended") == "1" {
 		if _, err := os.Stat(j.ExtendedMovesPath()); err == nil {
@@ -1031,6 +1057,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
+
 		if err := controller.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
 			return
 		}
@@ -1066,6 +1093,33 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func profileAssetFiles(resources, web string) http.Handler {
+	cache := &staticCache{files: map[string]staticEntry{}}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		relative := strings.TrimPrefix(r.URL.Path, "/profiles/")
+		if strings.Contains(relative, "\\") || len(strings.Split(relative, "/")) != 2 || !filepath.IsLocal(filepath.FromSlash(relative)) {
+			http.NotFound(w, r)
+			return
+		}
+		base := web
+		switch strings.ToLower(filepath.Ext(relative)) {
+		case ".png", ".stl":
+			base = resources
+		}
+		file := filepath.Join(base, "profiles", filepath.FromSlash(relative))
+		st, err := os.Stat(file)
+		if err != nil || !st.Mode().IsRegular() {
+			http.NotFound(w, r)
+			return
+		}
+		cache.serve(w, r, file, st)
+	})
+}
+
 func spaFiles(dir string) http.Handler {
 	cache := &staticCache{files: map[string]staticEntry{}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1073,7 +1127,9 @@ func spaFiles(dir string) http.Handler {
 			w.WriteHeader(405)
 			return
 		}
+
 		clean := path.Clean("/" + r.URL.Path)
+
 		if clean == "/metrics" || clean == "/api" || strings.HasPrefix(clean, "/api/") {
 			http.NotFound(w, r)
 			return
@@ -1385,24 +1441,43 @@ var qualifiedNativeSources = map[string]bool{
 	"1e6bad5db420789671ec1ed7728e59f872919ece": true,
 	"503399d1f28cdab9f7cdc6662b255145561f8cfa": true,
 	"1cb5e5c62c3cf99f33c99595e4cf07f97b497c01": true,
+
 	"3457a21631884d251b453b0726f88f06bf7ae8a4": true,
+
 	"9cd5d2ead539ddbad800f93b1ebcf0a2083cf9a9": true,
+
 	"27172da519bc367ff55778aa59d27a1212588962": true,
+
 	"71a6dbaf505c675c6938a6a7d7f7e74185ad574b": true,
+
 	"8e8655f026f1b2791d46b5d6fb73f0bc11261c99": true,
+
 	"033213a378ea4dadf23305755bdae6c5fe8eab68": true,
+
 	"b5b6b001336a92a6f2fc8a2e490a7a8de10ecd2b": true,
+
 	"fea8b6d7e185c9e7d1b8649931900128e1d459a7": true,
+
 	"b18549b4c8b4722ac5cc35a22012d7c51aa7e4d4": true,
+
 	"15a5765d240ffaf9f4b7bb24f2c183893af57596": true,
+
 	"e3ae74aa5a190e8345af477a863c3a057452d9e1": true,
+
 	"ed31f89c5f8b24b8cf53756b4f9db31ae44392f3": true,
+
 	"875a0ce34ff2081e9f2bc617ee8f670c2223e9a5": true,
+
 	"263d52f6857fd330a94a35c47c2d1858a82ad0b3": true,
+
 	"0f2c7011a9b09eb98186061aa69099bbebc09e68": true,
+
 	"219f1741b1e3e839a3722a2b285861b732f865f2": true,
+
 	"95f148f9eb53351327dc983d7ddfa8a44d142c8c": true,
+
 	"4730188b9b710a0446b1bfc075b5c511b3f95508": true,
+
 	"78fd47f7e0a5ed738a4a95b05c6f539fed26fca0": true,
 }
 
@@ -1511,6 +1586,7 @@ func newEngineHealth(c Config) *engineHealth {
 	h := &engineHealth{state: HealthUnknown, artifactState: HealthUnknown, features: map[string]any{}}
 	b, _ := json.Marshal(c.Features)
 	json.Unmarshal(b, &h.features)
+
 	if c.Features.DumpOptions && c.Options != nil {
 		var options map[string]struct {
 			Values []string `json:"enum_values"`
@@ -1575,6 +1651,7 @@ func newEngineHealth(c Config) *engineHealth {
 		h.setEngine(HealthDegraded)
 		return h
 	}
+
 	var proof struct {
 		Ready           bool              `json:"ready"`
 		PublicationMain string            `json:"publication_main_sha"`
@@ -1593,6 +1670,7 @@ func newEngineHealth(c Config) *engineHealth {
 	qualified := proofErr == nil && json.Unmarshal(proofRaw, &proof) == nil && proof.Ready &&
 		qualifiedNativeSources[manifest.Source] && proof.Source == manifest.Source &&
 		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
+
 	if qualified && manifest.Schema >= 3 && (manifest.Platform == nil || *manifest.Platform != runningPlatform() ||
 		proof.Platform == nil || *proof.Platform != *manifest.Platform || manifest.PublicationMain == "" || proof.PublicationMain != manifest.PublicationMain) {
 		qualified = false
@@ -1637,6 +1715,7 @@ func (h *engineHealth) snapshot(tool string) map[string]any {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	st, err := os.Stat(tool)
+
 	if h.state != HealthDegraded && (err != nil || h.tool == nil || !os.SameFile(st, h.tool) || st.Size() != h.tool.Size() || !st.ModTime().Equal(h.tool.ModTime())) {
 		h.reason = "engine executable changed; restart to reprobe"
 		h.manifest = nil

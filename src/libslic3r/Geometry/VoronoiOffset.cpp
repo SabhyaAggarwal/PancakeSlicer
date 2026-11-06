@@ -1,3 +1,5 @@
+
+
 #include <cmath>
 #include <algorithm>
 #include <array>
@@ -16,6 +18,8 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Geometry/Voronoi.hpp"
 
+
+
 #ifdef VORONOI_DEBUG_OUT
 #include <libslic3r/VoronoiVisualUtils.hpp>
 #endif
@@ -24,11 +28,14 @@ namespace Slic3r {
 namespace Voronoi {
 
 namespace detail {
+
+
 	double first_circle_segment_intersection_parameter(
 		const Vec2d &center, const double r, const Vec2d &pt, const Vec2d &v)
 	{
 		const Vec2d 	d = pt - center;
 #ifndef NDEBUG
+
         double          d0 = (pt - center).norm();
         double          d1 = (pt + v - center).norm();
         assert(d0 < r + SCALED_EPSILON);
@@ -42,6 +49,7 @@ namespace detail {
 		assert(u > - EPSILON);
 		double          t;
 		if (u <= 0) {
+
 			t = - b / (2. * a);
 			assert(t >= - EPSILON && t <= 1. + EPSILON);
 			return std::clamp(t, 0., 1.);
@@ -50,6 +58,7 @@ namespace detail {
 			out.first = 2;
 			double t0 = (- b - u) / (2. * a);
 			double t1 = (- b + u) / (2. * a);
+
 			assert((t0 >= - EPSILON && t0 <= 1. + EPSILON) || (t1 >= - EPSILON && t1 <= 1. + EPSILON));
 			if (t1 < 0.)
 				return 0.;
@@ -65,15 +74,25 @@ namespace detail {
         Vec2d   pts[2];
     };
 
+
     Intersections point_point_equal_distance_points(const Point &pt1, const Point &pt2, const double d)
     {
+
+
+
+
+
+
+
         auto   cx = double(pt1.x() - pt2.x());
         auto   cy = double(pt1.y() - pt2.y());
         double cl = cx * cx + cy * cy;
         double discr = 4. * d * d - cl;
         if (discr < 0.) {
+
             return Intersections { 0, { Vec2d(), Vec2d() } };
         }
+
         bool   xy_swapped = std::abs(cx) < std::abs(cy);
         if (xy_swapped)
             std::swap(cx, cy);
@@ -106,9 +125,12 @@ namespace detail {
         return out;
     }
 
+
     Intersections line_point_equal_distance_points(const Line &line, const Point &ipt, const double d)
-    {   
+    {
         assert(line.a != ipt && line.b != ipt);
+
+
         Vec2d  pt   = ipt.cast<double>();
         Vec2d  lv   = (line.b - line.a).cast<double>();
         double l2   = lv.squaredNorm();
@@ -119,33 +141,51 @@ namespace detail {
             c  = - c;
         }
 
+
         auto   a    = - lv.y();
         auto   b    = lv.x();
+
         assert(std::abs(lpv.x() * a + lpv.y() * b + c) < SCALED_EPSILON);
+
         assert(a * lpv.x() + b * lpv.y() < - SCALED_EPSILON);
 
 #ifndef NDEBUG
         {
+
             Vec2d ft = Geometry::foot_pt(line, ipt);
+
             Vec2d centerpt = 0.5 * (ft + pt) - pt;
             double dcenter = 0.5 * (ft - pt).norm();
+
             assert(std::abs(centerpt.x() * a + centerpt.y() * b + c - dcenter * sqrt(l2)) < SCALED_EPSILON * sqrt(l2));
         }
 #endif
 
+
+
+
+
+
+
+
+
         double dscaled = d * sqrt(l2);
         double s       = c * (2. * dscaled - c);
         if (s < 0.)
+
             return Intersections { 0 };
         double u;
         int    cnt;
+
         bool   xy_swapped = std::abs(a) < std::abs(b);
         if (xy_swapped)
             std::swap(a, b);
         if (s == 0.) {
+
             cnt = 1;
             u   = 0.;
         } else {
+
             cnt = 2;
             u   = a * sqrt(s) / l2;
         }
@@ -169,9 +209,13 @@ namespace detail {
         return out;
     }
 
+
     template<typename VertexType>
     inline bool vertex_equal_to_point(const VertexType &vertex, const Point &ipt)
     {
+
+
+
 #if 1
         using ulp_cmp_type = boost::polygon::detail::ulp_comparison<double>;
         ulp_cmp_type ulp_cmp;
@@ -211,11 +255,33 @@ namespace detail {
         }
     };
 
+
+
+
+
+
+
+
+
+
     std::pair<Vec2d, Vec2d> point_point_dr_dl_thresholds(
+
         const Point &pt1_site, const Point &pt2_site,
+
         const Vec2d &voronoi_point1, const Vec2d &voronoi_point2,
+
         const double threshold_tan_alpha_half)
     {
+
+
+
+
+
+
+
+
+
+
         Vec2d  dir_y = (pt2_site - pt1_site).cast<double>();
         Vec2d  dir_x = Vec2d(- dir_y.y(), dir_y.x()).normalized();
         Vec2d  cntr  = 0.5 * (pt1_site.cast<double>() + pt2_site.cast<double>());
@@ -230,6 +296,7 @@ namespace detail {
         static constexpr double nan = std::numeric_limits<double>::quiet_NaN();
         auto out = std::make_pair(Vec2d(nan, nan), Vec2d(nan, nan));
         if (t2 > -x && t1 < x) {
+
             dir_x *= x;
             out.first  = (t1 < -x) ? cntr - dir_x : voronoi_point1;
             out.second = (t2 > +x) ? cntr + dir_x : voronoi_point2;
@@ -237,18 +304,43 @@ namespace detail {
         return out;
     }
 
+
+
+
+
+
+
+
+
+
     std::pair<Vec2d, Vec2d> point_segment_dr_dl_thresholds(
+
         const Point &pt_site, const Line &line_site,
+
         const Vec2d &voronoi_point1, const Vec2d &voronoi_point2,
+
         const double threshold_tan_alpha_half)
     {
+
+
+
+
+
+
+
+
+
+
         Vec2d  ft  = Geometry::foot_pt(line_site, pt_site);
+
         Vec2d  dir_pt_ft = pt_site.cast<double>() - ft;
         double b   = 0.5 * dir_pt_ft.norm();
         static constexpr double nan = std::numeric_limits<double>::quiet_NaN();
         auto   out = std::make_pair(Vec2d(nan, nan), Vec2d(nan, nan));
         {
+
             double x  = 2. * b * threshold_tan_alpha_half;
+
             Vec2d  dir_x = (line_site.b - line_site.a).cast<double>().normalized();
             double t1 = (voronoi_point1 - ft).dot(dir_x);
             double t2 = (voronoi_point2 - ft).dot(dir_x);
@@ -258,11 +350,15 @@ namespace detail {
                 dir_x = - dir_x;
             }
             if (t2 > -x && t1 < x) {
+
                 bool t1_valid = t1 < -x;
                 bool t2_valid = t2 > +x;
+
                 Vec2d dir_y(- dir_x.y(), dir_x.x());
+
                 if (dir_y.dot(dir_pt_ft) < 0.)
                     dir_y = - dir_y;
+
                 double a = 0.25 / b;
                 dir_x *= x;
                 dir_y *= b + a * x * x;
@@ -274,10 +370,14 @@ namespace detail {
     }
 
     std::pair<Vec2d, Vec2d> point_point_skeleton_thresholds(
+
         const Point &pt1_site, const Point &pt2_site,
+
         const Vec2d &voronoi_point1, const Vec2d &voronoi_point2,
+
         const double tan_alpha_half)
     {
+
         Vec2d  dir_y = (pt2_site - pt1_site).cast<double>();
         Vec2d  dir_x = Vec2d(- dir_y.y(), dir_y.x()).normalized();
         Vec2d  cntr  = 0.5 * (pt1_site.cast<double>() + pt2_site.cast<double>());
@@ -292,6 +392,7 @@ namespace detail {
         static constexpr double nan = std::numeric_limits<double>::quiet_NaN();
         auto out = std::make_pair(Vec2d(nan, nan), Vec2d(nan, nan));
         if (t2 > -x && t1 < x) {
+
             dir_x *= x;
             out.first  = (t1 < -x) ? cntr - dir_x : voronoi_point1;
             out.second = (t2 > +x) ? cntr + dir_x : voronoi_point2;
@@ -300,18 +401,26 @@ namespace detail {
     }
 
     std::pair<Vec2d, Vec2d> point_segment_skeleton_thresholds(
+
         const Point &pt_site, const Line &line_site,
+
         const Vec2d &voronoi_point1, const Vec2d &voronoi_point2,
+
         const double threshold_cos_alpha)
     {
+
         Vec2d  ft = Geometry::foot_pt(line_site, pt_site);
+
         Vec2d  dir_pt_ft = pt_site.cast<double>() - ft;
+
         double l  = dir_pt_ft.norm();
         static constexpr double nan = std::numeric_limits<double>::quiet_NaN();
         auto   out = std::make_pair(Vec2d(nan, nan), Vec2d(nan, nan));
+
         double r  = l / (1. + threshold_cos_alpha);
         double x2 = r * r - Slic3r::sqr(l - r);
         double x  = sqrt(x2);
+
         Vec2d  dir_x = (line_site.b - line_site.a).cast<double>().normalized();
         double t1 = (voronoi_point1 - ft).dot(dir_x);
         double t2 = (voronoi_point2 - ft).dot(dir_x);
@@ -321,11 +430,15 @@ namespace detail {
             dir_x = - dir_x;
         }
         if (t2 > -x && t1 < x) {
+
             bool t1_valid = t1 < -x;
             bool t2_valid = t2 > +x;
+
             Vec2d dir_y(- dir_x.y(), dir_x.x());
+
             if (dir_y.dot(dir_pt_ft) < 0.)
                 dir_y = - dir_y;
+
             double a = 0.5 / l;
             dir_x *= x;
             dir_y *= 0.5 * l + a * x2;
@@ -340,6 +453,7 @@ namespace detail {
 #ifndef NDEBUG
 namespace debug
 {
+
     bool verify_twin_halfedges_successive(const VD &vd, const Lines &lines)
     {
         for (size_t i = 0; i < vd.num_edges(); i += 2) {
@@ -351,6 +465,8 @@ namespace debug
             if (e.is_secondary()) {
                 assert(e.cell()->contains_point() != e2.cell()->contains_point());
                 const VD::edge_type &ex = (e.cell()->contains_point() ? e : e2);
+
+
                 const Line  &line0 = lines[ex.cell()->source_index()];
                 const Line  &line1 = lines[ex.twin()->cell()->source_index()];
                 const Point &pt    = (ex.cell()->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line0.a : line0.b;
@@ -362,6 +478,7 @@ namespace debug
 
     bool verify_inside_outside_annotations(const VD &vd)
     {
+
         for (const VD::vertex_type &v : vd.vertices()) {
             assert(! v.is_degenerate());
             assert(vertex_category(v) != VertexCategory::Unknown);
@@ -369,11 +486,16 @@ namespace debug
         for (const VD::edge_type &e : vd.edges())
             assert(edge_category(e) != EdgeCategory::Unknown);
         for (const VD::cell_type &c : vd.cells()) {
+
+
             assert(c.is_degenerate() || cell_category(c) != CellCategory::Unknown);
         }
 
+
         for (const VD::cell_type &cell : vd.cells()) {
             if (cell.is_degenerate()) {
+
+
                 continue;
             }
             const VD::edge_type *first_edge = cell.incident_edge();
@@ -393,6 +515,7 @@ namespace debug
                         assert(edge->vertex0() != nullptr && edge->vertex1() != nullptr);
                         ++ num_edges_point_inside; break;
                     case EdgeCategory::PointsOutside:
+
                         ++ num_edges_point_outside; break;
                     case EdgeCategory::PointsToContour:
                         assert(edge->vertex1() != nullptr);
@@ -551,16 +674,19 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
     ++ irun;
     dump_voronoi_to_svg(debug_out_path("voronoi-offset-initial-%d.svg", irun).c_str(), vd, Points(), lines);
 #endif
+
+
     auto annotate_vertex = [](const VD::vertex_type *vertex, VertexCategory new_vertex_category) {
 #ifndef NDEBUG
         VertexCategory vc = vertex_category(vertex);
         assert(vc == VertexCategory::Unknown || vc == new_vertex_category);
-        assert(new_vertex_category == VertexCategory::Inside || 
+        assert(new_vertex_category == VertexCategory::Inside ||
                new_vertex_category == VertexCategory::Outside ||
                new_vertex_category == VertexCategory::OnContour);
 #endif
         set_vertex_category(const_cast<VD::vertex_type*>(vertex), new_vertex_category);
     };
+
 
     auto annotate_edge = [](const VD::edge_type *edge, EdgeCategory new_edge_category) {
 #ifndef NDEBUG
@@ -572,6 +698,7 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
             assert(edge->vertex1() != nullptr);
             break;
         case EdgeCategory::PointsOutside:
+
             break;
         case EdgeCategory::PointsToContour:
             assert(edge->vertex1() != nullptr);
@@ -583,12 +710,16 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
         set_edge_category(const_cast<VD::edge_type*>(edge), new_edge_category);
     };
 
+
+
+
     auto annotate_cell = [](const VD::cell_type *cell, CellCategory new_cell_category) -> bool {
         CellCategory cc = cell_category(cell);
         assert(cc == CellCategory::Inside || cc == CellCategory::Outside || cc == CellCategory::Boundary || cc == CellCategory::Unknown);
         assert(new_cell_category == CellCategory::Inside || new_cell_category == CellCategory::Outside || new_cell_category == CellCategory::Boundary);
         switch (cc) {
         case CellCategory::Unknown:
+
             break;
         case CellCategory::Outside:
             if (new_cell_category == CellCategory::Inside)
@@ -608,6 +739,10 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
         return false;
     };
 
+
+
+
+
     for (const VD::edge_type &edge : vd.edges()) {
         const VD::vertex_type *v = edge.vertex0();
         if (v != nullptr) {
@@ -621,16 +756,20 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
         }
     }
 
+
+
     for (const VD::edge_type &edge : vd.edges()) {
         if (edge.is_secondary() && edge.vertex0() != nullptr) {
             assert(edge.is_linear());
             assert(edge.cell()->contains_point() != edge.twin()->cell()->contains_point());
+
             const Point &pt_on_contour = edge.cell()->contains_point() ? contour_point(*edge.cell(), lines) : contour_point(*edge.twin()->cell(), lines);
             auto on_contour = [&pt_on_contour](const VD::vertex_type *v) { return detail::vertex_equal_to_point(v, pt_on_contour); };
             if (edge.vertex1() == nullptr) {
                 assert(on_contour(edge.vertex0()));
                 annotate_vertex(edge.vertex0(), VertexCategory::OnContour);
             } else {
+
                 const VD::vertex_type  *v0          = edge.vertex0();
                 const VD::vertex_type  *v1          = edge.vertex1();
 #ifndef NDEBUG
@@ -653,18 +792,25 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
 
     for (const VD::edge_type &edge : vd.edges())
         if (edge.vertex1() == nullptr) {
+
+
             assert(edge.is_infinite());
             assert(edge.is_linear());
             assert(edge.vertex0() != nullptr);
             const VD::cell_type *cell  = edge.cell();
             const VD::cell_type *cell2 = edge.twin()->cell();
+
+
             assert(edge.is_secondary() ? (cell->contains_segment() != cell2->contains_segment()) :
                                          (cell->contains_point() == cell2->contains_point()));
             annotate_edge(&edge, EdgeCategory::PointsOutside);
+
             annotate_edge(edge.twin(), edge.is_secondary() ? EdgeCategory::PointsToContour : EdgeCategory::PointsOutside);
             annotate_vertex(edge.vertex0(), edge.is_secondary() ? VertexCategory::OnContour : VertexCategory::Outside);
+
             if (cell->contains_segment())
                 std::swap(cell, cell2);
+
             assert(cell->contains_point());
             annotate_cell(cell, CellCategory::Outside);
             assert(edge.is_secondary() == cell2->contains_segment());
@@ -677,7 +823,12 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
                 cell = edge.twin()->cell();
                 line = cell->contains_segment() ? &lines[cell->source_index()] : nullptr;
             }
+
             assert(! edge.is_linear() || vertex_category(edge.vertex0()) != VertexCategory::OnContour || vertex_category(edge.vertex1()) != VertexCategory::OnContour);
+
+
+
+
             if (line) {
                 const VD::vertex_type *v1    = edge.vertex1();
                 const VD::cell_type   *cell2 = (cell == edge.cell()) ? edge.twin()->cell() : edge.cell();
@@ -687,8 +838,13 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
                 bool                   on_contour  = v0_category == VertexCategory::OnContour || v1_category == VertexCategory::OnContour;
 #ifndef NDEBUG
                 if (! on_contour && cell == edge.cell() && edge.twin()->cell()->contains_segment()) {
+
+
                     assert(edge.is_linear());
+
                     const Point *pt_on_contour = nullptr;
+
+
                     const Line &line2 = lines[cell2->source_index()];
                     if (line->a == line2.b)
                         pt_on_contour = &line->a;
@@ -705,16 +861,23 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
                 }
 #endif
                 if (on_contour && v1_category == VertexCategory::OnContour) {
+
                     annotate_edge(&edge, EdgeCategory::PointsToContour);
                 } else {
+
+
+
                     Vec2d l0(line->a.cast<double>());
                     Vec2d lv((line->b - line->a).cast<double>());
                     double side = cross2(Vec2d(v1->x(), v1->y()) - l0, lv);
+
                     assert(side != 0.);
                     auto vc = side > 0. ? VertexCategory::Outside : VertexCategory::Inside;
                     annotate_vertex(v1, vc);
                     auto ec = vc == VertexCategory::Outside ? EdgeCategory::PointsOutside : EdgeCategory::PointsInside;
                     annotate_edge(&edge, ec);
+
+
                     annotate_vertex(edge.vertex0(), on_contour ? VertexCategory::OnContour : vc);
                     annotate_edge(edge.twin(), on_contour ? EdgeCategory::PointsToContour : ec);
                     assert(cell->contains_segment());
@@ -727,6 +890,9 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
         }
 
     assert(debug::verify_vertices_on_contour(vd, lines));
+
+
+
 
     std::vector<const VD::cell_type*> cell_queue;
     for (const VD::edge_type &edge : vd.edges()) {
@@ -771,6 +937,7 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
 
     assert(debug::verify_vertices_on_contour(vd, lines));
 
+
     while (! cell_queue.empty()) {
         const VD::cell_type *cell = cell_queue.back();
         const CellCategory   cc   = cell_category(cell);
@@ -809,6 +976,7 @@ void annotate_inside_outside(VD &vd, const Lines &lines)
 
 std::vector<double> signed_vertex_distances(const VD &vd, const Lines &lines)
 {
+
     assert(debug::verify_inside_outside_annotations(vd));
 
     std::vector<double> out(vd.vertices().size(), 0.);
@@ -830,10 +998,12 @@ std::vector<double> signed_vertex_distances(const VD &vd, const Lines &lines)
                 edge = edge->rot_next();
             } while (edge != first_edge);
             if (point_cell == 0) {
+
                 const Line &line = lines[edge->cell()->source_index()];
                 dist = Geometry::ray_point_distance<Vec2d>(
                     line.a.cast<double>(), (line.b - line.a).cast<double>(), vertex_point(vertex));
             } else {
+
                 dist = (contour_point(*point_cell, lines).cast<double>() - vertex_point(vertex)).norm();
             }
             if (vc == VertexCategory::Inside)
@@ -853,6 +1023,7 @@ std::vector<Vec2d> edge_offset_contour_intersections(
     const std::vector<double>   &vertex_distances,
     double                       offset_distance)
 {
+
     assert(debug::verify_inside_outside_annotations(vd));
 
     bool outside = offset_distance > 0;
@@ -863,11 +1034,13 @@ std::vector<Vec2d> edge_offset_contour_intersections(
     const VD::vertex_type *first_vertex = &vd.vertices().front();
     const VD::edge_type   *first_edge   = &vd.edges().front();
     static constexpr double nan         = std::numeric_limits<double>::quiet_NaN();
+
     std::vector<Vec2d>     out(vd.num_edges(), Vec2d(nan, 0.));
 
     for (const VD::edge_type &edge : vd.edges()) {
         size_t edge_idx = &edge - first_edge;
         if (edge_offset_has_intersection(out[edge_idx]) || out[edge_idx].y() != 0.)
+
             continue;
 
         const VD::vertex_type *v0 = edge.vertex0();
@@ -903,8 +1076,14 @@ std::vector<Vec2d> edge_offset_contour_intersections(
             dmin = d0, dmax = d1;
         else
             dmax = d0, dmin = d1;
+
+
+
+
+
         if (offset_distance >= dmax)
             continue;
+
 
         assert(v0 != nullptr);
         const VD::cell_type   *cell  = edge.cell();
@@ -915,19 +1094,24 @@ std::vector<Vec2d> edge_offset_contour_intersections(
         if (v1 == nullptr) {
             assert(edge.is_infinite());
             assert(edge.is_linear());
+
             assert(d0 != d1);
             if (offset_distance > dmin) {
+
                 if (cell->contains_point() && cell2->contains_point()) {
                     assert(! edge.is_secondary());
                     const Point &pt0 = contour_point(*cell, line0);
                     const Point &pt1 = contour_point(*cell2, line1);
+
                     Vec2d dir = Vec2d(double(pt0.y() - pt1.y()), double(pt1.x() - pt0.x())) * (2. * offset_distance);
                     Vec2d pt(v0->x(), v0->y());
                     double t = detail::first_circle_segment_intersection_parameter(Vec2d(pt0.x(), pt0.y()), offset_distance, pt, dir);
                     assert(t > 0.);
                     out[edge_idx] = pt + t * dir;
                 } else {
+
                     assert(cell->contains_point() != cell2->contains_point());
+
                     assert(edge.is_secondary());
                     const Point &ipt = cell->contains_segment() ? contour_point(*cell2, line1) : contour_point(*cell, line0);
     #ifndef NDEBUG
@@ -940,23 +1124,28 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                     }
                     assert((vertex_point(v0) - ipt.cast<double>()).norm() < SCALED_EPSILON);
     #endif
+
                     const Line &line = cell->contains_segment() ? line0 : line1;
                     assert(line.a == ipt || line.b == ipt);
                     out[edge_idx] = ipt.cast<double>() + offset_distance * Vec2d(line.b.y() - line.a.y(), line.a.x() - line.b.x()).normalized();
                 }
             } else if (offset_distance == dmin)
                 out[edge_idx] = vertex_point(v0);
+
             out[edge_idx2].y() = 1.;
         } else {
             assert(edge.is_finite());
             bool done = false;
+
             bool bisector = cell->contains_segment() && cell2->contains_segment();
             assert(edge.is_finite());
+
             if (bisector || edge.is_secondary()) {
                 assert(edge.is_linear());
 #ifndef NDEBUG
                 if (edge.is_secondary()) {
                     assert(cell->contains_point() != cell2->contains_point());
+
                     assert((vertex_category(edge.vertex0()) == VertexCategory::OnContour) !=
                            (vertex_category(edge.vertex1()) == VertexCategory::OnContour));
                     assert(dmin == 0.);
@@ -967,18 +1156,40 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                     t = std::clamp(t, 0., 1.);
                     if (d1 < d0) {
                         out[edge_idx2] = Slic3r::lerp(vertex_point(v1), vertex_point(v0), t);
+
                         out[edge_idx].y() = 1.;
                     } else {
                         out[edge_idx] = Slic3r::lerp(vertex_point(v0), vertex_point(v1), t);
+
                         out[edge_idx2].y() = 1.;
                     }
                     done = true;
                 }
             } else {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 assert(cell->contains_point() || cell2->contains_point());
                 size_t       num_intersections  = 0;
                 bool         point_vs_segment   = cell->contains_point() != cell2->contains_point();
                 const Point &pt0                = cell->contains_point() ? contour_point(*cell, line0) : contour_point(*cell2, line1);
+
                 Vec2d p0(v0->x(), v0->y());
                 Vec2d p1(v1->x(), v1->y());
                 Vec2d px(pt0.x(), pt0.y());
@@ -989,23 +1200,34 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                     dir = (line.b - line.a).cast<double>();
                 } else {
                     pt1 = &contour_point(*cell2, line1);
+
                     dir = Vec2d(double(pt0.y() - pt1->y()), double(pt1->x() - pt0.x()));
                 }
                 double s0 = (p0 - px).dot(dir);
                 double s1 = (p1 - px).dot(dir);
                 if (offset_distance >= dmin) {
+
+
                     num_intersections = 1;
                 } else {
+
+
                     double dmin_new;
                     bool   found = false;
                     if (point_vs_segment) {
                         if (s0 * s1 <= 0.) {
+
+
+
+
                             const Line &line = cell->contains_segment() ? line0 : line1;
                             dmin_new = 0.5 * (Geometry::foot_pt<Vec2d>(line.a.cast<double>(), dir, px) - px).norm();
                             found    = true;
                         }
                     } else {
+
                         if (s0 * s1 <= 0.) {
+
                             dmin_new = 0.5 * (pt1->cast<double>() - px).norm();
                             found    = true;
                         }
@@ -1014,6 +1236,11 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                         assert(dmin_new < dmax + SCALED_EPSILON);
                         assert(dmin_new < dmin + SCALED_EPSILON);
                         if (dmin_new <= offset_distance) {
+
+
+
+
+
                             dmin = dmin_new;
                             num_intersections = (offset_distance > dmin) + 1;
                         }
@@ -1027,19 +1254,30 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                     } else {
                         intersections = detail::point_point_equal_distance_points(pt0, *pt1, offset_distance);
                     }
+
+
+
                     if (num_intersections == 2) {
                         switch (intersections.count) {
                         case 0:
+
+
+
                             break;
                         case 1:
+
+
                             break;
                         default:
                         {
+
                             assert(intersections.count == 2);
                             double q0 = (intersections.pts[0] - px).dot(dir);
                             double q1 = (intersections.pts[1] - px).dot(dir);
+
                             assert(q0 * q1 <= 0.);
                             assert(s0 * s1 <= 0.);
+
                             if ((q0 < q1) != (s0 < s1))
                                 std::swap(intersections.pts[0], intersections.pts[1]);
                         }
@@ -1048,15 +1286,22 @@ std::vector<Vec2d> edge_offset_contour_intersections(
                         assert(num_intersections == 1);
                         switch (intersections.count) {
                         case 0:
+
+
+
                             intersections.pts[0] = (dmin == d0) ? p0 : p1;
                             intersections.count = 1;
                             break;
                         case 1:
+
                             break;
                         default:
+
+
                             assert(intersections.count == 2);
                             double q0 = (intersections.pts[0] - px).dot(dir);
                             double q1 = (intersections.pts[1] - px).dot(dir);
+
                             assert(q0 * q1 <= 0);
                             double s = (dmax == d0) ? s0 : s1;
                             bool take_2nd = (s > 0.) ? q1 > q0 : q1 < q0;
@@ -1115,6 +1360,7 @@ Polygons offset(
                 Vec2d pt1(v0->x(), v0->y());
                 Vec2d pt2;
                 if (v1 == nullptr) {
+
                     assert(edge.is_linear());
                     const VD::cell_type *cell  = edge.cell();
                     const VD::cell_type *cell2 = edge.twin()->cell();
@@ -1123,16 +1369,21 @@ Polygons offset(
                     if (cell->contains_point() && cell2->contains_point()) {
                         const Point &pt0 = (cell->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line0.a : line0.b;
                         const Point &pt1 = (cell2->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line1.a : line1.b;
+
                         Vec2d dir(double(pt0.y() - pt1.y()), double(pt1.x() - pt0.x()));
                         pt2 = Vec2d(v0->x(), v0->y()) + dir.normalized() * scale_(10.);
                     } else {
+
                         assert(cell->contains_point() != cell2->contains_point());
+
                         assert(edge.is_secondary());
                         const Point &ipt = cell->contains_segment() ?
                             ((cell2->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line1.a : line1.b) :
                             ((cell->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line0.a : line0.b);
+
                         const Line  &line = cell->contains_segment() ? line0 : line1;
                         assert(line.a == ipt || line.b == ipt);
+
                         Vec2d dir(line.a.y() - line.b.y(), line.b.x() - line.a.x());
                         assert(dir.norm() > 0.);
                         if (((line.a == ipt) == cell->contains_point()) == (v0 == nullptr))
@@ -1141,6 +1392,7 @@ Polygons offset(
                     }
                 } else {
                     pt2 = Vec2d(v1->x(), v1->y());
+
                     Geometry::liang_barsky_line_clipping(pt1, pt2, BoundingBoxf(bbox.min.cast<double>(), bbox.max.cast<double>()));
                 }
                 helper_lines.emplace_back(Line(Point(pt1.cast<coord_t>()), Point(((pt1 + pt2) * 0.5).cast<coord_t>())));
@@ -1166,12 +1418,14 @@ Polygons offset(
 	    for (const VD::edge_type *edge = start_edge->next(); edge != start_edge; edge = edge->next())
             if (edge_offset_has_intersection(edge_points[edge->twin() - front_edge]))
                 return edge->twin();
+
         return nullptr;
 	};
 
     const bool inside_offset = offset_distance < 0.;
     if (inside_offset)
         offset_distance = - offset_distance;
+
 
     Polygons out;
 	double angle_step    = 2. * acos((offset_distance - discretization_error) / offset_distance);
@@ -1184,6 +1438,7 @@ Polygons offset(
             const VD::edge_type *edge       = start_edge;
             Polygon  			 poly;
 		    do {
+
                 const VD::edge_type *next_edge = next_offset_edge(edge);
 #ifdef VORONOI_DEBUG_OUT
                 if (next_edge == nullptr) {
@@ -1193,7 +1448,10 @@ Polygons offset(
                 }
 #endif
                 assert(next_edge);
+
+
                 const VD::cell_type  *cell      = edge->cell();
+
                 Vec2d p1 = last_pt;
                 Vec2d p2 = edge_points[next_edge - front_edge];
                 edge_points[next_edge - front_edge].x() = nan;
@@ -1212,6 +1470,9 @@ Polygons offset(
                 }
 #endif
 				if (cell->contains_point()) {
+
+
+
                     const Line  &line0  = lines[cell->source_index()];
 					const Vec2d &center = ((cell->source_category() == boost::polygon::SOURCE_CATEGORY_SEGMENT_START_POINT) ? line0.a : line0.b).cast<double>();
 					const Vec2d  v1 	= p1 - center;
@@ -1221,6 +1482,7 @@ Polygons offset(
                     double       norm   = v1.norm() * v2.norm();
                     assert(norm > 0.);
                     if (cos_a < cos_threshold * norm) {
+
                         cos_a /= norm;
                         assert(cos_a > -1. - EPSILON && cos_a < 1. + EPSILON);
                         double angle = acos(std::max(-1., std::min(1., cos_a)));
@@ -1257,9 +1519,9 @@ Polygons offset(
 }
 
 Polygons offset(
-	const VD 		&vd, 
-	const Lines 	&lines, 
-	double 			 offset_distance, 
+	const VD 		&vd,
+	const Lines 	&lines,
+	double 			 offset_distance,
 	double 			 discretization_error)
 {
     annotate_inside_outside(const_cast<VD&>(vd), lines);
@@ -1267,24 +1529,44 @@ Polygons offset(
     return offset(vd, lines, dist, offset_distance, discretization_error);
 }
 
+
+
+
+
+
+
+
+
+
+
+
 std::vector<Vec2d> skeleton_edges_rough(
     const VD                    &vd,
     const Lines                 &lines,
+
     const double                 threshold_alpha)
 {
+
     assert(debug::verify_inside_outside_annotations(vd));
 
     const VD::edge_type    *first_edge   = &vd.edges().front();
     static constexpr double nan         = std::numeric_limits<double>::quiet_NaN();
+
     std::vector<Vec2d>      out(vd.num_edges(), Vec2d(nan, nan));
+
     const double            threshold_cos_alpha = cos(threshold_alpha);
+
+
     const double            threshold_tan_alpha_half = tan(0.5 * threshold_alpha);
 
     for (const VD::edge_type &edge : vd.edges()) {
         size_t edge_idx = &edge - first_edge;
         if (
+
             edge.is_secondary() || edge.is_infinite() ||
+
             &edge > edge.twin() ||
+
             (edge_category(edge) != EdgeCategory::PointsInside && edge_category(edge.twin()) != EdgeCategory::PointsInside))
             continue;
         const VD::vertex_type *v0 = edge.vertex0();
@@ -1295,24 +1577,33 @@ std::vector<Vec2d> skeleton_edges_rough(
         const Line            &line1 = lines[cell2->source_index()];
         size_t                 edge_idx2 = edge.twin() - first_edge;
         if (cell->contains_segment() && cell2->contains_segment()) {
+
+
+
             Vec2d  lv0 = (line0.b - line0.a).cast<double>();
             Vec2d  lv1 = (line1.b - line1.a).cast<double>();
             double d   = lv0.dot(lv1);
             if (d < 0.) {
                 double cos_alpha = - d / (lv0.norm() * lv1.norm());
                 if (cos_alpha > threshold_cos_alpha) {
+
                     out[edge_idx]  = vertex_point(v0);
                     out[edge_idx2] = vertex_point(v1);
                 }
             }
         } else {
+
+
+
             assert(cell->contains_point() || cell2->contains_point());
             if (cell->contains_point() != cell2->contains_point()) {
+
                 const Point &pt0  = cell->contains_point() ? contour_point(*cell, line0) : contour_point(*cell2, line1);
                 const Line  &line = cell->contains_segment() ? line0 : line1;
                 std::tie(out[edge_idx], out[edge_idx2]) = detail::point_segment_dr_dl_thresholds(
                     pt0, line, vertex_point(v0), vertex_point(v1), threshold_tan_alpha_half);
             } else {
+
                 const Point &pt0 = contour_point(*cell,  line0);
                 const Point &pt1 = contour_point(*cell2, line1);
                 std::tie(out[edge_idx], out[edge_idx2]) = detail::point_point_dr_dl_thresholds(
@@ -1335,6 +1626,7 @@ std::vector<Vec2d> skeleton_edges_rough(
                 const Vec2d &vertex_pt        = vertex_point(edge.vertex0());
                 const Vec2d &vertex_pt2       = vertex_point(edge.vertex1());
                 if (has_skeleton_pt && has_skeleton_pt2) {
+
                     helper_lines.emplace_back(Line(Point(vertex_pt.x(), vertex_pt.y()), Point(vertex_pt2.x(), vertex_pt2.y())));
                 } else {
                     if (has_skeleton_pt)

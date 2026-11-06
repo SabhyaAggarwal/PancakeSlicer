@@ -36,6 +36,7 @@ void FillConcentricInternal::fill_surface_extrusion(const Surface* surface, cons
     for (size_t i = 0; i < this->no_overlap_expolygons.size(); ++i) {
         ExPolygon &expolygon = this->no_overlap_expolygons[i];
 
+
         Point   bbox_size = expolygon.contour.bounding_box().size();
         coord_t min_spacing = params.flow.scaled_spacing();
 
@@ -62,6 +63,7 @@ void FillConcentricInternal::fill_surface_extrusion(const Surface* surface, cons
                 all_extrusions.emplace_back(&wall);
         }
 
+
         size_t firts_poly_idx = thick_polylines_out.size();
         Point  last_pos(0, 0);
         for (const Arachne::ExtrusionLine* extrusion : all_extrusions) {
@@ -79,6 +81,8 @@ void FillConcentricInternal::fill_surface_extrusion(const Surface* surface, cons
             }
             thick_polylines_out.emplace_back(std::move(thick_polyline));
         }
+
+
 
         size_t j = firts_poly_idx;
         for (size_t i = firts_poly_idx; i < thick_polylines_out.size(); ++i) {

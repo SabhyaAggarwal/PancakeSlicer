@@ -25,7 +25,7 @@
 #define L(s) (s)
 
 namespace Slic3r {
-    
+
 static const double slope_inner_outer_wall_gap = 0.4;
 
 void ExtrusionPath::intersect_expolygons(const ExPolygons &collection, ExtrusionEntityCollection* retval) const
@@ -48,6 +48,8 @@ void ExtrusionPath::simplify(double tolerance)
     if (this->z_contoured || this->continuous_top) {
         return;
     }
+
+
     if (this->nonplanar_source)
         tolerance = std::min(tolerance, double(scale_(0.03)));
     this->polyline.simplify(tolerance);
@@ -55,8 +57,10 @@ void ExtrusionPath::simplify(double tolerance)
 
 void ExtrusionPath::simplify_by_fitting_arc(double tolerance)
 {
+
     if (this->z_contoured)
         return;
+
     if (this->nonplanar_source) {
         this->simplify(tolerance);
         return;
@@ -90,7 +94,11 @@ void ExtrusionPath::polygons_covered_by_width(Polygons &out, const float scaled_
 
 void ExtrusionPath::polygons_covered_by_spacing(Polygons &out, const float scaled_epsilon) const
 {
+
+
     bool bridge = is_bridge(this->role());
+
+
     auto flow = bridge ? Flow::bridging_flow(this->width, 0.f) : Flow(this->width, this->height, 0.f);
     polygons_append(out, offset(this->polyline.to_polyline(), 0.5f * float(flow.scaled_spacing()) + scaled_epsilon));
 }
@@ -140,6 +148,7 @@ Polyline ExtrusionMultiPath::as_polyline() const
             assert(i_path == 0 || paths[i_path - 1].polyline.points.back() == paths[i_path].polyline.points.front());
             len += paths[i_path].polyline.points.size();
         }
+
         len -= paths.size() - 1;
         assert(len > 0);
         out.points.reserve(len);
@@ -176,6 +185,7 @@ Polygon ExtrusionLoop::polygon() const
 {
     Polygon polygon;
     for (const ExtrusionPath &path : this->paths) {
+
         for (auto it = path.polyline.points.begin(); it != path.polyline.points.end() - 1; ++it) {
             polygon.points.push_back(it->to_point());
         }
@@ -196,6 +206,7 @@ bool ExtrusionLoop::split_at_vertex(const Point &point, const double scaled_epsi
     for (ExtrusionPaths::iterator path = this->paths.begin(); path != this->paths.end(); ++path) {
         if (int idx = path->polyline.find_point(point, scaled_epsilon); idx != -1) {
             if (this->paths.size() == 1) {
+
                 Polyline3 p1, p2;
                 path->polyline.split_at_index(idx, &p1, &p2);
                 if (p1.is_valid() && p2.is_valid()) {
@@ -204,6 +215,7 @@ bool ExtrusionLoop::split_at_vertex(const Point &point, const double scaled_epsi
                     std::swap(path->polyline.fitting_result, p2.fitting_result);
                 }
             } else {
+
                 ExtrusionPaths new_paths;
                 Polyline3 p1, p2;
                 path->polyline.split_at_index(idx, &p1, &p2);
@@ -214,15 +226,21 @@ bool ExtrusionLoop::split_at_vertex(const Point &point, const double scaled_epsi
                     std::swap(p.polyline.fitting_result, p2.fitting_result);
                     if (p.polyline.is_valid()) new_paths.push_back(p);
                 }
-            
+
+
                 new_paths.insert(new_paths.end(), path+1, this->paths.end());
+
+
                 new_paths.insert(new_paths.end(), this->paths.begin(), path);
+
+
                 {
                     ExtrusionPath p = *path;
                     std::swap(p.polyline.points, p1.points);
                     std::swap(p.polyline.fitting_result, p1.fitting_result);
                     if (p.polyline.is_valid()) new_paths.push_back(p);
                 }
+
                 std::swap(this->paths, new_paths);
             }
             return true;
@@ -233,6 +251,7 @@ bool ExtrusionLoop::split_at_vertex(const Point &point, const double scaled_epsi
 
 ExtrusionLoop::ClosestPathPoint ExtrusionLoop::get_closest_path_and_point(const Point &point, bool prefer_non_overhang) const
 {
+
     ClosestPathPoint out{0, 0};
     double           min2 = std::numeric_limits<double>::max();
     ClosestPathPoint best_non_overhang{0, 0};
@@ -255,16 +274,19 @@ ExtrusionLoop::ClosestPathPoint ExtrusionLoop::get_closest_path_and_point(const 
         }
     }
     if (prefer_non_overhang && min2_non_overhang != std::numeric_limits<double>::max())
+
         out = best_non_overhang;
     return out;
 }
+
 
 void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const double scaled_epsilon)
 {
     if (this->paths.empty())
         return;
-    
+
     auto [path_idx, segment_idx, p] = get_closest_path_and_point(point, prefer_non_overhang);
+
 
     {
         const Point3 *p1 = this->paths[path_idx].polyline.points.data() + segment_idx;
@@ -281,7 +303,8 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const
             if (d2_2 < thr2) p = p2_2d;
         }
     }
-    
+
+
     const ExtrusionPath &path = this->paths[path_idx];
     ExtrusionPath p1(path.role(), path.mm3_per_mm, path.width, path.height);
     ExtrusionPath p2(path.role(), path.mm3_per_mm, path.width, path.height);
@@ -295,6 +318,8 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const
         piece->source_path_id    = path.source_path_id;
     }
     path.polyline.split_at(p, &p1.polyline, &p2.polyline);
+
+
     if (path.nonplanar_source) {
         auto interpolated_z = [&path](const Point3 &pt) {
             const Vec2d q = pt.to_point().cast<double>();
@@ -334,18 +359,20 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const
             std::swap(this->paths.front().polyline.fitting_result, p2.polyline.fitting_result);
         }
     } else {
+
         this->paths.erase(this->paths.begin() + path_idx);
         if (p2.polyline.is_valid()) this->paths.insert(this->paths.begin() + path_idx, p2);
         if (p1.polyline.is_valid()) this->paths.insert(this->paths.begin() + path_idx, p1);
     }
-    
+
+
     this->split_at_vertex(p);
 }
 
 void ExtrusionLoop::clip_end(double distance, ExtrusionPaths* paths) const
 {
     *paths = this->paths;
-    
+
     while (distance > 0 && !paths->empty()) {
         ExtrusionPath &last = paths->back();
         double len = last.length();
@@ -364,6 +391,8 @@ bool ExtrusionLoop::has_overhang_point(const Point &point) const
     for (const ExtrusionPath &path : this->paths) {
         int pos = path.polyline.find_point(point);
         if (pos != -1) {
+
+
             return (is_bridge(path.role()) && pos > 0 && pos != (int)(path.polyline.points.size())-1);
         }
     }
@@ -390,8 +419,11 @@ double ExtrusionLoop::min_mm3_per_mm() const
     return min_mm3_per_mm;
 }
 
+
+
 bool ExtrusionLoop::is_smooth(double angle_threshold, double min_arm_length) const
 {
+
     size_t idx_prev = 0;
     size_t idx_curr = 0;
     size_t idx_next = 0;
@@ -408,21 +440,25 @@ bool ExtrusionLoop::is_smooth(double angle_threshold, double min_arm_length) con
     }
     lengths.push_back(std::max((unscale(points[0]) - unscale(points[points.size() - 1])).norm(), 0.1));
 
+
     while (distance_to_prev < min_arm_length) {
         idx_prev = Slic3r::prev_idx_modulo(idx_prev, points.size());
         distance_to_prev += lengths[idx_prev];
     }
 
     for (size_t _i = 0; _i < points.size(); ++_i) {
+
         while (distance_to_prev - lengths[idx_prev] > min_arm_length) {
             distance_to_prev -= lengths[idx_prev];
             idx_prev = Slic3r::next_idx_modulo(idx_prev, points.size());
         }
 
+
         while (distance_to_next < min_arm_length) {
             distance_to_next += lengths[idx_next];
             idx_next = Slic3r::next_idx_modulo(idx_next, points.size());
         }
+
 
         const Point& p0 = points[idx_prev];
         const Point& p1 = points[idx_curr];
@@ -432,6 +468,7 @@ bool ExtrusionLoop::is_smooth(double angle_threshold, double min_arm_length) con
             return false;
         }
 
+
         float curr_distance = lengths[idx_curr];
         idx_curr++;
         distance_to_prev += curr_distance;
@@ -440,6 +477,11 @@ bool ExtrusionLoop::is_smooth(double angle_threshold, double min_arm_length) con
 
     return true;
 }
+
+
+
+
+
 
 static void trim_seam_ends(ExtrusionPaths &paths, double tolerance)
 {
@@ -480,6 +522,10 @@ static void trim_seam_ends(ExtrusionPaths &paths, double tolerance)
     }
 }
 
+
+
+
+
 static void split_at_slope_end(const Polyline3 &polyline, double length, double slope_max_segment_length, Polyline3 &slope, Polyline3 &flat)
 {
     const double snap_distance = std::min(0.5 * slope_max_segment_length, scale_(1.));
@@ -508,24 +554,31 @@ ExtrusionLoopSloped::ExtrusionLoopSloped(ExtrusionPaths&   original_paths,
                                          ExtrusionLoopRole role)
     : ExtrusionLoop(role)
 {
+
     trim_seam_ends(original_paths, scale_(0.05));
+
     double trimmed_length = 0.;
     for (const ExtrusionPath &path : original_paths)
         trimmed_length += unscale_(path.length());
     slope_min_length = std::min(slope_min_length, trimmed_length);
 
+
     const auto add_slop = [this, slope_max_segment_length, seam_gap](const ExtrusionPath &path, const Polyline3 &poly, double ratio_begin, double ratio_end) {
         if (poly.empty()) { return; }
+
 
         Polyline3 detailed_poly;
         {
             detailed_poly.append(poly.first_point());
 
+
             const std::function<void(const Line3 &)> handle_line = [slope_max_segment_length, &detailed_poly, &handle_line](const Line3 &line) {
                 if (line.length() <= slope_max_segment_length) {
                     detailed_poly.append(line.b);
                 } else {
+
                     handle_line({line.a, line.midpoint()});
+
                     handle_line({line.midpoint(), line.b});
                 }
             };
@@ -536,8 +589,10 @@ ExtrusionLoopSloped::ExtrusionLoopSloped(ExtrusionPaths&   original_paths,
         starts.emplace_back(detailed_poly, path, ExtrusionPathSloped::Slope{ratio_begin, ratio_begin}, ExtrusionPathSloped::Slope{ratio_end, ratio_end});
 
         if (is_approx(ratio_end, 1.) && seam_gap > 0) {
+
             const auto seg_length = detailed_poly.length();
             if (seg_length > seam_gap) {
+
                 const Polyline3 orig = detailed_poly;
                 Polyline3       tmp;
                 orig.split_at_length(seg_length - seam_gap, &detailed_poly, &tmp);
@@ -545,6 +600,7 @@ ExtrusionLoopSloped::ExtrusionLoopSloped(ExtrusionPaths&   original_paths,
                 ratio_end = lerp(ratio_begin, ratio_end, (seg_length - seam_gap) / seg_length);
                 assert(1. - ratio_end > EPSILON);
             } else {
+
                 detailed_poly.clear();
             }
         }
@@ -559,6 +615,7 @@ ExtrusionLoopSloped::ExtrusionLoopSloped(ExtrusionPaths&   original_paths,
     for (; path != original_paths.end() && remaining_length > 0; ++path) {
         const double path_len = unscale_(path->length());
         if (path_len > remaining_length) {
+
             Polyline3 slope_path;
             Polyline3 flat_path;
             split_at_slope_end(path->polyline, scale_(remaining_length), slope_max_segment_length, slope_path, flat_path);
@@ -578,6 +635,7 @@ ExtrusionLoopSloped::ExtrusionLoopSloped(ExtrusionPaths&   original_paths,
     }
     assert(remaining_length <= 0);
     assert(start_ratio == 1.);
+
 
     paths.insert(paths.end(), path, original_paths.end());
 }
@@ -726,6 +784,7 @@ ExtrusionRole ExtrusionEntity::string_to_role(const std::string_view role)
         return erNone;
 }
 
+
 ExtrusionEntity *ExtrusionPathContoured::clone() const {
     return new ExtrusionPathContoured(*this);
 }
@@ -735,10 +794,12 @@ ExtrusionEntity *ExtrusionPathContoured::clone_move() {
 }
 
 void ExtrusionPathContoured::simplify(double tolerance) {
+
     return;
 }
 
 void ExtrusionPathContoured::simplify_by_fitting_arc(double tolerance) {
+
     return;
 }
 
@@ -775,6 +836,7 @@ void ExtrusionPathConformal::simplify(double tolerance)
     const double  tol = scale_(tolerance);
     std::vector<char> keep(pts.size(), 0);
     keep.front() = keep.back() = 1;
+
     std::vector<std::pair<size_t, size_t>> stack { { 0, pts.size() - 1 } };
     while (!stack.empty()) {
         const auto [a, b] = stack.back();
@@ -787,7 +849,9 @@ void ExtrusionPathConformal::simplify(double tolerance)
         for (size_t i = a + 1; i < b; ++i) {
             const double t    = len > 0. ? std::clamp((pts[i].cast<double>() - pa).dot(ab) / len, 0., 1.) : 0.;
             const double dist = (pa + t * ab - pts[i].cast<double>()).norm();
+
             const double dh   = std::abs(scale_(this->bead_height[i] - (1. - t) * this->bead_height[a] - t * this->bead_height[b]));
+
             const double dw   = this->bead_width.empty() ? 0. :
                                     std::abs(scale_(this->bead_width[i] - (1. - t) * this->bead_width[a] - t * this->bead_width[b]));
             const double d    = std::max({ dist, dh, dw });

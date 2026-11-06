@@ -77,6 +77,8 @@ namespace orientation {
 
 
 
+
+
 class AutoOrienter {
 public:
     int face_count_hull;
@@ -112,6 +114,9 @@ public:
         progressind = progressind_;
         params.ASCENT = cos(PI - orient_mesh->overhang_angle * PI / 180);
 
+
+
+
         preprocess();
     }
 
@@ -130,6 +135,7 @@ public:
     Vec3f quantize_vec3f(const Vec3f n1) {
         return Vec3f(floor(n1(0) * 1000) / 1000, floor(n1(1) * 1000) / 1000, floor(n1(2) * 1000) / 1000);
     }
+
 
     void collect_orientations()
     {
@@ -151,6 +157,7 @@ public:
     }
 
     using Ranked = std::vector<std::pair<Vec3f, CostItems>>;
+
 
     Ranked rank(bool log)
     {
@@ -186,8 +193,10 @@ public:
         return results_vector;
     }
 
+
     static size_t best_index(const Ranked &results_vector, Vec3f &best_orientation)
     {
+
         Vec3f n1 = {0, 0, 1};
         best_orientation = results_vector[0].first;
         size_t best_index = 0;
@@ -215,6 +224,7 @@ public:
         Vec3f best_orientation;
         const size_t best = best_index(results_vector, best_orientation);
 
+
         areas_cooling = results_vector[best].second.areas_cooling;
 
         BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(6) << "best:" << best_orientation.transpose() << ", costs:" << results_vector[0].second.field_values();
@@ -222,6 +232,7 @@ public:
 
         return best_orientation.cast<double>();
     }
+
 
     Ranked candidates(size_t &best)
     {
@@ -257,8 +268,10 @@ public:
         if (orient_mesh)
             BOOST_LOG_TRIVIAL(debug) <<orient_mesh->name<< ", count_apperance=" << count_apperance;
 
+
         {
             mesh_convex_hull = mesh->convex_hull_3d();
+
 
             int face_count = mesh_convex_hull.facets_count();
             auto its = mesh_convex_hull.its;
@@ -270,6 +283,7 @@ public:
             for (size_t i = 0; i < face_count; i++)
             {
                 float area = its.facet_area(i);
+
                 normals_hull.row(i) = face_normals_hull[i];
                 normals_hull_quantize.row(i) = quantize_vec3f(face_normals_hull[i]);
                 areas_hull(i) = area;
@@ -280,8 +294,10 @@ public:
     void area_cumulation(const Eigen::MatrixXf& normals_, const Eigen::VectorXf& areas_, int num_directions = 10)
     {
         std::unordered_map<stl_normal, float, VecHash> alignments;
+
         for (size_t i = 0; i < areas_.size(); i++)
             alignments.insert(std::pair(normals_.row(i), 0));
+
         for (size_t i = 0; i < areas_.size(); i++)
         {
             alignments[normals_.row(i)] += areas_(i);
@@ -295,17 +311,21 @@ public:
         for (size_t i = 0; i < num_directions; i++)
         {
             orientations.push_back(align_counts[i].first);
+
             BOOST_LOG_TRIVIAL(debug) << align_counts[i].first.transpose() << ", area: " << align_counts[i].second;
         }
     }
+
     void area_cumulation_accurate( std::vector<Vec3f>& normals_, const Eigen::MatrixXf& quantize_normals_, const Eigen::VectorXf& areas_, int num_directions = 10)
     {
         std::unordered_map<stl_normal, std::pair<std::vector<float>, Vec3f>, VecHash> alignments_;
         Vec3f n1 = { 0, 0, 0 };
         std::vector<float> current_areas = {0, 0};
+
         for (size_t i = 0; i < areas_.size(); i++) {
             alignments_.insert(std::pair(quantize_normals_.row(i), std::pair(current_areas, n1)));
         }
+
         for (size_t i = 0; i < areas_.size(); i++)
         {
             alignments_[quantize_normals_.row(i)].first[1] += areas_(i);
@@ -336,6 +356,10 @@ public:
             {-0.70710678, 0, 0.70710678},{0, -0.70710678, 0.70710678},{0, 0, 1} };
         orientations.insert(orientations.end(), vecs.begin(), vecs.end());
     }
+
+
+
+
 
     void remove_duplicates(double tol=0.0000001)
     {
@@ -406,20 +430,32 @@ public:
         std::sort(ind.data(), ind.data() + ind.size(), rule);
         return ind;
 
+
+
+
+
     }
+
 
     CostItems get_features(Vec3f orientation, bool min_volume = true)
     {
         CostItems costs;
         costs.area_total = mesh->bounding_box().area();
         costs.radius = mesh->bounding_box().radius();
+
         costs.volume = mesh->stats().volume > 0 ? mesh->stats().volume : its_volume(mesh->its);
 
         float total_min_z = z_projected.minCoeff();
+
         auto bottom_condition = (z_max.array() < total_min_z + this->params.FIRST_LAY_H - EPSILON).eval();
         auto bottom_condition_hull = (z_max_hull.array() < total_min_z + this->params.FIRST_LAY_H - EPSILON).eval();
         auto bottom_condition_2nd  = (z_max.array() < total_min_z + this->params.FIRST_LAY_H / 2.f - EPSILON).eval();
+
+
+
+
         costs.bottom = bottom_condition.select(areas, 0).sum()*0.5 + bottom_condition_2nd.select(areas, 0).sum();
+
 
         Eigen::VectorXf normal_projection(normals.rows(), 1);
         for (size_t i = 0; i < normals.rows(); i++)
@@ -440,7 +476,9 @@ public:
         }
 
         {
+
 #if 1
+
             costs.contour = 4 * sqrt(costs.bottom);
 #else
             float contour = 0;
@@ -460,7 +498,9 @@ public:
 #endif
         }
 
+
         costs.bottom_hull = (bottom_condition_hull).select(areas_hull, 0).sum();
+
 
         auto normal_projection_abs = normal_projection.cwiseAbs().eval();
         Eigen::MatrixXf laf_areas = ((normal_projection_abs.array() < params.LAF_MAX) * (normal_projection_abs.array() > params.LAF_MIN) * (z_max.array() > total_min_z + params.FIRST_LAY_H)).select(areas, 0);
@@ -468,14 +508,20 @@ public:
 
         if (has_cooling_fan)
         {
+
             float angle_thres_high = -0.6427f;
             float angle_thres_low = -0.97f;
+
             Eigen::VectorXf ones_f = Eigen::VectorXf::Ones(mesh->facets_count());
             auto overhang_area_condition = (normal_projection.array() < angle_thres_high && normal_projection.array() > angle_thres_low).eval();
             Eigen::VectorXf areas_ = (overhang_area_condition * !bottom_condition_2nd).select(areas, 0);
             Eigen::VectorXf weighted_areas = areas_.cwiseProduct(ones_f - normal_projection);
             costs.areas_cooling = weighted_areas;
         }
+
+
+
+
 
         return costs;
     }
@@ -507,6 +553,7 @@ public:
         const size_t num_faces = areas.rows();
         Vec3f best_direction = { 0, 0, 0 };
 
+
         TriangleMesh mesh_copy = TriangleMesh(mesh.its);
         mesh_copy.rotate_x(euler_angles(0, 0));
         mesh_copy.rotate_y(euler_angles(1, 0));
@@ -516,6 +563,7 @@ public:
         Vec3d mesh_center = mesh_copy.center();
         mesh_copy.translate(-mesh_center(0), -mesh_center(1), -translate_distance(2));
 
+
         const size_t sample_nums = 180;
         std::vector<Vec3f> cool_dirs;
         for (size_t i = 0; i < sample_nums; i++)
@@ -524,6 +572,7 @@ public:
             float angle_rad = angle_deg * (PI / 180.0);
             cool_dirs.push_back(Vec3f{ std::cos(angle_rad), std::sin(angle_rad), 0});
         }
+
 
         std::vector<Vec3f> face_normals_copy = its_face_normals(mesh_copy.its);
         float overhang_projected_max = 0.f;
@@ -550,6 +599,7 @@ public:
             }
         }
 
+
         if (std::abs(overhang_projected_origin - overhang_projected_max) < 1.0f)
         {
             best_direction = machine_cool_dir;
@@ -558,6 +608,9 @@ public:
         return best_direction.cast<double>();
     }
 };
+
+
+
 
 static void orient_nonplanar(OrientMesh &mesh, const std::function<bool()> &stopfn)
 {
@@ -574,6 +627,8 @@ static void orient_nonplanar(OrientMesh &mesh, const std::function<bool()> &stop
     mesh.euler_angles = Geometry::extract_euler_angles(mesh.rotation_matrix);
     BOOST_LOG_TRIVIAL(info) << mesh.name << ": non-planar orientation " << mesh.orientation.transpose() << (res.rotated ? " (turned)" : " (kept)")
                             << ", cost " << res.chosen.cost << " against " << res.original.cost;
+
+
     const Nonplanar::OrientScore *other = &res.original;
     if (!res.rotated)
         for (const Nonplanar::OrientScore &score : res.ranked)
@@ -603,14 +658,16 @@ void _orient(OrientMeshs& meshs_,
         for (size_t i = 0; i != meshs_.size(); ++i) {
             auto& mesh_ = meshs_[i];
             progressfn(i, mesh_.name);
+
             if (mesh_.nonplanar) {
                 orient_nonplanar(mesh_, stopfn);
                 continue;
             }
-            AutoOrienter orienter(&mesh_, params, {}, stopfn);
+            AutoOrienter orienter(&mesh_, params,  {}, stopfn);
             mesh_.orientation = orienter.process();
             Geometry::rotation_from_two_vectors(mesh_.orientation, { 0,0,1 }, mesh_.axis, mesh_.angle, &mesh_.rotation_matrix);
             BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(3) << "v,phi: " << mesh_.axis.transpose() << ", " << mesh_.angle;
+
         }
     }
     else {
@@ -626,6 +683,7 @@ void _orient(OrientMeshs& meshs_,
                 mesh_.orientation = orienter.process();
                 Geometry::rotation_from_two_vectors(mesh_.orientation, { 0,0,1 }, mesh_.axis, mesh_.angle, &mesh_.rotation_matrix);
                 mesh_.euler_angles = Geometry::extract_euler_angles(mesh_.rotation_matrix);
+
                 if (mesh_.has_cooling_fan)
                 {
                     mesh_.orientation_vertical = orienter.find_cooling_direction2(mesh_.euler_angles, orienter.areas_cooling, mesh_.mesh);
@@ -709,6 +767,8 @@ std::vector<CandidateScore> score_candidates(const TriangleMesh &mesh, double ov
             box.merge(rotation * v.cast<double>());
         s.size = box.size();
 
+
+
         const double  bed  = box.min.z();
         const Vec3d   down = -s.up;
         for (size_t f = 0; f < its.indices.size(); ++f) {
@@ -727,6 +787,7 @@ std::vector<CandidateScore> score_candidates(const TriangleMesh &mesh, double ov
             for (int i = 0; i < n; ++i)
                 for (int j = 0; i + j < n; ++j)
                     for (int k = 0; k < (i + j + 1 < n ? 2 : 1); ++k) {
+
                         const double a = (i + (k ? 2. : 1.) / 3.) / n, b = (j + (k ? 2. : 1.) / 3.) / n;
                         const Vec3d  q = p[0] + a * (p[1] - p[0]) + b * (p[2] - p[0]);
                         if (!aabb.query_ray_hit(q + 1e-3 * down, down).is_hit()) {
@@ -750,6 +811,7 @@ void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)
 
     if (fan_dir == FanDirection::fdUndefine)
     {
+
         return;
     }
     else if (fan_dir == FanDirection::fdRight)
@@ -758,8 +820,10 @@ void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)
     }
     else
     {
+
         machine_cool_dir = { -1, 0, 0 };
     }
+
 
     int nfaces = mesh.facets_count();
     auto face_normals = its_face_normals(mesh.its);
@@ -771,6 +835,7 @@ void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)
     }
     float angle_thres_high = -0.6427f;
     float angle_thres_low = -0.97f;
+
     Eigen::VectorXf weighted_areas = Eigen::VectorXf::Zero(nfaces);
     for (int i = 0; i < nfaces; i++)
     {
@@ -788,6 +853,7 @@ void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)
         float angle_rad = angle_deg * (PI / 180.0);
         cool_dirs.push_back(Vec3f{ std::cos(angle_rad), std::sin(angle_rad), 0 });
     }
+
 
     float overhang_projected_max = 0.f;
     float overhang_projected_origin = 0.f;
@@ -813,10 +879,12 @@ void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)
         }
     }
 
+
     if (std::abs(overhang_projected_origin - overhang_projected_max) < 1.0f)
     {
         return;
     }
+
 
     Vec3d axis;
     double angle;

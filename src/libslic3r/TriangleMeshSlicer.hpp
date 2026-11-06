@@ -17,30 +17,58 @@ namespace Slic3r {
 struct MeshSlicingParams
 {
     enum class SlicingMode : uint32_t {
+
+
         Regular,
+
+
         EvenOdd,
+
+
         Positive,
+
+
         PositiveLargestContour,
     };
 
     SlicingMode   mode { SlicingMode::Regular };
+
+
     size_t        slicing_mode_normal_below_layer { 0 };
+
     SlicingMode   mode_below { SlicingMode::Regular };
+
     Transform3d   trafo { Transform3d::Identity() };
 };
 
 struct MeshSlicingParamsEx : public MeshSlicingParams
 {
+
     float         closing_radius { 0 };
+
     float         extra_offset { 0 };
+
+
     double        resolution { 0 };
 };
+
+
+
+
+
+
+
+
+
+
+
 
 std::vector<Polygons>           slice_mesh(
     const indexed_triangle_set       &mesh,
     const std::vector<float>         &zs,
     const MeshSlicingParams          &params,
     std::function<void()>             throw_on_cancel = []{});
+
 
 Polygons                        slice_mesh(
     const indexed_triangle_set       &mesh,
@@ -72,8 +100,15 @@ inline std::vector<ExPolygons>  slice_mesh_ex(
     return slice_mesh_ex(mesh, zs, params, throw_on_cancel);
 }
 
+
+
+
+
+
+
 void slice_mesh_slabs(
     const indexed_triangle_set       &mesh,
+
     const std::vector<float>         &zs,
     const Transform3d                &trafo,
     std::vector<Polygons>            *out_top,
@@ -81,12 +116,14 @@ void slice_mesh_slabs(
     std::vector<std::pair<Vec3f, Vec3f>>   *vertical_points,
     std::function<void()>             throw_on_cancel);
 
+
 void project_mesh(
     const indexed_triangle_set       &mesh,
     const Transform3d                &trafo,
     Polygons                         *out_top,
     Polygons                         *out_bottom,
     std::function<void()>             throw_on_cancel);
+
 
 Polygons project_mesh(
     const indexed_triangle_set       &mesh,

@@ -14,6 +14,7 @@ namespace Slic3r {
 namespace Geometry {
 
 namespace BicubicInternal {
+
 template<typename T>
 struct LinearKernel
 {
@@ -69,6 +70,7 @@ struct LinearKernel
     }
 };
 
+
 template<typename T>
 struct CubicCatmulRomKernel
 {
@@ -123,6 +125,7 @@ struct CubicCatmulRomKernel
         return T( 0.5);
     }
 };
+
 
 template<typename T>
 struct CubicBSplineKernel
@@ -222,11 +225,14 @@ struct CubicKernelWrapper
     }
 };
 
+
 template<typename NumberType>
 using LinearKernel = CubicKernelWrapper<BicubicInternal::LinearKernel<NumberType>>;
 
+
 template<typename NumberType>
 using CubicCatmulRomKernel = CubicKernelWrapper<BicubicInternal::CubicCatmulRomKernel<NumberType>>;
+
 
 template<typename NumberType>
 using CubicBSplineKernel = CubicKernelWrapper<BicubicInternal::CubicBSplineKernel<NumberType>>;
@@ -240,8 +246,10 @@ static typename KernelWrapper::FloatType cubic_interpolate(const Eigen::ArrayBas
     const T s = pt - T( ix);
 
     if (ix > 1 && ix + 2 < w) {
+
         return KernelWrapper::interpolate(F[ix - 1], F[ix], F[ix + 1], F[ix + 2], s);
     }
+
     auto f = [&F, w](T x) {
         return F[BicubicInternal::clamp(x, 0, w - 1)];
     };
@@ -260,12 +268,14 @@ static float bicubic_interpolate(const Eigen::MatrixBase<Derived> &F,
     const T t = pt[1] - T( iy);
 
     if (ix > 1 && ix + 2 < w && iy > 1 && iy + 2 < h) {
+
         return Kernel::interpolate(
                 Kernel::interpolate(F(ix - 1, iy - 1), F(ix, iy - 1), F(ix + 1, iy - 1), F(ix + 2, iy - 1), s),
                 Kernel::interpolate(F(ix - 1, iy), F(ix, iy), F(ix + 1, iy), F(ix + 2, iy), s),
                 Kernel::interpolate(F(ix - 1, iy + 1), F(ix, iy + 1), F(ix + 1, iy + 1), F(ix + 2, iy + 1), s),
                 Kernel::interpolate(F(ix - 1, iy + 2), F(ix, iy + 2), F(ix + 1, iy + 2), F(ix + 2, iy + 2), s), t);
     }
+
     auto f = [&F, w, h](int x, int y) {
         return F(BicubicInternal::clamp(x, 0, w - 1), BicubicInternal::clamp(y, 0, h - 1));
     };

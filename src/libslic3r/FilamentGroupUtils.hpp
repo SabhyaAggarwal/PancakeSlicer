@@ -35,6 +35,9 @@ namespace Slic3r
             Color color;
             std::string type;
             bool is_support;
+
+
+
             FilamentUsageType usage_type = FilamentUsageType::ModelOnly;
         };
 
@@ -85,6 +88,10 @@ namespace Slic3r
         void extract_unprintable_limit_indices(const std::vector<std::set<int>>& unprintable_elems, const std::vector<unsigned int>& used_filaments, std::unordered_map<int, std::vector<int>>& unplaceable_limits);
 
         bool check_printable(const std::vector<std::set<int>>& groups, const std::map<int, int>& unprintable);
+
+
+
+
 
         int get_estimate_extruder_change_count(const std::vector<std::vector<unsigned int>>& layer_filaments, const MultiNozzleUtils::LayeredNozzleGroupResult& extruder_nozzle_info);
 

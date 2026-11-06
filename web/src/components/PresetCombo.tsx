@@ -1,7 +1,9 @@
+
 import type { PresetType } from '../api/types';
 import { switchPreset } from '../actions';
 import { getState, toast } from '../state/store';
 import { reviewChanges } from '../profiles/PresetBar';
+
 
 export function requestPreset(type: PresetType, slot: number, name: string) {
   let result;try{result=switchPreset(type,slot,name,'transfer');}catch(error){toast(error instanceof Error?error.message:String(error));return;}
@@ -19,6 +21,7 @@ export function requestPreset(type: PresetType, slot: number, name: string) {
     label: 'Review', run: () => reviewChanges(reviewType, reviewSlot),
   });
 }
+
 
 import { PrinterPicker, FilamentPicker } from '../profiles/Pickers';
 import { ProcessPresetPicker } from './ProcessPresetPicker';

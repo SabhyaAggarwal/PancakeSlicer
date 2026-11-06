@@ -50,6 +50,7 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
 bool flexible_top(const PrintObject &object, const PrintRegionConfig &config)
 {
     const size_t idx = size_t(std::max(0, config.top_surface_filament_id.value - 1));
@@ -60,6 +61,8 @@ constexpr int    MaxShells      = 6;
 constexpr double LargeArea      = 400.;
 constexpr double MinCoherence   = 0.1;
 constexpr double MaxRoundAspect = 1.5;
+
+
 constexpr double MultiplanarThinShare  = 0.6;
 constexpr double MultiplanarSteepShare = 0.55;
 constexpr double MultiplanarMinGain    = 0.02;
@@ -67,10 +70,12 @@ constexpr double MultiplanarMinRmsGain = 0.10;
 constexpr double MultiplanarMaxTimeRatio = 1.5;
 
 bool is_auto(const PrintObjectConfig &object) { return object.nonplanar_mode.value == NonplanarMode::Auto; }
+
 bool is_manual(const PrintObjectConfig &object)
 {
     return object.nonplanar_mode.value == NonplanarMode::Manual || object.nonplanar_mode.value == NonplanarMode::Multiplanar;
 }
+
 
 double percentile(std::vector<double> &v, double q)
 {
@@ -80,6 +85,10 @@ double percentile(std::vector<double> &v, double q)
     std::nth_element(v.begin(), v.begin() + k, v.end());
     return v[k];
 }
+
+
+
+
 
 std::optional<NonplanarTopPattern> user_top_pattern(const PrintObject &object, const PrintRegionConfig &config)
 {
@@ -130,12 +139,15 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
                 if (const int jx = ix + dx, jy = iy + dy; jx >= 0 && jy >= 0 && jx < nx && jy < ny)
                     if (const size_t j = size_t(jy) * nx + jx; candidate[j] && !seen[j] && gradients[j].allFinite() &&
                         (gradients[i] - gradients[j]).norm() <= CreaseJump) {
+
+
                         seen[j] = 1;
                         stack.push_back(j);
                     }
         }
         if (nodes.size() < 3 || nodes.size() * surface.pitch() * surface.pitch() < min_width * min_width)
             continue;
+
         Vec3d mean = Vec3d::Zero();
         for (size_t i : nodes)
             mean += point(i);
@@ -150,6 +162,7 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
         if (det <= 1e-12 * std::max(1., xx * yy))
             continue;
         const Vec2d gradient((xz * yy - yz * xy) / det, (yz * xx - xz * xy) / det);
+
         if (gradient.norm() <= 0.0175 || gradient.norm() > max_slope)
             continue;
         const double tolerance = 0.5 * layer_height * std::sqrt(1. + gradient.squaredNorm());
@@ -159,8 +172,11 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
         });
         if (!fits)
             continue;
+
+
         for (size_t i : nodes)
             member[i] = 1;
+
         const bool wide = !offset_ex(mask_to_expolygons(member, surface), -float(scale_(0.5 * min_width))).empty();
         std::vector<double> normal_error;
         for (size_t i : nodes) {
@@ -171,6 +187,7 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
         }
         for (size_t i : nodes)
             member[i] = 0;
+
         if (!wide || normal_error.size() < 3 || percentile(normal_error, 0.9) > 0.005)
             continue;
         for (size_t i : nodes)
@@ -181,15 +198,18 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
 
 bool auto_z_contouring(const PrintObject &object, const std::vector<double> &layers)
 {
+
     static thread_local bool probing = false;
     if (probing || !is_auto(object.config()) || layers.size() < 4 || object.print()->config().spiral_mode.value ||
         object.print()->config().belt_printer.value || object.print()->config().nonplanar_kinematics.value != RotaryLayout::None ||
         !object.config().nonplanar_atom_toolpath.value.empty())
         return false;
+
     const double min_z = PrintRegionConfig::defaults().zaa_min_z.value;
     for (size_t i = 2; i + 1 < layers.size(); i += 2)
         if (layers[i + 1] - layers[i] < min_z - EPSILON)
             return false;
+
     double ground_offset = 0.;
     const TriangleMesh mesh = object.object_frame_mesh(ground_offset);
     const double bottom = mesh.bounding_box().min.z();
@@ -202,6 +222,9 @@ bool auto_z_contouring(const PrintObject &object, const std::vector<double> &lay
         const double length = n.norm();
         if (length <= 1e-12)
             continue;
+
+
+
         const double nz = std::abs(n.z()) / length;
         if (nz > 1e-4 && n.head<2>().norm() / length > 1e-6)
             return false;
@@ -231,6 +254,10 @@ bool auto_z_contouring(const PrintObject &object, const std::vector<double> &lay
         BOOST_LOG_TRIVIAL(warning) << "Auto Z contouring keeps the shell schedule: " << ex.what();
         return false;
     }
+
+
+
+
     for (const PrintObject *part : probe.objects())
         for (const ConformalPatch &patch : part->conformal().patches)
             if (patch.kind == PatchKind::Top || patch.kind == PatchKind::Volume ||
@@ -248,6 +275,9 @@ double auto_curved_underside_slope() { return std::tan(Geometry::deg2rad(10.)); 
 
 bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
+
+
+
     return is_auto(object) ? object.enable_support.value : is_manual(object) && config.nonplanar_bottom_shells.value != 0;
 }
 
@@ -256,6 +286,12 @@ double full_conformal_thickness(const PrintRegionConfig &config, const PrintObje
     const double set = config.nonplanar_full_conformal_max_thickness.value;
     if (!is_auto(object.config()))
         return is_manual(object.config()) ? set : 0.;
+
+
+
+
+
+
     size_t open_edges = 0, facets = 0;
     for (const ModelVolume *volume : object.model_object()->volumes)
         if (volume->is_model_part()) {
@@ -287,6 +323,13 @@ double infill_depth(const PrintRegionConfig &config, const PrintObject &object)
 {
     if (!is_auto(object.config()))
         return is_manual(object.config()) ? config.nonplanar_infill_depth.value : 0.;
+
+
+
+
+
+
+
     return 0.;
 }
 
@@ -307,6 +350,9 @@ bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &obje
 
 bool spiral_top_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
+
+
+
     return !is_auto(object) && config.nonplanar_spiral_top.value;
 }
 
@@ -321,11 +367,14 @@ NonplanarCollisionCheck effective_collision_check(const Print &print)
 
 bool auto_multiplanar_candidate(double steep_top_share, double thin_top_share)
 {
+
     return steep_top_share >= MultiplanarSteepShare || thin_top_share >= MultiplanarThinShare;
 }
 
 bool auto_multiplanar_confirmed(double chunks_rms, double planar_rms, double chunks_time, double planar_time)
 {
+
+
     return std::isfinite(chunks_rms) && std::isfinite(planar_rms) && std::isfinite(planar_time) && planar_time > 0. &&
            chunks_rms <= (1. - MultiplanarMinRmsGain) * planar_rms && chunks_time < multiplanar_time_limit(planar_time);
 }
@@ -334,6 +383,9 @@ double multiplanar_time_limit(double planar_time) { return MultiplanarMaxTimeRat
 
 bool auto_multiplanar_chunks(const MultiplanarPlan &plan)
 {
+
+
+
     return plan.chunks.size() > 1 && plan.step_area < (1. - MultiplanarMinGain) * plan.planar_step_area;
 }
 
@@ -345,16 +397,25 @@ AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRe
     const HeadEnvelope head         = resolve_head_envelope(print_config);
 
     AutoObjectSettings s;
+
     s.max_error = std::clamp(0.25 * shell_height, 0.02, 0.1);
+
+
     const double area_w = w * std::min(1., TunedNozzle / d);
     s.min_area  = (10. * area_w) * (10. * area_w);
+
+
+
     const double gantry = head.gantry_clearance();
     s.max_patch_height  = std::isfinite(gantry) ? std::max(0., gantry - head.margin) : 0.;
     if (print_config.nonplanar_kinematics.value != RotaryLayout::None) {
+
+
         const double reach = std::max(shell_height, head_band_height(head) - head.margin);
         s.max_patch_height = s.max_patch_height > 0. ? std::min(s.max_patch_height, reach) : reach;
     }
     s.clip_shells      = AutoMinShells;
+
     s.bottom_shells = std::clamp(int(std::ceil(d / shell_height - 0.15)), AutoMinShells, MaxShells);
     return s;
 }
@@ -375,7 +436,12 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     a.max_error  = max_error;
     a.shell_area = area(diff_ex(patch.footprint, patch.wall_band)) * SCALING_FACTOR * SCALING_FACTOR;
 
+
+
     std::vector<double> slopes, curvatures;
+
+
+
     Mask shell_node = rasterize(diff_ex(patch.footprint, patch.wall_band), S);
     for (int iy = 0; iy + 1 < S.ny(); ++iy)
         for (int ix = 0; ix + 1 < S.nx(); ++ix)
@@ -383,11 +449,15 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
                 for (int jy = iy; jy <= iy + 1; ++jy)
                     for (int jx = ix; jx <= ix + 1; ++jx)
                         shell_node[size_t(jy) * S.nx() + jx] = 0;
+
+
+
     const Mask          steep_node = steep_faces != nullptr && !steep_faces->empty() ? rasterize(*steep_faces, S) : Mask();
     std::vector<double> count_slopes;
     double jxx = 0., jxy = 0., jyy = 0.;
     double n = 0., mx = 0., my = 0., mxx = 0., mxy = 0., myy = 0.;
     float  z_lo = std::numeric_limits<float>::infinity();
+
     const int step = 2;
     auto      z_at = [&S](int ix, int iy) {
         return ix >= 0 && iy >= 0 && ix < S.nx() && iy < S.ny() ? S.at(ix, iy) : HeightField::NoData;
@@ -416,11 +486,14 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
                 continue;
             const double hh  = (step * pitch) * (step * pitch);
             const double fxx = (xp - 2. * z + xm) / hh, fyy = (yp - 2. * z + ym) / hh, fxy = (a3 - a1 - a2 + a0) / (4. * hh);
+
             const double k = (std::abs(0.5 * (fxx + fyy)) + std::hypot(0.5 * (fxx - fyy), fxy)) / std::pow(1. + g.squaredNorm(), 1.5);
             curvatures.emplace_back(k);
         }
     a.slope90     = percentile(slopes, 0.9);
     a.curvature95 = percentile(curvatures, 0.95);
+
+
     const double curvature80 = percentile(curvatures, 0.8);
     a.curvature80 = curvature80;
     const double trace = jxx + jyy;
@@ -431,18 +504,28 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
         a.aspect = mid - rad > 1e-12 ? std::sqrt((mid + rad) / (mid - rad)) : std::numeric_limits<double>::infinity();
     }
 
+
+
     const double scale   = bead_scale(object.print()->config());
     const bool   large   = a.shell_area >= LargeArea * scale * scale;
     const double T       = (large ? 1.5 : 1.0) * d;
     const int    n_depth = std::isfinite(z_lo) ? int(std::floor((z_lo - 0.5 * h_c - first_layer_top) / h_c + 1e-6)) : AutoMinShells;
     const double shell_slope = steep_node.empty() || count_slopes.empty() ? a.slope90 : percentile(count_slopes, 0.9);
     a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(shell_slope)) - 0.15)), AutoMinShells, MaxShells);
+
+
     a.shells = std::max(AutoMinShells, std::min({ a.shells, n_depth, planar_top_layers(config, h_c) }));
+
+
+
     if (const char *v = std::getenv("NP_CT1_SHELLS"); v != nullptr && std::atoi(v) > 0)
         a.shells = std::clamp(std::atoi(v), 1, MaxShells);
     patch.shells = a.shells;
     if (!is_auto(object.config()))
         return;
+
+
+
 
     const bool banded = effective_fallback(config, object.config()) == NonplanarFallback::None;
     a.pattern = banded || a.coherence >= MinCoherence ? NonplanarTopPattern::Contour :
@@ -450,9 +533,16 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
                                                         NonplanarTopPattern::Rectilinear;
     if (const std::optional<NonplanarTopPattern> user = user_top_pattern(object, config))
         a.pattern = *user;
+
+
+
+
     const double r = head.tip_flat_radius;
+
+
     const bool ironing_off = config.ironing_type.value == IroningType::NoIroning &&
                              object.print()->default_region_config().ironing_type.value != IroningType::NoIroning;
+
     a.ironing = !ironing_off && conformal_ironing_enabled(config) && !flexible_top(object, config) &&
                 0.5 * r * r * curvature80 <= 0.25 * h_c &&
                 object.print()->config().nonplanar_kinematics.value == RotaryLayout::None;
@@ -470,6 +560,7 @@ NonplanarTopPattern top_pattern(const ConformalPatch &patch, const PrintRegionCo
 
 bool ironing_enabled(const ConformalPatch &patch, const PrintRegionConfig &config)
 {
+
     return patch.automatic ? patch.automatic->ironing : conformal_ironing_enabled(config);
 }
 
@@ -487,6 +578,7 @@ std::string auto_comment(const ConformalPatch &patch)
 }
 
 namespace {
+
 
 struct TopPatchDecision
 {
@@ -539,6 +631,8 @@ TopPatchDecision top_patch_decision(const PrintObject &object, const ConformalPa
     d.requested    = ironing_enabled(patch, config);
     d.region_irons = conformal_ironing_enabled(config);
     if (patch.automatic) {
+
+
         const double r = head.tip_flat_radius;
         d.deviation = 0.5 * r * r * patch.automatic->curvature80;
     }
@@ -611,6 +705,7 @@ std::string describe_top_patch(const PrintObject &object, const ConformalPatch &
     std::string out = format(_u8L("%1% lines: %2%."), pattern, rule) + "\n" +
                       format(_u8L("%1% shells, %2$.2f mm each."), patch.shells, patch.shell_height) + "\n";
     if (d.banded) {
+
         const std::string limit = d.cap != d.repair_cap                         ? _u8L("the rotary tilt") :
                                   d.repair_cap != d.material_cap                ? _u8L("the clearance repair") :
                                   d.material_cap != d.object_cap                ? _u8L("a filament change") :
@@ -634,6 +729,7 @@ std::string describe_top_patch(const PrintObject &object, const ConformalPatch &
 std::vector<std::string> object_warnings(const PrintObject &object, const ReportObject &report)
 {
     std::vector<std::string> warnings;
+
     if (report.planar_top > 1. && report.curved_share() < 0.9) {
         std::map<std::string, double> by_reason;
         for (const PatchDiagnostics &diag : object.conformal().diagnostics)

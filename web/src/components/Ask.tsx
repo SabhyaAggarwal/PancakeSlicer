@@ -1,3 +1,5 @@
+
+
 import { useState, useSyncExternalStore } from 'react';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
@@ -14,12 +16,17 @@ const ask = (a: Omit<Ask, 'resolve'>) =>
     show({ ...a, resolve });
   });
 
+
 export const confirmDialog = (title: string, message: string, buttons?: [string, string], danger?: boolean) => ask({ title, message, buttons, danger }).then((v) => v !== null);
+
 export const messageDialog = (title: string, message: string) => ask({ title, message, buttons: ['Close', null] }).then(() => undefined);
+
 export const promptDialog = (title: string, value: string) => ask({ title, value }).then((v) => v?.trim() || null);
+
 export const numberDialog = (title: string, prompt: string, value: number, min: number, max: number) =>
   ask({ title, message: prompt, value: String(value), range: [min, max] }).then((v) => v === null || v.trim() === '' ? null : Math.min(max, Math.max(min, Math.round(Number(v)))))
     .then((n) => (n === null || Number.isNaN(n) ? null : n));
+
 
 export const choiceDialog = (title: string, message: string, choices: string[]) =>
   ask({ title, message, value: '0', choices }).then((v) => (v === null ? null : Number(v)));

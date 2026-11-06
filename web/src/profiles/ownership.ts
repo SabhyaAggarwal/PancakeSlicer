@@ -1,3 +1,4 @@
+
 import type { Config, PresetType } from '../api/types';
 import type { ProfileKey } from './identity';
 
@@ -6,6 +7,7 @@ export interface ProfileBaseAnchor {
   version: string;
   vendor?: string;
   id?: string;
+
   engineName?: string;
 }
 export interface ProfileProvenance {
@@ -13,18 +15,21 @@ export interface ProfileProvenance {
   sourceId?: string;
   sourceName?: string;
   sourceRevision?: number;
+
   operationId: string;
 }
 export interface ProfileConfigSnapshot {
   config: Config;
   base: ProfileBaseAnchor;
 }
+
 export interface ProfileOwnership {
   id?: ProfileKey;
   applicability?: import('./applicability').ProfileApplicability;
   kind?: 'profile' | 'master';
   masterId?: ProfileKey;
   archived?: { at: number; operationId: string };
+
   printerId?: ProfileKey;
   revision?: number;
   provenance?: ProfileProvenance;
@@ -42,11 +47,15 @@ export interface PrinterMaterialSetup {
   schema: 1;
   printerId: ProfileKey;
   revision: number;
+
   materialIds: ProfileKey[];
   processId?: ProfileKey;
   slots: PrinterMaterialSlot[];
+
   assignments: Record<string, string>;
+
   tuning: Record<ProfileKey, Config>;
+
   mixes: Record<number, { components: number[]; ratios: number[]; gradient: 0 | 1 | null; perPart: boolean }>;
 }
 export interface PrinterProfileLibrary {
@@ -77,9 +86,11 @@ export interface ProfileRecovery {
   type: PresetType;
   snapshot?: ProfileConfigSnapshot;
 }
+
 export interface ProfileLibraryDocument {
   schema: 1;
   revision: number;
+
   epoch?: string;
   profiles: import('../api/types').ProfileOverlay[];
   catalog?: import('../api/types').SystemPreset[];

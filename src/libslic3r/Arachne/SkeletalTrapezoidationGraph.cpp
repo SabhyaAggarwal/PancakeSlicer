@@ -36,6 +36,7 @@ bool STHalfEdge::canGoUp(bool strict) const
         return false;
     }
 
+
     for (edge_t* outgoing = next; outgoing != twin; outgoing = outgoing->twin->next)
     {
         if (outgoing->canGoUp())
@@ -58,6 +59,7 @@ bool STHalfEdge::isUpward() const
     {
         return false;
     }
+
 
     std::optional<coord_t> forward_up_dist = this->distToGoUp();
     std::optional<coord_t> backward_up_dist = twin->distToGoUp();
@@ -88,6 +90,7 @@ std::optional<coord_t> STHalfEdge::distToGoUp() const
     {
         return std::optional<coord_t>();
     }
+
 
     std::optional<coord_t> ret;
     for (edge_t* outgoing = next; outgoing != twin; outgoing = outgoing->twin->next)
@@ -188,8 +191,11 @@ bool STHalfEdgeNode::isLocalMaximum(bool strict) const
 
 void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
 {
-    auto should_collapse = [snap_dist](node_t* a, node_t* b) 
-    { 
+
+
+
+    auto should_collapse = [snap_dist](node_t* a, node_t* b)
+    {
         return shorter_then(a->p - b->p, snap_dist);
     };
     bool collapsed = false;
@@ -199,7 +205,7 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
         {
             continue;
         }
-        
+
         edge_t* quad_start = &edge;
         edge_t* quad_end = quad_start; while (quad_end->next) quad_end = quad_end->next;
         edge_t* quad_mid = (quad_start->next == quad_end)? nullptr : quad_start->next;
@@ -221,11 +227,16 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
                 {
                     std::cerr << edge_from_3->from->p << " - " << edge_from_3->to->p << '\n';
                 }
-                if (++count > 1000) 
+                if (++count > 1000)
                 {
                     break;
                 }
             }
+
+
+
+
+
 
             if (quad_mid->from->incident_edge == quad_mid)
             {
@@ -238,7 +249,7 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
                     quad_mid->from->incident_edge = quad_mid->prev->twin;
                 }
             }
-            
+
             quad_mid->to->collapsed = true;
 
             quad_mid->prev->next = quad_mid->next;
@@ -250,6 +261,9 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
             quad_mid->collapsed = true;
             collapsed = true;
         }
+
+
+
 
         if ( should_collapse(quad_start->from, quad_end->to) && should_collapse(quad_start->to, quad_end->from))
         {
@@ -275,6 +289,9 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
             quad_end->collapsed = true;
             collapsed = true;
         }
+
+
+
     }
     if (collapsed)
     {
@@ -293,12 +310,12 @@ void SkeletalTrapezoidationGraph::makeRib(edge_t *&prev_edge, const Point &start
     nodes.emplace_front(SkeletalTrapezoidationJoint(), p);
     node_t* node = &nodes.front();
     node->data.distance_to_boundary = 0;
-    
+
     edges.emplace_front(SkeletalTrapezoidationEdge(SkeletalTrapezoidationEdge::EdgeType::EXTRA_VD));
     edge_t* forth_edge = &edges.front();
     edges.emplace_front(SkeletalTrapezoidationEdge(SkeletalTrapezoidationEdge::EdgeType::EXTRA_VD));
     edge_t* back_edge = &edges.front();
-    
+
     prev_edge->next = forth_edge;
     forth_edge->prev = prev_edge;
     forth_edge->from = prev_edge->to;
@@ -308,7 +325,7 @@ void SkeletalTrapezoidationGraph::makeRib(edge_t *&prev_edge, const Point &start
     back_edge->from = node;
     back_edge->to = prev_edge->to;
     node->incident_edge = back_edge;
-    
+
     prev_edge = back_edge;
 }
 
@@ -318,7 +335,7 @@ std::pair<SkeletalTrapezoidationGraph::edge_t*, SkeletalTrapezoidationGraph::edg
     edge_t* edge_after = edge.next;
     node_t* node_before = edge.from;
     node_t* node_after = edge.to;
-    
+
     Point p = mid_node->p;
 
     const Line source_segment = getSource(edge);
@@ -350,7 +367,7 @@ std::pair<SkeletalTrapezoidationGraph::edge_t*, SkeletalTrapezoidationGraph::edg
     inward_edge->next = second;
     second->next = edge_after;
 
-    if (edge_after) 
+    if (edge_after)
     {
         edge_after->prev = second;
     }
@@ -372,7 +389,7 @@ std::pair<SkeletalTrapezoidationGraph::edge_t*, SkeletalTrapezoidationGraph::edg
     node_before->incident_edge = first;
     mid_node->incident_edge = outward_edge;
     source_node->incident_edge = inward_edge;
-    if (edge_after) 
+    if (edge_after)
     {
         node_after->incident_edge = edge_after;
     }

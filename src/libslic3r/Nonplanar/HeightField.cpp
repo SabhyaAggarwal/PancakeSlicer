@@ -52,6 +52,7 @@ float HeightField::sample(const Vec2d &p) const
     const double fx = std::floor(u.x()), fy = std::floor(u.y());
     if (!u.allFinite() || u.x() < 0. || u.y() < 0. || u.x() > m_nx - 1 || u.y() > m_ny - 1)
         return NoData;
+
     const int    ix = std::min(int(fx), std::max(0, m_nx - 2));
     const int    iy = std::min(int(fy), std::max(0, m_ny - 2));
     const double tx = m_nx > 1 ? u.x() - ix : 0.;
@@ -59,6 +60,7 @@ float HeightField::sample(const Vec2d &p) const
     const int    jx = std::min(ix + 1, m_nx - 1);
     const int    jy = std::min(iy + 1, m_ny - 1);
     const double z00 = this->at(ix, iy), z10 = this->at(jx, iy), z01 = this->at(ix, jy), z11 = this->at(jx, jy);
+
     return float((1. - ty) * ((1. - tx) * z00 + tx * z10) + ty * ((1. - tx) * z01 + tx * z11));
 }
 

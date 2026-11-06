@@ -6,6 +6,8 @@ import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
+
+
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
@@ -25,11 +27,15 @@ import './settings.css';
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
 const HeadPicker = lazy(() => import('./HeadPicker'));
 const HeadShapeButton = lazy(() => import('./HeadPicker').then((m) => ({ default: m.HeadShapeButton })));
+
 const GcodeWorkbench = lazy(() => import('../gcode/GcodeWorkbench'));
 const isGcode = (key: string) => /_gcode$/.test(key) && (!!OPTIONS[key]?.multiline || OPTIONS[key]?.type === 'string' || OPTIONS[key]?.type === 'strings');
 
+
 const customRow = (line: TabLine) => line.label === 'Head shape' && !line.options.length;
 const groupName = (s: string) => s.toLowerCase().replace(/\b(enable|enabled|use)\b/g, '').replace(/\s+/g, ' ').trim();
+
+
 const groupSwitch = (g: { title: string; lines: TabLine[] }) => !g.title ? -1 : g.lines.findIndex((l) => l.options.length === 1 && !l.index_labels && !l.indexed_columns
   && OPTIONS[splitKey(l.options[0])[0]]?.type === 'bool' && groupName(l.label ?? OPTIONS[splitKey(l.options[0])[0]]?.label ?? '') === groupName(g.title));
 
@@ -37,9 +43,12 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
+
   sources?: Record<string, SettingSource>; sourceText?: Record<string, string>; resetToBase?(key: string): void }
+
 export interface Aux { label: string; icon?: string; content: React.ReactNode; modified?: boolean; initial?: boolean }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overrides, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields;
+
   overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: Aux | Aux[] }) {
   const { desc, error } = useTab(TAB_OF[type]);
   const [retrying, setRetrying] = useState(false);
@@ -62,6 +71,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const projectMode = useStore(effectiveMode);
   const uiMode = editor?.mode ?? projectMode;
   const projectDirty = useStore((s) => presetEdits(s, type, slot));
+
   const fields = editor ?? overrides ?? undefined;
   const dirty = fields?.changes ?? projectDirty;
   const presetName = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]));
@@ -69,6 +79,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const machines = useStore(s => s.machines), processes = useStore(s => s.processes), filaments = useStore(s => s.filaments);
   const projectConfig = useStore(s => effectiveConfig(s, type, slot));
   const config = fields?.config ?? projectConfig;
+
+
   const unedited = useMemo(() => {
     const s = getState();
     return effectiveConfig(type === 'filament' ? {...s, filamentEdits: {...s.filamentEdits, [presetName ?? '']: {}}} : {...s, dirty: {...s.dirty, [type]: {}}}, type, slot);
@@ -98,10 +110,12 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
     const key = splitKey(k)[0], rank = lineMode(line, k);
     return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (overrides ? overrides.keys.has(key) : type !== 'process' || !TOP_METHOD_KEYS.has(key)) && isMethodSettingSupported(key,config,availability);
   };
+
   const focusKey = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus.key : null));
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
     .map((p) => ({ ...p, groups: p.groups.filter((g) => !g.condition || condition(g.condition, env) !== false)
       .map((g) => ({ ...g, lines: g.lines.filter((line) =>
+
         line.options.some((k) => splitKey(k)[0] === focusKey) || !line.options.some((k) => states[splitKey(k)[0]]?.visible === false) && !(line.options.length && line.options.every((k) => states[splitKey(k)[0]]?.enabled === false)))
         .map((line) => ({ ...line, options: line.options.filter((k) => fieldVisible(k, line)) }))
         .filter((line, _, all) => line.options.length || (customRow(line) && all.some((l) => l.options.includes('nonplanar_head')))) }))
@@ -120,19 +134,28 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
     if (same) return prior;
     definitionCache.current.set(key, next); return next;
   };
+
   const groupsVersion = useSettingsGroups();
   const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
+
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
+
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const strip = useRef<HTMLDivElement>(null);
   const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxes.map((a) => a.label).join('|')}`);
+
   const openByDefault = !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100;
   const body = useRef<HTMLDivElement>(null);
   const labelWidths = useRef<{ flow: Element | null; byKey: Map<string, number> }>({ flow: null, byKey: new Map() });
+
   const rowKeys = groups.flatMap((g) => g.lines.flatMap((l) => l.options)).join(',');
+
+
   useLayoutEffect(() => {
     const flow = editor ? body.current?.querySelector<HTMLElement>('.page-flow') : null;
     if (!flow) return;
+
+
     const cache = labelWidths.current;
     if (cache.flow !== flow) { cache.flow = flow; cache.byKey.clear(); }
     const natural = (l: Element, extra: number) => {
@@ -141,6 +164,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
       if (w === undefined) { w = [...l.children].reduce((n, c) => n + (c as HTMLElement).scrollWidth, 0) + extra; cache.byKey.set(id, w); }
       return w;
     };
+
     const widest = Math.max(0, ...[...flow.querySelectorAll('.opt-line:not(.full) > .opt-label')].map((l) => natural(l, 0)), ...[...flow.querySelectorAll('.option-row > .opt-label')].map((l) => natural(l, 80)));
     flow.style.setProperty('--label-w', `${Math.min(240, Math.ceil(widest) + 4)}px`);
   }, [!!editor, rowKeys, auxiliaryOn, groupsVersion]);
@@ -150,6 +174,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
     if (i >= 0) setPageIdx(i);
     const holder = pages[i]?.groups.find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === focus.key)));
     if (holder) setGroupOpen(groupId(pages[i].title, holder.title), true);
+
     let tries = 0, timer: ReturnType<typeof setTimeout>;
     const reveal = () => {
       const line = body.current?.querySelector<HTMLElement>(`[data-opt="${CSS.escape(focus.key)}"]`);
@@ -187,6 +212,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && !overrides && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {groups.map((g) => {
+
           const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id, openByDefault);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
@@ -207,6 +233,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               hideLabel={hide || g.lines.length === 1 && keys.length === 1 && !!OPTIONS[key]?.multiline && (line.label ?? OPTIONS[key]?.label ?? '').trim().toLowerCase() === g.title.trim().toLowerCase()}
               tooltip={tooltip} />;
           };
+
           const own = groupSwitch(g), ownLine = own >= 0 ? g.lines[own] : undefined, fixed = !!ownLine && g.lines.length === 1;
           return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''} data-single={single ? '' : undefined}>
             {g.title && !single && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open || fixed} fixed={fixed} aside={ownLine && field(ownLine, ownLine.options, ownLine.options[0], 0, undefined, false, ownLine.tooltip && OPTIONS[ownLine.tooltip] ? OPTIONS[ownLine.tooltip].tooltip : ownLine.tooltip, true)} />}
@@ -216,6 +243,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               let labels = line.index_labels;
               if (labels) keys = keys.flatMap((k) => labels!.map((_, i) => `${splitKey(k)[0]}#${i}`));
               if (line.indexed_columns) {
+
                 labels = env.silent_mode ? ['Normal', 'Silent'] : undefined;
                 keys = keys.flatMap((k) => (labels ?? ['']).map((_, i) => `${splitKey(k)[0]}#${i}`));
               }
@@ -224,6 +252,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
                 <span className="opt-field"><Suspense fallback={null}><HeadShapeButton head={String(config.nonplanar_head ?? '')} layerHeight={Number(effectiveConfig(getState(), 'process').layer_height) || 0.2} onSaved={editor ? id => editor.set('nonplanar_head', id) : undefined} /></Suspense></span>
               </div>;
               const shared = keys.length > 1;
+
               const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
               const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>

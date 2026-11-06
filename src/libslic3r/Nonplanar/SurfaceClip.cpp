@@ -36,6 +36,7 @@ struct MaxOp
     static float apply(float a, float b) { return a > b ? a : b; }
 };
 
+
 struct KernelBox
 {
     int   i0 = 0, i1 = 0, j0 = 0, j1 = 0;
@@ -48,11 +49,15 @@ struct KernelBox
     }
 };
 
+
+
+
 std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool apply_allowance)
 {
     constexpr double       eps = 1e-6;
     std::vector<KernelBox> out;
     auto offset = [](double value) {
+
         const double limit = std::numeric_limits<int>::max();
         if (!std::isfinite(value) || value < -limit || value > limit)
             throw RuntimeError("Head envelope reach is too large for the non-planar grid. Check the head dimensions or increase the grid spacing.");
@@ -82,6 +87,7 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
         if (!std::isfinite(height) || std::abs(height) > std::numeric_limits<float>::max())
             throw RuntimeError("Head envelope clearance height is too large. Check the head dimensions and margin.");
         k.z = float(height);
+
         auto it = std::find_if(out.begin(), out.end(), [&k](const KernelBox &o) { return o.same_window(k); });
         if (it == out.end())
             out.emplace_back(k);
@@ -90,6 +96,10 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
     }
     return out;
 }
+
+
+
+
 
 template<class Op>
 void sliding_lines(const float *in, int n, int lanes, int a, int b, float *out, std::vector<float> &g, std::vector<float> &h)
@@ -119,6 +129,8 @@ void sliding_lines(const float *in, int n, int lanes, int a, int b, float *out, 
             out[size_t(k) * lanes + l] = Op::apply(h[size_t(k) * lanes + l], g[size_t(k + w - 1) * lanes + l]);
 }
 
+
+
 template<class Op>
 std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, int a, int b, bool inf_x, int c, int d, bool inf_y)
 {
@@ -127,6 +139,7 @@ std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, in
         c = -(ny - 1), d = ny - 1;
     if (inf_x)
         a = -(nx - 1), b = nx - 1;
+
     constexpr int block = 64;
     tbb::parallel_for(tbb::blocked_range<int>(0, int((int64_t(nx) + block - 1) / block)), [&](const tbb::blocked_range<int> &range) {
         std::vector<float> lane_in, lane_out, g, h;
@@ -141,6 +154,7 @@ std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, in
                 std::copy_n(&lane_out[size_t(y) * lanes], lanes, &tmp[size_t(y) * nx + x0]);
         }
     });
+
     tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
         std::vector<float> g, h;
         for (int y = range.begin(); y < range.end(); ++y)
@@ -149,13 +163,16 @@ std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, in
     return out;
 }
 
+
 bool minorant_pass(std::vector<float> &cur, int nx, int ny, const std::vector<KernelBox> &boxes)
 {
     bool changed = false;
     for (const KernelBox &k : boxes) {
         std::vector<float> src(cur.size());
         std::transform(cur.begin(), cur.end(), src.begin(), [](float v) { return std::isnan(v) ? FInf : v; });
+
         const std::vector<float> w = rect_sliding<MinOp>(src, nx, ny, -k.i1, -k.i0, k.inf_x, -k.j1, -k.j0, k.inf_y);
+
         const bool  self = (k.inf_x || (k.i0 <= 0 && 0 <= k.i1)) && (k.inf_y || (k.j0 <= 0 && 0 <= k.j1));
         const float z    = self ? std::max(k.z, 0.f) : k.z;
         for (size_t i = 0; i < cur.size(); ++i)
@@ -192,6 +209,8 @@ HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope 
     if (like.empty())
         return out;
     const double pitch = like.pitch();
+
+
     int ox = 0, oy = 0, nx = like.nx(), ny = like.ny();
     if (!material.empty()) {
         const Vec2d off = (material.origin() - like.origin()) / pitch;
@@ -214,6 +233,7 @@ HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope 
     }
     std::vector<float> best(src.size(), -FInf);
     for (const KernelBox &k : kernel_boxes(head, pitch, apply_tip_allowance)) {
+
         const std::vector<float> w = rect_sliding<MaxOp>(src, nx, ny, k.i0, k.i1, k.inf_x, k.j0, k.j1, k.inf_y);
         for (size_t i = 0; i < best.size(); ++i)
             best[i] = std::max(best[i], w[i] - k.z);
@@ -231,8 +251,12 @@ HeightField slope_cap_minorant(const HeightField &S, double max_slope)
     HeightField out = S;
     if (S.empty() || max_slope >= 0.5 * PI)
         return out;
+
+
+
     const double t     = std::tan(std::max(0., max_slope)) * std::cos(0.5 * std::atan(0.5));
     const int    nx    = S.nx(), ny = S.ny();
+
     static const int steps[][2] = { { -1, 0 }, { -1, -1 }, { 0, -1 }, { 1, -1 }, { -2, -1 }, { -1, -2 }, { 1, -2 }, { 2, -1 } };
     float            weight[8];
     for (int s = 0; s < 8; ++s)

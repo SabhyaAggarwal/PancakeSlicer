@@ -20,16 +20,34 @@
 
 namespace Slic3r {
 
+
 template <typename T> int sgn(T val) {
   return (T(0) < val) - (val < T(0));
 }
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 static coordf_t triWave(coordf_t pos, coordf_t gridSize)
 {
   float t = (pos / (gridSize * 2.)) + 0.25;
   t = t - (int)t;
   return((1. - abs(t * 8. - 4.)) * (gridSize / 4.) + (gridSize / 4.));
 }
+
+
+
+
 
 static coordf_t troctWave(coordf_t pos, coordf_t gridSize, coordf_t Zpos)
 {
@@ -40,6 +58,20 @@ static coordf_t troctWave(coordf_t pos, coordf_t gridSize, coordf_t Zpos)
 	 (sgn(y) * perpOffset) :
 	 (y * sgn(perpOffset)));
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
  static std::vector<coordf_t> getCriticalPoints(coordf_t Zpos, coordf_t gridSize)
 {
@@ -54,6 +86,8 @@ static coordf_t troctWave(coordf_t pos, coordf_t gridSize, coordf_t Zpos)
   }
   return(res);
 }
+
+
 
 static Polylines addTops(coordf_t Zpos, coordf_t gridSize, coordf_t lengthX, coordf_t lengthY, coordf_t spacing,
                          size_t multiline_count, size_t topDistance)
@@ -72,20 +106,26 @@ static Polylines addTops(coordf_t Zpos, coordf_t gridSize, coordf_t lengthX, coo
   coordf_t gridStartL = gridSize * 0.5 - topOffset;
   coordf_t gridEndL = gridSize * 0.5 + topOffset;
   if((topDistance == 0) && (multiline_count == 1)){
+
     gridStartL -= spacing;
     gridEndL += spacing;
   } else if(multiline_count > 1) {
+
     gridStartL -= spacing * multiline_count * multilineAdjust;
     gridEndL += spacing * multiline_count * multilineAdjust;
   }
+
   coordf_t gridStartP = gridSize * 0.5 - topOffset + spacing * multiline_count / 2. + spacing / 2.;
   coordf_t gridEndP = gridSize * 0.5 + topOffset - spacing * multiline_count / 2. - spacing / 2.;
   coordf_t x, y;
   int xm, ym;
+
   if((topDistance % 2) == 0){
     std::swap(gridStartL, gridStartP);
     std::swap(gridEndL, gridEndP);
   }
+
+
   coordf_t region_count = floor((gridEndP - gridStartP) / (spacing / sqrt(2)));
   if(region_count <= 0){
     return lines;
@@ -96,6 +136,10 @@ static Polylines addTops(coordf_t Zpos, coordf_t gridSize, coordf_t lengthX, coo
       if(((xm ^ ym) == 1) == printVert){
         continue;
       }
+
+
+
+
       Polyline newPoints;
       int dirMod = xm ^ ym;
       if(printVert == (topDistance % 2)){
@@ -125,6 +169,8 @@ static Polylines addTops(coordf_t Zpos, coordf_t gridSize, coordf_t lengthX, coo
   return lines;
 }
 
+
+
 static Polylines makeEndPoints(const coordf_t Zpos, coordf_t gridSize, std::vector<coordf_t> critPoints,
                                coordf_t lengthX, coordf_t lengthY, coordf_t spacing, size_t multiline_count)
 {
@@ -133,12 +179,15 @@ static Polylines makeEndPoints(const coordf_t Zpos, coordf_t gridSize, std::vect
   bool printVert = zCycle < 0.5;
   bool printHoriz = zCycle >= 0.5;
   int zFlipOffset = ((sgn(fmod(zCycle, 0.5) - 0.25) > 0) == printVert) ? 0 : 1;
+
   Polylines startLines, endLines;
   for(size_t li = 0; li < multiline_count; li++){
     coordf_t oAdj = (li - ((multiline_count - 1) / 2.)) * spacing;
     coordf_t dAdj = oAdj * sqrt(2);
     Polyline startLine, endLine;
+
     startLine.points.push_back(printHoriz ? Point(oAdj, -dAdj) : Point(-dAdj, oAdj));
+
     endLine.points.push_back(printHoriz ? Point(-oAdj, -dAdj) : Point(-dAdj, -oAdj));
     for(size_t pi = 0; pi < 2; pi++){
       int pDir = pi * 2 - 1;
@@ -151,7 +200,9 @@ static Polylines makeEndPoints(const coordf_t Zpos, coordf_t gridSize, std::vect
                                Point(troctOffset, critPoints[pi] + pAdj) :
                                Point(critPoints[pi] + pAdj,  troctOffset));
     }
+
     startLine.points.push_back(printHoriz ? Point(oAdj, gridSize + dAdj) : Point(gridSize + dAdj, oAdj));
+
     endLine.points.push_back(printHoriz ? Point(-oAdj, gridSize + dAdj) : Point(gridSize + dAdj, -oAdj));
     startLines.push_back(startLine);
     endLines.push_back(endLine);
@@ -171,6 +222,9 @@ static Polylines makeEndPoints(const coordf_t Zpos, coordf_t gridSize, std::vect
   }
   return lines;
 }
+
+
+
 
 static Polyline patternPoints(const coordf_t Zpos, coordf_t gridSize, std::vector<coordf_t> critPoints,
                               coordf_t gridLength, coordf_t perpDir, int print_dir, coordf_t oAdj)
@@ -201,6 +255,8 @@ static Polyline patternPoints(const coordf_t Zpos, coordf_t gridSize, std::vecto
   return line;
 }
 
+
+
   static Polylines makeZigZag(coordf_t Zpos, coordf_t gridSize, coordf_t lengthX, coordf_t lengthY,
                               coordf_t spacing, size_t multiline_count)
 {
@@ -230,6 +286,13 @@ static Polyline patternPoints(const coordf_t Zpos, coordf_t gridSize, std::vecto
   return lines;
 }
 
+
+
+
+
+
+
+
 static Polylines makeGrid(coordf_t z, coordf_t zLast, coordf_t gridSize,
                           coordf_t lengthX, coordf_t lengthY,
                           bool completeTops, coordf_t spacing, size_t multiline_count, size_t layer_count)
@@ -241,9 +304,11 @@ static Polylines makeGrid(coordf_t z, coordf_t zLast, coordf_t gridSize,
   Polylines result;
   Polylines polyZag = makeZigZag(z, gridSize, lengthX, lengthY, spacing, multiline_count);
   result.insert(result.end(), polyZag.begin(), polyZag.end());
+
   std::vector<coordf_t> critPoints = getCriticalPoints(z, gridSize);
   Polylines endPoints = makeEndPoints(z, gridSize, critPoints, lengthX, lengthY, spacing, multiline_count);
   result.insert(result.end(), endPoints.begin(), endPoints.end());
+
   if(completeTops && (printVert != printVertLast)){
     coordf_t layerHeight = (z - zLast) / (multiline_count * layer_count);
     size_t top_distance = 0;
@@ -259,6 +324,15 @@ static Polylines makeGrid(coordf_t z, coordf_t zLast, coordf_t gridSize,
   return result;
 }
 
+
+
+
+
+
+
+
+
+
 void Fill3DHoneycomb::_fill_surface_single(
     const FillParams                &params,
     unsigned int                     thickness_layers,
@@ -266,33 +340,53 @@ void Fill3DHoneycomb::_fill_surface_single(
     ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
+
     auto infill_angle   = float(this->angle);
     if (std::abs(infill_angle) >= EPSILON) expolygon.rotate(-infill_angle);
     BoundingBox bb = expolygon.contour.bounding_box();
 
+
     coord_t expandSize = 5. * scale_(this->spacing);
     bb.offset(expandSize);
+
 
     size_t layersPerSlice = 1;
     if(thickness_layers > 0){
       layersPerSlice = thickness_layers;
     }
 
+
+
     coordf_t zScale = sqrt(2);
+
+
+
+
+
+
+
 
     coordf_t gridSize = (scale_(this->spacing) *
                          ((zScale + 1.) / 2.) * params.multiline  / params.density);
     coordf_t layerHeight = scale_(params.layer_height);
     coordf_t layersPerModule = floor((gridSize * 2) / (zScale * layerHeight) + 0.05);
+
     if((params.density > 0.42) || (layersPerModule < 2)){
       layersPerModule = 2;
+
+
       gridSize = (scale_(this->spacing) * 1.1 * params.multiline  / params.density);
+
       zScale = (gridSize * 2) / (layersPerModule * layerHeight);
     }
 
+
+
     bb.merge(align_to_grid(bb.min, Point(gridSize * 2., gridSize * 2.)));
 
+
     coordf_t startOffset = gridSize / 2. + scale_(params.layer_height / 2.);
+
     Polylines polylines =
       makeGrid(
 	       scale_(this->z) * zScale + startOffset,
@@ -303,27 +397,39 @@ void Fill3DHoneycomb::_fill_surface_single(
                params.multiline,
                layersPerSlice);
 
+
     for (Polyline &pl : polylines){
       pl.translate(bb.min);
       pl.simplify(5 * spacing);
+
+
       smooth_polyline_corners(pl, params.smooth_factor, scaled<double>(params.resolution));
     }
+
+
+
+
 
     polylines = intersection_pl(std::move(polylines), to_polygons(expolygon));
 
     if (! polylines.empty()) {
+
+
     const double minlength = scale_(0.8 * this->spacing);
     polylines.erase(
 	std::remove_if(polylines.begin(), polylines.end(), [minlength](const Polyline &pl) { return pl.length() < minlength; }),
 	polylines.end());
     }
 
+
     if (!polylines.empty()) {
         int infill_start_idx = polylines_out.size();
+
         chain_or_connect_infill(std::move(polylines), expolygon, polylines_out, this->spacing, params);
 
+
         if (std::abs(infill_angle) >= EPSILON) {
-          for (auto it = polylines_out.begin() + infill_start_idx; it != polylines_out.end(); ++it) 
+          for (auto it = polylines_out.begin() + infill_start_idx; it != polylines_out.end(); ++it)
             it->rotate(infill_angle);
         }
     }

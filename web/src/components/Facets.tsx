@@ -2,6 +2,8 @@ import { useId, useState } from 'react';
 import { Check } from './Check';
 export interface FacetOption { value: string; label: string; count?: number }
 const SHOWN = 6;
+
+
 export function FacetGroup({ label, options, value, onChange }: { label: string; options: FacetOption[]; value: string[]; onChange(value: string[]): void }) {
   const [expanded, setExpanded] = useState(false), [query, setQuery] = useState('');
   const id = useId();
@@ -20,6 +22,7 @@ export function FacetGroup({ label, options, value, onChange }: { label: string;
     </>}
   </div>;
 }
+
 export function FacetsHead({ active, onClear }: { active: number; onClear(): void }) {
   return <div className="facets-head"><span>{active ? `${active} filter${active > 1 ? 's' : ''}` : 'Filters'}</span>{active > 0 && <button type="button" className="more-toggle" onClick={onClear}>Clear</button>}</div>;
 }

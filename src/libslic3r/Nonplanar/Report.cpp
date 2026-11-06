@@ -44,6 +44,7 @@ const char *pattern_name(NonplanarTopPattern pattern)
 
 bool is_underside(const std::string &reason) { return reason == "bottom" || boost::starts_with(reason, "overhang"); }
 
+
 float surface_z(const HeightField &surface, const Vec2d &p)
 {
     if (const float z = surface.sample(p); !std::isnan(z))
@@ -74,6 +75,10 @@ struct ReasonInfo
     const char *cls;
     const char *text;
 };
+
+
+
+
 const std::map<std::string, ReasonInfo> &reasons()
 {
     static const std::map<std::string, ReasonInfo> map{
@@ -134,6 +139,7 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
     shape = opening_ex(shape, float(scale_(0.05)));
     if (shape.empty() || surface.empty())
         return;
+
     const BoundingBox bb   = get_extents(shape);
     const coord_t     step = scaled<coord_t>(1.5);
     Polylines         lines;
@@ -151,6 +157,7 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
                 diag.fallback_hatch.emplace_back(std::move(draped));
             draped.clear();
         };
+
         auto add = [&](const Vec2d &p) {
             const float z = surface_z(surface, p);
             if (std::isnan(z) || (!draped.empty() && std::abs(z - draped.back().z()) > 2. * sample))
@@ -174,6 +181,7 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
 NonplanarReport make_report(const Print &print, const GCodeProcessorResult &result, bool planar_too)
 {
     NonplanarReport report;
+
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
             return object->config().nonplanar_mode.value != NonplanarMode::CurvedTops && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
                    (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
@@ -411,6 +419,8 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
         objects_json.push_back(std::move(jo));
     }
     j["objects"] = std::move(objects_json);
+
+
     return j.dump(1, ' ', false, json::error_handler_t::replace);
 }
 

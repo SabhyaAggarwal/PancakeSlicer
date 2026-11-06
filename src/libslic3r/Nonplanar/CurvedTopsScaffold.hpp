@@ -8,6 +8,9 @@
 
 namespace Slic3r::Nonplanar {
 
+
+
+
 struct CurvedTopsScaffold {
     struct Region {
         LayerRegion *region;

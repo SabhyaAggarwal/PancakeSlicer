@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { logNotice, useStore } from '../state/store';
 import './notices.css';
 
+
 export function NoticeLog() {
   const entries = useStore((s) => s.noticeLog);
   const projectNotice = useStore((s) => s.projectNotice);

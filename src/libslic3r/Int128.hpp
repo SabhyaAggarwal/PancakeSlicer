@@ -39,14 +39,14 @@
 
 #ifndef SLIC3R_INT128_HPP
 #define SLIC3R_INT128_HPP
-// #define SLIC3R_DEBUG
 
-// Make assert active if SLIC3R_DEBUG
+
+
 #ifdef SLIC3R_DEBUG
     #undef NDEBUG
     #define DEBUG
     #define _DEBUG
-    #undef assert 
+    #undef assert
 #endif
 
 #include <cassert>
@@ -62,19 +62,19 @@
 	#pragma intrinsic(_mul128)
 #endif
 
-//------------------------------------------------------------------------------
-// Int128 class (enables safe math on signed 64bit integers)
-// eg Int128 val1((int64_t)9223372036854775807); //ie 2^63 -1
-//    Int128 val2((int64_t)9223372036854775807);
-//    Int128 val3 = val1 * val2;
-//------------------------------------------------------------------------------
+
+
+
+
+
+
 
 class Int128
 {
 
 #ifdef HAS_INTRINSIC_128_TYPE
 
-/******************************************** Using the intrinsic 128bit x 128bit multiply ************************************************/
+
 
 public:
 	__int128 value;
@@ -105,14 +105,14 @@ public:
 
 	static inline Int128 multiply(int64_t lhs, int64_t rhs) { return Int128(__int128(lhs) * __int128(rhs)); }
 
-	// Evaluate signum of a 2x2 determinant.
+
 	static int sign_determinant_2x2(int64_t a11, int64_t a12, int64_t a21, int64_t a22)
 	{
 		__int128 det = __int128(a11) * __int128(a22) - __int128(a12) * __int128(a21);
 		return (det > 0) - (det < 0);
 	}
 
-	// Compare two rational numbers.
+
 	static int compare_rationals(int64_t p1, int64_t q1, int64_t p2, int64_t q2)
 	{
 		int invert = ((q1 < 0) == (q2 < 0)) ? 1 : -1;
@@ -120,9 +120,9 @@ public:
 		return ((det > 0) - (det < 0)) * invert;
 	}
 
-#else /* HAS_INTRINSIC_128_TYPE */
+#else
 
-/******************************************** Splitting the 128bit number into two 64bit words *********************************************/
+
 
 	Int128(int64_t lo = 0) : m_lo((uint64_t)lo), m_hi((lo < 0) ? -1 : 0) {}
 	Int128(const int64_t& hi, const uint64_t& lo) : m_lo(lo), m_hi(hi) {}
@@ -177,9 +177,9 @@ public:
 
 	operator double() const
 	{
-		const double shift64 = 18446744073709551616.0; //2^64
+		const double shift64 = 18446744073709551616.0;
 		return (m_hi < 0) ?
-		((m_lo == 0) ? 
+		((m_lo == 0) ?
 		(double)m_hi * shift64 :
 		-(double)(~m_lo + ~m_hi * shift64)) :
 		(double)(m_lo + m_hi * shift64);
@@ -188,15 +188,15 @@ public:
 	static inline Int128 multiply(int64_t lhs, int64_t rhs)
 	{
 #if defined(_MSC_VER) && defined(_M_X64)
-		// On Visual Studio x64, use the _mul128() intrinsic function.
-		// (ARM64 MSVC has no _mul128; it falls through to the portable path.)
+
+
 		Int128 result;
 	    result.m_lo = (uint64_t)_mul128(lhs, rhs, &result.m_hi);
 	    return result;
 #else
-	    // This branch should only be executed in case there is neither __int16 type nor _mul128 intrinsic
-	    // function available. This is mostly on 32bit operating systems.
-	    // Use a pure C implementation of _mul128().
+
+
+
 
 		int negate = (lhs < 0) != (rhs < 0);
 
@@ -210,33 +210,33 @@ public:
 		uint64_t int2Hi = uint64_t(rhs) >> 32;
 		uint64_t int2Lo = uint64_t(rhs & 0xFFFFFFFF);
 
-		//because the high (sign) bits in both int1Hi & int2Hi have been zeroed,
-		//there's no risk of 64 bit overflow in the following assignment
-		//(ie: $7FFFFFFF*$FFFFFFFF + $7FFFFFFF*$FFFFFFFF < 64bits)
+
+
+
 		uint64_t a = int1Hi * int2Hi;
 		uint64_t b = int1Lo * int2Lo;
-		//Result = A shl 64 + C shl 32 + B ...
+
 		uint64_t c = int1Hi * int2Lo + int1Lo * int2Hi;
 
 		Int128 tmp;
 		tmp.m_hi = int64_t(a + (c >> 32));
 		tmp.m_lo = int64_t(c << 32);
 		tmp.m_lo += int64_t(b);
-		if (tmp.m_lo < b) 
+		if (tmp.m_lo < b)
 			++ tmp.m_hi;
-		if (negate) 
+		if (negate)
 			tmp = - tmp;
 		return tmp;
 #endif
 	}
 
-	// Evaluate signum of a 2x2 determinant.
+
 	static int sign_determinant_2x2(int64_t a11, int64_t a12, int64_t a21, int64_t a22)
 	{
 		return (Int128::multiply(a11, a22) - Int128::multiply(a12, a21)).sign();
 	}
 
-	// Compare two rational numbers.
+
 	static int compare_rationals(int64_t p1, int64_t q1, int64_t p2, int64_t q2)
 	{
 		int invert = ((q1 < 0) == (q2 < 0)) ? 1 : -1;
@@ -249,25 +249,25 @@ private:
 	int64_t  m_hi;
 
 
-#endif /* HAS_INTRINSIC_128_TYPE */
+#endif
 
 
-/******************************************** Common methods ************************************************/
+
 
 public:
 
-	// Evaluate signum of a 2x2 determinant, use a numeric filter to avoid 128 bit multiply if possible.
+
 	static int sign_determinant_2x2_filtered(int64_t a11, int64_t a12, int64_t a21, int64_t a22)
 	{
-		// First try to calculate the determinant over the upper 31 bits.
-		// Round p1, p2, q1, q2 to 31 bits.
+
+
 		int64_t a11s = (a11 + (1 << 31)) >> 32;
 		int64_t a12s = (a12 + (1 << 31)) >> 32;
 		int64_t a21s = (a21 + (1 << 31)) >> 32;
 		int64_t a22s = (a22 + (1 << 31)) >> 32;
-		// Result fits 63 bits, it is an approximate of the determinant divided by 2^64.
+
 		int64_t det  = a11s * a22s - a12s * a21s;
-		// Maximum absolute of the remainder of the exact determinant, divided by 2^64.
+
 		int64_t err  = ((std::abs(a11s) + std::abs(a12s) + std::abs(a21s) + std::abs(a22s)) << 1) + 1;
 		assert(std::abs(det) <= err || ((det > 0) ? 1 : -1) == sign_determinant_2x2(a11, a12, a21, a22));
 		return (std::abs(det) > err) ?
@@ -275,20 +275,20 @@ public:
 			sign_determinant_2x2(a11, a12, a21, a22);
 	}
 
-	// Compare two rational numbers, use a numeric filter to avoid 128 bit multiply if possible.
+
 	static int compare_rationals_filtered(int64_t p1, int64_t q1, int64_t p2, int64_t q2)
 	{
-		// First try to calculate the determinant over the upper 31 bits.
-		// Round p1, p2, q1, q2 to 31 bits.
+
+
 		int     invert = ((q1 < 0) == (q2 < 0)) ? 1 : -1;
 		int64_t q1s = (q1 + (1 << 31)) >> 32;
 		int64_t q2s = (q2 + (1 << 31)) >> 32;
 		if (q1s != 0 && q2s != 0) {
 			int64_t p1s = (p1 + (1 << 31)) >> 32;
 			int64_t p2s = (p2 + (1 << 31)) >> 32;
-			// Result fits 63 bits, it is an approximate of the determinant divided by 2^64.
+
 			int64_t det = p1s * q2s - p2s * q1s;
-			// Maximum absolute of the remainder of the exact determinant, divided by 2^64.
+
 			int64_t err = ((std::abs(p1s) + std::abs(q1s) + std::abs(p2s) + std::abs(q2s)) << 1) + 1;
 			assert(std::abs(det) <= err || ((det > 0) ? 1 : -1) * invert == compare_rationals(p1, q1, p2, q2));
 			if (std::abs(det) > err)
@@ -298,4 +298,4 @@ public:
 	}
 };
 
-#endif // SLIC3R_INT128_HPP
+#endif

@@ -1,3 +1,5 @@
+
+
 const CAPACITY = 128;
 type Operation = 'store' | 'history' | 'preview-chunk';
 type Region = 'plater' | 'preview' | 'settings' | 'picker' | 'picker-row' | 'manager';
@@ -56,6 +58,7 @@ const start = (milliseconds = 10_000) => {
   timeout = setTimeout(stop, duration);
 };
 const noop = () => {};
+
 export function timeInteraction(name: Operation): () => void {
   if (!enabled) return noop;
   const at = performance.now(), session = started;

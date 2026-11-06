@@ -11,6 +11,7 @@
 
 namespace Slic3r {
 
+
 template<class EP> struct IsExecutionPolicy_ : public std::false_type {};
 
 template<class EP> constexpr bool IsExecutionPolicy =
@@ -21,12 +22,17 @@ using ExecutionPolicyOnly = std::enable_if_t<IsExecutionPolicy<EP>, T>;
 
 namespace execution {
 
+
+
 template<class EP, class En = void> struct Traits {};
 
 template<class EP> using AsTraits = Traits<remove_cvref_t<EP>>;
 
+
+
 template<class EP> using SpinningMutex = typename Traits<EP>::SpinningMutex;
 template<class EP> using BlockingMutex = typename Traits<EP>::BlockingMutex;
+
 
 template<class EP, class = ExecutionPolicyOnly<EP> >
 size_t max_concurrency(const EP &ep)
@@ -34,11 +40,17 @@ size_t max_concurrency(const EP &ep)
     return AsTraits<EP>::max_concurrency(ep);
 }
 
+
+
 template<class EP, class It, class Fn, class = ExecutionPolicyOnly<EP>>
 void for_each(const EP &ep, It from, It to, Fn &&fn, size_t granularity = 1)
 {
     AsTraits<EP>::for_each(ep, from, to, std::forward<Fn>(fn), granularity);
 }
+
+
+
+
 
 template<class EP,
          class I,
@@ -59,6 +71,8 @@ T reduce(const EP & ep,
                                 std::forward<AccessFn>(accessfn),
                                 granularity);
 }
+
+
 
 template<class EP,
          class I,

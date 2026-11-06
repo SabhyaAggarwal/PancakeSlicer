@@ -24,6 +24,7 @@ public:
     float x = 0, y = 0, z = 0, e = 0;
     float dx = 0, dy = 0, dz = 0, de = 0;
     BufferData(std::string line, float time = 0, int16_t fan_speed = 0, float is_kickstart = false) : raw(line), time(time), fan_speed(fan_speed), is_kickstart(is_kickstart){
+
         if(!line.empty() && line.back() == '\n') line.pop_back();
     }
 };
@@ -33,6 +34,7 @@ class FanMover
 private:
     const std::regex regex_fan_speed;
     const float nb_seconds_delay;
+
     [[maybe_unused]] const bool with_D_option;
     const bool relative_e;
     const bool only_overhangs;
@@ -41,29 +43,35 @@ private:
     GCodeReader m_parser{};
     const GCodeWriter& m_writer;
 
+
     ExtrusionRole current_role = ExtrusionRole::erCustom;
+
     double m_current_speed = 1000 / 60.0;
     bool m_is_custom_gcode = false;
     uint16_t m_currrent_extruder = 0;
+
 
     int m_front_buffer_fan_speed = 0;
     int m_back_buffer_fan_speed = 0;
     BufferData m_current_kickstart{"",-1,0};
 
+
     std::list<BufferData> m_buffer;
     double m_buffer_time_size = 0;
+
 
     std::string m_process_output;
 
 public:
     FanMover(const GCodeWriter& writer, const float nb_seconds_delay, const bool with_D_option, const bool relative_e,
         const bool only_overhangs, const float kickstart)
-        : regex_fan_speed("S[0-9]+"), 
+        : regex_fan_speed("S[0-9]+"),
         nb_seconds_delay(nb_seconds_delay>0 ? std::max(0.01f,nb_seconds_delay) : 0),
         with_D_option(with_D_option)
         , relative_e(relative_e), only_overhangs(only_overhangs), kickstart(kickstart), m_writer(writer){
         m_parser.apply_config(writer.config);
     }
+
 
     const std::string& process_gcode(const std::string& gcode, bool flush);
 
@@ -77,6 +85,7 @@ private:
         m_buffer_time_size -= data->time;
         return m_buffer.erase(data);
     }
+
     void _process_gcode_line(GCodeReader& reader, const GCodeReader::GCodeLine& line);
     void _process_T(const std::string_view command);
     void _put_in_middle_G1(std::list<BufferData>::iterator item_to_split, float nb_sec, BufferData&& line_to_write);

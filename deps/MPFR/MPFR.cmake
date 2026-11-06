@@ -3,7 +3,7 @@ set(_srcdir ${CMAKE_CURRENT_LIST_DIR}/mpfr)
 if (MSVC)
     set(_output  ${DESTDIR}/include/mpfr.h
                  ${DESTDIR}/include/mpf2mpfr.h
-                 ${DESTDIR}/lib/libmpfr-4.lib 
+                 ${DESTDIR}/lib/libmpfr-4.lib
                  ${DESTDIR}/bin/libmpfr-4.dll)
 
     add_custom_command(
@@ -20,7 +20,7 @@ else ()
 
     set(_cross_compile_arg "")
     if (CMAKE_CROSSCOMPILING)
-        # TOOLCHAIN_PREFIX should be defined in the toolchain file
+
         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
     endif ()
 
@@ -30,7 +30,7 @@ else ()
         URL_HASH SHA256=9ad62c7dc910303cd384ff8f1f4767a655124980bb6d8650fe62c815a231bb7b
         DOWNLOAD_DIR ${DEP_DOWNLOAD_DIR}/MPFR
         BUILD_IN_SOURCE ON
-        CONFIGURE_COMMAND autoreconf -f -i && 
+        CONFIGURE_COMMAND autoreconf -f -i &&
                           env "CC=${CMAKE_C_COMPILER}" "CXX=${CMAKE_CXX_COMPILER}" "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" "LDFLAGS=${CMAKE_EXE_LINKER_FLAGS}" ./configure ${_cross_compile_arg} --prefix=${DESTDIR} --enable-shared=no --enable-static=yes --with-gmp=${DESTDIR} ${_gmp_build_tgt}
         BUILD_COMMAND make -j
         INSTALL_COMMAND make install

@@ -29,6 +29,18 @@ std::string WideningBeadingStrategy::toString() const
 
 WideningBeadingStrategy::Beading WideningBeadingStrategy::compute(coord_t thickness, coord_t bead_count) const
 {
+
+
+
+
+
+
+
+
+
+
+
+
     if (bead_count <= 1 && thickness < getTransitionThickness(1)) {
         Beading ret;
         ret.total_thickness = thickness;
@@ -67,7 +79,7 @@ coord_t WideningBeadingStrategy::getOptimalBeadCount(coord_t thickness) const
     return ret;
 }
 
-coord_t WideningBeadingStrategy::getTransitioningLength(coord_t lower_bead_count) const 
+coord_t WideningBeadingStrategy::getTransitioningLength(coord_t lower_bead_count) const
 {
     return parent->getTransitioningLength(lower_bead_count);
 }

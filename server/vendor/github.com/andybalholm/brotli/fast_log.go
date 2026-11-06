@@ -11,16 +11,10 @@ import (
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Utilities for fast computation of logarithms. */
-
 func log2FloorNonZero(n uint) uint32 {
 	return uint32(bits.Len(n)) - 1
 }
 
-/* A lookup table for small values of log2(int) to be used in entropy
-   computation.
-
-   ", ".join(["%.16ff" % x for x in [0.0]+[log2(x) for x in range(1, 256)]]) */
 var kLog2Table = []float32{
 	0.0000000000000000,
 	0.0000000000000000,
@@ -280,7 +274,6 @@ var kLog2Table = []float32{
 	7.9943534368588578,
 }
 
-/* Faster logarithm for small integers, with the property of log2(0) == 0. */
 func fastLog2(v uint) float64 {
 	if v < uint(len(kLog2Table)) {
 		return float64(kLog2Table[v])

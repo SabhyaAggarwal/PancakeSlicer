@@ -29,6 +29,7 @@
 #define DIR_SEPARATOR '/'
 #endif
 
+
 #include "I18N.hpp"
 #define _L(s) Slic3r::I18N::translate(s)
 
@@ -38,6 +39,7 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
 {
     if (meshptr == nullptr)
         return false;
+
     ObjParser::ObjData data;
     ObjParser::MtlData mtl_data;
     if (! ObjParser::objparse(path, data)) {
@@ -78,17 +80,21 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
             }
         }
     }
+
     size_t num_faces = 0;
     size_t num_quads = 0;
     for (size_t i = 0; i < data.vertices.size(); ++ i) {
+
         size_t j = i;
         for (; j < data.vertices.size() && data.vertices[j].coordIdx != -1; ++ j) ;
         if (size_t num_face_vertices = j - i; num_face_vertices > 0) {
             if (num_face_vertices > 4) {
+
                 BOOST_LOG_TRIVIAL(error) << "load_obj: failed to parse " << path << ". The file contains polygons with more than 4 vertices.";
                 message = _L("The file contains polygons with more than 4 vertices.");
                 return false;
             } else if (num_face_vertices < 3) {
+
                 BOOST_LOG_TRIVIAL(error) << "load_obj: failed to parse " << path << ". The file contains polygons with less than 2 vertices.";
                 message = _L("The file contains polygons with less than 2 vertices.");
                 return false;
@@ -99,6 +105,7 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
             i = j;
         }
     }
+
     indexed_triangle_set its;
     size_t               num_vertices = data.coordinates.size() / OBJ_VERTEX_LENGTH;
     its.vertices.reserve(num_vertices);
@@ -141,6 +148,7 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
                 }
             if (cnt) {
                 assert(cnt == 3 || cnt == 4);
+
                 its.indices.emplace_back(indices[0], indices[1], indices[2]);
                 int  face_index =its.indices.size() - 1;
                 RGBA face_color;
@@ -169,6 +177,8 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
                             obj_info.uv_map_pngs[face_index] = png_name;
                         }
                         if (data.textureCoordinates.size() > 0) {
+
+
                             const int uv_count = static_cast<int>(data.textureCoordinates.size() / OBJ_TEXCOORD_LENGTH);
                             auto      uv_at    = [&data, uv_count](int idx) -> Vec2f {
                                 if (idx < 0 || idx >= uv_count)
@@ -220,9 +230,11 @@ bool load_obj(const char *path, TriangleMesh *meshptr, ObjInfo& obj_info, std::s
     }
     if (meshptr->volume() < 0) {
         meshptr->flip_triangles();
+
         for (std::array<Vec2f, 3> &uv : obj_info.uvs)
             std::swap(uv[1], uv[2]);
     }
+
     if (out_mtl)
         *out_mtl = mtl_data;
     return true;
@@ -260,13 +272,18 @@ bool obj_to_textured_mesh(
     const size_t nv = its.vertices.size();
     const size_t nf = its.indices.size();
 
+
     out.vertices.resize(nv);
     for (size_t i = 0; i < nv; ++i)
         out.vertices[i] = {its.vertices[i].x(), its.vertices[i].y(), its.vertices[i].z()};
 
+
     out.indices.resize(nf);
     for (size_t i = 0; i < nf; ++i)
         out.indices[i] = {its.indices[i][0], its.indices[i][1], its.indices[i][2]};
+
+
+
 
     if (!obj_info.uvs.empty()) {
         const size_t uv_face_count = obj_info.uvs.size();
@@ -285,6 +302,8 @@ bool obj_to_textured_mesh(
         }
     }
 
+
+
     std::map<std::string, int> mtl_name_to_idx;
     for (size_t i = 0; i < mtl_data.mtl_orders.size(); ++i)
         mtl_name_to_idx[mtl_data.mtl_orders[i]] = static_cast<int>(i);
@@ -292,6 +311,7 @@ bool obj_to_textured_mesh(
     const int num_materials = static_cast<int>(mtl_data.mtl_orders.size());
     out.material_colors.resize(num_materials, {1.f, 1.f, 1.f, 1.f});
     out.material_texture_map.resize(num_materials, -1);
+
 
     std::map<std::string, int> png_to_tex_idx;
 
@@ -302,7 +322,9 @@ bool obj_to_textured_mesh(
             continue;
         const auto& mtl = *(it->second);
 
+
         out.material_colors[mi] = {mtl.Kd[0], mtl.Kd[1], mtl.Kd[2], mtl.Tr};
+
 
         if (mtl.map_Kd.empty())
             continue;
@@ -312,6 +334,7 @@ bool obj_to_textured_mesh(
             out.material_texture_map[mi] = tex_it->second;
             continue;
         }
+
 
         const boost::filesystem::path requested_tex_path(mtl.map_Kd);
         const boost::filesystem::path tex_path = requested_tex_path.is_absolute() ?
@@ -323,6 +346,7 @@ bool obj_to_textured_mesh(
             BOOST_LOG_TRIVIAL(warning) << "obj_to_textured_mesh: texture not found: " << requested_tex_path;
             continue;
         }
+
 
         boost::nowide::ifstream file(tex_path.string(), std::ios::binary | std::ios::ate);
         if (!file.is_open())
@@ -344,6 +368,7 @@ bool obj_to_textured_mesh(
         png_to_tex_idx[mtl.map_Kd] = new_idx;
         out.material_texture_map[mi] = new_idx;
     }
+
 
     out.material_ids.resize(nf, -1);
     if (!obj_info.usemtls.empty()) {
@@ -374,6 +399,7 @@ bool obj_to_textured_mesh(
 
 bool store_obj(const char *path, TriangleMesh *mesh)
 {
+
     mesh->WriteOBJFile(path);
     return true;
 }

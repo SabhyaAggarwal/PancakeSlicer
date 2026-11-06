@@ -6,6 +6,7 @@ import { instanceMatrix, plateDescription } from './geometry';
 import { toolValue } from '../options';
 import { projectPaint } from './paint';
 
+
 function projectTransform(o: PlateObject, inst: Instance): number[] | undefined {
   if (!o.project?.origin) return undefined;
   const [x, y, z] = o.project.origin;
@@ -15,6 +16,7 @@ function projectTransform(o: PlateObject, inst: Instance): number[] | undefined 
   return [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14].map((i) => e[i]);
 }
 
+
 export function projectRows(s: Pick<State, 'objects' | 'projectPlates' | 'plateIndex'>): { o: PlateObject; plate: number }[] {
   return s.projectPlates.length
     ? s.projectPlates.flatMap((p) => (p.index === s.plateIndex ? s.objects : p.objects).map((o) => ({ o, plate: p.index })))
@@ -22,6 +24,7 @@ export function projectRows(s: Pick<State, 'objects' | 'projectPlates' | 'plateI
 }
 
 const savedInstance = (o: PlateObject) => o.instances.find((i) => i.id === o.project?.saved?.instanceId) ?? (o.project?.saved ? undefined : o.instances[0]);
+
 
 export function projectInstances(s: Pick<State, 'objects' | 'projectPlates' | 'plateIndex' | 'projectMaterials'>) {
   const rows = projectRows(s).map((r) => r.o).filter((o) => o.project?.buildIndex !== undefined);
@@ -44,6 +47,12 @@ export type ProjectEdit =
   | { op: 'set_extruder'; object: number; extruder: number }
   | { op: 'set_paint'; object: number; volume?: number; paint: Record<string, Record<string, string>> };
 
+
+
+
+
+
+
 export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plateIndex' | 'projectMaterials'>) {
   const opened = s.projectMaterials?.builds ?? [];
   const rows = projectRows(s);
@@ -62,6 +71,7 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
     }
   }
   for (const [object, extruder] of extruders) edits.push({ op: 'set_extruder', object, extruder });
+
   const painted = new Set<number>();
   for (const { o } of rows) {
     const saved = o.project?.saved;
@@ -69,6 +79,7 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
     if (paint.length) painted.add(saved!.object);
     for (const p of paint) edits.push({ op: 'set_paint', object: saved!.object, ...p });
   }
+
   const volumes: { name: string; o: PlateObject; k: number }[] = [];
   for (const { o } of rows) {
     const saved = o.project?.saved;
@@ -83,11 +94,17 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
         ...(Object.keys(v.settings).length ? { settings: Object.fromEntries(Object.entries(v.settings).map(([key, value]) => [key, toolValue(key, value)])) } : {}) });
     });
   }
+
   for (const b of opened) if (!present.has(`${b.object}:${b.instance}`)) edits.push({ op: 'delete', ...b });
   return { edits, added: added.map((r) => r.o), files: plate.objects.map((e) => e.file), volumes };
 }
 
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
+
+
+
+
+
 
 function volumeFrame(o: PlateObject): THREE.Matrix4 {
   const t = o.project!.saved!.item!, [x, y, z] = o.project!.origin!, [px, py] = o.project!.plateOrigin ?? [0, 0];

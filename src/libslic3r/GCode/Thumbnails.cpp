@@ -67,11 +67,13 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_png(const ThumbnailDat
 
 std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailData& data)
 {
+
     std::vector<unsigned char> rgba_pixels(data.pixels.size());
     const unsigned int row_size = data.width * 4;
     for (unsigned int y = 0; y < data.height; ++y) {
         ::memcpy(rgba_pixels.data() + (data.height - y - 1) * row_size, data.pixels.data() + y * row_size, row_size);
     }
+
 
     std::vector<unsigned char*> rows_ptrs;
     rows_ptrs.reserve(data.height);
@@ -102,6 +104,8 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_jpg(const ThumbnailDat
     jpeg_finish_compress(&info);
     jpeg_destroy_compress(&info);
 
+
+
     auto out = std::make_unique<CompressedJPG>();
     out->data = malloc(compressed_data_size);
     out->size = size_t(compressed_data_size);
@@ -116,6 +120,7 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_qoi(const ThumbnailDat
     desc.height     = data.height;
     desc.channels   = 4;
     desc.colorspace = QOI_SRGB;
+
 
     std::vector<uint8_t> rgba_pixels(data.pixels.size() * 4);
     size_t row_size = data.width * 4;
@@ -136,6 +141,7 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_colpic(const Thumbnail
     const int MAX_SIZE = 512;
     int width = int(data.width);
     int height = int(data.height);
+
 
     if (width > MAX_SIZE || height > MAX_SIZE) {
         double aspectRatio = static_cast<double>(width) / height;
@@ -188,6 +194,7 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_colpic(const Thumbnail
 
 std::unique_ptr<CompressedImageBuffer> compress_thumbnail_btt_tft(const ThumbnailData &data) {
 
+
     std::vector<unsigned char> rgba_pixels(data.pixels.size());
     const unsigned int row_size = data.width * 4;
     for (unsigned int y = 0; y < data.height; ++y) {
@@ -195,6 +202,9 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_btt_tft(const Thumbnai
     }
 
     auto out = std::make_unique<CompressedBIQU>();
+
+
+
 
     out->size = data.height * (row_size + 4) + 1;
     out->data = malloc(out->size);
@@ -211,16 +221,21 @@ std::unique_ptr<CompressedImageBuffer> compress_thumbnail_btt_tft(const Thumbnai
             px.b = rgba_pixels[ypos * row_size + xpos + 2];
             px.a = rgba_pixels[ypos * row_size + xpos + 3];
 
+
             const uint8_t rv = ((px.a * px.r) / 255);
             const uint8_t gv = ((px.a * px.g) / 255);
             const uint8_t bv = ((px.a * px.b) / 255);
 
+
             auto color_565 = rjust(get_hex(((rv >> 3) << 11) | ((gv >> 2) << 5) | (bv >> 3)), 4, '0');
+
 
             if (color_565 == "0020" || color_565 == "0841" || color_565 == "0861")
                 color_565 = "0000";
+
             line << color_565;
         }
+
         out_data << line.str() << "\r\n";
         line.clear();
     }
@@ -527,7 +542,7 @@ int ColPic_EncodeStr(unsigned short* fromcolor16, int picw, int pich, unsigned c
     outputdata[qty] = 0;
     return qty;
 }
-std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbnail_list(const std::string& thumbnails_string, const std::string_view def_ext )
+std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbnail_list(const std::string& thumbnails_string, const std::string_view def_ext  )
 {
     if (thumbnails_string.empty())
         return {};
@@ -536,6 +551,8 @@ std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbna
     std::string point_str;
 
     ThumbnailErrors errors;
+
+
 
     GCodeThumbnailDefinitionsList thumbnails_list;
     while (std::getline(is, point_str, ',')) {
@@ -554,6 +571,7 @@ std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbna
 
                     if (ext_str.empty())
                         ext_str = def_ext.empty() ? "PNG"sv : def_ext;
+
 
                     boost::to_upper(ext_str);
                     if (!ConfigOptionEnum<GCodeThumbnailsFormat>::from_string(ext_str, format)) {
@@ -576,6 +594,10 @@ std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbna
 
 std::pair<GCodeThumbnailDefinitionsList, ThumbnailErrors> make_and_check_thumbnail_list(const ConfigBase& config)
 {
+
+
+
+
 
     if (const auto thumbnails_value = config.option<ConfigOptionString>("thumbnails"))
         return make_and_check_thumbnail_list(thumbnails_value->value);

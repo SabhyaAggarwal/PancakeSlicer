@@ -1,3 +1,4 @@
+
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
@@ -13,12 +14,16 @@ export interface RendererDomainCoverage {
 export type RendererBinaryKind = 'ArrayBuffer' | 'Blob' | 'File' | 'Int8Array' | 'Uint8Array'
   | 'Uint8ClampedArray' | 'Int16Array' | 'Uint16Array' | 'Int32Array' | 'Uint32Array'
   | 'Float32Array' | 'Float64Array' | 'BigInt64Array' | 'BigUint64Array' | 'DataView';
+
 export type RendererPartReference =
   | { $orcaRendererPart: string; kind: Exclude<RendererBinaryKind, 'Blob' | 'File'> }
   | { $orcaRendererPart: string; kind: 'Blob'; mimeType: string }
   | { $orcaRendererPart: string; kind: 'File'; mimeType: string; name: string; lastModified: number };
 export type RendererDecodedValue = null | boolean | number | string | RendererPartReference
   | { $orcaDate: number } | RendererDecodedValue[] | { [key: string]: RendererDecodedValue };
+
+
+
 export interface RendererDatabase {
   name: string;
   version: number;
@@ -47,6 +52,7 @@ export interface LegacyRendererInventory {
   sourceProfileId: string;
   inventoryFingerprint: string;
   coverage: RendererDomainCoverage;
+
   absence: { supportedLayout: string; sourceRefs: string[] } | null;
   origins: RendererOriginInventory[];
   issues: RendererInventoryIssue[];
@@ -69,6 +75,7 @@ export class LegacyRendererSource {
   private approved = new Map<string, { origin: string; size: number; sha256: string }>();
 
   constructor(userData: string, sessionData: string, private readonly ownsOriginalSingleton: () => boolean = () => false) {
+
     this.originalRoots = Object.freeze({ userData: path.resolve(userData), sessionData: path.resolve(sessionData) });
     this.sourceProfileId = `electron-session-data:v1:${createHash('sha256').update(JSON.stringify(this.originalRoots)).digest('hex')}`;
   }
@@ -78,6 +85,8 @@ export class LegacyRendererSource {
     if (this.changed) return Promise.resolve(incomplete(this.sourceProfileId, 'source_changed', 'Historical source changed or could not be reverified. Restart explicit recovery; original files are retained.'));
     if (this.originalRoots.userData !== this.originalRoots.sessionData || !this.ownsOriginalSingleton())
       return Promise.resolve(incomplete(this.sourceProfileId, 'source_locked', 'Same-root legacy layout and original-userData singleton exclusion are not established.'));
+
+
     this.scanning = this.enqueue(async () => (await this.scan()).inventory).finally(() => { this.scanning = null; });
     return this.scanning;
   }
@@ -100,7 +109,7 @@ export class LegacyRendererSource {
       let finished = false;
       const finish = async (r: WorkerResult) => {
         if (finished) return; finished = true; clearTimeout(timer);
-        try { await worker.terminate(); } catch {  }
+        try { await worker.terminate(); } catch {                                                          }
         resolve(r);
       };
       const failed = () => ({ inventory: incomplete(this.sourceProfileId, 'unsupported_layout', 'Read-only decoding failed or exceeded its bounded budget; original files are retained.') });
@@ -170,9 +179,11 @@ if (!isMainThread && workerData?.kind === 'orca-legacy-renderer-v1') {
           || !Number.isSafeInteger(part.offset) || !Number.isSafeInteger(part.length) || part.offset < 0 || part.length < 0
           || part.length > 4 * 1024 * 1024 || part.offset > approved.size || part.length > approved.size - part.offset)
           throw new Incomplete('source_changed', 'Approved binary ownership, hash or physical snapshot changed.');
+
         result.chunk = new Uint8Array(approved.bytes.subarray(part.offset, part.offset + part.length));
       }
     } catch (error) {
+
       result = { inventory: error instanceof Incomplete ? incomplete(id, error.code, error.message)
         : incomplete(id, 'unsupported_layout', 'Original storage could not be read completely in a supported layout.') };
     }

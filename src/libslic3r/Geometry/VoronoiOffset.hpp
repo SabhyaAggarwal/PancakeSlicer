@@ -1,3 +1,5 @@
+
+
 #ifndef slic3r_VoronoiOffset_hpp_
 #define slic3r_VoronoiOffset_hpp_
 
@@ -29,27 +31,46 @@ inline Point&       contour_point(const VD::cell_type &cell, Lines &lines)
 inline Vec2d 		vertex_point(const VD::vertex_type &v) { return Vec2d(v.x(), v.y()); }
 inline Vec2d 		vertex_point(const VD::vertex_type *v) { return Vec2d(v->x(), v->y()); }
 
+
 enum class VertexCategory : unsigned char
 {
+
+
+
 	OnContour,
+
 	Inside,
+
 	Outside,
+
 	Unknown,
 };
 
+
+
+
 enum class EdgeCategory : unsigned char
 {
+
 	PointsToContour,
+
 	PointsInside,
+
 	PointsOutside,
+
 	Unknown
 };
 
+
 enum class CellCategory : unsigned char
 {
+
 	Boundary,
+
 	Inside,
+
 	Outside,
+
 	Unknown
 };
 
@@ -80,9 +101,14 @@ inline void 		  	set_cell_category(const VD::cell_type &v, CellCategory c)
 inline void 		  	set_cell_category(const VD::cell_type *v, CellCategory c)
 	{ v->color(static_cast<VD::cell_type::color_type>(c)); }
 
+
 void reset_inside_outside_annotations(VD &vd);
 
+
+
 void annotate_inside_outside(VD &vd, const Lines &lines);
+
+
 
 std::vector<double> signed_vertex_distances(const VD &vd, const Lines &lines);
 
@@ -106,10 +132,15 @@ Polygons offset(
     double                           offset_distance,
     double                           discretization_error);
 
+
+
+
+
+
 Polygons offset(
-	const VD 		&vd, 
-	const Lines 	&lines, 
-	double 			 offset_distance, 
+	const VD 		&vd,
+	const Lines 	&lines,
+	double 			 offset_distance,
 	double 			 discretization_error);
 
 }

@@ -54,10 +54,13 @@ void prepare_paint(const PrintObject &object, RegionMaskCache &cache)
 ExPolygons apply_paint(const PrintObject &object, size_t layer_id, const ExPolygons &domain, RegionMaskCache &cache)
 {
     prepare_paint(object, cache);
+
+
     auto [it, inserted] = cache.paint.try_emplace(layer_id);
     if (inserted) {
         it->second.enforce = cache.enforce;
         it->second.block = cache.block;
+
         const Layer *layer = object.get_layer(int(layer_id));
         for (const LayerRegion *region : layer->regions()) {
             if (region->region().config().nonplanar_region_source.value == NonplanarRegionSource::PaintOnly)
@@ -104,6 +107,7 @@ ExPolygons nonplanar_region_mask(const PrintObject &object, size_t layer_id)
     for (const LayerRegion *region : layer->regions())
         for (const Surface &surface : region->slices.surfaces)
             if (surface.surface_type == stTop) tops.push_back(surface.expolygon);
+
     if (tops.empty()) tops = layer->upper_layer ? diff_ex(layer->lslices, layer->upper_layer->lslices) : layer->lslices;
     if (!cache.has_enforce) {
         Polygons detected;

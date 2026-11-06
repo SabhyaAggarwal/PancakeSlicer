@@ -23,9 +23,14 @@ namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
 
+
+
 constexpr double ThreadBoreArea = 500.;
 
+
 constexpr double ThreadDepth = 1.3;
+
+
 
 inline bool fit_round(const Polygon &outline)
 {
@@ -36,7 +41,22 @@ inline bool fit_round(const Polygon &outline)
 struct AutoPatchSettings;
 class FieldChart;
 
+
+
+
+
+
+
+
+
+
+
+
 enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field, Skin };
+
+
+
+
 
 class PatchField
 {
@@ -51,6 +71,7 @@ public:
 
     const HeightField &get() const { return m_field ? *m_field : empty_field(); }
     operator const HeightField &() const { return this->get(); }
+
     HeightField &edit()
     {
         if (!m_field)
@@ -82,6 +103,7 @@ private:
     std::shared_ptr<HeightField> m_field;
 };
 
+
 struct ConformalPatch
 {
     int        id = -1;
@@ -98,16 +120,29 @@ struct ConformalPatch
     size_t     host_layer = 0;
     int        region_id = -1;
     int        band = -1;
+
+
+
     bool       from_support = false;
+
+
     bool       free_travel = false;
+
     bool       native = false;
+
     std::shared_ptr<const AutoPatchSettings> automatic;
+
     std::shared_ptr<const FieldChart> field;
 
+
+
     std::vector<ExtrusionEntityCollection> shell_paths;
+
+
     std::vector<ExPolygons>                shell_internal;
     ExtrusionEntityCollection              ironing;
 };
+
 static_assert(std::is_nothrow_move_constructible_v<ConformalPatch>);
 
 struct PatchDiagnostics
@@ -117,9 +152,22 @@ struct PatchDiagnostics
     double rms_surface_error = 0.;
     double max_slope_deg = 0.;
     double fallback_area = 0.;
+
+
+
+
+
+
+
+
+
+
     std::string fallback_reason;
     int    repaired_nodes = 0;
     double repair_lowering = 0.;
+
+
+
     ExPolygons                      fallback_shape;
     std::vector<std::vector<Vec3f>> fallback_hatch;
 };
@@ -130,23 +178,49 @@ struct ConformalResult
 {
     std::vector<ConformalPatch>   patches;
     std::vector<PatchDiagnostics> diagnostics;
+
     std::vector<ExPolygons>       planar_exclusion;
+
     std::vector<ExPolygons>       bridged;
+
+
     std::vector<ExPolygons>       self_supported;
+
+
+
     std::vector<ExPolygons>       flat_printed;
+
+
+
     std::vector<ExPolygons>       shells_refused;
+
+
     ExPolygons                    clearance;
     bool                          clearance_ready = false;
+
     FlowModStats                  flow_mod;
+
+
     std::vector<PatchBase>        base;
     std::vector<BaseInput>        base_inputs;
+
+
     bool                          layer_changes_filament = false;
+
     std::vector<double>           event_cuts;
+
     std::vector<std::pair<double, unsigned int>> tool_changes;
+
+
     bool                          ordered_plan = false;
+
+
     std::string                   layer_source, layer_source_refused;
+
+
     std::shared_ptr<ObjectMesh>   mesh;
 };
+
 
 struct WidthRoads
 {
@@ -154,25 +228,62 @@ struct WidthRoads
     std::vector<std::vector<float>> widths;
 };
 
+
+
+
+
+
 void contour_roads(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow,
                    double layer_height, double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines);
 
+
+
 bool outline_is_contour(const ConformalPatch &patch, double tolerance);
 
+
+
 bool is_round(const ExPolygons &footprint);
+
+
+
+
+
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
                                const std::function<void()> &throw_if_canceled = {},
                                const std::function<bool(const Vec2d &, double)> &solid_below = {});
 
+
+
+
+
 constexpr double BandedTopWidth = 0.55;
+
+
+
 constexpr double BandedCapWidth = 0.625;
+
+
+
+
+
+
+
 
 double low_plane_top_radius(const PrintObject &object, double layer_height);
 
+
+
+
+
+
 double low_plane_rim(const PrintObject &object);
 
+
+
+
 ConformalResult build_conformal_shells(PrintObject &object);
+
 void trim_walls_above_shells(PrintObject &object, const ConformalResult &result);
 
 }

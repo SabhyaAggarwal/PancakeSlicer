@@ -18,6 +18,7 @@ namespace Slic3r {
 struct ExecutionTBB {};
 template<> struct IsExecutionPolicy_<ExecutionTBB> : public std::true_type {};
 
+
 static constexpr ExecutionTBB ex_tbb = {};
 
 template<> struct execution::Traits<ExecutionTBB> {

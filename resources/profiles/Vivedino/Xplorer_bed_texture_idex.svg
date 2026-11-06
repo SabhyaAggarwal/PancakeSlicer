@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Vivedino Xplorer IDEX build plate.  Dashed red outlines mark real reach
-     limits; the viewBox matches printable_area so the texture is not stretched.
-     Print zones are drawn by the slicer per plate, not by this texture. -->
+
+
+
 <svg
    width="400mm"
    height="400mm"

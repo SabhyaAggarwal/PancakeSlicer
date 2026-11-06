@@ -32,12 +32,15 @@ namespace {
 constexpr int    MaxLayers = 3;
 constexpr double Fade      = 1.0;
 constexpr double Step      = 0.25;
+
+
 double relief(TopTexture pattern, double depth, double pitch, const Vec2d &p)
 {
     const auto   ridge = [pitch](double t) { return 0.5 - 0.5 * std::cos(2. * PI * t / pitch); };
     const double u = (p.x() + p.y()) * std::sqrt(0.5), v = (p.x() - p.y()) * std::sqrt(0.5);
     return pattern == TopTexture::Ribs ? depth * ridge(u) : depth * ridge(u) * ridge(v);
 }
+
 
 struct Tops
 {
@@ -60,6 +63,11 @@ bool has_top_texture(const PrintObject &object)
             return true;
     return false;
 }
+
+
+
+
+
 
 void texture_tops(PrintObject &object)
 {
@@ -93,9 +101,11 @@ void texture_tops(PrintObject &object)
                     any |= !tops[k + j].area.empty();
                 if (!any)
                     continue;
+
                 auto texture = [&](const ExtrusionPath &path) -> ExtrusionPaths {
                     if (path.z_contoured || (path.role() != erTopSolidInfill && path.role() != erSolidInfill && path.role() != erGapFill))
                         return {};
+
                     Points3          pts;
                     std::vector<int> share;
                     const Points3   &src = path.polyline.points;
@@ -122,6 +132,7 @@ void texture_tops(PrintObject &object)
                     }
                     if (std::all_of(share.begin(), share.end(), [](int s) { return s == 0; }))
                         return {};
+
                     ExtrusionPaths pieces;
                     for (size_t a = 0; a < pts.size();) {
                         size_t b = a;
@@ -141,6 +152,8 @@ void texture_tops(PrintObject &object)
                     }
                     return pieces;
                 };
+
+
                 std::function<void(ExtrusionEntityCollection &)> visit = [&](ExtrusionEntityCollection &c) {
                     ExtrusionEntitiesPtr entities;
                     for (ExtrusionEntity *e : c.entities) {
@@ -167,6 +180,7 @@ void texture_tops(PrintObject &object)
                             }
                             *paths = std::move(out);
                         } else if (auto *path = dynamic_cast<ExtrusionPath *>(e); path != nullptr && typeid(*path) == typeid(ExtrusionPath)) {
+
                             ExtrusionPaths pieces = texture(*path);
                             if (pieces.empty())
                                 continue;

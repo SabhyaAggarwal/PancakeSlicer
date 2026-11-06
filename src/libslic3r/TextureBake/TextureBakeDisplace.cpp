@@ -29,6 +29,7 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
     out.pos.resize(count);
     out.nrm.resize(count);
 
+
     const bool need_id_positions = settings.boundary_falloff > 0.f;
     QuantizedPointMap dedup(WELD_GRID_GEOMETRY, std::min(count, size_t(1) << 22));
     std::vector<int>  vertex_id(count);
@@ -44,6 +45,7 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         vertex_id[i] = id;
     }
     const size_t unique_count = size_t(next_id);
+
 
     std::vector<Vec3d>   smooth_nrm(unique_count, Vec3d::Zero());
     std::vector<double>  masked_area(unique_count, 0.0), total_area(unique_count, 0.0);
@@ -61,6 +63,8 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
             nz < 0.0 ? (settings.bottom_angle_limit > 0.f && face_angle <= settings.bottom_angle_limit)
                      : (settings.top_angle_limit > 0.f && face_angle <= settings.top_angle_limit);
 
+
+
         bool user_excluded = false;
         if (have_weights) {
             const float avg = (geometry.exclude_weight[t] + geometry.exclude_weight[t + 1] +
@@ -74,12 +78,16 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
             const size_t vid = size_t(vertex_id[t + size_t(v)]);
             if (user_excluded && have_weights)
                 excluded_pos[vid] = 1;
+
+
             smooth_nrm[vid] += geometry.nrm[t + size_t(v)].cast<double>() * face_area;
             if (angle_masked)
                 masked_area[vid] += face_area;
             total_area[vid] += face_area;
         }
     }
+
+
 
     std::vector<double> reliability(unique_count, 0.0);
     for (size_t id = 0; id < unique_count; ++id) {
@@ -88,8 +96,11 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         smooth_nrm[id]   = (len > 0.0) ? Vec3d(smooth_nrm[id] / len) : Vec3d(0.0, 0.0, 1.0);
     }
 
+
     std::vector<Vec3d> blend_nrm = smooth_nrm;
     if (settings.blend_normal_smoothing > 0 && unique_count > 0) {
+
+
         std::vector<uint32_t> degree(unique_count, 0);
         const auto            add_degree = [&](int a, int b) {
             if (a != b) { ++degree[size_t(a)]; ++degree[size_t(b)]; }
@@ -116,6 +127,7 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
 
         std::vector<Vec3d> cur = smooth_nrm, nxt(unique_count, Vec3d::Zero());
         for (int iter = 0; iter < settings.blend_normal_smoothing; ++iter) {
+
             tbb::parallel_for(tbb::blocked_range<size_t>(0, unique_count, 4096), [&](const tbb::blocked_range<size_t> &r) {
                 for (size_t id = r.begin(); id < r.end(); ++id) {
                     const uint32_t s = csr_start[id], e = csr_start[id + 1];
@@ -128,6 +140,7 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
                         sum += cur[neighbors[k]];
                     sum /= double(e - s);
                     const double len = sum.norm();
+
                     nxt[id] = (len > 1e-12) ? Vec3d(sum / len) : cur[id];
                 }
             });
@@ -135,6 +148,8 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         }
         blend_nrm = std::move(cur);
     }
+
+
 
     std::vector<double> falloff;
     if (settings.boundary_falloff > 0.f && unique_count > 0) {
@@ -147,6 +162,7 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         }
         falloff.assign(unique_count, 1.0);
         if (!boundary.empty()) {
+
             Vec3f lo = boundary.front(), hi = boundary.front();
             for (const Vec3f &p : boundary) {
                 lo = lo.cwiseMin(p);
@@ -176,10 +192,13 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
                 const Vec3f &p = id_pos[id];
                 const Vec3i32 c = cell_of(p);
                 double       best = std::numeric_limits<double>::max();
+
+
                 for (int r = 0; r < res; ++r) {
                     for (int dz = -r; dz <= r; ++dz)
                         for (int dy = -r; dy <= r; ++dy)
                             for (int dx = -r; dx <= r; ++dx) {
+
                                 if (r > 0 && std::abs(dx) != r && std::abs(dy) != r && std::abs(dz) != r)
                                     continue;
                                 const int qx = c.x() + dx, qy = c.y() + dy, qz = c.z() + dz;
@@ -198,6 +217,9 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
         }
     }
 
+
+
+
     std::vector<double> grey(unique_count, 0.0);
     std::vector<int>    representative(unique_count, -1);
     for (size_t i = 0; i < count; ++i)
@@ -215,12 +237,17 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
                           }
                       });
 
+
+
     tbb::parallel_for(tbb::blocked_range<size_t>(0, count), [&](const tbb::blocked_range<size_t> &range) {
     for (size_t i = range.begin(); i < range.end(); ++i) {
         const Vec3f &p   = geometry.pos[i];
         const size_t vid = size_t(vertex_id[i]);
 
+
+
         const bool face_excluded = !user_excluded_face.empty() && user_excluded_face[i / 3] != 0;
+
         const bool sealed_boundary =
             !face_excluded && !excluded_pos.empty() && excluded_pos[vid] != 0;
         const double masked_frac = total_area[vid] > 0.0 ? masked_area[vid] / total_area[vid] : 0.0;
@@ -232,18 +259,23 @@ TriSoup apply_displacement(const TriSoup &geometry, const HeightSampleFn &sample
 
         Vec3d moved = p.cast<double>() + smooth_nrm[vid] * disp;
 
+
         if (masked_frac > 0.0) {
             if (settings.bottom_angle_limit > 0.f && moved.z() < double(p.z())) moved.z() = double(p.z());
             if (settings.top_angle_limit > 0.f && moved.z() > double(p.z()))    moved.z() = double(p.z());
         }
         if (settings.no_downward_z && moved.z() < double(p.z()))
             moved.z() = double(p.z());
+
+
         if (settings.no_downward_z && double(p.z()) <= double(bounds.min.z()) + 1e-5)
             moved.z() = double(p.z());
 
         out.pos[i] = moved.cast<float>();
     }
     });
+
+
 
     tbb::parallel_for(tbb::blocked_range<size_t>(0, count / 3), [&](const tbb::blocked_range<size_t> &r) {
         for (size_t f = r.begin(); f < r.end(); ++f) {

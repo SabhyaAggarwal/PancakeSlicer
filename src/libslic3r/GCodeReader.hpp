@@ -24,12 +24,13 @@ public:
         void reset() { m_mask = 0; memset(m_axis, 0, sizeof(m_axis)); m_raw.clear(); }
 
         const std::string&      raw() const { return m_raw; }
-        const std::string_view  cmd() const { 
+        const std::string_view  cmd() const {
             const char *cmd = GCodeReader::skip_whitespaces(m_raw.c_str());
             return std::string_view(cmd, GCodeReader::skip_word(cmd) - cmd);
         }
         const std::string_view  comment() const
             { size_t pos = m_raw.find(';'); return (pos == std::string::npos) ? std::string_view() : std::string_view(m_raw).substr(pos + 1); }
+
 
         std::string_view axis_pos(char axis) const;
         void  clear() { m_raw.clear(); }
@@ -37,6 +38,7 @@ public:
         float value(Axis axis) const { return m_axis[axis]; }
         bool  has(char axis) const;
         bool  has_value(char axis, float &value) const;
+
         static bool has_value(std::string_view axis_pos, float &value);
         float new_X(const GCodeReader &reader) const { return this->has(X) ? this->x() : reader.x(); }
         float new_Y(const GCodeReader &reader) const { return this->has(Y) ? this->y() : reader.y(); }
@@ -53,6 +55,7 @@ public:
             return sqrt(x*x + y*y);
         }
         bool cmd_is(const char *cmd_test)          const { return cmd_is(m_raw, cmd_test); }
+
         bool extruding(const GCodeReader &reader)  const { return (this->cmd_is("G1") || this->cmd_is("G2") || this->cmd_is("G3")) && this->dist_E(reader) > 0; }
         bool retracting(const GCodeReader &reader) const { return (this->cmd_is("G1") || this->cmd_is("G2") || this->cmd_is("G3")) && this->dist_E(reader) < 0; }
         bool travel()     const { return (this->cmd_is("G1") || this->cmd_is("G2") || this->cmd_is("G3")) && ! this->has(E); }
@@ -63,6 +66,7 @@ public:
         bool  has_z() const { return this->has(Z); }
         bool  has_e() const { return this->has(E); }
         bool  has_f() const { return this->has(F); }
+
         bool  has_i() const { return this->has(I); }
         bool  has_j() const { return this->has(J); }
         bool  has_p() const { return this->has(P); }
@@ -73,13 +77,14 @@ public:
         float z() const { return m_axis[Z]; }
         float e() const { return m_axis[E]; }
         float f() const { return m_axis[F]; }
+
         float i() const { return m_axis[I]; }
         float j() const { return m_axis[J]; }
         float p() const { return m_axis[P]; }
 
         static bool cmd_is(const std::string &gcode_line, const char *cmd_test) {
             const char *cmd = GCodeReader::skip_whitespaces(gcode_line.c_str());
-            size_t len = strlen(cmd_test); 
+            size_t len = strlen(cmd_test);
             return strncmp(cmd, cmd_test, len) == 0 && GCodeReader::is_end_of_word(cmd[len]);
         }
 
@@ -102,7 +107,7 @@ public:
 
     typedef std::function<void(GCodeReader&, const GCodeLine&)> callback_t;
     typedef std::function<void(GCodeReader&, const char*, const char*)> raw_line_callback_t;
-    
+
     GCodeReader() : m_verbose(false) { this->reset(); }
     void reset() { memset(m_position, 0, sizeof(m_position)); }
     void apply_config(const GCodeConfig &config);
@@ -139,9 +144,14 @@ public:
     void parse_line(const std::string &line, Callback callback)
         { GCodeLine gline; this->parse_line(line.c_str(), line.c_str() + line.size(), gline, callback); }
 
+
     bool parse_file(const std::string &file, callback_t callback);
+
+
     bool parse_file(const std::string &file, callback_t callback, std::vector<size_t> &lines_ends);
+
     bool parse_file_raw(const std::string &file, raw_line_callback_t callback);
+
 
     void quit_parsing() { m_parsing = false; }
 
@@ -155,13 +165,14 @@ public:
     float  e() const { return m_position[E]; }
     float& f()       { return m_position[F]; }
     float  f() const { return m_position[F]; }
+
     float& i()       { return m_position[I]; }
     float  i() const { return m_position[I]; }
     float& j()       { return m_position[J]; }
     float  j() const { return m_position[J]; }
 
     GCodeConfig get_config() const
-    { 
+    {
         return m_config ? *m_config : default_config();
     }
 
@@ -178,12 +189,12 @@ private:
     static bool         is_end_of_line(char c)          { return c == '\r' || c == '\n' || c == 0; }
     static bool         is_end_of_gcode_line(char c)    { return c == ';' || is_end_of_line(c); }
     static bool         is_end_of_word(char c)          { return is_whitespace(c) || is_end_of_gcode_line(c); }
-    static const char*  skip_whitespaces(const char *c) { 
+    static const char*  skip_whitespaces(const char *c) {
         for (; is_whitespace(*c); ++ c)
             ;
         return c;
     }
-    static const char*  skip_word(const char *c) { 
+    static const char*  skip_word(const char *c) {
         for (; ! is_end_of_word(*c); ++ c)
             ;
         return c;
@@ -191,10 +202,12 @@ private:
     static const char*  axis_pos(const char *raw_str, char axis);
     static const GCodeConfig& default_config();
 
+
     std::shared_ptr<const GCodeConfig> m_config;
     bool        m_use_relative_e_distances{ default_config().use_relative_e_distances.value };
     float       m_position[NUM_AXES];
     bool        m_verbose;
+
     bool        m_parsing{ false };
 };
 

@@ -9,6 +9,7 @@ export const trayLabel = (t: Tray) => (isExternalTray(t.id) ? t.id === 254 ? 'Le
 const rgb = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16) || 0);
 const distance = (a: string, b: string) => rgb(a).reduce((d, v, i) => d + (v - rgb(b)[i]) ** 2, 0);
 
+
 export function autoMap(filaments: SendFilament[], trays: Tray[]): number[] {
   const used = new Set<number>();
   return filaments.map((f) => {

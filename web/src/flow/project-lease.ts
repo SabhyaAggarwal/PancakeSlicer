@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 import { sessionId } from '../api/session';
 import { createMachine, useMachine } from './fsm';
 
@@ -9,6 +16,7 @@ type LeaseEvent =
   | { type: 'GRANTED'; id: string; heartbeatMs?: number } | { type: 'HELD'; id: string; holder: LeaseHolder } | { type: 'LOST'; id: string; holder: LeaseHolder };
 
 const path = (id: string) => `/api/project-leases/${encodeURIComponent(id)}`;
+
 export function deviceLabel(ua = navigator.userAgent): string {
   const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
   const os = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS'
@@ -22,10 +30,12 @@ async function request(id: string, take: boolean) {
     const response = await fetch(path(id), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-Orca-Session': sessionId },
       body: JSON.stringify({ session: sessionId, label: deviceLabel(), take }), signal: AbortSignal.timeout(10_000) });
     const body = await response.json().catch(() => ({}));
+
     if (response.ok || response.status === 404 || response.status === 405) return same({ type: 'GRANTED', id, heartbeatMs: body.heartbeatMs });
     if (response.status === 409 && body.holder) return same({ type: body.code === 'lease_lost' ? 'LOST' : 'HELD', id, holder: body.holder });
     throw new Error(`lease ${response.status}`);
   } catch {
+
     setTimeout(() => lease.send({ type: 'RETRY', id }), 5_000);
   }
 }
@@ -48,10 +58,12 @@ export const lease = createMachine<LeaseState, LeaseEvent, LeaseContext>({
       on: { OPEN: opened, CLOSE: closed, TAKE: { action: () => ({ take: true }) }, RETRY: { target: 'requesting', guard: mine },
         GRANTED: granted, HELD: { target: 'viewing', guard: mine, action: holderOf }, LOST: { target: 'lost', guard: mine, action: holderOf } } },
     editing: {
+
       after: { ms: (c) => c.heartbeatMs, target: 'editing', action: (c) => { if (c.id) void request(c.id, false); } },
       on: { OPEN: opened, CLOSE: closed, TAKE: {}, RETRY: { guard: mine, action: (c) => { if (c.id) void request(c.id, false); } },
         GRANTED: { guard: mine }, HELD: { target: 'viewing', guard: mine, action: holderOf }, LOST: { target: 'lost', guard: mine, action: holderOf } } },
     viewing: {
+
       after: { ms: (c) => c.heartbeatMs, target: 'requesting' },
       on: { OPEN: opened, CLOSE: closed, TAKE: { target: 'requesting', action: () => ({ take: true }) }, RETRY: {},
         GRANTED: granted, HELD: { guard: mine, action: holderOf }, LOST: { guard: mine, action: holderOf } } },
@@ -61,11 +73,14 @@ export const lease = createMachine<LeaseState, LeaseEvent, LeaseContext>({
   },
 });
 
+
 export const leaseWritable = () => lease.get().value === 'editing' || lease.get().value === 'idle';
+
 export const leaseSettled = (): Promise<void> => lease.get().value !== 'requesting' ? Promise.resolve()
   : new Promise((resolve) => { const stop = lease.subscribe((s) => { if (s.value !== 'requesting') { stop(); resolve(); } }); });
 export const takeControl = () => lease.send({ type: 'TAKE' });
 export const useProjectLease = () => useMachine(lease);
+
 export function leaseRefused(error: unknown, id: string): boolean {
   const e = error as { code?: string; message?: string };
   if (e?.code !== 'lease_held' && e?.code !== 'lease_lost') return false;
@@ -73,6 +88,7 @@ export function leaseRefused(error: unknown, id: string): boolean {
   if (lease.get().value === 'editing' || lease.get().value === 'idle') lease.send({ type: 'OPEN', id });
   return true;
 }
+
 
 export function followProjectLease(current: () => string | null, subscribe: (f: () => void) => () => void, onWritable: (from: LeaseState, id: string) => void) {
   let shown: string | null = null;
@@ -86,6 +102,7 @@ export function followProjectLease(current: () => string | null, subscribe: (f: 
   lease.subscribe((s) => {
     const now = leaseWritable();
     if (s.value === 'viewing' || s.value === 'lost') readOnly = s.value;
+
     else if (s.value === 'requesting' && (before === 'idle' || before === 'editing')) readOnly = 'idle';
     if (now && !was && s.context.id) onWritable(readOnly, s.context.id);
     was = now; before = s.value;

@@ -1,4 +1,6 @@
 import { Range } from './Range';
+
+
 import { useEffect, useSyncExternalStore } from 'react';
 import { getState, setState, updateObject, useStore } from '../state/store';
 import { autoGenerate, brimPainted, defaultEarRadius, earsUi, setEars, setEarsUi, subscribeEarsUi } from '../plater/brimEars';

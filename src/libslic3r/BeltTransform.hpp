@@ -13,9 +13,44 @@ namespace Slic3r {
 
 class ModelObject;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class BeltTransformPipeline
 {
 public:
+
+
+
+
+
+
     static bool axis_remap_enabled(const PrintConfig &config) { return config.belt_printer.value; }
 
     static bool has_rotation(const PrintConfig &config)
@@ -23,6 +58,15 @@ public:
         return config.belt_slice_rotation.value != BeltRotationAxis::None &&
                std::abs(config.belt_slice_rotation_angle.value) > EPSILON;
     }
+
+
+
+
+
+
+
+
+
 
     struct PhysicalTilt { double tilt_x_deg = 0.; double tilt_y_deg = 0.; };
 
@@ -38,9 +82,19 @@ public:
         return t;
     }
 
+
+
+
+
+
     static Matrix3d build_rotation_matrix(const PrintConfig &config, bool *has_rot_out = nullptr);
 
+
+
+
     static Transform3d build_forward_transform(const PrintConfig &config);
+
+
 
     struct BeltFloorParams {
         double shear_factor = 0.0;
@@ -48,14 +102,27 @@ public:
         double z_shift      = 0.0;
     };
 
+
+
+
+
     static bool floor_shear(const PrintConfig &config, BeltFloorParams &out);
 
+
+
+
+
+
     static double frame_margin(const BeltFloorParams &fp) { return 10. * std::abs(fp.shear_factor); }
+
 
     struct BeltHeightResult {
         double          object_height;
         BeltFloorParams floor_params;
     };
+
+
+
 
     static BeltHeightResult compute_belt_height_and_floor(
         const PrintConfig &config, const BoundingBoxf3 &bbox,

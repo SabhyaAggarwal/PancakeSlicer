@@ -38,6 +38,7 @@ func bambuMapping(mapping []int, addresses []bambuTrayAddress, count int) ([]int
 			if id >= 128 {
 				matches = a.AMS == id && a.Slot == 0
 			}
+
 			if id >= 24 && id <= 27 && a.AMS < 16 && a.Slot == id-24 {
 				matches = true
 			}

@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Tooltip } from 'radix-ui';
+
+
+
+
+
+
+
 const NAV_KEYS = new Set(['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', ' ', 'Escape', 'F6']);
 const CONTROL = 'button,a,[role=button],[role=tab],[role=menuitem]';
+
 const nameOf = (node: HTMLElement) => node.innerText.trim() ? undefined : node.getAttribute('aria-label')?.trim() || node.textContent?.trim() || undefined;
 const FULL = '[data-full-text],[data-truncated]';
+
 const cutText = (node: HTMLElement) => node.dataset.truncated === 'true' || [node, ...node.querySelectorAll<HTMLElement>('*')].some((n) => n.scrollWidth > n.clientWidth + 1 && getComputedStyle(n).textOverflow === 'ellipsis')
   ? node.dataset.fullText || node.textContent?.trim() || undefined : undefined;
 const DELAY = 250, SKIP = 300, LONG_PRESS = 500;
@@ -25,6 +34,7 @@ export function ControlHints() {
     sweep(document.body); titles.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['title']});
     let hiddenAt = 0, shown = false, press: ReturnType<typeof setTimeout> | undefined;
     const clear = () => { clearTimeout(timer); clearTimeout(press); if (shown) hiddenAt = Date.now(); shown = false; setHint(null); target = null; };
+
     const open = (node: HTMLElement | null, delay: number) => {
       if (node === target) return;
       clear();

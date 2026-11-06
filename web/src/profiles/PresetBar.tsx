@@ -1,5 +1,8 @@
 import { findProfile } from './identity';
 import { profileEdit } from '../flow/profile-edit';
+
+
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PresetType } from '../api/types';
 import { MenuButton, type MenuEntry } from '../components/Menu';
@@ -27,6 +30,7 @@ import { defaultChoice, formulaText, newProfileName, newProfileNameError, saveAs
 import { scalesOf } from './auto-rules';
 import { labelOf } from './PrintOverrides';
 
+
 async function exportCurrent(type: PresetType, slot: number) {
   const s = getState();
   const name = (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
@@ -38,6 +42,7 @@ async function exportCurrent(type: PresetType, slot: number) {
 
 interface MenuItem { icon: string; label: string; run(): void; disabled?: boolean }
 
+
 function PresetMenu({ label, items }: { label: string; items: MenuItem[] }) {
   return <MenuButton className="icon-btn preset-more" label={label} items={items.map(it => ({label: it.label, action: it.run, disabled: it.disabled}))}>⋯</MenuButton>;
 
@@ -48,7 +53,9 @@ const TAB_OF = { process: 'process', filament: 'filament', machine: 'printer' } 
 
 const where = (c: Change) => c.scope === 'project' ? c.owner.name : `${c.scope === 'object' ? 'Object' : c.scope === 'part' ? 'Part' : 'Range'}: ${c.owner.name}`;
 
+
 const label = (c: Change) => c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key] && TABS.process?.pages.some((p) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === c.key)))) ? labelOf(c.key) : OPTIONS[c.key]?.label || c.key;
+
 const locate = (type: PresetType, key: string) => {
   const pages = TABS[TAB_OF[type]]?.pages ?? [];
   for (const [pi, page] of pages.entries()) for (const [gi, group] of page.groups.entries())
@@ -56,6 +63,10 @@ const locate = (type: PresetType, key: string) => {
   return { pi: 1e9, gi: 0, page: 'Other', group: '' };
 };
 const MODE_NAME: Partial<Record<OptionMode, string>> = { advanced: 'Advanced', develop: 'Expert', developer: 'Developer' };
+
+
+
+
 
 function ValueChoices({ c, src, choice, becomes, onChoose }: { c: Change; src: ValueSource; choice: ValueChoice; becomes: string; onChoose(next: ValueChoice): void }) {
   const now = display(c.key, c.now);
@@ -69,6 +80,8 @@ function ValueChoices({ c, src, choice, becomes, onChoose }: { c: Change; src: V
 
 function Changes({ type, list, onJump, sources = {}, choices = {}, onChoose }: { type: PresetType; list: Change[]; onJump(): void; sources?: Record<string, ValueSource>; choices?: Record<string, ValueChoice>; onChoose?(key: string, next: ValueChoice): void }) {
   const ctxKey = useStore((s) => { const c = scaleContext(s); return `${c.nozzle},${c.layerHeight}`; }), [nozzle, layerHeight] = ctxKey.split(',').map(Number), ctx = { nozzle, layerHeight };
+
+
   const focus = (c: Change) => {
     onJump();
     const s = getState();
@@ -86,14 +99,17 @@ function Changes({ type, list, onJump, sources = {}, choices = {}, onChoose }: {
       const prior = { uiMode: s.uiMode, developerMode: s.developerMode };
       toast(`Switched to ${MODE_NAME[rank] ?? rank} to show ${label(c)}`, { label: 'Undo', run: () => setState(prior) });
     }
+
     const reveal = () => setState({ settingsFocus: { type, page: at.page, key: c.key, nonce: Date.now() } });
     if (Object.keys(patch).length) { setState(patch); setTimeout(reveal, 50); } else reveal();
   };
+
   const rows = list.map((c) => ({ c, at: locate(type, c.key) })).sort((x, y) => x.at.pi - y.at.pi || x.at.gi - y.at.gi);
   const scoped = new Set(list.map(where)).size > 1;
   return <div className="pf-change-scroll" role="list">{rows.flatMap(({ c }) => {
     const out = [];
     const name = label(c), was = display(c.key, c.was), now = display(c.key, c.now), scope = scoped ? where(c) : '';
+
     const src = c.scope === 'project' ? sources[c.key] : undefined, choice = src && (choices[c.key] ?? defaultChoice(src));
     const factor = src?.row && choice === 'formula' ? solveFactor(src.row, c.now, ctx) : undefined;
     const becomes = src?.row && factor !== undefined ? formulaText({ ...src.row, factor }) : '';
@@ -109,7 +125,9 @@ function Changes({ type, list, onJump, sources = {}, choices = {}, onChoose }: {
 }
 
 const REVIEW = 'pf-review';
+
 let pending: { type: PresetType; slot: number; at: number } | null = null;
+
 
 export function reviewChanges(type: PresetType, slot = 0) {
   pending = { type, slot, at: Date.now() };
@@ -122,8 +140,11 @@ export function reviewChanges(type: PresetType, slot = 0) {
   window.dispatchEvent(new CustomEvent(REVIEW, { detail: { type, slot } }));
 }
 
+
+
 function ChangesPop({type,slot,list,project}: {type:PresetType;slot:number;list:Change[];project:number}) {
   const [open, setOpen] = useState(false);
+
   const jumped = useRef(false);
   useEffect(() => {
     const take = () => {
@@ -135,12 +156,14 @@ function ChangesPop({type,slot,list,project}: {type:PresetType;slot:number;list:
     return () => window.removeEventListener(REVIEW, on);
   }, [type, slot]);
   useEffect(() => { if (!list.length) setOpen(false); }, [list.length]);
+
   const sources = useStore((s) => JSON.stringify(valueSources(s, type, slot)));
   const sourced = useMemo(() => JSON.parse(sources) as Record<string, ValueSource>, [sources]);
   const [choices, setChoices] = useState<Record<string, ValueChoice>>({});
   if (!list.length) return null;
   const label = `${list.length} change${list.length === 1 ? '' : 's'}`;
   return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}
+
     onFocusOutside={(e) => {if ((e.target as Element | null)?.closest?.('[role=menu]')) e.preventDefault();}}
     onPointerDownOutside={(e) => {if ((e.target as Element | null)?.closest?.('[role=menu]')) e.preventDefault();}}>
     <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}} sources={sourced} choices={choices} onChoose={(k, v) => setChoices((c) => ({...c, [k]: v}))}/>
@@ -149,9 +172,14 @@ function ChangesPop({type,slot,list,project}: {type:PresetType;slot:number;list:
 
 }
 
+
+
+
+
 function SaveChanges({type, slot, project, list, sources, choices, revertAll}: {type: PresetType; slot: number; project: number; list: Change[]; sources: Record<string, ValueSource>; choices: Record<string, ValueChoice>; revertAll(): void}) {
   const m = useMemo(createProfileSave, []), snap = useMachine(m);
   const projectList = list.filter((c) => c.scope === 'project' && c.owner.plate === undefined);
+
   const savable = projectList.some((c) => !sources[c.key] || (choices[c.key] ?? defaultChoice(sources[c.key])) !== 'project');
   const owned = useStore((s) => savesInPlace(s, type, slot)), inPlace = owned && savable;
   const target = useStore((s) => findProfile(s, type, (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '')?.name ?? 'profile');
@@ -170,6 +198,7 @@ function SaveChanges({type, slot, project, list, sources, choices, revertAll}: {
     (how === 'in-place' ? saveToProfile(type, slot, choices) : saveAsNewProfile(type, slot, name, how, choices))
       .then(() => m.send({type: 'SAVED', request}), (e) => m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}));
   };
+
   const [naming, setNaming] = useState<NewKind | null>(null);
   const kinds: MenuEntry[] = [{label: 'Dynamic profile', action: () => setNaming('dynamic')}, {label: 'Regular profile', action: () => setNaming('regular')}];
   const busy = (how: NewKind | 'in-place') => saving && last === how && <span className="pf-spin" aria-hidden/>;
@@ -191,6 +220,7 @@ function SaveChanges({type, slot, project, list, sources, choices, revertAll}: {
   </>;
 }
 
+
 function usePresetActions(type: PresetType, slot: number) {
   const list = useChanges(type, slot).filter((c) => !isMetaKey(c.key));
   const project = list.filter((c) => c.scope === 'project' && c.owner.plate === undefined).length;
@@ -208,6 +238,7 @@ function usePresetActions(type: PresetType, slot: number) {
   return { list, project, state, presetName, isUser, onDelete, save };
 }
 
+
 export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: number }) {
   const { project, presetName, isUser, onDelete, save } = usePresetActions(type, slot);
   return (
@@ -223,13 +254,16 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
   );
 }
 
+
 export function ChangesMark({ type, slot = 0 }: { type: PresetType; slot?: number }) {
   const {list,project}=usePresetActions(type,slot);
   return <ChangesPop type={type} slot={slot} list={list} project={project}/>;
 }
 
 const EMPTY: ProfileConflict[] = [];
+
 export function ConflictLine({ type, name, slot = 0 }: { type: PresetType; name: string; slot?: number }) {
+
   const s = useStore((s) => s);
   const lifecycle = useMachine(profileEdit(type, slot));
   const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];

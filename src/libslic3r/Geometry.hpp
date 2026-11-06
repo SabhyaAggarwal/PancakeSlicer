@@ -8,6 +8,7 @@
 #include "Polygon.hpp"
 #include "Polyline.hpp"
 
+
 #include <cassert>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -25,6 +26,7 @@ namespace Slic3r {
 
 namespace Geometry {
 
+
 enum Orientation
 {
     ORIENTATION_CCW = 1,
@@ -32,7 +34,16 @@ enum Orientation
     ORIENTATION_COLINEAR = 0
 };
 
+
+
+
+
+
+
+
 static inline Orientation orient(const Point &a, const Point &b, const Point &c) {
+
+
     if (a.x() <= 0xffffffff && b.x() <= 0xffffffff && c.x() <= 0xffffffff &&
         a.y() <= 0xffffffff && b.y() <= 0xffffffff && c.y() <= 0xffffffff) {
         int64_t u = int64_t(b(0)) * int64_t(c(1)) - int64_t(b(1)) * int64_t(c(0));
@@ -49,11 +60,16 @@ static inline Orientation orient(const Point &a, const Point &b, const Point &c)
     }
 }
 
+
+
+
 static inline bool is_ccw(const Polygon &poly)
 {
+
     assert(poly.points.size() >= 3);
     if (poly.points.size() < 3)
         return true;
+
 
     unsigned int imin = 0;
     for (unsigned int i = 1; i < poly.points.size(); ++ i) {
@@ -63,9 +79,12 @@ static inline bool is_ccw(const Polygon &poly)
             imin = i;
     }
 
+
     size_t iPrev = ((imin == 0) ? poly.points.size() : imin) - 1;
     size_t iNext = ((imin + 1 == poly.points.size()) ? 0 : imin + 1);
     Orientation o = orient(poly.points[iPrev], poly.points[imin], poly.points[iNext]);
+
+
     assert(o != ORIENTATION_COLINEAR);
     return o == ORIENTATION_CCW;
 }
@@ -85,6 +104,7 @@ inline bool segment_segment_intersection(const Vec2d &p1, const Vec2d &v1, const
 {
     double denom = v1(0) * v2(1) - v2(0) * v1(1);
     if (std::abs(denom) < EPSILON)
+
         return false;
     double s12_x = p1(0) - p2(0);
     double s12_y = p1(1) - p2(1);
@@ -96,12 +116,15 @@ inline bool segment_segment_intersection(const Vec2d &p1, const Vec2d &v1, const
         s_numer = - s_numer;
     }
     if (s_numer < 0.)
+
         return false;
     double t_numer = v2(0) * s12_y - v2(1) * s12_x;
     if (! denom_is_positive)
         t_numer = - t_numer;
     if (t_numer < 0. || s_numer > denom || t_numer > denom)
+
         return false;
+
     double t = t_numer / denom;
     res(0) = p1(0) + t * v1(0);
     res(1) = p1(1) + t * v1(1);
@@ -109,9 +132,11 @@ inline bool segment_segment_intersection(const Vec2d &p1, const Vec2d &v1, const
 }
 
 inline bool segments_intersect(
-	const Slic3r::Point &ip1, const Slic3r::Point &ip2, 
+	const Slic3r::Point &ip1, const Slic3r::Point &ip2,
 	const Slic3r::Point &jp1, const Slic3r::Point &jp2)
-{    
+{
+
+
 
     auto segments_could_intersect = [](
         const Slic3r::Point &ip1, const Slic3r::Point &ip2,
@@ -123,6 +148,7 @@ inline bool segments_intersect(
         int64_t tij1 = cross2(iv, vij1);
         int64_t tij2 = cross2(iv, vij2);
         return std::make_pair(
+
             (tij1 > 0) ? 1 : ((tij1 < 0) ? -1 : 0),
             (tij2 > 0) ? 1 : ((tij2 < 0) ? -1 : 0));
     };
@@ -132,11 +158,16 @@ inline bool segments_intersect(
     int                 test1 = sign1.first * sign1.second;
     int                 test2 = sign2.first * sign2.second;
     if (test1 <= 0 && test2 <= 0) {
+
         if (test1 != 0 || test2 != 0)
+
             return true;
+
         assert((sign1.first == 0 && sign1.second == 0) == (sign2.first == 0 && sign2.second == 0));
         if (sign1.first == 0 && sign1.second == 0) {
+
             Slic3r::Point vi = ip2 - ip1;
+
             int axis = std::abs(vi.x()) > std::abs(vi.y()) ? 0 : 1;
             coord_t i = ip1(axis);
             coord_t j = ip2(axis);
@@ -185,31 +216,41 @@ inline double ray_point_distance(const Line &iline, const Point &ipt)
     return (foot_pt(iline, ipt) - ipt.cast<double>()).norm();
 }
 
+
 template<typename T>
 inline bool liang_barsky_line_clipping_interval(
+
     const Eigen::Matrix<T, 2, 1, Eigen::DontAlign>                  &x0,
     const Eigen::Matrix<T, 2, 1, Eigen::DontAlign>                  &v,
+
     const BoundingBoxBase<Eigen::Matrix<T, 2, 1, Eigen::DontAlign>> &bbox,
     std::pair<double, double>                                       &out_interval)
 {
     double t0 = 0.0;
     double t1 = 1.0;
+
     auto clip_side = [&t0, &t1](double p, double q) -> bool {
         if (p == 0) {
             if (q < 0)
+
                 return false;
+
         } else {
             double r = q / p;
             if (p < 0) {
                 if (r > t1)
+
                     return false;
                 if (r > t0)
+
                     t0 = r;
             } else {
                 assert(p > 0);
                 if (r < t0)
+
                     return false;
                 if (r < t1)
+
                     t1 = r;
             }
         }
@@ -229,13 +270,16 @@ inline bool liang_barsky_line_clipping_interval(
 
 template<typename T>
 inline bool liang_barsky_line_clipping(
+
 	Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 						&x0,
 	Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 						&x1,
+
 	const BoundingBoxBase<Eigen::Matrix<T, 2, 1, Eigen::DontAlign>> &bbox)
 {
     Eigen::Matrix<T, 2, 1, Eigen::DontAlign> v = x1 - x0;
     std::pair<double, double> interval;
     if (liang_barsky_line_clipping_interval(x0, v, bbox, interval)) {
+
         x1  = x0 + interval.second * v;
         x0 += interval.first * v;
         return true;
@@ -243,11 +287,15 @@ inline bool liang_barsky_line_clipping(
     return false;
 }
 
+
 template<typename T>
 bool liang_barsky_line_clipping(
+
 	const Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 					&x0src,
 	const Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 					&x1src,
+
 	const BoundingBoxBase<Eigen::Matrix<T, 2, 1, Eigen::DontAlign>> &bbox,
+
 	Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 						&x0clip,
 	Eigen::Matrix<T, 2, 1, Eigen::DontAlign> 						&x1clip)
 {
@@ -292,39 +340,78 @@ void simplify_polygons(const Polygons &polygons, double tolerance, Polygons* ret
 
 double linint(double value, double oldmin, double oldmax, double newmin, double newmax);
 bool arrange(
-    size_t num_parts, const Vec2d &part_size, coordf_t gap, const BoundingBoxf* bed_bounding_box, 
+
+    size_t num_parts, const Vec2d &part_size, coordf_t gap, const BoundingBoxf* bed_bounding_box,
+
     Pointfs &positions);
+
+
+
+
+
+
+
 
 void assemble_transform(Transform3d& transform, const Vec3d& translation = Vec3d::Zero(), const Vec3d& rotation = Vec3d::Zero(),
     const Vec3d& scale = Vec3d::Ones(), const Vec3d& mirror = Vec3d::Ones());
 
+
+
+
+
+
+
+
 Transform3d assemble_transform(const Vec3d& translation = Vec3d::Zero(), const Vec3d& rotation = Vec3d::Zero(),
     const Vec3d& scale = Vec3d::Ones(), const Vec3d& mirror = Vec3d::Ones());
+
+
 
 void assemble_transform(Transform3d& transform, const Transform3d& translation = Transform3d::Identity(),
     const Transform3d& rotation = Transform3d::Identity(), const Transform3d& scale = Transform3d::Identity(),
     const Transform3d& mirror = Transform3d::Identity());
 
+
+
 Transform3d assemble_transform(const Transform3d& translation = Transform3d::Identity(), const Transform3d& rotation = Transform3d::Identity(),
     const Transform3d& scale = Transform3d::Identity(), const Transform3d& mirror = Transform3d::Identity());
 
+
 void translation_transform(Transform3d& transform, const Vec3d& translation);
+
 
 Transform3d translation_transform(const Vec3d& translation);
 
+
+
+
+
 void rotation_transform(Transform3d& transform, const Vec3d& rotation);
 
+
+
+
+
 Transform3d rotation_transform(const Vec3d& rotation);
+
 
 void scale_transform(Transform3d& transform, double scale);
 void scale_transform(Transform3d& transform, const Vec3d& scale);
 
+
 Transform3d scale_transform(double scale);
 Transform3d scale_transform(const Vec3d& scale);
 
+
+
 Vec3d extract_euler_angles(const Eigen::Matrix<double, 3, 3, Eigen::DontAlign>& rotation_matrix);
 
+
+
 Vec3d extract_euler_angles(const Transform3d& transform);
+
+
+
 
 void rotation_from_two_vectors(Vec3d from, Vec3d to, Vec3d &rotation_axis, double &phi, Matrix3d *rotation_matrix = nullptr);
 
@@ -391,13 +478,18 @@ public:
     Transform3d get_matrix_no_offset() const;
     Transform3d get_matrix_no_scaling_factor() const;
 
+
     Transform3d get_matrix_with_applied_shrinkage_compensation(const Vec3d &shrinkage_compensation) const;
-    
+
     void set_matrix(const Transform3d& transform) { m_matrix = transform; }
 
     Transformation operator * (const Transformation& other) const;
 
+
+
+
     static Transformation volume_to_bed_transformation(const Transformation& instance_transformation, const BoundingBoxf3& bbox);
+
 
     friend bool operator==(Transformation const& l, Transformation const& r) {
         return l.m_matrix.isApprox(r.m_matrix);
@@ -414,6 +506,7 @@ private:
     explicit Transformation(int) {}
     template <class Archive> static void load_and_construct(Archive& ar, cereal::construct<Transformation>& construct)
     {
+
         construct(1);
         ar(construct.ptr()->m_matrix);
     }
@@ -438,10 +531,16 @@ struct TransformationSVD
     Eigen::DiagonalMatrix<double, 3, 3> mirror_matrix() const { return Eigen::DiagonalMatrix<double, 3, 3>(this->mirror ? -1. : 1., 1., 1.); }
 };
 
+
 extern Transform3d transform3d_from_string(const std::string& transform_str);
 
+
+
 extern Eigen::Quaterniond rotation_xyz_diff(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to);
+
+
 extern double rotation_diff_z(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to);
+
 
 inline bool is_rotation_ninety_degrees(double a)
 {
@@ -451,6 +550,7 @@ inline bool is_rotation_ninety_degrees(double a)
     return a < 0.001;
 }
 
+
 inline bool is_rotation_ninety_degrees(const Vec3d &rotation)
 {
     return is_rotation_ninety_degrees(rotation.x()) && is_rotation_ninety_degrees(rotation.y()) && is_rotation_ninety_degrees(rotation.z());
@@ -458,6 +558,20 @@ inline bool is_rotation_ninety_degrees(const Vec3d &rotation)
 
 Transformation mat_around_a_point_rotate(const Transformation& innMat, const Vec3d &pt, const Vec3d &axis, float rotate_theta_radian);
 Transformation generate_transform(const Vec3d &x_dir, const Vec3d &y_dir, const Vec3d &z_dir, const Vec3d &origin);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 bool is_point_inside_polygon_corner(const Point &a, const Point &b, const Point &c, const Point &query_point);
 

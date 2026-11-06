@@ -36,6 +36,7 @@ public:
     bool is_over_deviation(const Points& points, const double tolerance);
     bool get_deviation_sum_squared(const Points& points, const double tolerance, double& sum_deviation);
 
+
     static Vec3f calc_tangential_vector(const Vec3f& pos, const Vec3f& center_pos, const bool is_ccw);
     static bool get_closest_perpendicular_point(const Point& p1, const Point& p2, const Point& c, Point& out);
     static bool is_equal(double x, double y, double tolerance = ZERO_TOLERANCE) {
@@ -124,7 +125,9 @@ public:
 
     static bool are_points_within_slice(const ArcSegment& test_arc, const Points &points);
     static bool are_points_within_slice(const ArcSegment& test_arc, const Points3 &points);
+
     static bool ray_intersects_segment(const Point& rayOrigin, const Vec2d& rayDirection, const Line& segment);
+
     static float calc_arc_radian(Vec3f start_pos, Vec3f end_pos, Vec3f center_pos, bool is_ccw);
     static float calc_arc_radius(Vec3f start_pos, Vec3f center_pos);
     static float calc_arc_length(Vec3f start_pos, Vec3f end_pos, Vec3f center_pos, bool is_ccw);

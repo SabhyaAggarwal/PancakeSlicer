@@ -1,10 +1,16 @@
+
+
+
+
 import { effectiveConfig, type PlateObject, type State } from '../state/store';
 
 const on = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
 const painted = (o: { paint?: PlateObject['paint'] }) => !!o.paint?.support && o.paint.support.size > 0;
 
+
 export function nativeSupportConflicts(s: State): string | null {
   const global = effectiveConfig(s, 'process');
+
   const lines: string[] = [];
   for (const o of s.objects) {
     const style = String(o.settings.support_style ?? global.support_style ?? '');

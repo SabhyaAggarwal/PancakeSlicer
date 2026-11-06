@@ -24,13 +24,24 @@ class TriangleMesh;
 class TriangleMeshSlicer;
 struct Groove;
 struct RepairedMeshErrors {
+
     int           edges_fixed               = 0;
+
     int           degenerate_facets         = 0;
+
     int           facets_removed            = 0;
+
+
+
+
     int           facets_reversed           = 0;
+
     int           backwards_edges           = 0;
+
     int           duplicate_facets          = 0;
+
     int           nonmanifold_edges         = 0;
+
     int           holes_filled              = 0;
     int           facets_added              = 0;
 
@@ -50,12 +61,15 @@ struct RepairedMeshErrors {
 
     bool repaired() const { return degenerate_facets > 0 || edges_fixed > 0 || facets_removed > 0 || facets_reversed > 0 || backwards_edges > 0 ||
                                    duplicate_facets > 0 || nonmanifold_edges > 0 || holes_filled > 0; }
+
     int count() const { return degenerate_facets + edges_fixed + facets_removed + facets_reversed + backwards_edges +
                                duplicate_facets + nonmanifold_edges + holes_filled; }
+
     std::string summary() const;
 };
 
 struct TriangleMeshStats {
+
     uint32_t      number_of_facets          = 0;
     stl_vertex    max                       = stl_vertex::Zero();
     stl_vertex    min                       = stl_vertex::Zero();
@@ -63,7 +77,9 @@ struct TriangleMeshStats {
     float         volume                    = -1.f;
     int           number_of_parts           = 0;
 
+
     int           open_edges                = 0;
+
 
     RepairedMeshErrors repaired_errors;
 
@@ -122,27 +138,40 @@ public:
     void mirror_z() { this->mirror(Z); }
     void transform(const Transform3d& t, bool fix_left_handed = false);
     void transform(const Matrix3d& t, bool fix_left_handed = false);
+
     void flip_triangles();
     void align_to_origin();
     void rotate(double angle, Point* center);
     std::vector<TriangleMesh> split() const;
     void merge(const TriangleMesh &mesh);
     ExPolygons horizontal_projection() const;
+
     Polygon convex_hull() const;
     BoundingBoxf3 bounding_box() const;
+
     BoundingBoxf3 transformed_bounding_box(const Transform3d &trafo) const;
+
     BoundingBoxf3 transformed_bounding_box(const Transform3d& trafo, double world_min_z) const;
+
     Vec3d size() const { return m_stats.size.cast<double>(); }
+
     Vec3d center() const { return this->bounding_box().center(); }
+
     TriangleMesh convex_hull_3d() const;
+
     std::vector<ExPolygons> slice(const std::vector<double>& z) const;
     size_t facets_count() const { assert(m_stats.number_of_facets == this->its.indices.size()); return m_stats.number_of_facets; }
     bool   empty() const { return this->facets_count() == 0; }
     bool   repaired() const;
     bool   is_splittable() const;
+
     size_t memsize() const;
 
+
+
+
     size_t release_optional() { return 0; }
+
     void   restore_optional() {}
 
     const TriangleMeshStats& stats() const { return m_stats; }
@@ -157,6 +186,7 @@ private:
     Vec3d m_init_shift {0.0, 0.0, 0.0};
 };
 
+
 struct VertexFaceIndex
 {
 public:
@@ -168,8 +198,10 @@ public:
     void create(const indexed_triangle_set &its);
     void clear() { m_vertex_to_face_start.clear(); m_vertex_faces_all.clear(); }
 
+
     iterator begin(size_t vertex_id) const throw() { return m_vertex_faces_all.begin() + m_vertex_to_face_start[vertex_id]; }
     iterator end  (size_t vertex_id) const throw() { return m_vertex_faces_all.begin() + m_vertex_to_face_start[vertex_id + 1]; }
+
     size_t   count(size_t vertex_id) const throw() { return m_vertex_to_face_start[vertex_id + 1] - m_vertex_to_face_start[vertex_id]; }
 
     const Range<iterator> operator[](size_t vertex_id) const { return {begin(vertex_id), end(vertex_id)}; }
@@ -179,24 +211,44 @@ private:
     std::vector<size_t>     m_vertex_faces_all;
 };
 
+
+
+
 std::vector<Vec3i32> its_face_edge_ids(const indexed_triangle_set &its);
 std::vector<Vec3i32> its_face_edge_ids(const indexed_triangle_set &its, std::function<void()> throw_on_cancel_callback);
 std::vector<Vec3i32> its_face_edge_ids(const indexed_triangle_set &its, const std::vector<bool> &face_mask);
+
 std::vector<Vec3i32> its_face_edge_ids(const indexed_triangle_set &its, std::vector<Vec3i32> &face_neighbors, bool assign_unbound_edges = false, int *num_edges = nullptr);
+
 
 std::vector<Vec3i32> its_face_neighbors(const indexed_triangle_set &its);
 std::vector<Vec3i32> its_face_neighbors_par(const indexed_triangle_set &its);
 
+
 void its_flip_triangles(indexed_triangle_set &its);
+
+
+
 
 int its_merge_vertices(indexed_triangle_set &its, bool shrink_to_fit = true);
 
+
 int its_remove_degenerate_faces(indexed_triangle_set &its, bool shrink_to_fit = true);
+
 
 int its_compactify_vertices(indexed_triangle_set &its, bool shrink_to_fit = true);
 
+
+
+
+
+
+
 RepairedMeshErrors its_repair_on_load(indexed_triangle_set &its, float max_hole_size = 20.f);
+
+
 RepairedMeshErrors its_close_holes(indexed_triangle_set &its, float max_hole_size = 20.f);
+
 
 bool its_store_triangle(const indexed_triangle_set &its, const char *obj_filename, size_t triangle_index);
 bool its_store_triangles(const indexed_triangle_set &its, const char *obj_filename, const std::vector<size_t>& triangles);
@@ -204,21 +256,28 @@ bool its_store_triangles(const indexed_triangle_set &its, const char *obj_filena
 std::vector<indexed_triangle_set> its_split(const indexed_triangle_set &its);
 std::vector<indexed_triangle_set> its_split(const indexed_triangle_set &its, std::vector<Vec3i32> &face_neighbors);
 
+
 size_t its_number_of_patches(const indexed_triangle_set &its);
 size_t its_number_of_patches(const indexed_triangle_set &its, const std::vector<Vec3i32> &face_neighbors);
+
 bool its_is_splittable(const indexed_triangle_set &its);
 bool its_is_splittable(const indexed_triangle_set &its, const std::vector<Vec3i32> &face_neighbors);
+
 
 size_t its_num_open_edges(const indexed_triangle_set &its);
 size_t its_num_open_edges(const std::vector<Vec3i32> &face_neighbors);
 
+
 void its_shrink_to_fit(indexed_triangle_set &its);
+
 
 void its_collect_mesh_projection_points_above(const indexed_triangle_set &its, const Matrix3f &m, const float z, Points &all_pts);
 void its_collect_mesh_projection_points_above(const indexed_triangle_set &its, const Transform3f &t, const float z, Points &all_pts);
 
+
 Polygon its_convex_hull_2d_above(const indexed_triangle_set &its, const Matrix3f &m, const float z);
 Polygon its_convex_hull_2d_above(const indexed_triangle_set &its, const Transform3f &t, const float z);
+
 
 inline int its_triangle_vertex_index(const stl_triangle_vertex_indices &triangle_indices, int vertex_idx)
 {
@@ -233,12 +292,14 @@ inline Vec2i32 its_triangle_edge(const stl_triangle_vertex_indices &triangle_ind
     return { triangle_indices[edge_idx], triangle_indices[next_edge_idx] };
 }
 
+
 inline int its_triangle_edge_index(const stl_triangle_vertex_indices &triangle_indices, const Vec2i32 &triangle_edge)
 {
     return triangle_edge(0) == triangle_indices[0] && triangle_edge(1) == triangle_indices[1] ? 0 :
            triangle_edge(0) == triangle_indices[1] && triangle_edge(1) == triangle_indices[2] ? 1 :
            triangle_edge(0) == triangle_indices[2] && triangle_edge(1) == triangle_indices[0] ? 2 : -1;
 }
+
 
 inline bool its_triangle_vertex_the_same(const stl_triangle_vertex_indices &triangle_indices_1, const stl_triangle_vertex_indices &triangle_indices_2)
 {
@@ -293,6 +354,8 @@ inline stl_normal its_unnormalized_normal(const indexed_triangle_set &its,
 }
 
 float its_volume(const indexed_triangle_set &its);
+
+
 struct MassProperties
 {
     double   mass{ 0. };
@@ -300,8 +363,10 @@ struct MassProperties
     Vec3d    center{ Vec3d::Zero() };
     Matrix3d spread{ Matrix3d::Zero() };
 
+
     MassProperties transformed(const Transform3d &trafo) const;
 };
+
 MassProperties its_mass_properties(const indexed_triangle_set &its);
 float its_average_edge_length(const indexed_triangle_set &its);
 
@@ -362,6 +427,7 @@ inline BoundingBoxf3 bounding_box(const indexed_triangle_set& its)
 }
 
 }
+
 
 #include <cereal/access.hpp>
 namespace cereal {

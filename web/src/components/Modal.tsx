@@ -1,3 +1,8 @@
+
+
+
+
+
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Glyph } from './Glyph';
@@ -6,6 +11,8 @@ import './dialog.css';
 
 export type ModalSize = 's' | 'm' | 'l' | 'xl' | 'window';
 const FIELD = ':is(input:not([type=hidden], [type=checkbox], [type=radio]), textarea, select):not(:disabled, [aria-hidden=true], [tabindex="-1"])';
+
+
 function focusFirst(root: HTMLElement) {
   const footer = root.querySelector('.modal-buttons');
   const primary = footer?.querySelector<HTMLElement>('.btn-primary:not(:disabled), .btn-danger:not(:disabled)');
@@ -16,11 +23,15 @@ function focusFirst(root: HTMLElement) {
   target.focus({ preventScroll: true });
 }
 
+
+
 let openModals = 0;
 const modalListeners = new Set<() => void>();
 const countModal = (d: number) => { openModals += d; modalListeners.forEach((l) => l()); };
+
 export const useModalCount = () => useSyncExternalStore((l) => { modalListeners.add(l); return () => void modalListeners.delete(l); }, () => openModals);
 function Counted() { useEffect(() => { countModal(1); return () => countModal(-1); }, []); return null; }
+
 const inTopLayer = (e: Event) => !!(e.target as Element | null)?.closest?.('.top-layer');
 
 export function Modal({ label, onClose, className = '', size = 'window', alert = false, backdropClose = false, returnFocus, onEscapeKeyDown, children }: {
@@ -37,10 +48,15 @@ export function Modal({ label, onClose, className = '', size = 'window', alert =
 export function ModalTitle({ title, onClose }: { title: ReactNode; onClose(): void }) {
   return <div className="modal-title"><Dialog.Title asChild><h2>{title}</h2></Dialog.Title><button type="button" className="modal-close" aria-label="Close" onClick={onClose}><Glyph name="close" size={14} /></button></div>;
 }
+
 export function ModalBody({ className = '', children }: { className?: string; children: ReactNode }) { return <div className={`modal-body ${className}`}>{children}</div>; }
+
 export function ModalFooter({ lead, children }: { lead?: ReactNode; children: ReactNode }) {
   return <div className="modal-buttons">{lead && <div className="modal-lead">{lead}</div>}{children}</div>;
 }
+
+
+
 export function InTopLayer({ children }: { children: ReactNode }) {
   const open = useModalCount();
   return open ? createPortal(<div className="top-layer">{children}</div>, document.body, String(open)) : <>{children}</>;

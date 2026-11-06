@@ -1,5 +1,5 @@
-# Intel IPP / IPP-ICV is x86/x64 only — there is no ARM64 build, so enabling it
-# leaves ~200 unresolved ippicv* externals at link time on Windows ARM64.
+
+
 if (MSVC AND NOT "${DEPS_ARCH}" STREQUAL "arm64")
     set(_use_IPP "-DWITH_IPP=ON")
     if (DEP_DEBUG)
@@ -10,8 +10,8 @@ else ()
     set(_options "")
 endif ()
 
-# carotene is OpenCV's ARM NEON HAL. It uses M_PI without _USE_MATH_DEFINES
-# and does not compile with clang-cl.
+
+
 set(_disable_carotene "")
 if ("${DEPS_ARCH}" STREQUAL "arm64" AND CMAKE_CXX_COMPILER_ID STREQUAL Clang)
     set(_disable_carotene "-DWITH_CAROTENE=OFF")
@@ -82,7 +82,7 @@ orcaslicer_add_cmake_project(OpenCV
        -DWITH_OPENVINO=OFF
        -DWITH_INF_ENGINE=OFF
        -DWITH_NGRAPH=OFF
-       -DBUILD_WITH_STATIC_CRT=OFF#set /MDd /MD
+       -DBUILD_WITH_STATIC_CRT=OFF
        -DBUILD_LIST=core,imgcodecs,imgproc,world
        -DBUILD_opencv_highgui=OFF
        -DWITH_ADE=OFF
@@ -92,4 +92,3 @@ orcaslicer_add_cmake_project(OpenCV
        -DHAVE_WIN32UI=FALSE
        ${_disable_carotene}
 )
-

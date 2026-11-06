@@ -1,3 +1,6 @@
+
+
+
 import { memo, useSyncExternalStore, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { SectionHeading } from './SectionHeading';
@@ -12,8 +15,14 @@ export function setGroupOpen(id: string, open: boolean) {
   version++;
   listeners.forEach((listener) => listener());
 }
+
+
 export const isGroupOpen = (id: string, byDefault = false) => expanded.has(id) || (byDefault && !folded.has(id));
+
 export const useSettingsGroups = () => useSyncExternalStore(subscribe, () => version);
+
+
+
 
 export const GroupHead = memo(function GroupHead({ id, title, icon, modified, open, aside, fixed = false }: { id: string; title: string; icon?: string; modified: boolean; open: boolean; aside?: ReactNode; fixed?: boolean }) {
   const content = <>
@@ -28,5 +37,6 @@ export const GroupHead = memo(function GroupHead({ id, title, icon, modified, op
         : <button type="button" className={`optgroup-head ${modified ? 'modified' : ''}`} aria-expanded={open} onClick={() => setGroupOpen(id, !open)}>{content}</button>}
     </SectionHeading>
   );
+
   return aside ? <div className="optgroup-headrow">{head}<div className="optgroup-aside">{aside}</div></div> : head;
 });

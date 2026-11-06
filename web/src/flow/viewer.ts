@@ -23,6 +23,7 @@ export const createViewer = () => createMachine<ViewerState, ViewerEvent, Viewer
 });
 export type ViewerSnapshot = { value: 'empty' } | { value: 'loading' | 'ready' | 'playing'; source: ViewerSource }
   | { value: 'error'; source: ViewerSource; error: string };
+
 export function viewerSnapshot(m: Machine<ViewerState, ViewerEvent, ViewerContext>): ViewerSnapshot {
   const { value, context: c } = m.get();
   if (value === 'empty') return { value };

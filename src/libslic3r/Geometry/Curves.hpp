@@ -12,6 +12,8 @@
 #include <vector>
 #include <utility>
 
+
+
 namespace Slic3r {
 namespace Geometry {
 
@@ -29,10 +31,12 @@ struct PolynomialCurve {
     }
 };
 
+
 template<int Dimension, typename NumberType>
 PolynomialCurve<Dimension, NumberType> fit_polynomial(const std::vector<Vec<Dimension, NumberType>> &observations,
         const std::vector<NumberType> &observation_points,
         const std::vector<NumberType> &weights, size_t order) {
+
     size_t cols = order + 1;
     assert(observation_points.size() >= cols);
     assert(observation_points.size() == weights.size());
@@ -43,6 +47,7 @@ PolynomialCurve<Dimension, NumberType> fit_polynomial(const std::vector<Vec<Dime
     for (size_t i = 0; i < weights.size(); ++i) {
         auto squared_weight = sqrt(weights[i]);
         data_points.col(i) = observations[i] * squared_weight;
+
         auto x = squared_weight;
         auto c = observation_points[i];
         for (size_t j = 0; j < cols; ++j, x *= c)
@@ -51,6 +56,7 @@ PolynomialCurve<Dimension, NumberType> fit_polynomial(const std::vector<Vec<Dime
 
     const auto QR = T.householderQr();
     Eigen::MatrixXf coefficients(Dimension, cols);
+
     for (size_t dim = 0; dim < Dimension; ++dim) {
         coefficients.row(dim) = QR.solve(data_points.row(dim).transpose());
     }
@@ -70,7 +76,9 @@ struct PiecewiseFittedCurve {
     Vec<Dimension, NumberType> get_fitted_value(const NumberType &observation_point) const {
         Vec<Dimension, NumberType> result = Vec<Dimension, NumberType>::Zero();
 
+
         int middle_right_segment_index = floor((observation_point - start) / segment_size);
+
         int start_segment_idx = middle_right_segment_index - Kernel::kernel_span / 2 + 1;
         for (int segment_index = start_segment_idx; segment_index < int(start_segment_idx + Kernel::kernel_span);
                 segment_index++) {
@@ -85,6 +93,12 @@ struct PiecewiseFittedCurve {
     }
 };
 
+
+
+
+
+
+
 template<typename Kernel, int Dimension, typename NumberType>
 PiecewiseFittedCurve<Dimension, NumberType, Kernel> fit_curve(
         const std::vector<Vec<Dimension, NumberType>> &observations,
@@ -93,17 +107,20 @@ PiecewiseFittedCurve<Dimension, NumberType, Kernel> fit_curve(
         size_t segments_count,
         size_t endpoints_level_of_freedom) {
 
+
     assert(segments_count > 0);
     assert(observations.size() > 0);
     assert(observation_points.size() == observations.size());
     assert(observation_points.size() == weights.size());
     assert(segments_count <= observations.size());
 
+
     std::vector<NumberType> sqrt_weights(weights.size());
     for (size_t index = 0; index < weights.size(); ++index) {
         assert(weights[index] > 0);
         sqrt_weights[index] = sqrt(weights[index]);
     }
+
 
     PiecewiseFittedCurve<Dimension, NumberType, Kernel> result { };
 
@@ -113,16 +130,24 @@ PiecewiseFittedCurve<Dimension, NumberType, Kernel> fit_curve(
     result.segment_size = segment_size;
     result.endpoints_level_of_freedom = endpoints_level_of_freedom;
 
+
+
     Eigen::MatrixXf data_points(Dimension, observations.size());
     for (size_t index = 0; index < observations.size(); ++index) {
         data_points.col(index) = observations[index] * sqrt_weights[index];
     }
+
+
     size_t parameters_count = segments_count + 1 + 2 * endpoints_level_of_freedom;
+
     Eigen::MatrixXf T(observation_points.size(), parameters_count);
     T.setZero();
+
     for (size_t i = 0; i < observation_points.size(); ++i) {
         NumberType observation_point = observation_points[i];
+
         int middle_right_segment_index = floor((observation_point - result.start) / result.segment_size);
+
         int start_segment_idx = middle_right_segment_index - int(Kernel::kernel_span / 2) + 1;
         for (int segment_index = start_segment_idx; segment_index < int(start_segment_idx + Kernel::kernel_span);
                 segment_index++) {
@@ -145,6 +170,7 @@ PiecewiseFittedCurve<Dimension, NumberType, Kernel> fit_curve(
     }
     std::cout << std::endl;
 #endif
+
 
     result.coefficients.resize(Dimension, parameters_count);
     const auto QR = T.fullPivHouseholderQr();

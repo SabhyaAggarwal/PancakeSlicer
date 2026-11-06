@@ -15,12 +15,19 @@ indexed_triangle_set sphere(double rho, Portion portion, double fa) {
 
     indexed_triangle_set ret;
 
+
     if(rho <= 1e-6 && rho >= -1e-6) return ret;
 
     auto& vertices = ret.vertices;
     auto& facets = ret.indices;
 
+
+
+
+
+
     double angle = (2 * PI / floor(2*PI / fa) );
+
 
     std::vector<double> ring;
 
@@ -32,13 +39,17 @@ indexed_triangle_set sphere(double rho, Portion portion, double fa) {
     const size_t steps = ring.size();
     const double increment = 1.0 / double(steps);
 
+
+
     if (sbegin == 0)
         vertices.emplace_back(
             Vec3f(0.f, 0.f, float(-rho + increment * sbegin * 2. * rho)));
 
     auto id = coord_t(vertices.size());
     for (size_t i = 0; i < ring.size(); i++) {
+
         const double z = -rho + increment*rho*2.0 * (sbegin + 1.0);
+
         const double r = std::sqrt(std::abs(rho*rho - z*z));
         Vec2d b = Eigen::Rotation2Dd(ring[i]) * Eigen::Vector2d(0, r);
         vertices.emplace_back(Vec3d(b(0), b(1), z).cast<float>());
@@ -49,6 +60,8 @@ indexed_triangle_set sphere(double rho, Portion portion, double fa) {
         ++id;
     }
 
+
+
     for (size_t s = sbegin + 2; s < send - 1; s++) {
         const double z = -rho + increment * double(s * 2. * rho);
         const double r = std::sqrt(std::abs(rho*rho - z*z));
@@ -58,6 +71,7 @@ indexed_triangle_set sphere(double rho, Portion portion, double fa) {
             vertices.emplace_back(Vec3d(b(0), b(1), z).cast<float>());
             auto id_ringsize = coord_t(id - int(ring.size()));
             if (i == 0) {
+
                 facets.emplace_back(id - 1, id, id + coord_t(ring.size() - 1) );
                 facets.emplace_back(id - 1, id_ringsize, id);
             } else {
@@ -68,11 +82,14 @@ indexed_triangle_set sphere(double rho, Portion portion, double fa) {
         }
     }
 
+
+
     if(send >= size_t(2*PI / angle)) {
         vertices.emplace_back(0.f, 0.f, float(-rho + increment*send*2.0*rho));
         for (size_t i = 0; i < ring.size(); i++) {
             auto id_ringsize = coord_t(id - int(ring.size()));
             if (i == 0) {
+
                 facets.emplace_back(id - 1, id_ringsize, id);
             } else {
                 auto ci = coord_t(id_ringsize + coord_t(i));
@@ -100,12 +117,14 @@ indexed_triangle_set cylinder(double r, double h, size_t ssteps, const Vec3d &sp
     Vec3d jp = sp;
     Vec3d endp = {sp(X), sp(Y), sp(Z) + h};
 
+
     for(int i = 0; i < steps; ++i) {
         double phi = i*a;
         auto ex = float(endp(X) + r*std::cos(phi));
         auto ey = float(endp(Y) + r*std::sin(phi));
         points.emplace_back(ex, ey, float(endp(Z)));
     }
+
 
     for(int i = 0; i < steps; ++i) {
         double phi = i*a;
@@ -114,6 +133,7 @@ indexed_triangle_set cylinder(double r, double h, size_t ssteps, const Vec3d &sp
         points.emplace_back(x, y, float(jp(Z)));
     }
 
+
     indices.reserve(2*ssteps);
     auto offs = steps;
     for(int i = 0; i < steps - 1; ++i) {
@@ -121,9 +141,13 @@ indexed_triangle_set cylinder(double r, double h, size_t ssteps, const Vec3d &sp
         indices.emplace_back(i, offs + i + 1, i + 1);
     }
 
+
     auto last = steps - 1;
     indices.emplace_back(0, last, offs);
     indices.emplace_back(last, offs + last, offs);
+
+
+
 
     points.emplace_back(jp.cast<float>()); int ci = int(points.size() - 1);
     for(int i = 0; i < steps - 1; ++i)
@@ -152,10 +176,26 @@ indexed_triangle_set pinhead(double r_pin,
 
     indexed_triangle_set mesh;
 
+
+
+
+
     const double detail = 2 * PI / steps;
+
+
+
+
+
+
+
 
     const double h   = r_back + r_pin + length;
     double       phi = PI / 2. - std::acos((r_back - r_pin) / h);
+
+
+
+
+
 
     auto &&s1 = sphere(r_back, make_portion(0, PI / 2 + phi), detail);
     auto &&s2 = sphere(r_pin, make_portion(PI / 2 + phi, PI), detail);

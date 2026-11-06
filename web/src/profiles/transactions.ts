@@ -1,3 +1,4 @@
+
 import type { PresetType, SystemPreset, UserPreset } from '../api/types';
 import { getState, markStale, setState, type State } from '../state/store';
 import { readProfileLibrary, persistProfileLibrary } from '../persist/profile-library';
@@ -7,10 +8,15 @@ import { catalogKey, findCatalogBase, normalizeUserPreset, prepareProfile, store
 import { editableMaster, archiveProfile, restoreArchivedProfile } from './library-actions';
 let tail:Promise<unknown>=Promise.resolve();
 const serialize = <T>(action:()=>Promise<T>):Promise<T> => {const result=tail.then(action);tail=result.catch(()=>{});return result;};
+
 export const serializeProfileWrite=serialize;
 const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):value && typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).filter(([,v])=>v!==undefined).map(([k,v])=>[k,ordered(v)])):value;
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
+
 const sameSetups=(a:PrinterProfileLibrary|undefined,b:PrinterProfileLibrary|undefined)=>equal(a?.setups ?? {},b?.setups ?? {});
+
+
+
 const stored=(p:UserPreset)=>{
   const {snapshot:_s,baseline:_b,kind:_k,aliases:_a,provenance:_p,masterId:_m,printerId:_pr,parentId:_pi,parent:_pa,metadata,base,name,...rest}=storedProfile(normalizeUserPreset(p)) as ReturnType<typeof storedProfile>&Record<string,unknown>;
   const family=(metadata as Record<string,unknown>|undefined)?.family;
@@ -19,10 +25,13 @@ const stored=(p:UserPreset)=>{
 const conflict=(message:string)=>Object.assign(new Error(message),{code:'revision_conflict',recovery:'reload_profiles'});
 interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean;acknowledged?:boolean;setupBaseline?:PrinterProfileLibrary}
 interface Acknowledgement {request:FrozenWrite;document:import('./ownership').ProfileLibraryDocument;records:UserPreset[];changed:Set<string>;setupsChanged?:boolean}
+
 let pending:FrozenWrite|undefined;
 const ownAcknowledgements=new WeakMap<UserPreset,UserPreset>();
+
 const ownSetupAcknowledgements=new WeakMap<PrinterProfileLibrary,PrinterProfileLibrary>();
 export interface PrinterSetupSaveContext {baseline:PrinterProfileLibrary;isCurrent():boolean}
+
 export function profileOriginIsCurrent(current:UserPreset|undefined,origin:UserPreset|undefined):boolean{
   return current===origin || !!current && !!origin && !!ownAcknowledgements.get(origin) && equal(stored(current),stored(ownAcknowledgements.get(origin)!));
 }
@@ -39,6 +48,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
     if(failure.code==='revision_conflict' || failure.code==='library_reset' || [400,401,403,404,422].includes(failure.status ?? 0)){request.retryable=false;if(pending===request)pending=undefined;}
     throw error;
   }
+
   const document=await readProfileLibrary(),records:UserPreset[]=[],changed=new Set<string>();
   for(const submitted of request.records){
     const raw=document.profiles.find(p=>p.id===profileKey(submitted));
@@ -55,6 +65,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
 }
 function publishAcknowledgement(ack:Acknowledgement,apply?:(s:State)=>Partial<State>){
   const ids=new Set(ack.records.map(profileKey));
+
   if(ids.size)void import('./catalog-startup').then(m=>m.ensureLibraryPresets());
   setState(s=>({...apply?.(s),profileLibraryRevision:Math.max(s.profileLibraryRevision,ack.document.revision),job:markStale(s.job),
     userPresets:!ids.size?s.userPresets:[...s.userPresets.filter(p=>!ids.has(profileKey(p))),...ack.records.map(p=>{const current=findProfile(s,p.type,profileKey(p));return current && ((current.revision ?? 0)>(p.revision ?? 0) || equal(stored(current),stored(p)))?current:p;})]}));
@@ -63,10 +74,13 @@ async function settleOutstanding():Promise<Acknowledgement|undefined>{
   if(!pending)return;
   const ack=await acknowledge(pending);publishAcknowledgement(ack);return ack;
 }
+
 export function acknowledgePendingProfileWrite():Promise<void>{
   return serialize(async()=>{if(pending)await acknowledge(pending);});
 }
-export interface ProfileCreation {commit():Promise<string>; readonly retryable:boolean}
+export interface ProfileCreation {commit():Promise<string>;                                                                          readonly retryable:boolean}
+
+
 export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCreation{
   let request:FrozenWrite|undefined,key:string|undefined,flight:Promise<string>|undefined,service:State['api'];
   return {get retryable(){return !!request && (request.retryable || !!request.acknowledged);},commit:()=>flight ??= serialize(async()=>{
@@ -88,6 +102,8 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
       const captured=structuredClone(created);key=profileKey(captured);service=initial.api;
       request=freezeWrite(canonical,{operationId:`create-profile:${crypto.randomUUID()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,storedProfile(prepareProfile(canonical,captured))]}},[captured],signature([captured]));
     }
+
+
     if(getState().api!==service)throw conflict('The profile service changed. Retain this creation intent for recovery before adding again.');
     const ack=await acknowledge(request);
     if(getState().api!==service)throw conflict('The profile service changed before acknowledgement. Retain this intent and its saved identity for recovery.');
@@ -96,6 +112,7 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
     return key!;
   }).finally(()=>{flight=undefined;})};
 }
+
 export function profileCopyCreation(source:UserPreset,name:string):ProfileCreation{
   const captured=structuredClone(source),service=getState().api;
   return profileCreation(s=>{
@@ -136,6 +153,7 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
     if(actual)prepared={...prepared,revision:Math.max(prepared.revision ?? 0,(actual.revision ?? 0)+1)};
     profiles.set(id,storedProfile(prepared));submitted.push(prepared);
   }
+
   if(printers && (setup ? !sameSetups(remote.printers,ownSetupAcknowledgements.get(setup.baseline) ?? setup.baseline)
     : !sameSetups(remote.printers,s.printerLibrary) && !(priorAck && sameSetups(remote.printers,priorAck.request.write.document.printers))))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
   const catalogKeys=new Set(catalog?.map(catalogKey));
@@ -149,6 +167,7 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
 export function saveProfileRecords(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<void>{
   return serialize(async()=>{const ack=await performSave(s,records,operationId,printers,catalog,setup);publishAcknowledgement(ack);});
 }
+
 export function commitProfileRecords(records:UserPreset[],options:{operationId?:string;printers?:PrinterProfileLibrary;bases?:SystemPreset[];apply?(s:State):Partial<State>}={}):Promise<void>{
   const expected=getState();
   return serialize(async()=>{

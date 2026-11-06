@@ -23,6 +23,7 @@ void FillHoneycomb::_fill_surface_single(
     ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
+
     CacheID cache_id(params.density, this->spacing);
     Cache::iterator it_m = this->cache.find(cache_id);
     if (it_m == this->cache.end()) {
@@ -44,11 +45,17 @@ void FillHoneycomb::_fill_surface_single(
     Polylines all_polylines;
     {
 
+
+
         BoundingBox bounding_box = expolygon.contour.bounding_box();
         {
+
             Polygon bb_polygon = bounding_box.polygon();
             bb_polygon.rotate(direction.first, m.hex_center);
             bounding_box = bb_polygon.bounding_box();
+
+
+
 
             bounding_box.merge(align_to_grid(bounding_box.min, Point(m.hex_width, m.pattern_height)));
         }
@@ -73,10 +80,13 @@ void FillHoneycomb::_fill_surface_single(
             }
             p.rotate(-direction.first, m.hex_center);
             p.simplify(5 * spacing);
+
+
             smooth_polyline_corners(p, params.smooth_factor, scaled<double>(params.resolution));
             all_polylines.push_back(p);
         }
     }
+
     multiline_fill(all_polylines, params, spacing);
 
     all_polylines = intersection_pl(std::move(all_polylines), expolygon);

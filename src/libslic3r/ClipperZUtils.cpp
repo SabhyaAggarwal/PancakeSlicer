@@ -51,6 +51,7 @@ ZPaths clip_zpaths(ClipType clip_type, const ZPaths &subject, bool subject_open,
     clipper.PreserveCollinear(preserve_collinear);
     if (zfill)
         clipper.SetZCallback([&zfill](const C2::Point64 &e1bot, const C2::Point64 &e1top, const C2::Point64 &e2bot, const C2::Point64 &e2top, C2::Point64 &pt) {
+
             auto coincident = [&pt](const C2::Point64 &p) { return p.x == pt.x && p.y == pt.y; };
             if (coincident(e1bot) || coincident(e1top) || coincident(e2bot) || coincident(e2top))
                 return;

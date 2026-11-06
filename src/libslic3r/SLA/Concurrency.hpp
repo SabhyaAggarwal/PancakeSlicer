@@ -1,6 +1,8 @@
 #ifndef SLA_CONCURRENCY_H
 #define SLA_CONCURRENCY_H
 
+
+
 #include "libslic3r/Execution/Execution.hpp"
 #include <cstddef>
 #include <libslic3r/Execution/ExecutionSeq.hpp>
@@ -8,6 +10,8 @@
 
 namespace Slic3r {
 namespace sla {
+
+
 
 const constexpr bool USE_FULL_CONCURRENCY = true;
 

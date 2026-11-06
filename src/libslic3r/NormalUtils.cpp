@@ -43,12 +43,14 @@ NormalUtils::Normals NormalUtils::create_normals_average_neighbor(
             ++count[indice[i]];
         }
     }
+
     for (auto &normal : normals) {
         size_t index = &normal - &normals.front();
         normal /= static_cast<float>(count[index]);
     }
     return normals;
 }
+
 
 float NormalUtils::indice_angle(int                            i,
                                 const Vec3i32 &                indice,
@@ -88,6 +90,7 @@ NormalUtils::Normals NormalUtils::create_normals_angle_weighted(
             count[indice[i]] += weight;
         }
     }
+
     for (auto &normal : normals) {
         size_t index = &normal - &normals.front();
         normal /= count[index];
@@ -120,12 +123,14 @@ NormalUtils::Normals NormalUtils::create_normals_nelson_weighted(
             count[indice[i]] += weight;
         }
     }
+
     for (auto &normal : normals) {
         size_t index = &normal - &normals.front();
         normal /= count[index];
     }
     return normals;
 }
+
 
 std::vector<Vec3f> NormalUtils::create_normals(
     const indexed_triangle_set &its, VertexNormalType type)

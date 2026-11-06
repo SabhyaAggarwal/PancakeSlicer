@@ -41,9 +41,12 @@ enum class IncludeTopAndBottomLayers {
 
 struct ModelVolumeFacetsInfo {
     const FacetsAnnotation &facets_annotation;
+
     const bool              is_painted;
+
     const bool              replace_default_extruder;
 };
+
 
 std::vector<std::vector<ExPolygons>> segmentation_by_painting(const PrintObject                                               &print_object,
                                                               const std::function<ModelVolumeFacetsInfo(const ModelVolume &)> &extract_facets_info,
@@ -54,9 +57,12 @@ std::vector<std::vector<ExPolygons>> segmentation_by_painting(const PrintObject 
                                                               IncludeTopAndBottomLayers                                        include_top_and_bottom_layers,
                                                               const std::function<void()>                                     &throw_on_cancel_callback);
 
+
 std::vector<std::vector<ExPolygons>> multi_material_segmentation_by_painting(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback);
 
+
 std::vector<std::vector<ExPolygons>> fuzzy_skin_segmentation_by_painting(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback);
+
 
 double resolve_outer_wall_line_width(const PrintRegionConfig &region_config, const PrintObjectConfig &object_config, const PrintConfig &print_config);
 

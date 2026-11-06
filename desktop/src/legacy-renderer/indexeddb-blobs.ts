@@ -1,3 +1,5 @@
+
+
 import type { RendererDecodedValue, RendererPartReference } from '../legacy-renderer';
 import { Cursor, Incomplete, LIMITS, requireSource } from './leveldb';
 import { stringBytes } from './indexeddb-comparator';
@@ -28,6 +30,7 @@ export async function externalObjects(raw: Buffer, database: bigint, blobRoot: s
       lastModified = Number(micros / 1000n);
     }
     requireSource(mimeType === mimeType.toLowerCase() && /^[\x20-\x7e]*$/.test(mimeType), 'Unrepresentable MIME metadata.');
+
     const relative = `${blobRoot}/${database.toString(16)}/${Number((number >> 8n) & 255n).toString(16).padStart(2, '0')}/${number.toString(16)}`;
     const bytes = await read(relative); requireSource(bytes.length === size, 'External object length differs.');
     ownedFiles.add(relative);
@@ -74,6 +77,8 @@ export function blinkValue(raw: Buffer, objects: ExternalObject[], parts: Parts)
   }
   requireSource(c.at < end);
   return decodeV8(bytes.subarray(c.at, end), parts, (tag, cursor) => {
+
+
     if (tag !== 105 && tag !== 101) throw new Incomplete('unsupported_type', 'Unsupported Blink host object.');
     const index = Number(cursor.varint(32)), item = objects[index];
     requireSource(item && !item.used && !item.wrapper && item.kind === (tag === 105 ? 'Blob' : 'File'), 'Missing or mismatched external object reference.');

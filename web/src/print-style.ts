@@ -1,3 +1,6 @@
+
+
+
 import type { Config, ConfigValue } from './api/types';
 import { toolValue } from './config-values';
 import type { IconId } from './components/icons';
@@ -11,12 +14,16 @@ import { effectiveConfig, getState, removeObjectOptions, resetOption, resolvePre
 export interface Style {
   id: StyleId;
   name: string;
+
   label?: string;
+
   tip: string;
   icon: IconId;
   keys: Config;
+
   rotary?: boolean;
 }
+
 
 export const STYLES: Style[] = [
   { id: 'standard', name: STYLE_NAMES.standard, label: 'Flat', tip: 'Flat layers, like any slicer.', icon: 'standard', keys: { nonplanar_mode: 'off', zaa_enabled: '0' } },
@@ -32,6 +39,7 @@ export const isRotary = (machine: Config) => String(machine.nonplanar_kinematics
 
 const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
 
+
 export function modeLabel(c: Config) {
   const mode = asText(c.nonplanar_mode) || 'off';
   const def = OPTIONS.nonplanar_mode;
@@ -40,6 +48,11 @@ export function modeLabel(c: Config) {
 
 const same = (key: string, a: ConfigValue | undefined, b: ConfigValue | undefined) =>
   toolValue(key, a ?? (OPTIONS[key]?.default as ConfigValue) ?? '') === toolValue(key, b ?? (OPTIONS[key]?.default as ConfigValue) ?? '');
+
+
+
+
+
 
 export function applyStyle(id: StyleId, objectId?: number) {
   undoable(`Change print style to "${styleById(id).name}"`, () => writeStyle(id, objectId));
@@ -61,5 +74,6 @@ function writeStyle(id: StyleId, objectId?: number) {
   for (const [k, v] of Object.entries(keys)) if (!drop.includes(k)) setObjectOption(objectId, k, v);
   if (drop.length) removeObjectOptions(objectId, drop);
 }
+
 
 export const processShortName = (name: string) => name.replace(/\s*@.*$/, '');

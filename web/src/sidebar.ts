@@ -1,4 +1,6 @@
 import { observePreference, preferenceText, savePreferences } from './saved-preferences';
+
+
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'orca.web.sidebar';
@@ -17,6 +19,8 @@ export function toggleSidebar(next = !hidden) {
 const subscribe = (l: () => void) => { listeners.add(l); return () => void listeners.delete(l); };
 export const useSidebarHidden = () => useSyncExternalStore(subscribe, sidebarHidden);
 
+
+
 export const RAIL_MIN = 280, RAIL_MAX = 520, RAIL_DEFAULT = 360;
 const WIDTH_KEY = 'orca.web.railWidth';
 let width = RAIL_DEFAULT;
@@ -32,6 +36,8 @@ export type RailProfile = 'machine' | 'filament' | 'process';
 let profile: RailProfile = 'process';
 export const setRailProfile = (next: RailProfile) => { profile = next; listeners.forEach((l) => l()); };
 export const useRailProfile = () => useSyncExternalStore(subscribe, () => profile);
+
+
 
 export const OBJECTS_ROW = 24, OBJECTS_MIN = OBJECTS_ROW * 2, OBJECTS_MAX = OBJECTS_ROW * 12, OBJECTS_DEFAULT = OBJECTS_ROW * 4;
 const OBJECTS_KEY = 'orca.web.railObjects';

@@ -68,6 +68,7 @@ double safe_speed(const Block &b)
 }
 double trapezoid(double d, double a, double entry, double cruise, double exit)
 {
+
     entry = std::min(entry, cruise);
     exit = std::min(exit, cruise);
     const double up = (cruise * cruise - entry * entry) / (2. * a);
@@ -80,6 +81,7 @@ double trapezoid(double d, double a, double entry, double cruise, double exit)
 }
 void plan(std::vector<Block> &blocks, bool bambu, bool rrf, bool marlin2, size_t buffer)
 {
+
     if (bambu) for (size_t i = 1; i < blocks.size(); ++i) {
         Block &b = blocks[i]; const Block &p = blocks[i - 1];
         const double n1 = p.unit.head<2>().norm(), n2 = b.unit.head<2>().norm();

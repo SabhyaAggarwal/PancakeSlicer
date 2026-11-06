@@ -242,6 +242,7 @@ FlushVolPredictor::FlushVolPredictor(const std::string& data_file)
     std::string line;
     std::getline(in, line);
     std::getline(in, line);
+
     {
         std::istringstream in(line);
         std::string color;
@@ -261,6 +262,7 @@ FlushVolPredictor::FlushVolPredictor(const std::string& data_file)
         float value;
         if (iss >> rgb_from >> rgb_to >> value) {
             RGB from,to;
+
             if (!rgb_hex_to_dec(rgb_from, from)) {
                 m_valid = false;
                 return;
@@ -269,6 +271,7 @@ FlushVolPredictor::FlushVolPredictor(const std::string& data_file)
                 m_valid = false;
                 return;
             }
+
             uint64_t key = generate_hash_key(from,to);
             m_flush_map.emplace(key, value);
         }
@@ -285,6 +288,7 @@ bool FlushVolPredictor::predict(const RGB& from, const RGB& to, float& flush)
     if (!m_valid)
         return false;
 
+
     std::optional<RGB> similar_from, similar_to;
     for (auto& color : m_colors) {
         if (FlushPredict::is_similar_color(color, from)) {
@@ -298,6 +302,7 @@ bool FlushVolPredictor::predict(const RGB& from, const RGB& to, float& flush)
             break;
         }
     }
+
 
     if (!similar_from || !similar_to)
         return false;

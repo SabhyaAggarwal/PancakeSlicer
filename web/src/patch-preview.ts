@@ -1,4 +1,10 @@
 import { observePreference, preferenceText, savePreferences } from './saved-preferences';
+
+
+
+
+
+
 import { useSyncExternalStore } from 'react';
 import type * as THREE from 'three';
 import { jobRequest } from './actions';
@@ -19,6 +25,7 @@ interface RawInstance {
 }
 interface RawPreview { schema: string; partial: boolean; error?: string; head: unknown; objects: { index: number; name: string; summary: Summary; instances: RawInstance[] }[] }
 
+
 export interface InstanceOverlay {
   objectId: number;
   instanceId: number;
@@ -28,6 +35,7 @@ export interface InstanceOverlay {
   ledges: Float32Array;
   planar: { reason: string; footprint: Footprint[] }[];
 }
+
 export interface PreviewFact { objectId: number; name: string; curved: number; ledge: boolean }
 export interface PatchPreview { key: string; overlays: InstanceOverlay[]; facts: PreviewFact[] }
 
@@ -43,6 +51,7 @@ function inRing(r: Ring, x: number, y: number) {
   return inside;
 }
 export const inFootprint = (f: Footprint[], x: number, y: number) => f.some((p) => inRing(p.contour, x, y) && !p.holes.some((h) => inRing(h, x, y)));
+
 
 function topTriangles(inst: RawInstance): Float32Array {
   const tops = (inst.patches ?? []).filter((p) => p.kind === 'top').map((p) => {
@@ -63,6 +72,7 @@ function topTriangles(inst: RawInstance): Float32Array {
   return new Float32Array(out);
 }
 
+
 function ledgeLines(inst: RawInstance): Float32Array {
   const seen = new Set<string>();
   const parts: Float32Array[] = [];
@@ -77,6 +87,7 @@ function ledgeLines(inst: RawInstance): Float32Array {
   parts.reduce((o, a) => (out.set(a, o), o + a.length), 0);
   return out;
 }
+
 
 const REASONS: Record<string, string> = {
   steep: 'Too steep', steep_strip: 'Too steep', narrow: 'Too narrow', head: 'Head would touch', flat: 'Already flat',
@@ -93,6 +104,8 @@ function read(raw: RawPreview, objects: PlateObject[], key: string): PatchPrevie
   for (const ro of raw.objects) {
     const o = objects[ro.index];
     if (!o) continue;
+
+
     const first = ro.instances[0];
     const curved = (first?.patches ?? []).filter((p) => p.kind === 'top').reduce((a, p) => a + p.area_mm2, 0);
     const flat = (first?.planar_areas ?? []).filter((a) => !a.reason.startsWith('overhang') && a.reason !== 'bottom' && a.area_mm2 >= 0.05).reduce((a, p) => a + p.area_mm2, 0);
@@ -109,6 +122,8 @@ function read(raw: RawPreview, objects: PlateObject[], key: string): PatchPrevie
   return { key, overlays, facts };
 }
 
+
+
 let current: PatchPreview | null = null;
 let shown = true;
 
@@ -120,6 +135,7 @@ export const subscribePatchPreview = subscribe;
 export const usePatchPreview = () => useSyncExternalStore(subscribe, () => current);
 export const useNonplanarView = () => useSyncExternalStore(subscribe, () => shown);
 export const nonplanarViewShown = () => shown;
+
 export function toggleNonplanarView() {
   shown = !shown;
   savePreferences({'orca.web.nonplanar_view':shown ? '1' : '0'});
@@ -128,9 +144,11 @@ export function toggleNonplanarView() {
 
 observePreference('orca.web.nonplanar_view', () => { shown = preferenceText('orca.web.nonplanar_view') !== '0'; emit(); });
 
+
 export const overlayFits = (ov: InstanceOverlay, o: PlateObject) => ov.shape === shapeKey(o);
 
 const toolHasPreview = () => toolFeatures.patch_preview === true;
+
 
 function wanted(s: State) {
   return !!s.api && !s.api.mock && s.tab === 'prepare' && s.objects.length > 0 && !s.project && styleOf(effectiveConfig(s, 'process')) === 'smooth';
@@ -170,6 +188,7 @@ async function request(key: string, budget: number) {
         running = null;
         const raw = status.record as unknown as RawPreview | undefined;
         if (!raw || raw.schema !== 'orca.nonplanar_patch_preview.v1' || raw.error || !raw.head) return;
+
         if (raw.partial) return void (budget < 10 && request(key, 10));
         const p = read(raw, objects, key);
         kept.set(key, p);
@@ -193,6 +212,7 @@ function sync() {
     if (current) (current = null), emit();
     return;
   }
+
   const inputs = [s.objects, s.dirty, s.printer, s.process, s.filamentSlots, s.filamentEdits, s.bedType, s.projectPresets, s.userPresets, s.events, s.flush];
   if (lastInputs.length && inputs.every((v, i) => v === lastInputs[i]) && lastKey) return;
   lastInputs = inputs;
@@ -206,6 +226,7 @@ function sync() {
     emit();
     return;
   }
+
   timer = setTimeout(() => void request(key, 2), 600);
 }
 subscribeStore(sync);

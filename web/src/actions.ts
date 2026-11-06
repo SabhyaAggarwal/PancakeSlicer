@@ -10,6 +10,7 @@ importing.machine.subscribe((s) => {
   if (s.value === 'running') app.send({ type: 'IMPORT' });
   else if (app.get().value !== 'booting') app.send({ type: 'SETTLED', hasObjects: getState().objects.length > 0 });
 });
+
 import type * as THREE from 'three';
 import { T3 } from './three-runtime';
 import type { Config, ConfigValue, JobRequest, JobStatus, PresetType } from './api/types';
@@ -35,22 +36,34 @@ import { capturePrinterMaterials, selectionNotice } from './profiles/material-li
 import { preferredHeight } from './profiles/context';
 import { loadPreviewView } from './components/preview-loader';
 
+
+
+
+
+
 export async function init() {
   app.send({ type: 'BOOT' });
   const api = await connectService();
   setState({ api }); startupBusy.relabel('Loading presets');
+
+
   if (!api.mock) {
     setState({ features: toolFeatures });
+
     if (toolFeatures.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
+
     if (toolFeatures.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
   }
   if (!api.mock) void import('./printers/connections').then((m) => m.followConnections());
   await loadCatalog();
 }
 
+
+
 async function connectService(): Promise<Api> {
+
   for (let delay = 500, wait = 1500; ; delay = Math.min(delay * 2, 5000), wait = Math.min(wait * 2, 15_000)) {
-    try { return await connect(wait); } catch {  }
+    try { return await connect(wait); } catch {                  }
     await new Promise<void>((resolve) => {
       const done = () => { clearTimeout(timer); window.removeEventListener('online', done); resolve(); };
       const timer = setTimeout(done, delay); window.addEventListener('online', done);
@@ -58,7 +71,9 @@ async function connectService(): Promise<Api> {
   }
 }
 
+
 export async function loadCatalog() { await (await import('./profiles/catalog-startup')).loadCatalog(); }
+
 
 function switchingChanges(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
@@ -67,14 +82,17 @@ function switchingChanges(s: State, type: PresetType, slot = 0): Config {
   const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
   const baseline = Object.fromEntries(Object.entries(project ?? {}).filter(([k, v]) =>
     !PRESET_META.test(k) && (config[k] === undefined || text(v) !== text(config[k]))));
+
   return { ...(type === 'process' ? {} : user?.overrides), ...baseline, ...presetEdits(s, type, slot) };
 }
+
 
 export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'transfer') {
   const before=historyVersion();
   const result=undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
     () => applyPresetSwitch(type, slot, name, edits));
   const summary=getState().lastProfileTransition;
+
   const changed=summary?.changes.filter(c=>c.from) ?? [];
   if(type==='machine' && historyVersion()!==before && summary && (changed.length || summary.needsSelection)){
     const undoTransition=captureUndo();
@@ -94,6 +112,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
     const config = resolvePreset(getState(), scope, target).config;
     return Object.fromEntries(Object.entries(switchingChanges(before, scope, sourceSlot)).filter(([key]) => {
       if (PRESET_META.test(key)) return false;
+
       if (scope === 'filament' && (key === 'filament_colour' || key === 'default_filament_colour')) return false;
       if (key in config) { kept++; return true; }
       dropped++;
@@ -107,11 +126,13 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
     return {kept,dropped};
   }
   const carried = carry(type, name, slot);
+
   const preferred = type === 'process' ? preferredHeight(before, name) : undefined;
   setState((st) => {
     const filamentEdits = { ...st.filamentEdits };
     let projectPresets = st.projectPresets;
     if (type === 'filament') {
+
       const filaments = st.filamentSlots.map((f, i) => i === slot ? carried
         : { ...st.projectPresets?.filaments[i], ...filamentEdits[f] });
       st.filamentSlots.forEach((f) => delete filamentEdits[f]);
@@ -126,6 +147,8 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
         slotColours: st.mixes[slot] ? st.slotColours : st.slotColours.map((c, i) => (i === slot ? undefined : c)) }),
       job: markStale(st.job),
     };
+
+
     return st.profileLibraryLoad.state === 'ready' ? { ...patch, printerLibrary: capturePrinterMaterials({ ...st, ...patch }) } : patch;
   });
   return { kept, dropped };
@@ -135,15 +158,18 @@ export function bedArea() {
   return parsePoints(printerPreset(getState())?.config.printable_area);
 }
 
+
 export async function importFiles(files: FileList | File[], geometryOnly = false) {
   let list = [...files];
   if (!list.length) return;
+
   for (const f of list) void Promise.all([import('./api/blobs'), import('./persist/session')])
     .then(([{ blobDigest }, { assignBlobKey }]) => blobDigest(f).then((sum) => assignBlobKey(f, `sha256-${sum}`))).catch(() => {});
   const choiceGeneration = documentGeneration();
   setState({ tab: 'prepare' });
   const projectFile = list.find((f) => /\.3mf$/i.test(f.name));
   const project = !!getState().project;
+
   const st = getState();
   const geometry = geometryOnly ? 1 : projectFile && (st.objects.length || st.projectPlates.some((p) => p.objects.length)) && (!project || canEditProject())
     ? await choiceDialog('Drop project file', `Please select an action\n${projectFile.name}`, ['Open as project', 'Import geometry only'])
@@ -158,12 +184,14 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
     toast('A 3MF project is open; Delete all to start a new plate');
     return;
   }
+
   const step = /\.(step|stp|drc)$/i;
   list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && (canLoadStep() || /\.drc$/i.test(f.name)) ||
     (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
   const task = importing.begin('loading');
   const added: PlateObject[] = [];
   for (const f of list) {
+
     let busy: BusyToken | undefined;
     try {
       if (/\.3mf$/i.test(f.name)) {
@@ -171,6 +199,7 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
         if (!task.current()) break;
         continue;
       }
+
       const { geometry, source } = step.test(f.name) ? await loadStep(f, task.signal)
         : { geometry: await loadMesh(f, (pct) => { if (task.current()) { task.progress(pct, 'meshing'); const label = `Loading ${f.name} ${Math.round(pct)}%`; if (busy) busy.relabel(label); else busy = beginBusy(label, task.signal); } }), source: f };
       if (!task.current()) { geometry.dispose(); break; }
@@ -190,16 +219,20 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
   if (!added.length) { task.done(); return; }
   const simplified = added.flatMap((o) => o.simplification ? [o.simplification] : []);
   if (simplified.length) void import('./simplify/ui').then((m) => m.noteSimplified(simplified));
+
   undoable(added.length > 1 ? 'Add objects' : 'Add object', () => setState((s) => {
+
     const objects = project ? added.reduce((list, o) => {
       const spot = nextFreeSpot(list, o, bedArea()) ?? bedBounds(bedArea()).center;
       return [...list, { ...o, instances: [{ ...o.instances[0], x: spot.x, y: spot.y }] }];
     }, s.objects) : arrange([...s.objects, ...added], bedArea());
     const last = added[added.length - 1];
+
     return { objects, selected: { object: last.id, instance: last.instances[0].id, allInstances: true }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
   }));
   task.done();
 }
+
 
 async function load3mfGeometry(f: File): Promise<PlateObject[]> {
   const names: string[] = [], meshes: THREE.BufferGeometry[] = [];
@@ -215,6 +248,10 @@ async function load3mfGeometry(f: File): Promise<PlateObject[]> {
   if (!out.length) throw new Error(`${f.name}: the project has no printable objects`);
   return out;
 }
+
+
+
+
 
 async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
   const s = getState();
@@ -246,6 +283,11 @@ async function meshStep(s: ReturnType<typeof getState>, f: File, signal?: AbortS
   return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
 }
 
+
+
+
+
+
 export async function openProject(file: File) {
   const generation = documentGeneration();
   const { adoptProject, centreGeometryOnly } = await import('./plater/import-project');
@@ -256,6 +298,8 @@ export async function openProject(file: File) {
   leaveDocument();
   clearPlateJobs();
   const task = importing.begin('loading');
+
+
   if (s.features.explode && s.api && !s.api.mock) {
     const busy = beginBusy(`Opening ${file.name}`, task.signal);
     try {
@@ -273,6 +317,7 @@ export async function openProject(file: File) {
       busy.end();
     }
   }
+
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
     const id = objects[i]?.id;
@@ -308,6 +353,7 @@ export async function openProject(file: File) {
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
+
         task.done();
         newDocument(true);
         task.adoptGeneration();
@@ -315,15 +361,19 @@ export async function openProject(file: File) {
       },
       mesh: (i, geometry, centre) => {
         if (!task.current()) { geometry.dispose(); return; }
+
+
         const painting = listed[i]?.parts === 1 || listed[i]?.partTris ? archivePainting(listed[i].paint ?? {}) : null;
         patch(i, (o) => ({ ...o, geometry, ...(painting && Object.keys(painting).length ? { paint: painting } : {}),
           project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z], paintable: !!painting, ...(listed[i]?.paint ? { paint: listed[i].paint } : {}), ...(painting && listed[i]?.partTris ? { partTris: listed[i].partTris } : {}) }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] }));
       },
+
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
     if (!task.current()) return;
     task.done();
     if (geometryOnly && getState().project === file) centreGeometryOnly(bedArea());
+
     if (getState().project === file && !historyDepth().undo) markSaved();
   } catch (e) {
     if (!task.current()) return;
@@ -332,12 +382,15 @@ export async function openProject(file: File) {
   }
 }
 
+
 export function clearPlate() {
   clearPlateJobs();
   setState((st) => ({ objects: [], selected: null, gizmo: 'none', project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
+
 let creatingProject:Promise<boolean>|null=null;
+
 export function newProject():Promise<boolean> {
   if(creatingProject)return creatingProject;
   creatingProject=(async()=>{
@@ -348,12 +401,18 @@ export function newProject():Promise<boolean> {
   return creatingProject;
 }
 
+
+
+
+
+
 async function replacePlate(title: string, question: string): Promise<(() => void) | null> {
   const s = getState();
   const projects = await import('./flow/project');
   if (projects.storing()) { try { await projects.flushProject(); } catch { return null; } }
   if (!s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return () => {};
   if (!projects.storing()) return (await confirmDialog(title, question)) ? () => {} : null;
+
   if (title === 'New Project') return () => {};
   return () => toast('Opened', { label: 'Undo', run: () => { const id = projects.previousProject(); if (id) void projects.openProject(id); } });
 }
@@ -368,6 +427,7 @@ export function openProjectDialog() {
 
 export function openFileDialog() { pickModelFiles(importFiles); }
 
+
 export function pickModelFiles(onFiles: (files: FileList) => unknown) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -377,8 +437,14 @@ export function pickModelFiles(onFiles: (files: FileList) => unknown) {
   input.click();
 }
 
+
+
+
+
+
 export function arrangeAll(allPlates = true) {
   const s = getState();
+
   const locked = !!s.projectPlates.find((p) => p.index === s.plateIndex)?.locked;
   if (locked && !allPlates) return toast('The plate is locked');
   if (s.features.arrange && !s.project && s.api && !s.api.mock) return locked ? toast('The plate is locked') : void import('./plater/operations').then((m) => m.arrangeNative());
@@ -398,6 +464,7 @@ export function addInstance() {
   const inst = { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ, z: src.z, printable: src.printable };
   undoable('Increase Instances', () => setState((st) => {
     const objects = st.objects.map((ob) => (ob.id === o.id ? { ...ob, instances: [...ob.instances, inst] } : ob));
+
     return { objects: spot ? objects : arrange(objects, bedArea()), selected: { object: o.id, instance: inst.id } };
   }));
 }
@@ -412,6 +479,10 @@ export function removeInstance() {
     selected: { object: o.id, instance: keep[keep.length - 1].id },
   })));
 }
+
+
+
+
 
 export async function setInstanceCount() {
   const s = getState();
@@ -438,6 +509,10 @@ export async function setInstanceCount() {
   }));
 }
 
+
+
+
+
 export function fillBed() {
   const s = getState();
   const o = s.objects.find((ob) => ob.id === s.selected?.object);
@@ -447,6 +522,7 @@ export function fillBed() {
   const withCopies = (n: number) => arrange(s.objects.map((ob) => ob.id !== o.id ? ob : { ...ob, instances: [...ob.instances,
     ...Array.from({ length: n }, () => ({ id: newId(), x: src.x, y: src.y, rotZ: src.rotZ, z: src.z, printable: src.printable }))] }), area);
   const fits = (objects: PlateObject[]) => outsideBed(objects, area, Infinity).size === 0;
+
   let lo = 0, hi = 1;
   let best = withCopies(0);
   if (!fits(best)) return toast('The plate is full: no copy of the selected object fits on it');
@@ -462,8 +538,11 @@ export function fillBed() {
 export { outputKind } from './slice-input';
 export { confirmDialog, numberDialog, promptDialog };
 
+
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   await flushReady();
+
+
   if (!saving) {
     if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Wait for saved profile adoption before slicing.');
     const {flushPrinterSetups}=await import('./profiles/printer-setups');await flushPrinterSetups();
@@ -487,22 +566,27 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
   const fields = jobFields(s, saving);
 
   if (s.project) {
+
+
     const { added, volumes } = fields.project_edits ? projectEdits(s) : { added: [], volumes: [] };
     const { files } = added.length ? await plateJson(added, firstLayer(s)) : { files: [] };
     const parts = await Promise.all(volumes.map(({ o, k }) => bakeStl({ ...o, geometry: o.volumes![k].geometry }, new T3.Matrix4())));
     return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files, ...volumes.map(({ name }, i) => ({ name, blob: parts[i] }))] };
   }
+
   const locks = !!s.features.plate_locks;
   if (saving && s.features.mesh_plates && (s.projectPlates.length > 1 || s.projectPlates.some((p) => Object.keys(p.settings).length || p.name || locks && p.locked))) {
     const plates = currentPlates(s);
     const { plate, files } = await plateJson(plates.flatMap((p) => p.objects), firstLayer(s));
     plates.flatMap((p) => p.objects.map(() => p.index)).forEach((index, k) => { plate.objects[k].plate = index; });
+
     plate.plates = plates.map((p) => ({ index: p.index, name: p.name, settings: Object.fromEntries(Object.entries(p.settings).map(([k, v]) => [k, String(v)])), ...(locks && p.locked ? { locked: true } : {}) }));
     return { ...fields, plate, files };
   }
   const { plate, files } = await plateJson(s.objects, firstLayer(s));
   return { ...fields, plate, files };
 }
+
 
 (window as unknown as { __jobId: unknown }).__jobId = () => getState().job.id;
 (window as unknown as { __signature: unknown }).__signature = () => plateSignature(getState());
@@ -517,6 +601,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
 
 let sliceGeneration = 0;
 
+
 export function outsideVolumeWarning(s = getState()): string | null {
   const machine = printerPreset(s);
   if (!machine) return null;
@@ -526,6 +611,12 @@ export function outsideVolumeWarning(s = getState()): string | null {
   const names = objects.filter((o) => o.instances.some((i) => outside.has(i.id))).map((o) => o.name);
   return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;
 }
+
+
+
+
+
+
 
 function recordWarnings(record: Record<string, unknown> | undefined, stderr: string[]): string[] {
   const text = (record?.text_summary ?? {}) as Record<string, unknown>;
@@ -542,11 +633,16 @@ function recordWarnings(record: Record<string, unknown> | undefined, stderr: str
   return [...stderr, ...added];
 }
 
+
 export interface JobSink {
   progress(p: { pct: number; stage: string; id?: string }): void;
   done(job: JobView): void;
   failed(error: string): void;
 }
+
+
+
+
 
 export function runJob(api: Api, request: JobRequest, signature: string, sink: JobSink, calib?: string): () => void {
   let live = true, id: string | undefined, stop: (() => void) | undefined;
@@ -563,10 +659,13 @@ export function runJob(api: Api, request: JobRequest, signature: string, sink: J
         progress: (e) => {
           if (!live || resulted) return;
           const progress = sliceProgress(e);
+
           if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
+
           if (progress.pct >= pct || progress.queuePosition) sink.progress({ id, ...progress });
           pct = Math.max(pct, progress.pct);
         },
+
         result: (status) => {
           if (!live || resulted) return;
           resulted = true;
@@ -582,6 +681,7 @@ export function runJob(api: Api, request: JobRequest, signature: string, sink: J
           live = false;
           sink.failed(msg);
         },
+
         log: (stream, line) => {
           if (stream === 'stdout' && line.startsWith('calib_')) calibLog.push(line);
           if (stream !== 'stderr' || !line.trim()) return;
@@ -605,9 +705,12 @@ export function runJob(api: Api, request: JobRequest, signature: string, sink: J
   };
 }
 
+
 export async function plateJob(s = getState(), ask = true): Promise<JobRequest | string | null> {
   const outside = outsideVolumeWarning(s);
   if (outside) return outside;
+
+
   if (nativeSupportCapable(s) && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
     const conflicts = (await import('./plater/nativeSupport')).nativeSupportConflicts(s);
     if (conflicts && !ask) return conflicts;
@@ -617,6 +720,7 @@ export async function plateJob(s = getState(), ask = true): Promise<JobRequest |
 }
 
 let cancelJob: (() => void) | null = null;
+
 
 export async function slice(calib?: { kind: string; params: string; head?: string }) {
   await flushReady();
@@ -633,7 +737,9 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
     : await plateJob(s).catch((e: unknown) => String(e));
   if (!current() || request === null) return;
   if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
+
   const navigation = beginSlicePreview(signature);
+
   void loadPreviewView();
   setState({ tab: 'prepare', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   cancelJob = runJob(s.api, request, signature, {
@@ -650,6 +756,12 @@ export function cancelSlice() {
   cancelJob = null;
   setState({ job: { state: 'canceled', pct: 0, stage: '' } });
 }
+
+
+
+
+
+
 
 export function exportFilename(s = getState()): string {
   const base = s.job.calib ?? (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, '') ?? 'plate';
@@ -674,10 +786,12 @@ export function exportFilename(s = getState()): string {
   return `${stem}.${outputKind(s)}`;
 }
 
+
 export function canExport(s = getState()): boolean {
   return s.job.state === 'done' && !!s.job.id && !!s.job.plateSignature && !s.job.stale &&
     s.job.plateSignature === plateSignature(s) && !outsideVolumeWarning(s);
 }
+
 
 export function fileUse(machine = printerPreset(getState())) {
   const printer = machine?.model?.replace(/^Bambu Lab /, '') ?? 'printer';
@@ -687,6 +801,7 @@ export function fileUse(machine = printerPreset(getState())) {
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';
+
 
 function exportBlocker(s: State) {
   if (!s.objects.length) return 'Nothing to export. Add a model and slice it first.';
@@ -699,8 +814,10 @@ function exportBlocker(s: State) {
 export async function download() {
   if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
   const s = getState();
+
   if (!s.api || !canExport(s) || !s.job.id) return void (s.api && toast(exportBlocker(s)));
   const task = output.begin('exporting');
+
   let href: string;
   try {
     const r = await fetch(s.api.downloadUrl(s.job.id), { signal: task.signal });
@@ -712,6 +829,7 @@ export async function download() {
     toast(`Export failed: ${e instanceof Error ? e.message : e}`);
     return;
   }
+
   if (!task.current() || getState().job.id !== s.job.id || !canExport()) {
     URL.revokeObjectURL(href);
     return;
@@ -730,11 +848,14 @@ export async function download() {
 export const toolbarOperation = (operation: 'orient' | 'split' | 'split-parts', all = false) =>
   import('./plater/operations').then((m) => m.run(operation, all));
 
+
 export async function saveProject(as = false) {
   if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
   const saving = await import('./saveProject');
   return saving.saveProject(as);
 }
+
+
 
 export function toggleText() {
   const s = getState();
@@ -748,6 +869,7 @@ export function toggleText() {
   });
 }
 
+
 export const canBoolean = (s: State) => {
   const o = s.objects.find((x) => x.id === s.selected?.object);
   return !!s.features.mesh_boolean && !!o && !s.selected?.all && !o.project?.placeholder && !o.native && !!o.volumes?.length;
@@ -756,6 +878,8 @@ export function toggleBoolean() {
   const s = getState();
   if (s.gizmo === 'boolean' || canBoolean(s)) setState({ gizmo: s.gizmo === 'boolean' ? 'none' : 'boolean' });
 }
+
+
 
 export function toggleSvg() {
   const s = getState();

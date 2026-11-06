@@ -1,3 +1,5 @@
+
+
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore, type CutConnector, type CutConnectorAttribs, type CutGroove } from '../state/store';
@@ -19,6 +21,7 @@ function Field({ label, value, onChange, min, max, step = 0.1, disabled, unit = 
     </label>
   );
 }
+
 
 function Pair({ label, value, tolerance, onValue, onTolerance, min, max }: {
   label: string; value: number; tolerance: number; onValue(v: number): void; onTolerance(v: number): void; min: number; max: number;
@@ -42,6 +45,7 @@ export default function CutJoints() {
   const mode = cut.mode ?? 'planar';
   const a = { ...CONNECTOR, ...cut.connector };
   const g = { ...GROOVE, ...cut.groove };
+
   const setA = (p: Partial<CutConnectorAttribs>) => setCut({ connector: { ...a, ...p },
     connectors: cut.connectors?.map((k, i) => (cut.selectedConnectors?.includes(i) ? { ...k, a: { ...k.a, ...p } } : k)) });
   const flip = () => setCut(flipped(getState(), cut));

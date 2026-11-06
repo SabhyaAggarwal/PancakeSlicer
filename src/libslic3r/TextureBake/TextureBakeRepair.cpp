@@ -23,6 +23,8 @@ inline uint64_t edge_key(int a, int b)
     return (uint64_t(lo) << 32) | uint64_t(hi);
 }
 
+
+
 constexpr double DEGENERATE_AREA_SQ = 1e-18;
 
 }
@@ -63,6 +65,7 @@ size_t count_area_slivers(const TriSoup &geometry)
     for (size_t t = 0; t + 2 < geometry.pos.size(); t += 3) {
         const Vec3d u = (geometry.pos[t + 1] - geometry.pos[t]).cast<double>();
         const Vec3d v = (geometry.pos[t + 2] - geometry.pos[t]).cast<double>();
+
         if (u.cross(v).squaredNorm() < 1e-24)
             ++n;
     }
@@ -75,6 +78,9 @@ TriSoup resolve_t_junctions(const TriSoup &geometry, const RepairOptions &opts,
     const size_t n_tri  = geometry.triangle_count();
     const double on_tol2 = opts.on_seg_tol * opts.on_seg_tol;
     const double Q       = opts.weld_quant;
+
+
+
 
     QuantizedPointMap  vmap(Q, std::min(n_tri * 3, size_t(1) << 22));
     std::vector<Vec3d> vert;
@@ -89,7 +95,11 @@ TriSoup resolve_t_junctions(const TriSoup &geometry, const RepairOptions &opts,
         vid[i] = id;
     }
 
+
+
+
     std::vector<std::array<int, 3>> faces;
+
     const bool       track_color = face_color != nullptr && !face_color->empty();
     std::vector<int> colors;
     faces.reserve(n_tri);
@@ -181,6 +191,7 @@ TriSoup resolve_t_junctions(const TriSoup &geometry, const RepairOptions &opts,
             const int   apex = (f[0] != sp.a && f[0] != sp.b) ? f[0]
                                : (f[1] != sp.a && f[1] != sp.b) ? f[1]
                                                                 : f[2];
+
             bool dir_ab = false;
             for (int e = 0; e < 3; ++e)
                 if (f[size_t(e)] == sp.a && f[size_t((e + 1) % 3)] == sp.b) {

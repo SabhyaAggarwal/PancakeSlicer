@@ -1,9 +1,17 @@
 import { bambuFilamentId } from '../multinozzle/material-checks';
 import { isExternalTray } from '../multinozzle/ams';
+
+
+
 import type { SystemPreset } from '../api/types';
 import { readTrays, type Tray } from '../printers/connections';
 import { compatible, getState, markStale, setState, toast } from '../state/store';
 import { undoable } from '../state/history';
+
+
+
+
+
 
 function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
   const byId = t.filament_id && fils.find((f) => bambuFilamentId(f.filament_id ?? '') === bambuFilamentId(t.filament_id!));
@@ -17,6 +25,7 @@ function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
       .filter(({ ft }) => ft && new RegExp(`(^|[^A-Z0-9])${ft.replace(/[^A-Z0-9]/g, '\\$&')}($|[^A-Z0-9])`).test(type))
       .sort((a, b) => b.ft.length - a.ft.length)[0]?.f;
 }
+
 
 export async function syncAms(printer: string) {
   let trays: Tray[];
@@ -39,6 +48,7 @@ export async function syncAms(printer: string) {
     toast('There are no compatible filaments, and sync is not performed.');
     return;
   }
+
   const fallback = fils.find((f) => f.name.startsWith('Generic PLA')) ?? picked.find((p) => p.preset)!.preset!;
   const slots = picked.map((p) => (p.preset ?? fallback).name);
   const n = slots.length;
@@ -46,6 +56,7 @@ export async function syncAms(printer: string) {
     filamentSlots: slots,
     slotColours: picked.map((p) => p.t.color || undefined),
     filamentEdits: Object.fromEntries(Object.entries(st.filamentEdits).filter(([name]) => slots.includes(name))),
+
     flush: { ...st.flush, matrix: null }, mixes: {},
     objects: st.objects.map((o) => (o.extruder > n ? { ...o, extruder: 1 } : o)),
     events: st.events.filter((e) => e.type !== 'change' || Number(e.text) <= n),

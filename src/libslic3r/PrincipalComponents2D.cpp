@@ -11,15 +11,53 @@ namespace Slic3r {
 
 
 
+
+
+
+
+
 std::tuple<float, Vec2f, Vec2f, float> compute_moments_of_area_of_triangle(const Vec2f &a, const Vec2f &b, const Vec2f &c)
 {
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     float jacobian_determinant_abs = std::abs((b.x() - a.x()) * (c.y() - a.y()) - (c.x() - a.x()) * (b.y() - a.y()));
+
+
+
+
+
+
+
+
 
     Vec2f second_moment_of_area_xy = jacobian_determinant_abs *
                                      (a.cwiseProduct(a) + b.cwiseProduct(b) + b.cwiseProduct(c) + c.cwiseProduct(c) +
                                       a.cwiseProduct(b + c)) /
                                      12.0f;
+
+
+
+
+
+
+
+
+
+
+
     float second_moment_of_area_covariance = jacobian_determinant_abs * (1.0f / 24.0f) *
                                              (a.y() * (b.x() + c.x()) + a.x() * (2.0f * a.y() + b.y() + c.y()) + b.y() * c.x() +
                                               b.x() * c.y() + 2.0f * b.x() * b.y() + 2.0f * c.x() * c.y());
@@ -30,6 +68,7 @@ std::tuple<float, Vec2f, Vec2f, float> compute_moments_of_area_of_triangle(const
 
     return {area, first_moment_of_area_xy, second_moment_of_area_xy, second_moment_of_area_covariance};
 };
+
 
 std::tuple<Vec2f, Vec2f> compute_principal_components(const Polygons &polys)
 {
@@ -75,6 +114,13 @@ std::tuple<Vec2f, Vec2f> compute_principal_components(const Polygons &polys)
         } else
             return result;
     }
+
+
+
+
+
+
+
 
     float eigenvalue_a = 0.5f * (variance.x() + variance.y() +
                                  sqrt((variance.x() - variance.y()) * (variance.x() - variance.y()) + 4.0f * covariance * covariance));

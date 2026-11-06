@@ -146,6 +146,7 @@ namespace Slic3r {
                 pt::ptree subtask_list = root.get_child("subtasks");
                 for (auto subtask = subtask_list.begin(); subtask != subtask_list.end(); ++subtask) {
                     BBLSubTask* new_subtask = new BBLSubTask(this);
+
                     boost::optional<std::string> subtask_id = subtask->second.get_optional<std::string>("id");
                     if (subtask_id.has_value()) new_subtask->task_id = subtask_id.value();
 

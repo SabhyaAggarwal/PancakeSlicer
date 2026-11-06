@@ -14,6 +14,7 @@
 #include <fast_float/fast_float.h>
 #include <clocale>
 
+
 #if defined(_LIBCPP_VERSION)
     #if defined(_LIBCPP_AVAILABILITY_HAS_TO_CHARS_FLOATING_POINT) && _LIBCPP_AVAILABILITY_HAS_TO_CHARS_FLOATING_POINT
         #define SLIC3R_FLOAT_TO_CHARS
@@ -26,10 +27,14 @@
 namespace Slic3r {
 
 
+
+
 static thread_local int s_numeric_locale_depth = 0;
 
 CNumericLocalesSetter::CNumericLocalesSetter()
 {
+
+
     if (s_numeric_locale_depth > 0 && is_decimal_separator_point()) {
         m_nested = true;
         ++ s_numeric_locale_depth;
@@ -49,6 +54,7 @@ CNumericLocalesSetter::CNumericLocalesSetter()
     m_new_locale = newlocale(LC_NUMERIC_MASK, "C", m_new_locale);
     uselocale(m_new_locale);
 #endif
+
     ++ s_numeric_locale_depth;
 }
 
@@ -77,7 +83,7 @@ bool is_decimal_separator_point()
 }
 
 
-double string_to_double_decimal_point(const std::string_view str, size_t* pos )
+double string_to_double_decimal_point(const std::string_view str, size_t* pos  )
 {
     double out = 0.;
     size_t p = fast_float::from_chars(str.data(), str.data() + str.size(), out).ptr - str.data();
@@ -101,6 +107,8 @@ double atof_decimal_point(std::string_view str)
 
 std::string float_to_string_decimal_point(double value, int precision )
 {
+
+
 #if defined(SLIC3R_FLOAT_TO_CHARS)
     constexpr size_t SIZE = 20;
     char out[SIZE] = "";
@@ -112,6 +120,7 @@ std::string float_to_string_decimal_point(double value, int precision )
     if (res.ec == std::errc())
         return std::string(out, res.ptr - out);
 #elif defined(__APPLE__)
+
     static const locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t) 0);
     if (c_locale != (locale_t) 0) {
         constexpr size_t SIZE = 20;

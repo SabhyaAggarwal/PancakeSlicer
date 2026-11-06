@@ -2,6 +2,8 @@ import { MenuButton, type MenuEntry } from './Menu';
 import { Glyph } from './Glyph';
 import { Check } from './Check';
 import { Range } from './Range';
+
+
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
@@ -29,12 +31,14 @@ import { canEditLayers } from './LayerHeight';
 import { Num } from './Num';
 import { setAssembly, useAssembly } from '../plater/assembly';
 
+
 const PAINT_GIZMOS: [PaintKind, string, string][] = [
   ['support', 'toolbar_support', 'Support Painting (L)'],
   ['seam', 'toolbar_seam', 'Seam painting (P)'],
   ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
   ['color', 'mmu_segmentation', 'Color Painting (N)'],
 ];
+
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
@@ -46,7 +50,9 @@ export function CanvasToolbar() {
   const instances = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.instances.length ?? 0);
   const project = useStore((s) => !!s.project);
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
+
   const brimEars = useStore((s) => !!s.features.brim_ears);
+
   const booleanOk = useStore(canBoolean);
   const text = useStore((s) => !!s.features.emboss_text);
   const assemblyOn = useAssembly().on;
@@ -56,12 +62,14 @@ export function CanvasToolbar() {
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
   const edit = !!sel && !placeholder && !sel.all;
+
   const splitParts = useStore((s) => !!s.features.volumes && !s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const cutBlock = useStore(cutBlocked);
   const paint = useStore(canPaint);
   const layers = useStore(canEditLayers);
   const preview = !!usePatchPreview();
   const nonplanarView = useNonplanarView();
+
   const [arranging, setArranging] = useState(false);
   const arrangeAt = useRef<HTMLSpanElement>(null);
   const rare: MenuEntry[] = [
@@ -85,6 +93,7 @@ export function CanvasToolbar() {
     ...(svg ? [{label: 'SVG', action: toggleSvg, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
     ...(preview ? [{label: 'Non-planar surfaces', action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
   ];
+
   const needSelection = !hasObjects ? 'add an object' : sel?.all ? 'select one object' : 'select an object';
   return <div className="canvas-toolbar">
     <ToolButton icon="toolbar_move" name="Move" keys="M" active={gizmo === 'move'} unavailable={!edit && needSelection} onClick={() => toggle('move')}/>
@@ -99,6 +108,11 @@ export function CanvasToolbar() {
   </div>;
 }
 
+
+
+
+
+
 function ToolButton({ icon, name, keys, active = false, unavailable, onClick }: { icon: string; name: string; keys: string; active?: boolean; unavailable?: string | false; onClick(e: React.MouseEvent<HTMLButtonElement>): void }) {
   return <button type="button" className={`icon-btn tb-tool-btn${active ? ' active' : ''}`} aria-label={`${name} · ${keys}${unavailable ? ` (${unavailable})` : ''}`}
     aria-pressed={active} aria-disabled={unavailable ? true : undefined} onClick={(e) => { if (!unavailable) onClick(e); }}>
@@ -111,6 +125,7 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const canMulti = useStore((s) => !!s.features.arrange_materials);
   const r = at?.getBoundingClientRect();
+
   return createPortal(
     <div className="manip-panel" role="dialog" aria-label="Arrange options" style={{ position: 'fixed', top: (r?.bottom ?? 40) + 8, left: r?.left ?? 0, zIndex: 5 }}>
       <div className="manip-grid" style={{ gridTemplateColumns: '70px 140px 70px' }}>
@@ -138,7 +153,15 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   );
 }
 
+
 const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
+
+
+
+
+
+
+
 
 export function AccessNotification() {
   const notice = useSyncExternalStore(subscribeAccess, accessSnapshot);
@@ -165,6 +188,7 @@ export function AccessNotification() {
   );
 }
 
+
 function previewFact(facts: PreviewFact[]) {
   if (facts.length === 1) return facts[0].ledge ? 'No support under ledges' : facts[0].curved ? `Curved top ${facts[0].curved}%` : 'Flat top, prints as Standard';
   if (facts.some((f) => f.ledge)) return 'No support under ledges';
@@ -172,12 +196,14 @@ function previewFact(facts: PreviewFact[]) {
   return curved ? `Curved tops on ${curved} of ${facts.length}` : 'Flat tops, prints as Standard';
 }
 
+
 function plateFact(results: PlateResult[]) {
   if (results.length === 1) return results[0].fact;
   if (results.some((r) => r.fact.startsWith('No support'))) return 'No support under ledges';
   const curved = results.filter((r) => r.curved).length;
   return curved ? `Curved tops on ${curved} of ${results.length}` : 'Flat tops, prints as Standard';
 }
+
 
 const TRANSIENT_MS = 8000;
 
@@ -200,6 +226,7 @@ export function SliceNotification() {
     return () => timers.forEach(clearTimeout);
   }, [brief]);
   useEffect(() => setClosed(new Set()), [job.id]);
+
   const stack = useRef<HTMLDivElement>(null);
   const newest = useRef<Element>(undefined);
   useLayoutEffect(() => {
@@ -223,11 +250,14 @@ export function SliceNotification() {
   const orientPrompts = useStore((s) => s.orientPrompts);
   const orientConfirm = useStore((s) => s.orientConfirm !== null);
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
+
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
   const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
+
   const canSend = useStore((s) => s.printerConnections.enabled);
   const sendLink = canSend && <>{'\u00a0· '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
+
   const [held, setHeld] = useState(false);
   const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,
     ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
@@ -294,6 +324,8 @@ export function SliceNotification() {
     ),
   ].filter((el): el is ReactElement => !!el);
   useEffect(() => { if (tips.length < 2) setTipsOpen(false); }, [tips.length]);
+
+
   return (
     <div className="notifications" ref={stack} onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
       <InTopLayer>
@@ -342,6 +374,7 @@ export function SliceNotification() {
           </div>
         </div>
       )}
+      {                                                                                 }
       {tips.length > 1 && tier === 'phone' && (
         <button type="button" className="notif-chip" aria-expanded={tipsOpen} onClick={() => setTipsOpen(!tipsOpen)}>{tips.length} tips</button>
       )}
@@ -352,6 +385,7 @@ export function SliceNotification() {
 
 export { Toast } from './Notices';
 
+
 const CutJoints = lazy(() => import('./CutJoints'));
 
 export function CutPanel() {
@@ -360,6 +394,7 @@ export function CutPanel() {
   const joints = useStore((s) => !!s.features.cut_connectors && !s.objects.find((o) => o.instances.some((i) => i.id === s.selected?.instance))?.project);
   if (!cut) return null;
   if (cut.editing) return <div className="manip-panel"><Suspense fallback={null}><CutJoints /></Suspense></div>;
+
   const joined = cut.mode === 'dovetail' || !!cut.connectors?.length;
   const initial = initialCut(getState());
   const part = (label: string, colour: string, keep: boolean, onKeep: (v: boolean) => void, place: boolean, onPlace?: (v: boolean) => void) => (
@@ -415,15 +450,19 @@ export function CutPanel() {
   );
 }
 
+
 const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support Painting', seam: 'Seam painting', fuzzy: 'Paint-on fuzzy skin', color: 'Color Painting' };
 
 export function PaintPanel() {
   const kind = useStore((s) => (isPaint(s.gizmo) ? s.gizmo : null));
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const t = useSyncExternalStore(subscribePaintTool, paintTool);
+
   const threshold = useStore((s) => object && kind === 'support' ? Number({ ...effectiveConfig(s, 'process'), ...object.settings }.support_threshold_angle) || 0 : 0);
   useEffect(() => { if (kind === 'support') setPaintTool({ highlight: threshold }); }, [kind, object?.id, threshold]);
+
   const filaments = useStore((s) => s.filamentSlots.map((_, i) => filamentColor(s, i + 1)).join(' ')).split(' ').filter(Boolean);
+
   useEffect(() => { if (kind && !PAINT_TOOLS[kind].some(([id]) => id === paintTool().tool)) setPaintTool({ tool: 'circle' }); }, [kind, t.tool]);
   useEffect(() => { if (t.filament > filaments.length) setPaintTool({ filament: 1 }); }, [t.filament, filaments.length]);
   if (!kind || !object) return null;
@@ -500,6 +539,7 @@ export function PaintPanel() {
     </div>
   );
 }
+
 
 function dismissOrientPrompt(id: number) {
   setState((st) => {

@@ -1,9 +1,13 @@
+
+
+
 import * as THREE from 'three';
 import { effectiveConfig, getState, markStale, printerPreset, setState, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { instanceMatrix } from './geometry';
 
 export type Ear = NonNullable<PlateObject['brimEars']>[number];
+
 
 export function defaultEarRadius(s: State = getState()): number {
   const nozzle = Number([printerPreset(s)?.config.nozzle_diameter].flat()[0]) || 0.4;
@@ -16,6 +20,8 @@ export const setEars = (id: number, ears: Ear[], name: string) =>
   undoable(name, () => setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, brimEars: ears } : o)), job: markStale(s.job) })));
 
 type P = [number, number];
+
+
 
 export function sliceLoops(g: THREE.BufferGeometry, world: THREE.Matrix4, z: number): P[][] {
   const pos = g.attributes.position, idx = g.index, n = idx ? idx.count : pos.count;
@@ -57,6 +63,7 @@ export function sliceLoops(g: THREE.BufferGeometry, world: THREE.Matrix4, z: num
 
 const area = (l: P[]) => l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
 
+
 function douglasPeucker(pts: P[], tol: number): P[] {
   if (pts.length < 3) return pts;
   const [a, b] = [pts[0], pts[pts.length - 1]];
@@ -70,6 +77,7 @@ function douglasPeucker(pts: P[], tol: number): P[] {
   return [...douglasPeucker(pts.slice(0, worst + 1), tol).slice(0, -1), ...douglasPeucker(pts.slice(worst), tol)];
 }
 
+
 function cornerPoints(poly: P[], threshold: number, convex: boolean): P[] {
   const cos = Math.cos(threshold + 1e-12), out: P[] = [];
   let p1 = poly[poly.length - 1], v1: P = [p1[0] - poly[poly.length - 2][0], p1[1] - poly[poly.length - 2][1]];
@@ -82,6 +90,8 @@ function cornerPoints(poly: P[], threshold: number, convex: boolean): P[] {
   }
   return out;
 }
+
+
 
 export function autoGenerate(o: PlateObject, maxAngle: number, detection: number, radius: number) {
   const inst = o.instances[0], world = instanceMatrix(o, inst), back = world.clone().invert();
@@ -103,7 +113,9 @@ export function autoGenerate(o: PlateObject, maxAngle: number, detection: number
   setEars(o.id, ears, 'Auto generate brim ear');
 }
 
+
 export const brimPainted = (s: State, o: PlateObject) => String({ ...effectiveConfig(s, 'process'), ...o.settings }.brim_type ?? '') === 'painted';
+
 
 export interface EarsUi { radius: number; maxAngle: number; detection: number; selected: number[] }
 let ui: EarsUi = { radius: 0, maxAngle: 125, detection: 1, selected: [] };

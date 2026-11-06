@@ -1,4 +1,11 @@
 import { observePreference, preferenceJson, savePreferences } from '../saved-preferences';
+
+
+
+
+
+
+
 import { useSyncExternalStore } from 'react';
 
 export interface ViewOptions { gridlines: boolean; labels: boolean; overhang: boolean; outline: boolean; navigator: boolean; gcodeWindow: boolean; wireframe: boolean; xray: boolean; axes: boolean; com: boolean }

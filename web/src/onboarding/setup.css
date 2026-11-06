@@ -79,7 +79,6 @@
   :where(.orca-parity) .setup-foot { padding-left: max(var(--s-4), env(safe-area-inset-left)); padding-right: max(var(--s-4), env(safe-area-inset-right)); padding-bottom: max(var(--s-3), env(safe-area-inset-bottom)); }
   :where(.orca-parity) .setup-foot :is(.setup-count, .setup-test) { min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; }
 }
-
 :where(.orca-parity) .setup-filaments { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-5); }
 :where(.orca-parity) .setup-facets { overflow: auto; padding-right: var(--s-3); border-right: 1px solid var(--line); }
 :where(.orca-parity) .setup-show, :where(.orca-parity) .setup-filters-btn { display: none; }

@@ -1,7 +1,14 @@
 #pragma once
 
+
+
+
+
+
+
 namespace Slic3r
 {
+
     enum NozzleType
     {
         ntUndefine = 0,

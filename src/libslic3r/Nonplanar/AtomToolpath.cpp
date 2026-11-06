@@ -41,6 +41,7 @@ namespace {
 
 [[noreturn]] void fail(const std::string &what) { throw RuntimeError("Atomizer toolpath: " + what); }
 
+
 constexpr double UprightTolerance = 1e-3;
 
 double tilt(const Vec3d &axis) { return std::acos(std::clamp(axis.z(), -1., 1.)); }
@@ -189,6 +190,7 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
     std::vector<float> heights, widths;
     std::vector<Vec3f> axes, entry_axes;
     double             width = 0.;
+
     auto scaled_point = [&](const Vec3d &tip) {
         const Vec3d scaled(tip.x() / SCALING_FACTOR, tip.y() / SCALING_FACTOR, (tip.z() - host_z) / SCALING_FACTOR);
         if (!scaled.allFinite() || scaled.cwiseAbs().maxCoeff() >= 0.5 * double(std::numeric_limits<coord_t>::max()))
@@ -199,7 +201,9 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
         const Vec3d   tip  = placement.rotation * p.tip + placement.offset;
         const Vec3d   axis = (placement.rotation * p.axis).normalized();
         const Point3  q    = scaled_point(tip);
+
         if (! poly.empty() && poly.back() == q && (axes.empty() || (axes.back().cast<double>() - axis).norm() < 1e-9)) {
+
             heights.back() = float(height);
             widths.back() = float(p.width > 0. ? p.width : width);
             return;
@@ -244,6 +248,8 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
             pending_travel.push_back(pts[i]);
             continue;
         }
+
+
         if (poly.empty()) {
             for (const AtomPoint &p : pending_travel) {
                 const Vec3d tip = placement.rotation * p.tip + placement.offset;
@@ -293,6 +299,7 @@ void host_ordered_plan(PrintObject &object, const AtomToolpath &toolpath, const 
     const double height   = object.config().layer_height.value;
     const bool   rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
     const double max_tilt = toolpath.max_tilt();
+
     for (Layer *layer : layers) {
         for (LayerRegion *layerm : layer->regions()) {
             layerm->perimeters.clear();
@@ -303,6 +310,9 @@ void host_ordered_plan(PrintObject &object, const AtomToolpath &toolpath, const 
         layer->conformal_patches_after.clear();
         layer->conformal_covered = true;
     }
+
+
+
 
     ExtrusionEntityCollection paths = atom_conformal_paths(toolpath, placement, 0., erSolidInfill, rotary);
     result = ConformalResult();
@@ -373,6 +383,7 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
                             "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % filename % Geometry::rad2deg(max_tilt)).str());
 
     const AtomPlacement placement = atom_placement(object, toolpath);
+
     {
         double              ground = 0.;
         const BoundingBoxf3 mesh   = object.object_frame_mesh(ground).bounding_box();

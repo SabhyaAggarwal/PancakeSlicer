@@ -1,3 +1,4 @@
+
 const tag = '$orcaBinary';
 export const sha256 = async (bytes: BufferSource) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 const arrays = { Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, Uint32Array,
@@ -26,6 +27,8 @@ function stringifyDocument(value: unknown, binaries?: WeakMap<object, BinaryFiel
   });
 }
 export function documentText(value: unknown): string { return stringifyDocument(value); }
+
+
 
 export function prepareDocumentText(value: unknown) {
   const binaries = new WeakMap<object, BinaryField>();

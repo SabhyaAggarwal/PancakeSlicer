@@ -35,9 +35,17 @@ private:
     AABBTreeIndirect::Tree3f m_tree;
     double                   m_triangle_ray_epsilon;
 
+
+
+
     struct Columns
     {
         double base_z;
+
+
+
+
+
         double x0, y0, cell, margin;
         int    nx, ny;
         std::vector<uint32_t> offsets;
@@ -45,8 +53,11 @@ private:
     };
     std::shared_ptr<Columns> m_columns;
 
+
     void column_hits(const indexed_triangle_set &its, const Vec3d &s, const Vec3d &dir, std::vector<igl::Hit<float>> &hits) const
     {
+
+
         const Columns &c = *m_columns;
         const double gx = std::floor((s.x() - c.x0) / c.cell), gy = std::floor((s.y() - c.y0) / c.cell);
         if (!(gx >= -1. && gy >= -1. && gx <= double(c.nx) && gy <= double(c.ny)))
@@ -101,11 +112,14 @@ public:
         BoundingBoxf box;
         for (const Vec3f &v : its.vertices) box.merge(Vec2d(v.x(), v.y()));
         const Vec2d size = box.defined ? Vec2d(box.size()) : Vec2d::Zero();
+
         const double area = std::max(size.x() * size.y(), 1e-6);
         c.cell   = std::max({ std::sqrt(area / (0.5 * std::max<size_t>(order.size(), 1))), std::sqrt(area / double(1 << 20)), 1e-3 });
         c.margin = 1e-4;
         c.x0 = box.defined ? box.min.x() : 0., c.y0 = box.defined ? box.min.y() : 0.;
         c.nx = std::max(1, int(std::ceil(size.x() / c.cell))), c.ny = std::max(1, int(std::ceil(size.y() / c.cell)));
+
+
         auto for_cells = [&](uint32_t leaf, auto &&visit) {
             const Vec3i32 &f = its.indices[m_tree.node(leaf).idx];
             const Vec2d p[3] = { its.vertices[f(0)].head<2>().cast<double>(), its.vertices[f(1)].head<2>().cast<double>(),
@@ -141,6 +155,7 @@ public:
     {
         m_triangle_ray_epsilon = 0.000001;
         if (calculate_epsilon) {
+
             double l = its_average_edge_length(its);
             if (l > 0)
                 m_triangle_ray_epsilon = 0.000001 * l * l;
@@ -155,6 +170,7 @@ public:
                        igl::Hit<float> &                  hit)
     {
         if (columns_cover(dir)) {
+
             std::vector<igl::Hit<float>> hits;
             column_hits(its, s, dir, hits);
             for (const igl::Hit<float> &h : hits)
@@ -171,6 +187,7 @@ public:
                        std::vector<igl::Hit<float>> &     hits)
     {
         if (columns_cover(dir)) {
+
             column_hits(its, s, dir, hits);
             std::sort(hits.begin(), hits.end(), [](const auto &l, const auto &r) { return l.t < r.t; });
             return;
@@ -200,6 +217,7 @@ template<class M> void IndexedMesh::init(const M &mesh, bool calculate_epsilon)
 {
     BoundingBoxf3 bb = bounding_box(mesh);
     m_ground_level += bb.min(Z);
+
 
     m_aabb->init(*m_tm, calculate_epsilon);
 }
@@ -281,6 +299,8 @@ IndexedMesh::query_ray_hit(const Vec3d &s, const Vec3d &dir) const
 #ifdef SLIC3R_HOLE_RAYCASTER
     if (! m_holes.empty()) {
 
+
+
         return filter_hits(query_ray_hits(s, dir));
     }
 #endif
@@ -305,8 +325,18 @@ IndexedMesh::query_ray_hits(const Vec3d &s, const Vec3d &dir) const
     std::vector<igl::Hit<float>> hits;
     m_aabb->intersect_ray(*m_tm, s, dir, hits);
 
+
     std::sort(hits.begin(), hits.end(),
               [](const igl::Hit<float>& a, const igl::Hit<float>& b) { return a.t < b.t; });
+
+
+
+
+
+
+
+
+
 
     outs.reserve(hits.size());
     for (const igl::Hit<float>& hit : hits) {
@@ -337,6 +367,7 @@ IndexedMesh::hit_result IndexedMesh::filter_hits(
     const Vec3d& s = object_hits.front().source();
     const Vec3d& dir = object_hits.front().direction();
 
+
     struct HoleHit {
         HoleHit(float t_p, const Vec3d& normal_p, bool entry_p) :
             t(t_p), normal(normal_p), entry(entry_p) {}
@@ -350,16 +381,24 @@ IndexedMesh::hit_result IndexedMesh::filter_hits(
     auto sf = s.cast<float>();
     auto dirf = dir.cast<float>();
 
+
     for (const sla::DrainHole& hole : m_holes) {
         std::array<std::pair<float, Vec3d>, 2> isects;
         if (hole.get_intersections(sf, dirf, isects)) {
+
             if (isects[0].first > 0.f) hole_isects.emplace_back(isects[0].first, isects[0].second, true);
             if (isects[1].first > 0.f) hole_isects.emplace_back(isects[1].first, isects[1].second, false);
         }
     }
 
+
     std::sort(hole_isects.begin(), hole_isects.end(),
               [](const HoleHit& a, const HoleHit& b) { return a.t < b.t; });
+
+
+
+
+
 
     int hole_nested = 0;
     int object_nested = 0;
@@ -377,13 +416,17 @@ IndexedMesh::hit_result IndexedMesh::filter_hits(
                 is_hole = (next_hole_hit->t < next_mesh_hit->m_t);
             else
                 is_hole = next_hole_hit;
+
+
             is_entry = is_hole ? next_hole_hit->entry : ! next_mesh_hit->is_inside();
 
             if (! dry_run) {
                 if (! is_hole && hole_nested == 0) {
+
                     return *next_mesh_hit;
                 }
                 if (is_hole && ! is_entry && object_nested != 0) {
+
                     out.m_t = next_hole_hit->t;
                     out.m_normal = next_hole_hit->normal;
                     out.m_source = s;
@@ -392,7 +435,9 @@ IndexedMesh::hit_result IndexedMesh::filter_hits(
                 }
             }
 
+
             (is_hole ? hole_nested : object_nested) += (is_entry ? 1 : -1);
+
 
             if (is_hole && next_hole_hit++ == &hole_isects.back())
                 next_hole_hit = nullptr;
@@ -400,6 +445,7 @@ IndexedMesh::hit_result IndexedMesh::filter_hits(
                 next_mesh_hit = nullptr;
         }
     }
+
 
     return out;
 }
@@ -443,6 +489,7 @@ PointSet normals(const PointSet& points,
 
     PointSet ret(range.size(), 3);
 
+
     ccr::for_each(size_t(0), range.size(),
         [&ret, &mesh, &points, thr, eps, &range](size_t ridx) {
             thr();
@@ -458,6 +505,17 @@ PointSet normals(const PointSet& points,
             const Vec3d &p1 = mesh.vertices(trindex(0)).cast<double>();
             const Vec3d &p2 = mesh.vertices(trindex(1)).cast<double>();
             const Vec3d &p3 = mesh.vertices(trindex(2)).cast<double>();
+
+
+
+
+
+
+
+
+
+
+
 
             int ia = -1, ib = -1, ic = -1;
 
@@ -478,6 +536,7 @@ PointSet normals(const PointSet& points,
                 ib = trindex(2);
             }
 
+
             std::vector<size_t> neigh;
             if (ic >= 0) {
                 for (size_t n = 0; n < mesh.indices().size(); ++n) {
@@ -487,6 +546,7 @@ PointSet normals(const PointSet& points,
                         neigh.emplace_back(n);
                 }
             } else if (ia >= 0 && ib >= 0) {
+
                 for (size_t n = 0; n < mesh.indices().size(); ++n) {
                     thr();
                     Vec3i32 ni = mesh.indices(n);
@@ -496,10 +556,15 @@ PointSet normals(const PointSet& points,
                 }
             }
 
+
             std::vector<Vec3d> neighnorms;
             neighnorms.reserve(neigh.size());
             for (size_t &tri_id : neigh)
                 neighnorms.emplace_back(mesh.normal_by_face_id(tri_id));
+
+
+
+
 
             std::sort(neighnorms.begin(), neighnorms.end(),
                       [](const Vec3d &v1, const Vec3d &v2) {
@@ -508,6 +573,8 @@ PointSet normals(const PointSet& points,
 
             auto lend = std::unique(neighnorms.begin(), neighnorms.end(),
                                     [](const Vec3d &n1, const Vec3d &n2) {
+
+
                                         auto deq = [](double a, double b) {
                                             return std::abs(a - b) < 1e-3;
                                         };
@@ -517,6 +584,8 @@ PointSet normals(const PointSet& points,
                                     });
 
             if (!neighnorms.empty()) {
+
+
                 Vec3d sumnorm(0, 0, 0);
                 sumnorm = std::accumulate(neighnorms.begin(), lend, sumnorm);
                 sumnorm.normalize();

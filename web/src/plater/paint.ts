@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import type * as THREE from 'three';
 import { T3 } from '../three-runtime';
 import { setState, type State } from '../state/store';
@@ -5,11 +11,15 @@ import { setState, type State } from '../state/store';
 export type PaintKind = 'support' | 'seam' | 'fuzzy' | 'color';
 export const PAINT_KINDS = ['support', 'seam', 'fuzzy', 'color'] as const;
 export type BrushTool = 'circle' | 'sphere' | 'triangle' | 'height' | 'fill' | 'gap';
+
 export const EXTRUDERS_LIMIT = 16;
+
 export type PaintNode = number | PaintNode[];
 export type Painting = Map<number, PaintNode>;
 
+
 const COLOURS = [null, [0.5, 1, 0.5], [1, 0.5, 0.5]] as const;
+
 const MAX_DEPTH = 8;
 
 export const triangleCount = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.attributes.position.count) / 3;
@@ -23,7 +33,9 @@ const children = ([a, b, c]: Tri): Tri[] => {
   return [[a, ab, ca], [ab, b, bc], [bc, c, ca], [ab, bc, ca]];
 };
 
+
 export type Paintable = { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> };
+
 
 export function paintOf(o: Paintable, kind: PaintKind): Painting | null {
   const p = o.paint?.[kind];
@@ -32,6 +44,8 @@ export function paintOf(o: Paintable, kind: PaintKind): Painting | null {
   for (const t of p.keys()) if (t >= T) return null;
   return p;
 }
+
+
 
 const neighbourCache = new WeakMap<THREE.BufferGeometry, Int32Array>();
 function neighbours(g: THREE.BufferGeometry): Int32Array {
@@ -68,6 +82,7 @@ function faceNormals(g: THREE.BufferGeometry): Float32Array {
 }
 const normalOf = (g: THREE.BufferGeometry, t: number) => { const n = faceNormals(g); return new T3.Vector3(n[3 * t], n[3 * t + 1], n[3 * t + 2]); };
 
+
 function grow(g: THREE.BufferGeometry, seed: number, accept: (t: number, from: number) => boolean): number[] {
   const n = neighbours(g);
   const seen = new Uint8Array(triangleCount(g));
@@ -86,11 +101,14 @@ function grow(g: THREE.BufferGeometry, seed: number, accept: (t: number, from: n
   return out;
 }
 
+
+
 interface CursorShape {
   inside(p: THREE.Vector3): boolean;
   faces(n: THREE.Vector3): boolean;
   touches(tri: Tri): boolean;
 }
+
 
 class HeightCursor implements CursorShape {
   constructor(private readonly world: THREE.Matrix4, private readonly z0: number, private readonly height: number) {}
@@ -103,6 +121,7 @@ class HeightCursor implements CursorShape {
   }
 }
 
+
 class Cursor implements CursorShape {
   private readonly d: THREE.Vector3 | null;
   constructor(readonly centre: THREE.Vector3, readonly radius: number, tool: 'circle' | 'sphere', view: THREE.Vector3) {
@@ -113,7 +132,9 @@ class Cursor implements CursorShape {
     return this.d ? v.addScaledVector(this.d, -v.dot(this.d)) : v;
   }
   inside = (p: THREE.Vector3) => this.flat(p).lengthSq() <= this.radius * this.radius;
+
   faces = (n: THREE.Vector3) => !this.d || n.dot(this.d) < 0;
+
   touches([a, b, c]: Tri): boolean {
     const [pa, pb, pc] = [a, b, c].map((p) => this.flat(p));
     const r2 = this.radius * this.radius;
@@ -122,11 +143,13 @@ class Cursor implements CursorShape {
       return p.clone().addScaledVector(e, t).lengthSq() <= r2;
     };
     if (seg(pa, pb) || seg(pb, pc) || seg(pc, pa)) return true;
+
     const n = pb.clone().sub(pa).cross(pc.clone().sub(pa));
     const s1 = pb.clone().sub(pa).cross(pa.clone().negate()).dot(n), s2 = pc.clone().sub(pb).cross(pb.clone().negate()).dot(n), s3 = pa.clone().sub(pc).cross(pc.clone().negate()).dot(n);
     return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
   }
 }
+
 
 function brushNode(node: PaintNode, tri: Tri, cursor: CursorShape, state: number, limit2: number, depth: number): PaintNode {
   const inside = tri.map(cursor.inside);
@@ -145,6 +168,7 @@ function brushNode(node: PaintNode, tri: Tri, cursor: CursorShape, state: number
 const sameNode = (a: PaintNode | undefined, b: PaintNode | undefined): boolean =>
   (a ?? 0) === (b ?? 0) || Array.isArray(a) && Array.isArray(b) && a.every((k, i) => sameNode(k, b[i]));
 
+
 function update(painting: Painting | null, tris: number[], paint: (node: PaintNode, t: number) => PaintNode): Painting | null {
   let next: Painting | null = null;
   for (const t of tris) {
@@ -157,6 +181,11 @@ function update(painting: Painting | null, tris: number[], paint: (node: PaintNo
   return next ? (next.size ? next : null) : painting;
 }
 
+
+
+
+
+
 export function brush(g: THREE.BufferGeometry, painting: Painting | null, hit: number, point: THREE.Vector3, radius: number,
   tool: 'circle' | 'sphere', view: THREE.Vector3, state: number, allow: (t: number) => boolean = () => true): Painting | null {
   const cursor = new Cursor(point, radius, tool, view);
@@ -164,6 +193,8 @@ export function brush(g: THREE.BufferGeometry, painting: Painting | null, hit: n
   const tris = grow(g, hit, (t) => cursor.faces(normalOf(g, t)) && cursor.touches(vertices(g, t)));
   return update(painting, tris.filter((t) => cursor.faces(normalOf(g, t)) && allow(t)), (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
 }
+
+
 
 export function heightRange(g: THREE.BufferGeometry, painting: Painting | null, hit: number, world: THREE.Matrix4, z0: number, height: number,
   state: number): Painting | null {
@@ -173,13 +204,19 @@ export function heightRange(g: THREE.BufferGeometry, painting: Painting | null, 
   return update(painting, tris, (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
 }
 
+
 export const paintTriangle = (painting: Painting | null, hit: number, state: number) => update(painting, [hit], () => state);
+
+
+
+
 
 export function overhangFacets(g: THREE.BufferGeometry, normalMatrix: THREE.Matrix3, deg: number): ((t: number) => boolean) | null {
   if (!(deg > 0)) return null;
   const nrm = faceNormals(g), limit = -Math.cos((deg * Math.PI) / 180), v = new T3.Vector3();
   return (t) => v.set(nrm[3 * t], nrm[3 * t + 1], nrm[3 * t + 2]).applyMatrix3(normalMatrix).normalize().z < limit;
 }
+
 
 export function overhangGeometry(g: THREE.BufferGeometry, allow: (t: number) => boolean): THREE.BufferGeometry {
   const pos: number[] = [];
@@ -190,6 +227,7 @@ export function overhangGeometry(g: THREE.BufferGeometry, allow: (t: number) => 
   return out;
 }
 
+
 export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: number,
   allow: (t: number) => boolean = () => true): Painting | null {
   const nrm = faceNormals(g), limit = Math.cos((angle * Math.PI) / 180) - 1e-9;
@@ -198,6 +236,7 @@ export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: nu
   return update(painting, tris, () => state);
 }
 
+
 function wholeState(n: PaintNode | undefined): number {
   if (n === undefined) return 0;
   if (!Array.isArray(n)) return n;
@@ -205,12 +244,21 @@ function wholeState(n: PaintNode | undefined): number {
   return s.every((v) => v === s[0]) ? s[0] : NaN;
 }
 
+
+
+
+
 export function bucketFill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: number): Painting | null {
   const nrm = faceNormals(g), limit = Math.cos((angle * Math.PI) / 180) - 1e-9, seed = wholeState(painting?.get(hit));
   const tris = grow(g, hit, (t, from) => wholeState(painting?.get(t)) === seed &&
     (angle < 0 || nrm[3 * t] * nrm[3 * from] + nrm[3 * t + 1] * nrm[3 * from + 1] + nrm[3 * t + 2] * nrm[3 * from + 2] >= limit));
   return update(painting, tris, () => state);
 }
+
+
+
+
+
 
 export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area: number): Painting | null {
   if (!(area > 0)) return painting;
@@ -221,6 +269,7 @@ export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area
     else leaves.push({ t, path, tri, state: node });
   };
   for (let t = 0, T = triangleCount(g); t < T; t++) walk(painting?.get(t) ?? 0, vertices(g, t), t, []);
+
   const key = (v: THREE.Vector3) => `${Math.round(v.x * 1e4)},${Math.round(v.y * 1e4)},${Math.round(v.z * 1e4)}`;
   const at = new Map<string, number[]>();
   leaves.forEach((l, i) => l.tri.forEach((v) => { const k = key(v); const list = at.get(k); if (list) list.push(i); else at.set(k, [i]); }));
@@ -247,6 +296,8 @@ export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area
   return update(painting, [...roots.keys()], (node, t) => roots.get(t)!.reduce((n, c) => set(n, c.path, c.state), node));
 }
 
+
+
 const overlayCache = new WeakMap<Painting, { key: string; geometry: THREE.BufferGeometry }>();
 export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting, palette?: (readonly number[] | null)[]): THREE.BufferGeometry {
   const key = palette ? JSON.stringify(palette) : '';
@@ -268,6 +319,9 @@ export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting, pal
   return out;
 }
 
+
+
+
 export function paintString(node: PaintNode): string {
   const nibbles: number[] = [];
   const put = (n: PaintNode) => {
@@ -278,6 +332,7 @@ export function paintString(node: PaintNode): string {
   put(node);
   return nibbles.reverse().map((v) => v.toString(16).toUpperCase()).join('');
 }
+
 
 export function parsePaintString(text: string): PaintNode | null {
   const nibbles = [...text].reverse().map((c) => parseInt(c, 16));
@@ -301,6 +356,7 @@ export function parsePaintString(text: string): PaintNode | null {
   return node !== null && k === nibbles.length ? node : null;
 }
 
+
 export function archivePainting(paint: Partial<Record<PaintKind, Record<string, string>>>): Partial<Record<PaintKind, Painting>> | null {
   const out: Partial<Record<PaintKind, Painting>> = {};
   for (const [kind, map] of Object.entries(paint) as [PaintKind, Record<string, string>][]) {
@@ -314,6 +370,9 @@ export function archivePainting(paint: Partial<Record<PaintKind, Record<string, 
   }
   return out;
 }
+
+
+
 
 export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Record<string, string>>> = {}, partTris?: number[]) {
   const ranges = partTris ?? [triangleCount(o.geometry)];
@@ -332,6 +391,10 @@ export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Reco
   }
   return edits;
 }
+
+
+
+
 
 export function paintJson(o: Paintable): Record<string, Record<string, string>> | undefined {
   const out: Record<string, Record<string, string>> = {};
@@ -352,15 +415,21 @@ export function paintJson(o: Paintable): Record<string, Record<string, string>> 
   return Object.keys(out).length ? out : undefined;
 }
 
+
 export interface PaintTool {
   tool: BrushTool; radius: number; angle: number;
+
   height: number; filament: number;
+
   gapArea: number; highlight: number; overhangsOnly: boolean;
+
   edges: boolean;
 }
 export const RADIUS = { min: 0.4, max: 8, step: 0.2 } as const;
 export const ANGLE = { min: 0, max: 90, step: 5 } as const;
+
 export const HEIGHT = { min: 0.1, max: 8, step: 0.2 } as const;
+
 export const GAP_AREA = { min: 0, max: 5, step: 0.05 } as const;
 let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, height: 1, filament: 1, gapArea: 0, highlight: 0, overhangsOnly: false, edges: false };
 const listeners = new Set<() => void>();
@@ -376,19 +445,26 @@ export function setPaintTool(patch: Partial<PaintTool>) {
 }
 export const subscribePaintTool = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
 
+
 export const canPaint = (s: State) => !!s.features.paint && !!s.selected && !s.selected.all &&
   !!s.objects.find((o) => o.id === s.selected!.object && (!o.project ? !s.project : canPaintProject(s, o)));
 
+
+
 const canPaintProject = (s: State, o: State['objects'][number]) => !!s.features.project_paint && !!o.project?.paintable &&
   !o.project.placeholder && !o.volumes?.some((v) => v.type === 'part');
+
 
 export const togglePaint = (kind: PaintKind) => setState((s) => ({ gizmo: s.gizmo === kind || !canPaint(s) ? 'none' : kind }));
 
 export const isPaint = (gizmo: string): gizmo is PaintKind => (PAINT_KINDS as readonly string[]).includes(gizmo);
 
+
 export const PAINT_STEP: Record<PaintKind, string> = {
   support: 'Paint-on supports editing', seam: 'Paint-on seam editing', fuzzy: 'Paint-on fuzzy skin editing', color: 'Color painting editing',
 };
+
+
 
 export const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
   support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
@@ -397,6 +473,7 @@ export const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
   color: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['triangle', 'triangle_paint', 'Triangle'],
     ['height', 'height_range', 'Height Range'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
 };
+
 
 const PAINT_KEYS: Record<string, BrushTool> = { c: 'circle', s: 'sphere', f: 'fill', g: 'gap', t: 'triangle', h: 'height' };
 export function paintKeyTool(kind: PaintKind, key: string): BrushTool | null {

@@ -74,6 +74,7 @@ func meshVertices(file string, add func(meshPoint) error) error {
 			return err
 		}
 	}
+
 	reader := bufio.NewReaderSize(f, 64<<10)
 	for {
 		line, err := reader.ReadSlice('\n')
@@ -354,12 +355,14 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if err != nil {
 				return err
 			}
+
 			deleted := map[int]bool{}
 			if req.Edits {
 				if deleted, rawPlate, err = projectEditBounds(dir, req.Files[0], req.PlateIndex); err != nil {
 					return err
 				}
 			}
+
 			var shift [2]float64
 			if !layout.HasConfig && req.PlateIndex == 0 {
 				var assembly meshBounds
@@ -442,6 +445,7 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 		return err
 	}
 	for _, o := range plate.Objects {
+
 		if isStep(o.File) || o.File == "" {
 			continue
 		}
@@ -458,6 +462,7 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if p.Printable != nil && !*p.Printable {
 				continue
 			}
+
 			b := meshBounds{}
 			angle := p.Rot * math.Pi / 180
 			c, s := math.Cos(angle), math.Sin(angle)
@@ -465,6 +470,7 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if err := meshVertices(file, rotate); err != nil {
 				return err
 			}
+
 			for _, v := range o.Volumes {
 				if v.Type != "" && v.Type != "part" {
 					continue

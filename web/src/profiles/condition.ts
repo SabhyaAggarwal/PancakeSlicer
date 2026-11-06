@@ -1,3 +1,5 @@
+
+
 import type { Config, ConfigValue } from '../api/types';
 import { OPTIONS } from '../options';
 
@@ -27,6 +29,7 @@ function tokenize(expression: string): Token[] {
       for (; end < rest.length; end++) if (rest[end] === '\\') end++; else if (rest[end] === '/') break;
       if (end === rest.length) fail('Unclosed compatibility pattern');
       const pattern = rest.slice(1, end);
+
       if (/\(\?|\\[AzGQEpPkK]|\[\[:/.test(pattern)) fail('Unsupported native compatibility pattern');
       tokens.push({text: 'value', value: {pattern}}); position += end + 1; continue;
     }

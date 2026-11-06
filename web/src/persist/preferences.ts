@@ -1,3 +1,4 @@
+
 import { createServiceDocument, type JsonValue } from './service-document';
 import { requireWorkspaceService } from './service';
 export type SavedPreferences = Record<string, JsonValue>;

@@ -84,7 +84,9 @@ namespace FilamentGroupUtils
     }
 
 
+
     std::vector<int> calc_max_group_size(const std::vector<std::map<int, int>>& ams_counts, bool ignore_ext_filament) {
+
         std::vector<int>group_size(2, 0);
         for (size_t idx = 0; idx < ams_counts.size(); ++idx) {
             const auto& ams_count = ams_counts[idx];
@@ -114,6 +116,8 @@ namespace FilamentGroupUtils
                 return m[1].str();
             return s;
             };
+
+
 
         std::vector<std::vector<MachineFilamentInfo>> machine_filaments(2);
         for (size_t idx = 0; idx < filament_configs.size(); ++idx) {
@@ -172,6 +176,7 @@ namespace FilamentGroupUtils
                     tmp.emplace_back(machine_filament);
             }
 
+
             if (tmp.empty() && !ignore_ext_filament) {
                 for (size_t j = 0; j < full_machine_filaments[idx].size(); ++j) {
                     auto& machine_filament = full_machine_filaments[idx][j];
@@ -189,6 +194,7 @@ namespace FilamentGroupUtils
     {
         unprintable_limits.clear();
         unprintable_limits.resize(2);
+
         auto resized_physical_unprintables = physical_unprintables;
         resized_physical_unprintables.resize(2);
         auto resized_geometric_unprintables = geometric_unprintables;
@@ -241,6 +247,7 @@ namespace FilamentGroupUtils
     void extract_unprintable_limit_indices(const std::vector<std::set<int>>& unprintable_elems, const std::vector<unsigned int>& used_filaments, std::map<int, int>& unplaceable_limits)
     {
         unplaceable_limits.clear();
+
         std::vector<std::set<int>> unprintable_idxs;
         extract_indices(used_filaments, unprintable_elems, unprintable_idxs);
         if (unprintable_idxs.size() > 1)
@@ -258,7 +265,9 @@ namespace FilamentGroupUtils
     {
         unplaceable_limits.clear();
         std::vector<std::set<int>>unprintable_idxs;
+
         extract_indices(used_filaments, unprintable_elems, unprintable_idxs);
+
         if (unprintable_idxs.size() > 1)
             remove_intersection(unprintable_idxs[0], unprintable_idxs[1]);
 
@@ -338,6 +347,8 @@ namespace FilamentGroupUtils
     {
         std::vector<int> res = old_values;
         for (size_t i = 0; i < used_filaments.size(); ++i) {
+
+
             if (used_filaments[i] >= res.size() || used_filaments[i] >= new_values.size())
                 continue;
             res[used_filaments[i]] = new_values[used_filaments[i]];

@@ -6,8 +6,6 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Block split point selection utilities. */
-
 type blockSplit struct {
 	num_types          uint
 	num_blocks         uint
@@ -35,7 +33,6 @@ const (
 
 func countLiterals(cmds []command) uint {
 	var total_length uint = 0
-	/* Count how many we have. */
 
 	for i := range cmds {
 		total_length += uint(cmds[i].insert_len_)
@@ -67,7 +64,7 @@ func copyLiteralsToByteArray(cmds []command, data []byte, offset uint, mask uint
 }
 
 func myRand(seed *uint32) uint32 {
-	/* Initial seed should be 7. In this case, loop length is (1 << 29). */
+
 	*seed *= 16807
 
 	return *seed
@@ -99,34 +96,26 @@ func splitBlock(cmds []command, data []byte, pos uint, mask uint, params *encode
 		var literals_count uint = countLiterals(cmds)
 		var literals []byte = make([]byte, literals_count)
 
-		/* Create a continuous array of literals. */
 		copyLiteralsToByteArray(cmds, data, pos, mask, literals)
 
-		/* Create the block split on the array of literals.
-		   Literal histograms have alphabet size 256. */
 		splitByteVectorLiteral(literals, literals_count, kSymbolsPerLiteralHistogram, kMaxLiteralHistograms, kLiteralStrideLength, kLiteralBlockSwitchCost, params, literal_split)
 
 		literals = nil
 	}
 	{
 		var insert_and_copy_codes []uint16 = make([]uint16, len(cmds))
-		/* Compute prefix codes for commands. */
 
 		for i := range cmds {
 			insert_and_copy_codes[i] = cmds[i].cmd_prefix_
 		}
 
-		/* Create the block split on the array of command prefixes. */
 		splitByteVectorCommand(insert_and_copy_codes, kSymbolsPerCommandHistogram, kMaxCommandHistograms, kCommandStrideLength, kCommandBlockSwitchCost, params, insert_and_copy_split)
-
-		/* TODO: reuse for distances? */
 
 		insert_and_copy_codes = nil
 	}
 	{
 		var distance_prefixes []uint16 = make([]uint16, len(cmds))
 		var j uint = 0
-		/* Create a continuous array of distance prefixes. */
 
 		for i := range cmds {
 			var cmd *command = &cmds[i]
@@ -136,7 +125,6 @@ func splitBlock(cmds []command, data []byte, pos uint, mask uint, params *encode
 			}
 		}
 
-		/* Create the block split on the array of distance prefixes. */
 		splitByteVectorDistance(distance_prefixes, j, kSymbolsPerDistanceHistogram, kMaxCommandHistograms, kCommandStrideLength, kDistanceBlockSwitchCost, params, dist_split)
 
 		distance_prefixes = nil

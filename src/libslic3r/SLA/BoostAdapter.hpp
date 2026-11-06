@@ -22,6 +22,10 @@ namespace boost {
 namespace geometry {
 namespace traits {
 
+
+
+
+
 template<> struct tag<Slic3r::Point> {
     using type = point_tag;
 };
@@ -45,6 +49,8 @@ template<std::size_t d> struct access<Slic3r::Point, d > {
         a(d) = value;
     }
 };
+
+
 
 template<> struct tag<Slic3r::Vec2d> {
     using type = point_tag;
@@ -70,6 +76,8 @@ template<std::size_t d> struct access<Slic3r::Vec2d, d > {
     }
 };
 
+
+
 template<> struct tag<Slic3r::Vec3d> {
     using type = point_tag;
 };
@@ -93,6 +101,10 @@ template<std::size_t d> struct access<Slic3r::Vec3d, d > {
         a(d) = value;
     }
 };
+
+
+
+
 
 template<> struct tag<Slic3r::BoundingBox> {
     using type = box_tag;

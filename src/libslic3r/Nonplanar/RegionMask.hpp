@@ -8,6 +8,7 @@
 #include <vector>
 
 namespace Slic3r::Nonplanar {
+
 struct RegionMaskCache {
     std::mutex mutex;
     bool ready = false, has_enforce = false, detected = false;

@@ -61,6 +61,8 @@ PatchPreviewParams patch_preview_params(const DynamicPrintConfig &config)
         double       w       = config.has(key) ? Flow::extrusion_width(key, config) : 0.;
         return w > 0. ? w : double(Flow::auto_extrusion_width(role, float(nozzle)));
     };
+
+
     const auto  *mode_opt = config.option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
     const auto   mode     = mode_opt != nullptr ? mode_opt->value : NonplanarMode::Manual;
     if (const auto *fallback = config.option<ConfigOptionEnum<NonplanarFallback>>("nonplanar_fallback"))
@@ -106,6 +108,7 @@ PatchPreview preview_conformal_patches(const indexed_triangle_set &its, const He
     const TriangleMesh mesh(its);
     const BoundingBoxf3 bb3   = mesh.bounding_box();
     const double        pitch = params.pitch;
+
     const HeightField grid(BoundingBoxf(Vec2d(std::floor(bb3.min.x() / pitch) - 1., std::floor(bb3.min.y() / pitch) - 1.) * pitch,
                                         Vec2d(std::ceil(bb3.max.x() / pitch) + 1., std::ceil(bb3.max.y() / pitch) + 1.) * pitch),
                            pitch);
@@ -117,6 +120,7 @@ PatchPreview preview_conformal_patches(const indexed_triangle_set &its, const He
     out.conformal = grid;
     if (params.shells <= 0)
         return out;
+
 
     DynamicPrintConfig config = params.config ? *params.config : DynamicPrintConfig::full_print_config();
     config.set_key_value("nonplanar_surface_resolution", new ConfigOptionFloat(params.pitch));
@@ -142,6 +146,8 @@ PatchPreview preview_conformal_patches(const indexed_triangle_set &its, const He
             throw_if_canceled();
     });
     print.apply(model, std::move(config));
+
+
     const int concurrency = int(std::min(size_t(tbb::this_task_arena::max_concurrency()),
                                         tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism)));
     tbb::task_arena arena(std::max(1, concurrency));

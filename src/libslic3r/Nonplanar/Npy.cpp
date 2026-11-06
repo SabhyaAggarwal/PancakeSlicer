@@ -26,6 +26,7 @@ std::string shape_text(const std::vector<size_t> &shape)
     return s + ")";
 }
 
+
 std::string preamble(const std::string &descr, const std::vector<size_t> &shape)
 {
     std::string header = "{'descr': '" + descr + "', 'fortran_order': False, 'shape': " + shape_text(shape) + ", }";
@@ -96,6 +97,7 @@ NpyArray parse_npy(const std::string &name, const unsigned char *data, size_t si
     const size_t bytes = size_t(std::stoul(descr.substr(2)));
     const size_t n     = out.count();
     if (kind == 'U') {
+
         if (n == 0 || bytes == 0 || 4 * bytes > size - offset)
             fail(name + " is truncated");
         out.is_text = true;

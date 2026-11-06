@@ -38,8 +38,10 @@
 
 #include <boost/next_prior.hpp>
 #include "boost/log/trivial.hpp"
+
 #include <igl/copyleft/cgal/mesh_boolean.h>
 #undef L
+
 
 #include <CGAL/Polygon_mesh_processing/corefinement.h>
 #include <CGAL/Exact_integer.h>
@@ -50,16 +52,19 @@
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/repair_polygon_soup.h>
 #include <CGAL/Polygon_mesh_processing/orientation.h>
+
 #include <CGAL/mesh_segmentation.h>
 #include <CGAL/property_map.h>
 #include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/Face_filtered_graph.h>
+
 #include <CGAL/boost/graph/border.h>
 #include <CGAL/Polygon_mesh_processing/connected_components.h>
 #include <CGAL/Polygon_mesh_processing/detect_features.h>
 #include <CGAL/Surface_mesh_parameterization/Error_code.h>
 #include <CGAL/Surface_mesh_parameterization/LSCM_parameterizer_3.h>
 #include <CGAL/Surface_mesh_parameterization/parameterize.h>
+
 #include "mcut/include/mcut/mcut.h"
 
 namespace Slic3r {
@@ -159,6 +164,9 @@ void save_CGALMesh(const std::string& fname, const CGALMesh& cgal_mesh) {
     os.close();
 }
 
+
+
+
 template<class _Mesh> void triangle_mesh_to_cgal(const TriangleMesh& M, _Mesh& out)
 {
     using Index3 = std::array<size_t, 3>;
@@ -177,6 +185,7 @@ template<class _Mesh> void triangle_mesh_to_cgal(const TriangleMesh& M, _Mesh& o
 
     CGALProc::orient_polygon_soup(points, indices);
     CGALProc::polygon_soup_to_polygon_mesh(points, indices, out);
+
 
     unsigned index = 0;
     for (auto face : out.faces()) face = CGAL::SM_Face_index(index++);
@@ -278,6 +287,10 @@ indexed_triangle_set cgal_to_indexed_triangle_set(const CGALMesh &cgalmesh)
     return cgal_to_indexed_triangle_set(cgalmesh.m);
 }
 
+
+
+
+
 indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double target_edge_length,
                                       unsigned n_iterations, double sharp_angle_deg,
                                       unsigned n_relaxation_steps)
@@ -290,11 +303,21 @@ indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double t
     if (cgal_mesh.is_empty() || cgal_mesh.number_of_faces() == 0)
         return mesh;
 
+
+
+
     if (cgal_mesh.number_of_faces() != mesh.indices.size())
         return mesh;
 
     using edge_descriptor = boost::graph_traits<_EpicMesh>::edge_descriptor;
     try {
+
+
+
+
+
+
+
         auto ecm = cgal_mesh.add_property_map<edge_descriptor, bool>("e:is_constrained", false).first;
         if (sharp_angle_deg > 0.0)
             CGALProc::detect_sharp_edges(cgal_mesh, sharp_angle_deg, ecm);
@@ -323,9 +346,20 @@ indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double t
     if (cgal_mesh.number_of_faces() == 0)
         return mesh;
 
+
+
+
+
+
+
+
     cgal_mesh.collect_garbage();
     return cgal_to_indexed_triangle_set(cgal_mesh);
 }
+
+
+
+
 
 std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &mesh)
 {
@@ -340,6 +374,9 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
     using vertex_descriptor   = boost::graph_traits<_EpicMesh>::vertex_descriptor;
     using halfedge_descriptor = boost::graph_traits<_EpicMesh>::halfedge_descriptor;
 
+
+
+
     {
         std::vector<std::size_t> component_id(num_faces(cgal_mesh));
         const std::size_t        num_components = CGAL::Polygon_mesh_processing::connected_components(
@@ -351,6 +388,11 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
     const halfedge_descriptor border = CGAL::Polygon_mesh_processing::longest_border(cgal_mesh).first;
     if (border == halfedge_descriptor())
         return std::nullopt;
+
+
+
+
+
     {
         std::size_t border_halfedges = 0;
         for (halfedge_descriptor h : halfedges(cgal_mesh))
@@ -375,6 +417,10 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
     if (err != SMP::OK)
         return std::nullopt;
 
+
+
+
+
     std::vector<Vec2f> result(mesh.vertices.size(), Vec2f::Zero());
     for (vertex_descriptor vd : vertices(cgal_mesh)) {
         const std::size_t idx = std::size_t(vd);
@@ -385,6 +431,10 @@ std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &
     }
     return result;
 }
+
+
+
+
 
 static bool _cgal_diff(CGALMesh &A, CGALMesh &B, CGALMesh &R)
 {
@@ -429,6 +479,7 @@ void minus(CGALMesh &A, CGALMesh &B) { _cgal_do(_cgal_diff, A, B); }
 void plus(CGALMesh &A, CGALMesh &B) { _cgal_do(_cgal_union, A, B); }
 void intersect(CGALMesh &A, CGALMesh &B) { _cgal_do(_cgal_intersection, A, B); }
 bool does_self_intersect(const CGALMesh &mesh) { return CGALProc::does_self_intersect(mesh.m); }
+
 void segment(CGALMesh& src, std::vector<CGALMesh>& dst, double smoothing_alpha = 0.5, int segment_number=5)
 {
     typedef boost::graph_traits<_EpicMesh>::face_descriptor face_descriptor;
@@ -442,16 +493,24 @@ void segment(CGALMesh& src, std::vector<CGALMesh>& dst, double smoothing_alpha =
 
     CGAL::sdf_values(mesh, sdf_property_map);
 
+
     typedef _EpicMesh::Property_map<face_descriptor, std::size_t> Facet_int_map;
     Facet_int_map segment_property_map = mesh.add_property_map<face_descriptor, std::size_t>("f:sid").first;;
+
+
     std::size_t number_of_segments = CGAL::segmentation_from_sdf_values(mesh, sdf_property_map, segment_property_map, segment_number, smoothing_alpha);
+
     Filtered_graph segment_mesh(mesh);
     _EpicMesh mesh_merged;
     for (std::size_t id = 0; id < number_of_segments; ++id)
     {
         segment_mesh.set_selected_faces(id, segment_property_map);
+
         _EpicMesh out;
         CGAL::copy_face_graph(segment_mesh, out);
+
+
+
 
         typedef boost::graph_traits<_EpicMesh>::halfedge_descriptor      halfedge_descriptor;
         typedef boost::graph_traits<_EpicMesh>::vertex_descriptor        vertex_descriptor;
@@ -471,10 +530,18 @@ void segment(CGALMesh& src, std::vector<CGALMesh>& dst, double smoothing_alpha =
 #endif
         }
 
+
+
+
+
         {
             dst.emplace_back(CGALMesh(out));
         }
     }
+
+
+
+
 }
 
 std::vector<TriangleMesh> segment(const TriangleMesh& src, double smoothing_alpha, int segment_number)
@@ -599,6 +666,7 @@ bool repair(TriangleMesh& mesh, RepairedMeshErrors* repaired_errors, std::string
         return true;
 
     try {
+
         std::vector<_EpicMesh::Point>         points;
         std::vector<std::vector<std::size_t>> polygons;
 
@@ -611,20 +679,28 @@ bool repair(TriangleMesh& mesh, RepairedMeshErrors* repaired_errors, std::string
         for (const auto& f : mesh.its.indices)
             polygons.push_back({size_t(f[0]), size_t(f[1]), size_t(f[2])});
 
+
         PMP::repair_polygon_soup(points, polygons);
+
 
         _EpicMesh cgal_mesh;
         PMP::polygon_soup_to_polygon_mesh(points, polygons, cgal_mesh);
 
+
         PMP::remove_degenerate_faces(cgal_mesh);
         PMP::remove_isolated_vertices(cgal_mesh);
 
+
         PMP::duplicate_non_manifold_vertices(cgal_mesh);
+
 
         _EpicMesh tmp;
         if (PMP::corefine_and_compute_union(cgal_mesh, cgal_mesh, tmp)) {
             cgal_mesh = std::move(tmp);
         }
+
+
+
         if (!CGAL::is_closed(cgal_mesh)) {
             using halfedge_descriptor = boost::graph_traits<_EpicMesh>::halfedge_descriptor;
 
@@ -636,14 +712,17 @@ bool repair(TriangleMesh& mesh, RepairedMeshErrors* repaired_errors, std::string
             }
         }
 
+
         if (!CGAL::is_closed(cgal_mesh)) {
             if (error)
                 *error = "Repair failed: mesh still open after hole filling.";
             return false;
         }
 
+
         if (!PMP::does_bound_a_volume(cgal_mesh))
             PMP::orient_to_bound_a_volume(cgal_mesh);
+
 
         indexed_triangle_set its = cgal_to_indexed_triangle_set(cgal_mesh);
 
@@ -673,8 +752,12 @@ CGALMeshPtr clone(const CGALMesh &m)
 
 
 namespace mcut {
+
+
+
 struct McutMesh
 {
+
     std::vector<uint32_t> faceSizesArray;
     std::vector<uint32_t> faceIndicesArray;
     std::vector<double>   vertexCoordsArray;
@@ -684,6 +767,7 @@ void McutMeshDeleter::operator()(McutMesh *ptr) { delete ptr; }
 bool empty(const McutMesh &mesh) { return mesh.vertexCoordsArray.empty() || mesh.faceIndicesArray.empty(); }
 void triangle_mesh_to_mcut(const TriangleMesh &src_mesh, McutMesh &srcMesh, const Transform3d &src_nm = Transform3d::Identity())
 {
+
     srcMesh.vertexCoordsArray.reserve(src_mesh.its.vertices.size() * 3);
     for (int i = 0; i < src_mesh.its.vertices.size(); ++i) {
         const Vec3d v = src_nm * src_mesh.its.vertices[i].cast<double>();
@@ -691,6 +775,7 @@ void triangle_mesh_to_mcut(const TriangleMesh &src_mesh, McutMesh &srcMesh, cons
         srcMesh.vertexCoordsArray.push_back(v[1]);
         srcMesh.vertexCoordsArray.push_back(v[2]);
     }
+
 
     srcMesh.faceIndicesArray.reserve(src_mesh.its.indices.size() * 3);
     srcMesh.faceSizesArray.reserve(src_mesh.its.indices.size());
@@ -721,6 +806,7 @@ TriangleMesh mcut_to_triangle_mesh(const McutMesh &mcutmesh)
     auto    &ccFaceIndices = mcutmesh.faceIndicesArray;
     auto    &faceSizes     = mcutmesh.faceSizesArray;
     uint32_t ccFaceCount   = faceSizes.size();
+
     std::vector<Vec3f> vertices(ccVertexCount);
     for (uint32_t i = 0; i < ccVertexCount; i++) {
         vertices[i][0] = (float) ccVertices[(uint64_t) i * 3 + 0];
@@ -728,11 +814,14 @@ TriangleMesh mcut_to_triangle_mesh(const McutMesh &mcutmesh)
         vertices[i][2] = (float) ccVertices[(uint64_t) i * 3 + 2];
     }
 
+
     int faceVertexOffsetBase = 0;
+
 
     std::vector<Vec3i32> faces(ccFaceCount);
     for (uint32_t f = 0; f < ccFaceCount; ++f) {
         int faceSize = faceSizes.at(f);
+
 
         for (int v = 0; v < faceSize; v++) { faces[f][v] = ccFaceIndices[(uint64_t) faceVertexOffsetBase + v]; }
         faceVertexOffsetBase += faceSize;
@@ -801,8 +890,10 @@ MCAPI_ATTR void MCAPI_CALL mcDebugOutput(McDebugSource source,
 
 bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::string &boolean_opts)
 {
+
     McContext context = MC_NULL_HANDLE;
     McResult  err     = mcCreateContext(&context, 0);
+
     mcDebugMessageCallback(context, mcDebugOutput, nullptr);
     mcDebugMessageControl(
         context,
@@ -810,6 +901,11 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
         MC_DEBUG_TYPE_ERROR,
         MC_DEBUG_SEVERITY_MEDIUM,
         true);
+
+
+
+
+
     const std::map<std::string, McFlags> booleanOpts = {
         {"A_NOT_B", MC_DISPATCH_FILTER_FRAGMENT_SEALING_INSIDE | MC_DISPATCH_FILTER_FRAGMENT_LOCATION_ABOVE},
         {"B_NOT_A", MC_DISPATCH_FILTER_FRAGMENT_SEALING_OUTSIDE | MC_DISPATCH_FILTER_FRAGMENT_LOCATION_BELOW},
@@ -830,8 +926,10 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
                      MC_DISPATCH_VERTEX_ARRAY_DOUBLE |
                          MC_DISPATCH_ENFORCE_GENERAL_POSITION |
                          boolOpFlags,
+
                      reinterpret_cast<const void *>(srcMesh.vertexCoordsArray.data()), reinterpret_cast<const uint32_t *>(srcMesh.faceIndicesArray.data()),
                      srcMesh.faceSizesArray.data(), static_cast<uint32_t>(srcMesh.vertexCoordsArray.size() / 3), static_cast<uint32_t>(srcMesh.faceSizesArray.size()),
+
                      reinterpret_cast<const void *>(cutMesh.vertexCoordsArray.data()), cutMesh.faceIndicesArray.data(), cutMesh.faceSizesArray.data(),
                      static_cast<uint32_t>(cutMesh.vertexCoordsArray.size() / 3), static_cast<uint32_t>(cutMesh.faceSizesArray.size()));
     if (err != MC_NO_ERROR) {
@@ -843,6 +941,7 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
         }
         return false;
     }
+
 
     uint32_t numConnComps;
     err = mcGetConnectedComponents(context, MC_CONNECTED_COMPONENT_TYPE_FRAGMENT, 0, NULL, &numConnComps);
@@ -861,14 +960,18 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
 
     McutMesh outMesh;
     int N_vertices = 0;
+
     for (int n = 0; n < numConnComps; ++n) {
+
         McConnectedComponent connComp = connectedComponents[n];
+
 
         McSize numBytes                  = 0;
         err                               = mcGetConnectedComponentData(context, connComp, MC_CONNECTED_COMPONENT_DATA_VERTEX_DOUBLE, 0, NULL, &numBytes);
         uint32_t            ccVertexCount = (uint32_t) (numBytes / (sizeof(double) * 3));
         std::vector<double> ccVertices((uint64_t) ccVertexCount * 3u, 0);
         err = mcGetConnectedComponentData(context, connComp, MC_CONNECTED_COMPONENT_DATA_VERTEX_DOUBLE, numBytes, (void *) ccVertices.data(), NULL);
+
 
         numBytes = 0;
         err      = mcGetConnectedComponentData(context, connComp, MC_CONNECTED_COMPONENT_DATA_FACE_TRIANGULATION, 0, NULL, &numBytes);
@@ -878,6 +981,7 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
 
         const uint32_t ccFaceCount = static_cast<uint32_t>(faceSizes.size());
 
+
         McPatchLocation patchLocation = (McPatchLocation) 0;
         err                           = mcGetConnectedComponentData(context, connComp, MC_CONNECTED_COMPONENT_DATA_PATCH_LOCATION, sizeof(McPatchLocation), &patchLocation, NULL);
 
@@ -886,11 +990,13 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
 
         outMesh.vertexCoordsArray.insert(outMesh.vertexCoordsArray.end(), ccVertices.begin(), ccVertices.end());
 
+
         for (size_t i = 0; i < ccFaceIndices.size(); i++) {
             ccFaceIndices[i] += N_vertices;
         }
 
         int faceVertexOffsetBase = 0;
+
 
         std::vector<Vec3i32> faces(ccFaceCount);
         for (uint32_t f = 0; f < ccFaceCount; ++f) {
@@ -898,6 +1004,7 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
             int  faceSize            = faceSizes.at(f);
             if (reverseWindingOrder) {
                 std::vector<uint32_t> faceIndex(faceSize);
+
                 for (int v = faceSize - 1; v >= 0; v--) { faceIndex[v] = ccFaceIndices[(uint64_t) faceVertexOffsetBase + v]; }
                 std::copy(faceIndex.begin(), faceIndex.end(), ccFaceIndices.begin() + faceVertexOffsetBase);
             }
@@ -910,7 +1017,9 @@ bool do_boolean_single(McutMesh &srcMesh, const McutMesh &cutMesh, const std::st
         N_vertices += ccVertexCount;
     }
 
+
     err = mcReleaseConnectedComponents(context, 0, NULL);
+
     err = mcReleaseContext(context);
 
     srcMesh = outMesh;
@@ -932,8 +1041,13 @@ void do_boolean(McutMesh& srcMesh, const McutMesh& cutMesh, const std::string& b
     }
     if(cut_parts.empty()) return;
 
+
+
+
     indexed_triangle_set all_its;
     if (boolean_opts == "A_NOT_B") {
+
+
         std::vector<indexed_triangle_set> parts = std::move(src_parts);
         for (size_t j = 0; j < cut_parts.size(); j++) {
             auto cut_part = triangle_mesh_to_mcut(cut_parts[j]);
@@ -984,6 +1098,7 @@ void make_boolean(const TriangleMesh &src_mesh, const TriangleMesh &cut_mesh, st
     McutMesh srcMesh, cutMesh;
     triangle_mesh_to_mcut(src_mesh, srcMesh);
     triangle_mesh_to_mcut(cut_mesh, cutMesh);
+
     do_boolean(srcMesh, cutMesh, boolean_opts);
     TriangleMesh tri_src = mcut_to_triangle_mesh(srcMesh);
     if (!tri_src.empty())

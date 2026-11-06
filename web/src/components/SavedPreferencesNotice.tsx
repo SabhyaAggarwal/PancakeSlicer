@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { initialiseSavedPreferences, savedPreferencesSnapshot, subscribeSavedPreferences } from '../saved-preferences';
+
 export default function SavedPreferencesNotice() {
   const saved = useSyncExternalStore(subscribeSavedPreferences, savedPreferencesSnapshot);
   if (saved.state !== 'failed') return null;

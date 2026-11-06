@@ -16,6 +16,8 @@
 
 namespace Slic3r {
 
+
+
 static const ConfigOption *option_of(const ConfigBase &config, const char *key)
 {
     if (const ConfigOption *opt = config.option(key); opt != nullptr)
@@ -31,6 +33,8 @@ bool prime_tower_is_printed(const ConfigBase &config, int used_filaments, int nu
     const auto *ept = config.option<ConfigOptionBool>("enable_prime_tower");
     if (ept == nullptr || !ept->value)
         return false;
+
+
     if (used_filaments <= 0)
         return true;
 
@@ -48,15 +52,21 @@ bool prime_tower_is_printed(const ConfigBase &config, int used_filaments, int nu
 
 WipeTowerType resolve_wipe_tower_type(const ConfigBase &config)
 {
+
+
     if (const auto *model = dynamic_cast<const ConfigOptionString *>(config.option("printer_model"));
         model != nullptr && model->value.compare(0, 9, "Bambu Lab") == 0)
         return WipeTowerType::Type1;
+
+
     const ConfigOption *type = option_of(config, "wipe_tower_type");
     return type != nullptr ? WipeTowerType(type->getInt()) : WipeTowerType::Type2;
 }
 
 Polygon estimate_wipe_tower_first_layer_outline(const ConfigBase &config, WipeTowerType tower_type, double width, double depth, double height)
 {
+
+
     const ConfigOption *wall_type  = option_of(config, "wipe_tower_wall_type");
     const ConfigOption *cone_angle = option_of(config, "wipe_tower_cone_angle");
     const bool          cone       = tower_type == WipeTowerType::Type2 && wall_type != nullptr &&
@@ -98,6 +108,8 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
         return (opt != nullptr && !opt->values.empty()) ? opt->get_at(id) : fallback;
     };
 
+
+
     const double first_layer_height = opt_float("initial_layer_print_height");
     if (first_layer_height > EPSILON)
         layer_height = std::min(layer_height, first_layer_height);
@@ -105,6 +117,9 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
     const bool   type1            = tower_type == WipeTowerType::Type1;
     const double width            = opt_float("prime_tower_width");
     const double prime_volume     = opt_float("prime_volume");
+
+
+
     const double extra_spacing    = opt_float(type1 ? "prime_tower_infill_gap" : "wipe_tower_extra_spacing") / 100.;
     const double rib_width        = opt_float("wipe_tower_rib_width");
     const double extra_rib_length = opt_float("wipe_tower_extra_rib_length");
@@ -114,22 +129,37 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
     const bool   rib_wall         = opt_enum("wipe_tower_wall_type", int(WipeTowerWallType::wtwRectangle)) == int(WipeTowerWallType::wtwRib);
     const bool   smooth_timelapse = opt_enum("timelapse_type", int(TimelapseType::tlTraditional)) == int(TimelapseType::tlSmooth);
     const bool   wrapping         = opt_bool("enable_wrapping_detection");
+
+
     const bool   need_wipe_tower  = smooth_timelapse || wrapping;
+
+
+
 
     if (filaments_cnt < 2 && !need_wipe_tower)
         return footprint;
 
+
+
     const size_t purge_count = filaments_cnt > 1 ? (dual_nozzle ? filaments_cnt : filaments_cnt - 1) : 0;
+
+
 
     double volume = prime_volume * double(purge_count);
     if (dual_nozzle) {
+
         const double length   = max_of("filament_change_length", 0.);
         const double diameter = max_of("filament_diameter", 1.75);
         volume += length * PI * diameter * diameter / 4. * double(filaments_cnt / 2);
     }
+
     const bool semm_flush = opt_bool("purge_in_prime_tower") && opt_bool("single_extruder_multi_material");
     if (semm_flush)
         volume = WipeTower2::estimate_semm_flush_volume(config, filaments_cnt);
+
+
+
+
 
     std::vector<WipeTower::PurgeEstimate> purges;
     if (type1 && filaments_cnt > 1) {
@@ -155,12 +185,18 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
 
     const double min_depth      = WipeTower::get_limit_depth_by_height(float(max_object_height));
     const float  perimeter_width = float(nozzle_diameter) * 1.25f;
+
+
     const double idle_depth = (type1 && wrapping && !smooth_timelapse) ? WipeTower::get_wrapping_detection_depth() : min_depth;
     if (rib_wall) {
+
+
         double side;
         if (!purges.empty())
             side = WipeTower::estimate_rib_tower_bbox_side(purges, float(width), float(layer_height), float(nozzle_diameter), float(extra_spacing), float(rib_width), float(extra_rib_length), float(max_object_height));
         else {
+
+
             const bool   has_purge = !type1 && volume > EPSILON;
             const double square    = has_purge ? std::sqrt(volume / layer_height * extra_spacing) : idle_depth;
             side = WipeTower::rib_footprint_side(float(square), float(square), float(rib_width), float(extra_rib_length), float(max_object_height));
@@ -169,9 +205,12 @@ WipeTowerFootprint estimate_wipe_tower_footprint(const ConfigBase &config, WipeT
     } else {
         double depth;
         if (type1) {
+
+
             depth = purges.empty() ? idle_depth : std::max(min_depth + perimeter_width, double(WipeTower::estimate_tower_blocks_depth(purges, float(width), float(layer_height), float(nozzle_diameter), float(extra_spacing))));
         } else {
             depth = volume / (layer_height * width);
+
             if (!semm_flush)
                 depth *= extra_spacing;
             depth = std::max(min_depth, depth);

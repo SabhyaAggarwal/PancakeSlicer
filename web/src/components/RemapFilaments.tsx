@@ -1,3 +1,6 @@
+
+
+
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { markStale, setState, type PlateObject } from '../state/store';
@@ -13,6 +16,7 @@ export function remapObject(o: PlateObject, map: number[]): PlateObject {
     return p ? { ...x, paint: { ...x.paint, color: new Map([...p].map(([t, n]) => [t, remapNode(n, map)])) as Painting } } : x;
   };
   const ext = (e: number) => (e >= 1 && e <= map.length ? map[e - 1] : e);
+
   return { ...paint(o), extruder: ext(o.extruder), volumes: o.volumes?.map((v) => (v.type === 'part' ? { ...paint(v), extruder: v.extruder ? ext(v.extruder) : 0 } : v)) };
 }
 

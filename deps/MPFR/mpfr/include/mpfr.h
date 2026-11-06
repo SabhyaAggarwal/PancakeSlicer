@@ -23,23 +23,23 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #ifndef __MPFR_H
 #define __MPFR_H
 
-/* Define MPFR version number */
+
 #define MPFR_VERSION_MAJOR 3
 #define MPFR_VERSION_MINOR 0
 #define MPFR_VERSION_PATCHLEVEL 0
 #define MPFR_VERSION_STRING "3.0.0"
 
-/* Macros dealing with MPFR VERSION */
+
 #define MPFR_VERSION_NUM(a,b,c) (((a) << 16L) | ((b) << 8) | (c))
 #define MPFR_VERSION \
 MPFR_VERSION_NUM(MPFR_VERSION_MAJOR,MPFR_VERSION_MINOR,MPFR_VERSION_PATCHLEVEL)
 
-/* Check if GMP is included, and try to include it (Works with local GMP) */
+
 #ifndef __GMP_H__
 # include <gmp.h>
 #endif
 
-/* Check if stdio.h is included or if the user wants FILE */
+
 #if defined (_GMP_H_HAVE_FILE) || defined (MPFR_USE_FILE)
 # define _MPFR_H_HAVE_FILE 1
 #endif
@@ -48,57 +48,57 @@ MPFR_VERSION_NUM(MPFR_VERSION_MAJOR,MPFR_VERSION_MINOR,MPFR_VERSION_PATCHLEVEL)
 # define _MPFR_H_HAVE_VA_LIST 1
 #endif
 
-/* Check if <stdint.h> / <inttypes.h> is included or if the user
-   explicitly wants intmax_t. Automatical detection is done by
-   checking:
-     - INTMAX_C and UINTMAX_C, but not if the compiler is a C++ one
-       (as suggested by Patrick Pelissier) because the test does not
-       work well in this case. See:
-         http://websympa.loria.fr/wwsympa/arc/mpfr/2010-02/msg00025.html
-       We do not check INTMAX_MAX and UINTMAX_MAX because under Solaris,
-       these macros are always defined by <limits.h> (i.e. even when
-       <stdint.h> and <inttypes.h> are not included).
-     - _STDINT_H (defined by the glibc) and _STDINT_H_ (defined under
-       Mac OS X), but this test may not work with all implementations.
-       Portable software should not rely on these tests.
-*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #if (defined (INTMAX_C) && defined (UINTMAX_C) && !defined(__cplusplus)) || \
   defined (MPFR_USE_INTMAX_T) || defined (_STDINT_H) || defined (_STDINT_H_)
 # define _MPFR_H_HAVE_INTMAX_T 1
 #endif
 
-/* Definition of rounding modes (DON'T USE MPFR_RNDNA!).
-   Warning! Changing the contents of this enum should be seen as an
-   interface change since the old and the new types are not compatible
-   (the integer type compatible with the enumerated type can even change,
-   see ISO C99, 6.7.2.2#4), and in Makefile.am, AGE should be set to 0.
 
-   MPFR_RNDU must appear just before MPFR_RNDD (see
-   MPFR_IS_RNDUTEST_OR_RNDDNOTTEST in mpfr-impl.h).
 
-   MPFR_RNDF has been added, though not implemented yet, in order to avoid
-   to break the ABI once faithful rounding gets implemented.
 
-   If you change the order of the rounding modes, please update the routines
-   in texceptions.c which assume 0=RNDN, 1=RNDZ, 2=RNDU, 3=RNDD, 4=RNDA.
-*/
+
+
+
+
+
+
+
+
+
+
+
+
 typedef enum {
-  MPFR_RNDN=0,  /* round to nearest, with ties to even */
-  MPFR_RNDZ,    /* round toward zero */
-  MPFR_RNDU,    /* round toward +Inf */
-  MPFR_RNDD,    /* round toward -Inf */
-  MPFR_RNDA,    /* round away from zero */
-  MPFR_RNDF,    /* faithful rounding (not implemented yet) */
-  MPFR_RNDNA=-1 /* round to nearest, with ties away from zero (mpfr_round) */
+  MPFR_RNDN=0,
+  MPFR_RNDZ,
+  MPFR_RNDU,
+  MPFR_RNDD,
+  MPFR_RNDA,
+  MPFR_RNDF,
+  MPFR_RNDNA=-1
 } mpfr_rnd_t;
 
-/* kept for compatibility with MPFR 2.4.x and before */
+
 #define GMP_RNDN MPFR_RNDN
 #define GMP_RNDZ MPFR_RNDZ
 #define GMP_RNDU MPFR_RNDU
 #define GMP_RNDD MPFR_RNDD
 
-/* Define precision : 1 (short), 2 (int) or 3 (long) (DON'T USE IT!)*/
+
 #ifndef _MPFR_PREC_FORMAT
 # if __GMP_MP_SIZE_T_INT == 1
 #  define _MPFR_PREC_FORMAT 2
@@ -107,9 +107,9 @@ typedef enum {
 # endif
 #endif
 
-/* Let's make mpfr_prec_t signed in order to avoid problems due to the
-   usual arithmetic conversions when mixing mpfr_prec_t and mpfr_exp_t
-   in an expression (for error analysis) if casts are forgotten. */
+
+
+
 #if   _MPFR_PREC_FORMAT == 1
 typedef short mpfr_prec_t;
 typedef unsigned short mpfr_uprec_t;
@@ -123,23 +123,23 @@ typedef unsigned long  mpfr_uprec_t;
 # error "Invalid MPFR Prec format"
 #endif
 
-/* Definition of precision limits without needing <limits.h> */
-/* Note: the casts allows the expression to yield the wanted behavior
-   for _MPFR_PREC_FORMAT == 1 (due to integer promotion rules). */
+
+
+
 #define MPFR_PREC_MIN 2
 #define MPFR_PREC_MAX ((mpfr_prec_t)((mpfr_uprec_t)(~(mpfr_uprec_t)0)>>1))
 
-/* Definition of sign */
+
 typedef int          mpfr_sign_t;
 
-/* Definition of the exponent: same as in GMP. */
+
 typedef mp_exp_t     mpfr_exp_t;
 
-/* Definition of the standard exponent limits */
+
 #define MPFR_EMAX_DEFAULT ((mpfr_exp_t) (((unsigned long) 1 << 30) - 1))
 #define MPFR_EMIN_DEFAULT (-(MPFR_EMAX_DEFAULT))
 
-/* Definition of the main structure */
+
 typedef struct {
   mpfr_prec_t  _mpfr_prec;
   mpfr_sign_t  _mpfr_sign;
@@ -147,7 +147,7 @@ typedef struct {
   mp_limb_t   *_mpfr_d;
 } __mpfr_struct;
 
-/* Compatibility with previous types of MPFR */
+
 #ifndef mp_rnd_t
 # define mp_rnd_t  mpfr_rnd_t
 #endif
@@ -155,45 +155,45 @@ typedef struct {
 # define mp_prec_t mpfr_prec_t
 #endif
 
-/*
-   The represented number is
-      _sign*(_d[k-1]/B+_d[k-2]/B^2+...+_d[0]/B^k)*2^_exp
-   where k=ceil(_mp_prec/GMP_NUMB_BITS) and B=2^GMP_NUMB_BITS.
 
-   For the msb (most significant bit) normalized representation, we must have
-      _d[k-1]>=B/2, unless the number is singular.
 
-   We must also have the last k*GMP_NUMB_BITS-_prec bits set to zero.
-*/
+
+
+
+
+
+
+
+
 
 typedef __mpfr_struct mpfr_t[1];
 typedef __mpfr_struct *mpfr_ptr;
 typedef __gmp_const __mpfr_struct *mpfr_srcptr;
 
-/* For those who need a direct and fast access to the sign field.
-   However it is not in the API, thus use it at your own risk: it might
-   not be supported, or change name, in further versions!
-   Unfortunately, it must be defined here (instead of MPFR's internal
-   header file mpfr-impl.h) because it is used by some macros below.
-*/
+
+
+
+
+
+
 #define MPFR_SIGN(x) ((x)->_mpfr_sign)
 
-/* Stack interface */
+
 typedef enum {
   MPFR_NAN_KIND = 0,
   MPFR_INF_KIND = 1, MPFR_ZERO_KIND = 2, MPFR_REGULAR_KIND = 3
 } mpfr_kind_t;
 
-/* GMP defines:
-    + size_t:                Standard size_t
-    + __GMP_ATTRIBUTE_PURE   Attribute for math functions.
-    + __GMP_NOTHROW          For C++: can't throw .
-    + __GMP_EXTERN_INLINE    Attribute for inline function.
-    * __gmp_const            const (Supports for K&R compiler only for mpfr.h).
-    + __GMP_DECLSPEC_EXPORT  compiling to go into a DLL
-    + __GMP_DECLSPEC_IMPORT  compiling to go into a application
-*/
-/* Extra MPFR defines */
+
+
+
+
+
+
+
+
+
+
 #define __MPFR_SENTINEL_ATTR
 #if defined (__GNUC__)
 # if __GNUC__ >= 4
@@ -202,7 +202,7 @@ typedef enum {
 # endif
 #endif
 
-/* Prototypes: Support of K&R compiler */
+
 #if defined (__GMP_PROTO)
 # define _MPFR_PROTO __GMP_PROTO
 #elif defined (__STDC__) || defined (__cplusplus)
@@ -210,22 +210,22 @@ typedef enum {
 #else
 # define _MPFR_PROTO(x) ()
 #endif
-/* Support for WINDOWS Dll:
-   Check if we are inside a MPFR build, and if so export the functions.
-   Otherwise does the same thing as GMP */
+
+
+
 #if defined(__MPFR_WITHIN_MPFR) && __GMP_LIBGMP_DLL
 # define __MPFR_DECLSPEC __GMP_DECLSPEC_EXPORT
 #else
 # define __MPFR_DECLSPEC __GMP_DECLSPEC
 #endif
 
-/* Note: In order to be declared, some functions need a specific
-   system header to be included *before* "mpfr.h". If the user
-   forgets to include the header, the MPFR function prototype in
-   the user object file is not correct. To avoid wrong results,
-   we raise a linker error in that case by changing their internal
-   name in the library (prefixed by __gmpfr instead of mpfr). See
-   the lines of the form "#define mpfr_xxx __gmpfr_xxx" below. */
+
+
+
+
+
+
+
 
 #if defined (__cplusplus)
 extern "C" {
@@ -417,7 +417,7 @@ __MPFR_DECLSPEC int mpfr_snprintf _MPFR_PROTO ((char*, size_t,
 #define mpfr_vfprintf __gmpfr_vfprintf
 __MPFR_DECLSPEC int mpfr_vfprintf _MPFR_PROTO ((FILE*, __gmp_const char*,
                                                 va_list));
-#endif /* _MPFR_H_HAVE_FILE */
+#endif
 #define mpfr_vprintf __gmpfr_vprintf
 #define mpfr_vasprintf __gmpfr_vasprintf
 #define mpfr_vsprintf __gmpfr_vsprintf
@@ -429,7 +429,7 @@ __MPFR_DECLSPEC int mpfr_vsprintf _MPFR_PROTO ((char*, __gmp_const char*,
                                                va_list));
 __MPFR_DECLSPEC int mpfr_vsnprintf _MPFR_PROTO ((char*, size_t,
                                                 __gmp_const char*, va_list));
-#endif /* _MPFR_H_HAVE_VA_LIST */
+#endif
 
 __MPFR_DECLSPEC int mpfr_pow _MPFR_PROTO ((mpfr_ptr, mpfr_srcptr,
                                            mpfr_srcptr, mpfr_rnd_t));
@@ -717,13 +717,13 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 }
 #endif
 
-/* DON'T USE THIS! (For MPFR-public macros only, see below.)
-   The mpfr_sgn macro uses the fact that __MPFR_EXP_NAN and __MPFR_EXP_ZERO
-   are the smallest values.
-   FIXME: In the following macros, the cast of an unsigned type with MSB set
-   to the signed type mpfr_exp_t yields an integer overflow, which can give
-   unexpected results with future compilers and aggressive optimisations.
-   Why not working only with signed types, using INT_MIN and LONG_MIN? */
+
+
+
+
+
+
+
 #if __GMP_MP_SIZE_T_INT
 #define __MPFR_EXP_NAN  ((mpfr_exp_t)((~((~(unsigned int)0)>>1))+2))
 #define __MPFR_EXP_ZERO ((mpfr_exp_t)((~((~(unsigned int)0)>>1))+1))
@@ -734,7 +734,7 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 #define __MPFR_EXP_INF  ((mpfr_exp_t)((~((~(unsigned long)0)>>1))+3))
 #endif
 
-/* Define MPFR_USE_EXTENSION to avoid "gcc -pedantic" warnings. */
+
 #ifndef MPFR_EXTENSION
 # if defined(MPFR_USE_EXTENSION)
 #  define MPFR_EXTENSION __extension__
@@ -743,19 +743,19 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 # endif
 #endif
 
-/* Warning! This macro doesn't work with K&R C (e.g., compare the "gcc -E"
-   output with and without -traditional) and shouldn't be used internally.
-   For public use only, but see the MPFR manual. */
+
+
+
 #define MPFR_DECL_INIT(_x, _p)                                        \
   MPFR_EXTENSION mp_limb_t __gmpfr_local_tab_##_x[((_p)-1)/GMP_NUMB_BITS+1]; \
   MPFR_EXTENSION mpfr_t _x = {{(_p),1,__MPFR_EXP_NAN,__gmpfr_local_tab_##_x}}
 
-/* Fast access macros to replace function interface.
-   If the USER don't want to use the macro interface, let him make happy
-   even if it produces faster and smaller code. */
+
+
+
 #ifndef MPFR_USE_NO_MACRO
 
-/* Inlining theses functions is both faster and smaller */
+
 #define mpfr_nan_p(_x)      ((_x)->_mpfr_exp == __MPFR_EXP_NAN)
 #define mpfr_inf_p(_x)      ((_x)->_mpfr_exp == __MPFR_EXP_INF)
 #define mpfr_zero_p(_x)     ((_x)->_mpfr_exp == __MPFR_EXP_ZERO)
@@ -765,12 +765,12 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
    (mpfr_nan_p (_x) ? mpfr_set_erangeflag () : (void) 0), 0 : \
    MPFR_SIGN (_x))
 
-/* Prevent them from using as lvalues */
+
 #define MPFR_VALUE_OF(x)  (0 ? (x) : (x))
 #define mpfr_get_prec(_x) MPFR_VALUE_OF((_x)->_mpfr_prec)
 #define mpfr_get_exp(_x)  MPFR_VALUE_OF((_x)->_mpfr_exp)
-/* Note: if need be, the MPFR_VALUE_OF can be used for other expressions
-   (of any type). Thanks to Wojtek Lerch and Tim Rentsch for the idea. */
+
+
 
 #define mpfr_round(a,b) mpfr_rint((a), (b), MPFR_RNDNA)
 #define mpfr_trunc(a,b) mpfr_rint((a), (b), MPFR_RNDZ)
@@ -789,19 +789,19 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 #define mpfr_div_2exp(y,x,n,r) mpfr_div_2ui((y),(x),(n),(r))
 
 
-/* When using GCC, optimize certain common comparisons and affectations.
-   + Remove ICC since it defines __GNUC__ but produces a
-     huge number of warnings if you use this code.
-     VL: I couldn't reproduce a single warning when enabling these macros
-     with icc 10.1 20080212 on Itanium. But with this version, __ICC isn't
-     defined (__INTEL_COMPILER is, though), so that these macros are enabled
-     anyway. Checking with other ICC versions is needed. Possibly detect
-     whether warnings are produced or not with a configure test.
-   + Remove C++ too, since it complains too much. */
+
+
+
+
+
+
+
+
+
 #if defined (__GNUC__) && !defined(__ICC) && !defined(__cplusplus)
 #if (__GNUC__ >= 2)
 #undef mpfr_cmp_ui
-/* We use the fact that mpfr_sgn on NaN sets the erange flag and returns 0. */
+
 #define mpfr_cmp_ui(_f,_u)                 \
  (__builtin_constant_p (_u) && (_u) == 0 ? \
    mpfr_sgn (_f) :                         \
@@ -830,7 +830,7 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 #endif
 #endif
 
-/* Macro version of mpfr_stack interface for fast access */
+
 #define mpfr_custom_get_size(p) ((size_t)                            \
        (((p)+GMP_NUMB_BITS-1)/GMP_NUMB_BITS*sizeof (mp_limb_t)))
 #define mpfr_custom_init(m,p) do {} while (0)
@@ -865,9 +865,9 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
   : (int) MPFR_ZERO_KIND * MPFR_SIGN (x) )
 
 
-#endif /* MPFR_USE_NO_MACRO */
+#endif
 
-/* Theses are defined to be macros */
+
 #define mpfr_init_set_si(x, i, rnd) \
  ( mpfr_init(x), mpfr_set_si((x), (i), (rnd)) )
 #define mpfr_init_set_ui(x, i, rnd) \
@@ -885,7 +885,7 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 #define mpfr_init_set_f(x, y, rnd) \
  ( mpfr_init(x), mpfr_set_f((x), (y), (rnd)) )
 
-/* Compatibility layer -- obsolete functions and macros */
+
 #define mpfr_cmp_abs mpfr_cmpabs
 #define mpfr_round_prec(x,r,p) mpfr_prec_round(x,p,r)
 #define __gmp_default_rounding_mode (mpfr_get_default_rounding_mode())
@@ -907,4 +907,4 @@ __MPFR_DECLSPEC int    mpfr_custom_get_kind   _MPFR_PROTO ((mpfr_srcptr));
 #define mpfr_get_z_exp mpfr_get_z_2exp
 #define mpfr_custom_get_mantissa mpfr_custom_get_significand
 
-#endif /* __MPFR_H*/
+#endif

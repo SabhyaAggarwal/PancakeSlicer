@@ -41,6 +41,7 @@ namespace {
 
 constexpr float Inf = std::numeric_limits<float>::infinity();
 
+
 template<class Fn> void for_each_conformal(const ExtrusionEntity &entity, const Fn &fn)
 {
     if (const auto *collection = dynamic_cast<const ExtrusionEntityCollection *>(&entity)) {
@@ -49,6 +50,7 @@ template<class Fn> void for_each_conformal(const ExtrusionEntity &entity, const 
     } else if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(&entity))
         fn(*path);
 }
+
 
 template<class Keep> void collect_lines(const ExtrusionEntity &entity, const Keep &keep, Lines &out)
 {
@@ -73,6 +75,8 @@ double percentile(std::vector<double> v, double q)
     std::nth_element(v.begin(), it, v.end());
     return *it;
 }
+
+
 
 struct PlanarLayerView
 {
@@ -116,6 +120,10 @@ PlanarLayerView view_layer(const Layer &layer, const HeightField &grid)
 }
 
 }
+
+
+
+
 struct UndersideColumns
 {
     std::vector<float> top, bottom;
@@ -171,6 +179,8 @@ UndersideColumns underside_columns(const PrintObject &object, const ConformalRes
     return out;
 }
 
+
+
 PatchBase measure_patch_base(const PrintObject &object, const BaseInput &input, const std::vector<const ConformalPatch *> &pieces,
                              const UndersideColumns &under, const std::vector<double> &layer_z)
 {
@@ -182,6 +192,7 @@ PatchBase measure_patch_base(const PrintObject &object, const BaseInput &input, 
     base.patches      = input.patches;
     const auto       object_layers = object.layers();
     const Mask       inside        = rasterize(input.area, planar_top);
+
     std::unique_ptr<AABBTreeLines::LinesDistancer<Line>> curved_sparse;
     if (sparse > 0) {
         Lines lines;
@@ -223,15 +234,19 @@ PatchBase measure_patch_base(const PrintObject &object, const BaseInput &input, 
             } else if (const size_t l = layer_of(b); l != size_t(-1)) {
                 PlanarLayerView &v = view(l);
                 if (!v.material[i] && under.top[i] >= b - UndersideContact) {
+
+
                     n.support  = BaseSupport::Underside;
                     n.vertical = std::clamp(double(b - under.bottom[i]), 0., 2.);
                 } else if (!v.material[i]) {
+
                     n.support = BaseSupport::Air;
                     n.reach   = std::min(0.5 * BridgeSpanAir, v.edge_distance(q));
                 } else if (v.sparse[i]) {
                     n.support = BaseSupport::PlanarSparse;
                     n.reach   = std::min(0.5 * BridgeSpanAir, v.road_distance(q));
                 } else {
+
                     for (size_t k = l + 1; k-- > 0 && n.vertical < 2.;) {
                         const PlanarLayerView &w = view(k);
                         if (!w.material[i] || w.sparse[i])
@@ -248,6 +263,7 @@ PatchBase measure_patch_base(const PrintObject &object, const BaseInput &input, 
     const double cell = planar_top.pitch() * planar_top.pitch();
     base.area         = double(nodes.size()) * cell;
     base.slope_p90    = Geometry::rad2deg(percentile(slopes, 0.9));
+
     double span[size_t(BaseSupport::Count)]{};
     {
         std::vector<double> reach[size_t(BaseSupport::Count)], all;
@@ -331,11 +347,15 @@ void closing_cells(const PrintObject &object, const ConformalPatch &unit, const 
         for (int ix = 0; ix < planar_top.nx(); ++ix) {
             const size_t i = size_t(iy) * planar_top.nx() + ix;
             const float  b = planar_top.data()[i], m = layers.data()[i];
+
             if (!inside[i] || !std::isfinite(b) || std::isnan(m) || int(m) > solid)
                 continue;
             const Vec2d g = unit.surface.gradient(planar_top.node(ix, iy));
             if (!g.allFinite())
                 continue;
+
+
+
             double need = std::max(EPSILON, thickness - NormalThicknessTolerance - int(m) * unit.shell_height);
             const auto it = std::lower_bound(layer_z.begin(), layer_z.end(), double(b) - EPSILON);
             if (it == layer_z.end() || std::abs(*it - b) > 1e-4)
@@ -373,6 +393,7 @@ void close_layer(PrintObject &object, size_t layer_id, const ExPolygons &solid, 
             continue;
         const ExPolygons bridged = intersection_ex(area, bridge);
         clip_extrusions(layerm->fills, area, get_extents(area));
+
         Surfaces kept;
         for (Surface &s : layerm->fill_surfaces.surfaces)
             if (s.surface_type == stInternal || s.surface_type == stInternalVoid) {
@@ -386,6 +407,7 @@ void close_layer(PrintObject &object, size_t layer_id, const ExPolygons &solid, 
             kept.emplace_back(stInternalBridge, e);
         layerm->fill_surfaces.surfaces = std::move(kept);
         const PrintRegionConfig &config = layerm->region().config();
+
         const double angle = Geometry::deg2rad(config.solid_infill_direction.value) + (layer_id % 2 == 1 ? 0.5 * PI : 0.);
         auto *collection = new ExtrusionEntityCollection();
         for (const auto &[part, role] : { std::pair{ diff_ex(area, bridged), erSolidInfill }, std::pair{ bridged, erInternalBridgeInfill } }) {

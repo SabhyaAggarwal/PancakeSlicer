@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import type { Config, ConfigValue } from '../api/types';
@@ -46,6 +47,7 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
           if (Math.abs(area) > 1e-8) triangles.push([p]);
         }
         if (!triangles.length) throw new Error('The selected file contains no geometry.');
+
         let merged = union(triangles[0]);
         for (let i = 1; i < triangles.length; i += 128) merged = union(merged, ...triangles.slice(i, i + 128));
         if (merged.length !== 1) throw new Error('The selected file contains several disjointed areas. This is not supported.');

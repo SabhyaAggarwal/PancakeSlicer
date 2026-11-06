@@ -1,4 +1,6 @@
 import { Check } from './Check';
+
+
 import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type SvgSpec } from '../state/store';
@@ -8,6 +10,7 @@ import { setTextPlacing, subscribeTextPlacing, textPlacing } from '../plater/tex
 const OPERATIONS = [['part', 'Join'], ['negative', 'Cut'], ['modifier', 'Modifier']] as const;
 
 export default function SvgPanel() {
+
   const objectId = useStore((s) => editedSvg(s)?.object.id);
   const v = useStore((s) => editedSvg(s)?.volume);
   const current = useStore((s) => editedSvg(s)?.spec);
@@ -19,6 +22,7 @@ export default function SvgPanel() {
   const timer = useRef(0);
   useEffect(() => () => setTextPlacing(false), []);
   useEffect(() => setSpec(current ?? null), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => setSpec((sp) => (sp && current ? { ...sp, surface: current.surface } : sp)), [current?.surface]); // eslint-disable-line react-hooks/exhaustive-deps
   if (objectId === undefined || !spec) return null;
   const edit = (patch: Partial<SvgSpec>) => {

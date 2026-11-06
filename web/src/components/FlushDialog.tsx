@@ -1,3 +1,7 @@
+
+
+
+
 import { useState } from 'react';
 import { Dropdown } from './Dropdown';
 import { effectiveConfig, printerPreset } from '../state/store';
@@ -51,6 +55,7 @@ function FlushTable() {
     setMultipliers((values) => values.map((old, i) => i === nozzle ? v : old));
   };
   const save = () => {
+
     const matrix = raw.map((v, i) => Math.min(Math.max(v, 0), multipliers[Math.floor(i / (n * n))] > 0 ? MAX_FLUSH_VOLUME / multipliers[Math.floor(i / (n * n))] : MAX_FLUSH_VOLUME));
     const autoAll = Array.from({ length: count }, (_, i) => autoFlushMatrix(s, i)).flat();
     const same = matrix.every((v, i) => v === autoAll[i]);

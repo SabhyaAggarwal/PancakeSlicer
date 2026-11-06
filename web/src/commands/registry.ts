@@ -1,14 +1,30 @@
+
+
+
+
+
+
+
 export interface Command {
+
   id: string;
   title: string;
+
   group: string;
+
   keys?: string;
+
   keywords?: string;
+
   detail?: string;
+
   enabled?: () => boolean | string;
+
   run?: () => void;
+
   boost?: number;
 }
+
 
 export type Provider = (query: string) => Command[] | Promise<Command[]>;
 
@@ -18,12 +34,14 @@ const listeners = new Set<() => void>();
 let version = 0;
 const notify = () => { version++; listeners.forEach((l) => l()); };
 
+
 export function registerCommand(c: Command | Command[]): () => void {
   const list = Array.isArray(c) ? c : [c];
   list.forEach((x) => commands.set(x.id, x));
   notify();
   return () => { list.forEach((x) => commands.get(x.id) === x && commands.delete(x.id)); notify(); };
 }
+
 
 export function registerProvider(id: string, p: Provider): () => void {
   providers.set(id, p);
@@ -36,12 +54,14 @@ export const allProviders = () => [...providers.entries()];
 export const subscribeCommands = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const commandsVersion = () => version;
 
+
 export function runCommand(id: string): boolean {
   const c = commands.get(id);
   if (!c?.run || (c.enabled && c.enabled() !== true)) return false;
   c.run();
   return true;
 }
+
 
 let palette: string | null = null;
 const paletteListeners = new Set<() => void>();

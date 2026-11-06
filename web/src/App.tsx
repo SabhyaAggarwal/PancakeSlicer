@@ -1,5 +1,6 @@
 import { Modal, ModalTitle } from './components/Modal';
 import { openPalette } from './commands/registry';
+
 import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
@@ -9,6 +10,7 @@ import { CanvasToolbar, CutPanel, PaintPanel, SliceNotification, Toast } from '.
 import { LoadingState } from './components/Notices';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
+
 import WorkspaceRail from './components/WorkspaceRail';
 import { AskHost } from './components/Ask';
 import { TopBar } from './components/TopBar';
@@ -30,6 +32,7 @@ const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesN
 const LeaseBar = lazy(() => import('./components/LeaseBar'));
 const Setup = lazy(() => import('./onboarding/Setup'));
 const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
+
 const Plater3D = lazy(() => Promise.all([import('./plater/Plater3D'), threeReady]).then(([m]) => m));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
@@ -46,6 +49,7 @@ const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ de
 const PresetUx = preloadable(() => import('./components/PresetUx'));
 const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
 const PreviewView = lazy(() => loadPreviewView().then((viewer) => ({ default: viewer })));
+
 const ProjectsView = preloadable(() => import('./projects/ProjectsView'));
 const Palette = lazy(() => import('./commands/Palette'));
 
@@ -59,6 +63,10 @@ import { threeReady } from './three-runtime';
 const AppDialog = lazy(() => import('./components/AppDialogs'));
 const CalibDialog = lazy(() => import('./components/CalibDialog'));
 const NonplanarCalibDialog = lazy(() => import('./components/NonplanarCalibDialog'));
+
+
+
+
 
 function nudge(key: string, fine: boolean) {
   const s = getState();
@@ -75,10 +83,17 @@ function nudge(key: string, fine: boolean) {
   return true;
 }
 
+
+
 const graphics = graphicsCapability();
 const NoGraphics = () => graphics.webgl2 ? null : <div className="canvas-unavailable" role="alert">{graphics.reason}</div>;
 
+
 const visibleCanvas = () => [...document.querySelectorAll<HTMLCanvasElement>('.canvas-area canvas')].find((c) => c.offsetParent !== null && c.clientWidth > 0);
+
+
+
+
 
 function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
   const idle = () => !document.activeElement || document.activeElement === document.body || document.activeElement instanceof HTMLCanvasElement && document.activeElement.offsetParent === null;
@@ -87,8 +102,10 @@ function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
     const el = find();
     if (el) {
       if (el instanceof HTMLCanvasElement && !el.hasAttribute('tabindex')) el.tabIndex = -1;
+
       const ring = !(el instanceof HTMLCanvasElement);
       el.focus({ preventScroll: true, focusVisible: ring } as FocusOptions);
+
       if (ring) { el.dataset.focusRing = ''; el.addEventListener('blur', () => delete el.dataset.focusRing, { once: true }); }
     } else if (left > 0) requestAnimationFrame(() => step(left - 1));
   };
@@ -111,18 +128,22 @@ export default function App() {
   const gizmo = useStore((s) => s.gizmo);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
+
+
   const empty = useStore((s) => !s.objects.length && !s.project && s.projectPlates.length < 2);
   const assemblyOn = useAssembly().on;
   const sidebarHidden = useSidebarHidden();
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
+
   const previewViewer = useRef<ComponentType>(undefined);
   if (previewOpened.current) previewViewer.current ??= loadedPreviewView() ?? PreviewView;
   const Viewer = previewViewer.current ?? PreviewView;
 
   useEffect(() => whenIdle(() => void ProjectsView.preload().catch(() => {})), []);
   useEffect(() => whenIdle(() => void PresetUx.preload().catch(() => {})), []);
+
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -140,6 +161,7 @@ export default function App() {
       if (ownsKeys(e) || getState().dialog || getState().flushDialog || getState().appDialog || getState().calibDialog || getState().sessionDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const prepare = getState().tab === 'prepare';
+
       if (ctrl && e.key.toLowerCase() === 'z') e.shiftKey ? redo() : undo();
       else if (ctrl && e.key.toLowerCase() === 'y') redo();
       else if (ctrl && e.key.toLowerCase() === 'p') setState({ appDialog: 'preferences' });
@@ -161,14 +183,19 @@ export default function App() {
       else if (ctrl && e.key === '\\') toggleSidebar();
       else if (ctrl && e.key.toLowerCase() === 'k') { const s = getState(); if (s.selected && !s.project) setState({ appDialog: 'clone' }); }
       else if (ctrl) return;
+
+
       else if (e.key === 'Tab' && !e.shiftKey && !e.altKey && document.activeElement instanceof HTMLCanvasElement) {
         e.preventDefault();
         setState((s) => ({ tab: s.tab === 'prepare' ? 'preview' : 'prepare' }));
+
         focusSoon(visibleCanvas);
       }
+
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
+
       else if (isPaint(getState().gizmo) && !e.altKey && paintKeyTool(getState().gizmo as PaintKind, e.key)) setPaintTool({ tool: paintKeyTool(getState().gizmo as PaintKind, e.key)! });
       else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
       else if (e.key === 'a' || e.key === 'A') arrangeAll(e.key === 'a');
@@ -184,6 +211,7 @@ export default function App() {
       else if (e.key.toLowerCase() === 'p') togglePaint('seam');
       else if (e.key.toLowerCase() === 'h') togglePaint('fuzzy');
       else if (e.key.toLowerCase() === 'n') togglePaint('color');
+
       else if (e.key.toLowerCase() === 'e' && getState().tab === 'prepare') {
         const s = getState(), o = s.objects.find((x) => x.id === s.selected?.object);
         if (!s.features.brim_ears) toggleViewOption('labels');
@@ -191,12 +219,14 @@ export default function App() {
       }
       else if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey) toggleBoolean();
       else if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey) toggleText();
+
       else if (getState().gizmo === 'color' && /^[1-9]$/.test(e.key)) { if (Number(e.key) <= getState().filamentSlots.length) setPaintTool({ filament: Number(e.key) }); }
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
-      else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
+      else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {               }
       else if (e.key === 'Escape') {
         const s = getState();
+
         if (!s.selected && s.gizmo === 'none' && !assembly().on && document.activeElement instanceof HTMLCanvasElement) document.activeElement.blur();
         if (assembly().on) setAssembly({ on: false });
         if (s.gizmo === 'move' || s.gizmo === 'rotate' || s.gizmo === 'scale') setState({gizmo: 'none'});
@@ -209,6 +239,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+
+
+
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (!(e.target instanceof HTMLCanvasElement)) return;
@@ -219,6 +252,8 @@ export default function App() {
     window.addEventListener('pointerdown', down, true);
     return () => window.removeEventListener('pointerdown', down, true);
   }, []);
+
+
 
   useEffect(() => {
     let prev = getState();
@@ -236,6 +271,8 @@ export default function App() {
     return () => { off(); };
   }, []);
 
+
+
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const s = getState();
@@ -250,7 +287,11 @@ export default function App() {
     return () => window.removeEventListener('paste', onPaste);
   }, []);
 
+
+
   useEffect(() => {
+
+
     let depth = 0;
     const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
     const accepts = (e: DragEvent) => isFiles(e) && !document.querySelector('dialog[open]');
@@ -279,11 +320,14 @@ export default function App() {
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>
         <div className="canvas-area" data-viewport={tab}>
+          {                                                                                                              }
           {!empty && tab === 'prepare' && <Suspense fallback={null}><ObjectsPanel/></Suspense>}
+          {                                                                                        }
           {sidebarHidden && (
             <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
+            {                                                            }
             {graphics.webgl2 ? <Suspense fallback={null}><Plater3D /></Suspense> : <NoGraphics />}
             <CanvasToolbar />
             {!projects && tab === 'prepare' && (gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale') && <Suspense fallback={null}><TransformPanel /></Suspense>}
@@ -301,6 +345,7 @@ export default function App() {
             {assemblyOn && <Suspense fallback={null}><AssemblyBar /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
+          {                                                                                                  }
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
               {graphics.webgl2 ? <Suspense fallback={<div role="status">Loading preview…</div>}>
@@ -308,7 +353,9 @@ export default function App() {
               </Suspense> : <NoGraphics />}
             </div>
           )}
+          {                                                                                                   }
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
+          {                                                                                                         }
           <Suspense fallback={null}><Navigator /></Suspense>
           <Suspense fallback={null}><ProjectStatus /></Suspense>
           <SliceNotification />

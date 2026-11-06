@@ -11,6 +11,8 @@
 #include <utility>
 #include "I18N.hpp"
 
+
+
 #define L(s) Slic3r::I18N::translate(s)
 
 #if defined(_MSC_VER) &&  _MSC_VER <= 1800 || __cplusplus < 201103L
@@ -59,6 +61,7 @@ Zipper::Zipper(const std::string &zipfname, e_compression compression)
 Zipper::~Zipper()
 {
     if(m_impl->is_alive()) {
+
         try { finish_entry(); } catch(...) {
             BOOST_LOG_TRIVIAL(error) << m_impl->formatted_errorstr();
         }
@@ -66,6 +69,7 @@ Zipper::~Zipper()
         if(!mz_zip_writer_finalize_archive(&m_impl->arch))
             BOOST_LOG_TRIVIAL(error) << m_impl->formatted_errorstr();
     }
+
 
     if(!close_zip_writer(&m_impl->arch))
         BOOST_LOG_TRIVIAL(error) << m_impl->formatted_errorstr();

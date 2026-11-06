@@ -5,6 +5,10 @@ import { preprintWarnings } from '../multinozzle/preprint';
 import { autoMap, availableTrays, physicalMapping, trayLabel, type SendFilament } from '../multinozzle/ams';
 import { assignedExtruder, nozzleAssignments } from '../multinozzle/assignments';
 import { extruderCount, valueAt } from '../multinozzle/config';
+
+
+
+
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Check } from './Check';
 import { confirmDialog } from './Ask';
@@ -31,6 +35,7 @@ function transferText(t: Transfer) {
 
 export default function SendDialog({ close }: { close: () => void }) {
   const plate = useStore((s) => s.printer);
+
   const choices = useStore((s) => {
     const base = resolvePreset(s, 'machine', s.printer).base?.name;
     return [s.printer, ...s.printerConnections.connections.filter((c) => c.printer && c.printer !== s.printer
@@ -43,6 +48,7 @@ export default function SendDialog({ close }: { close: () => void }) {
   const status = useStore((s) => s.printerConnections.status[printer]);
   const [editing, setEditing] = useState(false);
   const title = 'Send to printer';
+
   const head = <>
     <div className="send-target">
       {choices.length > 1
@@ -77,6 +83,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const [flowCali, setFlowCali] = useState(false);
   const [vibration, setVibration] = useState(true);
   const [timelapse, setTimelapse] = useState(false);
+
   const filamentKey = useStore((s) => JSON.stringify(s.filamentSlots.map((name, i) => {
     const config = effectiveConfig(s, 'filament', i), base = resolvePreset(s, 'filament', name).base;
     return { type: valueAt(config.filament_type, 0), color: filamentColor(s, i + 1), name: (base?.name ?? name).replace(/\s+@.*$/, ''),
@@ -106,7 +113,9 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
     const current = printerSend.machine.get().context;
     if (current.jobId && (current.jobId !== jobId || current.target !== printer) && printerSend.machine.get().value !== 'sending') printerSend.reset();
   }, [jobId, printer]);
+
   useEffect(() => setMapping(null), [printer]);
+
   useEffect(() => {
     setReadTrays(null); setAmsError('');
     if (!bambu || liveTrays) return;

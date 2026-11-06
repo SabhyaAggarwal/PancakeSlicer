@@ -1,3 +1,6 @@
+
+
+
 import type { Config, ConfigValue } from './api/types';
 import { canonicalMode } from './nonplanar-mode';
 
@@ -11,6 +14,10 @@ export const STYLE_NAMES: Record<StyleId | 'custom', string> = {
 const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(asText(v));
 
+
+
+
+
 export function styleOf(c: Config): StyleId | 'custom' {
   const mode = canonicalMode(asText(c.nonplanar_mode) || 'off');
   const zaa = on(c.zaa_enabled);
@@ -22,6 +29,12 @@ export function styleOf(c: Config): StyleId | 'custom' {
 }
 
 type RecordObject = { mode?: unknown; deform?: unknown };
+
+
+
+
+
+
 
 export function recordConfig(inputs: Record<string, unknown>, objects: RecordObject[] = []): Config {
   const object = objects.find((o) => o.mode && o.mode !== 'off');

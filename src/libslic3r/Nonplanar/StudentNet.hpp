@@ -1,4 +1,11 @@
 #pragma once
+
+
+
+
+
+
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -14,7 +21,9 @@ public:
     static constexpr int NFeat = 10;
     static constexpr int NMach = 6;
 
+
     explicit StudentNet(const std::string &path);
+
 
     struct Input
     {
@@ -29,9 +38,13 @@ public:
         std::array<float, NMach> machine {};
     };
 
+
+
     std::vector<float> phi(const Input &in, int threads = 0) const;
 
+
     static std::vector<float> features(const Input &in);
+
     static std::array<float, NMach> machine_vector(double tilt_max, double printable_overhang, double h, bool rotary,
                                                    double thickness_min, double thickness_max);
 
@@ -46,6 +59,8 @@ private:
     double              m_r_scale = 8., m_fade = 2.;
     std::vector<Tensor> m_tensors;
 };
+
+
 
 template<class Geometry, class Machine>
 std::vector<float> student_phi(const StudentNet &net, const Geometry &g, const Machine &m, int threads = 0)

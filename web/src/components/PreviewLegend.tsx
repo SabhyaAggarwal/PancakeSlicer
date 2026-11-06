@@ -1,4 +1,7 @@
 import { Check } from './Check';
+
+
+
 import { Dropdown } from './Dropdown';
 import { Caret } from './Caret';
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -17,9 +20,13 @@ import { phoneSheetQuery } from '../workspace-sheet';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
+
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 
+
+
 const spacedTime = (s: number) => shortTime(s).replace(/(\d)([a-z]+)(?=\d)/g, '$1$2 ');
+
 const spacedWeight = (g: number) => g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(1)} g`;
 
 function compactWeight(g: number): string {
@@ -29,7 +36,9 @@ function compactWeight(g: number): string {
 }
 
 
+
 const folds: Record<string, boolean> = { key: true, curved: true, show: false };
+
 
 export function Fold({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   const [open, setOpen] = useState(folds[id] ?? true);
@@ -48,12 +57,14 @@ function Swatch({ c }: { c: RGB }) {
 function RangeRows({ range, decimals, title }: { range: ColorRange | undefined; decimals: number; title?: string }) {
   if (!range) return null;
   const values = range.values();
+
   const rows = values.length === 2
     ? [[values[1], RANGE_PALETTE.length - 1], [values[0], 0]]
     : values.map((v, i) => [v, i] as [number, number]).reverse();
   return (
     <>
       {title && <div className="lg-sec label-caps">{title}</div>}
+      {                                                                                       }
       <div className="lg-scale">
         {rows.map(([v, i], k) => (
           <div className="lg-row" key={k}>
@@ -69,6 +80,7 @@ function RangeRows({ range, decimals, title }: { range: ColorRange | undefined; 
 function filamentInfo(d: PreviewData, statistics?: PrintStatistics) {
   const s = getState();
   return d.filamentMm.map((mm, i) => {
+
     const native = statistics?.per_extruder.find((f) => f.extruder_id === i);
     if (native && native.used_filament_mm > 0)
       return { mm: mm ?? 0, grams: (mm ?? 0) * native.used_filament_g / native.used_filament_mm };
@@ -84,6 +96,8 @@ function filamentInfo(d: PreviewData, statistics?: PrintStatistics) {
   });
 }
 
+
+
 export const Legend = memo(function Legend(props: {
   data: PreviewData;
   loaded: number;
@@ -91,10 +105,14 @@ export const Legend = memo(function Legend(props: {
   setUi(f: (u: PreviewUi) => PreviewUi): void;
   ranges: Ranges | null;
   scene: PreviewScene | null;
+
   explain?: ReactNode;
+
   explainOnly?: boolean;
 }) {
   const { data: d, ui, setUi, ranges } = props;
+
+
   const [open, setOpen] = useState(true);
   const panel = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -111,6 +129,7 @@ export const Legend = memo(function Legend(props: {
     phoneSheetQuery.addEventListener('change', fit);
     return () => { ro.disconnect(); phoneSheetQuery.removeEventListener('change', fit); };
   }, []);
+
   useLayoutEffect(() => {
     const el = panel.current, views = props.scene?.views;
     if (!el || !views) return;
@@ -145,6 +164,7 @@ export const Legend = memo(function Legend(props: {
       return { ...u, vis: { ...u.vis, hiddenRoles: h } };
     });
 
+
   const focusRole = (r: number | null) => props.scene?.setFocus(r === null || ui.view !== 'feature' ? null : 1 << r);
   useEffect(() => () => props.scene?.setFocus(null), [props.scene, ui.view]);
 
@@ -152,6 +172,7 @@ export const Legend = memo(function Legend(props: {
     if (EXTENDED_VIEWS.has(ui.view) && !d.header?.extended) return <div className="lg-row" role="status">Loading actual speed and clearance…</div>;
     switch (ui.view) {
       case 'feature':
+
         return (
           <div className="lg-roles" role="group" aria-label="Line types">
             {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
@@ -168,6 +189,7 @@ export const Legend = memo(function Legend(props: {
       case 'actual_speed': return <RangeRows range={ranges?.actualSpeed} decimals={0} title="Actual Speed (mm/s)" />;
       case 'actual_flow': return <RangeRows range={ranges?.actualFlow} decimals={2} title="Actual volumetric flow rate (mm³/s)" />;
       case 'clearance': {
+
         if (!d.clearance.some((v) => !Number.isNaN(v))) return <><div className="lg-sec label-caps">Clearance (mm)</div><div className="lg-row">Not checked</div></>;
         const { margin, floor } = clearanceScale();
         return (
@@ -220,16 +242,20 @@ export const Legend = memo(function Legend(props: {
   const totalMm = totalsByExtruder.reduce((a, f) => a + f.mm, 0);
   return (
     <div ref={panel} className={open ? 'legend' : 'legend closed'} aria-label="Legend">
+      {                                                                                                                    }
       <div className="lg-head">
         <Dropdown className="lg-view" aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
         <button type="button" className="lg-collapse" aria-expanded={open} aria-label={open ? 'Fold legend' : 'Open legend'} onClick={() => setOpen(!open)}><Caret dir={open ? 'up' : 'down'} /></button>
       </div>
+      {                                                                                              }
       <div className="lg-summary">
         <div className="lg-stat"><span className="lg-stat-v">{spacedTime(total)}</span><span className="lg-stat-k">Print time</span></div>
         <div className="lg-stat"><span className="lg-stat-v">{spacedWeight(totalG)}</span><span className="lg-stat-k">Filament{totalMm > 0 ? ` · ${(totalMm / 1000).toFixed(2)} m` : ''}</span></div>
       </div>
       {open && (
         <div className="lg-scroll">
+          {
+                                                                                 }
           {props.explain}
           {!props.explainOnly && (
             <>
@@ -265,6 +291,7 @@ export const Legend = memo(function Legend(props: {
 
 function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi; setUi(f: (u: PreviewUi) => PreviewUi): void; ranges: Ranges | null }) {
   const st = d.states!;
+
   const shells = new Set<number>(), bands = new Set<number>(), patches = new Set<number>();
   for (let i = 0; i < st.shell.length; ++i)
     if (st.shell[i] !== 0xff) {
@@ -273,6 +300,7 @@ function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi;
       patches.add(st.patch[i]);
     }
   const shellCount = shells.size ? Math.max(...shells) + 1 : 0;
+
   const indexRows = (values: number[], word: string, plural: string, unlisted: string) => {
     const sorted = [...values].sort((a, b) => a - b);
     const repeat = sorted.length > 0 && sorted[sorted.length - 1] >= NONPLANAR_HUES;
@@ -294,6 +322,7 @@ function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi;
   else if (ui.nonplanar === 'curved') rows = [{ c: CURVED_COLOR, label: 'Curved' }];
   return (
     <div>
+      {                                                                                                           }
       <div className="seg lg-seg" role="radiogroup" aria-label="Colour curved passes by"
         onKeyDown={(e) => {
           const i = NONPLANAR_COLORS.findIndex((c) => c.key === ui.nonplanar);

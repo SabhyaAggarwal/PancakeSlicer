@@ -5,14 +5,14 @@ const link = (href: string, text: string) => <a className="link" href={href} tar
 
 export function AboutContent({ info }: { info: BuildInfo }) {
   const { about } = info;
-  // This version's source when the service names one, else the repository (AGPL-3.0 §13).
+
   const source = (about?.source_configured && about.source_url) || GITHUB_URL;
   return <dl className="modal-grid">
     {about && <><dt>Build</dt><dd data-truncated="true" data-full-text={about.revision}>{shortSha(about.revision)}</dd></>}
     {info.engine && <><dt>Engine</dt><dd data-truncated="true" data-full-text={info.engineSha}>{info.engine}{info.engineSha ? ` ${shortSha(info.engineSha)}` : ''}</dd></>}
     {about?.image && <><dt>Image</dt><dd>{about.image}</dd></>}
     <dt>Links</dt><dd className="about-links">{link(GITHUB_URL, 'GitHub')}{link(DOCS_URL, 'User guide')}</dd>
-    <dt>Licence</dt><dd>{link('https://www.gnu.org/licenses/agpl-3.0.html', about?.license || 'AGPL-3.0')} · {link('/third-party-licences.txt', 'Third-party licences')}</dd>
+    <dt>Licence</dt><dd>{link('/licence.txt', about?.license || 'AGPL-3.0')} · {link('/third-party-licences.txt', 'Third-party licences')}</dd>
     {source && <><dt>Source</dt><dd>{link(source, source.replace(/^https?:\/\//, ''))}</dd></>}
   </dl>;
 }

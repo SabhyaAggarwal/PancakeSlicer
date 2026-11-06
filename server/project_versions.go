@@ -125,6 +125,7 @@ func (st *workspaceStore) writeVersion(id string, revision uint64, record json.R
 	sha := hex.EncodeToString(sum[:])
 	path := filepath.Join(dir, "records", sha+".json")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+
 		if err := durableWrite(path, record); err != nil {
 			return err
 		}
@@ -143,6 +144,7 @@ func (st *workspaceStore) writeVersion(id string, revision uint64, record json.R
 	now := time.Now().UnixMilli()
 	content := recordContent(record)
 	if last := lastVersion(x); last != nil && (last.Record == sha || content != "" && last.Content == content) && last.Name == meta.Meta.Name {
+
 		last.Revision, last.Until, last.Record, last.Content = revision, now, sha, content
 	} else if last := lastVersion(x); last != nil && kind != "duplicate" && !last.Sealed && last.Slice == nil &&
 		now-last.Until < versionIdle.Milliseconds() && now-last.At < versionSpan.Milliseconds() {
@@ -311,6 +313,7 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			writeJSON(w, 200, json.RawMessage(raw))
 		})
 	})
+
 	mux.HandleFunc("GET /api/versions/{id}/{v}/summary", func(w http.ResponseWriter, r *http.Request) {
 		version(w, r, func(_ *workspaceData, id string, _ *versionIndex, v *projectVersion) {
 			etag := `"` + v.Record + `"`
@@ -343,6 +346,7 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			writeJSON(w, 200, map[string]any{"meta": map[string]json.RawMessage{"thumbnail": rec.Meta.Thumbnail}, "doc": doc})
 		})
 	})
+
 	mux.HandleFunc("POST /api/versions/{id}/seal", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Revision uint64 `json:"revision"`
@@ -376,6 +380,7 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			return
 		}
 		j := s.jobs.Get(in.Job)
+
 		if j != nil {
 			j.AwaitFinished(r.Context())
 		}
@@ -383,12 +388,14 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			workspaceFailure(w, 409, "slice_unavailable", "The slice is not finished or no longer exists.", "slice_again", 0)
 			return
 		}
+
 		key := j.ID
 		if marker, err := os.ReadFile(filepath.Join(j.Dir, ".result-cache-key")); err == nil {
 			sum := sha256.Sum256(marker)
 			key = hex.EncodeToString(sum[:])
 		}
 		view := j.View()
+
 		root := filepath.Join(st.root, "versions")
 		if err := os.MkdirAll(root, 0700); err != nil {
 			workspaceFailure(w, 507, "slice_copy_failed", "The slice could not be kept with this version.", "retry_storage", 0)
@@ -435,6 +442,7 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			writeJSON(w, 200, v)
 		})
 	})
+
 	mux.HandleFunc("POST /api/versions/{id}/{v}/open-slice", func(w http.ResponseWriter, r *http.Request) {
 		version(w, r, func(_ *workspaceData, id string, x *versionIndex, v *projectVersion) {
 			if v.Slice == nil {

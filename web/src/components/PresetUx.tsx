@@ -1,6 +1,9 @@
+
 import { lazy, Suspense } from 'react';
 import { useStore } from '../state/store';
 import { preloadable, whenIdle } from '../preloadable';
+
+
 
 const PresetsWindow = preloadable(() => import('../profiles/PresetsWindow'));
 whenIdle(() => void PresetsWindow.preload().catch(() => {}), 1000);

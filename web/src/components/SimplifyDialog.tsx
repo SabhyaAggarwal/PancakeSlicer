@@ -1,9 +1,13 @@
 import { Range } from './Range';
+
+
+
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore } from '../state/store';
 import { simplifyModel, triangleCount } from '../plater/meshOps';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
+
 
 const LEVELS: [string, number][] = [['Extra high', 0.001], ['High', 0.01], ['Medium', 0.1], ['Low', 0.5], ['Extra low', 1]];
 

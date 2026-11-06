@@ -6,11 +6,11 @@ else()
     set(_assimp_hash "SHA256=66dfbaee288f2bc43172440a55d0235dfc7bf885dda6435c038e8000e79582cb")
 endif()
 
-# Assimp's bundled zlib (contrib/zlib) is too old to compile against the modern
-# macOS SDK: its zutil.h takes the classic-Mac branch under TARGET_OS_MAC and
-# does `#define fdopen(fd,mode) NULL`, which then clobbers the SDK's real
-# `fdopen` prototype in <stdio.h> and breaks the build. On macOS use the system
-# zlib (already found by find_package(ZLIB) in deps-unix-common) instead.
+
+
+
+
+
 if(APPLE)
     set(_assimp_build_zlib "-DASSIMP_BUILD_ZLIB=OFF")
 else()
@@ -21,8 +21,8 @@ orcaslicer_add_cmake_project(Assimp
     URL ${_assimp_url}
     URL_HASH ${_assimp_hash}
     CMAKE_ARGS
-        # Assimp's ccache support sets the global RULE_LAUNCH_COMPILE, which breaks
-        # the Ninja RC rule. The superbuild forwards CMAKE_<LANG>_COMPILER_LAUNCHER.
+
+
         -DASSIMP_BUILD_USE_CCACHE=OFF
         -DASSIMP_BUILD_TESTS=OFF
         -DASSIMP_BUILD_SAMPLES=OFF

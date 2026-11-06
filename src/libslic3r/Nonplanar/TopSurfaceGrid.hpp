@@ -1,4 +1,5 @@
 #pragma once
+
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -13,6 +14,8 @@
 #include <vector>
 
 namespace Slic3r::Nonplanar {
+
+
 
 class TopSurfaceGrid
 {
@@ -55,6 +58,7 @@ public:
                 }
             });
         }
+
         const int inset = 8;
         for (int y = inset; y < ny - inset; ++y) for (int x = inset; x < nx - inset; ++x) {
             bool ok = true;
@@ -110,6 +114,7 @@ public:
         }
         return {{"rms_vs_mesh_mm", finite ? Json(std::sqrt(squared / finite)) : Json(nullptr)},
                 {"coverage", cells ? Json(double(covered) / cells) : Json(nullptr)},
+
                 {"rms_covered_mm", covered ? Json(std::sqrt(squared_conformal / covered)) : Json(nullptr)},
                 {"rms_uncovered_mm", finite > covered ? Json(std::sqrt(std::max(0., squared - squared_conformal) / (finite - covered))) : Json(nullptr)},
                 {"gap_cells", gaps}, {"ironed_area_mm2", iron * pitch * pitch}, {"eval_cells", cells},

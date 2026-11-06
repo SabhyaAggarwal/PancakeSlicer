@@ -1,3 +1,5 @@
+
+
 import type { PresetType } from './api/types';
 import { OPTIONS, splitKey, type OptionMode, type TabLine } from './options';
 import { effectiveConfig, resolvePreset, type State } from './state/store';
@@ -15,7 +17,9 @@ export function tabEnvironment(state: State, type: PresetType, slot: number, mod
   }, mode);
 }
 
+
 export const nativeSupportCapable = (state: State) => !!state.features.native_support && !!resolvePreset(state, 'machine', state.printer).base?.native_support_capable;
+
 
 export function lineMode(line: TabLine, k: string): OptionMode | undefined {
   const key = splitKey(k)[0];

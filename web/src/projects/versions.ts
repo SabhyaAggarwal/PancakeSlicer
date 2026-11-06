@@ -1,3 +1,6 @@
+
+
+
 import { useSyncExternalStore } from 'react';
 import type { StoredDocBase } from '../persist/backend';
 import { plateSignature } from '../slice-input';
@@ -19,7 +22,9 @@ export interface HistoryState {
   projectId: string | null;
   versions: ProjectVersion[] | null;
   error: string | null;
+
   viewing: ProjectVersion | null;
+
   loading: number | null;
 }
 
@@ -39,14 +44,20 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 }
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 
+
+
+
 const saved = new Map<string, Doc>();
 let override: { id: string; change: VersionChange[] } | null = null;
 export const savedVersionBase = (id: string, doc: Doc) => { saved.set(id, doc); };
+
 export function changeForSave(id: string, doc: Doc, revision: number): VersionChange[] {
   if (override?.id === id) { const { change } = override; override = null; return change; }
   const base = saved.get(id);
   return base ? describeChange(base, doc) : revision === 0 ? [{ label: 'Created' }] : [];
 }
+
+
 
 let reading = 0;
 export async function refreshHistory(id = project.get().context.id) {
@@ -69,6 +80,9 @@ export function openHistory() {
 export function closeHistory() { set({ open: false }); }
 export const toggleHistory = () => (state.open ? closeHistory() : openHistory());
 
+
+
+
 async function showSlice(id: string, v: ProjectVersion, request: number) {
   try {
     const status = await post<JobStatus & { id: string }>(`${path(id)}/${v.id}/open-slice`, {});
@@ -80,6 +94,7 @@ async function showSlice(id: string, v: ProjectVersion, request: number) {
     if (current) toast(`Slice not loaded: ${errorText(e)}`);
   }
 }
+
 
 versionView.subscribe(({ value, context }) => set({ viewing: context.shown, loading: (value === 'opening' ? context.target : value === 'loading-slice' ? context.shown : null)?.id ?? null }));
 export async function viewVersion(v: ProjectVersion) {
@@ -105,11 +120,13 @@ export async function backToLatest() {
   versionView.send({ type: 'LATEST' });
   if (id && shown) await leaveProjectVersion(id);
 }
+
 export async function restoreVersion() {
   const v = versionShown(), id = state.projectId;
   if (!v || !id) return;
   override = { id, change: [{ key: `restore:${v.until}`, label: 'Restored' }] };
   try {
+
     await post(`${path(id)}/seal`, { revision: project.get().context.revision }).catch(() => null);
     await restoreProjectVersion();
     await attachSlice(finishedJob());
@@ -119,6 +136,9 @@ export async function restoreVersion() {
   void refreshHistory(id);
 }
 
+
+
+
 async function sealCurrent(signature: string): Promise<{ id: string; revision: number; version: number } | null> {
   await flushProject();
   const { value, context } = project.get();
@@ -127,10 +147,12 @@ async function sealCurrent(signature: string): Promise<{ id: string; revision: n
   return { id: context.id, revision: context.revision, version: sealed.id };
 }
 let sealing: { signature: string; done: ReturnType<typeof sealCurrent> } | null = null;
+
 const finishedJob = (job: JobView = getState().job) =>
   job.state === 'done' && job.id && !job.stale && !job.calib && job.plateSignature && job.plateSignature === plateSignature(getState()) ? job : null;
 async function attachSlice(job: JobView | null) {
   if (!job?.id || !job.plateSignature || state.viewing) return;
+
   const seal = sealing?.signature === job.plateSignature ? await sealing.done.catch(() => null) : null;
   const target = seal && seal.revision === project.get().context.revision ? seal : await sealCurrent(job.plateSignature);
   if (!target || plateSignature(getState()) !== job.plateSignature) return;
@@ -139,6 +161,8 @@ async function attachSlice(job: JobView | null) {
 }
 
 let tracking = false;
+
+
 export function startVersionTracking() {
   if (tracking) return;
   tracking = true;
@@ -158,8 +182,10 @@ export function startVersionTracking() {
       void attachSlice(finished).catch((e: unknown) => console.warn('Version slice not kept', e));
     }
   });
+
   let revision = project.get().context.revision, id = project.get().context.id;
   project.subscribe((snap) => {
+
     if (snap.value === 'opening' || snap.context.id !== id) versionView.send({ type: 'LATEST' });
     if (snap.context.id !== id) {
       id = snap.context.id;
@@ -170,6 +196,8 @@ export function startVersionTracking() {
   });
 }
 
+
+
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 export function dayOf(t: number, now = Date.now()) {
   const d = new Date(t), today = new Date(now);
@@ -177,6 +205,7 @@ export function dayOf(t: number, now = Date.now()) {
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: days < 7 ? 'long' : undefined, month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
 export const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
 export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()): Map<number, string> {
   const base = versions.map((v) => {
     const age = now - v.until;
@@ -184,14 +213,19 @@ export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()):
   });
   return new Map(versions.map((v, i) => [v.id, base[i] === base[i - 1] || base[i] === base[i + 1] ? withSeconds(v.until) : base[i]]));
 }
+
 export const versionTime = (t: number) => dayOf(t) === 'Today' ? clock(t) : `${dayOf(t)} ${clock(t)}`;
+
 export const clockTime = clock;
 export const shortDate = (t: number) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+
 
 export const changeLine = (c: VersionChange) => {
   const at = c.key?.startsWith('restore:') ? Number(c.key.slice(8)) : NaN;
   return Number.isFinite(at) ? { name: 'Restored', to: withSeconds(at) } : changeParts(c);
 };
+
+
 
 export interface VersionSetup { printer: string; process: string; filaments: { name: string; colour: string }[]; picture?: string }
 const setups = new Map<string, Promise<VersionSetup>>();
@@ -211,4 +245,5 @@ export function versionSetup(id: string, v: ProjectVersion): Promise<VersionSetu
   }
   return found;
 }
+
 export const prefetchSetup = (id: string, v: ProjectVersion) => void versionSetup(id, v).catch(() => {});

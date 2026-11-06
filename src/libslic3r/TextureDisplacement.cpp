@@ -61,12 +61,17 @@ bool DecodedHeightTexture::texel_tap(const Vec2f &uv, bool tile_enabled, Texture
         x = std::fmod(x, 1.f);
         return x < 0.f ? x + 1.f : x;
     };
+
+
     auto mirrored_repeat01 = [](float x) {
         x = std::fmod(std::abs(x), 2.f);
         return x > 1.f ? 2.f - x : x;
     };
 
     if (!tile_enabled && (uv.x() < 0.f || uv.x() >= 1.f || uv.y() < 0.f || uv.y() >= 1.f))
+
+
+
         return false;
 
     float u, v;
@@ -85,6 +90,8 @@ bool DecodedHeightTexture::texel_tap(const Vec2f &uv, bool tile_enabled, Texture
     const float fy = v * float(height);
     const int   x0 = std::clamp(int(std::floor(fx)), 0, width - 1);
     const int   y0 = std::clamp(int(std::floor(fy)), 0, height - 1);
+
+
     tap.x0 = x0;
     tap.y0 = y0;
     tap.x1 = tile_enabled ? (x0 + 1) % width  : std::min(x0 + 1, width - 1);
@@ -124,12 +131,25 @@ Vec3f DecodedHeightTexture::sample_color(const Vec2f &uv, bool tile_enabled, Tex
 }
 
 namespace {
+
+
+
+
+
+
+
+
 struct DecodedTextureCache
 {
     std::mutex mutex;
     std::unordered_map<const void *, std::pair<std::weak_ptr<const std::vector<unsigned char>>, DecodedHeightTexture>> entries;
 };
 DecodedTextureCache g_decoded_texture_cache;
+
+
+
+
+
 
 struct SmoothedTextureCache
 {
@@ -146,6 +166,15 @@ SmoothedTextureCache g_smoothed_texture_cache;
 }
 
 namespace {
+
+
+
+
+
+
+
+
+
 void smooth_height_pixels_box(std::vector<uint8_t> &pixels, int width, int height, int radius)
 {
     if (radius <= 0 || width <= 0 || height <= 0 || pixels.size() != size_t(width) * size_t(height))
@@ -157,6 +186,7 @@ void smooth_height_pixels_box(std::vector<uint8_t> &pixels, int width, int heigh
     std::vector<uint8_t> tmp(pixels.size());
 
     for (int pass = 0; pass < 2; ++pass) {
+
         tbb::parallel_for(tbb::blocked_range<int>(0, height), [&](const tbb::blocked_range<int> &r) {
             for (int y = r.begin(); y < r.end(); ++y) {
                 const uint8_t *src = pixels.data() + size_t(y) * size_t(width);
@@ -171,6 +201,7 @@ void smooth_height_pixels_box(std::vector<uint8_t> &pixels, int width, int heigh
                 }
             }
         });
+
         tbb::parallel_for(tbb::blocked_range<int>(0, width, 256), [&](const tbb::blocked_range<int> &r) {
             std::vector<uint32_t> sum(size_t(r.size()), 0);
             for (int k = -radius; k <= radius; ++k) {
@@ -192,6 +223,14 @@ void smooth_height_pixels_box(std::vector<uint8_t> &pixels, int width, int heigh
         });
     }
 }
+
+
+
+
+
+
+
+
 
 void smooth_height_pixels(std::vector<uint8_t> &pixels, int width, int height, float radius)
 {
@@ -218,6 +257,7 @@ bool height_texture_has_color(const TextureDisplacementLayer &layer)
         if (it != g_decoded_texture_cache.entries.end() && it->second.first.lock() == layer.image_data)
             return it->second.second.has_color();
     }
+
     return decode_height_texture(layer).has_color();
 }
 
@@ -226,6 +266,9 @@ DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer
     DecodedHeightTexture result;
     if (layer.empty())
         return result;
+
+
+
 
     const void *key = layer.image_data.get();
     bool        have_raw = false;
@@ -241,14 +284,23 @@ DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer
     if (!have_raw) {
         const png::ReadBuf rbuf{ layer.image_data->data(), layer.image_data->size() };
         if (!png::is_png(rbuf))
+
+
             return result;
 
         png::ImageGreyscale img;
         if (png::decode_png(rbuf, img) && img.cols > 0 && img.rows > 0) {
+
             result.width  = int(img.cols);
             result.height = int(img.rows);
             result.pixels = std::move(img.buf);
         } else {
+
+
+
+
+
+
             png::ImageColorscale col;
             if (!png::decode_colored_png(rbuf, col) || col.cols == 0 || col.rows == 0 ||
                 col.bytes_per_pixel < 3 || col.buf.size() != col.cols * col.rows * size_t(col.bytes_per_pixel))
@@ -261,6 +313,10 @@ DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer
             result.height = h;
             result.pixels.resize(size_t(w) * size_t(h));
             result.rgb.resize(size_t(w) * size_t(h) * 3);
+
+
+
+
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x) {
                     const uint8_t *src = col.buf.data() + (size_t(h - 1 - y) * size_t(w) + size_t(x)) * bpp;
@@ -274,11 +330,18 @@ DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer
         }
 
         std::lock_guard<std::mutex> lock(g_decoded_texture_cache.mutex);
+
+
         auto &entries = g_decoded_texture_cache.entries;
         for (auto it = entries.begin(); it != entries.end();)
             it = it->second.first.expired() ? entries.erase(it) : std::next(it);
         entries[key] = { std::weak_ptr<const std::vector<unsigned char>>(layer.image_data), result };
     }
+
+
+
+
+
 
     if (layer.smoothing > 0.f) {
         {
@@ -291,6 +354,9 @@ DecodedHeightTexture decode_height_texture(const TextureDisplacementLayer &layer
         const float span   = 0.05f * float(std::min(result.width, result.height));
         const float radius = std::clamp(layer.smoothing, 0.f, 1.f) * std::min(span, 48.f);
         smooth_height_pixels(result.pixels, result.width, result.height, radius);
+
+
+
         if (result.has_color()) {
             const size_t         n = size_t(result.width) * size_t(result.height);
             std::vector<uint8_t> channel(n);
@@ -332,6 +398,7 @@ TextureDetail analyze_texture_detail(const TextureDisplacementLayer &layer)
         if (it != g_texture_detail_cache.entries.end() && it->second.first.lock() == layer.image_data)
             return it->second.second;
     }
+
     TextureDisplacementLayer raw = layer;
     raw.smoothing               = 0.f;
     const DecodedHeightTexture tex = decode_height_texture(raw);
@@ -356,6 +423,9 @@ TextureDetail analyze_texture_detail(const TextureDisplacementLayer &layer)
         else if (out.sharp_fraction > 0.05f || out.mean_gradient > 20.f) out.pixels_per_edge = 1.5f;
         else if (out.mean_gradient > 8.f)                                out.pixels_per_edge = 2.5f;
         else                                                             out.pixels_per_edge = 4.f;
+
+
+
 
         std::vector<uint32_t> bins(size_t(8 * 8 * 8), 0);
         const size_t          npx = size_t(w) * size_t(h);
@@ -384,6 +454,10 @@ V2Resolution recommend_v2_resolution(const indexed_triangle_set                 
                                      const std::vector<TextureDisplacementLayer> &layers,
                                      const Transform3d                           &volume_to_world)
 {
+
+
+
+
     constexpr double EDGE_MIN = 0.05, EDGE_MAX = 5.0, DIAG_DIVISOR = 250.0;
     constexpr int    BUDGET_K = 750;
 
@@ -419,6 +493,12 @@ V2Resolution recommend_v2_resolution(const indexed_triangle_set                 
 
 Vec2f project_planar(const Vec3f &position, const Vec3f &normal)
 {
+
+
+
+
+
+
     const Vec3f n = normal.cwiseAbs();
     if (n.x() >= n.y() && n.x() >= n.z())
         return Vec2f(position.y(), position.z());
@@ -428,6 +508,9 @@ Vec2f project_planar(const Vec3f &position, const Vec3f &normal)
 }
 
 namespace {
+
+
+
 Vec2f project_cylindrical(const Vec3f &position, const Vec3f &patch_center, const Vec3f &patch_axis)
 {
     Vec3f up = patch_axis;
@@ -446,6 +529,9 @@ Vec2f project_cylindrical(const Vec3f &position, const Vec3f &patch_center, cons
     return Vec2f(angle * radius, along_axis);
 }
 
+
+
+
 Vec2f project_spherical(const Vec3f &position, const Vec3f &patch_center)
 {
     const Vec3f rel    = position - patch_center;
@@ -458,6 +544,11 @@ Vec2f project_spherical(const Vec3f &position, const Vec3f &patch_center)
     const float latitude  = std::asin(std::clamp(dir.z(), -1.f, 1.f));
     return Vec2f(longitude, latitude) * radius;
 }
+
+
+
+
+
 
 indexed_triangle_set compact_patch_with_map(const indexed_triangle_set &patch, std::vector<int> &original_to_compact)
 {
@@ -483,6 +574,7 @@ indexed_triangle_set compact_patch_with_map(const indexed_triangle_set &patch, s
 }
 
 namespace {
+
 
 struct UnionFind
 {
@@ -518,6 +610,9 @@ Vec3f face_normal(const indexed_triangle_set &mesh, const stl_triangle_vertex_in
     const float len = n.norm();
     return (len > 1e-12f) ? Vec3f(n / len) : Vec3f::UnitZ();
 }
+
+
+
 
 bool chart_is_flattenable(const indexed_triangle_set &mesh, const std::vector<Vec3f> &normals, const std::vector<int> &faces)
 {
@@ -571,6 +666,10 @@ bool chart_is_flattenable(const indexed_triangle_set &mesh, const std::vector<Ve
     return true;
 }
 
+
+
+
+
 std::vector<char> split_chart_sides(const indexed_triangle_set &mesh, const std::vector<Vec3f> &normals, const std::vector<int> &faces)
 {
     const auto principal_axis = [](const std::vector<Vec3f> &samples, Vec3f &mean, Vec3f &axis) {
@@ -605,6 +704,14 @@ std::vector<char> split_chart_sides(const indexed_triangle_set &mesh, const std:
     return side;
 }
 
+
+
+
+
+
+
+
+
 std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std::vector<Vec3f> &normals,
                                       float seam_angle_deg, const std::unordered_set<uint64_t> &seam_keys,
                                       int &chart_count)
@@ -612,6 +719,7 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
     constexpr int MAX_SPLIT_DEPTH = 8;
     const int     n_faces         = int(mesh.indices.size());
     const float   cos_threshold   = std::cos(std::clamp(seam_angle_deg, 0.f, 180.f) * float(M_PI) / 180.f);
+
 
     std::unordered_map<uint64_t, std::pair<int, int>> edge_faces;
     edge_faces.reserve(size_t(n_faces) * 3);
@@ -625,6 +733,7 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
         }
     }
 
+
     std::vector<std::array<int, 3>> adjacent(static_cast<size_t>(n_faces), { -1, -1, -1 });
     const auto link = [&adjacent](int f, int nb) {
         for (int &slot : adjacent[size_t(f)])
@@ -636,6 +745,8 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
     for (const auto &[key, fp] : edge_faces) {
         if (fp.second < 0 || fp.first == fp.second)
             continue;
+
+
         if (!seam_keys.empty() && seam_keys.count(key))
             continue;
         if (normals[size_t(fp.first)].dot(normals[size_t(fp.second)]) >= cos_threshold) {
@@ -643,6 +754,7 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
             link(fp.second, fp.first);
         }
     }
+
 
     std::vector<int> group(static_cast<size_t>(n_faces), 0), visited(static_cast<size_t>(n_faces), -1);
     int              visit_pass = 0;
@@ -706,6 +818,7 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
         }
     }
 
+
     std::vector<std::pair<int, size_t>> first_face(charts.size());
     for (size_t c = 0; c < charts.size(); ++c)
         first_face[c] = { *std::min_element(charts[c].begin(), charts[c].end()), c };
@@ -718,6 +831,9 @@ std::vector<int> segment_into_charts(const indexed_triangle_set &mesh, const std
     chart_count = int(charts.size());
     return chart_of;
 }
+
+
+
 
 std::vector<Vec2f> project_to_tangent_plane(const indexed_triangle_set &chart, const Vec3f &normal)
 {
@@ -749,6 +865,9 @@ float area_2d(const std::vector<Vec2f> &uvs, const std::vector<stl_triangle_vert
     }
     return area;
 }
+
+
+
 
 uint64_t unwrap_cache_key(const indexed_triangle_set &patch, float seam_angle_deg, float padding_mm,
                           const std::vector<std::pair<int, int>> &seam_edges)
@@ -793,6 +912,8 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
             return it->second;
     }
 
+
+
     std::vector<int>           patch_to_compact;
     const indexed_triangle_set compact = compact_patch_with_map(patch, patch_to_compact);
     std::vector<int>           compact_to_patch(compact.vertices.size(), -1);
@@ -803,6 +924,8 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
     std::vector<Vec3f> normals(compact.indices.size());
     for (size_t f = 0; f < compact.indices.size(); ++f)
         normals[f] = face_normal(compact, compact.indices[f]);
+
+
 
     std::unordered_set<uint64_t> seam_keys;
     seam_keys.reserve(seam_edges.size() * 2);
@@ -815,6 +938,11 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
             seam_keys.insert(undirected_edge_key(ca, cb));
     }
 
+
+
+
+
+
     const float effective_seam_angle = seam_keys.empty() ? seam_angle_deg : 180.f;
     int                    chart_count = 0;
     const std::vector<int> chart_of    = segment_into_charts(compact, normals, effective_seam_angle, seam_keys, chart_count);
@@ -824,14 +952,20 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
         std::vector<Vec2f>                       uvs;
         std::vector<int>                         to_patch;
         std::vector<stl_triangle_vertex_indices> indices;
+
+
         std::vector<int>                         faces;
         Vec2f                                    min  = Vec2f::Zero();
         Vec2f                                    size = Vec2f::Zero();
     };
+
     std::vector<FlatChart> charts(static_cast<size_t>(chart_count));
 
     for (int c = 0; c < chart_count; ++c) {
         FlatChart &chart = charts[size_t(c)];
+
+
+
 
         indexed_triangle_set chart_mesh;
         std::vector<int>     compact_to_local(compact.vertices.size(), -1);
@@ -840,6 +974,7 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
             if (chart_of[f] != c)
                 continue;
             const stl_triangle_vertex_indices &tri = compact.indices[f];
+
             normal_sum += (compact.vertices[tri[1]] - compact.vertices[tri[0]]).cross(compact.vertices[tri[2]] - compact.vertices[tri[0]]);
 
             stl_triangle_vertex_indices local_tri;
@@ -860,17 +995,29 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
 
         const Vec3f chart_normal = (normal_sum.norm() > 1e-12f) ? Vec3f(normal_sum.normalized()) : Vec3f::UnitZ();
 
+
+
+
+
+
         bool planar = true;
         for (size_t f = 0; f < compact.indices.size() && planar; ++f)
             if (chart_of[f] == c)
                 planar = normals[f].dot(chart_normal) >= 0.9998f;
+
+
+
         const float mesh_area_3d = area_3d(chart_mesh);
 
         std::optional<std::vector<Vec2f>> uvs;
         if (!planar)
             uvs = MeshBoolean::cgal::parameterize_lscm(chart_mesh);
+
         chart.uvs = uvs ? std::move(*uvs) : project_to_tangent_plane(chart_mesh, chart_normal);
         chart.indices = std::move(chart_mesh.indices);
+
+
+
 
         const float uv_area = area_2d(chart.uvs, chart.indices);
         if (uv_area > 1e-12f && mesh_area_3d > 1e-12f) {
@@ -889,6 +1036,8 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
         chart.size = hi - lo;
     }
 
+
+
     float total_area = 0.f;
     float widest     = 0.f;
     for (const FlatChart &chart : charts) {
@@ -896,6 +1045,8 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
         widest     = std::max(widest, chart.size.x());
     }
     const float shelf_width = std::max(widest, std::sqrt(std::max(total_area, 0.f)) * 1.4f);
+
+
     const float margin      = (padding_mm >= 0.f) ? padding_mm : std::max(shelf_width * 0.02f, 1e-4f);
 
     std::vector<int> order(charts.size());
@@ -921,6 +1072,7 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
         row_height = std::max(row_height, chart.size.y());
     }
 
+
     result.chart_centroid.assign(size_t(chart_count), Vec2f::Zero());
     for (int c = 0; c < chart_count; ++c) {
         FlatChart &chart = charts[size_t(c)];
@@ -941,6 +1093,9 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
     }
     result.chart_count = chart_count;
 
+
+
+
     {
         std::unordered_map<uint64_t, int> edge_use;
         edge_use.reserve(result.indices.size() * 3);
@@ -957,6 +1112,8 @@ PatchUnwrap compute_patch_unwrap(const indexed_triangle_set &patch, float seam_a
 
     {
         std::lock_guard<std::mutex> lock(g_unwrap_cache.mutex);
+
+
         if (g_unwrap_cache.entries.size() >= UNWRAP_CACHE_MAX_ENTRIES)
             g_unwrap_cache.entries.clear();
         g_unwrap_cache.entries.emplace(key, result);
@@ -980,6 +1137,8 @@ Eigen::Matrix<float, 2, 3> island_transform_matrix(int chart, const PatchUnwrap 
     const float cs  = std::cos(rad) * s;
     const float sn  = std::sin(rad) * s;
 
+
+
     Eigen::Matrix2f linear;
     linear << cs, -sn,
               sn,  cs;
@@ -997,7 +1156,12 @@ Vec2f apply_island_transform(const Vec2f &uv, int chart, const PatchUnwrap &unwr
 }
 
 namespace {
+
+
 struct ChartEdge { int chart = -1; int uv_lo = -1; int uv_hi = -1; };
+
+
+
 
 std::map<std::pair<int, int>, std::vector<ChartEdge>> build_shared_edges(const PatchUnwrap &u)
 {
@@ -1012,6 +1176,7 @@ std::map<std::pair<int, int>, std::vector<ChartEdge>> build_shared_edges(const P
         if (chart < 0)
             continue;
         const std::pair<int, int> key{ std::min(ba, bb), std::max(ba, bb) };
+
         ChartEdge e{ chart, ua, ub };
         if (u.source_vertex[size_t(ua)] != key.first)
             std::swap(e.uv_lo, e.uv_hi);
@@ -1019,6 +1184,9 @@ std::map<std::pair<int, int>, std::vector<ChartEdge>> build_shared_edges(const P
     }
     return edges;
 }
+
+
+
 
 TextureIsland solve_edge_alignment(const Vec2f &rc0, const Vec2f &rc1, const Vec2f &pp0, const Vec2f &pp1, const Vec2f &cen)
 {
@@ -1050,6 +1218,7 @@ bool join_chart_placement(const PatchUnwrap &unwrap, const std::vector<TextureIs
         }
         if (pe == nullptr || ce == nullptr)
             continue;
+
         const Vec2f pp0 = apply_island_transform(unwrap.uvs[size_t(pe->uv_lo)], parent, unwrap, islands);
         const Vec2f pp1 = apply_island_transform(unwrap.uvs[size_t(pe->uv_hi)], parent, unwrap, islands);
         out_child = solve_edge_alignment(unwrap.uvs[size_t(ce->uv_lo)], unwrap.uvs[size_t(ce->uv_hi)], pp0, pp1,
@@ -1061,6 +1230,8 @@ bool join_chart_placement(const PatchUnwrap &unwrap, const std::vector<TextureIs
 
 namespace {
 using Tri2 = std::array<Vec2f, 3>;
+
+
 
 bool triangles_overlap(const Tri2 &a, const Tri2 &b, float eps)
 {
@@ -1086,9 +1257,20 @@ bool triangles_overlap(const Tri2 &a, const Tri2 &b, float eps)
     return true;
 }
 
+
+
 struct NetGrid
 {
     static constexpr int BIG_SPAN = 16;
+
+
+
+
+
+
+
+
+
     struct Entry
     {
         Tri2  tri;
@@ -1112,6 +1294,8 @@ struct NetGrid
         y1 = int(std::floor(hi.y() / cell));
         return x1 - x0 <= BIG_SPAN && y1 - y0 <= BIG_SPAN;
     }
+
+
     bool boxes_apart(const Entry &a, const Entry &b) const
     {
         return a.hi.x() + eps < b.lo.x() || b.hi.x() + eps < a.lo.x() || a.hi.y() + eps < b.lo.y() ||
@@ -1164,6 +1348,16 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
     if (n <= 1)
         return islands;
 
+
+
+
+
+
+
+
+
+
+
     const auto edges = build_shared_edges(unwrap);
     struct PairEdge { ChartEdge a, b; };
     struct SharedEdge { PairEdge fold; int base_lo = -1, base_hi = -1; float length = 0.f; };
@@ -1179,6 +1373,7 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
                 se.fold    = (c1 < c2) ? PairEdge{ list[i], list[j] } : PairEdge{ list[j], list[i] };
                 se.base_lo = base_edge.first;
                 se.base_hi = base_edge.second;
+
                 se.length = (unwrap.uvs[size_t(se.fold.a.uv_lo)] - unwrap.uvs[size_t(se.fold.a.uv_hi)]).norm();
                 pair_shared[pk].push_back(se);
             }
@@ -1188,6 +1383,8 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
     std::map<std::pair<int, int>, float>    pair_weight;
     std::vector<std::vector<int>>           adj(static_cast<size_t>(n));
     for (const auto &[pk, shared] : pair_shared) {
+
+
         std::unordered_map<int, int> local;
         for (const SharedEdge &se : shared)
             for (const int v : { se.base_lo, se.base_hi })
@@ -1216,6 +1413,7 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
         adj[size_t(pk.second)].push_back(pk.first);
     }
 
+
     std::vector<std::vector<int>> chart_verts(static_cast<size_t>(n)), chart_tris(static_cast<size_t>(n));
     std::vector<float>            chart_area(static_cast<size_t>(n), 0.f);
     for (size_t i = 0; i < unwrap.uvs.size(); ++i)
@@ -1236,6 +1434,8 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
         extent = std::max({ extent, p0.cwiseAbs().maxCoeff(), p1.cwiseAbs().maxCoeff(), p2.cwiseAbs().maxCoeff() });
     }
     const float cell = std::max(extent_sum / float(std::max<size_t>(unwrap.indices.size(), 1)), 1e-6f);
+
+
     const float eps  = std::max(0.02f * cell, 4e-6f * extent);
 
     const auto placed = [&](const Eigen::Matrix<float, 2, 3> &m, int t) {
@@ -1245,6 +1445,9 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
             out[size_t(k)] = m.block<2, 2>(0, 0) * unwrap.uvs[size_t(tri[k])] + m.col(2);
         return out;
     };
+
+
+
 
     std::vector<int> by_area(static_cast<size_t>(n));
     std::iota(by_area.begin(), by_area.end(), 0);
@@ -1263,6 +1466,14 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
             for (const int t : chart_tris[size_t(root)])
                 grid.insert(placed(m, t));
         }
+
+
+
+
+
+
+
+
         using Candidate = std::pair<float, std::pair<int, int>>;
         std::priority_queue<Candidate>                              q;
         const auto push_neighbours = [&](int p) {
@@ -1312,6 +1523,7 @@ std::vector<TextureIsland> compute_connected_net(const PatchUnwrap &unwrap)
             }
         }
     }
+
 
     std::vector<Vec2f> lo(static_cast<size_t>(net_count), Vec2f::Constant(std::numeric_limits<float>::max()));
     std::vector<Vec2f> hi(static_cast<size_t>(net_count), Vec2f::Constant(std::numeric_limits<float>::lowest()));
@@ -1375,6 +1587,7 @@ std::vector<bool> apply_lscm_uv_overrides(PatchUnwrap &unwrap, const std::vector
     std::vector<bool> edited(unwrap.uvs.size(), false);
     if (overrides.empty())
         return edited;
+
     std::map<int, Vec2f> by_mesh_vertex;
     for (const auto &[key, uv] : overrides)
         if (key >= 0)
@@ -1395,12 +1608,21 @@ std::vector<bool> apply_lscm_uv_overrides(PatchUnwrap &unwrap, const std::vector
 
 std::vector<Vec2f> compute_lscm_uvs(const indexed_triangle_set &patch, const TextureDisplacementLayer &layer)
 {
+
+
+
     const PatchUnwrap unwrap = compute_patch_unwrap(patch, layer.lscm_seam_angle_deg, 0.f, layer.lscm_seam_edges);
     if (unwrap.empty())
         return {};
 
+
+
     PatchUnwrap             edited_unwrap = unwrap;
     const std::vector<bool> edited        = apply_lscm_uv_overrides(edited_unwrap, layer.lscm_uv_overrides);
+
+
+
+
 
     std::vector<Vec2f> per_vertex(patch.vertices.size(), Vec2f::Zero());
     std::vector<bool>  assigned(patch.vertices.size(), false);
@@ -1417,12 +1639,18 @@ std::vector<Vec2f> compute_lscm_uvs(const indexed_triangle_set &patch, const Tex
 
 std::vector<Vec2f> compute_lscm_corner_uvs(const indexed_triangle_set &patch, const TextureDisplacementLayer &layer)
 {
+
+
     const PatchUnwrap unwrap = compute_patch_unwrap(patch, layer.lscm_seam_angle_deg, 0.f, layer.lscm_seam_edges);
     if (unwrap.empty() || unwrap.source_face.size() != unwrap.indices.size())
         return {};
 
     PatchUnwrap edited_unwrap = unwrap;
     apply_lscm_uv_overrides(edited_unwrap, layer.lscm_uv_overrides);
+
+
+
+
 
     std::vector<Vec2f> corner(patch.indices.size() * 3, Vec2f::Zero());
     for (size_t t = 0; t < edited_unwrap.indices.size(); ++t) {
@@ -1434,6 +1662,8 @@ std::vector<Vec2f> compute_lscm_corner_uvs(const indexed_triangle_set &patch, co
             const int uvi = tri[k];
             if (uvi < 0 || size_t(uvi) >= edited_unwrap.uvs.size())
                 continue;
+
+
             corner[size_t(f) * 3 + size_t(k)] = apply_island_transform(edited_unwrap.uvs[size_t(uvi)],
                                                                        edited_unwrap.vertex_chart[size_t(uvi)],
                                                                        unwrap, layer.islands);
@@ -1443,6 +1673,9 @@ std::vector<Vec2f> compute_lscm_corner_uvs(const indexed_triangle_set &patch, co
 }
 
 namespace {
+
+
+
 struct UVTransform
 {
     float scale, cs, sn, aspect;
@@ -1461,11 +1694,14 @@ struct UVTransform
     {
         const Vec2f scaled = planar * scale;
         Vec2f       rotated(scaled.x() * cs - scaled.y() * sn, scaled.x() * sn + scaled.y() * cs);
+
         if (aspect > 0.f && aspect != 1.f)
             rotated.y() *= aspect;
         return rotated + offset;
     }
 };
+
+
 
 static_assert(TRIPLANAR_BLEND_SHARPNESS == 4.f, "triplanar_weights() hard-codes the fourth power");
 inline Vec3f triplanar_weights(const Vec3f &normal)
@@ -1486,6 +1722,16 @@ Vec2f apply_uv_transform(const Vec2f &planar, const TextureDisplacementLayer &la
     const float sn  = std::sin(rad);
     Vec2f       rotated(scaled.x() * cs - scaled.y() * sn, scaled.x() * sn + scaled.y() * cs);
 
+
+
+
+
+
+
+
+
+
+
     if (aspect > 0.f && aspect != 1.f)
         rotated.y() *= aspect;
 
@@ -1496,8 +1742,16 @@ float blend_displacement(float accumulated, float value, TextureBlendMode mode)
 {
     switch (mode) {
     case TextureBlendMode::Subtract: return accumulated - value;
+
+
     case TextureBlendMode::Multiply: return accumulated * value;
     case TextureBlendMode::Divide: {
+
+
+
+
+
+
         constexpr float min_divisor = 0.05f;
         const float     divisor     = (std::abs(value) < min_divisor) ? std::copysign(min_divisor, value < 0.f ? -1.f : 1.f) :
                                                                         value;
@@ -1512,6 +1766,9 @@ bool project_uv_projective(const std::array<float, 12> &m, const Vec3f &position
 {
     const float x = position.x(), y = position.y(), z = position.z();
     const float w = m[8] * x + m[9] * y + m[10] * z + m[11];
+
+
+
     if (!(w > 1e-6f))
         return false;
     uv = Vec2f((m[0] * x + m[1] * y + m[2] * z + m[3]) / w, (m[4] * x + m[5] * y + m[6] * z + m[7]) / w);
@@ -1525,11 +1782,17 @@ float sample_layer_height(const DecodedHeightTexture &texture, const TextureDisp
     if (texture.empty())
         return 0.f;
 
+
+
+
     const float       aspect = (texture.height > 0) ? float(texture.width) / float(texture.height) : 1.f;
     const UVTransform xf(layer, aspect);
     auto sample_at = [&](const Vec2f &planar) {
         return texture.sample(xf(planar), layer.tile_enabled, layer.tile_method);
     };
+
+
+
 
     if (lscm_uv != nullptr)
         return sample_at(*lscm_uv);
@@ -1541,22 +1804,36 @@ float sample_layer_height(const DecodedHeightTexture &texture, const TextureDisp
         return sample_at(project_spherical(position, patch_center));
     case TextureProjectionMethod::ViewProjected:
         if (layer.view_project_projective) {
+
+
+
+
             Vec2f uv;
             if (!project_uv_projective(layer.view_project_matrix, position, uv))
                 return 0.f;
             return texture.sample(uv, layer.tile_enabled, layer.tile_method);
         }
+
+
         return sample_at(Vec2f(position.dot(layer.view_project_right), position.dot(layer.view_project_up)));
     case TextureProjectionMethod::LSCM:
     case TextureProjectionMethod::Triplanar:
     default: break;
     }
 
+
+
+
+
+
     Vec3f       w     = triplanar_weights(normal);
     const float w_sum = w.x() + w.y() + w.z();
     if (w_sum < 1e-8f)
+
         return sample_at(Vec2f(position.x(), position.y()));
     w /= w_sum;
+
+
 
     return w.x() * sample_at(Vec2f(position.y(), position.z())) +
            w.y() * sample_at(Vec2f(position.x(), position.z())) +
@@ -1570,11 +1847,17 @@ bool sample_layer_color(const DecodedHeightTexture &texture, const TextureDispla
     if (!texture.has_color())
         return false;
 
+
+
+
+
     const float       aspect = (texture.height > 0) ? float(texture.width) / float(texture.height) : 1.f;
     const UVTransform xf(layer, aspect);
     auto sample_at = [&](const Vec2f &planar) {
         return texture.sample_color(xf(planar), layer.tile_enabled, layer.tile_method);
     };
+
+
     auto covered = [&](const Vec2f &planar) {
         if (layer.tile_enabled)
             return true;
@@ -1606,6 +1889,8 @@ bool sample_layer_color(const DecodedHeightTexture &texture, const TextureDispla
     }
     case TextureProjectionMethod::ViewProjected:
         if (layer.view_project_projective) {
+
+
             Vec2f uv;
             if (!project_uv_projective(layer.view_project_matrix, position, uv))
                 return false;
@@ -1625,6 +1910,8 @@ bool sample_layer_color(const DecodedHeightTexture &texture, const TextureDispla
     default: break;
     }
 
+
+
     Vec3f w = triplanar_weights(normal);
     const float w_sum = w.x() + w.y() + w.z();
     if (w_sum < 1e-8f) {
@@ -1635,6 +1922,9 @@ bool sample_layer_color(const DecodedHeightTexture &texture, const TextureDispla
         return true;
     }
     w /= w_sum;
+
+
+
 
     const std::array<Vec2f, 3> planes = { Vec2f(position.y(), position.z()), Vec2f(position.x(), position.z()),
                                           Vec2f(position.x(), position.y()) };
@@ -1678,6 +1968,8 @@ bool compute_layer_paint_anchor(const indexed_triangle_set                    &b
         const Vec3f &a = patch.vertices[tri[0]];
         const Vec3f &b = patch.vertices[tri[1]];
         const Vec3f &c = patch.vertices[tri[2]];
+
+
         normal_sum   += (b - a).cross(c - a);
         centroid_sum += (a + b + c) / 3.f;
     }
@@ -1687,6 +1979,10 @@ bool compute_layer_paint_anchor(const indexed_triangle_set                    &b
     return true;
 }
 
+
+
+
+
 std::vector<Vec3f> texture_displacement_vertex_normals(const indexed_triangle_set &its)
 {
     std::vector<Vec3f> normals(its.vertices.size(), Vec3f::Zero());
@@ -1694,6 +1990,8 @@ std::vector<Vec3f> texture_displacement_vertex_normals(const indexed_triangle_se
         const Vec3f &a = its.vertices[tri[0]];
         const Vec3f &b = its.vertices[tri[1]];
         const Vec3f &c = its.vertices[tri[2]];
+
+
         const Vec3f area_weighted_normal = (b - a).cross(c - a);
         normals[tri[0]] += area_weighted_normal;
         normals[tri[1]] += area_weighted_normal;
@@ -1707,6 +2005,9 @@ std::vector<Vec3f> texture_displacement_vertex_normals(const indexed_triangle_se
 }
 
 namespace {
+
+
+
 std::vector<float> patch_boundary_distance(const indexed_triangle_set &patch, const std::vector<bool> &is_boundary)
 {
     const size_t n = patch.vertices.size();
@@ -1747,6 +2048,13 @@ std::vector<float> patch_boundary_distance(const indexed_triangle_set &patch, co
 }
 
 namespace {
+
+
+
+
+
+
+
 void despeckle_triangle_colors(const indexed_triangle_set &mesh, std::vector<int> &color, int passes)
 {
     if (passes <= 0 || color.size() != mesh.indices.size())
@@ -1763,6 +2071,8 @@ void despeckle_triangle_colors(const indexed_triangle_set &mesh, std::vector<int
             for (size_t i = range.begin(); i < range.end(); ++i) {
                 if (prev[i] < 0)
                     continue;
+
+
                 int  cand[4]  = { prev[i], -1, -1, -1 };
                 int  count[4] = { 1, 0, 0, 0 };
                 int  n        = 1;
@@ -1783,6 +2093,7 @@ void despeckle_triangle_colors(const indexed_triangle_set &mesh, std::vector<int
                         ++n;
                     }
                 }
+
                 int best = 0;
                 for (int k = 1; k < n; ++k)
                     if (count[k] > count[best])
@@ -1808,6 +2119,9 @@ void merge_small_color_regions(const indexed_triangle_set &mesh, std::vector<int
         const stl_triangle_vertex_indices &t = mesh.indices[f];
         return (mesh.vertices[size_t(t[(e + 1) % 3])] - mesh.vertices[size_t(t[e])]).norm();
     };
+
+
+
 
     std::vector<int>    component(n, -1);
     std::vector<int>    faces;
@@ -1841,6 +2155,9 @@ void merge_small_color_regions(const indexed_triangle_set &mesh, std::vector<int
         }
     }
     start.push_back(faces.size());
+
+
+
 
     std::vector<int> order;
     for (int id = 0; id < int(area.size()); ++id)
@@ -1883,6 +2200,8 @@ void merge_small_color_regions(const indexed_triangle_set &mesh, std::vector<int
 
 namespace {
 
+
+
 indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set                  &mesh,
                                                    const std::vector<TextureDisplacementLayer> &layers,
                                                    const TextureDisplacementFacetsData         &facets_data,
@@ -1896,6 +2215,12 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     HeightFieldSampler combined = make_combined_displacement_sampler(mesh, layers, facets_data);
     if (!combined)
         return mesh;
+
+
+
+
+
+
     std::vector<uint8_t> excluded(mesh.indices.size(), 1);
     indexed_triangle_set painted_pieces;
     {
@@ -1913,6 +2238,8 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
             for (const int src : piece_src)
                 if (src >= 0 && size_t(src) < excluded.size())
                     excluded[size_t(src)] = 0;
+
+
             std::vector<int>           unused;
             const indexed_triangle_set compact = compact_patch_with_map(patch, unused);
             const int                  offset  = int(painted_pieces.vertices.size());
@@ -1923,8 +2250,14 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     }
     if (std::all_of(excluded.begin(), excluded.end(), [](uint8_t e) { return e != 0; }) || painted_pieces.indices.empty())
         return mesh;
+
+
+
     const AABBTreeIndirect::Tree3f painted_tree =
         AABBTreeIndirect::build_aabb_tree_over_indexed_triangle_set(painted_pieces.vertices, painted_pieces.indices);
+
+
+
     const auto painted_closest = [&painted_pieces, &painted_tree](const Vec3f &p, Vec3f *foot, Vec3f *normal) {
         size_t      hit = 0;
         Vec3f       hit_point;
@@ -1943,8 +2276,12 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
         return d2;
     };
     const auto painted_dist2 = [&painted_closest](const Vec3f &p) { return painted_closest(p, nullptr, nullptr); };
+
+
     constexpr float paint_tol = 0.05f;
     const auto      painted_at = [&painted_dist2](const Vec3f &p) { return painted_dist2(p) < paint_tol * paint_tol; };
+
+
 
     const bool         auto_edge = options.v2_refine_mm <= 0.f, auto_budget = options.v2_max_triangles_k < 0;
     const V2Resolution rec = (auto_edge || auto_budget) ? recommend_v2_resolution(mesh, layers) : V2Resolution{};
@@ -1955,16 +2292,36 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     BOOST_LOG_TRIVIAL(info) << "TextureBake resolution: " << settings.refine_length << " mm"
                             << (auto_edge ? " (auto)" : "") << ", budget " << settings.max_triangles / 1000 << " k"
                             << (auto_budget ? " (auto)" : "");
+
+
+
+
+
     settings.harvest_tol = std::clamp(settings.refine_length / 32.0, 0.005, 0.05);
     settings.preserve_untextured = true;
+
+
+
     settings.clamp_below_plate   = true;
     settings.relocate            = options.v2_relocate;
     settings.flip_edges          = options.v2_flip_edges;
+
     settings.displace.amplitude = 1.f;
     settings.displace.symmetric = false;
+
     settings.displace.bottom_angle_limit = 0.f;
     settings.displace.top_angle_limit    = 0.f;
+
+
+
+
+
     settings.displace.blend_normal_smoothing = 32;
+
+
+
+
+
     {
         const auto area_of = [](const indexed_triangle_set &its) {
             double a = 0.0;
@@ -1984,6 +2341,8 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
         if (pieces_area < included_area * (1.0 - 1e-4))
             settings.painted = painted_at;
     }
+
+
     const bool all_painted = std::none_of(excluded.begin(), excluded.end(), [](uint8_t e) { return e != 0; });
     if (settings.painted || !all_painted)
         settings.paint_within = [&painted_pieces, &painted_tree](const Vec3d &p, double radius) {
@@ -2000,24 +2359,46 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     }
 
     const auto sample = [&combined](const Vec3f &pos, const Vec3f &, const Vec3f &blend_normal) {
+
+
         return combined(pos, blend_normal);
     };
+
+
+
+
+
 
     indexed_triangle_set oriented = mesh;
     if (flip_normals)
         for (stl_triangle_vertex_indices &t : oriented.indices)
             std::swap(t[1], t[2]);
 
+
     const TextureBake::PipelineMode mode = settings.max_triangles > 0 ? TextureBake::PipelineMode::Export
                                                                       : TextureBake::PipelineMode::Bake;
+
+
+
     const bool              want_color = color != nullptr && color->out_triangle != nullptr && bool(color->quantize);
     const ColorFieldSampler color_sampler =
         want_color ? make_combined_color_sampler(mesh, layers, facets_data, color->quantize, color->quantize_pure) : ColorFieldSampler{};
+
+
+
+
+
+
+
+
     const TextureBake::ColorSampleFn color_sample =
         color_sampler ? TextureBake::ColorSampleFn([&color_sampler](const Vec3f &p, const Vec3f &n) {
                             return color_sampler(p, n);
                         })
                       : TextureBake::ColorSampleFn{};
+
+
+
     const size_t                debug_mark = (debug != nullptr) ? debug->mark() : 0;
     TextureBake::PipelineResult result     = TextureBake::run_pipeline(
         TextureBake::to_soup(oriented, excluded), sample, settings, bounds, mode, excluded,
@@ -2026,7 +2407,7 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
         },
         debug, color_sample);
     if (debug != nullptr && flip_normals)
-        debug->rebase(debug_mark, nullptr,  true);
+        debug->rebase(debug_mark, nullptr,   true);
     if (result.canceled || result.geometry.empty())
         return {};
 
@@ -2041,6 +2422,11 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
     if (flip_normals)
         for (stl_triangle_vertex_indices &t : out.indices)
             std::swap(t[1], t[2]);
+
+
+
+
+
 
     if (want_color) {
         std::vector<uint8_t>     out_color(out.indices.size(), 0);
@@ -2058,8 +2444,23 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
                     const stl_triangle_vertex_indices &t = out.indices[i];
                     const Vec3f &a = out.vertices[size_t(t[0])], &b = out.vertices[size_t(t[1])], &c = out.vertices[size_t(t[2])];
                     const Vec3f  centroid = (a + b + c) / 3.f;
+
+
+
+
+
+
+
+
                     Vec3f       foot = centroid, base_n = Vec3f::UnitZ();
                     const float d2   = painted_closest(centroid, &foot, &base_n);
+
+
+
+
+
+
+
                     if (have_face_mask) {
                         if (face_mask[i] == TextureBake::FACE_UNPAINTED)
                             continue;
@@ -2069,6 +2470,12 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
                     palette[i] = sampler(foot, base_n);
                 }
             });
+
+
+
+
+
+
             const bool simplified = result.simplified;
             despeckle_triangle_colors(out, palette, simplified ? 0 : color->despeckle_passes);
             merge_small_color_regions(out, palette, color->min_color_region_mm2);
@@ -2092,6 +2499,12 @@ indexed_triangle_set build_texture_displacement_v2(const indexed_triangle_set   
 }
 
 }
+
+
+
+
+
+
 static indexed_triangle_set build_texture_displacement_in_place(
     const indexed_triangle_set                  &base_mesh,
     const std::vector<TextureDisplacementLayer> &layers,
@@ -2103,8 +2516,13 @@ static indexed_triangle_set build_texture_displacement_in_place(
     BakeStageRecorder                           *debug,
     TextureBakeStats                            *stats)
 {
+
     (void) stats;
+
+
     const auto report = [&progress](int percent) { return !progress || progress(percent); };
+
+
 
     auto       stage_clock = std::chrono::steady_clock::now();
     const auto capture     = [&](const char *name, const indexed_triangle_set &m,
@@ -2118,6 +2536,13 @@ static indexed_triangle_set build_texture_displacement_in_place(
     };
 
     indexed_triangle_set mesh = base_mesh;
+
+
+
+
+
+
+
     its_compactify_vertices(mesh);
     if (mesh.vertices.empty() || mesh.indices.empty())
         return mesh;
@@ -2128,6 +2553,8 @@ static indexed_triangle_set build_texture_displacement_in_place(
         return build_texture_displacement_v2(mesh, layers, facets_data, options, progress, color, flip_normals,
                                              debug, stats);
 
+
+
     std::vector<const TextureDisplacementLayer *> ordered_layers;
     for (const TextureDisplacementLayer &layer : layers)
         if (!layer.empty() && layer.slot >= 0 && size_t(layer.slot) < TEXTURE_DISPLACEMENT_MAX_LAYERS)
@@ -2135,7 +2562,20 @@ static indexed_triangle_set build_texture_displacement_in_place(
     std::sort(ordered_layers.begin(), ordered_layers.end(),
                [](const TextureDisplacementLayer *a, const TextureDisplacementLayer *b) { return a->slot < b->slot; });
 
+
+
+
+
     std::vector<Vec3f> vertex_normals = texture_displacement_vertex_normals(mesh);
+
+
+
+
+
+
+
+
+
 
     {
         std::vector<uint8_t> painted_face(mesh.indices.size(), 0);
@@ -2159,8 +2599,14 @@ static indexed_triangle_set build_texture_displacement_in_place(
             for (size_t v = 0; v < vertex_normals.size(); ++v)
                 if (const float l = painted_normals[v].norm(); l > 1e-8f)
                     vertex_normals[v] = painted_normals[v] / l;
+
+
         }
     }
+
+
+
+
 
     if (flip_normals)
         for (Vec3f &n : vertex_normals)
@@ -2170,22 +2616,43 @@ static indexed_triangle_set build_texture_displacement_in_place(
         return {};
 
     std::vector<float> displacement(mesh.vertices.size(), 0.f);
+
+
+
     std::vector<uint8_t> displaced(mesh.vertices.size(), 0);
+
+
+
+
     std::vector<bool>  on_patch_border(mesh.vertices.size(), false);
     bool               any_displacement = false;
 
+
+
+
+
+
     const bool       want_color = color != nullptr && color->out_triangle != nullptr && bool(color->quantize);
+
+
+
     std::vector<int> triangle_palette;
     if (want_color)
         triangle_palette.assign(mesh.indices.size(), -1);
 
     const TriangleMesh selector_mesh(mesh);
+
+
+
+
+
     TriangleSelector selector(selector_mesh);
     bool             selector_dirty = false;
 
     const int layer_count = std::max(int(ordered_layers.size()), 1);
     int       layer_index = 0;
     for (const TextureDisplacementLayer *layer : ordered_layers) {
+
         if (!report(5 + (60 * layer_index++) / layer_count))
             return {};
 
@@ -2197,10 +2664,12 @@ static indexed_triangle_set build_texture_displacement_in_place(
         if (height.empty())
             continue;
 
+
         selector.deserialize(data, selector_dirty);
         selector_dirty = true;
 
         const bool       color_this_layer = want_color && layer->color_enabled;
+
         const ColorQuantizeFn &layer_quantize =
             (color_this_layer && color->quantize_pure && analyze_texture_detail(*layer).flat_colors) ? color->quantize_pure
                                                                                                      : color->quantize;
@@ -2209,7 +2678,15 @@ static indexed_triangle_set build_texture_displacement_in_place(
             selector.get_facets_strict(EnforcerBlockerType::ENFORCER, color_this_layer ? &patch_source : nullptr);
         if (patch.indices.empty())
             continue;
+
+
+
         const indexed_triangle_set rest = selector.get_facets_strict(EnforcerBlockerType::NONE);
+
+
+
+
+
 
         std::vector<bool> is_boundary(patch.vertices.size(), false);
         for (const stl_triangle_vertex_indices &tri : rest.indices)
@@ -2220,17 +2697,32 @@ static indexed_triangle_set build_texture_displacement_in_place(
             }
         const bool pin_boundary = !options.displace_border;
 
+
+
+
         Vec3f average_normal, patch_centroid, patch_axis;
         texture_displacement_patch_frame(patch, vertex_normals, patch_centroid, patch_axis, average_normal);
+
+
+
 
         const std::vector<Vec2f> lscm_uvs = (layer->projection_method == TextureProjectionMethod::LSCM) ?
                                                  compute_lscm_uvs(patch, *layer) :
                                                  std::vector<Vec2f>{};
+
+
+
+
         const std::vector<Vec2f> lscm_corner_uvs = (layer->projection_method == TextureProjectionMethod::LSCM) ?
                                                         compute_lscm_corner_uvs(patch, *layer) :
                                                         std::vector<Vec2f>{};
         const bool               corner_uv_ok    = !lscm_corner_uvs.empty() &&
                                                    lscm_corner_uvs.size() == patch.indices.size() * 3;
+
+
+
+
+
 
         if (color_this_layer) {
             const DecodedHeightTexture &tex = height;
@@ -2249,6 +2741,9 @@ static indexed_triangle_set build_texture_displacement_in_place(
                     if (area2 <= 0.f)
                         continue;
                     const Vec3f centroid = (pa + pb + pc) / 3.f;
+
+
+
 
                     Vec3f n = Vec3f::Zero();
                     Vec2f uv = Vec2f::Zero();
@@ -2279,11 +2774,16 @@ static indexed_triangle_set build_texture_displacement_in_place(
                 for (size_t i = 0; i < mesh.indices.size(); ++i)
                     if (sum_area[i] > 0.f) {
                         const int idx = layer_quantize(sum[i] / sum_area[i]);
+
+
                         if (idx >= 0)
                             triangle_palette[i] = idx;
                     }
             }
         }
+
+
+
 
         std::vector<float> edge_weight;
         if (layer->edge_smoothing && layer->edge_smoothing_amount > 0.f) {
@@ -2304,12 +2804,20 @@ static indexed_triangle_set build_texture_displacement_in_place(
         }
 
         const float sign = layer->invert ? -1.f : 1.f;
+
+
+
+
+
+
         std::vector<int>  layer_vertices;
         std::vector<char> visited(patch.vertices.size(), 0);
         layer_vertices.reserve(patch.vertices.size());
         for (const stl_triangle_vertex_indices &tri : patch.indices)
             for (int i = 0; i < 3; ++i) {
                 const int vi = tri[i];
+
+
                 if (vi >= int(mesh.vertices.size()) || (pin_boundary && is_boundary[vi]) || visited[vi])
                     continue;
                 visited[vi] = 1;
@@ -2326,15 +2834,29 @@ static indexed_triangle_set build_texture_displacement_in_place(
                 const Vec2f *lscm_uv = lscm_uvs.empty() ? nullptr : &lscm_uvs[vi];
                 const float  h       = sample_layer_height(height, *layer, mesh.vertices[vi], vertex_normals[vi],
                                                             patch_centroid, patch_axis, lscm_uv);
+
+
+
                 sampled[k] = (h - layer->midlevel) * layer->depth_mm * sign;
             }
         });
 
         for (size_t k = 0; k < layer_vertices.size(); ++k) {
             const size_t vi = size_t(layer_vertices[k]);
+
+
+
+
             const float accumulated = displacement[vi];
             const float blended     = blend_displacement(accumulated, sampled[k],
                                                           displaced[vi] ? layer->blend_mode : TextureBlendMode::Add);
+
+
+
+
+
+
+
             const float edge_w = edge_weight.empty() ? 1.f : edge_weight[vi];
             displacement[vi]   = accumulated + (blended - accumulated) * edge_w;
             displaced[vi]      = 1;
@@ -2347,6 +2869,7 @@ static indexed_triangle_set build_texture_displacement_in_place(
 
     if (!any_displacement)
         return mesh;
+
 
     float resting_z = std::numeric_limits<float>::max();
     for (const Vec3f &v : mesh.vertices)
@@ -2361,12 +2884,21 @@ static indexed_triangle_set build_texture_displacement_in_place(
     capture("displace", mesh, std::to_string(moved_count) + " of " +
                                   std::to_string(mesh.vertices.size()) + " vertices moved");
 
+
+
+
+
+
+
     if (options.smooth_enabled && options.smooth_strength > 0.f && options.smooth_iterations > 0) {
         if (!report(70))
             return {};
         std::vector<uint8_t> movable(mesh.vertices.size(), 0);
         for (size_t vi = 0; vi < mesh.vertices.size(); ++vi)
             movable[vi] = (displaced[vi] && !(options.smooth_skip_border && on_patch_border[vi])) ? 1 : 0;
+
+
+
         smooth_mesh_vertices(mesh, movable, options.smooth_strength, options.smooth_iterations,
                              progress ? DisplacementProgressFn([&report, it = options.smooth_iterations](int pass) {
                                  return report(70 + (29 * (pass + 1)) / std::max(it, 1));
@@ -2375,6 +2907,13 @@ static indexed_triangle_set build_texture_displacement_in_place(
                 std::to_string(options.smooth_iterations) + " iterations at strength " +
                     std::to_string(options.smooth_strength));
     }
+
+
+
+
+
+
+
 
     size_t clamped_count = 0;
     if (resting_z < std::numeric_limits<float>::max())
@@ -2389,6 +2928,10 @@ static indexed_triangle_set build_texture_displacement_in_place(
     if (!report(99))
         return {};
     if (want_color) {
+
+
+
+
         despeckle_triangle_colors(mesh, triangle_palette, color->despeckle_passes);
         merge_small_color_regions(mesh, triangle_palette, color->min_color_region_mm2);
 
@@ -2406,6 +2949,8 @@ static indexed_triangle_set build_texture_displacement_in_place(
             if (filament >= 0)
                 out_color[i] = uint8_t(std::min(filament + 1, 255));
         }
+
+
         *color->out_triangle = std::move(out_color);
     }
     return mesh;
@@ -2421,12 +2966,21 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
                                                  BakeStageRecorder                           *debug,
                                                  TextureBakeStats                            *stats)
 {
+
+
+
+
+
     const Transform3d frame = texture_displacement_bake_frame(volume_to_world);
     if (frame.matrix().isApprox(Transform3d::Identity().matrix()))
         return build_texture_displacement_in_place(base_mesh, layers, facets_data, options, progress, color,
                                                    false, debug, stats);
 
     const Transform3d to_local = frame.inverse();
+
+
+
+
     const bool mirrored = frame.linear().determinant() < 0.0;
 
     indexed_triangle_set world = base_mesh;
@@ -2436,8 +2990,12 @@ indexed_triangle_set build_texture_displacement(const indexed_triangle_set      
     const size_t         debug_mark = (debug != nullptr) ? debug->mark() : 0;
     indexed_triangle_set out = build_texture_displacement_in_place(world, layers, facets_data, options,
                                                                    progress, color, mirrored, debug, stats);
+
+
     if (debug != nullptr)
-        debug->rebase(debug_mark, &to_local,  false);
+        debug->rebase(debug_mark, &to_local,   false);
+
+
     if (out.vertices.empty())
         return out;
 
@@ -2457,15 +3015,21 @@ void texture_displacement_patch_frame(const indexed_triangle_set &patch, const s
             const int vi = tri[i];
             centroid_sum += patch.vertices[size_t(vi)];
             ++count;
+
+
             if (vi < int(vertex_normals.size()))
                 normal_sum += vertex_normals[size_t(vi)];
         }
     average_normal = (normal_sum.norm() > 1e-8f) ? Vec3f(normal_sum.normalized()) : Vec3f::UnitZ();
     center         = (count > 0) ? Vec3f(centroid_sum / float(count)) : Vec3f::Zero();
     if (count == 0) {
+
+
         axis = Vec3f::UnitZ();
         return;
     }
+
+
 
     const Vec3f an = average_normal.cwiseAbs();
     axis = (an.x() <= an.y() && an.x() <= an.z()) ? Vec3f::UnitX() :
@@ -2474,6 +3038,10 @@ void texture_displacement_patch_frame(const indexed_triangle_set &patch, const s
 
 Transform3d texture_displacement_bake_frame(const Transform3d &volume_to_world)
 {
+
+
+
+
     return Eigen::Translation3d(-volume_to_world.translation()) * volume_to_world;
 }
 
@@ -2507,6 +3075,10 @@ void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t>
     if (std::none_of(movable.begin(), movable.end(), [](uint8_t m) { return m != 0; }))
         return;
 
+
+
+
+
     const size_t       nv = mesh.vertices.size();
     std::vector<int>   start(nv + 1, 0);
     for (const stl_triangle_vertex_indices &t : mesh.indices)
@@ -2526,9 +3098,14 @@ void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t>
             nbr[size_t(fill[size_t(b)]++)] = a;
         }
 
+
+
+
     std::vector<Vec3f> prev;
     for (int it = 0; it < iterations; ++it) {
         prev = mesh.vertices;
+
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0, nv), [&](const tbb::blocked_range<size_t> &range) {
             for (size_t v = range.begin(); v < range.end(); ++v) {
                 if (!movable[v] || start[v] == start[v + 1])
@@ -2546,10 +3123,21 @@ void smooth_mesh_vertices(indexed_triangle_set &mesh, const std::vector<uint8_t>
 }
 
 namespace {
+
+
+
+
+
+
+
+
 struct LscmLookup {
     indexed_triangle_set    patch;
     AABBTreeIndirect::Tree3f tree;
     std::vector<Vec2f>      corner;
+
+
+
     bool uv_at(const Vec3f &pos, float tol, Vec2f &uv) const
     {
         size_t      hit = 0;
@@ -2574,6 +3162,9 @@ struct LscmLookup {
     }
 };
 
+
+
+
 struct PatchRegion {
     indexed_triangle_set     patch;
     AABBTreeIndirect::Tree3f tree;
@@ -2593,12 +3184,20 @@ struct PreparedLayer {
     TextureDisplacementLayer layer;
     Vec3f                    center;
     Vec3f                    axis;
+
+
     std::shared_ptr<const LscmLookup> lscm;
+
+
     std::shared_ptr<const PatchRegion> region;
+
+
+
 
     bool lscm_uv(const Vec3f &pos, Vec2f &uv, const Vec2f *&out) const
     {
         out = nullptr;
+
         constexpr float ON_PATCH_TOL = 0.05f;
         if (region && !region->contains(pos, ON_PATCH_TOL))
             return false;
@@ -2610,6 +3209,8 @@ struct PreparedLayer {
         return true;
     }
 };
+
+
 
 std::shared_ptr<std::vector<PreparedLayer>> prepare_sampleable_layers(
     const indexed_triangle_set &base_mesh, const std::vector<TextureDisplacementLayer> &layers,
@@ -2632,6 +3233,9 @@ std::shared_ptr<std::vector<PreparedLayer>> prepare_sampleable_layers(
     const float              mesh_area = area_3d(base_mesh);
 
     for (const TextureDisplacementLayer *layer : ordered) {
+
+
+
         if (need_color && !layer->color_enabled)
             continue;
         const TriangleSelector::TriangleSplittingData &data = facets_data[size_t(layer->slot)];
@@ -2647,11 +3251,16 @@ std::shared_ptr<std::vector<PreparedLayer>> prepare_sampleable_layers(
         if (patch.indices.empty())
             continue;
 
+
+
         Vec3f centroid, axis, average_normal;
         texture_displacement_patch_frame(patch, vertex_normals, centroid, axis, average_normal);
 
         std::shared_ptr<const LscmLookup> lscm;
         if (layer->projection_method == TextureProjectionMethod::LSCM) {
+
+
+
             auto l    = std::make_shared<LscmLookup>();
             l->corner = compute_lscm_corner_uvs(patch, *layer);
             if (l->corner.size() == patch.indices.size() * 3) {
@@ -2683,15 +3292,19 @@ ColorFieldSampler make_combined_color_sampler(const indexed_triangle_set        
 {
     if (!quantize)
         return nullptr;
-    auto prepared = prepare_sampleable_layers(base_mesh, layers, facets_data,  true);
+    auto prepared = prepare_sampleable_layers(base_mesh, layers, facets_data,   true);
     if (prepared->empty())
         return nullptr;
+
+
     auto pure = std::make_shared<std::vector<uint8_t>>(prepared->size(), 0);
     if (quantize_pure)
         for (size_t i = 0; i < prepared->size(); ++i)
             (*pure)[i] = analyze_texture_detail((*prepared)[i].layer).flat_colors ? 1 : 0;
 
     return [prepared, pure, quantize = std::move(quantize), quantize_pure = std::move(quantize_pure)](const Vec3f &pos, const Vec3f &normal) -> int {
+
+
         int result = -1;
         for (size_t i = 0; i < prepared->size(); ++i) {
             const PreparedLayer &p = (*prepared)[i];
@@ -2712,7 +3325,7 @@ HeightFieldSampler make_combined_displacement_sampler(const indexed_triangle_set
                                                       const std::vector<TextureDisplacementLayer> &layers,
                                                       const TextureDisplacementFacetsData         &facets_data)
 {
-    auto prepared = prepare_sampleable_layers(base_mesh, layers, facets_data,  false);
+    auto prepared = prepare_sampleable_layers(base_mesh, layers, facets_data,   false);
     if (prepared->empty())
         return nullptr;
 
@@ -2727,6 +3340,8 @@ HeightFieldSampler make_combined_displacement_sampler(const indexed_triangle_set
             const float h        = sample_layer_height(p.tex, p.layer, pos, normal, p.center, p.axis, lscm_uv);
             const float sign     = p.layer.invert ? -1.f : 1.f;
             const float signed_h = (h - p.layer.midlevel) * p.layer.depth_mm * sign;
+
+
             total = blend_displacement(total, signed_h, any ? p.layer.blend_mode : TextureBlendMode::Add);
             any   = true;
         }
@@ -2740,6 +3355,10 @@ indexed_triangle_set subdivide_mesh_uniform(const indexed_triangle_set &mesh, fl
     const float          max_edge_sq = max_edge_length_mm * max_edge_length_mm;
 
     for (int iter = 0; iter < max_iterations; ++iter) {
+
+
+
+
         std::unordered_map<uint64_t, int> midpoint_cache;
         auto edge_key = [](int a, int b) -> uint64_t {
             if (a > b)
@@ -2797,8 +3416,13 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                              const ColorFieldSampler &color, float color_edge_length_mm,
                                              bool split_multi_crossings)
 {
+
     constexpr int NB_BOUNDARY    = -1;
     constexpr int NB_NONMANIFOLD = -2;
+
+
+
+
     struct Tri { int v[3]; int nb[3]; int src; };
 
     std::vector<Vec3f> verts = mesh.vertices;
@@ -2823,6 +3447,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return out;
     };
 
+
+
     const bool  feature_mode = bool(sampler) && chord_tolerance_mm > 0.f;
     const bool  color_mode   = bool(color) && color_edge_length_mm > 0.f;
     const bool  multi_mode   = feature_mode && split_multi_crossings;
@@ -2832,6 +3458,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
     const float min_floor_sq = min_edge_length_mm > 0.f ? min_edge_length_mm * min_edge_length_mm : 0.f;
     const float target_sq    = target_edge_length_mm > 0.f ? target_edge_length_mm * target_edge_length_mm : 0.f;
     const float border_sq    = border_edge_length_mm > 0.f ? border_edge_length_mm * border_edge_length_mm : 0.f;
+
+
 
     if (refine_region.size() != mesh.indices.size() || int(tris.size()) + 2 > max_triangles)
         return emit();
@@ -2846,7 +3474,15 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return (uint64_t(uint32_t(a)) << 32) | uint32_t(b);
     };
 
+
+
+
+
     {
+
+
+
+
         std::vector<std::pair<uint64_t, int>> he(tris.size() * 3);
         tbb::parallel_for(tbb::blocked_range<size_t>(0, tris.size()),
                           [&](const tbb::blocked_range<size_t> &range) {
@@ -2857,6 +3493,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                                       };
                           });
         tbb::parallel_sort(he.begin(), he.end());
+
+
         for (size_t i = 0; i < he.size();) {
             size_t j = i + 1;
             while (j < he.size() && he[j].first == he[i].first)
@@ -2870,9 +3508,14 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                 for (size_t k = i; k < j; ++k)
                     tris[size_t(he[k].second / 3)].nb[he[k].second % 3] = NB_NONMANIFOLD;
             }
+
             i = j;
         }
     }
+
+
+
+
 
     std::vector<Vec3f>   vnormal;
     std::vector<float>   vheight;
@@ -2898,6 +3541,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         }
         return vheight[v];
     };
+
+
 
     std::vector<int>     vcolor;
     std::vector<uint8_t> vcolor_valid;
@@ -2925,12 +3570,23 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return vcolor[v];
     };
 
+
+
+
+
+
+
+
+
+
     if (feature_mode || color_mode) {
         std::vector<uint8_t> wanted(verts.size(), 0);
         for (const Tri &t : tris)
             if (refine_region[t.src] != 0)
                 for (int i = 0; i < 3; ++i)
                     wanted[size_t(t.v[i])] = 1;
+
+
         tbb::parallel_for(tbb::blocked_range<size_t>(0, verts.size()),
                           [&](const tbb::blocked_range<size_t> &range) {
                               for (size_t v = range.begin(); v < range.end(); ++v) {
@@ -2947,6 +3603,7 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                               }
                           });
         if (multi_mode) {
+
             float lo = std::numeric_limits<float>::max(), hi = -lo;
             for (size_t v = 0; v < verts.size(); ++v)
                 if (wanted[v]) { lo = std::min(lo, vheight[v]); hi = std::max(hi, vheight[v]); }
@@ -2956,6 +3613,10 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
     }
 
     auto elen_sq = [&](int a, int b) -> float { return (verts[a] - verts[b]).squaredNorm(); };
+
+
+
+
 
     auto longest_local = [&](int ti) -> int {
         const Tri &t    = tris[ti];
@@ -2974,9 +3635,18 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return best;
     };
 
+
+
+
+
+
     std::vector<float> tri_err;
     if (feature_mode)
         tri_err.assign(tris.size(), -1.f);
+
+
+
+
     std::vector<uint8_t> tri_color_split;
     if (color_mode)
         tri_color_split.assign(tris.size(), 0);
@@ -3005,6 +3675,10 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return split;
     };
 
+
+
+
+
     const float sample_spacing = std::max(min_edge_length_mm, 0.05f);
 
     auto detail_error = [&](int ti) -> float {
@@ -3015,9 +3689,19 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         const Vec3f na = vnormal[t.v[0]], nb = vnormal[t.v[1]], nc = vnormal[t.v[2]];
         const float ha = height_of(t.v[0]), hb = height_of(t.v[1]), hc = height_of(t.v[2]);
 
+
+
+
+
+
+
+
         const float longest = std::sqrt(std::max({ (pb - pa).squaredNorm(), (pc - pb).squaredNorm(), (pa - pc).squaredNorm() }));
         const int   n       = std::clamp(int(std::ceil(longest / sample_spacing)), 2, 8);
         float       maxerr  = 0.f;
+
+
+
         bool sharp_cross = false;
         if (multi_mode) {
             const Vec3f *P[3] = { &pa, &pb, &pc };
@@ -3060,14 +3744,25 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
                     const float nl = nn.norm();
                     nn = (nl > 1e-12f) ? Vec3f(nn / nl) : na;
                     actual = sampler(wa * pa + wb * pb + wc * pc, nn);
+
                     maxerr = std::max(maxerr, std::abs(actual - (wa * ha + wb * hb + wc * hc)));
                 }
             }
+
+
+
+
+
         if (multi_mode && sharp_cross)
             maxerr = 0.f;
         tri_err[ti] = maxerr;
         return maxerr;
     };
+
+
+
+
+
 
     auto priority = [&](int ti) -> float {
         const Tri    &t     = tris[ti];
@@ -3084,13 +3779,26 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             if (feature_mode) {
                 p = std::max(p, detail_error(ti) / chord_tolerance_mm);
             }
+
+
             if (color_mode && straddles_color(ti))
                 p = std::max(p, ll / color_sq);
         }
+
+
+
+
+
         if ((flags & REFINE_BORDER) && border_sq > 0.f)
             p = std::max(p, ll / border_sq);
         return p;
     };
+
+
+
+
+
+
 
     auto tri_area = [&](int ti) -> float {
         const Tri &t = tris[ti];
@@ -3109,10 +3817,17 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             }
     };
 
+
+
+
+
+
     std::vector<int> touched;
     auto bisect = [&](int ti, int e) -> bool {
         const int a = tris[ti].v[e], b = tris[ti].v[(e + 1) % 3], c = tris[ti].v[(e + 2) % 3];
         const int n = tris[ti].nb[e];
+
+
         int f = -1;
         if (n >= 0) {
             for (int k = 0; k < 3; ++k) {
@@ -3144,6 +3859,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             vcolor_valid.push_back(0);
         }
 
+
+
         const int nb_bc = tris[ti].nb[(e + 1) % 3];
         const int nb_ca = tris[ti].nb[(e + 2) % 3];
         const int src   = tris[ti].src;
@@ -3169,6 +3886,7 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             return true;
         }
 
+
         const int p = tris[n].v[f], q = tris[n].v[(f + 1) % 3], d = tris[n].v[(f + 2) % 3];
         const int nb_qd = tris[n].nb[(f + 1) % 3];
         const int nb_dp = tris[n].nb[(f + 2) % 3];
@@ -3190,6 +3908,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             tri_color_split[n] = 0;
         }
 
+
+
         const int side_a = (p == a) ? n : n2;
         const int side_b = (p == a) ? n2 : n;
         tris[ti].nb[0] = side_a;
@@ -3200,8 +3920,16 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         return true;
     };
 
+
+
+
     std::priority_queue<std::pair<float, int>> queue;
     {
+
+
+
+
+
         std::vector<float> initial(tris.size(), 0.f);
         tbb::parallel_for(tbb::blocked_range<size_t>(0, tris.size()),
                           [&](const tbb::blocked_range<size_t> &range) {
@@ -3212,6 +3940,11 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
             if (initial[size_t(ti)] > 1.f)
                 queue.emplace(heap_key(ti, initial[size_t(ti)]), ti);
     }
+
+
+
+
+
 
     const int start_tris  = int(tris.size());
     const int budget_tris = std::max(1, max_triangles - start_tris);
@@ -3226,6 +3959,10 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         queue.pop();
         if (priority(ti) <= 1.f)
             continue;
+
+
+
+
         int cur = ti, split_edge = -1;
         for (size_t guard = 0; guard <= tris.size(); ++guard) {
             const int le  = longest_local(cur);
@@ -3250,6 +3987,8 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
         for (const int t : touched)
             if (const float p = priority(t); p > 1.f)
                 queue.emplace(heap_key(t, p), t);
+
+
         if (cur != ti)
             if (const float p = priority(ti); p > 1.f)
                 queue.emplace(heap_key(ti, p), ti);
@@ -3260,11 +3999,19 @@ indexed_triangle_set subdivide_mesh_adaptive(const indexed_triangle_set &mesh,
 
 namespace {
 
+
+
+
+
+
 void ear_clip(const std::vector<Vec2f> &pts, std::vector<int> poly, const std::function<void(int, int, int)> &emit)
 {
     auto cross2 = [](const Vec2f &o, const Vec2f &a, const Vec2f &b) {
         return (a.x() - o.x()) * (b.y() - o.y()) - (a.y() - o.y()) * (b.x() - o.x());
     };
+
+
+
     float flat = 0.f;
     {
         Vec2f lo = pts[size_t(poly[0])], hi = lo;
@@ -3289,12 +4036,17 @@ void ear_clip(const std::vector<Vec2f> &pts, std::vector<int> poly, const std::f
                     continue;
                 const Vec2f &p = pts[size_t(ij)];
                 clean = !(cross2(a, b, p) > eps && cross2(b, c, p) > eps && cross2(c, a, p) > eps);
+
+
                 if (std::abs(cross2(c, a, p)) <= flat && (p - c).dot(a - c) > 0.f && (p - a).dot(c - a) > 0.f)
                     ++on_base;
             }
             if (!clean)
                 continue;
             if (on_base > 0) {
+
+
+
                 if (on_base + 3 != n)
                     continue;
                 for (size_t j = 0; j + 1 < n - 1; ++j) {
@@ -3309,6 +4061,8 @@ void ear_clip(const std::vector<Vec2f> &pts, std::vector<int> poly, const std::f
             found = true;
         }
         if (!found) {
+
+
             size_t pick = 0;
             float  best = std::numeric_limits<float>::max();
             bool   convex_found = false;
@@ -3325,6 +4079,7 @@ void ear_clip(const std::vector<Vec2f> &pts, std::vector<int> poly, const std::f
     if (poly.size() == 3)
         emit(poly[0], poly[1], poly[2]);
 }
+
 
 void simplify_polyline(const std::vector<Vec2f> &in, float tol, std::vector<Vec2f> &out)
 {
@@ -3361,6 +4116,7 @@ void simplify_polyline(const std::vector<Vec2f> &in, float tol, std::vector<Vec2
 
 namespace {
 
+
 struct Crossing
 {
     Vec3f p, n;
@@ -3368,6 +4124,7 @@ struct Crossing
     int   a = -1, b = -1;
     float sin_min = 1.f;
     float dt_max  = std::numeric_limits<float>::max();
+
     bool  used = false;
     bool  no_seam = false;
     bool  sharp = false;
@@ -3385,6 +4142,10 @@ inline uint64_t step_edge_key(int a, int b)
     if (a > b) std::swap(a, b);
     return (uint64_t(uint32_t(a)) << 32) | uint32_t(b);
 }
+
+
+
+
 
 struct StepScan
 {
@@ -3414,6 +4175,9 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
     if (!sampler || region.size() != nt || step_width_mm <= 0.f)
         return scan;
 
+
+
+
     std::vector<Vec3f>       &pos    = scan.pos;
     std::vector<Vec3f>       &vnormal = scan.vnormal;
     pos     = mesh.vertices;
@@ -3437,6 +4201,11 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
     if (!(range > 1e-6f))
         return scan;
     const float iso = scan.iso = 0.5f * (hmin + hmax);
+
+
+
+
+
     {
         size_t near_level = 0, total = 0;
         for (size_t v = 0; v < nv; ++v)
@@ -3444,6 +4213,11 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
         if (total == 0 || double(near_level) < 0.6 * double(total))
             return scan;
     }
+
+
+
+
+
 
     if (nudge) {
         std::vector<uint8_t> creased(nv, 0);
@@ -3480,6 +4254,9 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
                 if (gl < 0.25f * range)
                     continue;
                 g /= gl;
+
+
+
                 const Vec3f dir   = (vh[v] > iso) ? g : Vec3f(-g);
                 Vec3f       best  = pos[v];
                 float       bh    = vh[v];
@@ -3504,6 +4281,9 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
     const auto sample_between = [&scan](int a, int b, float t) { return scan.sample_between(a, b, t); };
     const auto side_of        = [&scan](float h) { return scan.side_of(h); };
 
+
+
+
     auto &edges = scan.edges;
     edges.reserve(nt);
 
@@ -3525,8 +4305,11 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
                 }
                 Crossing c;
                 c.a = a; c.b = b;
+
                 c.t = std::clamp(0.5f * (lo_t + hi_t), 1e-3f, 1.f - 1e-3f);
                 std::tie(c.p, c.n) = sample_between(a, b, c.t);
+
+
                 const Vec3f ax  = (std::abs(c.n.x()) < 0.9f) ? Vec3f::UnitX() : Vec3f::UnitY();
                 const Vec3f t1v = c.n.cross(ax).normalized(), t2v = c.n.cross(t1v).normalized();
                 const float d   = 0.5f * step_width_mm;
@@ -3534,6 +4317,10 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
                 const float gy  = sampler(c.p + t2v * d, c.n) - sampler(c.p - t2v * d, c.n);
                 const float gl  = std::sqrt(gx * gx + gy * gy);
                 c.sharp = gl >= 0.5f * range;
+
+
+
+
                 {
                     const float thick_max = 4.f * step_width_mm;
                     c.thick = thick_max;
@@ -3557,6 +4344,9 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
             }
             t0 = ti; h0 = hi_;
         }
+
+
+
         const float thinnest = std::max(min_feature_mm, seam_gap_mm);
         for (size_t i = 0; i + 1 < edge.xs.size();) {
             if ((edge.xs[i + 1].t - edge.xs[i].t) * len < thinnest)
@@ -3564,10 +4354,14 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
             else
                 ++i;
         }
+
+
+
         const bool odd_expected = side_of(vh[size_t(a)]) != side_of(vh[size_t(b)]);
         if ((edge.xs.size() % 2 == 1) != odd_expected)
             edge.xs.clear();
     };
+
 
     std::vector<uint64_t> edge_keys;
     for (size_t t = 0; t < nt; ++t) {
@@ -3590,8 +4384,15 @@ StepScan scan_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t>
         for (const Crossing &c : found[i].xs) { ++crossings; sharp += c.sharp; thick_sum += c.thick; }
         edges.emplace(edge_keys[i], std::move(found[i]));
     }
+
+
     if (crossings == 0 || double(sharp) < 0.8 * double(crossings))
         return scan;
+
+
+
+
+
     if (thick_sum < 2.25 * double(step_width_mm) * double(crossings))
         return scan;
 
@@ -3606,7 +4407,7 @@ bool texture_has_steps_to_cut(const indexed_triangle_set &mesh, const std::vecto
                               const HeightFieldSampler &sampler, float step_width_mm, float seam_gap_mm,
                               float min_feature_mm)
 {
-    return scan_steps(mesh, region, sampler, step_width_mm, seam_gap_mm, min_feature_mm,  false).ok;
+    return scan_steps(mesh, region, sampler, step_width_mm, seam_gap_mm, min_feature_mm,   false).ok;
 }
 
 indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const std::vector<uint8_t> &region,
@@ -3627,7 +4428,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
     if (!sampler || region.size() != nt || step_width_mm <= 0.f)
         return passthrough();
 
-    StepScan scan = scan_steps(mesh, region, sampler, step_width_mm, seam_gap_mm, min_feature_mm,  true);
+    StepScan scan = scan_steps(mesh, region, sampler, step_width_mm, seam_gap_mm, min_feature_mm,   true);
     if (!scan.ok)
         return passthrough();
     std::vector<Vec3f>       &pos     = scan.pos;
@@ -3639,6 +4440,14 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
     const auto side_of        = [&scan](float h) { return scan.side_of(h); };
     const auto edge_key       = [](int a, int b) { return step_edge_key(a, b); };
     (void) vnormal; (void) range; (void) iso;
+
+
+
+
+
+
+
+
 
     struct Chain
     {
@@ -3695,6 +4504,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             return;
         if (n % 2 != 0 || L.N.squaredNorm() < 0.5f)
             return;
+
         const Vec3f &A = pos[size_t(tri[0])], &B = pos[size_t(tri[1])], &C = pos[size_t(tri[2])];
         const Vec3f  U = (B - A).normalized(), V = L.N.cross(U);
         const auto   to2 = [&](const Vec3f &p) { return Vec2f((p - A).dot(U), (p - A).dot(V)); };
@@ -3704,10 +4514,18 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
         if (std::abs(det) < 1e-12f)
             return;
 
+
+
+
+
+
+
         const float longest = std::sqrt(std::max({ (b2 - a2).squaredNorm(), (c2 - b2).squaredNorm(), (a2 - c2).squaredNorm() }));
         const int   N       = std::clamp(int(std::ceil(longest / cell)), 4, 96);
         const float h       = longest / float(N);
         const int   W       = N + 1;
+
+
         const auto at2 = [&](int j, int k) { return Vec2f(a2 + (b2 - a2) * (float(j) / float(N)) + (c2 - a2) * (float(k) / float(N))); };
         std::vector<float>  f(size_t(W) * size_t(W), 0.f);
         std::vector<int8_t> sign(size_t(W) * size_t(W), 0);
@@ -3722,15 +4540,19 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 f[id(j, k)]    = v;
                 sign[id(j, k)] = v > 0.f ? 1 : -1;
             }
+
+
         const auto edge_point = [&](int e, int m) -> std::pair<int, int> {
             return e == 0 ? std::make_pair(m, 0) : e == 1 ? std::make_pair(N - m, m) : std::make_pair(0, N - m);
         };
+
         std::vector<std::vector<std::pair<float, int>>> edge_x(3);
         {
             int e = -1, k = 0;
             for (int idv : L.ids) {
                 if (idv >= 0) { ++e; continue; }
                 const Crossing &c = *L.xs[size_t(k)];
+
                 const float u = (tri[e] < tri[(e + 1) % 3]) ? c.t : 1.f - c.t;
                 edge_x[size_t(e)].push_back({ u, k });
                 ++k;
@@ -3744,12 +4566,18 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 while (next < edge_x[size_t(e)].size() && edge_x[size_t(e)][next].first < u) { s = -s; ++next; }
                 const auto [j, k] = edge_point(e, m);
                 sign[id(j, k)]    = s;
+
+
+
                 if ((f[id(j, k)] > 0.f) != (s > 0))
                     f[id(j, k)] = float(s) * std::max(std::abs(f[id(j, k)]), 0.05f * range);
             }
             if ((s > 0) != side_of(vh[size_t(tri[(e + 1) % 3])]))
                 return;
         }
+
+
+
 
         std::vector<Vec2f>              pts;
         std::vector<int>                pt_x;
@@ -3761,6 +4589,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             auto           it  = point_of.find(key);
             if (it != point_of.end())
                 return it->second;
+
             const int j0 = dir == 2 ? j + 1 : j, k0 = k;
             const int jb = dir == 0 ? j + 1 : j, kb = dir == 0 ? k : k + 1;
             int   xk = -1;
@@ -3794,6 +4623,8 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             for (int *slot : { &link[size_t(q)][0], &link[size_t(q)][1] })
                 if (*slot < 0) { *slot = p; break; }
         };
+
+
         for (int k = 0; k < N; ++k)
             for (int j = 0; j + k < N; ++j) {
                 {
@@ -3819,6 +4650,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             }
         if (bad)
             return;
+
+
+
 
         std::vector<int>     matched(static_cast<size_t>(n), -1);
         std::vector<Chain>   chains;
@@ -3850,6 +4684,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             chains.push_back(std::move(ch));
             raws.push_back(std::move(full));
         }
+
+
+
         {
             const auto seg_dist = [](const Vec2f &a, const Vec2f &b, const Vec2f &c, const Vec2f &d) {
                 const auto pt_seg = [](const Vec2f &q, const Vec2f &u, const Vec2f &v) {
@@ -3876,6 +4713,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             const float               gap  = std::min(seam_gap_mm, 0.5f * ch.clearance);
             std::vector<Vec2f>        simple;
             simplify_polyline(full, tol, simple);
+
+
+
             {
                 std::vector<Vec2f> spaced;
                 spaced.push_back(simple.front());
@@ -3889,6 +4729,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             const bool   adjacent = (L.xpos[size_t(ch.j)] - L.xpos[size_t(ch.i)] + m_loop) % m_loop == 1 ||
                                     (L.xpos[size_t(ch.i)] - L.xpos[size_t(ch.j)] + m_loop) % m_loop == 1;
             if (simple.size() == 2 && full.size() > 2 && adjacent) {
+
+
+
                 const Vec2f d  = full.back() - full.front();
                 const float dl = std::max(d.norm(), 1e-9f);
                 size_t      bi = full.size() / 2;
@@ -3900,6 +4743,10 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 }
                 simple.insert(simple.begin() + 1, full[bi]);
             }
+
+
+
+
             for (bool again = true; again;) {
                 again = false;
                 for (size_t m = 1; m + 1 < simple.size(); ++m) {
@@ -3908,6 +4755,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                     if (l1 < 1e-9f || l2 < 1e-9f) { simple.erase(simple.begin() + long(m)); again = true; break; }
                     if (d1.dot(d2) / (l1 * l2) > -0.5f)
                         continue;
+
                     const Vec2f &tip = simple[m];
                     const auto   dist_to = [&](const Vec2f &q, const Vec2f &a, const Vec2f &b) {
                         const Vec2f ab = b - a;
@@ -3925,6 +4773,10 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             for (size_t m = 1; m + 1 < simple.size(); ++m)
                 ch.pts.push_back(to3(simple[m]));
             if (ch.pts.empty() && adjacent) {
+
+
+
+
                 L.no_seam.push_back(ch.i);
                 L.no_seam.push_back(ch.j);
             }
@@ -3953,6 +4805,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 loops[t].xs[size_t(k)]->no_seam = true;
     }
 
+
+
+
     for (size_t t = 0; t < nt; ++t) {
         Loop &L = loops[t];
         if (!L.ok)
@@ -3968,15 +4823,28 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 if (dl < 1e-12f) continue;
                 const Vec3f ed = (pos[size_t(c->b)] - pos[size_t(c->a)]).normalized();
                 c->sin_min     = std::min(c->sin_min, ed.cross(d / dl).norm());
+
+
+
                 if (ch.pts.empty())
                     c->dt_max = std::min(c->dt_max, 0.45f * dl / std::max(std::abs(ed.dot(d / dl)), 1e-3f));
             }
         }
     }
 
+
+
+
+
+
+
+
     indexed_triangle_set out;
     out.vertices = pos;
     const float half_gap = 0.5f * seam_gap_mm;
+
+
+
     for (size_t t = 0; t < nt; ++t) {
         Loop &L = loops[t];
         if (!L.ok)
@@ -3992,6 +4860,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             const float wc = ((b2.x() - a2.x()) * (q.y() - a2.y()) - (q.x() - a2.x()) * (b2.y() - a2.y())) / det;
             return Vec3f(1.f - wb - wc, wb, wc);
         };
+
         const auto inside_fraction = [&](const Vec3f &p, const Vec3f &off) {
             const Vec3f w0 = bary2(p), w1 = bary2(p + off);
             float       lambda = 1.f;
@@ -4004,12 +4873,19 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
         for (auto &ch : L.chains) {
             const Crossing &p = *L.xs[size_t(ch.i)], &q = *L.xs[size_t(ch.j)];
             const bool doubled = p.sharp && p.used && !p.no_seam && q.sharp && q.used && !q.no_seam;
+
+
+
             const bool  arc_high  = (ch.i % 2 == 0) ? !s0 : s0;
             const int   after_pos = L.xpos[size_t(ch.i)] + 1;
             const int   entry     = L.ids[size_t(after_pos) % L.ids.size()];
             const Vec3f ref       = entry >= 0 ? pos[size_t(entry)] : L.xs[size_t(-entry - 1)]->p;
             const size_t m = ch.pts.size();
             ch.lo.resize(m); ch.hi.resize(m);
+
+
+
+
             Vec3f d_first = q.p - p.p;
             for (size_t k = 0; k < m; ++k)
                 if ((ch.pts[k] - p.p).norm() > 0.25f * seam_gap_mm) { d_first = ch.pts[k] - p.p; break; }
@@ -4031,16 +4907,21 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 if (bl < 1e-6f) off = n1;
                 else {
                     bis /= bl;
+
                     const float cos_half = std::max(bis.dot(n1), 0.5f);
                     off = bis / cos_half;
                 }
                 if (!left_high) off = -off;
+
+
                 const float ol    = off.norm();
                 const float reach = std::min({ half_gap, 0.45f * ch.clearance,
                                                0.45f * (ch.pts[k] - prev).norm() / std::max(std::abs(off.dot(d1)) / ol, 1e-3f),
                                                0.45f * (next - ch.pts[k]).norm() / std::max(std::abs(off.dot(d2)) / ol, 1e-3f) });
                 const Vec3f off_lo = -off * (reach * inside_fraction(ch.pts[k], -off * reach));
                 const Vec3f off_hi = off * (reach * inside_fraction(ch.pts[k], off * reach));
+
+
                 const auto place = [&](const Vec3f &o, bool high) -> int {
                     for (int step = 1; step <= 4; ++step) {
                         const Vec3f q = ch.pts[k] + o * (0.5f * float(step));
@@ -4062,6 +4943,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 }
                 ch.lo[k] = il; ch.hi[k] = ih;
             }
+
+
+
             if (m > 0)
                 for (auto [c, k, other] : { std::make_tuple(&p, size_t(0), q.p), std::make_tuple(&q, m - 1, p.p) }) {
                     (void) other;
@@ -4088,6 +4972,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 continue;
             }
             const float len = (pos[size_t(c.b)] - pos[size_t(c.a)]).norm();
+
+
+
             const float t_prev = (i == 0) ? 0.f : edge.xs[i - 1].t;
             const float t_next = (i + 1 == edge.xs.size()) ? 1.f : edge.xs[i + 1].t;
             float       dt     = half_gap / std::max(c.sin_min, 0.15f) / std::max(len, 1e-6f);
@@ -4097,7 +4984,17 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 out.vertices.push_back(c.p);
                 continue;
             }
+
+
             const bool before_high = side_of(vh[size_t(c.a)]) != (i % 2 == 1);
+
+
+
+
+
+
+
+
             const float lo_share = (i == 0) ? 0.9f : 0.49f, hi_share = (i + 1 == edge.xs.size()) ? 0.9f : 0.49f;
             const float t_lo_lim = c.t - std::min(lo_share * (c.t - t_prev), c.dt_max / std::max(len, 1e-6f));
             const float t_hi_lim = c.t + std::min(hi_share * (t_next - c.t), c.dt_max / std::max(len, 1e-6f));
@@ -4126,11 +5023,18 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
             c.hi = before_high ? c.near_a : c.near_b;
         }
     }
+
+
     out.indices.reserve(nt * 2);
     std::vector<int> source;
     source.reserve(nt * 2);
     const auto emit = [&](int a, int b, int c, int src) { out.indices.emplace_back(a, b, c); source.push_back(src); };
     const auto copy_for = [&](const Crossing &c, bool high) { return c.single >= 0 ? c.single : (high ? c.hi : c.lo); };
+
+
+
+
+
     const std::function<void(std::array<std::vector<int>, 3>, int)> split_tri =
         [&](std::array<std::vector<int>, 3> side, int src) {
             for (int e = 0; e < 3; ++e)
@@ -4144,6 +5048,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 }
             emit(side[0][0], side[1][0], side[2][0], src);
         };
+
     const auto emit_wall = [&](const Crossing &p, const Chain &ch, const Crossing &q, const Vec3f &N, int src) {
         std::vector<int> lo, hi;
         lo.push_back(copy_for(p, false)); hi.push_back(copy_for(p, true));
@@ -4169,6 +5074,11 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
         const bool   s0 = side_of(vh[size_t(tri[0])]);
 
         if (L.ok) {
+
+
+
+
+
             const Vec3f &A = pos[size_t(tri[0])], &B = pos[size_t(tri[1])];
             const Vec3f  U = (B - A).normalized(), V = L.N.cross(U);
             std::vector<Vec2f> pts2;
@@ -4178,6 +5088,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 pts2.emplace_back((p - A).dot(U), (p - A).dot(V));
                 ids2.push_back(id);
             };
+
             const auto push_chain = [&](int c, int from, bool S) {
                 const Chain &ch = L.chains[size_t(c)];
                 const auto  &cp = S ? ch.hi : ch.lo;
@@ -4202,6 +5113,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                     push(copy_for(*L.xs[size_t(c)], S));
                     if (c == L.partner[size_t(k)])
                         break;
+
                     const int pc = L.partner[size_t(c)];
                     push_chain(L.chain_of[size_t(c)], c, S);
                     consumed[size_t(pc)][S] = true;
@@ -4210,6 +5122,7 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                         break;
                     i = size_t(L.xpos[size_t(pc)] + 1) % m;
                 }
+
                 push_chain(L.chain_of[size_t(k)], L.partner[size_t(k)], S);
                 std::vector<int> poly(ids2.size());
                 std::iota(poly.begin(), poly.end(), 0);
@@ -4219,6 +5132,8 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
                 emit_wall(*L.xs[size_t(ch.i)], ch, *L.xs[size_t(ch.j)], L.N, int(t));
             continue;
         }
+
+
         std::array<std::vector<int>, 3> side;
         int e = -1;
         for (size_t i = 0; i < m; ++i) {
@@ -4231,6 +5146,9 @@ indexed_triangle_set cut_mesh_at_steps(const indexed_triangle_set &mesh, const s
         }
         split_tri(std::move(side), int(t));
     }
+
+
+
     {
         size_t inverted = 0;
         for (size_t i = 0; i < out.indices.size(); ++i) {

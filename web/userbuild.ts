@@ -1,3 +1,9 @@
+
+
+
+
+
+
 import { execFile, spawn } from 'node:child_process';
 import { readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -5,6 +11,7 @@ import { promisify } from 'node:util';
 import { brotliCompress, constants } from 'node:zlib';
 
 const PRECOMPRESSED = /\.(js|css|json|svg|wasm|txt|stl)$/;
+
 const KEPT_BUILDS = 10;
 
 const [root, branch] = process.argv.slice(2);
@@ -22,6 +29,8 @@ function run(command: string, args: string[], cwd: string) {
     child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`${path.basename(args[0])} exited ${code}\n${output.slice(-4000)}`)));
   });
 }
+
+
 
 async function precompress(dir: string) {
   const compress = promisify(brotliCompress);
@@ -72,6 +81,7 @@ async function prune(current: string) {
   for (const dir of dirs.sort((a, b) => b.mtime - a.mtime).slice(KEPT_BUILDS))
     await rm(path.join(builds, dir.name), { recursive: true, force: true });
 }
+
 
 let attempted = '';
 for (;;) {

@@ -27,6 +27,9 @@
 
 namespace Slic3r::Nonplanar {
 
+
+
+
 void StackLayerField::reset(const Vec2d &origin, double pitch, int nx, int ny, double ds, int nk, double identity_below)
 {
     m_identity_below = identity_below;
@@ -86,6 +89,7 @@ double StackLayerField::phi(const Vec3d &p) const
     const double ztop = level_z(m_nk - 1, u, v);
     if (p.z() >= ztop)
         return this->top_level() + (p.z() - ztop);
+
     int lo = 0, hi = m_nk - 1;
     while (hi - lo > 1) {
         const int mid = (lo + hi) / 2;
@@ -98,6 +102,7 @@ double StackLayerField::phi(const Vec3d &p) const
 
 Vec3d StackLayerField::gradient(const Vec3d &p) const
 {
+
     const double s = this->phi(p);
     const double e = 0.25 * m_pitch, es = 0.25 * m_ds;
     const Vec2d  xy(p.x(), p.y());
@@ -107,6 +112,9 @@ Vec3d StackLayerField::gradient(const Vec3d &p) const
     const double inv = 1. / std::max(zs, 1e-6);
     return Vec3d(-zx * inv, -zy * inv, inv);
 }
+
+
+
 
 namespace {
 
@@ -132,6 +140,7 @@ struct Columns
                 return true;
         return false;
     }
+
     float top_below(int ix, int iy, double z) const
     {
         float best = std::numeric_limits<float>::quiet_NaN();
@@ -189,6 +198,7 @@ Columns rasterize(const indexed_triangle_set &its, const Vec2d &origin, double p
             Interval cur {};
             for (size_t j = 0; j < h.size(); ++j) {
                 const bool down = h[j].n.z() < 0.f;
+
                 if (j > 0 && (h[j - 1].n.z() < 0.f) == down && h[j].z - h[j - 1].z < 1e-4f)
                     continue;
                 if (down) {
@@ -207,6 +217,9 @@ Columns rasterize(const indexed_triangle_set &its, const Vec2d &origin, double p
 double slope_of(const Vec3f &n) { return std::acos(std::clamp(double(std::abs(n.z())), 0., 1.)); }
 
 enum class Ceiling { Island, Bridge, Cantilever };
+
+
+
 
 Ceiling classify_ceiling(const Columns &cols, int ix, int iy, double lo, Vec2d *away)
 {
@@ -240,11 +253,19 @@ Ceiling classify_ceiling(const Columns &cols, int ix, int iy, double lo, Vec2d *
 
 namespace {
 
+
+
 double deformed_overhang(const Vec3d &n, const Vec3d &g)
 {
     const Vec3d nd(n.x() * g.z() - n.z() * g.x(), n.y() * g.z() - n.z() * g.y(), n.z());
     return std::asin(std::clamp(-nd.z() / nd.norm(), -1., 1.)) * 180. / PI;
 }
+
+
+
+
+
+
 
 SupportFeatures support_features(const indexed_triangle_set &mesh, const LayerField &field, const Columns &cols, double support_angle,
                                  double z_base)
@@ -274,6 +295,7 @@ SupportFeatures support_features(const indexed_triangle_set &mesh, const LayerFi
             flagged[i] = 1;
         }
     });
+
     std::map<int, std::vector<float>> bands;
     const size_t cells = size_t(cols.nx) * cols.ny;
     for (size_t i = 0; i < mesh.indices.size(); ++i) {
@@ -350,6 +372,7 @@ SupportFeatures support_features(const indexed_triangle_set &mesh, const LayerFi
     return out;
 }
 
+
 double top_rms_angle(const LayerField &field, const Columns &cols)
 {
     double sq = 0., area = 0.;
@@ -388,6 +411,9 @@ double estimate_support(const indexed_triangle_set &mesh, const LayerField &fiel
 
 double layer_field_slope_cap(const LayerFieldParams &params)
 {
+
+
+
     double cap = params.max_slope > 0. ? params.max_slope : 45. * PI / 180.;
     if (params.head && !params.head->empty()) {
         const double reach = std::max(params.head->tip_allowance.radius, 2. * params.head->tip_flat_radius);
@@ -397,9 +423,13 @@ double layer_field_slope_cap(const LayerFieldParams &params)
     return cap;
 }
 
+
+
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
+
 
 struct Term
 {
@@ -417,6 +447,7 @@ struct Term
     }
 };
 
+
 void add_bilinear(Term &t, int nx, int ny, const Vec2d &origin, double pitch, int k, const Vec2d &xy, float coef)
 {
     const double u = (xy.x() - origin.x()) / pitch, v = (xy.y() - origin.y()) / pitch;
@@ -431,6 +462,7 @@ void add_bilinear(Term &t, int nx, int ny, const Vec2d &origin, double pitch, in
         t.c[t.n++] = coef * w[i];
     }
 }
+
 
 double bilinear_level(const std::vector<float> &f, int nx, int ny, const Vec2d &origin, double pitch, int k, const Vec2d &xy)
 {
@@ -448,7 +480,11 @@ struct Problem
     float w_xy, w_s, w_reg;
     std::vector<uint8_t> fixed;
     std::vector<float>   rho, anchor;
+
+
     std::vector<float>   ref, inv_az;
+
+
     std::vector<float>   xy_w;
     float spacing(size_t i) const { return inv_az.empty() ? 1.f : inv_az[i]; }
     float wxy(size_t i, size_t j) const { return xy_w.empty() ? w_xy : w_xy * std::min(xy_w[i], xy_w[j]); }
@@ -456,6 +492,7 @@ struct Problem
 
     size_t n() const { return size_t(nx) * ny * nk; }
     size_t id(int ix, int iy, int k) const { return (size_t(k) * ny + iy) * nx + ix; }
+
 
     void apply(const std::vector<float> &x, std::vector<float> &y) const
     {
@@ -491,8 +528,10 @@ struct Problem
             for (size_t j = 0; j < layer; ++j) {
                 const size_t i = size_t(k) * layer + j;
                 float acc = w_reg * float(k * ds) + rho[i] * anchor[i];
+
                 if (k > 0)      acc += w_s * float(ds) * spacing(i);
                 if (k < nk - 1) acc -= w_s * float(ds) * spacing(i + layer);
+
                 if (!ref.empty()) {
                     const int ix = int(j % nx), iy = int(j / nx);
                     if (ix > 0)      acc += wxy(i, i - 1) * (ref[i] - ref[i - 1]);
@@ -527,6 +566,7 @@ struct Problem
         }
     }
 };
+
 
 int solve_cg(const Problem &P, std::vector<float> &x, int max_iter, double tol)
 {
@@ -577,7 +617,19 @@ int solve_cg(const Problem &P, std::vector<float> &x, int max_iter, double tol)
 }
 
 struct TopSample { int ix, iy; float T; float w; float slope; float s_star; };
+
+
+
+
+
+
+
+
 struct DownSample { Vec2d c; float zb; Vec2d u; float limit; float w; float az = 1.f; };
+
+
+
+
 
 void project(std::vector<float> &z, const Problem &P, const Columns &cols, const LayerFieldParams &params,
              double cap, int k_fixed)
@@ -593,13 +645,18 @@ void project(std::vector<float> &z, const Problem &P, const Columns &cols, const
     for (int k = k_fixed + 1; k < P.nk; ++k) {
         float *zk = z.data() + size_t(k) * layer;
         const float *zp = zk - layer;
+
         const float *ref = P.ref.empty() ? nullptr : P.ref.data() + size_t(k) * layer;
         for (size_t j = 0; j < layer; ++j) {
             const float sp = P.spacing(size_t(k) * layer + j);
+
+
             L[j]  = zp[j] + (P.ref.empty() ? d_min * sp : 0.f);
             U[j]  = zp[j] + d_max * sp;
             zk[j] = std::clamp(zk[j], L[j], U[j]);
         }
+
+
         for (size_t j = 0; j < layer; ++j)
             hf.data()[j] = ref && zk[j] - zp[j] < 0.25f * d_min ? HeightField::NoData : zk[j] - (ref ? ref[j] : 0.f);
         const HeightField lo = slope_cap_minorant(hf, cap);
@@ -616,6 +673,7 @@ void project(std::vector<float> &z, const Problem &P, const Columns &cols, const
     }
 }
 
+
 void box_blur(std::vector<float> &a, int nx, int ny, int r)
 {
     for (int pass = 0; pass < 2; ++pass) {
@@ -631,6 +689,7 @@ void box_blur(std::vector<float> &a, int nx, int ny, int r)
     }
 }
 
+
 void zero_around(std::vector<float> &a, const std::vector<uint8_t> &mark, int nx, int ny, int r)
 {
     for (int iy = 0; iy < ny; ++iy)
@@ -642,17 +701,22 @@ void zero_around(std::vector<float> &a, const std::vector<uint8_t> &mark, int nx
 }
 
 }
+
+
+
 static StackLayerField solve_single(const indexed_triangle_set &mesh, const BoundingBoxf3 &bb, const LayerFieldParams &params,
                                     LayerFieldReport *report, StackLayerField *blended = nullptr, StackLayerField *frozen = nullptr)
 {
     const auto t0 = Clock::now();
     std::ostringstream log;
     const double extent = std::max(bb.size().x(), bb.size().y());
+
     const double p      = params.pitch > 0. ? params.pitch :
                           params.tool_axis   ? std::clamp(extent / 96., 0.5, 3.) : std::clamp(extent / 64., 1., 3.);
     const double ds     = params.level_spacing;
     const double h      = params.layer_height;
     const double cap    = layer_field_slope_cap(params);
+
     const double cap_grid = cap - PI / 180.;
     const double margin = 2. * p;
     const Vec2d  origin(bb.min.x() - margin, bb.min.y() - margin);
@@ -661,11 +725,15 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
     const Columns cols = rasterize(mesh, origin, p, nx, ny);
     const double s_flat = params.flat_base_height;
 
+
     std::vector<TopSample>  tops;
     std::vector<DownSample> downs;
     std::vector<std::vector<int>> top_of(size_t(nx) * ny);
+
     const double cot_oh = 1. / std::tan((params.overhang_angle - 3.) * PI / 180.);
     const double r_max  = params.max_layer_height / params.layer_height;
+
+
     const bool rotary = bool(params.tool_axis);
     auto axis_at = [&](const Vec3d &pt) -> Vec3d {
         if (!rotary)
@@ -689,10 +757,12 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
             for (size_t j = 0; j < c.size(); ++j) {
                 const Interval &it = c[j];
                 const Vec2d  xy    = cols.node(ix, iy);
+
                 const double slope = rotary ? std::acos(std::clamp(axis_at(Vec3d(xy.x(), xy.y(), it.hi)).dot(it.n_hi.cast<double>()), -1., 1.)) :
                                               slope_of(it.n_hi);
                 if (it.hi > s_flat && it.n_hi.z() > 0.34f) {
                     const double vis = j + 1 == c.size() ? 1. : params.hidden_top_weight;
+
                     const double wcap = slope <= cap ? 1. : 0.2;
                     top_of[size_t(iy) * nx + ix].push_back(int(tops.size()));
                     tops.push_back({ ix, iy, it.hi, float(vis * wcap), float(slope), it.hi });
@@ -700,6 +770,8 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
                     top_of[size_t(iy) * nx + ix].push_back(-1);
             }
         }
+
+
     for (const stl_triangle_vertex_indices &f : mesh.indices) {
         const Vec3d a = mesh.vertices[f[0]].cast<double>(), b = mesh.vertices[f[1]].cast<double>(), c = mesh.vertices[f[2]].cast<double>();
         Vec3d n = (b - a).cross(c - a);
@@ -708,6 +780,8 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
             continue;
         n.normalize();
         const Vec3d ctr = (a + b + c) / 3.;
+
+
         const Vec3d  ax  = axis_at(ctr);
         const double na  = n.dot(ax);
         if (na >= -0.05 || ctr.z() <= s_flat + 0.05)
@@ -715,6 +789,7 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         const Vec3d  n_perp = n - na * ax;
         const double h      = rotary ? n_perp.norm() : std::hypot(n.x(), n.y());
         const double limit  = h / -na;
+
         if (limit >= std::tan(cap) + r_max * cot_oh)
             continue;
         const float w = float(std::clamp(area / (p * p), 0.25, 4.));
@@ -732,6 +807,9 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         }
         downs.push_back({ Vec2d(ctr.x(), ctr.y()), float(ctr.z()), u, float(limit), w, float(ax.z()) });
     }
+
+
+
 
     {
         const double a_lo = h / (0.95 * params.max_layer_height), a_hi = h / (1.05 * params.min_layer_height);
@@ -753,9 +831,13 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
                     }
             }
             const double base = t.T - s_flat;
+
+
             const double az = rotary ? axis_at(Vec3d(cols.node(t.ix, t.iy).x(), cols.node(t.ix, t.iy).y(), t.T)).z() : 1.;
             bounds[i] = { float(s_flat + base * a_lo * az), float(s_flat + base * a_hi) };
         }
+
+
         const float lambda = 2e-4f, omega = 1.8f;
         for (int it = 0; it < 20000; ++it) {
             float change = 0.f;
@@ -772,6 +854,7 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         }
     }
 
+
     double s_max = bb.max.z();
     for (const TopSample &t : tops)
         s_max = std::max(s_max, double(t.s_star));
@@ -783,15 +866,20 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
     Problem P;
     P.nx = nx; P.ny = ny; P.nk = nk; P.pitch = p; P.ds = ds;
     P.w_xy  = float(params.w_smooth_xy * ds);
+
+
     P.w_s   = float(params.w_smooth_s * p * p / ds * (params.tool_axis ? 0.02 : 1.));
     const float stencil = 4.f * P.w_xy + 2.f * P.w_s;
+
     P.w_reg = (params.tool_axis ? 1e-6f : 1e-3f) * stencil;
     P.fixed.assign(P.n(), 0);
     P.rho.assign(P.n(), 0.f);
     P.anchor.assign(P.n(), 0.f);
+
     const int k_fixed = std::max(0, int(std::ceil(s_flat / ds - 1e-9)));
     for (int k = 0; k <= k_fixed && k < nk; ++k)
         std::fill(P.fixed.begin() + P.id(0, 0, k), P.fixed.begin() + P.id(0, 0, k + 1), 1);
+
 
     std::vector<float> clear_below;
     if (params.conform_clear_radius > 0.) {
@@ -828,6 +916,10 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
 
     const auto t_prep = Clock::now();
     int cg_total = 0;
+
+
+
+
     auto update_reference = [&](int iterations) {
         const size_t layer = size_t(nx) * ny;
         if (P.ref.empty()) {
@@ -844,6 +936,7 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
                     const Vec3d  a  = axis_at(Vec3d(xy.x(), xy.y(), z[size_t(k) * layer + j]));
                     gx[j] = float(-a.x() / a.z());
                     gy[j] = float(-a.y() / a.z());
+
                     const double zk = z[size_t(k) * layer + j];
                     wn[j] = cols.overlaps(ix, iy, zk - ds, zk + ds) ? 1.f : 0.01f;
                     P.inv_az[size_t(k) * layer + j] = float(1. / a.z());
@@ -868,6 +961,8 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         }
     };
     if (rotary) {
+
+
         update_reference(6 * std::max(nx, ny));
         const size_t layer = size_t(nx) * ny;
         for (int k = k_fixed + 1; k < nk; ++k) {
@@ -893,13 +988,16 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
             update_collapsed();
         }
         P.terms = conform;
+
         int active = 0;
         const float w_oh = float(params.w_overhang) * stencil;
         for (const DownSample &d : downs) {
             const double s = field.phi(Vec3d(d.c.x(), d.c.y(), d.zb + 0.05));
             const int    k = std::clamp(int(std::lround(s / ds)), k_fixed, nk - 2);
+
             const float  w = w_oh * d.w * float(1 << outer);
             if (d.u.squaredNorm() == 0.) {
+
                 for (const Vec2d e : { Vec2d(p, 0.), Vec2d(0., p) }) {
                     Term t {};
                     add_bilinear(t, nx, ny, origin, p, k, d.c + e, 1.f);
@@ -911,12 +1009,14 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
                 ++active;
                 continue;
             }
+
             Term t {};
             const float inv2d = float(0.5 / p), cs = float(cot_oh / ds) * d.az;
             add_bilinear(t, nx, ny, origin, p, k, d.c + p * d.u, inv2d);
             add_bilinear(t, nx, ny, origin, p, k, d.c - p * d.u, -inv2d);
             add_bilinear(t, nx, ny, origin, p, k + 1, d.c, cs);
             add_bilinear(t, nx, ny, origin, p, k, d.c, -cs);
+
             t.rhs = d.limit + (P.ref.empty() ? 0.f :
                                    inv2d * float(bilinear_level(P.ref, nx, ny, origin, p, k, d.c + p * d.u) -
                                                  bilinear_level(P.ref, nx, ny, origin, p, k, d.c - p * d.u)));
@@ -926,13 +1026,17 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
                 ++active;
             }
         }
+
         cg_total += solve_cg(P, z, rotary ? 600 : 300, rotary ? 1e-6 : 1e-4);
         std::vector<float> before = z;
         project(z, P, cols, params, cap_grid, k_fixed);
+
         const float rho = 0.05f * stencil * float(std::pow(3., outer));
         size_t bound = 0;
         for (size_t i = 0; i < z.size(); ++i) {
             if (std::abs(before[i] - z[i]) > 1e-3f) {
+
+
                 if (!rotary)
                     P.rho[i] = std::max(P.rho[i], rho);
                 ++bound;
@@ -944,7 +1048,14 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
             params.throw_if_canceled();
     }
 
+
+
+
+
+
+
     const size_t layer = size_t(nx) * ny;
+
     struct Facet { Vec3d n, ctr; int ix, iy, reach; bool bridge; };
     std::vector<Facet> fine, supported;
     for (const stl_triangle_vertex_indices &f : mesh.indices) {
@@ -959,7 +1070,11 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         const int ix = std::clamp(int(std::lround((ctr.x() - origin.x()) / p)), 0, nx - 1);
         const int iy = std::clamp(int(std::lround((ctr.y() - origin.y()) / p)), 0, ny - 1);
         const bool bridge = std::hypot(n.x(), n.y()) < 0.2 && classify_ceiling(cols, ix, iy, ctr.z(), nullptr) == Ceiling::Bridge;
+
         const int reach = int(std::ceil(std::max({ (a - ctr).head<2>().norm(), (b - ctr).head<2>().norm(), (c - ctr).head<2>().norm() }) / p));
+
+
+
         if (std::asin(std::min(1., -n.z())) * 180. / PI > params.support_angle - 10.)
             supported.push_back({ n, ctr, ix, iy, reach, bridge });
         else if (ctr.z() > s_flat + 0.05)
@@ -971,6 +1086,10 @@ static StackLayerField solve_single(const indexed_triangle_set &mesh, const Boun
         std::vector<float> alpha(layer, 1.f);
         std::vector<uint8_t> hard(layer, 0);
         if (freeze) {
+
+
+
+
             std::vector<uint8_t> still(layer, 0);
             for (const Facet &f : supported)
                 if (f.bridge || deformed_overhang(f.n, field.gradient(f.ctr + Vec3d(0., 0., 0.02))) > params.support_angle - 10.)
@@ -1052,6 +1171,8 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
     if (!bb.defined || bb.max.z() <= 0.)
         return StackLayerField::planar(BoundingBoxf3(Vec3d::Zero(), Vec3d::Ones()));
     if (params.tool_axis) {
+
+
         StackLayerField f = solve_single(mesh, bb, params, report);
         if (report) {
             report->solve_seconds = std::chrono::duration<double>(Clock::now() - t0).count();
@@ -1059,6 +1180,17 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
         }
         return f;
     }
+
+
+
+
+
+
+
+
+
+
+
     const std::pair<double, double> ladder[] = { { 1., 0. }, { 1., 4. }, { 0., 0. } };
     constexpr int n_solve = int(sizeof(ladder) / sizeof(ladder[0])), n = 3 * n_solve;
     std::vector<StackLayerField>  fields(n);
@@ -1087,6 +1219,7 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
         return fp.perimeter_height > 0. && f.perimeter_height <= 0.85 * fp.perimeter_height && f.area_height <= 0.85 * fp.area_height &&
                f.region_height <= 1.2 * fp.region_height;
     };
+
     auto halves = [&](const SupportFeatures &f) {
         return fp.perimeter_height > 0. && f.perimeter_height <= 0.5 * fp.perimeter_height && f.area_height <= 0.5 * fp.area_height &&
                f.region_height <= fp.region_height;
@@ -1101,6 +1234,8 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
     for (int i = 2; pick == n && i < n; i += 3)
         if (same_or_less(feat[i]))
             pick = i;
+
+
     if (pick != n && pick % 3 == 2 && top_rms_angle(fields[pick], cols) > top_rms_angle(planar, cols) - 2.)
         pick = n;
     std::vector<double> est(n + 1);
@@ -1123,12 +1258,16 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
     }
     BOOST_LOG_TRIVIAL(debug) << "layer field: " << log.str();
     if (pick == n) {
+
         StackLayerField f = fields[0];
         f.reset(f.origin(), f.pitch(), f.nx(), f.ny(), f.level_spacing(), f.levels(), f.identity_below());
         return f;
     }
     return std::move(fields[pick]);
 }
+
+
+
 
 LayerFieldMetrics evaluate_layer_field(const indexed_triangle_set &mesh, const LayerField &field,
                                        const LayerFieldParams &params, double q, int head_check_every)
@@ -1170,8 +1309,10 @@ LayerFieldMetrics evaluate_layer_field(const indexed_triangle_set &mesh, const L
                     const double area = q * q / -it.n_lo.z();
                     const Vec3d g_raw = field.gradient(Vec3d(xy.x(), xy.y(), it.lo + 0.02));
                     const Vec3d g = g_raw.normalized();
+
                     const Vec3d nd(it.n_lo.x() * g_raw.z() - it.n_lo.z() * g_raw.x(), it.n_lo.y() * g_raw.z() - it.n_lo.z() * g_raw.y(), it.n_lo.z());
                     double ang = std::asin(std::clamp(-nd.z() / nd.norm(), -1., 1.)) * 180. / PI;
+
                     if (std::hypot(it.n_lo.x(), it.n_lo.y()) < 0.2 && ang > params.overhang_angle &&
                         std::acos(std::clamp(g.z(), -1., 1.)) < 5. * PI / 180. &&
                         classify_ceiling(cols, ix, iy, it.lo, nullptr) == Ceiling::Bridge)
@@ -1254,6 +1395,7 @@ LayerFieldMetrics evaluate_layer_field(const indexed_triangle_set &mesh, const L
                 if (!any)
                     continue;
                 used[li] = 1;
+
                 const HeightField safe = min_safe_tip_height(prev, *params.head, cur, true);
                 double a = 0.;
                 for (size_t j = 0; j < cur.data().size(); ++j)

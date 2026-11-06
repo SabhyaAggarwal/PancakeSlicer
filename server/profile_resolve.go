@@ -17,10 +17,12 @@ type resolveRequest struct {
 	Project     map[string]json.RawMessage `json:"project,omitempty"`
 }
 type sliceConfig struct {
-	Config          map[string]json.RawMessage `json:"config"`
-	Sources         map[string]string          `json:"sources"`
+	Config  map[string]json.RawMessage `json:"config"`
+	Sources map[string]string          `json:"sources"`
+
 	engineOverrides map[string]bool
-	Engine          struct {
+
+	Engine struct {
 		Vendor    string   `json:"vendor"`
 		Printer   string   `json:"printer"`
 		Process   string   `json:"process"`
@@ -112,6 +114,7 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		return m
 	}
 	set(machine.Config, "catalog")
+
 	if v, ok := machine.Config["default_nozzle_volume_type"]; ok {
 		if _, set := machine.Config["nozzle_volume_type"]; !set {
 			out.Config["nozzle_volume_type"], out.Sources["nozzle_volume_type"] = v, "catalog"
@@ -177,6 +180,7 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		}
 	}
 	set(in.Project, "project")
+
 	switch firstConfigText(out.Config["nonplanar_mode"]) {
 	case "auto", "manual", "oneshot", "":
 		if out.Sources["nonplanar_mode"] == "catalog" || out.Sources["nonplanar_mode"] == "" {
@@ -202,6 +206,7 @@ func (s *Server) postResolve(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 422, "resolve_failed", err.Error(), "choose_profiles", 0)
 		return
 	}
+
 	dictionary := optionData
 	if s.cfg.Options != nil {
 		dictionary = s.cfg.Options.plain

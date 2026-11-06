@@ -32,13 +32,29 @@ class STHalfEdge : public HalfEdge<SkeletalTrapezoidationJoint, SkeletalTrapezoi
 public:
     STHalfEdge(SkeletalTrapezoidationEdge data);
 
+
+
+
+
+
     bool canGoUp(bool strict = false) const;
 
+
+
+
+
     bool isUpward() const;
+
+
+
+
+
+
 
     std::optional<coord_t> distToGoUp() const;
 
     STHalfEdge* getNextUnconnected();
+
 
     bool collapsed = false;
 };
@@ -50,12 +66,19 @@ class STHalfEdgeNode : public HalfEdgeNode<SkeletalTrapezoidationJoint, Skeletal
 public:
     STHalfEdgeNode(SkeletalTrapezoidationJoint data, Point p);
 
+
     bool quad_start_seen = false;
+
     bool collapsed = false;
 
     bool isMultiIntersection();
 
     bool isCentral() const;
+
+
+
+
+
 
     bool isLocalMaximum(bool strict = false) const;
 };
@@ -66,11 +89,29 @@ class SkeletalTrapezoidationGraph: public HalfEdgeGraph<SkeletalTrapezoidationJo
     using node_t = STHalfEdgeNode;
 public:
 
+
+
+
+
+
+
+
+
+
+
     void collapseSmallEdges(coord_t snap_dist = 5);
 
     void makeRib(edge_t*& prev_edge, const Point &start_source_point, const Point &end_source_point);
 
+
+
+
+
+
     edge_t* insertNode(edge_t* edge, Point mid, coord_t mide_node_bead_count);
+
+
+
 
     std::pair<edge_t*, edge_t*> insertRib(edge_t& edge, node_t* mid_node);
 
@@ -79,4 +120,4 @@ protected:
 };
 
 }
-#endif 
+#endif

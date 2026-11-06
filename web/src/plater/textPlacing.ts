@@ -1,3 +1,5 @@
+
+
 let placing = false;
 const listeners = new Set<() => void>();
 export const textPlacing = () => placing;

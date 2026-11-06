@@ -39,12 +39,14 @@ Lines Polygon::lines() const
 
 Polyline Polygon::split_at_vertex(const Point &point) const
 {
+
     for (const Point &pt : this->points)
         if (pt == point)
             return this->split_at_index(int(&pt - &this->points.front()));
     throw Slic3r::InvalidArgument("Point not found");
     return Polyline();
 }
+
 
 Polyline Polygon::split_at_index(int index) const
 {
@@ -117,17 +119,21 @@ void Polygon::douglas_peucker(double tolerance)
 
 Polygons Polygon::simplify(double tolerance) const
 {
+
     assert(this->is_counter_clockwise());
+
+
 
     Points points = this->points;
     points.push_back(points.front());
     Polygon p(MultiPoint::_douglas_peucker(points, tolerance));
     p.points.pop_back();
-    
+
     Polygons pp;
     pp.push_back(p);
     return simplify_polygons(pp);
 }
+
 
 void Polygon::triangulate_convex(Polygons* polygons) const
 {
@@ -137,10 +143,13 @@ void Polygon::triangulate_convex(Polygons* polygons) const
         p.points.push_back(this->points.front());
         p.points.push_back(*(it-1));
         p.points.push_back(*it);
-        
+
+
         if (p.area() > 0) polygons->push_back(p);
     }
 }
+
+
 
 Point Polygon::centroid() const
 {
@@ -223,41 +232,87 @@ bool Polygon::overlaps(const Polygons& other) const
         return false;
     Polylines pl_out = intersection_pl(to_polylines(other), *this);
 
+
+
     return !pl_out.empty() ||
+
         std::any_of(other.begin(), other.end(), [this](auto& poly) {return poly.contains(this->points.front()); });
 }
+
+
+
+
+
 
 template<typename FilterFn>
 Points filter_points_by_vectors(const Points &poly, FilterFn filter)
 {
+
     Point p1 = poly.back();
+
     Vec2d v1 = (p1 - *(poly.end() - 2)).cast<double>();
 
     Points out;
     for (Point p2 : poly) {
+
         Vec2d v2 = (p2 - p1).cast<double>();
+
         if (filter(v1, v2))
             out.emplace_back(p1);
+
         v1 = v2;
         p1 = p2;
     }
-    
+
     return out;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 template<typename ConvexConcaveFilterFn>
 Points filter_convex_concave_points_by_angle_threshold(const Points &poly, double angle_threshold, ConvexConcaveFilterFn convex_concave_filter)
 {
+
     assert(angle_threshold >= 0.);
     assert(angle_threshold < M_PI);
     if (angle_threshold > EPSILON) {
+
+
+
+
+
+
         double cos_threshold  = cos(std::nextafter(angle_threshold, +INFINITY));
         return filter_points_by_vectors(poly, [convex_concave_filter, cos_threshold](const Vec2d &v1, const Vec2d &v2){
-	    if (!convex_concave_filter(v1, v2)) {  return false; }
+	    if (!convex_concave_filter(v1, v2)) {   return false; }
+
+
+
+
+
+
 	    auto vec_dot = v1.normalized().dot(v2.normalized());
+
             if ( vec_dot < cos_threshold ) {
+
 		return true;
 	    }
+
 	    return false;
         });
     } else {
@@ -274,6 +329,7 @@ Points Polygon::concave_points(double angle_threshold) const
 {
     return filter_convex_concave_points_by_angle_threshold(this->points, angle_threshold, [](const Vec2d &v1, const Vec2d &v2){ return cross2(v1, v2) < 0.; });
 }
+
 
 Point Polygon::point_projection(const Point &point) const
 {
@@ -314,6 +370,7 @@ Point Polygon::point_projection(const Point &point) const
 
 std::vector<float> Polygon::parameter_by_length() const
 {
+
     std::vector<float> lengths(points.size()+1, 0.);
     for (size_t i = 1; i < points.size(); ++ i)
         lengths[i] = lengths[i-1] + (points[i] - points[i-1]).cast<float>().norm();
@@ -327,6 +384,7 @@ void Polygon::densify(float min_length, std::vector<float>* lengths_ptr)
     std::vector<float>& lengths = lengths_ptr ? *lengths_ptr : lengths_local;
 
     if (! lengths_ptr) {
+
         lengths = this->parameter_by_length();
     }
 
@@ -374,8 +432,8 @@ Polygon Polygon::transform(const Transform3d& trafo) const
     return dstpoly;
 }
 
-BoundingBox get_extents(const Polygon &poly) 
-{ 
+BoundingBox get_extents(const Polygon &poly)
+{
     return poly.bounding_box();
 }
 
@@ -390,8 +448,8 @@ BoundingBox get_extents(const Polygons &polygons)
     return bb;
 }
 
-BoundingBox get_extents_rotated(const Polygon &poly, double angle) 
-{ 
+BoundingBox get_extents_rotated(const Polygon &poly, double angle)
+{
     return get_extents_rotated(poly.points, angle);
 }
 
@@ -415,6 +473,7 @@ extern std::vector<BoundingBox> get_extents_vector(const Polygons &polygons)
     return out;
 }
 
+
 bool polygon_is_convex(const Points &poly)
 {
     if (poly.size() < 3)
@@ -436,12 +495,14 @@ bool polygon_is_convex(const Points &poly)
 bool has_duplicate_points(const Polygons &polys)
 {
 #if 1
+
     Points allpts;
     allpts.reserve(count_points(polys));
     for (const Polygon &poly : polys)
         allpts.insert(allpts.end(), poly.points.begin(), poly.points.end());
     return has_duplicate_points(std::move(allpts));
 #else
+
     for (const Polygon &poly : polys)
         if (has_duplicate_points(poly))
             return true;
@@ -456,9 +517,11 @@ bool remove_same_neighbor(Polygon &polygon)
         return false;
     auto last = std::unique(points.begin(), points.end());
 
+
     if (const Point &last_point = *(last - 1); last_point == points.front()) {
         --last;
     }
+
 
     if (last == points.end())
         return false;
@@ -474,6 +537,7 @@ bool remove_same_neighbor(Polygons &polygons)
     bool exist = false;
     for (Polygon &polygon : polygons)
         exist |= remove_same_neighbor(polygon);
+
     polygons.erase(std::remove_if(polygons.begin(), polygons.end(), [](const Polygon &p) { return p.points.size() <= 2; }), polygons.end());
     return exist;
 }
@@ -484,11 +548,17 @@ static inline bool is_stick(const Point &p1, const Point &p2, const Point &p3)
     Point v2 = p3 - p2;
     int64_t dir = int64_t(v1(0)) * int64_t(v2(0)) + int64_t(v1(1)) * int64_t(v2(1));
     if (dir > 0)
+
         return false;
     double l2_1 = double(v1(0)) * double(v1(0)) + double(v1(1)) * double(v1(1));
     double l2_2 = double(v2(0)) * double(v2(0)) + double(v2(1)) * double(v2(1));
     if (dir == 0)
+
+
         return l2_1 == 0 || l2_2 == 0;
+
+
+
     double cross = double(v1(0)) * double(v2(1)) - double(v2(0)) * double(v1(1));
     double dist2 = cross * cross / std::max(l2_1, l2_2);
     return dist2 < EPSILON * EPSILON;
@@ -500,6 +570,7 @@ bool remove_sticks(Polygon &poly)
     size_t j = 1;
     for (size_t i = 1; i + 1 < poly.points.size(); ++ i) {
         if (! is_stick(poly[j-1], poly[i], poly[i+1])) {
+
             if (j < i)
                 poly.points[j] = poly.points[i];
             ++ j;
@@ -526,7 +597,7 @@ bool remove_sticks(Polygons &polys)
     for (size_t i = 0; i < polys.size(); ++ i) {
         modified |= remove_sticks(polys[i]);
         if (polys[i].points.size() >= 3) {
-            if (j < i) 
+            if (j < i)
                 std::swap(polys[i].points, polys[j].points);
             ++ j;
         }
@@ -542,7 +613,7 @@ bool remove_degenerate(Polygons &polys)
     size_t j = 0;
     for (size_t i = 0; i < polys.size(); ++ i) {
         if (polys[i].points.size() >= 3) {
-            if (j < i) 
+            if (j < i)
                 std::swap(polys[i].points, polys[j].points);
             ++ j;
         } else
@@ -559,7 +630,7 @@ bool remove_small(Polygons &polys, double min_area)
     size_t j = 0;
     for (size_t i = 0; i < polys.size(); ++ i) {
         if (std::abs(polys[i].area()) >= min_area) {
-            if (j < i) 
+            if (j < i)
                 std::swap(polys[i].points, polys[j].points);
             ++ j;
         } else
@@ -573,11 +644,13 @@ bool remove_small(Polygons &polys, double min_area)
 void remove_collinear(Polygon &poly)
 {
     if (poly.points.size() > 2) {
+
         Points pp;
         pp.reserve(poly.points.size()+2);
         pp.push_back(poly.points.back());
         pp.insert(pp.begin()+1, poly.points.begin(), poly.points.end());
         pp.push_back(poly.points.front());
+
         poly.points.clear();
 
         size_t i = 0;
@@ -614,19 +687,25 @@ Polygons polygons_simplify(const Polygons &source_polygons, double tolerance)
     Polygons out;
     out.reserve(source_polygons.size());
     for (const Polygon &source_polygon : source_polygons) {
+
         Points simplified = MultiPoint::_douglas_peucker(to_polyline(source_polygon).points, tolerance);
+
         simplified.pop_back();
+
         bool ccw = Polygon::area(simplified) > 0.;
         Polygons decimated(1);
         decimated.front().points = std::move(simplified);
         for (Polygon &polygon : union_(decimated)) {
             if (! ccw)
+
                 polygon.reverse();
             out.emplace_back(std::move(polygon));
         }
     }
     return out;
 }
+
+
 
 bool polygons_match(const Polygon &l, const Polygon &r)
 {
@@ -654,6 +733,7 @@ bool overlaps(const Polygons& polys1, const Polygons& polys2)
     }
     return false;
 }
+
 
 static int point_in_polygon(const Point &pt, const Points &path)
 {
@@ -687,7 +767,7 @@ static int point_in_polygon(const Point &pt, const Points &path)
 
 bool contains(const Polygon &polygon, const Point &p, bool border_result)
 {
-    if (const int poly_count_inside = point_in_polygon(p, polygon.points); 
+    if (const int poly_count_inside = point_in_polygon(p, polygon.points);
         poly_count_inside == -1)
         return border_result;
     else

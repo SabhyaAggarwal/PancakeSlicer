@@ -1,3 +1,7 @@
+
+
+
+
 import * as THREE from 'three';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
@@ -6,8 +10,10 @@ import { centreOf, featureAt, fmt, measure, type Feature } from './measure';
 import { measureState, sameFeature, selectFeature, setMeasure } from './measureState';
 
 const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+
 const SELECTED_1ST = srgb(0.25, 0.75, 0.75), SELECTED_2ND = srgb(0.75, 0.25, 0.75), NEUTRAL = srgb(0.5, 0.5, 0.5), HOVER = srgb(0, 1, 0);
 const TRIANGLE_BASE = 10, TRIANGLE_HEIGHT = TRIANGLE_BASE * 1.618033;
+
 
 
 export interface MeshHit { mesh: THREE.Mesh; tri: number; local: THREE.Vector3 }
@@ -49,6 +55,10 @@ export class MeasureView {
     return new THREE.Vector2((v.x + 1) / 2 * this.size.x, (1 - v.y) / 2 * this.size.y);
   }
 
+
+
+
+
   hover(hit: MeshHit | null, at: THREE.Vector2, shift: boolean) {
     this.pointMode = shift;
     const s = measureState();
@@ -61,6 +71,7 @@ export class MeasureView {
     if (!f && hit) f = featureAt(hit.mesh.geometry, hit.tri, hit.local, hit.mesh.matrixWorld, String(hit.mesh.userData.instance), shift);
     if (!sameFeature(f, s.hover) || f?.type === 'point' && shift) setMeasure({ ...s, hover: f });
   }
+
 
   click(): boolean {
     const f = measureState().hover;
@@ -76,6 +87,7 @@ export class MeasureView {
     }
     this.scene.clear();
   }
+
 
   sync() {
     this.clear();
@@ -107,6 +119,7 @@ export class MeasureView {
     draw(first, SELECTED_1ST, true);
     draw(second, SELECTED_2ND, true);
     if (!sameFeature(hover, first) && !sameFeature(hover, second)) draw(hover, hoverColour, true);
+
     if (hover?.type === 'point' && /^Center/.test(hover.label)) this.points([hover.p], hoverColour);
 
     this.dims = null;
@@ -133,6 +146,7 @@ export class MeasureView {
     this.scene.add(p);
   }
 
+
   frame() {
     for (const o of this.scene.children) if (o instanceof LineSegments2) (o.material as LineMaterial).resolution.copy(this.size);
     this.svg.replaceChildren();
@@ -144,6 +158,7 @@ export class MeasureView {
     this.arrow(y, to, '#0000ff', false, false);
     this.arrow(from, to, '#ffffff', true, true, `${fmt(dist)} mm`);
   }
+
 
   private arrow(a3: THREE.Vector3, b3: THREE.Vector3, colour: string, label: boolean, firstTip: boolean, text = '') {
     if (a3.distanceToSquared(b3) < 1e-6) return;

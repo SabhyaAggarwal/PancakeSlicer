@@ -1,3 +1,5 @@
+
+
 #ifndef slic3r_ToolOrdering_hpp_
 #define slic3r_ToolOrdering_hpp_
 
@@ -33,6 +35,9 @@ class LayerTools;
 namespace CustomGCode { struct Item; }
 class PrintRegion;
 
+
+
+
 class WipingExtrusions
 {
 public:
@@ -40,11 +45,15 @@ public:
         return something_overridden;
     }
 
+
     typedef boost::container::small_vector<int32_t, 3> ExtruderPerCopy;
+
 
     const ExtruderPerCopy* get_extruder_overrides(const ExtrusionEntity* entity, const PrintObject* object, int correct_extruder_id, size_t num_of_copies);
     int get_support_extruder_overrides(const PrintObject* object);
     int get_support_interface_extruder_overrides(const PrintObject* object);
+
+
 
     float mark_wiping_extrusions(const Print& print, unsigned int old_extruder, unsigned int new_extruder, float volume_to_wipe);
 
@@ -52,10 +61,11 @@ public:
 
     bool is_overriddable(const ExtrusionEntityCollection& ee, const PrintConfig& print_config, const PrintObject& object, const PrintRegion& region) const;
     bool is_overriddable_and_mark(const ExtrusionEntityCollection& ee, const PrintConfig& print_config, const PrintObject& object, const PrintRegion& region) {
-    	bool out = this->is_overriddable(ee, print_config, object, region);
-    	this->something_overridable |= out;
-    	return out;
+        bool out = this->is_overriddable(ee, print_config, object, region);
+        this->something_overridable |= out;
+        return out;
     }
+
 
     bool is_support_overriddable(const ExtrusionRole role, const PrintObject& object) const;
     bool is_support_overriddable_and_mark(const ExtrusionRole role, const PrintObject& object) {
@@ -74,6 +84,10 @@ public:
 
     void set_layer_tools_ptr(const LayerTools* lt) { m_layer_tools = lt; }
 
+
+
+
+
     bool is_entity_overridden(const ExtrusionEntity* entity, const PrintObject *object, size_t copy_id) const {
         auto it = entity_map.find(std::make_tuple(entity, object));
         return it != entity_map.end() && copy_id < it->second.size() && it->second[copy_id] != -1;
@@ -84,11 +98,14 @@ private:
     int first_nonsoluble_extruder_on_layer(const PrintConfig& print_config) const;
     int last_nonsoluble_extruder_on_layer(const PrintConfig& print_config) const;
 
+
     void set_extruder_override(const ExtrusionEntity* entity, const PrintObject* object, size_t copy_id, int extruder, size_t num_of_copies);
+
     void set_support_extruder_override(const PrintObject* object, size_t copy_id, int extruder, size_t num_of_copies);
     void set_support_interface_extruder_override(const PrintObject* object, size_t copy_id, int extruder, size_t num_of_copies);
 
     std::map<std::tuple<const ExtrusionEntity*, const PrintObject *>, ExtruderPerCopy> entity_map;
+
     std::map<const PrintObject*, int> support_map;
     std::map<const PrintObject*, int> support_intf_map;
     bool something_overridable = false;
@@ -100,6 +117,10 @@ private:
 struct FilamentChangeStats
 {
     int filament_flush_weight{0};
+
+
+
+
     int flush_filament_change_count{0};
     int filament_change_count{0};
 
@@ -132,27 +153,44 @@ class LayerTools
 public:
     LayerTools(const coordf_t z) : print_z(z) {}
 
+
+
     bool operator< (const LayerTools &rhs) const { return print_z < rhs.print_z; }
     bool operator==(const LayerTools &rhs) const { return print_z == rhs.print_z; }
 
     bool is_extruder_order(unsigned int a, unsigned int b) const;
     bool has_extruder(unsigned int extruder) const { return std::find(this->extruders.begin(), this->extruders.end(), extruder) != this->extruders.end(); }
 
+
     unsigned int wall_extruder_id(const PrintRegion &region) const;
     unsigned int sparse_infill_filament_id(const PrintRegion &region) const;
     unsigned int internal_solid_filament_id(const PrintRegion &region) const;
+
 	unsigned int extruder(const ExtrusionEntityCollection &extrusions, const PrintRegion &region) const;
 
     coordf_t 					print_z	= 0.;
     bool 						has_object = false;
     bool						has_support = false;
+
     std::vector<unsigned int> 	extruders;
+
+
     unsigned int 				extruder_override = 0;
+
+
     bool                        has_skirt = false;
+
+
+
     bool 						has_wipe_tower = false;
+
+
     size_t                      wipe_tower_partitions = 0;
     coordf_t 					wipe_tower_layer_height = 0.;
+
     const CustomGCode::Item    *custom_gcode = nullptr;
+
+
 
     std::map<unsigned int, unsigned int> mixed_filament_resolution;
 
@@ -177,6 +215,12 @@ public:
             GradientCurve curve;
         };
         std::map<const PrintObject*, ObjectGradient> per_object_gradient;
+
+
+
+
+
+
 
         struct VolumeKey {
             const PrintObject* obj;
@@ -211,6 +255,7 @@ public:
     }
 
 private:
+
     WipingExtrusions m_wiping_extrusions;
 };
 
@@ -224,7 +269,11 @@ public:
     };
     ToolOrdering() = default;
 
+
+
     ToolOrdering(const PrintObject &object, unsigned int first_extruder, bool prime_multi_material = false);
+
+
 
     ToolOrdering(const Print& print, unsigned int first_extruder, bool prime_multi_material = false);
 
@@ -233,6 +282,7 @@ public:
 
     void sort_and_build_data(const PrintObject &object, unsigned int first_extruder, bool prime_multi_material = false);
     void sort_and_build_data(const Print& print, unsigned int first_extruder, bool prime_multi_material = false);
+
     void build_sequential_wipe_tower(const Print &print, bool prime_multi_material);
 
     void    clear() {
@@ -242,14 +292,24 @@ public:
         m_stats_by_multi_extruder_curr.clear();
     }
 
+
+
+
+
 	void 				assign_custom_gcodes(const Print &print);
+
 
     unsigned int   		first_extruder() const { return m_first_printing_extruder; }
 
+
     unsigned int   		last_extruder() const { return m_last_printing_extruder; }
 
+
     const std::vector<unsigned int>& all_extruders() const { return m_all_printing_extruders; }
+
+
     const std::vector<unsigned int>& used_mixed_filaments() const { return m_used_mixed_filaments; }
+
 
     const LayerTools&	tools_for_layer(coordf_t print_z) const;
     LayerTools&			tools_for_layer(coordf_t print_z) { return const_cast<LayerTools&>(std::as_const(*this).tools_for_layer(print_z)); }
@@ -264,11 +324,33 @@ public:
 
     int                 get_most_used_extruder() const { return most_used_extruder; }
 
+
+
+
     const MultiNozzleUtils::LayeredNozzleGroupResult &get_layered_nozzle_group_result() const { return m_nozzle_group_result; }
+
+
+
+
 
     const MultiNozzleUtils::NozzleStatusRecorder &get_nozzle_status() const { return m_nozzle_status; }
     void set_nozzle_status(const MultiNozzleUtils::NozzleStatusRecorder &status) { m_initial_nozzle_status = status; m_nozzle_status = status; }
+
+
+
+
+
+
+
+
+
     static MultiNozzleUtils::LayeredNozzleGroupResult get_recommended_filament_maps(const std::vector<std::vector<unsigned int>>& layer_filaments, const Print* print,const FilamentMapMode mode, const std::vector<std::set<int>>& physical_unprintables, const std::vector<std::set<int>>& geometric_unprintables, const std::map<int, std::set<NozzleVolumeType>>& unprintable_volumes = {}, const std::unordered_map<int, int>& nozzle_status = {});
+
+
+
+
+
+
 
     static MultiNozzleUtils::LayeredNozzleGroupResult build_sequential_group_result(
         Print*                                            print,
@@ -279,6 +361,7 @@ public:
         const std::vector<std::set<int>>&                 physical_unprintables,
         const std::vector<std::set<int>>&                 geometric_unprintables,
         const std::map<int, std::set<NozzleVolumeType>>&  unprintable_volumes);
+
 
     FilamentChangeStats get_filament_change_stats(FilamentChangeMode mode);
     void                cal_most_used_extruder(const PrintConfig &config);
@@ -300,22 +383,39 @@ private:
     void                reorder_extruders_for_minimum_flush_volume(bool reorder_first_layer);
     void                resolve_mixed_filaments(const PrintConfig &config);
     void                enforce_mixed_component_order();
+
+
     void                enforce_conformal_support_order();
+
 
     std::vector<unsigned int> generate_first_layer_tool_order(const Print& print);
     std::vector<unsigned int> generate_first_layer_tool_order(const PrintObject& object);
 
     std::vector<LayerTools>    m_layer_tools;
+
     unsigned int               m_first_printing_extruder = (unsigned int)-1;
+
     unsigned int               m_last_printing_extruder  = (unsigned int)-1;
+
     std::vector<unsigned int>  m_all_printing_extruders;
     std::vector<unsigned int>  m_used_mixed_filaments;
     const DynamicPrintConfig*  m_print_full_config = nullptr;
     const PrintConfig*         m_print_config_ptr = nullptr;
 
+
+
     std::map<unsigned int, std::map<const PrintObject*, std::vector<size_t>>> m_mixed_object_layers;
 
+
+
+
     std::map<const PrintObject*, std::vector<size_t>> m_object_all_layer_indices;
+
+
+
+
+
+
 
     std::map<unsigned int, std::map<LayerTools::MixedSubLayerGroup::VolumeKey, std::vector<size_t>>> m_gradient_volume_layers;
     const PrintObject*         m_print_object_ptr = nullptr;
@@ -326,11 +426,18 @@ private:
     FilamentChangeStats        m_stats_by_multi_extruder_curr;
     FilamentChangeStats        m_stats_by_multi_extruder_best;
     MultiNozzleUtils::LayeredNozzleGroupResult m_nozzle_group_result;
+
+
+
+
     MultiNozzleUtils::NozzleStatusRecorder     m_initial_nozzle_status;
     MultiNozzleUtils::NozzleStatusRecorder     m_nozzle_status;
 
     int                        most_used_extruder;
 };
+
+
+
 
 std::vector<unsigned int> parse_cyclic_order(const std::string& str, unsigned int number_of_extruders);
 

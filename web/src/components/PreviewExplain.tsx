@@ -1,3 +1,7 @@
+
+
+
+
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
@@ -12,7 +16,9 @@ import { Icon } from './Icon';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
 import { Switch } from './fields';
 
+
 const TWO_SCENE_VERTICES = 8e6;
+
 const NOT_PART = new Set([12, 17, 18]);
 
 function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
@@ -27,12 +33,14 @@ function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
   return min.x <= max.x ? [min, max] : null;
 }
 
+
 function curvedShare(s: RecordSummary): number | null {
   const total = s.topCurved + s.topFlat;
   return total > 0 ? Math.min(s.topFlat > 0 ? 99 : 100, Math.max(s.topCurved > 0 ? 1 : 0, Math.round((100 * s.topCurved) / total))) : null;
 }
 
 const time = (s: number | null) => (s == null ? '–' : shortTime(s));
+
 
 export function ExplainLegend(props: {
   data: PreviewData;
@@ -58,6 +66,7 @@ export function ExplainLegend(props: {
   const closest = v?.closest != null && Number.isFinite(v.closest) && v.closest > 0 ? `Closest pass ${v.closest.toFixed(2)} mm` : undefined;
   const pending = !compare ? null : cmp.state === 'running' ? (cmp.queued ? 'waiting' : `${Math.round(cmp.pct)}%`) : cmp.state === 'failed' ? (cmp.busy ? 'busy' : 'failed') : null;
 
+
   type Row = [string, string, string, boolean?, string?];
   const rows: Row[] = [];
   if (s.wholePart) rows.push(['Curved layers', '', 'whole part', false, s.wholePart.source]);
@@ -72,6 +81,7 @@ export function ExplainLegend(props: {
   if (s.grams != null) rows.push(['Filament', std ? grams(std.grams) : '', grams(s.grams)]);
   rows.push(['Support', std ? supportText(supportGrams(stdData, std.grams)) : '', supportText(supportGrams(data, s.grams))]);
   if (v) rows.push(['Head hits', '', String(v.hits), false, closest]);
+
   if (std?.curved) rows.push(['Result', 'not flat', '', false, 'The Standard slice still printed curved passes']);
   else if (std && !better(std.topErrorMm, s.topErrorMm)) {
     const faster = timeDelta != null && timeDelta > 0.01;
@@ -111,6 +121,8 @@ export function ExplainLegend(props: {
           ))}
         </>
       ) : <>
+      {
+                        }
       {!compare && (
         <div className="np-stats">
           {rows.filter(([label]) => !['Time', 'Filament', 'Curved top'].includes(label)).map(([label, , b]) => (
@@ -167,11 +179,13 @@ export function ExplainLegend(props: {
   );
 }
 
+
 export function StandardView(props: {
   data: PreviewData;
   record: Record<string, unknown>;
   scene: PreviewScene | null;
   ui: PreviewUi;
+
   zRange: [number, number];
 }) {
   const { data, record, scene, ui } = props;
@@ -195,6 +209,7 @@ export function StandardView(props: {
   );
 }
 
+
 function StandardPane(props: {
   main: PreviewScene | null;
   cmp: ReturnType<typeof useCompare>;
@@ -211,8 +226,10 @@ function StandardPane(props: {
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const grid = useSurfaceGrid(cmp.state === 'done' ? cmp.status : undefined, ui.surface);
   useEffect(() => scene?.setSurface(grid), [scene, grid]);
+
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const id = cmp.state === 'done' ? cmp.id : null;
+
 
   useEffect(() => {
     if (!main) return;
@@ -238,6 +255,7 @@ function StandardPane(props: {
       setScene(null);
     };
   }, [main]);
+
 
   useEffect(() => {
     if (!scene || !id || cmp.state !== 'done') return;
@@ -277,6 +295,7 @@ function StandardPane(props: {
     if (scene && data?.done) scene.setColors(colorContext(data, ui, computeRanges(data, vis)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.view, ui.nonplanar, vis]);
+
 
   useEffect(() => {
     if (!scene || !data?.layers.length) return;

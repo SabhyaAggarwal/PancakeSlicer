@@ -28,8 +28,11 @@ namespace Slic3r {
         int picture_extruder_id;
         int curr_extruder_id;
         std::optional<std::vector<const PrintObject*>> printed_objects;
+
+
         std::optional<Point> farthest_point;
     };
+
 
     class TimelapsePosPicker
     {
@@ -38,6 +41,8 @@ namespace Slic3r {
         ~TimelapsePosPicker() = default;
 
         Point pick_pos(const PosPickCtx& ctx);
+
+
         bool  get_is_clear_to_x0(const PosPickCtx& ctx);
         void init(const Print* print, const Point& plate_offset);
         void reset();

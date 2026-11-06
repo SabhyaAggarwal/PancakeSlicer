@@ -46,6 +46,8 @@ namespace {
 
 constexpr float Inf = std::numeric_limits<float>::infinity();
 
+
+
 ExPolygons support_area(const SupportLayer &layer, double close)
 {
     ExPolygons area = layer.support_islands;
@@ -54,12 +56,15 @@ ExPolygons support_area(const SupportLayer &layer, double close)
     return union_ex(area);
 }
 
+
 int nearest_node(const HeightField &grid, const Vec2d &p)
 {
     const Vec2d o  = (p - grid.origin()) / grid.pitch();
     const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
     return ix < 0 || iy < 0 || ix >= grid.nx() || iy >= grid.ny() ? -1 : iy * grid.nx() + ix;
 }
+
+
 
 HeightField masked(const HeightField &field, const Mask &mask, int pad)
 {
@@ -75,6 +80,7 @@ HeightField masked(const HeightField &field, const Mask &mask, int pad)
 
 bool conformal_support_configured(const PrintObject &object)
 {
+
     return !object.auto_z_contouring() && object.config().nonplanar_mode.value != NonplanarMode::Off &&
            object.config().nonplanar_support_interface.value &&
            !object.print()->config().nonplanar_head.value.empty();
@@ -84,6 +90,20 @@ bool conformal_support_wanted(const PrintObject &object)
 {
     return conformal_support_configured(object) && !object.support_layers().empty() && object.layers().size() > 1;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void build_conformal_support(PrintObject &object, ConformalResult &result)
 {
@@ -111,6 +131,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     const HeightField grid    = object_grid(object, pitch, &silhouette);
     const size_t      n_nodes = grid.data().size();
 
+
+
     std::vector<int> top(n_nodes, -1), run(n_nodes, -1);
     std::vector<double> support_z(supports.size());
     for (size_t j = 0; j < supports.size(); ++j)
@@ -136,6 +158,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         cancel();
     }
 
+
     HeightField Sb;
     {
         const double z_min     = object.slicing_parameters().object_print_z_min;
@@ -149,6 +172,12 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         imesh.ground_level_offset(ground_offset);
         Sb = sample_bottom_surface(imesh, ray_start, z_min, cancel);
     }
+
+
+
+
+
+
 
     constexpr int    OverhangOwner = -2;
     std::vector<int> owner(n_nodes, -1);
@@ -186,12 +215,15 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             const ConformalPatch &patch = owner[n] >= 0 ? result.patches[size_t(owner[n])] : *skin[n];
             Sb.data()[n]                = top[n] >= 0 ? patch.surface.sample(grid.node(int(n % grid.nx()), int(n / grid.nx()))) : HeightField::NoData;
         }
+
     Mask cand(n_nodes, 0);
     for (size_t n = 0; n < n_nodes; ++n)
         if (top[n] >= 0 && !std::isnan(Sb.data()[n]) && (owner[n] != -1 || !taken[n])) {
             const double d = Sb.data()[n] - support_z[size_t(top[n])];
             cand[n]        = d >= gap - h - EPSILON && d <= gap + 2. * h + EPSILON;
         }
+
+
     if (ocfg.nonplanar_mode.value == NonplanarMode::Auto) {
         const double limit = auto_curved_underside_slope();
         for (size_t n = 0; n < n_nodes; ++n)
@@ -202,12 +234,15 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             }
     }
 
+
+
     const int cfg_layers = ocfg.support_interface_top_layers.value;
     double    stack      = h_max + h;
     for (const ConformalPatch &patch : result.patches)
         if (patch.kind == PatchKind::Bottom)
             stack = std::max(stack, (patch.shells - 1) * patch.shell_height + h_max + h);
     const int n_i = std::clamp(1 + int(std::floor((reach - stack - gap) / h + 1e-6)), 1, std::clamp(cfg_layers, 1, 2));
+
 
     std::vector<int> keep(n_nodes, -1);
     for (size_t n = 0; n < n_nodes; ++n) {
@@ -222,6 +257,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             keep[n] = j;
     }
 
+
     std::vector<double> layer_bottom(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
         layer_bottom[i] = layers[i]->print_z - layers[i]->height;
@@ -233,6 +269,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
                 cand[n] = 0;
         }
 
+
+
     for (size_t n = 0; n < n_nodes; ++n)
         if (cand[n] && owner[n] == OverhangOwner) {
             const auto it = std::lower_bound(layers.begin(), layers.end(), double(Sb.data()[n]) - EPSILON,
@@ -242,6 +280,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             else
                 owner[n] = -3 - int(it - layers.begin());
         }
+
+
 
     const Flow iflow = cfg_layers > 0 ? support_material_interface_flow(&object, float(h)) : support_material_flow(&object, float(h));
     {
@@ -265,6 +305,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     }
     cancel();
 
+
+
     const double     line_width    = region0.flow(object, frSolidInfill, h).width();
     const double     wall_width    = float(std::max(0, region0.config().wall_loops.value)) * region0.flow(object, frPerimeter, h).width();
     const ExPolygons inner_outline = offset_ex(union_ex(silhouette), float(-scale_(wall_width)));
@@ -274,6 +316,9 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             if (cand[n] && owner[n] == -1 && !inside[n])
                 cand[n] = 0;
     }
+
+
+
 
     std::map<int, Mask> floor_bands;
     for (size_t n = 0; n < n_nodes; ++n)
@@ -291,8 +336,13 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             Fb.data()[n] = float(layer_bottom[size_t(floor_layer[n])]);
         }
     const HeightField floor_surface = masked(Sb, all_floor, 3);
+
+
+
+
     double angle  = Geometry::deg2rad(region0.config().solid_infill_direction.value);
     const bool rings = !contour_line_angle(masked(Sb, cand, 0), angle, 0.3);
+
 
     const size_t first_floor = result.patches.size();
     for (auto &[floor_id, mask] : floor_bands) {
@@ -316,6 +366,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
                 owner[n]    = patch.id;
                 patch.z_min = std::min(patch.z_min, double(Sb.data()[n]));
             }
+
         const Point probe = patch.footprint.front().contour.points.front();
         for (const LayerRegion *layerm : layers[patch.host_layer]->regions())
             if (layerm->region().print_object_region_id() >= 0 && layerm->slices.any_bottom_contains(probe)) {
@@ -324,6 +375,10 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             }
         result.patches.emplace_back(std::move(patch));
     }
+
+
+
+
 
     std::map<int, int> floor_patch;
     for (size_t idx = first_floor; idx < result.patches.size(); ++idx)
@@ -348,7 +403,11 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
                 return true;
         return false;
     };
+
+
+
     auto link = [&](int band, Polylines &&pieces, const Point &start, double max_link) {
+
         Polylines chained;
         {
             std::vector<char> used(pieces.size(), 0);
@@ -393,6 +452,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         }
         return out;
     };
+
     auto band_start = [&](int band) {
         Point start;
         float lowest = Inf;
@@ -403,6 +463,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             }
         return start;
     };
+
+
 
     std::map<int, std::pair<float, float>> band_range;
     for (size_t n = 0; n < n_nodes; ++n)
@@ -415,6 +477,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         const auto it = band_range.find(band);
         return it != band_range.end() && s >= it->second.first - h_min && s <= it->second.second + h_min;
     };
+
 
     ExPolygons floor_shells;
     for (size_t idx = first_floor; idx < result.patches.size(); ++idx)
@@ -455,6 +518,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         });
     }
 
+
     if (result.patches.size() > first_floor) {
         Mask shell_mask = rasterize(floor_shells, grid);
         for (size_t n = 0; n < n_nodes; ++n)
@@ -485,6 +549,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             layers[result.patches[idx].host_layer]->conformal_patches_before.emplace_back(int(idx));
     }
 
+
+
     {
         ExPolygons wall_bands;
         for (const ConformalPatch &patch : result.patches)
@@ -495,6 +561,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             if (cand[n] && (owner[n] == -1 || in_wall_band[n]))
                 cand[n] = 0;
     }
+
+
     tbb::parallel_for(tbb::blocked_range<size_t>(0, supports.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t j = range.begin(); j < range.end(); ++j) {
             Mask above(n_nodes, 0);
@@ -510,6 +578,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             clip_extrusions(supports[j]->support_fills, excl, get_extents(excl));
         }
     });
+
 
     const Mask      &si_mask = cand;
     const ExPolygons si_area = mask_to_expolygons(si_mask, grid);
@@ -528,6 +597,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     const bool          concentric = interface && (ocfg.support_interface_pattern.value == smipConcentric ||
                                                    ocfg.support_interface_pattern.value == smipSpiralInset ||
                                                    (ocfg.support_interface_pattern.value == smipAuto && gap == 0.));
+
+
     std::vector<int> si_owner(n_nodes, -1);
     for (size_t n = 0; n < n_nodes; ++n)
         if (cand[n])
@@ -536,6 +607,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     auto si_owner_at = [&](const Vec2d &p) { const int n = nearest_node(grid, p); return n < 0 || si_owner[size_t(n)] == -1 ? -1 : owner_at(p); };
     std::map<int, std::vector<Polylines>> by_owner;
     for (int k = 1; k < n_i; ++k) {
+
         const bool      loops = concentric || rings;
         const Polylines lines = fill_solid(loops ? si_area : fill_area, loops ? ipConcentric : ipRectilinear, spacing,
                                            angle + (n_i - k + 1) * 0.5 * PI, false, iflow, 0.);
@@ -545,6 +617,9 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             per_layer[size_t(k - 1)].emplace_back(std::move(pl));
         });
     }
+
+
+
     std::map<int, Mask> band_nodes;
     for (size_t n = 0; n < n_nodes; ++n)
         if (const int o = cand[n] ? si_owner_at(grid.node(int(n % grid.nx()), int(n / grid.nx()))) : -1; o != -1) {
@@ -552,6 +627,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             m.resize(n_nodes, 0);
             m[n] = 1;
         }
+
     std::vector<std::pair<int, Mask>> bands;
     for (const auto &[band, m] : band_nodes) {
         int                    n_comp = 0;
@@ -568,6 +644,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         for (size_t i = range.begin(); i < range.end(); ++i) {
             const int   band = bands[i].first;
             const Mask *m    = &bands[i].second;
+
             double sx = 0., sy = 0., sxx = 0., sxy = 0., syy = 0., cnt = 0.;
             for (size_t n = 0; n < n_nodes; ++n)
                 if ((*m)[n]) {
@@ -597,6 +674,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     for (auto &entry : by_owner) {
         const int band_id = entry.first;
         auto &per_layer = entry.second;
+
         const bool   skin_band = band_id <= -3;
         const size_t host      = skin_band ? size_t(-3 - band_id) : result.patches[size_t(band_id)].host_layer;
         ConformalPatch        patch;
@@ -627,6 +705,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
                 z    = s - gap - (n_i - k) * h;
                 bead = float(h);
                 if (k == 1) {
+
                     const int   n  = nearest_node(grid, p);
                     const float pz = n >= 0 && !std::isnan(kept_top.data()[size_t(n)]) ? kept_top.data()[size_t(n)] : planar.sample(p);
                     if (std::isnan(pz))
@@ -648,6 +727,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         }
         if (patch.z_min > patch.z_max)
             continue;
+
+
         std::vector<int> &after  = layers[patch.host_layer]->conformal_patches_after;
         if (!skin_band)
             if (auto it = std::find(after.begin(), after.end(), band_id); it != after.end()) {

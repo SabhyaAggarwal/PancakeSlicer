@@ -103,6 +103,7 @@ func (b *blobStore) put(w http.ResponseWriter, r *http.Request, maxUpload int64)
 		fail(w, 400, "upload does not match its SHA-256")
 		return
 	}
+
 	if err := os.Chmod(f.Name(), 0400); err != nil || os.Rename(f.Name(), b.path(sum)) != nil {
 		fail(w, 507, "blob could not be stored")
 		return
@@ -119,6 +120,7 @@ func (b *blobStore) link(sum, dst string) error {
 	if os.Link(src, dst) == nil {
 		return nil
 	}
+
 	in, err := os.Open(src)
 	if err != nil {
 		return err

@@ -27,8 +27,12 @@
 
 namespace Slic3r {
 
+
+
 static inline Point scale_u_point(const Point &p, int from_axis, double factor)
 {
+
+
     return from_axis == 0 ?
         Point(coord_t(std::llround(double(p.x()) * factor)), p.y()) :
         Point(p.x(), coord_t(std::llround(double(p.y()) * factor)));
@@ -60,12 +64,20 @@ Polylines belt_scale_u(const Polylines &src, const BeltBrimFrame &frame, double 
     return out;
 }
 
+
+
 ExPolygons sweep_ex(const ExPolygons &src, const Point &t)
 {
     if (src.empty())
         return {};
     if (t == Point(0, 0))
         return src;
+
+
+
+
+
+
 
     Polygons quads;
     for (const ExPolygon &ex : src)
@@ -75,6 +87,9 @@ ExPolygons sweep_ex(const ExPolygons &src, const Point &t)
                     continue;
                 Polygon q;
                 q.points = { e.a, e.b, e.b + t, e.a + t };
+
+
+
                 if (q.is_clockwise())
                     q.reverse();
                 quads.emplace_back(std::move(q));
@@ -84,8 +99,12 @@ ExPolygons sweep_ex(const ExPolygons &src, const Point &t)
     for (ExPolygon &ex : shifted)
         ex.translate(t);
 
+
+
     return union_ex(union_ex(src, shifted), quads);
 }
+
+
 
 ExPolygons belt_brim_region(const ExPolygons    &footprint_flat,
                             bool                 has_outer,
@@ -102,23 +121,38 @@ ExPolygons belt_brim_region(const ExPolygons    &footprint_flat,
     ExPolygons out;
 
     if (has_outer) {
+
+
         Polygons contours;
         contours.reserve(footprint_flat.size());
         for (const ExPolygon &ex : footprint_flat)
             contours.emplace_back(ex.contour);
 
+
+
         ExPolygons inner = offset_ex(contours, float(object_gap), jtRound, SCALED_RESOLUTION);
+
+
+
+
+
+
 
         ExPolygons envelope = brim_width > 0 ? closing_ex(inner, float(brim_width)) : inner;
 
         ExPolygons base  = envelope;
         if (leading > 0) {
+
+
             const Point t = frame.from_axis == 0 ?
                 Point(frame.downhill_sign() * leading, 0) :
                 Point(0, frame.downhill_sign() * leading);
             base = union_ex(base, sweep_ex(envelope, t));
         }
         if (lateral > 0) {
+
+
+
             const Point t = frame.from_axis == 0 ? Point(0, lateral) : Point(lateral, 0);
             ExPolygons widened = union_ex(sweep_ex(base, t), sweep_ex(base, Point(-t.x(), -t.y())));
             base = union_ex(base, to_polygons(widened));
@@ -128,6 +162,8 @@ ExPolygons belt_brim_region(const ExPolygons    &footprint_flat,
     }
 
     if (has_inner) {
+
+
         Polygons holes;
         for (const ExPolygon &ex : footprint_flat)
             polygons_append(holes, ex.holes);
@@ -142,6 +178,8 @@ ExPolygons belt_brim_region(const ExPolygons    &footprint_flat,
     return union_ex(out);
 }
 
+
+
 std::vector<coord_t> belt_brim_line_positions(coord_t u_lo,
                                               coord_t u_hi,
                                               coord_t pitch_u,
@@ -150,6 +188,9 @@ std::vector<coord_t> belt_brim_line_positions(coord_t u_lo,
     std::vector<coord_t> out;
     if (pitch_u <= 0 || u_hi <= u_lo)
         return out;
+
+
+
 
     int64_t k = int64_t(std::floor(double(u_lo - u_anchor) / double(pitch_u))) - 1;
     while (u_anchor + coord_t(k) * pitch_u < u_lo)
@@ -162,6 +203,12 @@ std::vector<coord_t> belt_brim_line_positions(coord_t u_lo,
     }
     return out;
 }
+
+
+
+
+
+
 
 static Polygon band_box(const BoundingBox &bounds, int from_axis, coordf_t u_lo, coordf_t u_hi)
 {
@@ -196,6 +243,7 @@ ExPolygons belt_brim_clip_leading_edge(const ExPolygons &region, const BeltBrimF
     return keep.empty() ? ExPolygons{} : intersection_ex(region, Polygons{ keep });
 }
 
+
 struct BeltBrimContext
 {
     BeltFloorContext ctx;
@@ -207,6 +255,7 @@ struct BeltBrimContext
     coord_t          u_anchor  = 0;
     double           in_plane_pitch = 0.;
 };
+
 
 static void belt_brim_band_paths(const BeltBrimContext      &bc,
                                  coordf_t                    print_z,
@@ -220,18 +269,40 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
     if (u_lo > u_hi)
         std::swap(u_lo, u_hi);
 
+
     const double band_in_plane = (u_hi - u_lo) * bc.frame.u_stretch();
+
+
+
 
     static constexpr double BAND_CLEARANCE_FRACTION = 0.75;
 
     std::vector<coord_t> us;
     double uniform_clearance = 0.;
     double line_pitch        = bc.in_plane_pitch;
+
+
+
     if (band_in_plane <= 1.5 * bc.in_plane_pitch + EPSILON) {
+
+
+
+
+
+
+
+
+
+
+
+
         us.push_back(scale_(bc.ctx.cutoff_u(print_z - BAND_CLEARANCE_FRACTION * height)));
         uniform_clearance = BAND_CLEARANCE_FRACTION * height;
         line_pitch        = band_in_plane;
     } else {
+
+
+
         us = belt_brim_line_positions(scale_(u_lo), scale_(u_hi), bc.pitch_u, bc.u_anchor);
     }
     if (us.empty())
@@ -239,9 +310,23 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
 
     const Polygons region_polys = to_polygons(bc.region);
 
+
+
+
+
     const coord_t margin = coord_t(SCALED_EPSILON) + 1;
     coord_t       u_prev = std::numeric_limits<coord_t>::min();
     for (coord_t u : us) {
+
+
+
+
+
+
+
+
+
+
         double clearance = uniform_clearance;
         if (clearance <= 0.) {
             const Point probe = bc.frame.from_axis == 0 ? Point(u, 0) : Point(0, u);
@@ -252,6 +337,8 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
             }
             clearance = std::min(clearance, height);
         }
+
+
         if (u_prev != std::numeric_limits<coord_t>::min() && std::abs(u - u_prev) < bc.pitch_u / 2)
             continue;
         u_prev = u;
@@ -270,7 +357,11 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
         if (pieces.empty())
             continue;
 
+
+
+
         const Flow f = bc.brim_flow.with_cross_section(float(line_pitch * clearance));
+
 
         for (const Polygon &p : offset(pieces, 0.5f * float(f.scaled_width())))
             areas_out.emplace_back(ExPolygon(p));
@@ -279,6 +370,23 @@ static void belt_brim_band_paths(const BeltBrimContext      &bc,
                                         erBrim, f.mm3_per_mm(), f.width(), float(clearance));
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 static Polygons belt_brim_obstacles(const Print &print, const PrintObject &self,
                                     const BoundingBox &region_bbox, coordf_t print_z, coordf_t tol)
@@ -331,12 +439,18 @@ void make_belt_brim(PrintObject &object)
     if (nlayers == 0)
         return;
 
+
+
+
     ExPolygons footprint_acc;
+
     const Layer *first_contact = nullptr;
     for (size_t i = 0; i < nlayers; ++ i) {
         const Layer &layer = *object.layers()[i];
         if (layer.lslices.empty())
             continue;
+
+
         coordf_t u_lo = bc.ctx.cutoff_u(layer.print_z - layer.height);
         coordf_t u_hi = bc.ctx.cutoff_u(layer.print_z);
         if (u_lo > u_hi)
@@ -357,13 +471,18 @@ void make_belt_brim(PrintObject &object)
     if (footprint.empty())
         return;
 
+
     const PrintObjectConfig &cfg = object.config();
     bc.brim_flow = print.brim_flow();
     const double  flow_w = bc.brim_flow.scaled_spacing() * SCALING_FACTOR;
+
     const coord_t width   = scale_(std::floor(cfg.brim_width.value / flow_w / 2) * flow_w * 2);
     const coord_t leading = scale_(cfg.leading_brim_length.value);
     const coord_t lateral = scale_(cfg.extra_brim_width.value);
     const coord_t gap     = scale_(cfg.brim_object_gap.value);
+
+
+
 
     const BrimType bt = cfg.brim_type.value;
     const bool has_outer = bt == btOuterOnly || bt == btOuterAndInner
@@ -377,11 +496,19 @@ void make_belt_brim(PrintObject &object)
         bc.frame);
 
     if (bt == btLeadingEdgeOnly && first_contact != nullptr && ! bc.region.empty())
+
+
+
+
+
         bc.region = belt_brim_clip_leading_edge(bc.region, bc.frame, bc.ctx.cutoff_u(first_contact->print_z));
 
     if (bc.region.empty())
         return;
     bc.region_bbox = get_extents(bc.region);
+
+
+
 
     bc.pitch_u = std::max<coord_t>(1, coord_t(bc.brim_flow.scaled_spacing() * bc.frame.cos_tilt()));
     bc.in_plane_pitch = unscale<double>(bc.pitch_u) * bc.frame.u_stretch();
@@ -392,6 +519,7 @@ void make_belt_brim(PrintObject &object)
                                               : (low_side ? fbb.min.y() : fbb.max.y());
     }
 
+
     std::vector<ExtrusionEntityCollection> by_layer(nlayers);
     std::vector<ExPolygons>                areas_by_layer(nlayers);
     for (size_t i = 0; i < nlayers; ++ i) {
@@ -399,6 +527,8 @@ void make_belt_brim(PrintObject &object)
         const Polygons obstacles = belt_brim_obstacles(print, object, bc.region_bbox, layer.print_z, 0.5 * layer.height);
         belt_brim_band_paths(bc, layer.print_z, layer.height, obstacles, by_layer[i], areas_by_layer[i]);
     }
+
+
 
     std::vector<BeltBrimBand> prologue;
     {
@@ -409,6 +539,7 @@ void make_belt_brim(PrintObject &object)
             ? (low_side ? bc.region_bbox.min.x() : bc.region_bbox.max.x())
             : (low_side ? bc.region_bbox.min.y() : bc.region_bbox.max.y());
         const coordf_t u_lead  = unscale<double>(u_lead_s);
+
         const coordf_t z_lead  = bc.ctx.shear_factor() * u_lead
                                + bc.ctx.floor_offset() + bc.ctx.z_shift();
         if (h > EPSILON)
@@ -421,6 +552,7 @@ void make_belt_brim(PrintObject &object)
                 if (! band.fills.empty())
                     prologue.emplace_back(std::move(band));
             }
+
         std::reverse(prologue.begin(), prologue.end());
     }
 

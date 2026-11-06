@@ -1,7 +1,10 @@
+
+
 import { setState, useStore, type OrientSlice } from '../state/store';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { supportText } from '../preview/explain-record';
 import { shortTime } from '../preview/format';
+
 
 const FLOAT_MARGIN_MM = 10;
 
@@ -15,12 +18,15 @@ export function OrientConfirm() {
   const name = useStore((s) => s.objects.find((o) => o.id === c?.id)?.name ?? '');
   if (!c) return null;
   const close = () => setState({ orientConfirm: null });
+
   const keep = () => setState((st) => {
     const orientPrompts = { ...st.orientPrompts };
     delete orientPrompts[c.id];
     return { orientConfirm: null, orientPrompts, orientDismissed: [...st.orientDismissed, c.id] };
   });
   const { original: a, standing: b } = c;
+
+
   const slower = a?.time_s != null && b?.time_s != null && b.time_s > a.time_s;
   const more = a?.floating_mm != null && b?.floating_mm != null ? b.floating_mm - a.floating_mm : null;
   const advice = more != null && more >= FLOAT_MARGIN_MM ? `Stood up, ${more.toFixed(0)} mm more road prints in the air: keep the original.`

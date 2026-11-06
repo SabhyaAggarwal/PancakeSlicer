@@ -1,3 +1,4 @@
+
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Interval_nt.h>
 #include <CGAL/Cartesian_converter.h>
@@ -35,10 +36,14 @@ using PolygonsSegmentIndexConstIt = std::vector<Arachne::PolygonsSegmentIndex>::
 using LinesIt                     = Lines::iterator;
 using ColoredLinesConstIt         = ColoredLines::const_iterator;
 
+
 template bool VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(const VD &, LinesIt, LinesIt);
 template bool VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(const VD &, VD::SegmentIt, VD::SegmentIt);
 template bool VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(const VD &, ColoredLinesConstIt, ColoredLinesConstIt);
 template bool VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(const VD &, PolygonsSegmentIndexConstIt, PolygonsSegmentIndexConstIt);
+
+
+
 
 namespace impl {
     using K   = CGAL::Simple_cartesian<double>;
@@ -50,10 +55,14 @@ namespace impl {
 
     template<typename K>
     inline typename K::Vector_2 calculate_parabolic_tangent_vector(
+
         const typename K::Point_2 &p,
+
         const typename K::Point_2 &f,
+
         const typename K::Point_2 &u,
         const typename K::Point_2 &v,
+
         const typename K::Orientation &tangent_orientation)
     {
         using RT       = typename K::RT;
@@ -74,11 +83,16 @@ namespace impl {
         using result_type = typename K::Orientation;
 
         result_type operator()(
+
             const Point_2 &p,
+
             const Point_2 &q,
+
             const Point_2 &f,
+
             const Point_2 &u,
             const Point_2 &v,
+
             const Orientation &tangent_orientation) const
         {
             assert(tangent_orientation == CGAL::Orientation::LEFT_TURN || tangent_orientation == CGAL::Orientation::RIGHT_TURN);
@@ -98,14 +112,21 @@ namespace impl {
         using result_type = typename K::Orientation;
 
         result_type operator()(
+
             const Point_2 &p,
+
             const Point_2 &f_0,
+
             const Point_2 &u_0,
             const Point_2 &v_0,
+
             const Orientation &tangent_orientation_0,
+
             const Point_2 &f_1,
+
             const Point_2 &u_1,
             const Point_2 &v_1,
+
             const Orientation &tangent_orientation_1) const
         {
             assert(tangent_orientation_0 == CGAL::Orientation::LEFT_TURN || tangent_orientation_0 == CGAL::Orientation::RIGHT_TURN);
@@ -138,6 +159,7 @@ inline Linef make_linef(const VD::edge_type &edge)
 }
 
 [[maybe_unused]] inline bool is_equal(const VD::vertex_type &vertex_first, const VD::vertex_type &vertex_second) { return vertex_first.x() == vertex_second.x() && vertex_first.y() == vertex_second.y(); }
+
 
 bool VoronoiUtilsCgal::is_voronoi_diagram_planar_intersection(const VD &voronoi_diagram)
 {
@@ -176,7 +198,9 @@ struct ParabolicSegment
 {
     const Point focus;
     const Line  directrix;
+
     const Linef segment;
+
     const CGAL::Orientation is_focus_on_left;
 };
 
@@ -262,13 +286,18 @@ check_if_three_edges_are_ccw(const VD::edge_type  &edge_first,
 
     CGAL::Orientation orientation = orientation_of_two_edges(edge_first, edge_second, segment_begin, segment_end);
     if (orientation == CGAL::Orientation::COLLINEAR) {
+
         return orientation_of_two_edges(edge_first, edge_third, segment_begin, segment_end) == CGAL::Orientation::RIGHT_TURN;
     } else if (orientation == CGAL::Orientation::LEFT_TURN) {
+
+
         CGAL::Orientation orientation1 = orientation_of_two_edges(edge_first, edge_third, segment_begin, segment_end);
         CGAL::Orientation orientation2 = orientation_of_two_edges(edge_second, edge_third, segment_begin, segment_end);
         return (orientation1 != CGAL::Orientation::LEFT_TURN || orientation2 != CGAL::Orientation::RIGHT_TURN);
     } else {
         assert(orientation == CGAL::Orientation::RIGHT_TURN);
+
+
         CGAL::Orientation orientation1 = orientation_of_two_edges(edge_first, edge_third, segment_begin, segment_end);
         CGAL::Orientation orientation2 = orientation_of_two_edges(edge_second, edge_third, segment_begin, segment_end);
         return (orientation1 == CGAL::Orientation::RIGHT_TURN || orientation2 == CGAL::Orientation::LEFT_TURN);
@@ -294,6 +323,7 @@ VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(const VD             &voronoi_
 
             edge = edge->rot_next();
         } while (edge != vertex.incident_edge());
+
 
         if (edges.size() > 2) {
             for (auto edge_it = edges.begin() ; edge_it != edges.end(); ++edge_it) {

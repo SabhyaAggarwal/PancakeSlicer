@@ -12,6 +12,7 @@ struct indexed_triangle_set;
 
 namespace Slic3r {
 
+
 static std::vector<Vec2d> THUMBNAIL_SIZE = { Vec2d(50, 50) };
 
 struct ThumbnailData
@@ -31,7 +32,9 @@ struct ThumbnailData
     }
 };
 
+
 ThumbnailData render_thumbnail(const indexed_triangle_set &mesh, unsigned width, unsigned height, bool top, const std::string &colour = "#00AE42");
+
 
 using ThumbnailsList = std::vector<ThumbnailData>;
 
@@ -84,6 +87,8 @@ struct PlateBBoxData
     float nozzle_diameter = 0.4;
     std::string bed_type;
     float first_layer_time = 0.0f;
+
+
     int version = 2;
 
     void to_json(nlohmann::json& j) const{

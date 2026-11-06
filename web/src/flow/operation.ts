@@ -1,3 +1,5 @@
+
+
 import { documentGeneration, onLeaveDocument, subscribeHistory } from '../state/history';
 import { assertNever, createMachine } from './fsm';
 
@@ -15,6 +17,7 @@ export interface OperationTicket {
   progress(pct: number, phase?: OperationPhase): void;
   done(): void;
   fail(error: unknown): void;
+
   adoptGeneration(): void;
 }
 export type ImportStage = 'idle' | 'dropped' | 'validating' | 'repairing' | 'simplifying' | 'uploading' | 'ready' | 'failed' | 'canceled';
@@ -51,6 +54,7 @@ export function createOperation(id: string, stages = false) {
       failed: { on: { ...common, RETRY: common.START } }, canceled: { on: { ...common, RETRY: common.START } },
     },
   });
+
   const project = (s: ReturnType<typeof lifecycle.get>): import('./fsm').Snapshot<OperationState, OperationContext> => ({ ...s,
     value: (active as readonly string[]).includes(s.value) ? 'running' : s.value === 'ready' ? 'done' : s.value as OperationState });
   let projected = project(lifecycle.get());

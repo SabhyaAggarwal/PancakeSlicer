@@ -10,15 +10,19 @@ import { modelLabel, vendorLabel } from './metadata';
 import { findCatalogBase, resolveProfile } from './model';
 import { fromApplicability1, matchesFilament, matchesPrint, matchesPrinter, type PrinterFacts, type WorksWithRule } from './works-with';
 
+
+
 const first = (v: unknown) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 const NOZZLES = [0.2, 0.25, 0.4, 0.6, 0.8];
 const mm = (n: number) => `${n} mm`;
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+
 export function worksWithRule(value: unknown): WorksWithRule | undefined {
   const v = value as {schema?: number; mode?: 'inherit' | 'only'; printerIds?: string[]} | undefined;
   return !v ? undefined : v.schema === 1 ? fromApplicability1(v as Parameters<typeof fromApplicability1>[0]) : value as WorksWithRule;
 }
+
 export function applicabilityKey(value: unknown): string {
   const r = worksWithRule(value);
   if (!r) return 'base';
@@ -27,6 +31,7 @@ export function applicabilityKey(value: unknown): string {
 }
 
 type Printer = PrinterFacts & {id: string; name: string; model: string; brand: string; own: boolean; label: string; detail: string};
+
 function libraryFacts() {
   const s = getState(), live = s.userPresets.filter((p) => !p.archived);
   const printers: Printer[] = live.filter((p) => p.type === 'machine').map((p) => {
@@ -40,13 +45,16 @@ function libraryFacts() {
   return {printers, filaments, prints: named('process'), current: s.printer};
 }
 
+
+
 export function worksWithNone(type: PresetType, value: unknown): boolean {
   const rule = worksWithRule(value);
   return type !== 'machine' && !!rule && !libraryFacts().printers.some((p) => matchesPrinter(rule, p));
 }
 
 const without = <K extends keyof WorksWithRule>(rule: WorksWithRule, key: K) => {const next = {...rule}; delete next[key]; return next;};
-interface ChipOption<T> {id: T; label: string;  tip?: string;  group?: string}
+interface ChipOption<T> {id: T; label: string;                                                                          tip?: string;                                                                group?: string}
+
 function Chips<T extends string | number>({label, options, value, onChange}: {label: string; options: ChipOption<T>[]; value: T[]; onChange(next: T[]): void}) {
   const chip = (o: ChipOption<T>) => {
     const on = value.includes(o.id), last = on && value.length === 1;
@@ -59,9 +67,13 @@ function Chips<T extends string | number>({label, options, value, onChange}: {la
     : <div className="ww-chip-grid" role="group" aria-label={label}>{groups.map((g) => [<span key={`${g}:label`} className="ww-brand">{g}</span>,
       <div key={g} className="chips ww-chips">{options.filter((o) => (o.group ?? '') === g).map(chip)}</div>])}</div>;
 }
+
+
 function Modes({active, modes}: {active: string; modes: Record<string, ReactNode>}) {
   return <div className="ww-modes">{Object.entries(modes).map(([id, node]) => <div key={id} className="ww-mode" data-on={id === active || undefined} inert={id !== active || undefined}>{node}</div>)}</div>;
 }
+
+
 function Condition({label, summary, children}: {label: string; summary: string; children?: ReactNode}) {
   return <div className="ww-condition"><span className="ww-label">{label}</span>
     {children ? <Popover.Root><Popover.Trigger asChild><button type="button" className="dropdown ww-trigger" aria-label={`${label}: ${summary}`}><span className="dropdown-value">{summary}</span><Caret className="dropdown-caret"/></button></Popover.Trigger>
@@ -70,10 +82,13 @@ function Condition({label, summary, children}: {label: string; summary: string; 
   </div>;
 }
 
+
+
 export function WorksWith({type, profile, source, config, value, onChange}: {type: PresetType; profile: string; source?: UserPreset; config: Config; value?: unknown; onChange?(value: WorksWithRule | undefined): void}) {
   const users = useStore((s) => s.userPresets), slots = useStore((s) => s.filamentSlots), process = useStore((s) => s.process);
   const facts = useMemo(libraryFacts, [users]);
   const stored = worksWithRule(value), key = profile;
+
   const native = useMemo(() => {
     if (stored) return [];
     const s = getState(), draft = source && {...source, overlay: config, overrides: config}, state = draft ? {...s, userPresets: s.userPresets.map((p) => profileKey(p) === key ? draft : p)} : s;
@@ -81,11 +96,14 @@ export function WorksWith({type, profile, source, config, value, onChange}: {typ
   }, [stored, facts, config, source, type, key]);
   if (type === 'machine') return null;
   const {printers, filaments, prints} = facts, here = printers.find((p) => p.id === facts.current) ?? printers[0], mine = printers.filter((p) => p.own);
+
+
   const system = getState().machines, nozzlesOf = (model: string) => [...new Set([...system.filter((m) => first(m.config.printer_model) === model).map((m) => Number(first(m.config.nozzle_diameter))), ...printers.filter((p) => p.printerModel === model).map((p) => p.nozzle)].filter((n) => n > 0))].sort((a, b) => a - b);
   const models: ChipOption<string>[] = [...new Map(printers.filter((p) => p.printerModel).map((p) => [p.printerModel, p])).values()].map((p) => {
     const count = mine.filter((q) => q.printerModel === p.printerModel).length, n = nozzlesOf(p.printerModel);
     return {id: p.printerModel, label: p.model || p.printerModel, group: p.brand, tip: [p.printerModel, n.length ? `nozzles ${n.join('/')}` : '', `${count} of my printers`].filter(Boolean).join(' · ')};
   }).sort((a, b) => a.group!.localeCompare(b.group!) || a.label.localeCompare(b.label));
+
   const rule = stored ?? {schema: 2, ...(native.length ? {printers: {models: [...new Set(native.map((p) => p.printerModel).filter(Boolean))]}} : {})} as WorksWithRule;
   for (const m of rule.printers && 'models' in rule.printers ? rule.printers.models : []) if (!models.some((o) => o.id === m)) models.push({id: m, label: m, tip: m});
   const sizes = [...new Set([...NOZZLES, ...printers.map((p) => p.nozzle).filter((n) => n > 0), ...(rule.nozzle && 'sizes' in rule.nozzle ? rule.nozzle.sizes : [])])].sort((a, b) => a - b);
@@ -97,6 +115,8 @@ export function WorksWith({type, profile, source, config, value, onChange}: {typ
   const printerMode = !rule.printers ? 'all' : 'models' in rule.printers ? 'models' : 'printers';
   const nozzleMode = !rule.nozzle ? 'any' : 'sizes' in rule.nozzle ? 'sizes' : 'range';
   const filamentMode = !rule.filaments ? 'any' : 'types' in rule.filaments ? 'types' : 'profiles';
+
+
   const slot = filaments.find((f) => f.id === slots[0] || f.name === slots[0]);
   const range = sizes.filter((n) => printers.some((p) => Math.abs(p.nozzle - n) < 0.0005));
   const list = (ids: string[], names: {id: string; label: string}[]) => ids.map((id) => names.find((n) => n.id === id)?.label ?? id).join(', ');

@@ -8,6 +8,7 @@ export interface ProjectProfileChanges {
   id:string;type:PresetType;key:string;slot:number;generation:number;
   deltas:Config;edits:Config;project:Config|null;
 }
+
 export function captureProjectProfileChanges(type:PresetType,slot=0):ProjectProfileChanges {
   const s=getState(),key=(type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
   const resolved=resolvePreset(s,type,key);
@@ -19,6 +20,7 @@ export function reviewProjectProfileChanges(type:PresetType,slot=0) {
   const stage=captureProjectProfileChanges(type,slot);
   setState({presetUx:{kind:'presets',type,name:stage.key,edit:true,stage}});
 }
+
 export function acknowledgeProjectProfileChanges(s:State,captured:ProjectProfileChanges,saved:Config):Partial<State> {
   const {type,slot}=captured,key=type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   if(documentGeneration() !== captured.generation || key !== captured.key)return {};

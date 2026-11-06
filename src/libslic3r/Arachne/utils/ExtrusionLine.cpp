@@ -51,23 +51,56 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
     if (junctions.size() <= min_path_size)
         return;
 
+
+
+
+
     std::vector<ExtrusionJunction> new_junctions;
+
     new_junctions.emplace_back(junctions.front());
 
     ExtrusionJunction previous = junctions.front();
+
+
+
     ExtrusionJunction previous_previous = this->is_closed ? junctions[junctions.size() - 2] : junctions.front();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     const ExtrusionJunction& initial = junctions[1];
     int64_t accumulated_area_removed = int64_t(previous.p.x()) * int64_t(initial.p.y()) - int64_t(previous.p.y()) * int64_t(initial.p.x());
+
+
     for (size_t point_idx = 1; point_idx < junctions.size() - (this->is_closed ? 0 : 1); point_idx++)
     {
+
         const bool is_last = point_idx + 1 == junctions.size();
         const ExtrusionJunction& current = is_last ? new_junctions[0] : junctions[point_idx];
+
 
         if (this->is_closed && new_junctions.size() + (junctions.size() - point_idx) <= 3) {
             new_junctions.push_back(current);
             continue;
         }
+
 
         const bool spill_over = this->is_closed && point_idx + 2 >= junctions.size() &&
             point_idx + 2 - junctions.size() < new_junctions.size();
@@ -79,8 +112,12 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
 
         const int64_t length2 = (current - previous).cast<int64_t>().squaredNorm();
 
+
+
+
         if (length2 < Slic3r::sqr(scaled<coord_t>(0.005)))
         {
+
             continue;
         }
 
@@ -91,12 +128,22 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
         {
             continue;
         }
+
+
+
+
+
+
+
         const auto    height_2 = int64_t(double(area_removed_so_far) * double(area_removed_so_far) / double(base_length_2));
         const int64_t extrusion_area_error = calculateExtrusionAreaDeviationError(previous, current, next);
+
         if ((height_2 <= Slic3r::sqr(colinear_vertex_tolerance())
              && Line::distance_to_infinite(current.p, previous.p, next.p) <= double(colinear_vertex_tolerance()))
+
              && extrusion_area_error <= maximum_extrusion_area_deviation)
         {
+
             continue;
         }
 
@@ -106,11 +153,23 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
             const int64_t next_length2 = (current - next).cast<int64_t>().squaredNorm();
             if (next_length2 > 4 * smallest_line_segment_squared)
             {
+
+
+
+
+
+
+
+
+
+
                 Point intersection_point;
                 bool has_intersection = Line(previous_previous.p, previous.p).intersection_infinite(Line(current.p, next.p), &intersection_point);
                 const auto dist_greater = [](const Point& p1, const Point& p2, const int64_t threshold) {
                     const auto vec = (p1 - p2).cwiseAbs().cast<uint64_t>().eval();
                     if(vec.x() > threshold || vec.y() > threshold) {
+
+
                         return true;
                     }
                     return vec.squaredNorm() > threshold;
@@ -120,15 +179,20 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
                     || dist_greater(intersection_point, previous.p, smallest_line_segment_squared)
                     || dist_greater(intersection_point, current.p, smallest_line_segment_squared))
                 {
+
+
                 }
                 else
                 {
+
                     const ExtrusionJunction new_to_add = ExtrusionJunction(intersection_point, current.w, current.perimeter_index);
+
                     if(!new_junctions.empty())
                     {
                         new_junctions.pop_back();
                         previous = previous_previous;
                     }
+
 
                     accumulated_area_removed = removed_area_next;
                     previous_previous = previous;
@@ -142,6 +206,7 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
                 continue;
             }
         }
+
         accumulated_area_removed = removed_area_next;
         previous_previous = previous;
         previous = current;
@@ -149,8 +214,12 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
     }
 
     if (this->is_closed) {
+
+
+
         new_junctions.front().p = new_junctions.back().p;
     } else {
+
         new_junctions.emplace_back(junctions.back());
     }
 
@@ -158,15 +227,35 @@ void ExtrusionLine::simplify(const int64_t smallest_line_segment_squared, const 
 }
 
 int64_t ExtrusionLine::calculateExtrusionAreaDeviationError(ExtrusionJunction A, ExtrusionJunction B, ExtrusionJunction C) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const int64_t ab_length = (B.p - A.p).cast<int64_t>().norm();
     const int64_t bc_length = (C.p - B.p).cast<int64_t>().norm();
     if (const coord_t width_diff = std::max(std::abs(B.w - A.w), std::abs(C.w - B.w)); width_diff > 1) {
+
+
         const int64_t ab_weight              = (A.w + B.w) / 2;
         const int64_t bc_weight              = (B.w + C.w) / 2;
         const int64_t weighted_average_width = (ab_length * ab_weight + bc_length * bc_weight) / (ab_length + bc_length);
         const int64_t ac_length              = (C.p - A.p).cast<int64_t>().norm();
         return std::abs((ab_weight * ab_length + bc_weight * bc_length) - (weighted_average_width * ac_length));
     } else {
+
         return ab_length > bc_length ? int64_t(width_diff) * bc_length : int64_t(width_diff) * ab_length;
     }
 }
@@ -180,6 +269,7 @@ bool ExtrusionLine::is_contour() const
     poly.points.reserve(this->junctions.size());
     for (const ExtrusionJunction &junction : this->junctions)
         poly.points.emplace_back(junction.p);
+
 
     return poly.is_clockwise();
 }

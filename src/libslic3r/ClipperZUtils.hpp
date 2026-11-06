@@ -24,12 +24,15 @@ using ZPoints = std::vector<ZPoint, PointsAllocator<ZPoint>>;
 using ZPath   = ZPoints;
 using ZPaths  = std::vector<ZPath, PointsAllocator<ZPath>>;
 
+
 using ZFillCallback = std::function<void(const ZPoint &e1bot, const ZPoint &e1top, const ZPoint &e2bot, const ZPoint &e2top, ZPoint &pt)>;
 
 inline bool zpoint_lower(const ZPoint &l, const ZPoint &r)
 {
     return l.x() < r.x() || (l.x() == r.x() && (l.y() < r.y() || (l.y() == r.y() && l.z() < r.z())));
 }
+
+
 
 template<bool Open = false>
 inline ZPath to_zpath(const Points &path, coord_t z)
@@ -45,6 +48,8 @@ inline ZPath to_zpath(const Points &path, coord_t z)
     return out;
 }
 
+
+
 template<bool Open = false>
 inline ZPaths to_zpaths(const VecOfPoints &paths, coord_t z)
 {
@@ -54,6 +59,9 @@ inline ZPaths to_zpaths(const VecOfPoints &paths, coord_t z)
         out.emplace_back(to_zpath<Open>(path, z));
     return out;
 }
+
+
+
 
 template<bool Open = false>
 inline ZPaths expolygons_to_zpaths(const ExPolygons &src, coord_t &base_idx)
@@ -70,6 +78,8 @@ inline ZPaths expolygons_to_zpaths(const ExPolygons &src, coord_t &base_idx)
     return out;
 }
 
+
+
 template<bool Open = false>
 inline Points from_zpath(const ZPoints &path)
 {
@@ -83,6 +93,8 @@ inline Points from_zpath(const ZPoints &path)
     }
     return out;
 }
+
+
 
 template<bool Open = false>
 inline void from_zpaths(const ZPaths &paths, VecOfPoints &out)
@@ -99,7 +111,9 @@ inline VecOfPoints from_zpaths(const ZPaths &paths)
     return out;
 }
 
+
 double area(const ZPath &path);
+
 
 ZPaths clip_zpaths(ClipType clip_type, const ZPaths &subject, bool subject_open, const ZPaths &clip, const ZFillCallback &zfill, bool preserve_collinear = false);
 
@@ -113,13 +127,16 @@ public:
         coord_t srcs[4]{ e1bot.z(), e1top.z(), e2bot.z(), e2top.z() };
         coord_t *begin = srcs;
         coord_t *end = srcs + 4;
+
         std::sort(begin, end);
         end = std::unique(begin, end);
         if (begin + 1 == end) {
+
             pt.z() = *begin;
         } else {
             assert(begin + 2 == end);
             if (begin + 2 <= end) {
+
                 m_intersections.emplace_back(srcs[0], srcs[1]);
                 pt.z() = -coord_t(m_intersections.size());
             }

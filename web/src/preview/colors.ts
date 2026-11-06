@@ -1,7 +1,11 @@
+
+
+
 import { MoveType } from './format';
 import type { PreviewData } from './data';
 
 export type RGB = [number, number, number];
+
 
 export const ROLE_COLORS: RGB[] = [
   [230, 179, 179],
@@ -25,6 +29,7 @@ export const ROLE_COLORS: RGB[] = [
   [94, 209, 148],
   [128, 128, 128],
 ];
+
 
 export const OPTION_COLORS = {
   travel: [56, 72, 155] as RGB,
@@ -60,6 +65,7 @@ export const RANGE_PALETTE: RGB[] = [
   [245, 206, 10], [227, 136, 32], [209, 104, 48], [194, 82, 60], [148, 38, 22],
 ];
 
+
 export const NONPLANAR_PLANAR_COLOR: RGB = [140, 140, 140];
 const NONPLANAR_PALETTE: RGB[] = [[230, 159, 0], [86, 180, 233], [0, 158, 115], [240, 228, 66], [0, 114, 178], [213, 94, 0], [204, 121, 167]];
 export const NONPLANAR_HUES = NONPLANAR_PALETTE.length;
@@ -83,10 +89,12 @@ export class ColorRange {
     if (this.log) return this.min !== 0 ? Math.log(this.max / this.min) / n : 0;
     return (this.max - this.min) / n;
   }
+
   colorAt(value: number): RGB {
     const p = this.packedAt(value);
     return [p & 255, (p >> 8) & 255, (p >> 16) & 255];
   }
+
   packedAt(value: number): number {
     const f = Math.fround;
     const v = f(Math.min(Math.max(value, this.min), this.max));
@@ -102,6 +110,7 @@ export class ColorRange {
     const ch = (k: number) => Math.trunc(f(f(w * a[k]) + f(u * b[k])));
     return ch(0) | (ch(1) << 8) | (ch(2) << 16) | 0xff000000;
   }
+
   values(): number[] {
     if (!(this.max >= this.min)) return [];
     if (this.count <= 1) return [this.min];
@@ -111,6 +120,7 @@ export class ColorRange {
   }
 }
 
+
 export function roundToBin(value: number): number {
   const scale = [100, 1000, 10000, 100000, 1000000];
   const threshold = [0.095, 0.0095, 0.00095, 0.000095, 0.0000095];
@@ -119,12 +129,16 @@ export function roundToBin(value: number): number {
   return Math.floor(value * scale[i] + 0.5) / scale[i];
 }
 
+
+
 export type ViewType =
   | 'feature' | 'filament' | 'speed' | 'height' | 'width' | 'flow' | 'layer_time' | 'layer_time_log'
   | 'fan' | 'temperature' | 'acceleration' | 'jerk' | 'pressure_advance' | 'nonplanar'
   | 'actual_speed' | 'actual_flow' | 'clearance';
 
+
 export const EXTENDED_VIEWS = new Set<ViewType>(['actual_speed', 'actual_flow', 'clearance']);
+
 
 export const VIEW_TYPES: { key: ViewType; label: string }[] = [
   { key: 'feature', label: 'Line Type' },
@@ -146,7 +160,9 @@ export const VIEW_TYPES: { key: ViewType; label: string }[] = [
   { key: 'pressure_advance', label: 'Pressure Advance' },
 ];
 
+
 export type NonplanarColor = 'shell' | 'band' | 'patch' | 'bead_height' | 'slope' | 'curved';
+
 export const CURVED_COLOR: RGB = [22, 179, 160];
 export const NONPLANAR_COLORS: { key: NonplanarColor; label: string }[] = [
   { key: 'shell', label: 'Shell' },
@@ -162,10 +178,13 @@ export interface Visibility {
   retract: boolean;
   unretract: boolean;
   seam: boolean;
+
   hiddenRoles: Set<number>;
 }
 
+
 const MAPPED_ROLES = [6, 8];
+
 
 export function drawMasks(v: Visibility, surface = false): { roleMask: number; typeMask: number; optionMask: number } {
   let roleMask = 0;
@@ -202,9 +221,11 @@ export interface Ranges {
 interface CachedRanges { ranges: Ranges; loaded: number; slope: Float32Array | null; vis: Visibility }
 const rangeCache = new WeakMap<PreviewData, Map<number, CachedRanges>>();
 
+
 export function updateCachedRanges(d: PreviewData) {
   for (const entry of rangeCache.get(d)?.values() ?? []) computeRanges(d, entry.vis);
 }
+
 
 export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
   const key = Number(vis.travel) | Number(vis.wipe) << 1 | Number(vis.hiddenRoles.has(18)) << 2;
@@ -263,8 +284,14 @@ export interface ColorContext {
   ranges: Ranges;
   extruderColors: RGB[];
   colorPrintColors: RGB[];
+
   clearance?: { margin: number; floor: number };
 }
+
+
+
+
+
 
 export function colorKey(c: ColorContext): string | null {
   const r = c.ranges;
@@ -275,6 +302,7 @@ export function colorKey(c: ColorContext): string | null {
       jerk: r.jerk, fan: r.fan, temperature: r.temperature, pressure_advance: r.pa, flow: r.flow } as Partial<Record<ViewType, ColorRange>>)[c.view];
   return JSON.stringify([c.view, c.nonplanar, range?.min, range?.max, c.clearance]);
 }
+
 
 export function clearanceColor(clearance: number, margin: number, floor: number): RGB {
   if (Number.isNaN(clearance)) return [128, 128, 128];
@@ -296,13 +324,17 @@ export function hexToRgb(h: string | undefined): RGB {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+
 const packRGB = (col: RGB) => col[0] | (col[1] << 8) | (col[2] << 16) | 0xff000000;
+
 
 export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, from: number, to: number) {
   const s = d.states!;
   const { ranges: r, view } = c;
   const words = new Uint32Array(out.buffer, out.byteOffset, out.length >> 2);
   const put = (i: number, col: RGB) => { words[i] = packRGB(col); };
+
+
   const memo = new Map<number, number>();
   const ranged = (range: ColorRange, v: number) => {
     let p = memo.get(v);

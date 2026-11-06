@@ -6,7 +6,6 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
-/* Hash table on the 4-byte prefixes of static dictionary words. */
 var kStaticDictionaryHash = [32768]uint16{
 	32072,
 	0,

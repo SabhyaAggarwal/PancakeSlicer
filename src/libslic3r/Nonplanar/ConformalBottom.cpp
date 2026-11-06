@@ -51,6 +51,7 @@ namespace {
 
 constexpr float Inf = std::numeric_limits<float>::infinity();
 
+
 struct BottomSettings
 {
     int    region_id    = -1;
@@ -60,6 +61,7 @@ struct BottomSettings
     double max_error    = 0.;
     double min_area     = 0.;
     double pitch        = 0.2;
+
     bool   banded       = false;
 };
 
@@ -89,6 +91,8 @@ BottomSettings bottom_settings(const PrintObject &object, size_t region_id)
     }
     return s;
 }
+
+
 
 HeightField component_minorant(const HeightField &S, const Mask &mask, const HeadEnvelope &head, const std::function<void()> &cancel)
 {
@@ -120,6 +124,7 @@ HeightField component_minorant(const HeightField &S, const Mask &mask, const Hea
     });
     return out;
 }
+
 
 bool contains(const ExPolygons &area, const std::vector<BoundingBox> &bboxes, const Point &p)
 {
@@ -160,6 +165,18 @@ HeightField sample_bottom_surface(const sla::IndexedMesh &mesh, const HeightFiel
     return S;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
 static void build_region_bottom(PrintObject &object, ConformalResult &result, size_t region_id)
 {
     LayerPtrs &layers = object.layers();
@@ -178,6 +195,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     const double gap   = object.config().support_top_z_distance.value;
     const double pitch = settings.pitch;
     auto         cancel = [&object]() { throw_if_canceled(object); };
+
+
 
     Polygons          silhouette;
     const HeightField grid      = object_grid(object, pitch, &silhouette);
@@ -202,11 +221,17 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     }
     if (bottoms.empty())
         return;
+
     const float      seam      = float(scale_(0.01));
     ExPolygons       candidate = offset_ex(union_ex(offset(bottoms, seam)), -seam);
     const sla::IndexedMesh &imesh  = object_mesh(object, result).imesh;
     const double            z_shift = object.slicing_parameters().object_print_z_min;
     const HeightField       Sb      = sample_bottom_surface(imesh, ray_start, z_shift, cancel);
+
+
+
+
+
     ExPolygons skins;
     for (const ConformalPatch &patch : result.patches)
         if (patch.kind == PatchKind::Overhang) {
@@ -240,6 +265,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
 
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
 
+
+
     HeightField S0 = Sb;
     for (size_t i = 0; i < n_nodes; ++i)
         if (!cand_mask[i])
@@ -249,12 +276,16 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
+
+
     if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->planar.empty()) {
         const std::vector<uint8_t> off = planar_disc_mask(*hints, grid);
         for (size_t i = 0; i < n_nodes && i < off.size(); ++i)
             if (off[i])
                 mask[i] = 0;
     }
+
+
     if (const double slab = full_conformal_thickness(region.config(), object); settings.banded && slab > 0.)
         tbb::parallel_for(tbb::blocked_range<size_t>(0, n_nodes), [&](const tbb::blocked_range<size_t> &range) {
             for (size_t i = range.begin(); i < range.end(); ++i)
@@ -265,8 +296,13 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                         mask[i] = 0;
                 }
         });
+
+
+
     if (settings.banded) {
         double wall = std::tan(Geometry::deg2rad(60.));
+
+
         if (object.config().nonplanar_mode.value == NonplanarMode::Auto)
             wall = std::min(wall, auto_curved_underside_slope());
         for (int iy = 0; iy < grid.ny(); ++iy)
@@ -277,6 +313,10 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                         mask[i] = 0;
                 }
     }
+
+
+
+
     HeightField S1 = S0;
     if (!settings.banded) {
         drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask);
@@ -286,6 +326,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                 mask[i] = 0;
         S1 = component_minorant(S0, mask, head, cancel);
     }
+
+
 
     std::vector<double> layer_bottom(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
@@ -300,6 +342,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             mask[i] = 0;
     }
     throw_if_canceled(object);
+
     const double       line_width = region.flow(object, frSolidInfill, h_c).width();
     const double       wall_width = std::max(0, region.config().wall_loops.value) *
                                 region.flow(object, frPerimeter, settings.shell_height).width();
@@ -307,10 +350,14 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                                         diff_ex(candidate, offset_ex(union_ex(silhouette), float(-scale_(wall_width)))) :
                                         ExPolygons();
 
+
     ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(line_width)));
+
     components            = settings.banded ? intersection_ex(components, candidate) :
                                               intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                                               candidate);
+
+
     double band_relief = std::max(h_c, (settings.shells - 1) * h_c + h_min + gap - settings.max_error);
     if (effective_patch_height_cap(object) > 0.)
         band_relief = std::min(band_relief, effective_patch_height_cap(object));
@@ -332,11 +379,13 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                     ix0 = std::min(ix0, ix), iy0 = std::min(iy0, iy), ix1 = std::max(ix1, ix), iy1 = std::max(iy1, iy);
                     zlo = std::min(zlo, S1.data()[i]), zhi = std::max(zhi, S1.data()[i]);
                 }
+
         if (ix1 < 0 || zhi - zlo < 0.01)
             continue;
         const int pad = 3;
         ix0 = std::max(0, ix0 - pad), iy0 = std::max(0, iy0 - pad);
         ix1 = std::min(grid.nx() - 1, ix1 + pad), iy1 = std::min(grid.ny() - 1, iy1 + pad);
+
         HeightField surface = crop(S1, ix0, iy0, ix1, iy1);
         for (int iy = 0; iy < surface.ny(); ++iy)
             for (int ix = 0; ix < surface.nx(); ++ix)
@@ -356,6 +405,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             const int layer = planar_transition_layer(layer_bottom, padded.data()[i] + (settings.shells - 1) * h_c,
                                                        h_c, h_min, h_max, PatchKind::Bottom);
             if (layer < 0) {
+
+
                 if (std::isnan(surface.data()[i]))
                     continue;
                 printable = false;
@@ -366,6 +417,11 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         if (!printable)
             continue;
         pad_lowest(padded_floor, pad);
+
+
+
+
+
 
         int fl_lo = int(layers.size()), fl_hi = -1;
         for (int iy = iy0; iy <= iy1; ++iy)
@@ -400,6 +456,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             patch.surface      = padded;
             patch.base         = padded_floor;
             patch.host_layer   = host;
+
             if (settings.banded)
                 patch.band = band;
             patch.z_min        = Inf;
@@ -449,15 +506,23 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         return;
     }
 
+
     const Flow       flow       = region.flow(object, frSolidInfill, h_c);
     const double     base_angle = Geometry::deg2rad(region.config().solid_infill_direction.value);
+
     const double     overlap    = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
     std::vector<ExPolygons> shell_areas(result.patches.size());
     for (size_t idx = first_patch; idx < result.patches.size(); ++idx)
         shell_areas[idx] = diff_ex(result.patches[idx].footprint, result.patches[idx].wall_band);
+
+
     auto shell_flow = [&](int k) {
         return settings.banded && k == 1 ? flow.with_width(std::min(flow.width(), float(0.75 * flow.nozzle_diameter()))) : flow;
     };
+
+
+
+
     auto lift_at = [&](const ConformalPatch &patch, size_t idx, int k) {
         return [&patch, idx, k, &settings, &band_range, &layer_bottom, first_patch, h_c, h_min, h_max](const Vec2d &p, double &z,
                                                                                                      float &bead) {
@@ -481,6 +546,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             return true;
         };
     };
+
     auto band_start = [](const ConformalPatch &patch) {
         const Mask inside = rasterize(patch.footprint, patch.surface);
         Point      start;
@@ -504,6 +570,10 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         patch.shell_paths.emplace_back(std::move(shell));
     };
     if (settings.banded) {
+
+
+
+
         std::vector<std::vector<size_t>> members(static_cast<size_t>(n_components));
         for (size_t idx = first_patch; idx < result.patches.size(); ++idx)
             members[size_t(component_of[idx - first_patch])].emplace_back(idx);
@@ -562,6 +632,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         });
     }
 
+
     for (size_t idx = first_patch; idx < result.patches.size(); ++idx) {
         const ConformalPatch &patch = result.patches[idx];
         layers[patch.host_layer]->conformal_patches_before.emplace_back(patch.id);
@@ -592,6 +663,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                 continue;
             excl                        = union_ex(excl);
             const BoundingBox excl_bbox = get_extents(excl);
+
+
             for (LayerRegion *layerm : layers[i]->regions()) {
                 clip_extrusions(layerm->fills, excl, excl_bbox);
                 clip_extrusions(layerm->perimeters, excl, excl_bbox);
@@ -627,6 +700,7 @@ void contour_support_interface(PrintObject &object)
         return;
     const double gap     = object.config().support_top_z_distance.value;
     const double z_first = support_layers.front()->print_z;
+
     auto underside = [](const ConformalPatch &patch) -> const HeightField & {
         return patch.kind == PatchKind::Volume ? patch.base : patch.surface;
     };
@@ -637,6 +711,8 @@ void contour_support_interface(PrintObject &object)
     auto in_range = [&](const SupportLayer &layer) {
         return layer.print_z >= z_lo - gap - layer.height - EPSILON && layer.print_z <= z_hi - gap + layer.height + EPSILON;
     };
+
+
     std::vector<ExPolygons> covered_above(support_layers.size());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, support_layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t j = range.begin(); j < range.end(); ++j)
@@ -650,10 +726,14 @@ void contour_support_interface(PrintObject &object)
             if (!in_range(layer))
                 continue;
             const double                    z_s          = layer.print_z, h_s = layer.height;
+
+
+
             if (z_s - h_s < EPSILON)
                 continue;
             const ExPolygons               &above        = covered_above[j];
             const std::vector<BoundingBox>  above_bboxes = extents(above);
+
 
             auto lift = [&](const Vec2d &p) {
                 const Point pt = Point::new_scale(p.x(), p.y());
@@ -662,6 +742,8 @@ void contour_support_interface(PrintObject &object)
                 for (size_t k = 0; k < patches.size(); ++k)
                     if (contains(patches[k]->footprint, footprint_bboxes[k], pt))
                         if (const float s = underside(*patches[k]).sample(p); !std::isnan(s)) {
+
+
                             const double min_bead = object.printing_region(size_t(patches[k]->region_id)).config().zaa_min_z.value;
                             const double max_down = std::max(0., h_s - min_bead);
                             const double dz       = std::max(s - gap - z_s, z_first - z_s);
@@ -727,6 +809,7 @@ bool patch_has_extrusions(const ConformalPatch &patch)
 
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
 {
+
     if (patch.kind != PatchKind::SupportInterface && patch.host_layer < object.layers().size()) {
         int filament = 0;
         for (const auto &[z, extruder] : multi_as_single_tool_changes(object))
@@ -746,6 +829,7 @@ int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
     case PatchKind::Volume:
     case PatchKind::Bridge: break;
     case PatchKind::SupportInterface: {
+
         const PrintObjectConfig &ocfg = object.config();
         if (ocfg.support_interface_filament.value > 0)
             return ocfg.support_interface_filament.value;

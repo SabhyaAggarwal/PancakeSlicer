@@ -16,6 +16,7 @@ enum ExtrusionSimulationType
     ExtrusionSimulationSpreadExcess
 };
 
+
 class ExtrusionSimulatorImpl;
 
 class ExtrusionSimulator
@@ -24,13 +25,25 @@ public:
     ExtrusionSimulator();
     ~ExtrusionSimulator();
 
+
+
+
     void  		set_image_size(const Point &image_size);
+
     void  		set_viewport(const BoundingBox &viewport);
+
     void		set_bounding_box(const BoundingBox &bbox);
 
+
     void		reset_accumulator();
+
+
+
     void		extrude_to_accumulator(const ExtrusionPath &path, const Point &shift, ExtrusionSimulationType simulationType);
+
+
     void		evaluate_accumulator(ExtrusionSimulationType simulationType);
+
     const void* image_ptr() const;
 
 private:

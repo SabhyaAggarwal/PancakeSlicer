@@ -8,6 +8,8 @@
 
 namespace Slic3r::Nonplanar {
 
+
+
 class HeightField
 {
 public:
@@ -15,6 +17,7 @@ public:
 
     HeightField() = default;
     HeightField(const BoundingBoxf &bbox, double pitch, float init = NoData);
+
     static HeightField layout(const BoundingBoxf &bbox, double pitch);
 
     int          nx() const { return m_nx; }
@@ -28,7 +31,9 @@ public:
     float  at(int ix, int iy) const { return m_z[size_t(iy) * m_nx + ix]; }
     Vec2d  node(int ix, int iy) const { return m_origin + m_pitch * Vec2d(ix, iy); }
 
+
     float sample(const Vec2d &p) const;
+
     Vec2d gradient(const Vec2d &p) const;
     bool  has_data(const Vec2d &p) const { return !std::isnan(this->sample(p)); }
 

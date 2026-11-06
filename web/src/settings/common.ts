@@ -1,3 +1,4 @@
+
 import type { PresetType } from '../api/types';
 import { isHidden, modeVisible, OPTIONS, splitKey, TABS, type OptionMode, type TabGroup, type TabPage } from '../options';
 import { effectiveConfig, effectiveMode, type State } from '../state/store';
@@ -14,12 +15,14 @@ const empty = (v: unknown): boolean => v == null || typeof v === 'string' && /^(
   || typeof v === 'number' && !Number.isFinite(v) || Array.isArray(v) && (!v.length || v.every(empty))
   || typeof v === 'object' && v !== null && 'value' in v && empty(v.value);
 
+
 export function currentPlate(s: State): string {
   const plate = s.projectPlates.find((p) => p.index === s.plateIndex)?.settings.curr_bed_type;
   const machine = effectiveConfig(s, 'machine');
   return String((plate && !s.dirty.machine.curr_bed_type ? plate : s.bedType || machine.curr_bed_type)
     || OPTIONS.curr_bed_type?.default || '');
 }
+
 
 export function commonKeys(type: PresetType, s: State): Set<string> {
   const out = new Set<string>();
@@ -35,6 +38,7 @@ export function commonKeys(type: PresetType, s: State): Set<string> {
 
 export type HiddenReason = 'other plate' | 'empty' | 'not applicable';
 
+
 export function hiddenReason(k: string, s: State, type?: PresetType, slot?: number): HiddenReason | undefined {
   const [key, idx] = splitKey(k), def = OPTIONS[key];
   if (!def) return undefined;
@@ -45,6 +49,7 @@ export function hiddenReason(k: string, s: State, type?: PresetType, slot?: numb
   const value = effectiveConfig(s, type, slot)[key];
   const element = (v: unknown) => Array.isArray(v) && /^(?:floats|ints|percents)/.test(def.type)
     ? v[Math.min(idx, v.length - 1)] : v;
+
   if (emptyRanges.has(key)) {
     const v = element(value === undefined ? def.default : value);
     if (empty(v) || key.startsWith('nozzle_temperature_range_') && Number(scalar(v)) === 0) return 'empty';
@@ -57,13 +62,16 @@ export function hiddenReason(k: string, s: State, type?: PresetType, slot?: numb
   if (type === 'filament' && key === 'additional_cooling_fan_speed' && off('auxiliary_fan')) return 'not applicable';
   if (type === 'filament' && /^(?:activate_air_filtration|during_print_exhaust_fan_speed|complete_print_exhaust_fan_speed)/.test(key)
     && off('support_air_filtration')) return 'not applicable';
+
   if (type === 'filament' && key === 'activate_chamber_temp_control' && off('support_chamber_temp_control')) return 'not applicable';
   return undefined;
 }
 
+
 export function commonMode(type: PresetType, key: string, s: State, native: OptionMode): OptionMode {
   return commonKeys(type, s).has(splitKey(key)[0]) ? 'simple' : native === 'simple' ? 'advanced' : native;
 }
+
 
 export function groupCounts(type: PresetType, page: TabPage | string, group: TabGroup | string, s: State,
   slot = type === 'filament' && s.dialog?.type === 'filament' ? s.dialog.slot : 0): { shown: number; more: number } {

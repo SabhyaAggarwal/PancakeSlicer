@@ -57,18 +57,39 @@ public:
 
     const SurfaceCollection& get_slices() const { return slices; }
 
+
+
     SurfaceCollection           slices;
+
+
+
     ExPolygons                  raw_slices;
+
+
+
 
     ExtrusionEntityCollection   thin_fills;
 
+
+
     ExPolygons                  fill_expolygons;
+
     SurfaceCollection           fill_surfaces;
+
     ExPolygons                  fill_no_overlap_expolygons;
+
+
+
+
+
 
     Polylines          			unsupported_bridge_edges;
 
+
+
     ExtrusionEntityCollection   perimeters;
+
+
 
     ExtrusionEntityCollection   fills;
 
@@ -78,30 +99,45 @@ public:
 
     void    slices_to_fill_surfaces_clipped();
     void    prepare_fill_surfaces();
+
     void    make_perimeters(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap);
+
     void    make_perimeters_generator(const SurfaceCollection &slices, const LayerRegionPtrs &compatible_regions, SurfaceCollection* fill_surfaces, ExPolygons* fill_no_overlap,
                                       const PrintRegionConfig *config_override, bool planar_neighbours);
 
+
     const NonplanarSurfaces& nonplanar_surfaces() const { return m_nonplanar_surfaces; }
+
     void    append_nonplanar_surface(const NonplanarSurface& surface);
+
     void    project_nonplanar_extrusion(ExtrusionEntityCollection* collection, const NonplanarProjectionIndex& index);
+
     void    project_nonplanar_surfaces();
+
     std::vector<ExtrusionPath> project_nonplanar_path(const ExtrusionPath& path, const NonplanarProjectionIndex& index);
     void    remove_nonplanar_slices(SurfaceCollection topNonplanar);
+
     void    clear_nonplanar_surfaces();
+
     void    merge_nonplanar_shell_slices();
     void    append_top_nonplanar_slices(SurfaceCollection topNonplanar);
     void    process_external_surfaces(const Layer *lower_layer, const Polygons *lower_layer_covered);
     double  infill_area_threshold() const;
+
     void    trim_surfaces(const Polygons &trimming_polygons);
+
+
     void    elephant_foot_compensation_step(const float elephant_foot_compensation_perimeter_step, const Polygons &trimming_polygons);
 
     void    export_region_slices_to_svg(const char *path) const;
     void    export_region_fill_surfaces_to_svg(const char *path) const;
+
     void    export_region_slices_to_svg_debug(const char *name) const;
     void    export_region_fill_surfaces_to_svg_debug(const char *name) const;
 
+
     bool    has_extrusions() const { return ! this->perimeters.entities.empty() || ! this->fills.entities.empty(); }
+
     void    simplify_infill_extrusion_entity() { simplify_entity_collection(&fills); }
     void    simplify_wall_extrusion_entity() { simplify_entity_collection(&perimeters); }
 private:
@@ -122,12 +158,14 @@ private:
     const PrintRegion *m_region;
 
     NonplanarSurfaces  m_nonplanar_surfaces;
+
     bool               m_nonplanar_perimeters_projected { false };
 };
 
 class Layer
 {
 public:
+
     size_t              id() const          { return m_id; }
     void                set_id(size_t id)   { m_id = id; }
     PrintObject*        object()            { return m_object; }
@@ -136,35 +174,78 @@ public:
     Layer              *upper_layer;
     Layer              *lower_layer;
     bool                slicing_errors;
+
     bool                top_textured = false;
+
+
     ExPolygons          zaa_flat_tops;
     coordf_t            slice_z;
     coordf_t            print_z;
     coordf_t            height;
     coordf_t            bottom_z() const { return this->print_z - this->height; }
 
+
     CurledLines         curled_lines;
+
 
     mutable ExPolygons          sharp_tails;
     mutable ExPolygons          cantilevers;
     mutable std::vector<float>  sharp_tails_height;
 
+
+
+
+
+
+
+
+
     ExPolygons 				 lslices;
     ExPolygons 				 lslices_extrudable;
     std::vector<BoundingBox> lslices_bboxes;
+
+
+
+
     std::vector<ExPolygons>  region_slices_before_nonplanar;
     ExPolygons               lslices_before_nonplanar;
+
+
+
     std::vector<size_t>      lslices_separated_component_ids;
+
 
     ExPolygons              loverhangs;
     BoundingBox             loverhangs_bbox;
 
+
+
     std::vector<int>        conformal_patches_before;
     std::vector<int>        conformal_patches_after;
+
+
     bool                    conformal_covered { false };
+
+
+
+
+
     Polygons                wave_overhang_floor_polygons;
 
+
+
+
+
+
+
     Polygons                wave_overhang_covered_polygons;
+
+
+
+
+
+
+
 
     Polygons                wave_overhang_shadow_polygons;
     size_t                  region_count() const { return m_regions.size(); }
@@ -172,11 +253,16 @@ public:
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }
     LayerRegion*            add_region(const PrintRegion *print_region);
     const LayerRegionPtrs&  regions() const { return m_regions; }
+
     bool                    empty() const;
     void                    make_slices();
+
+
     void                    backup_untyped_slices();
     void                    restore_untyped_slices();
+
     void                    restore_untyped_slices_no_extra_perimeters();
+
     ExPolygons              merged(float offset) const;
     template <class T> bool any_internal_region_slice_contains(const T &item) const {
         for (const LayerRegion *layerm : m_regions) if (layerm->slices.any_internal_contains(item)) return true;
@@ -187,13 +273,17 @@ public:
         return false;
     }
 
+
     static bool             is_perimeter_compatible(const Print& print, const PrintRegion& a, const PrintRegion& b);
     void                    make_perimeters();
+
     void                    make_fills() { this->make_fills(nullptr); }
     void                    make_fills(const FillAdaptive::RegionOctrees* fill_octrees, FillLightning::Generator* lightning_generator = nullptr);
     Polylines               generate_sparse_infill_polylines_for_anchoring(const FillAdaptive::RegionOctrees *fill_octrees,
                                                                            FillLightning::Generator* lightning_generator) const;
     void 					make_ironing();
+
+
     static int              choose_ironing_extruder(const PrintRegionConfig &cfg,
                                                     bool spiral_mode,
                                                     bool is_topmost_layer);
@@ -201,8 +291,11 @@ public:
 
     void                    export_region_slices_to_svg(const char *path) const;
     void                    export_region_fill_surfaces_to_svg(const char *path) const;
+
     void                    export_region_slices_to_svg_debug(const char *name) const;
     void                    export_region_fill_surfaces_to_svg_debug(const char *name) const;
+
+
 
     virtual bool            has_extrusions() const {
         if (!conformal_patches_before.empty() || !conformal_patches_after.empty()) return true;
@@ -210,9 +303,16 @@ public:
         return false;
     }
 
+
     void simplify_wall_extrusion_path() { for (auto layerm : m_regions) layerm->simplify_wall_extrusion_entity();}
     void simplify_infill_extrusion_path() { for (auto layerm : m_regions) layerm->simplify_infill_extrusion_entity(); }
+
     coordf_t get_sparse_infill_max_void_area();
+
+
+
+
+
 
     template<typename IteratorType, typename IndexType, typename FN_HIGHER_EQUAL>
     static IndexType idx_higher_or_equal(IteratorType begin, IteratorType end, IndexType idx, FN_HIGHER_EQUAL fn_higher_equal)
@@ -222,6 +322,7 @@ public:
             idx = 0;
             }
         else if (idx == IndexType(-1)) {
+
             int idx_low = 0;
             int idx_high = std::max(0, size - 1);
             while (idx_low + 1 < idx_high) {
@@ -235,6 +336,7 @@ public:
                 (fn_higher_equal(begin[idx_high]) ? idx_high : size);
             }
         else {
+
             while (int(idx) < size && !fn_higher_equal(begin[idx]))
                 ++idx;
             }
@@ -254,12 +356,14 @@ protected:
         m_id(id), m_object(object) {}
     virtual ~Layer();
 
+
     void    simplify_support_entity_collection(ExtrusionEntityCollection* entity_collection);
     void    simplify_support_path(ExtrusionPath* path);
     void    simplify_support_multi_path(ExtrusionMultiPath* multipath);
     void    simplify_support_loop(ExtrusionLoop* loop);
 
 private:
+
     size_t              m_id;
     PrintObject        *m_object;
     LayerRegionPtrs     m_regions;
@@ -273,14 +377,20 @@ enum SupportInnerType {
 class SupportLayer : public Layer
 {
 public:
+
+
     ExPolygons                  support_islands;
+
     ExtrusionEntityCollection   support_fills;
     SupportInnerType            support_type = stInnerNormal;
+
 
     ExPolygons base_areas;
 
 
+
     virtual bool                has_extrusions() const { return ! support_fills.empty(); }
+
 
     size_t                      interface_id() const { return m_interface_id; }
 
@@ -290,11 +400,14 @@ protected:
     friend class PrintObject;
     friend class TreeSupport;
 
+
+
     SupportLayer(size_t id, size_t interface_id, PrintObject *object, coordf_t height, coordf_t print_z, coordf_t slice_z) :
         Layer(id, object, height, print_z, slice_z), m_interface_id(interface_id), support_type(stInnerNormal) {}
     virtual ~SupportLayer() = default;
 
     size_t m_interface_id;
+
 
     ExPolygons                                roof_areas;
     ExPolygons                                roof_1st_layer;

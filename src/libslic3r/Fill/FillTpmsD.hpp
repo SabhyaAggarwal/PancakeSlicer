@@ -16,8 +16,11 @@ public:
     FillTpmsD() {}
     Fill* clone() const override { return new FillTpmsD(*this); }
 
+
     bool use_bridge_flow() const override { return false; }
-  
+
+
+
 
     static constexpr float CorrectionAngle = -45.;
 
@@ -30,7 +33,9 @@ public:
     bool is_self_crossing() override { return false; }
     bool aligned_to_origin() const override { return true; }
 
+
     static constexpr double DensityAdjust = 2.1;
+
 
     static constexpr double PatternTolerance = 0.1;
 

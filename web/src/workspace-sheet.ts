@@ -1,6 +1,8 @@
+
 import { useSyncExternalStore } from 'react';
 import { sidebarHidden, toggleSidebar } from './sidebar';
 import { resolvePreset, type State } from './state/store';
+
 
 export const printerReady = (s: State) => { const r = s.printer ? resolvePreset(s, 'machine', s.printer) : undefined; return !!r?.base && !r.error; };
 
@@ -32,6 +34,7 @@ export function setSettingsSnap(next: SettingsSnap) {
   snap = next;
   listeners.forEach((l) => l());
 }
+
 
 export function showSettings() {
   if (overlayRailQuery.matches) setSettingsSheet(true);

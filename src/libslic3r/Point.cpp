@@ -64,8 +64,17 @@ void Point::rotate(double angle, const Point &center)
     this->y() = fast_round_up<coord_t>(center.y() + s * d.x() + c * d.y());
 }
 
+
+
+
+
+
+
+
 double Point::ccw(const Point &p1, const Point &p2) const
 {
+
+
    return cross2((p2 - p1).cast<double>(), (*this - p1).cast<double>());
 }
 
@@ -74,10 +83,14 @@ double Point::ccw(const Line &line) const
     return this->ccw(line.a, line.b);
 }
 
+
+
 double Point::ccw_angle(const Point &p1, const Point &p2) const
 {
+
     double angle = atan2(p1.x() - (*this).x(), p1.y() - (*this).y())
                  - atan2(p2.x() - (*this).x(), p2.y() - (*this).y());
+
     return angle <= 0 ? angle + 2*PI : angle;
 }
 
@@ -85,7 +98,7 @@ Point Point::projection_onto(const MultiPoint &poly) const
 {
     Point running_projection = poly.first_point();
     double running_min = (running_projection - *this).cast<double>().norm();
-    
+
     Lines lines = poly.lines();
     for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line) {
         Point point_temp = this->projection_onto(*line);
@@ -100,15 +113,25 @@ Point Point::projection_onto(const MultiPoint &poly) const
 Point Point::projection_onto(const Line &line) const
 {
     if (line.a == line.b) return line.a;
-    
+
+
+
+
+
+
+
+
+
+
     double lx = (double)(line.b(0) - line.a(0));
     double ly = (double)(line.b(1) - line.a(1));
-    double theta = ( (double)(line.b(0) - (*this)(0))*lx + (double)(line.b(1)- (*this)(1))*ly ) 
+    double theta = ( (double)(line.b(0) - (*this)(0))*lx + (double)(line.b(1)- (*this)(1))*ly )
           / ( sqr<double>(lx) + sqr<double>(ly) );
-    
+
     if (0.0 <= theta && theta <= 1.0)
         return (theta * line.a.cast<coordf_t>() + (1.0-theta) * line.b.cast<coordf_t>()).cast<coord_t>();
-    
+
+
     return ((line.a - *this).cast<double>().squaredNorm() < (line.b - *this).cast<double>().squaredNorm()) ? line.a : line.b;
 }
 
@@ -121,7 +144,7 @@ bool has_duplicate_points(Points &&pts)
     return false;
 }
 
-Points collect_duplicates(Points pts )
+Points collect_duplicates(Points pts  )
 {
     std::sort(pts.begin(), pts.end());
     Points duplicits;
@@ -129,6 +152,7 @@ Points collect_duplicates(Points pts )
     for (size_t i = 1; i < pts.size(); ++i) {
         const Point *act = &pts[i];
         if (*prev == *act) {
+
             if (!duplicits.empty() && duplicits.back() == *act)
                 continue;
             duplicits.push_back(*act);
@@ -140,13 +164,15 @@ Points collect_duplicates(Points pts )
 
 template<bool IncludeBoundary>
 BoundingBox get_extents(const Points &pts)
-{ 
+{
     BoundingBox out;
     BoundingBox::construct<IncludeBoundary>(out, pts.begin(), pts.end());
     return out;
 }
 template BoundingBox get_extents<false>(const Points &pts);
 template BoundingBox get_extents<true>(const Points &pts);
+
+
 
 template<bool IncludeBoundary>
 BoundingBox get_extents(const VecOfPoints &pts)
@@ -181,20 +207,24 @@ int Point::nearest_point_index(const PointConstPtrs &points) const
 {
     int idx = -1;
     double distance = -1;
-    
+
     for (PointConstPtrs::const_iterator it = points.begin(); it != points.end(); ++it) {
+
+
         double d = sqr<double>((*this)(0) - (*it)->x());
         if (distance != -1 && d > distance) continue;
-        
+
+
+
         d += sqr<double>((*this)(1) - (*it)->y());
         if (distance != -1 && d > distance) continue;
-        
+
         idx = it - points.begin();
         distance = d;
-        
+
         if (distance < EPSILON) break;
     }
-    
+
     return idx;
 }
 
@@ -236,6 +266,7 @@ int cross(const Vec2crd &v1, const Vec2crd &v2)
 
 }
 
+
 Polyline to_polyline(const Points &points) { return Polyline(points); }
 Polyline3 to_polyline(const Points3 &points) { return Polyline3(points); }
 
@@ -257,6 +288,7 @@ Points3 to_points3(const Points& points)
     }
     return points3;
 }
+
 
 void Point3::rotate(double angle, const Point3 &center) {
     Vec3crd diff = *this - center;
@@ -284,6 +316,7 @@ double Point3::ccw(const Point3 &p1, const Point3 &p2) const {
 }
 
 double Point3::ccw(const Line3 &line) const {
+
     Point a2d(line.a.x(), line.a.y());
     Point b2d(line.b.x(), line.b.y());
     return this->to_point().ccw(Line(a2d, b2d));
@@ -294,16 +327,20 @@ double Point3::ccw_angle(const Point3 &p1, const Point3 &p2) const {
 }
 
 Point3 Point3::projection_onto(const MultiPoint3 &poly) const {
+
+
     throw RuntimeError("Point3::projection_onto(MultiPoint3) not implemented yet");
     return *this;
 }
 
 Point3 Point3::projection_onto(const Line3 &line) const {
+
     Point pt2d = this->to_point();
     Point line_a(line.a.x(), line.a.y());
     Point line_b(line.b.x(), line.b.y());
     Line line2d(line_a, line_b);
     Point proj2d = pt2d.projection_onto(line2d);
+
 
     double line_len = line.length();
     if (line_len < EPSILON) {

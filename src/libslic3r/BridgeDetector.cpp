@@ -18,9 +18,11 @@ namespace Slic3r {
 
 BridgeDetector::BridgeDetector(
     ExPolygon         _expolygon,
-    const ExPolygons &_lower_slices, 
+    const ExPolygons &_lower_slices,
     coord_t           _spacing) :
+
     expolygons(expolygons_owned),
+
     lower_slices(_lower_slices),
     spacing(_spacing)
 {
@@ -31,8 +33,10 @@ BridgeDetector::BridgeDetector(
 BridgeDetector::BridgeDetector(
     const ExPolygons  &_expolygons,
     const ExPolygons  &_lower_slices,
-    coord_t            _spacing) : 
+    coord_t            _spacing) :
+
     expolygons(_expolygons),
+
     lower_slices(_lower_slices),
     spacing(_spacing)
 {
@@ -41,28 +45,48 @@ BridgeDetector::BridgeDetector(
 
 void BridgeDetector::initialize()
 {
-    this->resolution = PI/36.0; 
+
+    this->resolution = PI/36.0;
+
     this->angle = -1.;
 
+
     Polygons grown = offset(this->expolygons, float(this->spacing));
-    
+
+
+
+
+
 	Polygons contours;
 	contours.reserve(this->lower_slices.size());
 	for (const ExPolygon &expoly : this->lower_slices)
 		contours.push_back(expoly.contour);
     this->_edges = intersection_pl(to_polylines(grown), contours);
-    
+
     #ifdef SLIC3R_DEBUG
     printf("  bridge has %zu support(s)\n", this->_edges.size());
     #endif
-    
+
+
+
     this->_anchor_regions = intersection_ex(grown, union_safety_offset(this->lower_slices));
-    
+
+
+
+
+
+
+
+
+
+
+
 }
 
 bool BridgeDetector::detect_angle(double bridge_direction_override)
 {
-    if (this->_edges.empty() || this->_anchor_regions.empty()) 
+    if (this->_edges.empty() || this->_anchor_regions.empty())
+
         return false;
 
     std::vector<BridgeDirection> candidates;
@@ -73,10 +97,16 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
             candidates.emplace_back(BridgeDirection(angles[i]));
     } else
         candidates.emplace_back(BridgeDirection(bridge_direction_override));
-    
+
+
+
+
     Polygons clip_area = offset(this->expolygons, 0.5f * float(this->spacing));
-    
-        
+
+
+
+
+
     bool have_coverage = false;
     for (size_t i_angle = 0; i_angle < candidates.size(); ++ i_angle)
     {
@@ -84,10 +114,15 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
 
         Lines lines;
         {
+
             BoundingBox bbox = get_extents_rotated(this->_anchor_regions, - angle);
+
             lines.reserve((bbox.max(1) - bbox.min(1) + this->spacing) / this->spacing);
             double s = sin(angle);
             double c = cos(angle);
+
+
+
             for (coord_t y = bbox.min(1); y <= bbox.max(1); y += this->spacing)
                 lines.push_back(Line(
                     Point((coord_t)round(c * bbox.min(0) - s * y), (coord_t)round(c * y + s * bbox.min(0))),
@@ -102,6 +137,7 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
             for (size_t i = 0; i < clipped_lines.size(); ++i) {
                 const Line &line = clipped_lines[i];
                 if (expolygons_contain(this->_anchor_regions, line.a) && expolygons_contain(this->_anchor_regions, line.b)) {
+
                     double len = line.length();
                     total_length += len;
                     max_length = std::max(max_length, len);
@@ -116,16 +152,26 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
             continue;
 
         have_coverage = true;
+
         candidates[i_angle].coverage = total_length;
+
+
+
+
         candidates[i_angle].max_length = max_length;
     }
 
+
     if (! have_coverage)
         return false;
-    
+
+
     std::sort(candidates.begin(), candidates.end());
-    
+
+
+
     size_t i_best = 0;
+
     for (size_t i = 1; i < candidates.size() && candidates[i_best].coverage - candidates[i].coverage < this->spacing; ++ i)
         if (candidates[i].max_length < candidates[i_best].max_length)
             i_best = i;
@@ -133,30 +179,35 @@ bool BridgeDetector::detect_angle(double bridge_direction_override)
     this->angle = candidates[i_best].angle;
     if (this->angle >= PI)
         this->angle -= PI;
-    
+
     #ifdef SLIC3R_DEBUG
     printf("  Optimal infill angle is %d degrees\n", (int)Slic3r::Geometry::rad2deg(this->angle));
     #endif
-    
+
     return true;
 }
 
 std::vector<double> BridgeDetector::bridge_direction_candidates() const
 {
+
     std::vector<double> angles;
     for (int i = 0; i <= PI/this->resolution; ++i)
         angles.push_back(i * this->resolution);
-    
+
+
     {
         Lines lines = to_lines(this->expolygons);
         for (Lines::const_iterator line = lines.begin(); line != lines.end(); ++line)
             angles.push_back(line->direction());
     }
-    
+
+
+
     for (const Polyline &edge : this->_edges)
         if (edge.first_point() != edge.last_point())
             angles.push_back(Line(edge.first_point(), edge.last_point()).direction());
-    
+
+
     double min_resolution = PI/180.0;
     std::sort(angles.begin(), angles.end());
     for (size_t i = 1; i < angles.size(); ++i) {
@@ -165,18 +216,43 @@ std::vector<double> BridgeDetector::bridge_direction_candidates() const
             --i;
         }
     }
+
+
     if (Slic3r::Geometry::directions_parallel(angles.front(), angles.back(), min_resolution))
         angles.pop_back();
 
     return angles;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 static void get_trapezoids2(const ExPolygon& expoly, Polygons* polygons)
 {
     Polygons     src_polygons = to_polygons(expoly);
+
     const Points pp = to_points(src_polygons);
 
+
     BoundingBox bb(pp);
+
 
     std::vector<coord_t> xx;
     xx.reserve(pp.size());
@@ -184,11 +260,14 @@ static void get_trapezoids2(const ExPolygon& expoly, Polygons* polygons)
         xx.push_back(p->x());
     std::sort(xx.begin(), xx.end());
 
+
     Polygons rectangle;
     rectangle.emplace_back(Polygon());
     for (std::vector<coord_t>::const_iterator x = xx.begin(); x != xx.end()-1; ++x) {
         coord_t next_x = *(x + 1);
         if (*x != next_x) {
+
+
             rectangle.front() = { { *x, bb.min.y() }, { next_x, bb.min.y() }, { next_x, bb.max.y() }, { *x, bb.max.y() } };
             polygons_append(*polygons, intersection(rectangle, src_polygons));
         }
@@ -209,11 +288,14 @@ static void get_trapezoids2(const ExPolygon &expoly, Polygons* polygons, double 
 void get_trapezoids3_half(const ExPolygon& expoly, Polygons* polygons, float spacing)
 {
 
+
     Points pp = to_points(expoly);
 
     if (pp.empty()) return;
 
+
     BoundingBox bb(pp);
+
 
     coord_t min_x = pp[0].x(), max_x = pp[0].x();
     std::vector<coord_t> xx;
@@ -225,9 +307,13 @@ void get_trapezoids3_half(const ExPolygon& expoly, Polygons* polygons, float spa
         xx.push_back(x);
     }
     xx.push_back(max_x);
+
+
+
     for (std::vector<coord_t>::const_iterator x = xx.begin(); x != xx.end() - 1; ++x) {
         coord_t next_x = *(x + 1);
         if (*x == next_x) continue;
+
 
         Polygon poly;
         poly.points.resize(4);
@@ -239,6 +325,8 @@ void get_trapezoids3_half(const ExPolygon& expoly, Polygons* polygons, float spa
         poly[2].y() = bb.max(1);
         poly[3].x() = *x + (coord_t)spacing / 4;
         poly[3].y() = bb.max(1);
+
+
 
         polygons_append(*polygons, intersection(Polygons{ poly }, to_polygons(expoly)));
     }
@@ -252,18 +340,29 @@ Polygons BridgeDetector::coverage(double angle, bool precise) const
     Polygons covered;
 
     if (angle != -1) {
+
         Polygons anchors = to_polygons(this->_anchor_regions);
         polygons_rotate(anchors, PI / 2.0 - angle);
 
+
+
+
         for (ExPolygon expolygon : this->expolygons) {
+
             expolygon.rotate(PI / 2.0 - angle);
+
+
+
             for (ExPolygon &expoly : offset_ex(expolygon, 0.5f * float(this->spacing))) {
+
                 Polygons trapezoids;
                 if (!precise) get_trapezoids2(expoly, &trapezoids, PI / 2);
                 else get_trapezoids3_half(expoly, &trapezoids, float(this->spacing));
                 for (Polygon &trapezoid : trapezoids) {
                     size_t n_supported = 0;
                     if (!precise) {
+
+
                         for (const Line &supported_line : intersection_ln(trapezoid.lines(), anchors))
                             if (supported_line.length() >= this->spacing)
                                 ++n_supported;
@@ -272,6 +371,7 @@ Polygons BridgeDetector::coverage(double angle, bool precise) const
                         n_supported = intersects.size();
 
                         if (n_supported >= 2) {
+
                             BoundingBox center_bound = intersects[0].bounding_box();
                             coord_t min_y = center_bound.center()(1), max_y = center_bound.center()(1);
                             for (Polygon &poly_bound : intersects) {
@@ -284,6 +384,7 @@ Polygons BridgeDetector::coverage(double angle, bool precise) const
                                 if (min_x > p(0)) min_x = p(0);
                                 if (max_x < p(0)) max_x = p(0);
                             }
+
                             min_x -= (this->spacing / 4 + 1);
                             max_x += (this->spacing / 4 + 1);
                             coord_t mid_x = (min_x + max_x) / 2;
@@ -297,19 +398,24 @@ Polygons BridgeDetector::coverage(double angle, bool precise) const
                     }
 
                     if (n_supported >= 2) {
+
                         covered.push_back(std::move(trapezoid));
                     }
                 }
             }
         }
 
+
+
         covered = union_(covered);
+
         polygons_rotate(covered, -(PI/2.0 - angle));
+
 #if 0
         {
             my @lines = map @{$_->lines}, @$trapezoids;
             $_->rotate(-(PI/2 - $angle), [0,0]) for @lines;
-            
+
             require "Slic3r/SVG.pm";
             Slic3r::SVG::output(
                 "coverage_" . rad2deg($angle) . ".svg",
@@ -324,6 +430,9 @@ Polygons BridgeDetector::coverage(double angle, bool precise) const
     return covered;
 }
 
+
+
+
 void
 BridgeDetector::unsupported_edges(double angle, Polylines* unsupported) const
 {
@@ -332,8 +441,15 @@ BridgeDetector::unsupported_edges(double angle, Polylines* unsupported) const
 
     Polygons grown_lower = offset(this->lower_slices, float(this->spacing));
 
-    for (ExPolygons::const_iterator it_expoly = this->expolygons.begin(); it_expoly != this->expolygons.end(); ++ it_expoly) {    
+    for (ExPolygons::const_iterator it_expoly = this->expolygons.begin(); it_expoly != this->expolygons.end(); ++ it_expoly) {
+
         Lines unsupported_lines = to_lines(diff_pl(to_polylines(*it_expoly), grown_lower));
+
+
+
+
+
+
         for (const Line &line : unsupported_lines)
             if (! Slic3r::Geometry::directions_parallel(line.direction(), angle)) {
                 unsupported->emplace_back(Polyline());
@@ -341,7 +457,21 @@ BridgeDetector::unsupported_edges(double angle, Polylines* unsupported) const
                 unsupported->back().points.emplace_back(line.b);
             }
     }
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
 
 Polylines

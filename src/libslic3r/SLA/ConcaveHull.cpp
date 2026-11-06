@@ -51,6 +51,7 @@ Point ConcaveHull::centroid(const Points &pp)
 
 Points ConcaveHull::calculate_centroids() const
 {
+
     Points centroids;
     centroids.reserve(m_polys.size());
     std::transform(m_polys.begin(), m_polys.end(),
@@ -66,6 +67,8 @@ void ConcaveHull::add_connector_rectangles(const Points &centroids,
                                            coord_t       max_dist,
                                            ThrowOnCancel thr)
 {
+
+
     Point cc = centroid(centroids);
 
     PointIndex ctrindex;

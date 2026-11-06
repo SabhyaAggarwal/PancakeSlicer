@@ -8,6 +8,8 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'value' 
 const text = (node: ReactNode): string => node == null || typeof node === 'boolean' ? '' : typeof node === 'object' && !Array.isArray(node) && 'props' in node ? text((node.props as { children?: ReactNode }).children) : Array.isArray(node) ? node.map(text).join('') : String(node);
 export const Dropdown = forwardRef<HTMLButtonElement, Props>(function Dropdown({ options, value, onValueChange, multiple, placeholder = 'Choose…', className = '', title, ...props }, ref) {
   const own = useRef<HTMLButtonElement | null>(null), [edge, setEdge] = useState<Edge>({ align: 'start', alignOffset: 0 });
+
+
   const [open, setOpen] = useState(false);
   const setRef = (el: HTMLButtonElement | null) => { own.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
   const selected = options.filter((o) => (Array.isArray(value) ? value.map(String) : [String(value)]).includes(String(o.value)));

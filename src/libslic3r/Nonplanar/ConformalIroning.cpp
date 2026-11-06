@@ -35,6 +35,9 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
+
+
+
 double ironing_cross(const HeightField &surface, const ExPolygons &area)
 {
     const Mask inside = rasterize(area, surface);
@@ -69,8 +72,11 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
     const PrintConfig       &print_config = object.print()->config();
     const PrintRegion       &region       = object.printing_region(size_t(patch.region_id));
     const PrintRegionConfig &cfg          = region.config();
+
+
     const int    filament = patch_filament_id(object, patch);
     const size_t idx      = size_t(std::max(0, filament - 1));
+
     if (road_material(print_config.filament_type.get_at(idx)) == RoadMaterial::Flexible)
         return out;
     const double nozzle   = nozzle_diameter_for_filament(print_config, filament, object.print()->is_BBL_printer());
@@ -78,9 +84,15 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
                                                                                                     cfg.ironing_spacing.value);
     const double inset    = !cfg.filament_ironing_inset.is_nil(idx) ? cfg.filament_ironing_inset.get_at(idx) : cfg.ironing_inset.value;
     const double flow_pct = !cfg.filament_ironing_flow.is_nil(idx) ? cfg.filament_ironing_flow.get_at(idx) : cfg.ironing_flow.value;
+
+
     const double height   = patch.shell_height * 0.01 * flow_pct * spacing / nozzle;
     const float  width    = Flow::rounded_rectangle_extrusion_width_from_spacing(float(nozzle), float(height));
     const Flow   flow(width, float(height), float(nozzle));
+
+
+
+
     const double     edge = std::max(0., (inset == 0. ? 0.5 * nozzle : inset) - 0.5 * spacing);
     const ExPolygons area = intersection_ex(offset_ex(shell_area, float(scale_(0.5 * spacing))), offset_ex(patch.footprint, -float(scale_(edge))));
     if (area.empty())
@@ -93,13 +105,18 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
         spiral.helix  = spiral_top_enabled(cfg, object.config()) && helix_worthwhile(patch.surface, area);
         linked        = shell_polylines(area, spiral, ipRectilinear, spacing, false, flow, host_z, seam, MaxGlide, nullptr, &seam_line);
     } else {
+
+
         double angle     = 0.;
         bool   piecewise = false;
         if (cfg.ironing_angle_fixed.value)
             angle = Geometry::deg2rad(cfg.ironing_angle.value);
         else {
+
+
             const double cross = cfg.ironing_angle.value != 0. ? Geometry::deg2rad(cfg.ironing_angle.value) : ironing_cross(patch.surface, area);
             if (banded && top_pattern(patch, cfg) == NonplanarTopPattern::Contour) {
+
                 double contour = 0.;
                 piecewise      = !contour_line_angle(patch.surface, contour, 0.9);
                 angle          = contour + cross;
@@ -120,6 +137,12 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
             linked      = shell_polylines(area, lines, ipRectilinear, spacing, false, flow, host_z, seam, MaxGlide);
         }
     }
+
+
+
+
+
+
 
     const double      max_rise = patch.shell_height / std::max(0.05, resolve_head_envelope(print_config).tip_flat_radius);
     const HeightField &S       = patch.surface;
@@ -143,6 +166,8 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
                         break;
                     }
                 }
+
+
     const RepairHints *hints = object.nonplanar_repair();
     const ExtrusionPath proto(erIroning, nozzle * height, width, float(height));
     auto at = [&S, &ironed, &wall, hints, height](const Vec2d &p, double &z, float &bead) {
@@ -178,6 +203,7 @@ void build_conformal_ironing(const PrintObject &object, ConformalResult &result)
         patch.ironing           = make_conformal_ironing(object, patch, area, seam, seam_line(patch.surface, seam, area), host_z, false);
         if (patch.ironing.entities.empty())
             continue;
+
         const Point3 &from = static_cast<const ExtrusionPathConformal &>(*patch.shell_paths.back().entities.back()).polyline.points.back();
         auto at = [&patch](const Vec2d &p, double &z, float &bead) {
             const float s = patch.surface.sample(p);

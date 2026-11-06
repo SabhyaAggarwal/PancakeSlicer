@@ -1,3 +1,5 @@
+
+
 import { useEffect } from 'react';
 
 let pending = false;
@@ -7,6 +9,7 @@ export function requestAddSettings() {
   pending = true;
   listeners.forEach((l) => l());
 }
+
 
 export function useAddSettingsRequest(ready: boolean, open: () => void) {
   useEffect(() => {

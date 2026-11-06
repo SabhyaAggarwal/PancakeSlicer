@@ -12,25 +12,63 @@ namespace Slic3r::Emboss { class IProjection; }
 
 namespace Slic3r{
 
+
+
+
+
 struct SurfaceCut : public indexed_triangle_set
 {
+
     using Index = unsigned int;
     using Contour = std::vector<Index>;
     using Contours = std::vector<Contour>;
+
     Contours contours;
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 SurfaceCut cut_surface(const ExPolygons                        &shapes,
                        const std::vector<indexed_triangle_set> &models,
                        const Emboss::IProjection               &projection,
                        float projection_ratio);
 
+
+
+
+
+
+
 indexed_triangle_set cut2model(const SurfaceCut         &cut,
                                const Emboss::IProject3d &projection);
+
+
+
+
+
+
+
+
 
 indexed_triangle_set its_cut_AoI(const indexed_triangle_set &its,
                                  const BoundingBox          &bb,
                                  const Emboss::IProjection  &projection);
+
+
+
+
+
+
 
 indexed_triangle_set its_mask(const indexed_triangle_set &its, const std::vector<bool> &mask);
 

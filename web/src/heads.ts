@@ -1,3 +1,6 @@
+
+
+
 import { getState, setState, type HeadInfo } from './state/store';
 import { mutation } from './api/access';
 
@@ -14,17 +17,20 @@ export interface Head extends HeadInfo {
   provenance?: string;
   margin: number;
   lateral_margin: number;
+
   tip_allowance: { radius: number; height: number };
   boxes: HeadBox[];
 }
 
 let index: Promise<HeadInfo[]> | null = null;
 const heads = new Map<string, Promise<Head | null>>();
+
 const userHeads = new Map<string, Record<string, unknown>>();
 
 export function loadHeadIndex(): Promise<HeadInfo[]> {
   index ??= Promise.all([
     fetch('/nonplanar/heads/index.json').then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`)))),
+
     fetch('/api/user-heads').then((r) => (r.ok ? r.json() : [])).catch(() => []),
   ])
     .then(([bundled, user]: [HeadInfo[], Record<string, unknown>[]]) => {
@@ -43,6 +49,7 @@ export function loadHeadIndex(): Promise<HeadInfo[]> {
   return index;
 }
 
+
 export async function loadHeadJson(id: string): Promise<Record<string, unknown> | null> {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
   await loadHeadIndex().catch(() => undefined);
@@ -50,12 +57,14 @@ export async function loadHeadJson(id: string): Promise<Record<string, unknown> 
   return fetch(`/nonplanar/heads/${id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 }
 
+
 export async function saveUserHead(head: Record<string, unknown>) {
   await mutation('/api/user-heads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(head, null, 2) }, false, undefined, undefined, true);
   index = null;
   heads.delete(head.id as string);
   await loadHeadIndex();
 }
+
 
 export function loadHead(id: string): Promise<Head | null> {
   if (!/^[A-Za-z0-9_-]+$/.test(id)) return Promise.resolve(null);
@@ -73,10 +82,14 @@ export function loadHead(id: string): Promise<Head | null> {
 
 export const headInfo = (id: string): HeadInfo | undefined => getState().heads?.find((h) => h.id === id);
 
+
 export const headLabel = (id: string) =>
   id ? `${id} ${headInfo(id)?.calibrated ? '(calibrated)' : '(uncalibrated)'}` : '(none: generic conservative head)';
 
+
 export const headShortName = (h: HeadInfo) => h.name.replace(/\s*\(.*$/, '') || h.id;
+
+
 
 export function maxSlope(head: Head, phi: number, gap: number): number {
   const u = [Math.cos(phi), Math.sin(phi)];
@@ -99,7 +112,9 @@ export function maxSlope(head: Head, phi: number, gap: number): number {
   return tanMin === Infinity ? Math.PI / 2 : Math.atan(Math.max(0, tanMin));
 }
 
+
 export const slopeMap = (head: Head, n: number, gap: number) =>
   Array.from({ length: n }, (_, i) => maxSlope(head, (2 * Math.PI * i) / n, gap));
+
 
 export const slopeLimit = (head: Head, gap: number) => (Math.min(...slopeMap(head, 360, gap)) * 180) / Math.PI;

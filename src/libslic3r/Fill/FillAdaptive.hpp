@@ -1,3 +1,13 @@
+
+
+
+
+
+
+
+
+
+
 #ifndef slic3r_FillAdaptive_hpp_
 #define slic3r_FillAdaptive_hpp_
 
@@ -24,13 +34,17 @@ namespace FillAdaptive
 {
 
 struct Octree;
+
 struct OctreeDeleter { void operator()(Octree *p); };
 using  OctreePtr = std::unique_ptr<Octree, OctreeDeleter>;
+
+
 
 struct Octrees
 {
     OctreePtr              object;
     std::vector<OctreePtr> bodies;
+
 
     Octree *get(int body) const
     {
@@ -45,9 +59,11 @@ struct Octrees
     }
 };
 
+
 struct RegionOctrees
 {
     std::vector<Octrees> sets;
+
     std::vector<int>     region_set;
 
     const Octrees *region(size_t region_id) const
@@ -56,18 +72,32 @@ struct RegionOctrees
     }
 };
 
+
+
 std::vector<double>             adaptive_fill_line_spacing(const PrintObject &print_object);
 
+
 Eigen::Quaterniond              transform_to_world();
+
 Eigen::Quaterniond              transform_to_octree();
 
 FillAdaptive::OctreePtr         build_octree(
+
     const indexed_triangle_set  &triangle_mesh,
-    const std::vector<Vec3d>    &overhang_triangles, 
-    coordf_t                     line_spacing, 
+
+
+    const std::vector<Vec3d>    &overhang_triangles,
+    coordf_t                     line_spacing,
+
     bool                         support_overhangs_only);
 
+
 Polylines                       multiline_paths(const Lines &lines, double d1, double end_overlap, int sweep, const BoundingBox &cover);
+
+
+
+
+
 
 class Filler : public Slic3r::Fill
 {
@@ -82,6 +112,10 @@ protected:
 	    const std::pair<float, Point>   &direction,
 	    ExPolygon                        expolygon,
 	    Polylines                       &polylines_out) override;
+
+
+
+
 	bool no_sort() const override { return false; }
     bool is_self_crossing() override { return true; }
 };

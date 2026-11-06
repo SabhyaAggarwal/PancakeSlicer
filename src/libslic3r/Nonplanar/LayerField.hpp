@@ -1,4 +1,14 @@
 #pragma once
+
+
+
+
+
+
+
+
+
+
 #include "libslic3r/Point.hpp"
 
 #include <algorithm>
@@ -12,7 +22,10 @@ class LayerField
 public:
     virtual ~LayerField() = default;
 
+
     virtual double phi(const Vec3d &p) const = 0;
+
+
 
     virtual double z_at(const Vec2d &xy, double level) const
     {
@@ -25,6 +38,7 @@ public:
         }
         return 0.5 * (lo + hi);
     }
+
 
     virtual Vec3d gradient(const Vec3d &p) const
     {
@@ -39,11 +53,16 @@ public:
         return g;
     }
 
+
     virtual double identity_below() const { return 0.; }
+
+
 
     virtual std::optional<Vec3d> given_axis(const Vec3d &) const { return std::nullopt; }
 
-    virtual double max_slope_near(const Vec2d & , double ) const { return -1.; }
+
+
+    virtual double max_slope_near(const Vec2d &  , double  ) const { return -1.; }
 };
 
 }

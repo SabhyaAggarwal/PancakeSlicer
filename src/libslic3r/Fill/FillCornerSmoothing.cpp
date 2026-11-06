@@ -14,12 +14,20 @@
 
 namespace Slic3r {
 
+
+
 static constexpr const double min_smoothed_turn_cosine = -0.9;
+
+
 
 using QuinticBezier = std::array<Vec2d, 6>;
 
 static bool is_bezier_flat(const QuinticBezier &curve, const Vec2d &incoming, const Vec2d &outgoing, const double deviation)
 {
+
+
+
+
     auto         in_plane        = [&incoming, &outgoing](const Vec2d &c) { return c.x() * incoming + c.y() * outgoing; };
     const Vec2d  chord           = in_plane(curve.back() - curve.front());
     const double chord_length_sq = chord.squaredNorm();
@@ -36,6 +44,9 @@ static bool is_bezier_flat(const QuinticBezier &curve, const Vec2d &incoming, co
 
 static void subdivide_bezier(const QuinticBezier &curve, QuinticBezier &left, QuinticBezier &right)
 {
+
+
+
     QuinticBezier subdivision = curve;
     left.front() = subdivision.front();
     right.back() = subdivision.back();
@@ -50,6 +61,9 @@ static void subdivide_bezier(const QuinticBezier &curve, QuinticBezier &left, Qu
 static void flatten_bezier(
     const QuinticBezier &curve, const Vec2d &incoming, const Vec2d &outgoing, const double deviation, std::vector<Vec2d> &output)
 {
+
+
+
     static constexpr size_t max_depth = 16;
 
     std::vector<QuinticBezier> subcurves(2);
@@ -70,6 +84,7 @@ static void flatten_bezier(
         subcurves = std::move(finer);
     }
 
+
     output.clear();
     output.reserve(subcurves.size());
     for (const QuinticBezier &c : subcurves)
@@ -80,13 +95,20 @@ const std::vector<Vec2d>& CornerSmoother::curve_coefficients(
     const double corner_distance, const Vec2d &incoming, const Vec2d &outgoing)
 {
     const double cosine = incoming.dot(outgoing);
+
+
     if (m_has_cached_coefficients && corner_distance == m_cached_distance && cosine == m_cached_cosine)
         return m_cached_coefficients;
+
+
+
+
 
     const double        d = corner_distance;
     const QuinticBezier corner_curve {{
         {-d, 0.}, {-0.7 * d, 0.}, {-0.4 * d, 0.}, {0., 0.4 * d}, {0., 0.7 * d}, {0., d}
     }};
+
     const double deviation = m_tolerance > 0. && std::isfinite(m_tolerance) ? m_tolerance : EPSILON;
     flatten_bezier(corner_curve, incoming, outgoing, deviation, m_cached_coefficients);
 
@@ -102,6 +124,7 @@ bool CornerSmoother::is_on_straight_run(const Vec2d &previous, const Vec2d &vert
     const Vec2d  outgoing_leg    = next - vertex;
     const double incoming_length = incoming_leg.norm();
     const double outgoing_length = outgoing_leg.norm();
+
     if (incoming_length < EPSILON || outgoing_length < EPSILON)
         return true;
 
@@ -127,10 +150,12 @@ void CornerSmoother::round_corner(const Vec2d &previous, const Vec2d &corner, co
     const Vec2d  incoming = incoming_leg / incoming_length;
     const Vec2d  outgoing = outgoing_leg / outgoing_length;
     const double cross    = incoming.x() * outgoing.y() - incoming.y() * outgoing.x();
+
     if (std::abs(cross) < EPSILON || incoming.dot(outgoing) < min_smoothed_turn_cosine) {
         m_corner_points.emplace_back(corner);
         return;
     }
+
 
     double corner_distance = m_corner_distance_ratio * std::min(incoming_length, outgoing_length);
     if (m_max_corner_distance > 0.)
@@ -150,8 +175,13 @@ void CornerSmoother::round_corner(const Vec2d &previous, const Vec2d &corner, co
         m_corner_points.emplace_back(corner + coefficient.x() * incoming + coefficient.y() * outgoing);
 }
 
+
+
+
 static Points smooth_corners(const Points &points, const bool polygon, CornerSmoother &smoother)
 {
+
+
     size_t skip = polygon ? 1 : 0;
 
     Points smoothed;
@@ -169,10 +199,12 @@ static Points smooth_corners(const Points &points, const bool polygon, CornerSmo
     for (const Point &point : points)
         smoother.push(point.cast<double>(), emit);
     if (polygon)
+
         smoother.push(points.front().cast<double>(), emit);
     smoother.flush(emit);
 
     if (polygon)
+
         smoothed.pop_back();
     return smoothed;
 }
@@ -185,6 +217,7 @@ void smooth_polyline_corners(Polyline &polyline, const double smooth_factor, con
         return;
 
     polyline.points = smooth_corners(polyline.points, false, smoother);
+
     polyline.remove_duplicate_points();
 }
 
@@ -209,6 +242,8 @@ void smooth_polygons_corners(Polygons &polygons, const double smooth_factor, con
             continue;
         polygon.points = smooth_corners(polygon.points, true, smoother);
         polygon.remove_duplicate_points();
+
+
         if (polygon.points.size() > 1 && polygon.points.front() == polygon.points.back())
             polygon.points.pop_back();
     }
