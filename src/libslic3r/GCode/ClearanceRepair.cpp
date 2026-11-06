@@ -1040,7 +1040,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
     restore_planar_remainders();
     if (report.hit_moves == 0 && m_repick.empty()) {
         if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
-        for (const auto &[object, id] : m_curved_budget->reject(m_print, result)) {
+        for (const auto &entry : m_curved_budget->reject(m_print, result)) {
+            const auto object = entry.first;
+            const auto id = entry.second;
             if (id == CurvedTopsBudget::NativeRoads) {
                 if (!object->m_nonplanar_repair) object->m_nonplanar_repair = std::make_shared<RepairHints>();
                 auto &finish = object->m_nonplanar_repair->curved_finish;

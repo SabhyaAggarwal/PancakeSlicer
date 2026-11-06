@@ -488,7 +488,8 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
             visit(region->fills, collect);
         }
     for (auto &[key, cap] : caps) {
-        const auto [id, r] = key;
+        const auto id = key.first;
+        const auto r = key.second;
         if (!cap.home || cap.paths.empty()) continue;
         double low = std::numeric_limits<double>::infinity(), high = -low;
         for (const auto &p : cap.paths)

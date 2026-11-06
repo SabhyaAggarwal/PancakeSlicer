@@ -104,7 +104,9 @@ void build_control(Control &control, Print &print, const PrintObject &object)
         footprints.emplace(surface.stable_id, surface.horizontal_projection());
         heights.emplace(surface.stable_id, std::make_pair(surface.stats.min.z, surface.stats.max.z));
     }
-    for (const auto &[id, footprint] : footprints) {
+    for (const auto &entry : footprints) {
+        const auto id = entry.first;
+        const auto &footprint = entry.second;
         const BoundingBox box = get_extents(footprint);
         control.grid->visit(unscale(box.min) + shift, unscale(box.max) + shift, [&](size_t k, const Vec2d &p) {
             const auto &z = heights.at(id);

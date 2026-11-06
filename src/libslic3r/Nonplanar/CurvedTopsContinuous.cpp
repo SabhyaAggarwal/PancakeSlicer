@@ -204,7 +204,8 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
     std::set<Key> replaced;
     std::vector<std::pair<LayerRegion*,ExtrusionPaths>> generated;
     for(auto &[id,g]:groups) {
-        const auto [surface_id,offset,region_id]=id;
+        const auto surface_id=std::get<0>(id);
+        const auto offset=std::get<1>(id);
         if(!g.compatible || !g.has_fill || regions[surface_id].size()!=1) continue;
         const auto &surfaces=object.nonplanar_surfaces();
         const auto it=std::find_if(surfaces.begin(),surfaces.end(),[&](const NonplanarSurface &surface) { return surface.stable_id==surface_id; });
