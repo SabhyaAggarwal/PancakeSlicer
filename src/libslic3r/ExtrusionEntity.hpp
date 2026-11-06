@@ -173,6 +173,7 @@ public:
     float contour_base = 0.f;
     float distance_to_top = -1.0;
     bool nonplanar_source = false;
+    bool continuous_top = false;
     size_t source_layer_id = size_t(-1);
     int source_surface_id = -1;
     uint64_t source_path_id = 0;
@@ -198,6 +199,7 @@ public:
         , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
+        , continuous_top(rhs.continuous_top)
         , source_layer_id(rhs.source_layer_id)
         , source_surface_id(rhs.source_surface_id)
         , source_path_id(rhs.source_path_id)
@@ -222,6 +224,7 @@ public:
         , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
+        , continuous_top(rhs.continuous_top)
         , source_layer_id(rhs.source_layer_id)
         , source_surface_id(rhs.source_surface_id)
         , source_path_id(rhs.source_path_id)
@@ -246,6 +249,7 @@ public:
         , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
+        , continuous_top(rhs.continuous_top)
         , source_layer_id(rhs.source_layer_id)
         , source_surface_id(rhs.source_surface_id)
         , source_path_id(rhs.source_path_id)
@@ -270,6 +274,7 @@ public:
         , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
+        , continuous_top(rhs.continuous_top)
         , source_layer_id(rhs.source_layer_id)
         , source_surface_id(rhs.source_surface_id)
         , source_path_id(rhs.source_path_id)
@@ -295,6 +300,7 @@ public:
         this->contour_base = rhs.contour_base;
         this->distance_to_top = rhs.distance_to_top;
         this->nonplanar_source = rhs.nonplanar_source;
+        this->continuous_top = rhs.continuous_top;
         this->source_layer_id = rhs.source_layer_id;
         this->source_surface_id = rhs.source_surface_id;
         this->source_path_id = rhs.source_path_id;
@@ -320,6 +326,7 @@ public:
         this->contour_base = rhs.contour_base;
         this->distance_to_top = rhs.distance_to_top;
         this->nonplanar_source = rhs.nonplanar_source;
+        this->continuous_top = rhs.continuous_top;
         this->source_layer_id = rhs.source_layer_id;
         this->source_surface_id = rhs.source_surface_id;
         this->source_path_id = rhs.source_path_id;

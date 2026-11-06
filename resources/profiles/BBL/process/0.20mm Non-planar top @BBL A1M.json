@@ -7,6 +7,7 @@
 	"instantiation": "true",
 	"nonplanar_sublayer_walls": "1",
 	"nonplanar_time_budget": "16",
+	"nonplanar_continuous_top": "1",
 	"top_surface_acceleration": [
 		"5000"
 	],

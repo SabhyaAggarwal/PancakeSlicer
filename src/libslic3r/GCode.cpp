@@ -10668,7 +10668,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 return curved;
             }
     }
-    const bool topmost_nonplanar = path.role() == erTopSolidInfill && path.nonplanar_source &&
+    const bool topmost_nonplanar = path.role() == erTopSolidInfill && path.nonplanar_source && !path.continuous_top &&
         path.distance_to_top >= 0.f && path.distance_to_top < 1e-4f;
     if (! m_slope_compensating && topmost_nonplanar) {
         constexpr double downhill_raise = 0.25;
@@ -10687,7 +10687,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         return out;
     }
     std::string gcode;
-    if (path.polyline.length() < scale_(0.05) &&
+    if (!path.continuous_top && path.polyline.length() < scale_(0.05) &&
         (path.z_contoured || (path.role() == erTopSolidInfill && Nonplanar::requests_conformal_shells(*m_print))))
         return gcode;
     this->ensure_material_columns(path);
@@ -10741,7 +10741,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     if (path.nonplanar_source)
         gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(path.source_surface_id) + " shell=" +
                  std::to_string(int(std::lround(path.distance_to_top / std::max(0.01f, path.height)))) +
-                 " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
+                 " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) +
+                 (path.continuous_top ? " continuous=1" : "") + "\n";
 
 
     const ExtrusionPathSloped* sloped = dynamic_cast<const ExtrusionPathSloped*>(&path);

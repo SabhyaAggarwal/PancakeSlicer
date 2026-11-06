@@ -51,15 +51,18 @@ std::vector<Piece> split_paths(const std::vector<ExtrusionPath> &paths, double x
     return out;
 }
 
-bool obstructs(const Piece &material, const Piece &tool, const NonplanarClearanceModel &head)
+bool obstructs(const Piece &material, const Piece &tool, const NonplanarClearanceModel &head, bool flow_height = false)
 {
     const double dz = material.high - tool.low;
     const double grow = 0.5 * material.path.width + head.bead_margin + head.safety_mm;
     const Vec2d delta = material.center - tool.center;
     const double rx = material.rx + tool.rx, ry = material.ry + tool.ry;
     const double x = std::max(0., std::abs(delta.x()) - rx), y = std::max(0., std::abs(delta.y()) - ry);
-    for (const auto &ring : head.nozzle)
-        if (dz > ring.bottom - head.safety_mm && x * x + y * y < std::pow(ring.radius + grow, 2)) return true;
+    for (const auto &ring : head.nozzle) {
+        const double bottom = flow_height && ring.bottom == head.contact_allowance_mm ?
+            std::min(.1, .5 * double(tool.path.height)) : ring.bottom;
+        if (dz > bottom - head.safety_mm && x * x + y * y < std::pow(ring.radius + grow, 2)) return true;
+    }
     for (const auto &box : head.boxes)
         if (dz > box.bottom - head.safety_mm && delta.x() + rx > box.x_min - grow &&
             delta.x() - rx < box.x_max + grow && delta.y() + ry > box.y_min - grow && delta.y() - ry < box.y_max + grow)
@@ -68,14 +71,19 @@ bool obstructs(const Piece &material, const Piece &tool, const NonplanarClearanc
 }
 
 using Graph = std::vector<std::vector<size_t>>;
-Graph dependencies(const std::vector<Piece> &pieces, const NonplanarClearanceModel &head)
+Graph dependencies(const std::vector<Piece> &pieces, const NonplanarClearanceModel &head, bool flow_height = false)
 {
     Graph graph(pieces.size());
     if (pieces.empty()) return graph;
     double low = pieces.front().low, high = pieces.front().high, reach = 0.;
     for (const auto &p : pieces) low = std::min(low, p.low), high = std::max(high, p.high);
-    for (const auto &r : head.nozzle)
-        if (high - low > r.bottom - head.safety_mm) reach = std::max(reach, r.radius);
+    double contact = head.contact_allowance_mm;
+    if (flow_height)
+        for (const auto &piece : pieces) contact = std::min(contact, .5 * double(piece.path.height));
+    for (const auto &r : head.nozzle) {
+        const double bottom = flow_height && r.bottom == head.contact_allowance_mm ? contact : r.bottom;
+        if (high - low > bottom - head.safety_mm) reach = std::max(reach, r.radius);
+    }
     for (const auto &b : head.boxes)
         if (high - low > b.bottom - head.safety_mm)
             reach = std::max({reach, std::abs(b.x_min), std::abs(b.x_max), std::abs(b.y_min), std::abs(b.y_max)});
@@ -94,7 +102,7 @@ Graph dependencies(const std::vector<Piece> &pieces, const NonplanarClearanceMod
                 const auto found = grid.find({x,y});
                 if (found == grid.end()) continue;
                 for (size_t j : found->second)
-                    if (i != j && obstructs(pieces[j], pieces[i], head)) graph[i].push_back(j);
+                    if (i != j && obstructs(pieces[j], pieces[i], head, flow_height)) graph[i].push_back(j);
             }
     }
     return graph;
@@ -130,8 +138,18 @@ std::set<size_t> cyclic_pieces(const Graph &graph)
 
 bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClearanceModel &head)
 {
-    const auto pieces = split_paths({path}, .1, .01);
-    const auto graph = dependencies(pieces, head);
+    return continuous_curved_top_clear(std::vector<ExtrusionPath>{path}, head);
+}
+
+bool continuous_curved_top_clear(const std::vector<ExtrusionPath> &paths, const NonplanarClearanceModel &head)
+{
+    if (paths.empty()) return false;
+    for (size_t i = 0; i < paths.size(); ++i)
+        if (paths[i].polyline.points.size() < 2 || (i > 0 && paths[i - 1].last_point3() != paths[i].first_point3()))
+            return false;
+    const bool flow_height = std::all_of(paths.begin(), paths.end(), [](const ExtrusionPath &path) { return path.continuous_top; });
+    const auto pieces = split_paths(paths, .1, .01);
+    const auto graph = dependencies(pieces, head, flow_height);
     std::vector<double> arc;
     double walked = 0.;
     for (const auto &piece : pieces) {
@@ -139,8 +157,9 @@ bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClear
         arc.push_back(walked + .5 * length);
         walked += length;
     }
-    const double contact_run = std::max(1., 2. * double(path.width));
-    const bool closed = path.polyline.points.front() == path.polyline.points.back();
+    double contact_run = 1.;
+    for (const auto &path : paths) contact_run = std::max(contact_run, 2. * double(path.width));
+    const bool closed = paths.front().first_point3() == paths.back().last_point3();
     std::vector<std::vector<Piece>> refined(pieces.size());
     const auto fine = [&](size_t i) -> const std::vector<Piece> & {
         if (refined[i].empty()) refined[i] = split_paths({pieces[i].path}, .01, .001);
@@ -152,12 +171,12 @@ bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClear
                 bool blocked = false;
                 for (const auto &tool : fine(i)) {
                     for (const auto &material : fine(j))
-                        if (obstructs(material, tool, head)) { blocked = true; break; }
+                        if (obstructs(material, tool, head, flow_height)) { blocked = true; break; }
                     if (blocked) break;
                 }
                 if (!blocked) continue;
-                BOOST_LOG_TRIVIAL(info) << "Curved top boundary access: surface " << path.source_surface_id
-                    << " path " << path.source_path_id << " tool arc " << arc[i] << " material arc " << arc[j]
+                BOOST_LOG_TRIVIAL(info) << "Curved top boundary access: surface " << paths.front().source_surface_id
+                    << " path " << paths.front().source_path_id << " tool arc " << arc[i] << " material arc " << arc[j]
                     << " length " << walked << " rise " << pieces[j].high - pieces[i].low;
                 return false;
             }
@@ -167,6 +186,8 @@ bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClear
 std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPath> &paths,
                                                 const NonplanarClearanceModel &head, const Point &start)
 {
+    if (!paths.empty() && std::all_of(paths.begin(), paths.end(), [](const ExtrusionPath &path) { return path.continuous_top; }))
+        return paths;
     struct Ends { Point3 first, last; bool connected = true; };
     std::map<size_t, Ends> ends;
     for (const auto &path : paths)

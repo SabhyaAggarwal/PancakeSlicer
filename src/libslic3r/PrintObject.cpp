@@ -1,3 +1,4 @@
+#include "Nonplanar/CurvedTopsContinuous.hpp"
 #include "ExPolygon.hpp"
 #include "Config.hpp"
 #include "Exception.hpp"
@@ -2226,6 +2227,7 @@ bool PrintObject::invalidate_state_by_config_options(
             steps.emplace_back(posSupportMaterial);
         } else if (
                opt_key == "nonplanar_curved_shells"
+            || opt_key == "nonplanar_continuous_top"
             || opt_key == "nonplanar_curved_max_angle"
             || opt_key == "nonplanar_curved_max_height"
             || opt_key == "nonplanar_curved_cone_tolerance") {
@@ -3135,6 +3137,8 @@ PrintObject::project_nonplanar_surfaces()
     });
     std::vector<Layer *> boundary_layers;
     for (const auto &shell : shells) boundary_layers.push_back(shell.get());
+    if (m_config.nonplanar_continuous_top.value)
+        Nonplanar::make_continuous_curved_tops(*this, boundary_layers);
     Nonplanar::finish_curved_top_boundaries(*this, boundary_layers);
     const ExPolygons patch_footprint = union_ex(patch_polygons);
     if (!m_nonplanar_repair) m_nonplanar_repair = std::make_shared<Nonplanar::RepairHints>();

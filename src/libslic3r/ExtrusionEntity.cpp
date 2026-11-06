@@ -45,7 +45,7 @@ void ExtrusionPath::clip_end(double distance)
 
 void ExtrusionPath::simplify(double tolerance)
 {
-    if (this->z_contoured) {
+    if (this->z_contoured || this->continuous_top) {
         return;
     }
     if (this->nonplanar_source)

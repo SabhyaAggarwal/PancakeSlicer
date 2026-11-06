@@ -528,6 +528,13 @@ set(lisbslic3r_sources
     Nonplanar/CurvedTopsSurface.cpp
     Nonplanar/CurvedTopsBudget.hpp
     Nonplanar/CurvedTopsBudget.cpp
+    Nonplanar/CurvedTopsContinuous.cpp
+    Nonplanar/CurvedTopsContinuous.hpp
+    Nonplanar/Atom/border.cpp
+    Nonplanar/Atom/stripe.cpp
+    Nonplanar/Atom/stitcher.cpp
+    Nonplanar/Atom/subdivide.cpp
+    Nonplanar/Atom/stripes.cpp
     Nonplanar/FirmwareTime.hpp
     Nonplanar/FirmwareTime.cpp
     Nonplanar/CurvedTopsSchedule.hpp

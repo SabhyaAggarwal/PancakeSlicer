@@ -5598,6 +5598,13 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
+    def = this->add("nonplanar_continuous_top", coBool);
+    def->label = L("Continuous curved top");
+    def->category = L("Quality");
+    def->tooltip = L("Generate a connected stripe field over each curved top to reduce transitions. Experimental; normal clearance and firmware time admission still apply.");
+    def->mode = comDevelop;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_time_budget", coPercent);
     def->label = L("Curved top time budget");
     def->category = L("Quality");

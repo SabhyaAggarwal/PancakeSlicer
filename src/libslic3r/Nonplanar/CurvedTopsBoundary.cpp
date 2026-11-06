@@ -481,7 +481,7 @@ void finish_curved_top_boundaries(const PrintObject &object, const std::vector<L
                     if (!cap.home || cap.home->layer()->id() < layer->id()) cap.home = region;
                 }
             const auto collect = [&](const ExtrusionPath &p) {
-                if (p.nonplanar_source && p.distance_to_top >= 0.f && p.distance_to_top < .001f)
+                if (p.nonplanar_source && !p.continuous_top && p.distance_to_top >= 0.f && p.distance_to_top < .001f)
                     caps[{p.source_surface_id, r}].paths.push_back(p);
             };
             visit(region->perimeters, collect);
