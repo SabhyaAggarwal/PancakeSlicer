@@ -8,6 +8,8 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "Polygon.hpp"
 #include "libslic3r/PrintBase.hpp"
+#include "libslic3r/Print.hpp"
+#include "libslic3r/Nonplanar/Repair.hpp"
 #include "PrintConfig.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/TriangleMesh.hpp"
@@ -413,7 +415,10 @@ struct GlobalModelInfo {
 
 Polygons extract_perimeter_polygons(const Layer *layer, std::vector<const LayerRegion*> &corresponding_regions_out,
                                    bool has_precise_seam_modifiers) {
-  const auto projected = [](const ExtrusionEntity &entity) {
+  const auto *hints = layer->object()->nonplanar_repair();
+  const bool native = hints != nullptr && hints->curved_finish != Nonplanar::RepairHints::CurvedFinish::Blended;
+  const auto projected = [native](const ExtrusionEntity &entity) {
+    if (native) return false;
     if (const auto *path = dynamic_cast<const ExtrusionPath *>(&entity))
       return path->nonplanar_source;
     const ExtrusionPaths *paths = nullptr;

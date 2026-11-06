@@ -33,6 +33,7 @@
 #include "Nonplanar/PlanarClip.hpp"
 #include "Nonplanar/Repair.hpp"
 #include "Nonplanar/CurvedTopsScaffold.hpp"
+#include "Nonplanar/CurvedTopsBoundary.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/RotaryRouter.hpp"
@@ -41,6 +42,7 @@
 #include "Nonplanar/Rests.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/SubLayerWalls.hpp"
+#include "Nonplanar/TopTexture.hpp"
 #include "Nonplanar/CurvedBridge.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/DeformSlice.hpp"
@@ -705,12 +707,47 @@ void PrintObject::prepare_infill()
     this->set_done(posPrepareInfill);
 }
 
+static void find_zaa_flat_tops(const PrintObject &object, const LayerPtrs &layers)
+{
+    bool mid = object.curved_fallback_zaa();
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
+        const PrintRegionConfig &config = object.printing_region(region_id).config();
+        mid |= config.zaa_enabled && config.zaa_mid_layer_slice;
+    }
+    for (Layer *layer : layers)
+        layer->zaa_flat_tops.clear();
+    if (!mid || layers.empty())
+        return;
+    double             ground = 0.;
+    const TriangleMesh mesh   = object.object_frame_mesh(ground);
+    const float        z0     = mesh.bounding_box().min.z();
+    std::vector<Polygons> faces(layers.size());
+    for (const stl_triangle_vertex_indices &f : mesh.its.indices) {
+        const Vec3f &a = mesh.its.vertices[f[0]], &b = mesh.its.vertices[f[1]], &c = mesh.its.vertices[f[2]];
+        const Vec3f  n = (b - a).cross(c - a);
+        if (!(n.norm() > 0.f) || n.z() < 0.9999f * n.norm())
+            continue;
+        const double z  = (a.z() + b.z() + c.z()) / 3. - z0;
+        const auto   it = std::upper_bound(layers.begin(), layers.end(), z, [](double z, const Layer *l) { return z < l->slice_z; });
+        if (it == layers.begin())
+            continue;
+        faces[size_t(it - layers.begin()) - 1].emplace_back(Points{ Point::new_scale(a.x(), a.y()), Point::new_scale(b.x(), b.y()),
+                                                                    Point::new_scale(c.x(), c.y()) });
+    }
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t k = range.begin(); k < range.end(); ++k)
+            if (!faces[k].empty())
+                layers[k]->zaa_flat_tops = offset_ex(union_(faces[k]), float(scale_(0.05)));
+    });
+}
+
 void PrintObject::infill()
 {
     this->prepare_infill();
 
     if (this->set_started(posInfill)) {
         Nonplanar::prepare_vase_closure(*this);
+        find_zaa_flat_tops(*this, m_layers);
         m_print->set_status(35, L("Generating infill toolpath"));
 
         BOOST_LOG_TRIVIAL(debug) << "Filling layers in parallel - start";
@@ -999,7 +1036,7 @@ static bool contours_paths(const PrintObject &object, const Print &print)
     const bool open_vase = print.config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(object);
     for (size_t region_id = 0; region_id < object.num_printing_regions(); region_id++) {
         const auto &config = object.printing_region(region_id).config();
-        if (config.zaa_enabled || (!open_vase && Nonplanar::top_shells_enabled(config, object.config()) &&
+        if (config.zaa_enabled || object.curved_fallback_zaa() || (!open_vase && Nonplanar::top_shells_enabled(config, object.config()) &&
                                    Nonplanar::effective_fallback(config, object.config()) != NonplanarFallback::Planar))
             return true;
     }
@@ -1008,7 +1045,7 @@ static bool contours_paths(const PrintObject &object, const Print &print)
 
 bool PrintObject::need_z_contouring() const
 {
-    if (contours_paths(*this, *m_print))
+    if (contours_paths(*this, *m_print) || Nonplanar::has_top_texture(*this))
         return true;
     const NonplanarMode mode = m_config.nonplanar_mode.value;
     if (mode == NonplanarMode::Off || mode == NonplanarMode::CurvedTops)
@@ -1052,6 +1089,7 @@ void PrintObject::contour_z()
     );
     }
     m_print->throw_if_canceled();
+    Nonplanar::texture_tops(*this);
     Nonplanar::split_sublayer_walls(*this);
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - end";
 
@@ -1784,6 +1822,10 @@ bool PrintObject::invalidate_state_by_config_options(
         m_sublayer_walls_off = false;
         steps.emplace_back(posPerimeters);
     }
+    if (m_curved_fallback_zaa || m_curved_fallback_off) {
+        m_curved_fallback_zaa = m_curved_fallback_off = false;
+        steps.emplace_back(posPerimeters);
+    }
     if (m_auto_support_applied && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {
             return key == "enable_support" || key == "support_type" || key == "support_style" || key == "support_critical_regions_only";
         })) {
@@ -2080,7 +2122,10 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "small_area_infill_flow_compensation"
             || opt_key == "lateral_lattice_angle_1"
             || opt_key == "lateral_lattice_angle_2"
-            || opt_key == "infill_overhang_angle") {
+            || opt_key == "infill_overhang_angle"
+            || opt_key == "top_texture"
+            || opt_key == "top_texture_depth"
+            || opt_key == "top_texture_pitch") {
             steps.emplace_back(posInfill);
         } else if (opt_key == "sparse_infill_pattern"
                    || opt_key == "tpms_adaptive"
@@ -2857,8 +2902,13 @@ PrintObject::detect_nonplanar_surfaces()
             }
             const float boundary_radius = 2.f * region.flow(*this, frExternalPerimeter,
                 m_config.layer_height.value, false).scaled_width();
-            const ExPolygons projection = intersection_ex(raw_projection,
+            const auto *hints = nonplanar_repair();
+            const bool native_mesh = m_config.nonplanar_mode.value == NonplanarMode::CurvedTops && hints != nullptr &&
+                hints->curved_finish == Nonplanar::RepairHints::CurvedFinish::NativeMesh;
+            ExPolygons projection = native_mesh ? raw_projection : intersection_ex(raw_projection,
                 opening_ex(raw_projection, boundary_radius, jtRound, scale_(0.01)), ApplySafetyOffset::No);
+            if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops && !native_mesh)
+                projection = Nonplanar::smooth_curved_top_footprint(projection, unscale<double>(boundary_radius));
             float distance_to_top = 0.0f;
             const int curved_shells = std::min(1, m_config.nonplanar_curved_shells.value);
             for (int shell_thickness = 0; curved_shells > shell_thickness; ++shell_thickness){
@@ -3083,6 +3133,9 @@ PrintObject::project_nonplanar_surfaces()
                 region->project_nonplanar_surfaces();
         }
     });
+    std::vector<Layer *> boundary_layers;
+    for (const auto &shell : shells) boundary_layers.push_back(shell.get());
+    Nonplanar::finish_curved_top_boundaries(*this, boundary_layers);
     const ExPolygons patch_footprint = union_ex(patch_polygons);
     if (!m_nonplanar_repair) m_nonplanar_repair = std::make_shared<Nonplanar::RepairHints>();
     m_nonplanar_repair->curved_top_areas.clear();

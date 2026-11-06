@@ -256,6 +256,7 @@ enum class ImexVizTheme {
 enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC };
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
+enum class TopTexture : unsigned char { None, Ribs, Knurl };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarWave : unsigned char { Off, Top, Whole, Infill };
 enum class NonplanarWavePattern : unsigned char { Waves, Ripple, Crosshatch };
@@ -756,6 +757,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TpmsAdaptiveGradient)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RotaryLayout)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TopTexture)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarWave)
@@ -1510,6 +1512,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat, zaa_min_z))
     ((ConfigOptionFloat, zaa_minimize_perimeter_height))
     ((ConfigOptionBool, zaa_mid_layer_slice))
+    ((ConfigOptionEnum<TopTexture>, top_texture))
+    ((ConfigOptionFloat, top_texture_depth))
+    ((ConfigOptionFloat, top_texture_pitch))
 
     ((ConfigOptionInt,                       nonplanar_top_shells))
     ((ConfigOptionInt,                       nonplanar_bottom_shells))

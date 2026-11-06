@@ -753,6 +753,13 @@ static const t_config_enum_values s_keys_map_NonplanarFallback = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarFallback)
 
+static const t_config_enum_values s_keys_map_TopTexture = {
+    { "none",  int(TopTexture::None)  },
+    { "ribs",  int(TopTexture::Ribs)  },
+    { "knurl", int(TopTexture::Knurl) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(TopTexture)
+
 static const t_config_enum_values s_keys_map_NonplanarCollisionCheck = {
     { "off",   int(NonplanarCollisionCheck::Off)   },
     { "warn",  int(NonplanarCollisionCheck::Warn)  },
@@ -5127,6 +5134,42 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("top_texture", coEnum);
+    def->label    = L("Top texture");
+    def->category = L("Quality");
+    def->tooltip  = L("A grip relief on top surfaces, grown through the last three solid layers under each top and faded out "
+                      "near its edges, so it stands on the layers below it. Ribs are rounded diagonal ridges, Knurl a diamond "
+                      "pattern of rounded bumps. The relief adds to the model's height. Default: None.");
+    def->enum_keys_map = &ConfigOptionEnum<TopTexture>::get_enum_values();
+    def->enum_values.push_back("none");
+    def->enum_values.push_back("ribs");
+    def->enum_values.push_back("knurl");
+    def->enum_labels.push_back(L("None"));
+    def->enum_labels.push_back(L("Ribs"));
+    def->enum_labels.push_back(L("Knurl"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<TopTexture>(TopTexture::None));
+
+    def = this->add("top_texture_depth", coFloat);
+    def->label    = L("Top texture depth");
+    def->category = L("Quality");
+    def->tooltip  = L("Height of the top texture's ridges or bumps over the flat top. Default: 0.18 mm.");
+    def->sidetext = L("mm");
+    def->min      = 0.02;
+    def->max      = 0.5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.18));
+
+    def = this->add("top_texture_pitch", coFloat);
+    def->label    = L("Top texture pitch");
+    def->category = L("Quality");
+    def->tooltip  = L("Distance between the top texture's ridges or bumps. Default: 5 mm.");
+    def->sidetext = L("mm");
+    def->min      = 1.;
+    def->max      = 50.;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(5.));
+
     def = this->add("nonplanar_top_shells", coInt);
     def->label    = L("Curved top shells");
     def->category = L("Quality");
@@ -5570,10 +5613,10 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_curved_max_angle", coFloat);
     def->label = L("Maximum curved top angle");
     def->category = L("Quality");
-    def->tooltip = L("Largest slope of a mesh surface selected for curved top shells on a fixed print head. Default: 12. Unit: degrees.");
+    def->tooltip = L("Largest slope of a mesh surface selected for curved top shells on a fixed print head. Supported range: 0–12 degrees. Default: 12. Unit: degrees.");
     def->sidetext = L("°");
     def->min = 0;
-    def->max = 45;
+    def->max = 12;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(12));
 

@@ -64,6 +64,7 @@ struct Sample
     bool   valid = false;
     bool   sloped = false;
     double s = 0.;
+    double dz = 0.;
 };
 
 double taper(const std::vector<Sample> &samples, size_t first, size_t last, size_t k)
@@ -98,9 +99,9 @@ struct LayerWalls
     AABBTreeLines::LinesDistancer<Line> holes;
 };
 
-bool candidate(const ExtrusionPath &path)
+bool candidate(const ExtrusionPath &path, bool contoured)
 {
-    return path.role() == erExternalPerimeter && !path.z_contoured &&
+    return path.role() == erExternalPerimeter && (!path.z_contoured || contoured) &&
            !path.is_force_no_extrusion() && path.polyline.points.size() >= 2 && path.mm3_per_mm > 0. &&
            typeid(path) == typeid(ExtrusionPath);
 }
@@ -115,19 +116,19 @@ bool enabled(const Layer &layer)
     return false;
 }
 
-void collect(ExtrusionEntityCollection &c, std::vector<Wall> &out)
+void collect(ExtrusionEntityCollection &c, std::vector<Wall> &out, bool contoured)
 {
     for (ExtrusionEntity *&ee : c.entities) {
         ExtrusionPaths *owner = nullptr;
         if (auto *nested = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
-            collect(*nested, out);
+            collect(*nested, out, contoured);
             continue;
         }
         if (auto *loop = dynamic_cast<ExtrusionLoop *>(ee))
             owner = &loop->paths;
         else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(ee))
             owner = &multi->paths;
-        else if (auto *path = dynamic_cast<ExtrusionPath *>(ee); path != nullptr && candidate(*path)) {
+        else if (auto *path = dynamic_cast<ExtrusionPath *>(ee); path != nullptr && candidate(*path, contoured)) {
             Wall w;
             w.slot = &ee;
             out.emplace_back(std::move(w));
@@ -135,7 +136,7 @@ void collect(ExtrusionEntityCollection &c, std::vector<Wall> &out)
         }
         if (owner != nullptr)
             for (size_t i = 0; i < owner->size(); ++i)
-                if (candidate((*owner)[i])) {
+                if (candidate((*owner)[i], contoured)) {
                     Wall w;
                     w.owner = owner;
                     w.index = i;
@@ -179,10 +180,12 @@ void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, c
         if (L < 1e-6)
             continue;
         const int n = std::max(1, int(std::ceil(L / SampleStep)));
+        const double za = unscale<double>(pts[i].z()), zb = unscale<double>(pts[i + 1].z());
         for (int j = w.samples.empty() ? 0 : 1; j <= n; ++j) {
             Sample smp;
-            smp.p = a + (b - a) * (double(j) / n);
-            smp.s = s + L * double(j) / n;
+            smp.p  = a + (b - a) * (double(j) / n);
+            smp.s  = s + L * double(j) / n;
+            smp.dz = path.z_contoured ? za + (zb - za) * (double(j) / n) : 0.;
             w.samples.emplace_back(smp);
         }
         s += L;
@@ -207,7 +210,7 @@ void sample(const Layer &layer, const LayerWalls &lw, const LayerWalls &below, c
         smp.tilt  = Geometry::rad2deg(std::atan2(0.5 * h, std::abs(step)));
         smp.lo    = std::clamp(lo, -cap, cap);
         smp.hi    = std::clamp(hi, -cap, cap);
-        smp.valid = smp.tilt >= 0. && smp.tilt <= MaxTilt && step >= -0.01;
+        smp.valid = smp.tilt >= 0. && smp.tilt <= MaxTilt && step >= -0.01 && smp.dz > -0.4 * h;
     }
     const Point middle = pts[pts.size() / 2].to_point();
     w.hole = !lw.holes.get_lines().empty() &&
@@ -392,9 +395,21 @@ void replace(const Layer &layer, const Wall &w, ExtrusionPaths &out)
         Polyline3    pl;
         for (size_t k = i; k <= last; ++k) {
             const Point q = Point::new_scale(samples[k].p + (samples[i].sloped && samples[k].sloped ? samples[k].hi * taper(samples, i, j, k) : 0.) * samples[k].n);
-            pl.points.emplace_back(q.x(), q.y(), coord_t(0));
+            pl.points.emplace_back(q.x(), q.y(), scaled<coord_t>(samples[k].dz));
         }
-        pl.simplify(scale_(Simplify));
+        if (path.z_contoured && samples[i].sloped) {
+            for (size_t k = 0; k + 1 < pl.points.size(); ++k) {
+                ExtrusionPath piece(Polyline3(Points3{ pl.points[k], pl.points[k + 1] }), path);
+                const double  gap = std::max(0.01, 0.5 * h + 0.5 * unscale<double>(pl.points[k].z() + pl.points[k + 1].z()));
+                piece.height     = float(0.5 * h);
+                piece.mm3_per_mm = path.mm3_per_mm * bead_area(path.width, gap) / bead_area(path.width, h);
+                out.emplace_back(std::move(piece));
+            }
+            i = j + 1;
+            continue;
+        }
+        if (!path.z_contoured)
+            pl.simplify(scale_(Simplify));
         if (pl.points.size() >= 2) {
             ExtrusionPath piece(std::move(pl), path);
             if (samples[i].sloped) {
@@ -450,6 +465,10 @@ void split_sublayer_walls(PrintObject &object)
     const LayerPtrs &layers = object.layers();
     if (std::none_of(layers.begin(), layers.end(), [](const Layer *l) { return enabled(*l); }))
         return;
+    bool zaa_walls = object.curved_fallback_zaa();
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
+        zaa_walls |= object.printing_region(region_id).config().zaa_enabled.value;
+    zaa_walls &= mode != NonplanarMode::Auto;
     std::vector<LayerWalls> walls(layers.size());
 
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
@@ -473,7 +492,7 @@ void split_sublayer_walls(PrintObject &object)
                 if (region->region().config().nonplanar_sublayer_walls.value)
                     for (ExtrusionEntity *ee : region->perimeters.entities)
                         if (auto *island = dynamic_cast<ExtrusionEntityCollection *>(ee))
-                            collect(*island, walls[k].walls);
+                            collect(*island, walls[k].walls, zaa_walls);
             for (Wall &w : walls[k].walls)
                 sample(layer, walls[k], walls[k - 1], walls[k + 1], w);
         }

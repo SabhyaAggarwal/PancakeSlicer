@@ -30,6 +30,8 @@ struct RepairHints
     std::vector<Disc>       planar;
     double                  travel_lift = 0.;
     std::vector<size_t>     travel_layers;
+    enum class CurvedFinish : uint8_t { Blended, NativeFitted, NativeMesh };
+    CurvedFinish curved_finish = CurvedFinish::Blended;
 };
 
 HeightField surface_cap_field(const RepairHints &hints, const HeightField &like);

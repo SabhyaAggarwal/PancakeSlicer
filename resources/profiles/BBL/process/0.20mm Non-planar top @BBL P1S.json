@@ -6,6 +6,7 @@
 	"setting_id": "7tAJhJpGlglvanmU",
 	"instantiation": "true",
 	"nonplanar_sublayer_walls": "1",
+	"nonplanar_time_budget": "16",
 	"description": "0.20mm Standard for the P1S with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the P1S head.",
 	"top_surface_acceleration": [
 		"5000",

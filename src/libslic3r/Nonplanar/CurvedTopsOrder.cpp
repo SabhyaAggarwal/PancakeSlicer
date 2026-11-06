@@ -1,6 +1,8 @@
 // Curved tops: local access order within one fich-l conformal shell (AGPL-3.0).
 #include "CurvedTopsOrder.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include <boost/log/trivial.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -11,6 +13,7 @@
 #include <map>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace Slic3r {
 namespace {
@@ -30,14 +33,14 @@ Piece piece_of(ExtrusionPath path)
             std::min(a.z(), b.z()), std::max(a.z(), b.z())};
 }
 
-std::vector<Piece> split_paths(const std::vector<ExtrusionPath> &paths)
+std::vector<Piece> split_paths(const std::vector<ExtrusionPath> &paths, double xy_step = 1., double z_step = .04)
 {
     std::vector<Piece> out;
     for (const ExtrusionPath &path : paths)
         for (size_t i = 1; i < path.polyline.points.size(); ++i) {
             const Point3 &a = path.polyline.points[i - 1], &b = path.polyline.points[i];
             const Vec3d d = unscale(Vec3crd(b - a));
-            const int n = std::max({1, int(std::ceil(d.head<2>().norm() / 1.)), int(std::ceil(std::abs(d.z()) / 0.04))});
+            const int n = std::max({1, int(std::ceil(d.head<2>().norm() / xy_step)), int(std::ceil(std::abs(d.z()) / z_step))});
             Point3 from = a;
             for (int k = 1; k <= n; ++k) {
                 const Point3 to = k == n ? b : Point3(Vec3crd((a.cast<double>() + double(k) / n * (b - a).cast<double>()).array().round().cast<coord_t>()));
@@ -125,10 +128,62 @@ std::set<size_t> cyclic_pieces(const Graph &graph)
 
 }
 
+bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClearanceModel &head)
+{
+    const auto pieces = split_paths({path}, .1, .01);
+    const auto graph = dependencies(pieces, head);
+    std::vector<double> arc;
+    double walked = 0.;
+    for (const auto &piece : pieces) {
+        const double length = unscale(Vec3crd(piece.path.polyline.points.back() - piece.path.polyline.points.front())).norm();
+        arc.push_back(walked + .5 * length);
+        walked += length;
+    }
+    const double contact_run = std::max(1., 2. * double(path.width));
+    const bool closed = path.polyline.points.front() == path.polyline.points.back();
+    std::vector<std::vector<Piece>> refined(pieces.size());
+    const auto fine = [&](size_t i) -> const std::vector<Piece> & {
+        if (refined[i].empty()) refined[i] = split_paths({pieces[i].path}, .01, .001);
+        return refined[i];
+    };
+    for (size_t i = 0; i < graph.size(); ++i)
+        for (size_t j : graph[i])
+            if (j < i && arc[i] - arc[j] > contact_run && (!closed || walked - (arc[i] - arc[j]) > contact_run)) {
+                bool blocked = false;
+                for (const auto &tool : fine(i)) {
+                    for (const auto &material : fine(j))
+                        if (obstructs(material, tool, head)) { blocked = true; break; }
+                    if (blocked) break;
+                }
+                if (!blocked) continue;
+                BOOST_LOG_TRIVIAL(info) << "Curved top boundary access: surface " << path.source_surface_id
+                    << " path " << path.source_path_id << " tool arc " << arc[i] << " material arc " << arc[j]
+                    << " length " << walked << " rise " << pieces[j].high - pieces[i].low;
+                return false;
+            }
+    return true;
+}
+
 std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPath> &paths,
                                                 const NonplanarClearanceModel &head, const Point &start)
 {
-    std::vector<Piece> pieces = split_paths(paths);
+    struct Ends { Point3 first, last; bool connected = true; };
+    std::map<size_t, Ends> ends;
+    for (const auto &path : paths)
+        if (!path.can_reverse() && path.role() == erExternalPerimeter && path.distance_to_top < .001f && !path.polyline.empty()) {
+            const auto [it, inserted] = ends.emplace(path.source_path_id, Ends{path.polyline.points.front(), path.polyline.points.back()});
+            if (!inserted) {
+                it->second.connected &= it->second.last == path.polyline.points.front();
+                it->second.last = path.polyline.points.back();
+            }
+        }
+    std::set<size_t> finish_ids;
+    for (const auto &[id, chain] : ends)
+        if (chain.connected && chain.first == chain.last) finish_ids.insert(id);
+    std::vector<ExtrusionPath> interior, boundary;
+    for (const auto &path : paths)
+        (finish_ids.count(path.source_path_id) ? boundary : interior).push_back(path);
+    std::vector<Piece> pieces = split_paths(interior);
     Graph graph;
     for (int pass = 0; ; ++pass) {
         graph = dependencies(pieces, head);
@@ -175,11 +230,13 @@ std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPa
         const Vec3d end = unscale(path.polyline.points.back());
         from = end.head<2>(); from_z = end.z(); previous_source = path.source_path_id;
         if (!ordered.empty() && ordered.back().source_path_id == path.source_path_id &&
+            ordered.back().height == path.height && ordered.back().mm3_per_mm == path.mm3_per_mm &&
             ordered.back().polyline.points.back() == path.polyline.points.front())
             ordered.back().polyline.points.insert(ordered.back().polyline.points.end(), std::next(path.polyline.points.begin()), path.polyline.points.end());
         else ordered.push_back(std::move(path));
         for (size_t w : graph[v]) if (--incoming[w] == 0) ready.push_back(w);
     }
+    ordered.insert(ordered.begin(), std::make_move_iterator(boundary.begin()), std::make_move_iterator(boundary.end()));
     return ordered;
 }
 

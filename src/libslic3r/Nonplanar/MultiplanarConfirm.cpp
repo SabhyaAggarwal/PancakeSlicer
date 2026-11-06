@@ -475,7 +475,7 @@ double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
     return count > 0 ? std::sqrt(sum / double(count)) : std::numeric_limits<double>::quiet_NaN();
 }
 
-double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Bead> &beads)
+double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Bead> &beads, bool whole_surface = false)
 {
     const double missing = std::numeric_limits<double>::quiet_NaN();
     if (mesh.indices.empty() || beads.empty())
@@ -514,17 +514,29 @@ double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Be
     std::mt19937 rng(1);
     std::uniform_real_distribution<double> unit(0., 1.);
     const double up_cos = std::cos(75. * M_PI / 180.);
+    const double whole_cos = -std::cos(35. * M_PI / 180.);
+    double whole_area = 0., walked_area = 0.;
+    size_t assigned = 0;
+    if (whole_surface)
+        for (const auto &facet : facets)
+            if (facet.area2 > 2e-6 && facet.normal.z() > whole_cos) whole_area += facet.area2;
     for (size_t i = 0; i < facets.size(); ++i) {
-        if (facets[i].area2 <= 2e-6 || facets[i].normal.z() <= up_cos)
+        if (facets[i].area2 <= 2e-6 || facets[i].normal.z() <= (whole_surface ? whole_cos : up_cos))
             continue;
         const auto &tri = mesh.indices[i];
         const Vec3d a = mesh.vertices[tri[0]].cast<double>(), b = mesh.vertices[tri[1]].cast<double>(), c = mesh.vertices[tri[2]].cast<double>();
-        const int count = int(std::min(2000., std::ceil(0.5 * facets[i].area2 / 0.09)));
+        int count = int(std::min(2000., std::ceil(0.5 * facets[i].area2 / 0.09)));
+        if (whole_surface) {
+            walked_area += facets[i].area2;
+            const size_t next = std::min(size_t(20000), size_t(std::floor(20000. * walked_area / whole_area + 1e-9)));
+            count = int(next - assigned);
+            assigned = next;
+        }
         for (int j = 0; j < count; ++j) {
             double u = unit(rng), v = unit(rng);
             if (u + v > 1.) { u = 1. - u; v = 1. - v; }
             const Vec3d p = a + u * (b - a) + v * (c - a);
-            if (!near_edge(p, facets[i].normal))
+            if (whole_surface || !near_edge(p, facets[i].normal))
                 samples.emplace_back(p, facets[i].normal);
         }
     }
@@ -834,7 +846,7 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
 
 const std::string &last_measured_failure() { return measured_failure; }
 
-static double planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as, bool common_pricing)
+static double planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as, bool common_pricing, bool walls = false)
 {
     struct PlannedMoves
     {
@@ -848,7 +860,8 @@ static double planar_export(const PrintObject &object, GCodeProcessorResult &res
         ~PrinterTags() { GCodeProcessor::s_IsBBLPrinter = previous; }
     } tags;
     std::vector<Bead> beads;
-    const double profile_time = measured_slice(object, NonplanarMode::Off, beads, {}, keep_as, false, nullptr, &result, common_pricing);
+    const double profile_time = measured_slice(object, NonplanarMode::Off, beads, walls ? std::vector<std::pair<std::string, std::string>>{{"nonplanar_sublayer_walls", "1"}} :
+        std::vector<std::pair<std::string, std::string>>{}, keep_as, false, nullptr, &result, common_pricing);
     if (object.print()->canceled()) throw CanceledException();
     return profile_time;
 }
@@ -861,6 +874,11 @@ double measured_planar_export(const PrintObject &object, GCodeProcessorResult &r
 double measured_planar_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as)
 {
     return planar_export(object, result, keep_as, false);
+}
+
+double measured_walls_export(const PrintObject &object, GCodeProcessorResult &result, const std::string &keep_as)
+{
+    return planar_export(object, result, keep_as, false, true);
 }
 
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,
@@ -884,13 +902,13 @@ double measured_control(const PrintObject &object, MeasuredPrint &measured)
     return measured.time;
 }
 
-double export_normal_rms(const PrintObject &object, const GCodeProcessorResult &result)
+double export_normal_rms(const PrintObject &object, const GCodeProcessorResult &result, bool whole_surface)
 {
     std::vector<Bead> beads;
     append_beads(result, object.print()->config(), beads);
     TriangleMesh mesh = object.model_object()->raw_mesh();
     mesh.transform(object.model_object()->instances.front()->get_matrix());
-    return rounded_normal_rms(mesh.its, beads);
+    return rounded_normal_rms(mesh.its, beads, whole_surface);
 }
 
 double planar_support_time(const PrintObject &object)

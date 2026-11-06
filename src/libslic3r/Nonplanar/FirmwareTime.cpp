@@ -68,7 +68,8 @@ double safe_speed(const Block &b)
 }
 double trapezoid(double d, double a, double entry, double cruise, double exit)
 {
-    cruise = std::max({cruise, entry, exit});
+    entry = std::min(entry, cruise);
+    exit = std::min(exit, cruise);
     const double up = (cruise * cruise - entry * entry) / (2. * a);
     const double down = (cruise * cruise - exit * exit) / (2. * a);
     if (up + down > d) {

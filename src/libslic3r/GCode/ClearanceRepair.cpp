@@ -945,6 +945,30 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 << " component " << hit.component << " depth " << hit.penetration
                 << " tip " << hit.tip.x() << "," << hit.tip.y() << "," << hit.tip.z();
         }
+        for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
+            if (report.per_move[i] >= -1e-5f || result.moves[i].extrusion_role == erCustom) continue;
+            const Vec3d tip = tip_of(result, i);
+            for (PrintObject *object : m_print.objects()) {
+                if (!object->curved_fallback_zaa()) continue;
+                for (const auto &instance : object->instances())
+                    if (object->bounding_box().contains(Point::new_scale(Vec2d(tip.head<2>() - unscale(instance.shift))))) {
+                        object->m_curved_fallback_zaa = false;
+                        object->m_curved_fallback_off = true;
+                        if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+                        m_guard_warnings.push_back(object->model_object()->name +
+                                                   ": its tops print flat layers instead of mid-layer Z contouring, which struck the head.");
+                        break;
+                    }
+            }
+        }
+        if (!m_repick.empty()) {
+            ++m_curved_pass;
+            for (const auto &warning : m_guard_warnings)
+                m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+            result.clearance_report = std::move(report);
+            result.clearance = result.clearance_report.per_move;
+            return true;
+        }
         if (m_curved_pass >= 3)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after three surface repair passes; export blocked.");
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
@@ -1017,6 +1041,24 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
     if (report.hit_moves == 0 && m_repick.empty()) {
         if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
         for (const auto &[object, id] : m_curved_budget->reject(m_print, result)) {
+            if (id == CurvedTopsBudget::NativeRoads) {
+                if (!object->m_nonplanar_repair) object->m_nonplanar_repair = std::make_shared<RepairHints>();
+                auto &finish = object->m_nonplanar_repair->curved_finish;
+                finish = finish == RepairHints::CurvedFinish::Blended && curved_tops_stats(*object).area_fraction >= .5 ?
+                    RepairHints::CurvedFinish::NativeFitted : RepairHints::CurvedFinish::NativeMesh;
+                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+                m_guard_warnings.push_back(object->model_object()->name +
+                    ": trying native curved roads before dropping a top for the process time budget.");
+                continue;
+            }
+            if (id == CurvedTopsBudget::Fallback) {
+                object->m_curved_fallback_zaa = false;
+                object->m_curved_fallback_off = true;
+                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
+                m_guard_warnings.push_back(object->model_object()->name + ": its tops print flat layers instead of mid-layer Z contouring, " +
+                                           m_curved_budget->report(*object).reason.substr(std::string("mid-layer ZAA ").size()) + ".");
+                continue;
+            }
             if (id == CurvedTopsBudget::Walls) {
                 object->m_sublayer_walls_off = true;
                 if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
@@ -1041,7 +1083,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             const bool quality = patch != decision.patches.end() && patch->samples > 0 &&
                 patch->curved_rms_mm > patch->planar_rms_mm + 1e-9;
             m_guard_warnings.push_back(object->model_object()->name + ": curved top " + std::to_string(id) +
-                (quality ? " prints planar because its predicted top RMS is worse than the planar profile." :
+                (patch != decision.patches.end() && patch->reason == "half_height_walls_have_lower_normal_rms" ?
+                 " prints planar to retain half-height walls with lower measured whole-surface RMS." :
+                 quality ? " prints planar because its predicted top RMS is worse than the planar profile." :
                  " prints planar to keep firmware time within " + budget.str() + "% of the planar profile."));
         }
         for (PrintObject *object : m_print.objects()) {
@@ -1061,7 +1105,7 @@ bool ClearanceRepair::restore_planar_remainders()
     bool restored = false;
     for (PrintObject *object : m_print.objects()) {
         if (object->config().nonplanar_mode.value != NonplanarMode::CurvedTops ||
-            object->m_curved_planar_surfaces.empty() || object->nonplanar_surfaces().empty() ||
+            object->nonplanar_surfaces().empty() ||
             curved_tops_stats(*object).kept != 0)
             continue;
         bool changed = false;
@@ -1088,6 +1132,11 @@ bool ClearanceRepair::apply()
                 auto &surfaces = object->m_nonplanar_surfaces;
                 surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(), [object](const NonplanarSurface &surface) {
                     return object->m_curved_planar_surfaces.count(surface.stable_id) != 0; }), surfaces.end());
+                bool walls = false;
+                for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id)
+                    walls |= object->printing_region(region_id).config().nonplanar_sublayer_walls.value;
+                if (surfaces.empty() && !object->m_curved_planar_surfaces.empty() && !walls)
+                    object->m_curved_fallback_zaa = !object->m_curved_fallback_off;
                 const auto scaffold = object->m_nonplanar_repair ? object->m_nonplanar_repair->curved_scaffold : nullptr;
                 if (scaffold && scaffold->owner == object && !scaffold->regions.empty() &&
                     !object->need_z_contouring() && !m_print.m_pipeline_plugin_active) {

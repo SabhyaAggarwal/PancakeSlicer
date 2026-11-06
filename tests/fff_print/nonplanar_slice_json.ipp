@@ -464,7 +464,7 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
             indexed_triangle_set object_mesh;
             for (const auto &instance : object->instances()) {
                 indexed_triangle_set copy = its;
-                its_transform(copy, instance.model_instance->get_matrix());
+                its_transform(copy, instance.model_instance->get_matrix(), true);
                 its_merge(object_mesh, copy);
             }
             SliceGrid object_grid(object_mesh);

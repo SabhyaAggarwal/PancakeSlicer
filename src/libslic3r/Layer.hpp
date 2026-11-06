@@ -136,6 +136,8 @@ public:
     Layer              *upper_layer;
     Layer              *lower_layer;
     bool                slicing_errors;
+    bool                top_textured = false;
+    ExPolygons          zaa_flat_tops;
     coordf_t            slice_z;
     coordf_t            print_z;
     coordf_t            height;

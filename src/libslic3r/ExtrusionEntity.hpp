@@ -170,6 +170,7 @@ public:
     float height;
     double smooth_speed = 0;
     bool z_contoured = false;
+    float contour_base = 0.f;
     float distance_to_top = -1.0;
     bool nonplanar_source = false;
     size_t source_layer_id = size_t(-1);
@@ -194,6 +195,7 @@ public:
         , height(rhs.height)
         , smooth_speed(rhs.smooth_speed)
         , z_contoured(rhs.z_contoured)
+        , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
         , source_layer_id(rhs.source_layer_id)
@@ -217,6 +219,7 @@ public:
         , height(rhs.height)
         , smooth_speed(rhs.smooth_speed)
         , z_contoured(rhs.z_contoured)
+        , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
         , source_layer_id(rhs.source_layer_id)
@@ -240,6 +243,7 @@ public:
         , height(rhs.height)
         , smooth_speed(rhs.smooth_speed)
         , z_contoured(rhs.z_contoured)
+        , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
         , source_layer_id(rhs.source_layer_id)
@@ -263,6 +267,7 @@ public:
         , height(rhs.height)
         , smooth_speed(rhs.smooth_speed)
         , z_contoured(rhs.z_contoured)
+        , contour_base(rhs.contour_base)
         , distance_to_top(rhs.distance_to_top)
         , nonplanar_source(rhs.nonplanar_source)
         , source_layer_id(rhs.source_layer_id)
@@ -287,6 +292,7 @@ public:
         this->height = rhs.height;
         this->smooth_speed = rhs.smooth_speed;
         this->z_contoured = rhs.z_contoured;
+        this->contour_base = rhs.contour_base;
         this->distance_to_top = rhs.distance_to_top;
         this->nonplanar_source = rhs.nonplanar_source;
         this->source_layer_id = rhs.source_layer_id;
@@ -311,6 +317,7 @@ public:
         this->height = rhs.height;
         this->smooth_speed = rhs.smooth_speed;
         this->z_contoured = rhs.z_contoured;
+        this->contour_base = rhs.contour_base;
         this->distance_to_top = rhs.distance_to_top;
         this->nonplanar_source = rhs.nonplanar_source;
         this->source_layer_id = rhs.source_layer_id;

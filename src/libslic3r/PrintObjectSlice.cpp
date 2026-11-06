@@ -76,7 +76,7 @@ static coordf_t compute_slice_z(PrintObject* print_object, size_t i_layer, coord
     size_t num_regions = print_object->num_printing_regions();
     for (size_t rid = 0; rid < num_regions; ++rid) {
         const auto& rcfg = print_object->printing_region(rid).config();
-        if (rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice && !print_object->auto_z_contouring())
+        if (((rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice) || print_object->curved_fallback_zaa()) && !print_object->auto_z_contouring())
             continue;
         if (rcfg.zaa_enabled || print_object->auto_z_contouring()) {
             const double min_z = rcfg.zaa_enabled ? rcfg.zaa_min_z.value : PrintRegionConfig::defaults().zaa_min_z.value;

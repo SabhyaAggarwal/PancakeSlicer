@@ -4,6 +4,7 @@
 #include "Rests.hpp"
 #include "TopSurfaceGrid.hpp"
 #include "CurvedTopsSurface.hpp"
+#include "Repair.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -40,6 +41,8 @@ struct Control {
     CurvedTopBudgetReport report;
     double air = -1.;
     bool attempted = false, valid = false;
+    bool walls_attempted = false, walls_valid = false;
+    double walls_normal_rms = Inf;
 };
 int cell_at(const TopSurfaceGrid &grid, const Vec2d &p)
 {
@@ -129,7 +132,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
     std::vector<std::pair<PrintObject *, int>> rejected;
     if (!firmware_time_supported(print.config(), print.is_BBL_printer())) return rejected;
     const auto priced = [](const PrintObject &o) {
-        return curved_tops_stats(o).kept > 0 || (o.sublayer_walls_active() && !o.sublayer_walls_off());
+        return curved_tops_stats(o).kept > 0 || (o.sublayer_walls_active() && !o.sublayer_walls_off()) || o.curved_fallback_zaa();
     };
     if (std::none_of(print.objects().begin(), print.objects().end(), [&priced](const PrintObject *o) {
         return o->config().nonplanar_mode.value == NonplanarMode::CurvedTops && priced(*o);
@@ -176,6 +179,39 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         for (const auto &[id, height] : heights)
             if (height.second - height.first >= .03 - .001) active.insert(id);
         if (!fw.valid) for (const auto &surface : object.nonplanar_surfaces()) active.insert(surface.stable_id);
+        if (object.curved_fallback_zaa()) {
+            std::string why;
+            if (!measured || !c.grid)
+                why = "mid-layer ZAA could not be measured against the planar control";
+            else if (c.air >= 0. && print.objects().size() == 1 && object.instances().size() == 1 &&
+                floating_road(result, object).air > c.air + 0.05)
+                why = "mid-layer ZAA adds road over air";
+            else if (!report.within_budget)
+                why = "mid-layer ZAA exceeds the firmware time budget";
+            else {
+                auto &grid = *c.grid;
+                grid.bead.assign(grid.mesh.size(), -Inf);
+                std::fill(grid.conformal.begin(), grid.conformal.end(), 0);
+                std::fill(grid.ironed.begin(), grid.ironed.end(), 0);
+                grid.deposit(result);
+                double flat = 0., zaa = 0.;
+                for (size_t k = 0; k < grid.mesh.size(); ++k)
+                    if (grid.eligible[k] && std::isfinite(c.flat_bead[k]) && std::isfinite(grid.bead[k])) {
+                        flat += (c.flat_bead[k] - grid.mesh[k]) * (c.flat_bead[k] - grid.mesh[k]);
+                        zaa += (grid.bead[k] - grid.mesh[k]) * (grid.bead[k] - grid.mesh[k]);
+                    }
+                if (zaa > flat)
+                    why = "mid-layer ZAA top RMS exceeds the planar control";
+            }
+            if (!why.empty()) {
+                rejected.emplace_back(&object, Fallback);
+                report.reason = why;
+                BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top budget: " << object.model_object()->name
+                    << " firmware " << report.candidate_s << " s planar " << report.planar_s << " s cap " << report.limit_s
+                    << " s: " << why << ", mid-layer ZAA off";
+                continue;
+            }
+        }
         if (object.sublayer_walls_active() && !object.sublayer_walls_off() && c.air >= 0. && print.objects().size() == 1 &&
             object.instances().size() == 1) {
             const double air = floating_road(result, object).air;
@@ -229,6 +265,34 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 }
             }
         }
+        const double coverage = curved_tops_stats(object).area_fraction;
+        bool walls_win = false;
+        if (measured && !active.empty() && coverage < .5 && print.objects().size() == 1 &&
+            object.instances().size() == 1 && object.num_printing_regions() == 1 &&
+            object.printing_region(0).config().nonplanar_sublayer_walls.value) {
+            if (!c.walls_attempted) {
+                c.walls_attempted = true;
+                const auto file = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("np-ct-walls-%%%%-%%%%.gcode");
+                struct Remove { boost::filesystem::path file; ~Remove() { boost::system::error_code ec; boost::filesystem::remove(file, ec); } } remove{file};
+                GCodeProcessorResult walls;
+                const double estimate = measured_walls_export(object, walls, file.string());
+                if (std::isfinite(estimate) && estimate > 0.) {
+                    const FirmwareTime fw_walls = firmware_time(file.string(), print.config(), print.is_BBL_printer(), [&print] {
+                        if (print.canceled()) throw CanceledException();
+                    });
+                    c.walls_normal_rms = export_normal_rms(object, walls, true);
+                    c.walls_valid = fw_walls.valid && fw_walls.seconds <= report.limit_s &&
+                        floating_road(walls, object).air <= c.air + .05 && std::isfinite(c.walls_normal_rms);
+                }
+            }
+            if (c.walls_valid) {
+                const double candidate_rms = export_normal_rms(object, result, true);
+                walls_win = std::isfinite(candidate_rms) && c.walls_normal_rms + 1e-9 < candidate_rms;
+                BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top versus walls: " << object.model_object()->name
+                    << " coverage " << coverage << " cap normal RMS " << candidate_rms << " walls normal RMS " << c.walls_normal_rms
+                    << " walls win " << walls_win;
+            }
+        }
         int worst = -1, worst_quality = -1;
         double worst_score = -1., worst_quality_loss = 0.;
         for (const auto &[id, p] : patches) {
@@ -244,14 +308,24 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 worst_quality_loss = quality_loss;
             }
         }
-        const int drop = worst_quality >= 0 ? worst_quality : !report.within_budget ? worst : -1;
-        if (drop >= 0) {
+        const auto *hints = object.nonplanar_repair();
+        const bool native_offer = measured && !report.within_budget && !walls_win && worst_quality < 0 &&
+            (hints == nullptr || hints->curved_finish != RepairHints::CurvedFinish::NativeMesh) &&
+            std::any_of(patches.begin(), patches.end(), [](const auto &p) { return p.second.samples > 0 && p.second.rms_gain_mm > 0.; });
+        const int drop = native_offer ? NativeRoads : walls_win ? *active.begin() : worst_quality >= 0 ? worst_quality : !report.within_budget ? worst : -1;
+        if (native_offer) {
+            rejected.emplace_back(&object, NativeRoads);
+            report.reason = "boundary finish exceeds the firmware time budget; retrying native curved roads";
+        } else if (drop >= 0) {
             patches[drop].dropped = true;
+            if (walls_win) patches[drop].reason = "half_height_walls_have_lower_normal_rms";
             rejected.emplace_back(&object, drop);
-            report.reason = worst_quality >= 0 ? "curved patch top RMS exceeds the planar control" :
+            report.reason = walls_win ? "partial curved cap loses to half-height walls on measured normal RMS" : worst_quality >= 0 ? "curved patch top RMS exceeds the planar control" :
                 measured ? "curved patch exceeds the process firmware time budget" :
                 report.reason.empty() ? "firmware time could not be measured" : report.reason;
         }
+        if (drop == -1 && hints != nullptr && hints->curved_finish != RepairHints::CurvedFinish::Blended)
+            report.reason = "native curved roads retained within the firmware time and top RMS budgets";
         std::map<int, CurvedTopBudgetPatch> records;
         for (const auto &p : report.patches) if (p.dropped) records[p.id] = p;
         for (const auto &[id, p] : patches) records[id] = p;

@@ -101,6 +101,11 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         instances += object->instances().size();
         const NonplanarMode mode = object->config().nonplanar_mode.value;
         const bool          field = mode == NonplanarMode::Field || mode == NonplanarMode::OneShot;
+        const double curved_angle = object->config().nonplanar_curved_max_angle.value;
+        if (mode == NonplanarMode::CurvedTops &&
+            (!std::isfinite(curved_angle) || curved_angle < 0. || curved_angle > 12.))
+            return { L("Maximum curved top angle must be a finite value from 0 to 12 degrees. Steeper curved tops are not supported."),
+                     object, "nonplanar_curved_max_angle" };
         if (mode == NonplanarMode::Multiplanar || field) {
             multiplanar_instances += object->instances().size();
             needs_head = enabled = true;

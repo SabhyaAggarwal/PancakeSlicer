@@ -238,6 +238,8 @@ set(lisbslic3r_sources
     Nonplanar/StrengthRoads.hpp
     Nonplanar/SubLayerWalls.cpp
     Nonplanar/SubLayerWalls.hpp
+    Nonplanar/TopTexture.cpp
+    Nonplanar/TopTexture.hpp
     Nonplanar/SurfaceClip.cpp
     Nonplanar/SurfaceClip.hpp
     Nonplanar/TiltBudget.cpp
@@ -522,6 +524,7 @@ set(lisbslic3r_sources
     Nonplanar/CurvedTopsFacet.hpp
     Nonplanar/CurvedTopsFacet.cpp
     Nonplanar/CurvedTopsSurface.hpp
+    Nonplanar/CurvedTopsBoundary.cpp
     Nonplanar/CurvedTopsSurface.cpp
     Nonplanar/CurvedTopsBudget.hpp
     Nonplanar/CurvedTopsBudget.cpp

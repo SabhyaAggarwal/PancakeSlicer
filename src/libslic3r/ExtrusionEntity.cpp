@@ -286,6 +286,7 @@ void ExtrusionLoop::split_at(const Point &point, bool prefer_non_overhang, const
     ExtrusionPath p1(path.role(), path.mm3_per_mm, path.width, path.height);
     ExtrusionPath p2(path.role(), path.mm3_per_mm, path.width, path.height);
     p1.z_contoured = p2.z_contoured = path.z_contoured;
+    p1.contour_base = p2.contour_base = path.contour_base;
     for (ExtrusionPath *piece : { &p1, &p2 }) {
         piece->distance_to_top   = path.distance_to_top;
         piece->nonplanar_source  = path.nonplanar_source;

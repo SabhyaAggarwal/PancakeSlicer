@@ -3325,7 +3325,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     for (const PrintObject *object : print.objects())
         for (size_t i = 0; i < object->num_printing_regions(); ++i) {
             const PrintRegionConfig &config = object->printing_region(i).config();
-            m_track_nonplanar_material |= config.zaa_enabled || Nonplanar::top_shells_enabled(config, object->config()) ||
+            m_track_nonplanar_material |= config.zaa_enabled || object->curved_fallback_zaa() || Nonplanar::top_shells_enabled(config, object->config()) ||
                                           Nonplanar::bottom_shells_enabled(config, object->config());
         }
     for (const PrintObject *object : print.objects())
@@ -4023,14 +4023,16 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 [](const auto &diag) { return diag.fallback_reason == "planar_patch"; });
             for (const LayerRegion *layerm : top->regions()) {
                 const PrintRegionConfig &rcfg = layerm->region().config();
-                if (rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice)
+                if ((rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice) || object->curved_fallback_zaa())
                     max_height_z = std::max(max_height_z, std::ceil((top->print_z + 0.5 * top->height + 0.03) * 100. - EPSILON) / 100.);
+                if (rcfg.top_texture.value != TopTexture::None)
+                    max_height_z = std::max(max_height_z, std::ceil((top->print_z + rcfg.top_texture_depth.value) * 100. - EPSILON) / 100.);
                 if (Nonplanar::zaa_fallback(rcfg, object->config()) ||
                     (Nonplanar::top_shells_enabled(rcfg, object->config()) &&
                      Nonplanar::effective_fallback(rcfg, object->config()) == NonplanarFallback::None))
                 {
                     const double reach = std::max(rcfg.zaa_min_z.value,
-                        planar_faces && !rcfg.zaa_enabled ? 0.5 * top->height : 0.);
+                        planar_faces && !rcfg.zaa_enabled && !object->curved_fallback_zaa() ? 0.5 * top->height : 0.);
                     max_height_z = std::max(max_height_z,
                                             std::ceil((top->print_z + reach + 0.03) * 100. - EPSILON) / 100.);
                 }
@@ -8310,6 +8312,8 @@ std::string GCode::extrude_path(const ExtrusionPath& path, const std::string& de
         if (const Nonplanar::RepairHints *hints = m_layer != nullptr ? m_layer->object()->nonplanar_repair() : nullptr;
             (path.z_contoured || path.role() == erTopSolidInfill) && hints != nullptr && hints->travel_lift > 0.)
             m_wipe.reset_path();
+        if (path.z_contoured && m_config.top_texture.value != TopTexture::None)
+            m_wipe.reset_path();
     }
 
     return gcode;
@@ -8380,7 +8384,8 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                     extrusions.emplace_back(ee);
             if (! extrusions.empty()) {
                 m_config.apply(print.get_print_region(&region - &by_region.front()).config());
-                if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops) {
+                const bool fallback = m_layer != nullptr && m_layer->object()->curved_fallback_zaa();
+                if (m_config.nonplanar_mode.value == NonplanarMode::CurvedTops && !fallback) {
                 m_current_region = &print.get_print_region(&region - &by_region.front());
                 std::stable_sort(extrusions.begin(), extrusions.end(), [](const auto *a, const auto *b) {
                     return nonplanar_before_planar(*a, *b);
@@ -8402,11 +8407,14 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
                 }
                 } else {
                 std::vector<const ExtrusionEntity *> tops;
-                if (m_config.zaa_enabled && m_config.zaa_mid_layer_slice) {
-                    std::function<bool(const ExtrusionEntity &)> has_top = [&has_top](const ExtrusionEntity &e) {
+                const bool textured = m_config.top_texture.value != TopTexture::None;
+                if ((m_config.zaa_enabled && m_config.zaa_mid_layer_slice) || fallback || textured) {
+                    std::function<bool(const ExtrusionEntity &)> has_top = [&has_top, textured](const ExtrusionEntity &e) {
                         if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(&e))
                             return std::any_of(c->entities.begin(), c->entities.end(), [&has_top](const ExtrusionEntity *x) { return has_top(*x); });
-                        return e.role() == erTopSolidInfill;
+                        if (const auto *path = dynamic_cast<const ExtrusionPath *>(&e); textured && path != nullptr)
+                            return path->z_contoured;
+                        return !textured && e.role() == erTopSolidInfill;
                     };
                     const auto split = std::stable_partition(extrusions.begin(), extrusions.end(), [&has_top](const ExtrusionEntity *e) { return !has_top(*e); });
                     tops.assign(split, extrusions.end());
@@ -9888,8 +9896,8 @@ static bool scales_contoured_flow(const ExtrusionPath &path, const Layer *layer)
 }
 
 static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, const Vec3d &from, const Vec3d &to, double nominal_z,
-                                   double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max,
-                                   double nominal_feed, bool defer_cap)
+                                   double dE, double width, double height, double base, bool scale_flow, const std::string &comment,
+                                   double vz_max, double nominal_feed, bool defer_cap)
 {
     const double dz      = std::abs(to.z() - from.z());
     const double nominal = Nonplanar::bead_area(width, height);
@@ -9898,7 +9906,7 @@ static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, cons
     for (int i = 1; i <= n; ++i) {
         const Vec3d  a     = from + (to - from) * (double(i - 1) / n);
         const Vec3d  b     = i == n ? to : from + (to - from) * (double(i) / n);
-        const double ratio = scale_flow && nominal > 0. ? std::max(0., Nonplanar::bead_area(width, height + 0.5 * (a.z() + b.z()))) / nominal : 1.;
+        const double ratio = scale_flow && nominal > 0. ? std::max(0., Nonplanar::bead_area(width, height + (1. - base) * 0.5 * (a.z() + b.z()))) / nominal : 1.;
         const double z     = nominal_z + b.z();
         if (z < 0.1)
             throw RuntimeError("GCode: very low z");
@@ -9923,7 +9931,7 @@ static ExtrusionPaths absolute_contoured(const ExtrusionPath &path, double layer
             const Vec3d  a     = from + (to - from) * (double(i - 1) / n);
             const Vec3d  b     = i == n ? to : from + (to - from) * (double(i) / n);
             const double ratio = scale_flow && nominal > 0. ?
-                std::max(0., Nonplanar::bead_area(path.width, height + 0.5 * unscale<double>(a.z() + b.z()))) / nominal : 1.;
+                std::max(0., Nonplanar::bead_area(path.width, height + (1. - path.contour_base) * 0.5 * unscale<double>(a.z() + b.z()))) / nominal : 1.;
             ExtrusionPath piece(path);
             piece.polyline.points = { at(a), at(b) };
             piece.mm3_per_mm      = path.mm3_per_mm * ratio;
@@ -10685,7 +10693,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     this->ensure_material_columns(path);
 
     if (path.z_contoured && m_material_columns &&
-        (m_config.zaa_enabled || (m_layer != nullptr && m_layer->object()->auto_z_contouring())))
+        (m_config.zaa_enabled || (m_layer != nullptr && (m_layer->object()->curved_fallback_zaa() || m_layer->object()->auto_z_contouring()))))
         m_nonplanar_ceiling = std::max(m_nonplanar_ceiling, m_material_columns->ceiling());
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();
@@ -10713,8 +10721,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         constexpr double quantized_z_delta = 0.001;
         constexpr double quantized_xy_delta = 0.0014142135623730951;
         const double source_xy_upper_bound = dxy + quantized_xy_delta;
-        if ((dxy < quantized_xy_delta && dz > quantized_z_delta) ||
-            (dxy >= quantized_xy_delta && dz > max_gradient * source_xy_upper_bound + quantized_z_delta))
+        constexpr double rounding_epsilon = 1e-9;
+        if ((dxy < quantized_xy_delta && dz > quantized_z_delta + rounding_epsilon) ||
+            (dxy >= quantized_xy_delta && dz > max_gradient * source_xy_upper_bound + quantized_z_delta + rounding_epsilon))
             throw_nonplanar_too_steep(to.z(), m_layer != nullptr ? m_layer->id() : 0, m_config.nonplanar_curved_max_angle.value,
                 m_layer != nullptr ? m_layer->object()->id().id : 0,
                 "height step from G-code X" + std::to_string(from.x()) + " Y" + std::to_string(from.y()) + " Z" + std::to_string(from.z()) +
@@ -10776,6 +10785,14 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             const double over = std::max({ m_writer.get_position().z(), target, this->nonplanar_travel_z() });
             gcode += m_writer.travel_to_z(over, "lift over contoured surface", true, this->conformal_max_speed_z());
             gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", over);
+        } else if (m_layer != nullptr && m_layer->top_textured && sloped == nullptr && !z_absolute) {
+            double depth = 0.;
+            for (const LayerRegion *layerm : m_layer->regions())
+                if (layerm->region().config().top_texture.value != TopTexture::None)
+                    depth = std::max(depth, layerm->region().config().top_texture_depth.value);
+            const double over = std::max({ m_writer.get_position().z(), target, m_nominal_z + depth + 0.1 });
+            gcode += m_writer.travel_to_z(over, "lift over textured top", true, this->conformal_max_speed_z());
+            gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", over);
         } else
             gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z, z_absolute && path.nonplanar_source ? &path : nullptr);
 
@@ -10789,7 +10806,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
 
     const auto contour_travel = [this](double z, const std::string &comment) {
         const double limit = this->conformal_max_speed_z();
-        const bool defer_cap = m_config.zaa_enabled && !Nonplanar::requests_conformal_shells(*m_print);
+        const bool defer_cap = (m_config.zaa_enabled || (m_layer != nullptr && m_layer->object()->curved_fallback_zaa())) &&
+                               !Nonplanar::requests_conformal_shells(*m_print);
         std::string move = m_writer.travel_to_z(z, comment, true, defer_cap ? 0. : limit);
         if (defer_cap && limit > 0. && !move.empty())
             move.insert(0, std::string(CoolingBuffer::ZaaMaxFeedTag) + std::to_string(std::floor(limit * 60.)) + "\n");
@@ -10808,7 +10826,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     } else if (!path.z_contoured && sloped == nullptr) {
         double current_z = m_writer.get_position().z();
         if (GCodeFormatter::quantize_xyzf(current_z) != GCodeFormatter::quantize_xyzf(m_nominal_z)) {
-            gcode += m_config.zaa_enabled || Nonplanar::requests_conformal_shells(*m_print) ?
+            gcode += m_config.zaa_enabled || (m_layer != nullptr && m_layer->object()->curved_fallback_zaa()) || Nonplanar::requests_conformal_shells(*m_print) ?
                 contour_travel(m_nominal_z, "reset Z after contouring") :
                 m_writer.travel_to_z(m_nominal_z, "reset Z after contouring", true);
         }
@@ -11413,7 +11431,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                     if (path.z_contoured) {
                         const Vec2d from = this->point_to_gcode(line.a.to_point()), to = this->point_to_gcode(line.b.to_point());
                         extrude_contoured_road(m_writer, gcode, Vec3d(from.x(), from.y(), unscale_(line.a.z())),
-                                               Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height,
+                                               Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height, path.contour_base,
                                                scales_contoured_flow(path, m_layer), flow_description.empty() ? description : flow_description,
                                                this->conformal_max_speed_z(), contoured_feed, !Nonplanar::requests_conformal_shells(*m_print));
                     } else if (sloped == nullptr) {
@@ -11594,7 +11612,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             }
             if (path.z_contoured) {
                 extrude_contoured_road(m_writer, gcode, Vec3d(prev.x(), prev.y(), unscale_(pre_processed_point.p.z())),
-                                       Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height,
+                                       Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height, path.contour_base,
                                        scales_contoured_flow(path, m_layer), flow_description.empty() ? description : flow_description,
                                        this->conformal_max_speed_z(), last_set_speed, !Nonplanar::requests_conformal_shells(*m_print));
             } else if (sloped == nullptr) {
@@ -11636,6 +11654,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 m_max_layer_z = std::max(m_max_layer_z, float(z - m_config.z_offset.value));
                 m_nonplanar_ceiling = std::max(m_nonplanar_ceiling, z);
             }
+        else if (path.z_contoured)
+            for (const Point3 &point : points)
+                m_max_layer_z = std::max(m_max_layer_z, float(deposited_z(point) - m_config.z_offset.value));
     }
     if (path.nonplanar_source) gcode += ";_NONPLANAR_END\n";
     m_nonplanar_printed_this_layer |= path.nonplanar_source;
@@ -11868,7 +11889,15 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     const bool half_height_walls = native_curved && m_layer->object()->sublayer_walls_active() &&
         !m_layer->object()->sublayer_walls_off();
-    if (native_curved && !needs_retraction &&
+    bool contoured_walls = half_height_walls && m_layer->object()->curved_fallback_zaa();
+    if (half_height_walls)
+        for (const PrintRegion &region : m_layer->object()->all_regions())
+            contoured_walls |= region.config().zaa_enabled.value;
+    const bool native_wall_link = half_height_walls && m_layer->object()->curved_surface_candidates() == 0 &&
+        !contoured_walls &&
+        std::any_of(m_layer->lslices.begin(), m_layer->lslices.end(),
+            [&travel](const ExPolygon &slice) { return slice.contains(travel); });
+    if (native_curved && !needs_retraction && !native_wall_link &&
         (half_height_walls || (!nonplanar_continuation &&
         travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)) &&
         std::any_of(m_layer->object()->nonplanar_surfaces().begin(), m_layer->object()->nonplanar_surfaces().end(),
@@ -11876,10 +11905,17 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
                 return surface.stats.min.z - m_layer->height <= m_layer->slice_z && m_layer->slice_z <= surface.stats.max.z;
             })))) {
         const Vec3d from = m_writer.get_position();
-        const Vec2d xy = this->point_to_gcode(travel.points.back());
         const double z = std::max(from.z(), target_z);
-        needs_retraction = travel.size() != 2 ||
-            !m_nonplanar_heights.supports_travel(Vec3d(from.x(), from.y(), z), Vec3d(xy.x(), xy.y(), z), 0.4);
+        Vec3d previous(from.x(), from.y(), z);
+        for (size_t i = 1; i < travel.points.size(); ++i) {
+            const Vec2d xy = this->point_to_gcode(travel.points[i]);
+            const Vec3d next(xy.x(), xy.y(), z);
+            if (!m_nonplanar_heights.supports_travel(previous, next, 0.4)) {
+                needs_retraction = true;
+                break;
+            }
+            previous = next;
+        }
     }
 
     bool native_keep_primed = false;

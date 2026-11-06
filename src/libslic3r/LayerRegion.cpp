@@ -35,6 +35,7 @@
 #include <cassert>
 #include <string>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <cstdint>
 
@@ -1176,19 +1177,24 @@ LayerRegion::append_nonplanar_surface(const NonplanarSurface& surface)
 
 void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collection, const NonplanarProjectionIndex &index)
 {
-    ExtrusionEntitiesPtr output;
-    output.reserve(collection->entities.size());
-    for (ExtrusionEntity *entity : collection->entities) {
-        if (auto *path = dynamic_cast<ExtrusionPath*>(entity)) {
+    ExtrusionEntityCollection input, output;
+    output.entities.reserve(collection->entities.size());
+    input.entities.swap(collection->entities);
+    auto append = [&output](std::unique_ptr<ExtrusionEntity> entity) {
+        output.entities.push_back(entity.get());
+        entity.release();
+    };
+    for (ExtrusionEntity *&slot : input.entities) {
+        std::unique_ptr<ExtrusionEntity> entity(std::exchange(slot, nullptr));
+        if (auto *path = dynamic_cast<ExtrusionPath*>(entity.get())) {
             auto pieces = project_nonplanar_path(*path, index);
             if (pieces.size() == 1) {
                 *path = std::move(pieces.front());
-                output.push_back(path);
+                append(std::move(entity));
             } else {
-                for (auto &piece : pieces) output.push_back(new ExtrusionPath(std::move(piece)));
-                delete path;
+                for (auto &piece : pieces) append(std::make_unique<ExtrusionPath>(std::move(piece)));
             }
-        } else if (auto *loop = dynamic_cast<ExtrusionLoop*>(entity)) {
+        } else if (auto *loop = dynamic_cast<ExtrusionLoop*>(entity.get())) {
             ExtrusionPaths projected;
             bool split = false;
             for (const ExtrusionPath &path : loop->paths) {
@@ -1197,13 +1203,12 @@ void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collect
                 for (auto &piece : pieces) projected.emplace_back(std::move(piece));
             }
             if (split) {
-                for (auto &piece : projected) output.push_back(new ExtrusionPath(std::move(piece)));
-                delete loop;
+                for (auto &piece : projected) append(std::make_unique<ExtrusionPath>(std::move(piece)));
             } else {
                 loop->paths = std::move(projected);
-                output.push_back(loop);
+                append(std::move(entity));
             }
-        } else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(entity)) {
+        } else if (auto *multi = dynamic_cast<ExtrusionMultiPath*>(entity.get())) {
             ExtrusionPaths projected;
             bool split = false;
             for (const ExtrusionPath &path : multi->paths) {
@@ -1212,20 +1217,19 @@ void LayerRegion::project_nonplanar_extrusion(ExtrusionEntityCollection *collect
                 for (auto &piece : pieces) projected.emplace_back(std::move(piece));
             }
             if (split) {
-                for (auto &piece : projected) output.push_back(new ExtrusionPath(std::move(piece)));
-                delete multi;
+                for (auto &piece : projected) append(std::make_unique<ExtrusionPath>(std::move(piece)));
             } else {
                 multi->paths = std::move(projected);
-                output.push_back(multi);
+                append(std::move(entity));
             }
-        } else if (auto *nested = dynamic_cast<ExtrusionEntityCollection*>(entity)) {
+        } else if (auto *nested = dynamic_cast<ExtrusionEntityCollection*>(entity.get())) {
             project_nonplanar_extrusion(nested, index);
-            output.push_back(nested);
+            append(std::move(entity));
         } else {
-            output.push_back(entity);
+            append(std::move(entity));
         }
     }
-    collection->entities.swap(output);
+    collection->entities.swap(output.entities);
 }
 
 static void check_nonplanar_projected(const ExtrusionEntity *entity, const Layer &layer)

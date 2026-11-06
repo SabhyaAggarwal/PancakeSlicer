@@ -17,6 +17,7 @@ struct CurvedTopBudgetPatch {
     double planar_rms_mm = 0., curved_rms_mm = 0., rms_gain_mm = 0.;
     size_t samples = 0;
     bool dropped = false;
+    std::string reason;
 };
 struct CurvedTopBudgetReport {
     bool measured = false, within_budget = false;
@@ -31,6 +32,8 @@ public:
     CurvedTopsBudget();
     ~CurvedTopsBudget();
     static constexpr int Walls = -2;
+    static constexpr int Fallback = -3;
+    static constexpr int NativeRoads = -4;
     std::vector<std::pair<PrintObject *, int>> reject(Print &print, const GCodeProcessorResult &result);
     CurvedTopBudgetReport report(const PrintObject &object) const;
 private:

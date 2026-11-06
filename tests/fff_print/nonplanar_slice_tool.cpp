@@ -862,7 +862,7 @@ indexed_triangle_set plate_mesh(const Model &model)
     for (const ModelObject *object : model.objects)
         for (const ModelInstance *instance : object->instances) {
             indexed_triangle_set its = object->raw_indexed_triangle_set();
-            its_transform(its, instance->get_matrix());
+            its_transform(its, instance->get_matrix(), true);
             its_merge(out, its);
         }
     return out;

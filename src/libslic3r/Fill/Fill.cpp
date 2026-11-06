@@ -902,8 +902,10 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                 } else if (surface.is_solid()) {
                     if (surface.is_external() && !is_bridge) {
                         if (surface.is_top()) {
-                            params.pattern = region_config.zaa_enabled && region_config.zaa_mid_layer_slice ? ipConcentric :
-                                                                                                             region_config.top_surface_pattern.value;
+                            const bool mid = (region_config.zaa_enabled && region_config.zaa_mid_layer_slice) || layer.object()->curved_fallback_zaa();
+                            const bool flat = mid && !layer.zaa_flat_tops.empty() &&
+                                area(intersection_ex(ExPolygons{ surface.expolygon }, layer.zaa_flat_tops)) >= 0.9 * surface.expolygon.area();
+                            params.pattern = mid && !flat ? ipConcentric : region_config.top_surface_pattern.value;
                             params.density = float(region_config.top_surface_density);
                             if (params.density <= 0.0f) continue;
                         } else {
@@ -1301,7 +1303,7 @@ void Layer::make_fills(const FillAdaptive::RegionOctrees* fill_octrees, FillLigh
         f->layer_id = this->id();
         {
             const auto &rcfg = m_regions[surface_fill.region_id]->region().config();
-            f->dont_alternate_fill_direction = rcfg.zaa_enabled && rcfg.zaa_dont_alternate_fill_direction;
+            f->dont_alternate_fill_direction = (rcfg.zaa_enabled || this->object()->curved_fallback_zaa()) && rcfg.zaa_dont_alternate_fill_direction;
         }
         f->z 		= this->print_z;
         f->angle 	= surface_fill.params.angle;
@@ -1504,7 +1506,7 @@ Polylines Layer::generate_sparse_infill_polylines_for_anchoring(const FillAdapti
         f->layer_id = this->id() - this->object()->get_layer(0)->id();
         {
             const auto &rcfg = m_regions[surface_fill.region_id]->region().config();
-            f->dont_alternate_fill_direction = rcfg.zaa_enabled && rcfg.zaa_dont_alternate_fill_direction;
+            f->dont_alternate_fill_direction = (rcfg.zaa_enabled || this->object()->curved_fallback_zaa()) && rcfg.zaa_dont_alternate_fill_direction;
         }
         f->z        = this->print_z;
         f->angle    = surface_fill.params.angle;
@@ -1679,7 +1681,8 @@ void Layer::make_ironing()
     f->overlap  = 0;
 	for (size_t i = 0; i < by_extruder.size();) {
 		IroningParams &ironing_params = by_extruder[i];
-        f->dont_alternate_fill_direction = ironing_params.layerm->region().config().zaa_enabled && ironing_params.layerm->region().config().zaa_dont_alternate_fill_direction;
+        f->dont_alternate_fill_direction = (ironing_params.layerm->region().config().zaa_enabled || this->object()->curved_fallback_zaa()) &&
+                                          ironing_params.layerm->region().config().zaa_dont_alternate_fill_direction;
 		if( f_pattern != ironing_params.pattern )
 		{
             f_pattern               = ironing_params.pattern;

@@ -349,6 +349,7 @@ public:
     bool sublayer_walls_active() const { return m_sublayer_walls_active; }
     bool sublayer_walls_off() const { return m_sublayer_walls_off; }
     void set_sublayer_walls_active(bool active) { m_sublayer_walls_active = active; }
+    bool curved_fallback_zaa() const { return m_curved_fallback_zaa; }
     bool auto_planar_pass() const { return m_auto_planar_pass; }
     bool auto_floating_demoted() const { return m_auto_floating_demoted; }
     bool auto_band_demoted() const { return m_auto_band_demoted; }
@@ -604,6 +605,8 @@ private:
     std::string                            m_curved_budget_reason;
     bool                                   m_sublayer_walls_active = false;
     bool                                   m_sublayer_walls_off = false;
+    bool                                   m_curved_fallback_zaa = false;
+    bool                                   m_curved_fallback_off = false;
     size_t                                 m_curved_candidates = 0;
     double                                 m_curved_upward_area = 0.;
 
