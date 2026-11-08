@@ -6,7 +6,7 @@ export const MODE_LABELS: Record<string, string> = {
 export const MODE_HELP: Record<string, string> = {
   off: 'Flat layers: every layer flat; fastest.',
   nonplanar_top: 'Smoothest tops: bends the top and two shells below over every gentle top; lowest top error, 10-50 % slower than flat.',
-  curved_tops: 'Fast curved tops: curves a top only where it stays near flat print time; the other tops get mid-layer Z smoothing.',
+  curved_tops: 'Fast curved tops: bends only the outer top shell, and only where it stays near flat print time; other tops print flat.',
   smooth_morph: 'Smooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to about 1.4x flat time.',
 };
 export const canonicalMode = (mode: string) => ['auto', 'manual', 'oneshot'].includes(mode) ? 'nonplanar_top' : mode;
