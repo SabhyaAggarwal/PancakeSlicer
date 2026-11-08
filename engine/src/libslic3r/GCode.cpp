@@ -9298,8 +9298,26 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             const Vec3d m = a + (b - a) * (double(s) / 8.);
             planar_stretch = std::abs(field.forward(m).z() - m.z()) < 1e-3;
         }
-        if (fixed_conformal && !planar_stretch && (b - a).head<2>().norm() >= 1.)
-            return false;
+        if (fixed_conformal && !planar_stretch && (b - a).head<2>().norm() >= 1.) {
+            if (!in_layer || (b - a).head<2>().norm() > 15. || above > ends + 0.1)
+                return false;
+            const double level = 0.5 * (qa.z() + qb.z());
+            double       sag   = 0.;
+            const int    n     = std::max(2, int(std::ceil((b - a).head<2>().norm() / 0.5)));
+            for (int s = 1; s < n; ++s) {
+                const Vec3d c = a + (b - a) * (double(s) / n);
+                Vec3d       on;
+                if (!field.inverse(Vec3d(field.forward(c).x(), field.forward(c).y(), level), on))
+                    return false;
+                sag = std::max(sag, on.z() - c.z());
+            }
+            const double hz = std::clamp(sag + 0.15, 0.15, 1.);
+            poses.clear();
+            poses.push_back({ to_writer(a + Vec3d(0., 0., hz)), Vec3d::UnitZ() });
+            poses.push_back({ to_writer(b + Vec3d(0., 0., hz)), Vec3d::UnitZ() });
+            poses.push_back(target);
+            return true;
+        }
         const bool   flat  = (in_layer || (qb - qa).head<2>().norm() < 3.) && above <= ends + 0.1;
         if (banded && !flat)
             return false;

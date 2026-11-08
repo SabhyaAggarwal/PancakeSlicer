@@ -946,6 +946,12 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
             taken = report.hit_moves > 200 ? ConformalSteps : taken + 1;
             step  = taken;
         }
+        if (step >= ConformalSteps) {
+            object->m_config.nonplanar_mode.value = NonplanarMode::Off;
+            object->m_nonplanar_repair.reset();
+        }
+        m_planned.erase(std::remove_if(m_planned.begin(), m_planned.end(), [object](const Planned &p) { return p.object == object; }),
+                        m_planned.end());
         object->invalidate_step(posSlice);
         changed = true;
         if (step >= ConformalSteps)
