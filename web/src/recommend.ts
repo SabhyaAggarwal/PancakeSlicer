@@ -61,7 +61,10 @@ function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config
     const height = Number({ ...process, ...o?.settings }.nonplanar_curved_max_height);
     return { why: `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit` };
   }
-  if (kind === 'area') return { why: 'Top too small for a curved top' };
+  if (kind === 'area') {
+    const area = Number({ ...process, ...o?.settings }.nonplanar_curved_min_area);
+    return { why: `Top smaller than your ${Number.isFinite(area) ? `${area} mm² ` : ''}Minimum curved top area` };
+  }
   if (kind === 'base') return { why: 'Top too close to the bed for curved layers' };
   if (kind === 'budget') return { why: 'A curved top would cost too much time or quality' };
   if (kind === 'hits') {
@@ -90,7 +93,7 @@ function partialLine(r: ObjectResult, process: Config, o: PlateObject | undefine
     : limit.kind === 'access' ? (limit.reachableDeg != null ? `steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${whole(limit.reachableDeg)}°)` : 'the print head cannot reach them')
     : limit.kind === 'angle' ? `above your ${limit.capDeg != null ? `${whole(limit.capDeg)}° ` : ''}curved-top limit`
     : limit.kind === 'height' ? `taller than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height`
-    : limit.kind === 'area' ? 'too small for a curved top'
+    : limit.kind === 'area' ? 'smaller than your Minimum curved top area'
     : limit.kind === 'base' ? 'too close to the bed'
     : 'a curved top would cost too much time or quality';
   const budget: Record<string, string> = { firmware_time_budget: 'a curved top would cost too much time', top_rms_worse_than_planar: 'flat layers print them smoother' };
@@ -166,7 +169,6 @@ export function tryIgnoreDuct(failures: CurveFailure[]) {
 export function plateResults(s: State): PlateResult[] {
   const record = s.job.state === 'done' && !s.job.stale ? s.job.status?.record : undefined;
   if (kept && kept.record === record && kept.objects === s.objects && kept.rec === s.recommendedStyle) return kept.out;
-  const warned = new Set(pendingRecommendations(s).map((o) => o.id));
   if (record && !explain) return NONE;
   const results = explain?.objectResults(record) ?? [];
   const bare = (n: string) => n.replace(/\.(stl|obj|3mf|step|stp)$/i, '');
@@ -174,7 +176,7 @@ export function plateResults(s: State): PlateResult[] {
   const out = results.flatMap((r) => {
     const o = s.objects.length === 1 && results.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(r.name));
     const partial = partialLine(r, process, o);
-    return o && warned.has(o.id) ? [] : [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: bareName(o?.name ?? r.name), ...(r.printedFlat ? { flat: flatLine(r, o, process) } : {}), ...(partial ? { partial } : {}) }];
+    return [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: bareName(o?.name ?? r.name), ...(r.printedFlat ? { flat: flatLine(r, o, process) } : {}), ...(partial ? { partial } : {}) }];
   });
   kept = { record, objects: s.objects, rec: s.recommendedStyle, out };
   return out;

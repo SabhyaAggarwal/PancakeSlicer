@@ -35,7 +35,6 @@ export function surfaceValues(id: SurfaceId): Config {
   return {
     nonplanar_mode: id === 'smooth' ? 'curved_tops' : 'off',
     nonplanar_deform: 'off', zaa_enabled: '0',
-    ...(OPTIONS.nonplanar_time_budget ? { nonplanar_time_budget: id === 'smooth' ? '40%' : '15%' } : {}),
     ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'whole' : 'off' } : {}),
   };
 }
@@ -44,18 +43,10 @@ export function writeSurface(id: SurfaceId) {
   if (surfaceUnavailable(id)) return;
   const config = effectiveConfig(getState(), 'process');
   const defaults = id === 'smooth' ? CURVED_DEFAULTS : id === 'waves' ? WAVE_DEFAULTS : {};
-  for (const [key, value] of Object.entries(defaults)) if (OPTIONS[key] && (config[key] === undefined || Number(text(config[key])) === 0)) takeValue('process', key, value);
+  for (const [key, value] of Object.entries(defaults)) if (OPTIONS[key] && config[key] === undefined) takeValue('process', key, value);
   for (const [key, value] of Object.entries(surfaceValues(id))) if (!same(key, config[key], value)) takeValue('process', key, value);
 }
 
 export function applySurface(id: SurfaceId) {
   undoable(`Surface: ${SURFACE_NAMES[id]}`, () => writeSurface(id));
-}
-
-export function keepCurvedTop(extraPercent: number) {
-  undoable('Keep curved top', () => {
-    writeSurface('smooth');
-    const needed = Math.ceil(extraPercent) + 5;
-    if (OPTIONS.nonplanar_time_budget && needed > 40) takeValue('process', 'nonplanar_time_budget', `${needed}%`);
-  });
 }

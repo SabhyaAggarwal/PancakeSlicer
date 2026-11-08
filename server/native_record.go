@@ -371,13 +371,21 @@ func (j *Job) morphClearance(c Config) clearanceVerdict {
 			}
 		}
 		settings := gcodeSettings(gcode, "nonplanar_collision_tolerance", "nonplanar_duct_graze_limit", "nonplanar_ignore_duct")
+		defaults := optionDefaults(optionData)
+		for key, policy := range map[string]string{"nonplanar_collision_tolerance": "1", "nonplanar_duct_graze_limit": "200", "nonplanar_ignore_duct": "0"} {
+			if _, ok := settings[key]; ok {
+				continue
+			}
+			var value string
+			if raw, ok := defaults[key]; !ok || json.Unmarshal(raw, &value) != nil || value == "" {
+				value = policy
+			}
+			settings[key] = value
+			j.log("server", "clearance verification: "+key+" not in the G-code, using "+value)
+		}
 		tol, e1 := strconv.ParseFloat(settings["nonplanar_collision_tolerance"], 64)
 		limit, e2 := strconv.Atoi(settings["nonplanar_duct_graze_limit"])
-		ignore, ok := settings["nonplanar_ignore_duct"]
-		v.Tolerance, v.DuctLimit, v.IgnoreDuct, v.Settings = tol, limit, ignore == "1", e1 == nil && e2 == nil && ok
-		if !v.Settings {
-			j.log("server", "clearance verification found no Head clearance settings in the G-code")
-		}
+		v.Tolerance, v.DuctLimit, v.IgnoreDuct, v.Settings = tol, limit, settings["nonplanar_ignore_duct"] == "1", e1 == nil && e2 == nil
 		if v.Checked {
 			j.log("server", "verified clearance hit moves "+strconv.Itoa(v.Hits)+" min "+strconv.FormatFloat(v.MinMM, 'f', 3, 64)+" mm duct "+strconv.Itoa(v.DuctHits))
 			j.clearance = v

@@ -93,8 +93,6 @@ export function ExplainLegend(props: {
   (window as unknown as { __compare: unknown }).__compare = { state: cmp, summary: s, standard: std, stdData, rows };
 
   const summary = nativeSurfaceSummary(record);
-  const clearance = ((record.nonplanar_report ?? {}) as { clearance?: { clearance_override?: boolean; duct_graze_moves?: number } }).clearance;
-  const ductGrazes = clearance?.clearance_override && s.curved ? clearance.duct_graze_moves ?? 0 : null;
   const flat = flatLines(results);
   return (
     <section className="lg-section np-legend" aria-label="Curved">
@@ -118,7 +116,6 @@ export function ExplainLegend(props: {
       </div>
       </div>
       {flat.map((line) => <div className="lg-row np-flat" role="status" key={line}>{line}</div>)}
-      {ductGrazes != null && <div className="lg-row np-warn-text" role="status">Cooling duct not checked{ductGrazes > 0 && `: may brush the part ${ductGrazes.toLocaleString('en-US')} times`}</div>}
       {ui.surface && hasSurfaceGrid ? (
         <>
           <div className="lg-sec label-caps">Top error (µm)</div>
