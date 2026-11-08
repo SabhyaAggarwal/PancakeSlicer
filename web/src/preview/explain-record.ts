@@ -113,6 +113,8 @@ export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(m
 export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget' | 'base';
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null;
   topMm2: number;
+  printedFlat: boolean;
+  flatWhy?: string;
   limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null } }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
@@ -122,7 +124,8 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const patches = (((record.results ?? {}) as Rec).patches ?? []) as Patch[];
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];
   const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number;
-    planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number }[];
+    planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number; curved_extrusion_length_mm?: number;
+    planar_fallback_reason?: string }[];
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
     const name = String(o.name ?? '');
@@ -161,7 +164,10 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     else fact = 'Flat top, prints as Standard';
     const why = reported.find((r) => r.name === name);
     const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg) } : undefined;
-    out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, ...(limit ? { limit } : {}) });
+    const roads = num(why?.curved_extrusion_length_mm);
+    const printedFlat = !!why && !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason);
+    out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, printedFlat,
+      ...(printedFlat && why?.planar_fallback_reason ? { flatWhy: why.planar_fallback_reason } : {}), ...(limit ? { limit } : {}) });
   }
   return out;
 }
@@ -299,15 +305,11 @@ export function droppedCurvedTop(record: Rec | undefined): number | null {
 export function nativeSurfaceSummary(record: Rec): string | null {
   const report = record.nonplanar_report as { objects?: {
     mode?: string; curved_top_area_fraction?: number; curved_top_area_denominator_mm2?: number;
-    curved_extrusion_length_mm?: number; planar_fallback_reason?: string;
+    curved_extrusion_length_mm?: number;
   }[] } | undefined;
   const objects = report?.objects?.filter((o) => o.mode === 'curved_tops');
-  if (!objects?.length) {
-    const why = report?.objects?.find((o) => o.mode === 'conformal_layers' && o.planar_fallback_reason)?.planar_fallback_reason;
-    return why ? `Printed flat: ${why}` : null;
-  }
-  const roads = objects.reduce((sum, o) => sum + (Number(o.curved_extrusion_length_mm) || 0), 0);
-  if (roads <= 0) return `Printed flat: ${objects.map((o) => o.planar_fallback_reason).find(Boolean) || 'No top surfaces could be curved with the current clearance limits'}`;
+  if (!objects?.length) return null;
+  if (objects.reduce((sum, o) => sum + (Number(o.curved_extrusion_length_mm) || 0), 0) <= 0) return null;
   const valid = objects.every((o) => Number.isFinite(o.curved_top_area_fraction));
   const area = objects.reduce((sum, o) => sum + (Number(o.curved_top_area_denominator_mm2) || 0), 0);
   const fraction = !valid ? null : objects.length === 1 ? objects[0].curved_top_area_fraction!

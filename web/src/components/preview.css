@@ -74,6 +74,7 @@
 :where(.orca-parity) .lg-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: normal; }
 
 :where(.orca-parity) .np-summary-line { min-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .np-flat { color: var(--ink); font-weight: 600; white-space: normal; padding: var(--s-1) 0; }
 :where(.orca-parity) .np-toggles { display: grid; margin-top: var(--s-2); }
 :where(.orca-parity) .lg-scroll > .np-legend:first-child { display: contents; }
 :where(.orca-parity) .np-head { position: sticky; top: 0; z-index: 1; padding: var(--s-1) 0 var(--s-1); background: var(--raised); }

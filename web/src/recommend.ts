@@ -41,27 +41,36 @@ export function applyRecommended(objects: PlateObject[]) {
   }
 }
 
-export interface PlateResult extends ObjectResult { objectId?: number; label: string }
+export interface PlateResult extends ObjectResult { objectId?: number; label: string; flat?: string }
 
 const NONE: PlateResult[] = [];
 let kept: { record: unknown; objects: unknown; rec: unknown; out: PlateResult[] } | null = null;
-function topFact(r: ObjectResult, o: PlateObject, process: Config): string {
-  if (r.curved || r.ledge || !r.limit) return r.fact;
-  const slopes = topSlopes(o), whole = (v: number) => String(Math.round(v));
+function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config): { why: string; hint?: string } | null {
+  if (!r.limit) return null;
+  const slopes = o && topSlopes(o), whole = (v: number) => String(Math.round(v));
   const slope = slopes && slopes.max >= 0.5 ? `Top slope ${slopes.max - slopes.min > 1 ? 'up to ' : ''}${whole(slopes.max)}°` : 'Top';
   const { kind, capDeg, reachableDeg } = r.limit;
-  if (kind === 'access') return reachableDeg != null
-    ? `${slope} is steeper than the print head reaches (${whole(reachableDeg)}°), prints as Standard`
-    : 'The print head cannot reach this top, prints as Standard';
-  if (kind === 'angle') return `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit, prints as Standard; try raising Max curved top angle`;
+  if (kind === 'access') return { why: reachableDeg != null ? `${slope} is steeper than the print head reaches (${whole(reachableDeg)}°)` : 'The print head cannot reach this top' };
+  if (kind === 'angle') return { why: `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit`, hint: 'try raising Max curved top angle' };
   if (kind === 'height') {
-    const height = Number({ ...process, ...o.settings }.nonplanar_curved_max_height);
-    return `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit, prints as Standard`;
+    const height = Number({ ...process, ...o?.settings }.nonplanar_curved_max_height);
+    return { why: `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit` };
   }
-  if (kind === 'area') return 'Top too small for a curved top, prints as Standard';
-  if (kind === 'base') return 'Top too close to the bed for curved layers, prints as Standard';
-  if (kind === 'budget') return 'A curved top would cost too much time or quality, prints as Standard';
-  return r.fact;
+  if (kind === 'area') return { why: 'Top too small for a curved top' };
+  if (kind === 'base') return { why: 'Top too close to the bed for curved layers' };
+  if (kind === 'budget') return { why: 'A curved top would cost too much time or quality' };
+  return null;
+}
+
+function topFact(r: ObjectResult, o: PlateObject, process: Config): string {
+  if (r.curved || r.ledge) return r.fact;
+  const f = flatReason(r, o, process);
+  return f ? `${f.why}, prints as Standard${f.hint ? `; ${f.hint}` : ''}` : r.fact;
+}
+
+function flatLine(r: ObjectResult, o: PlateObject | undefined, process: Config): string {
+  const f = flatReason(r, o, process);
+  return f ? `${f.why}${f.hint ? `; ${f.hint}` : ''}` : r.flatWhy || 'No top surface could be curved with the current limits';
 }
 
 export function plateResults(s: State): PlateResult[] {
@@ -74,7 +83,7 @@ export function plateResults(s: State): PlateResult[] {
   const process = effectiveConfig(s, 'process');
   const out = results.flatMap((r) => {
     const o = s.objects.length === 1 && results.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(r.name));
-    return o && warned.has(o.id) ? [] : [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: o?.name ?? r.name }];
+    return o && warned.has(o.id) ? [] : [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: o?.name ?? r.name, ...(r.printedFlat ? { flat: flatLine(r, o, process) } : {}) }];
   });
   kept = { record, objects: s.objects, rec: s.recommendedStyle, out };
   return out;

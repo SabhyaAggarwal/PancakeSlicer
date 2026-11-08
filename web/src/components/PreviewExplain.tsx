@@ -7,7 +7,8 @@ import { area, curvedTopPercent, grams, microns, nativeSurfaceSummary, readRecor
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
-import { getState, printerPreset } from '../state/store';
+import { plateResults, type PlateResult } from '../recommend';
+import { getState, printerPreset, useStore } from '../state/store';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
 import { Switch } from './fields';
 
@@ -31,6 +32,15 @@ function curvedShare(s: RecordSummary): number | null {
   return total > 0 ? Math.min(s.topFlat > 0 ? 99 : 100, Math.max(s.topCurved > 0 ? 1 : 0, Math.round((100 * s.topCurved) / total))) : null;
 }
 
+function flatLines(results: PlateResult[]): string[] {
+  const flat = results.filter((r) => r.flat);
+  if (!flat.length) return [];
+  const byReason = new Map<string, string[]>();
+  for (const r of flat) byReason.set(r.flat!, [...(byReason.get(r.flat!) ?? []), r.label]);
+  const named = byReason.size > 1 || flat.length < results.length;
+  return [...byReason].map(([why, labels]) => `Printed flat: ${named ? `${labels.join(', ')}: ` : ''}${why}`);
+}
+
 const time = (s: number | null) => (s == null ? '–' : shortTime(s));
 
 export function ExplainLegend(props: {
@@ -44,6 +54,7 @@ export function ExplainLegend(props: {
 }) {
   const { data, record, hasSurfaceGrid, ui, setUi, compare, setCompare } = props;
   const s = useMemo(() => readRecord(record), [record]);
+  const results = useStore(plateResults);
   const cmp = useCompare();
   const stdData = useStandardData();
   const previous = useRef<Pick<PreviewUi, 'view' | 'nonplanar'>>({ view: 'feature', nonplanar: 'shell' });
@@ -64,7 +75,7 @@ export function ExplainLegend(props: {
   rows.push(['Top error', std ? microns(std.topErrorMm) : pending ?? '', microns(s.topErrorMm), better(std?.topErrorMm, s.topErrorMm),
     better(std?.topErrorMm, s.topErrorMm) ? `${(std!.topErrorMm! / s.topErrorMm!).toFixed(1)}× smoother than Standard` : undefined]);
   const stdPct = std ? curvedShare(std) ?? 0 : null;
-  if (curvedPct != null) rows.push(['Curved top', stdPct != null ? `${stdPct}%` : '', `${curvedPct}%`, stdPct != null && curvedPct > stdPct]);
+  if (s.mode !== 'off') rows.push(['Curved top', stdPct != null ? `${stdPct}%` : '', `${curvedPct ?? 0}%`, stdPct != null && (curvedPct ?? 0) > stdPct]);
   if (s.shells) rows.push(['Curved shells', std ? String(std.shells) : '', String(s.shells)]);
   if (s.overhangs + s.bridges) rows.push(['Curved overhangs', std ? String(std.overhangs + std.bridges) : '', String(s.overhangs + s.bridges), false, `${s.overhangs} overhangs, ${s.bridges} bridges`]);
   rows.push(['Time', std ? time(std.timeS) : '', time(s.timeS) + (timeDelta != null ? ` (${timeDelta >= 0 ? '+' : ''}${Math.round(timeDelta * 100)}%)` : '')]);
@@ -82,7 +93,8 @@ export function ExplainLegend(props: {
 
   const summary = nativeSurfaceSummary(record);
   const clearance = ((record.nonplanar_report ?? {}) as { clearance?: { clearance_override?: boolean; duct_graze_moves?: number } }).clearance;
-  const ductGrazes = clearance?.clearance_override ? clearance.duct_graze_moves ?? 0 : null;
+  const ductGrazes = clearance?.clearance_override && s.curved ? clearance.duct_graze_moves ?? 0 : null;
+  const flat = flatLines(results);
   return (
     <section className="lg-section np-legend" aria-label="Curved">
       <div className="np-head">
@@ -104,6 +116,7 @@ export function ExplainLegend(props: {
         )}
       </div>
       </div>
+      {flat.map((line) => <div className="lg-row np-flat" role="status" key={line}>{line}</div>)}
       {ductGrazes != null && <div className="lg-row np-warn-text" role="status">Cooling duct not checked{ductGrazes > 0 && `: may brush the part ${ductGrazes.toLocaleString('en-US')} times`}</div>}
       {ui.surface && hasSurfaceGrid ? (
         <>
