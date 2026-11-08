@@ -8,7 +8,7 @@ import { DESKTOP_ONLY, OPTIONS, splitKey, useTooltips, type OptionDef } from '..
 import { effectiveConfig, getState, resetOption, setOption, toast, useStore } from '../state/store';
 import { fieldIssue, fieldNumber, fieldRange } from './field-validation';
 import { Glyph } from './Glyph';
-import { MODE_HELP } from '../nonplanar-mode';
+import { MODE_HELP, MODE_LABELS } from '../nonplanar-mode';
 import { LabelTip, SourceGlyph } from './InfoTip';
 import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
@@ -49,6 +49,19 @@ const CHOICE_HINTS: Record<string, Record<string, string>> = {
     field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
   },
 };
+
+function HelpText({text, current}: {text: string; current?: string}) {
+  const lines = text.split('\n').filter(Boolean), items = lines.map((l) => /^([^:]{1,40}): (.+)$/.exec(l));
+  if (lines.length < 2 || items.some((m) => !m)) return <p>{text}</p>;
+  return <ul className="info-choices">{items.map((m, i) => <li key={i} aria-current={lines[i] === current || undefined}><b>{m![1]}</b> {m![2]}</li>)}</ul>;
+}
+function defaultText(def: OptionDef): string | undefined {
+  const raw = def.default === undefined ? '' : asText(def.default);
+  if (raw === '') return undefined;
+  const at = def.enum_values?.indexOf(raw) ?? -1;
+  if (at >= 0) return (def.key === 'nonplanar_mode' ? MODE_LABELS[raw] : undefined) ?? def.enum_labels?.[at] ?? raw;
+  return fieldNumber(raw, def);
+}
 
 const PROMPTED = new Set(['spiral_mode', 'wall_loops', 'top_shell_layers', 'sparse_infill_density', 'enable_support', 'enforce_support_layers', 'detect_thin_wall',
   'overhang_reverse', 'timelapse_type', 'enable_wrapping_detection', 'layer_height', 'nozzle_temperature', 'nozzle_temperature_initial_layer',
@@ -130,9 +143,9 @@ export const Field = memo(function Field(props: {
         {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
         {props.hideLabel ? <span className="opt-label-text">{label}</span> : <LabelTip label={label} full={fullLabel}>
-          <strong>{fullLabel}</strong>{hint && <p>{hint}</p>}{help && <p>{help}</p>}
-          {def.default !== undefined && asText(def.default) !== '' && <p className="info-meta">Default {fieldNumber(asText(def.default), def)}</p>}
-          {fieldRange(def) && <p className="info-meta">{fieldRange(def)}</p>}
+          <strong>{fullLabel}</strong>{hint && !help?.includes(hint) && <p>{hint}</p>}{help && <HelpText text={help} current={hint}/>}
+          {defaultText(def) && <p className="info-meta">Default {defaultText(def)}</p>}
+          {!def.enum_values?.length && fieldRange(def) && <p className="info-meta">{fieldRange(def)}</p>}
           <code>{key}</code></LabelTip>}
       </span>
       <fieldset ref={fieldRef} className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>

@@ -51,6 +51,10 @@
 :where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: min(360px, var(--radix-popover-content-available-height, 60dvh)); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .info-pop > * { margin: 0; }
 :where(.orca-parity) .info-pop > * + * { margin-top: 8px; }
+:where(.orca-parity) .info-pop .info-choices { list-style: none; padding: 0; display: grid; gap: 6px; white-space: normal; }
+:where(.orca-parity) .info-pop .info-choices > li { padding-left: 8px; border-left: 2px solid transparent; color: var(--ink-2, var(--text)); }
+:where(.orca-parity) .info-pop .info-choices > li[aria-current] { border-left-color: var(--accent); color: var(--text); }
+:where(.orca-parity) .info-pop .info-choices b { display: block; font-weight: 600; color: var(--text); }
 :where(.orca-parity) .info-pop code { display: block; color: var(--ink-3); font: var(--t-small); }
 
 :where(.orca-parity) .reset-icon { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-1); background: none; color: var(--ink-3); cursor: pointer; }

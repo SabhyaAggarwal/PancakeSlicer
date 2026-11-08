@@ -4,10 +4,10 @@ export const MODE_LABELS: Record<string, string> = {
   off: 'Flat layers', nonplanar_top: 'Smoothest tops', curved_tops: 'Fast curved tops', smooth_morph: 'Smooth morph',
 };
 export const MODE_HELP: Record<string, string> = {
-  off: 'Flat layers: every layer flat; fastest.',
-  nonplanar_top: 'Smoothest tops: bends the top and two shells below over every gentle top; lowest top error, 10-50 % slower than flat.',
-  curved_tops: 'Fast curved tops: bends only the outer top shell, and only where it stays near flat print time; other tops print flat.',
-  smooth_morph: 'Smooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to about 1.4x flat time.',
+  off: 'Flat layers: every layer flat. Fastest.',
+  curved_tops: 'Fast curved tops: bends the outermost top layer where it adds no time. Other tops stay flat.',
+  nonplanar_top: 'Smoothest tops: bends the top three layers over every gentle top. Smoothest finish, 10–50 % slower.',
+  smooth_morph: 'Smooth morph: bends every layer from the bed up. Best for domes and lids, up to 1.4× slower.',
 };
 export const canonicalMode = (mode: string) => ['auto', 'manual', 'oneshot'].includes(mode) ? 'nonplanar_top' : mode;
 export function canonicalModeConfig<T extends Config | Record<string, string>>(config: T): T {
