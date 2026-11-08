@@ -98,7 +98,8 @@
       "icon": "build/icon.png",
       "executableName": "pancakeslicer",
       "synopsis": "Non-planar 3D printing slicer",
-      "maintainer": "Zimeng Xiong <zxzimeng@gmail.com>"
+      "maintainer": "Zimeng Xiong <zxzimeng@gmail.com>",
+      "syncDesktopName": true
     },
     "deb": {
       "depends": [
@@ -110,5 +111,6 @@
       ]
     }
   },
-  "homepage": "https://github.com/ZimengXiong/PancakeSlicer"
+  "homepage": "https://github.com/ZimengXiong/PancakeSlicer",
+  "desktopName": "pancakeslicer.desktop"
 }
