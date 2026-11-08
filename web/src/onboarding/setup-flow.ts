@@ -3,7 +3,7 @@ import { createMachine, useMachine } from '../flow/fsm';
 export type SetupStep = 'closed' | 'welcome' | 'tour' | 'printer' | 'profiles' | 'connect' | 'filaments' | 'applying' | 'done';
 export const TOUR_PAGES = 3;
 interface SetupContext { page: number; error: string | null }
-type SetupEvent = { type: 'OPEN' } | { type: 'CLOSE' } | { type: 'NEXT' } | { type: 'BACK' } | { type: 'SKIP' } | { type: 'APPLY' }
+type SetupEvent = { type: 'OPEN'; at?: 'printer' } | { type: 'CLOSE' } | { type: 'NEXT' } | { type: 'BACK' } | { type: 'SKIP' } | { type: 'APPLY' }
   | { type: 'APPLIED' } | { type: 'FAILED'; error: string };
 
 const close = { target: 'closed' } as const;
@@ -11,7 +11,7 @@ export const setup = createMachine<SetupStep, SetupEvent, SetupContext>({
   id: 'setup', initial: 'closed', strict: false,
   context: { page: 0, error: null },
   states: {
-    closed: { on: { OPEN: { target: 'welcome', action: () => ({ page: 0, error: null }) } } },
+    closed: { on: { OPEN: [{ guard: (_, e) => e.type === 'OPEN' && e.at === 'printer', target: 'printer', action: () => ({ page: 0, error: null }) }, { target: 'welcome', action: () => ({ page: 0, error: null }) }] } },
     welcome: { on: { CLOSE: close, NEXT: { target: 'tour', action: () => ({ page: 0 }) }, SKIP: 'printer' } },
     tour: { on: { CLOSE: close, SKIP: 'printer',
       NEXT: [{ guard: (c) => c.page < TOUR_PAGES - 1, action: (c) => ({ page: c.page + 1 }) }, { target: 'printer' }],
@@ -24,5 +24,5 @@ export const setup = createMachine<SetupStep, SetupEvent, SetupContext>({
     done: { on: { CLOSE: close, BACK: 'filaments' } },
   },
 });
-export const openSetup = () => setup.send({ type: 'OPEN' });
+export const openSetup = (at?: 'printer') => setup.send({ type: 'OPEN', at });
 export const useSetup = () => useMachine(setup);

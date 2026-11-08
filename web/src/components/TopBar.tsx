@@ -107,7 +107,7 @@ export function TopBar() {
     if (!next || next === name) return;
     if (projectId && projectState !== 'blank') void renameProject(projectId, next); else setState({ projectName: next });
   };
-  const appItems: MenuItem[] = [{label:`PancakeSlicer v${APP_VERSION}`,header:true} as MenuItem,...(update ? [{label:`Update available: v${update.version}`,action:()=>openUpdate(update)} as MenuItem] : []),{label:'About PancakeSlicer',action:()=>setState({appDialog:'about'})},'sep',{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [{label:`PancakeSlicer v${APP_VERSION}`,header:true} as MenuItem,...(update ? [{label:`Update available: v${update.version}`,action:()=>openUpdate(update)} as MenuItem] : []),{label:'About PancakeSlicer',action:()=>setState({appDialog:'about'})},'sep',{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:()=>openSetup('printer')},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -172,7 +172,7 @@ export function TopBar() {
         ]} as MenuItem] : []), {label: 'Help', sub: [
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
-          { label: 'Setup', action: openSetup, tip: 'Printer, profiles, connection and filaments' },
+          { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, profiles, connection and filaments' },
         ]}];
   return <header className="topbar compact-topbar">
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo-48.png" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>

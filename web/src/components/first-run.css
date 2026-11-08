@@ -34,3 +34,8 @@
   :where(.orca-parity) .empty-plate { animation: none; }
   :root.orca-parity[data-nudge='slice'] .tabbar-actions > button:first-child:not(:disabled) { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
 }
+:where(.orca-parity) [data-radix-popper-content-wrapper]:has(> .fr-preview) { pointer-events: none; }
+:where(.orca-parity) .fr-preview { z-index: 60; padding: var(--s-2); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--shadow-pop); pointer-events: none; }
+:where(.orca-parity) .sample-preview { width: 220px; height: 160px; border-radius: var(--r-2); background: var(--sunken); }
+:where(.orca-parity) .sample-preview[data-ready] { background: none; }
+:where(.orca-parity) .sample-preview > canvas { display: block; }

@@ -1,25 +1,39 @@
 import { openUrlImport } from '../url-import';
 import { UrlImportInline } from './UrlImport';
 import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
-import { useEffect, useSyncExternalStore } from 'react';
-import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
-import hookUrl from '../samples/shelf_hook.stl?url';
-import carUrl from '../samples/sports_car_3d.stl?url';
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { HoverCard } from 'radix-ui';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
 import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
 import { openSetup } from '../onboarding/setup-flow';
-import { applySurface, type SurfaceId } from '../intent/surface';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
-const SAMPLES: { url: string; file: string; label: string; surface?: SurfaceId }[] = [
-  { url: carUrl, file: 'sports_car.stl', label: 'Sports car', surface: 'smooth' },
-  { url: handyUrl('3DBenchy.drc'), file: '3DBenchy.drc', label: 'Benchy' },
-  { url: knobUrl, file: 'knob.stl', label: 'Knob' },
-  { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook' },
+const SAMPLES: { file: string; label: string }[] = [
+  { file: '3DBenchy.drc', label: 'Benchy' },
+  { file: 'serpentine_waves.drc', label: 'Serpentine waves' },
+  { file: 'four_pyramids.drc', label: 'Four pyramids' },
+  { file: 'chevron_ridges.drc', label: 'Chevron ridges' },
+  { file: 'ripple_cylinder.drc', label: 'Ripple cylinder' },
+  { file: 'wavy_cylinder.drc', label: 'Wavy cylinder' },
 ];
+const SamplePreview = lazy(() => import('./SamplePreview'));
+function Sample({ file, label }: { file: string; label: string }) {
+  const [open, setOpen] = useState(false), picked = useRef(false);
+  return <HoverCard.Root open={open} onOpenChange={(v) => setOpen(v && !picked.current)} openDelay={250} closeDelay={80}>
+    <HoverCard.Trigger asChild>
+      <button type="button" className="fr-sample" onPointerLeave={() => { picked.current = false; }} onBlur={() => { picked.current = false; }}
+        onClick={() => { picked.current = true; setOpen(false); void importFetched(label, [[handyUrl(file), file]]); }}>{label}</button>
+    </HoverCard.Trigger>
+    <HoverCard.Portal>
+      <HoverCard.Content className="fr-preview" side="top" sideOffset={8} collisionPadding={8} aria-hidden>
+        <Suspense fallback={<div className="sample-preview" />}><SamplePreview url={handyUrl(file)} /></Suspense>
+      </HoverCard.Content>
+    </HoverCard.Portal>
+  </HoverCard.Root>;
+}
 
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
@@ -38,11 +52,7 @@ function DropZone() {
       <UrlImportInline />
       <div className="fr-samples">
         <span>or try</span>
-        {SAMPLES.map((s) => (
-          <button key={s.file} type="button" className="fr-sample" onClick={() => void importFetched(s.label, [[s.url, s.file]]).then(() => { if (s.surface && getState().objects.length) applySurface(s.surface); })}>
-            {s.label}
-          </button>
-        ))}
+        {SAMPLES.map((s) => <Sample key={s.file} {...s} />)}
       </div>
     </div>
   );
