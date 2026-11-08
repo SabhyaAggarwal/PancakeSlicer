@@ -1100,7 +1100,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
         const bool nonplanar_top = std::any_of(m_print.objects().begin(), m_print.objects().end(), [](const PrintObject *object) {
             return object->config().nonplanar_mode.value == NonplanarMode::NonplanarTop;
         });
-        const int disc_passes = nonplanar_top ? 5 : 2;
+        const int disc_passes = nonplanar_top ? (clearance_override_active(m_print.config()) ? 8 : 5) : 2;
         if (m_curved_pass >= disc_passes + 1)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after its surface repair passes; export blocked.");
         std::set<std::pair<const PrintObject *, int>> ordered_now;

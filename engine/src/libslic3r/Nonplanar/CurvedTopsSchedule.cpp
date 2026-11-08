@@ -501,7 +501,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     }
     const double threshold = min_bottom - model.safety_mm;
     auto blocks = [&m_model](const Sample &m, const Sample &t, bool tolerant = false) {
-        const double dz = m.z - t.z - (tolerant ? m_model.safety_mm : 0.);
+        const double dz = m.z - t.z - (tolerant ? m_model.safety_mm + 0.001 : 0.);
         const double grow = m.half_width + m_model.bead_margin + (tolerant ? 0. : m_model.safety_mm + m_model.sample_step);
         const double d = std::hypot(m.x - t.x, m.y - t.y);
         for (const NonplanarClearanceModel::Ring &r : m_model.ring_list)
@@ -866,6 +866,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     bool rebuild_units = true;
     const bool wide_cap = object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop &&
         object.config().nonplanar_curved_max_angle.value > 12. + EPSILON;
+    const bool duct_ignored = Nonplanar::clearance_override_active(object.print()->config());
     constexpr size_t MaxWork = 2000000000;
     size_t work = 0;
     bool   out_of_work = false;
@@ -1344,7 +1345,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         }
         bool progress = false;
         out_of_work = work > MaxWork;
-        const bool exhausted = (wide_cap && attempt >= 200) || out_of_work;
+        const bool exhausted = (wide_cap && attempt >= 200 && !duct_ignored) || out_of_work;
         for (size_t k = 0; k < cycle.size() && ! exhausted; ++ k) {
             throw_if_canceled();
             const int c = cycle[k];
