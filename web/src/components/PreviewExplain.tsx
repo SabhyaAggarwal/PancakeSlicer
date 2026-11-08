@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { forgetCompare, setStandardData, showPrevious, startCompare, stopCompare, useCompare, useStandardData, type CompareSource } from '../compare';
 import { computeRanges, drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
 import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
-import { area, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
+import { area, curvedTopPercent, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
@@ -50,7 +50,7 @@ export function ExplainLegend(props: {
   if (!s || (!s.curved && s.mode === 'off')) return null;
   const highlight = ui.view === 'nonplanar' && ui.nonplanar === 'curved';
   const std = compare && cmp.state === 'done' ? readRecord(cmp.status.record) : null;
-  const curvedPct = curvedShare(s);
+  const curvedPct = curvedShare(s) ?? curvedTopPercent(record);
   const better = (a: number | null | undefined, b: number | null | undefined) => a != null && b != null && b < a / 1.15;
   const timeDelta = std?.timeS && s.timeS ? (s.timeS - std.timeS) / std.timeS : null;
   const v = s.verifier;
@@ -115,9 +115,9 @@ export function ExplainLegend(props: {
       ) : <>
       {!compare && (
         <div className="np-stats">
-          {rows.filter(([label]) => !['Time', 'Filament', 'Curved top'].includes(label)).map(([label, , b]) => (
+          {rows.filter(([label]) => !['Time', 'Filament'].includes(label)).map(([label, , b]) => (
             <span key={label}>
-              <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label}</span>
+              <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label === 'Curved top' ? 'Top curved' : label}</span>
               <span className="np-v">{b}</span>
             </span>
           ))}

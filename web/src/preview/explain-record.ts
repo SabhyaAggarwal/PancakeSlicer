@@ -112,6 +112,7 @@ export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(m
 
 export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget';
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null;
+  topMm2: number;
   limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null } }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
@@ -160,7 +161,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     else fact = 'Flat top, prints as Standard';
     const why = reported.find((r) => r.name === name);
     const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg) } : undefined;
-    out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, ...(limit ? { limit } : {}) });
+    out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, ...(limit ? { limit } : {}) });
   }
   return out;
 }
@@ -225,6 +226,14 @@ function fromReportJson(r: Rec) {
     head: String(r.head ?? ''), verified: !!clearance.checked, hits: num(clearance.hits) ?? 0,
     timeS: num(r.time_s) ?? 0, curvedS: num(r.curved_time_s) ?? 0, objects,
   };
+}
+
+export function curvedTopPercent(record: Rec | undefined): number | null {
+  const tops = objectResults(record).filter((r) => r.pct != null && r.topMm2 >= 1);
+  const total = tops.reduce((a, r) => a + r.topMm2, 0);
+  if (!total) return null;
+  const share = tops.reduce((a, r) => a + r.pct! * r.topMm2, 0) / total;
+  return Math.min(tops.some((r) => r.pct! < 100) ? 99 : 100, Math.max(1, Math.round(share)));
 }
 
 export function readReport(record: Rec | undefined) {

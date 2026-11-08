@@ -48,7 +48,7 @@
 :where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; }
 :where(.orca-parity) .opt-label > .info-tip { margin-left: var(--s-2); }
 :where(.orca-parity) .info-tip:hover, :where(.orca-parity) .info-tip[data-state=open] { color: var(--text); border-color: var(--ink-3); }
-:where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: min(360px, var(--radix-popover-content-available-height, 60dvh)); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
+:where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: var(--radix-popover-content-available-height, 60dvh); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .info-pop > * { margin: 0; }
 :where(.orca-parity) .info-pop > * + * { margin-top: 8px; }
 :where(.orca-parity) .info-pop .info-choices { list-style: none; padding: 0; display: grid; gap: 6px; white-space: normal; }
