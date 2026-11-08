@@ -4,9 +4,11 @@
 #include "libslic3r/Point.hpp"
 #include "CurvedTopsSurface.hpp"
 #include "CurvedTopsBudget.hpp"
+#include "SlantChoice.hpp"
 
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,6 +75,7 @@ struct ReportObject
     double      oneshot_max_time_ratio_override = -1.;
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
+    std::optional<SlantChoice> slant;
 
     double curved_share() const {
         if (mode == "curved_tops" || mode == "nonplanar_top") return curved_tops.area_fraction;

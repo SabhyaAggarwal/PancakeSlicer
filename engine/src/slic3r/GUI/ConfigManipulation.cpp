@@ -1068,6 +1068,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, nonplanar_mode == NonplanarMode::Multiplanar || nonplanar_mode == NonplanarMode::Field ||
                             nonplanar_mode == NonplanarMode::OneShot);
     toggle_line("nonplanar_deform", nonplanar_mode == NonplanarMode::Auto || nonplanar_mode == NonplanarMode::Manual);
+    for (auto el : {"nonplanar_slant_angle", "nonplanar_slant_direction"})
+        toggle_line(el, nonplanar_mode == NonplanarMode::Slant);
     toggle_line("nonplanar_sublayer_walls", nonplanar_mode == NonplanarMode::Auto || nonplanar_mode == NonplanarMode::Off ||
                                             curved_tops_mode(nonplanar_mode));
     for (auto el : {"nonplanar_top_shells", "nonplanar_bottom_shells"})

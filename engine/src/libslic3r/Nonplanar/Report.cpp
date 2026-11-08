@@ -17,6 +17,7 @@
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
+#include "Multiplanar.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -204,6 +205,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
                 keys += std::string(keys.empty() ? "" : " ") + key + "=" + config.opt_serialize(key);
             out.regions.emplace_back(std::move(keys));
         }
+        if (const MultiplanarPlan *plan = object->multiplanar_plan(); plan != nullptr && plan->slant)
+            out.slant = plan->slant;
         if (curved_tops_mode(object->config().nonplanar_mode.value)) {
             out.curved_tops = curved_tops_stats(*object);
             out.curved_budget = ClearanceRepair::curved_budget_report(print, *object);
@@ -382,6 +385,16 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                     {"time_model", "firmware_sim 3-axis Marlin/Bambu/RRF replay"},
                     {"time_scope", "whole program for one instance; object motion plus shared outside time for multiple instances"},
                     {"reason", budget.reason}, {"patches", std::move(patches)}};
+            }
+        }
+        if (o.slant) {
+            const SlantChoice &c = *o.slant;
+            jo["slant"] = json{ { "angle_deg", c.angle_deg }, { "direction_deg", c.direction_deg }, { "head_limit_deg", c.budget_deg },
+                                { "transition_chunks", c.transition_chunks }, { "stair_step_mm2", c.steps }, { "overhang_mm2", c.overhang },
+                                { "planar_stair_step_mm2", c.planar_steps }, { "planar_overhang_mm2", c.planar_overhang } };
+            if (!c.planar_limit.empty()) {
+                jo["planar_limit"]           = c.planar_limit;
+                jo["planar_fallback_reason"] = c.reason;
             }
         }
         if (!o.oneshot.empty()) {

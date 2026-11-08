@@ -2044,6 +2044,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_deform"
             || opt_key == "multiplanar_max_planes"
             || opt_key == "multiplanar_overhang_threshold"
+            || opt_key == "nonplanar_slant_angle"
+            || opt_key == "nonplanar_slant_direction"
             || opt_key == "nonplanar_atom_toolpath"
             || opt_key == "nonplanar_steep_skin"
             || opt_key == "nonplanar_oneshot_routes" || opt_key == "nonplanar_oneshot_fan_step"

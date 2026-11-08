@@ -50,6 +50,8 @@
 #include <tbb/parallel_reduce.h>
 
 #include <algorithm>
+#include <iomanip>
+#include <tuple>
 #include <cstring>
 #include <array>
 #include <map>
@@ -1012,6 +1014,226 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     return finish();
 }
 
+namespace {
+
+constexpr double SlantMinTilt        = 2. * M_PI / 180.;
+constexpr double SlantTransitionStep = 4. * M_PI / 180.;
+constexpr int    SlantTransitionLayers = 4;
+constexpr int    SlantDirections       = 8;
+
+Frame chunk_score_frame(const MultiplanarChunk &c) { return Frame{ c.build_dir, c.parent < 0 ? 0. : c.base, c.parent < 0 }; }
+
+std::pair<Score, Score> score_chunks(const indexed_triangle_set &mesh, const Facets &f, const std::vector<MultiplanarChunk> &chunks,
+                                     double sin_thresh, double h)
+{
+    using Pair = std::pair<Score, Score>;
+    return tbb::parallel_deterministic_reduce(
+        tbb::blocked_range<size_t>(0, f.area.size(), 1024), Pair{},
+        [&](const tbb::blocked_range<size_t> &range, Pair s) {
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                for (const MultiplanarChunk &c : chunks)
+                    if (inside(c.clips, f.centroid[i])) {
+                        const Frame frame = chunk_score_frame(c);
+                        if (overhangs(mesh, f, i, frame, sin_thresh, h)) {
+                            s.first.overhang += f.area[i];
+                            if (c.parent >= 0)
+                                s.second.overhang += f.area[i];
+                        } else
+                            s.first.steps += step_area(mesh, f, i, frame, h);
+                        break;
+                    }
+            return s;
+        },
+        [](Pair a, const Pair &b) {
+            a.first.overhang += b.first.overhang;
+            a.first.steps += b.first.steps;
+            a.second.overhang += b.second.overhang;
+            return a;
+        });
+}
+
+double slant_budget(const HeadEnvelope &head, double psi, double width, double h)
+{
+    const double rise = psi + M_PI;
+    double       tilt = head.max_slope(rise, h, width);
+    HeadEnvelope body = head;
+    body.boxes.erase(std::remove_if(body.boxes.begin(), body.boxes.end(), [](const HeadBox &b) { return b.nozzle; }), body.boxes.end());
+    if (!body.boxes.empty())
+        tilt = std::min(tilt, body.max_slope(rise, 0., width));
+    if (const double gantry = head.gantry_clearance(); std::isfinite(gantry))
+        tilt = std::min(tilt, std::atan(std::max(0., gantry - head.margin) / width));
+    return tilt - SlopeMargin;
+}
+
+std::vector<MultiplanarChunk> slant_chunks(const indexed_triangle_set &mesh, double alpha, double psi, int fan, double floor_z, double h)
+{
+    const Vec2d u(std::cos(psi), std::sin(psi));
+    double      u_max = -std::numeric_limits<double>::infinity();
+    for (const stl_vertex &v : mesh.vertices)
+        u_max = std::max(u_max, u.dot(v.head<2>().cast<double>()));
+    std::vector<HalfSpace> planes;
+    double                 low = floor_z;
+    for (int k = 1; k <= fan; ++k) {
+        const double tilt = alpha * k / fan;
+        const Vec3d  n    = direction(tilt, psi);
+        planes.push_back({ n, std::sin(tilt) * u_max + std::cos(tilt) * low });
+        low += SlantTransitionLayers * h / std::cos(tilt);
+    }
+    std::vector<MultiplanarChunk> chunks(size_t(fan) + 1);
+    chunks[0].clips = { planes[0] };
+    for (int k = 1; k <= fan; ++k) {
+        MultiplanarChunk &c = chunks[size_t(k)];
+        const HalfSpace  &p = planes[size_t(k - 1)];
+        c.parent    = k - 1;
+        c.build_dir = p.normal;
+        c.frame     = minimal_frame(p.normal);
+        c.base      = p.offset;
+        c.clips     = { { -p.normal, -p.offset } };
+        c.base_clip = 0;
+        if (k < fan)
+            c.clips.push_back(planes[size_t(k)]);
+    }
+    return chunks;
+}
+
+}
+
+MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarParams &params, double angle_deg, double direction_deg,
+                           bool support)
+{
+    MultiplanarPlan plan;
+    SlantChoice     choice;
+    const Facets    f          = facets_of(mesh);
+    const double    h          = params.layer_height;
+    const double    sin_thresh = std::sin(0.5 * M_PI - params.overhang_threshold);
+    const double    floor_z    = params.first_layer_height + h;
+
+    MultiplanarChunk root;
+    root.piece = mesh;
+    {
+        const std::pair<Score, Score> planar = score_chunks(mesh, f, { root }, sin_thresh, h);
+        choice.planar_steps = plan.planar_step_area = root.step_area = planar.first.steps;
+        choice.planar_overhang = plan.planar_overhang_area = root.overhang_area = planar.first.overhang;
+    }
+    auto flat = [&](const char *limit, const std::string &why) {
+        choice.angle_deg    = 0.;
+        choice.planar_limit = limit;
+        choice.reason       = why;
+        choice.steps        = choice.planar_steps;
+        choice.overhang     = choice.planar_overhang;
+        plan.chunks         = { root };
+        plan.step_area              = choice.planar_steps;
+        plan.residual_overhang_area = choice.planar_overhang;
+        plan.notes.push_back("Slant prints flat layers: " + why);
+        plan.slant = choice;
+        return plan;
+    };
+    if (params.kinematics != nullptr && params.kinematics->rotary_count() > 0)
+        return flat("access", "Slant is for a fixed 3-axis head");
+
+    struct Option
+    {
+        double                        psi = 0., alpha = 0., budget = 0.;
+        int                           fan = 1;
+        Score                         all, tilted;
+        double                        score = 0.;
+        std::vector<MultiplanarChunk> chunks;
+    };
+    std::vector<Option> options;
+    double              best_budget = 0.;
+    const int           n_dir       = direction_deg >= 0. ? 1 : SlantDirections;
+    for (int k = 0; k < n_dir; ++k) {
+        Option o;
+        o.psi = direction_deg >= 0. ? Geometry::deg2rad(direction_deg) : 2. * M_PI * k / SlantDirections;
+        const Vec2d u(std::cos(o.psi), std::sin(o.psi));
+        double      lo = std::numeric_limits<double>::infinity(), hi = -lo;
+        for (const stl_vertex &v : mesh.vertices) {
+            lo = std::min(lo, u.dot(v.head<2>().cast<double>()));
+            hi = std::max(hi, u.dot(v.head<2>().cast<double>()));
+        }
+        o.budget    = slant_budget(params.head, o.psi, std::max(hi - lo, EPSILON), h);
+        best_budget = std::max(best_budget, o.budget);
+        o.alpha     = angle_deg > 0. ? std::min(Geometry::deg2rad(angle_deg), o.budget) : o.budget;
+        if (o.alpha < SlantMinTilt)
+            continue;
+        o.fan    = std::max(1, int(std::ceil(o.alpha / SlantTransitionStep - 1e-9)));
+        o.chunks = slant_chunks(mesh, o.alpha, o.psi, o.fan, floor_z, h);
+        std::tie(o.all, o.tilted) = score_chunks(mesh, f, o.chunks, sin_thresh, h);
+        o.score = o.all.overhang + StepWeight * o.all.steps;
+        options.push_back(std::move(o));
+    }
+    if (options.empty()) {
+        std::ostringstream why;
+        why << "the print head clears no layer tilted more than " << std::lround(Geometry::rad2deg(SlantMinTilt)) << " deg over this part (at most "
+            << std::fixed << std::setprecision(1) << Geometry::rad2deg(std::max(0., best_budget)) << " deg)";
+        choice.budget_deg = Geometry::rad2deg(std::max(0., best_budget));
+        return flat("access", why.str());
+    }
+    auto needs_support = [&](const Option &o) { return support && o.tilted.overhang >= params.min_overhang_area; };
+    std::stable_sort(options.begin(), options.end(), [&](const Option &a, const Option &b) {
+        if (needs_support(a) != needs_support(b))
+            return !needs_support(a);
+        return a.score < b.score - 1e-9 || (std::abs(a.score - b.score) <= 1e-9 && a.alpha > b.alpha);
+    });
+    std::string refused;
+    for (Option &o : options) {
+        if (needs_support(o)) {
+            std::ostringstream why;
+            why << "support is on and " << std::lround(o.tilted.overhang) << " mm2 of overhang would print in the tilted layers without it";
+            choice.budget_deg = Geometry::rad2deg(o.budget);
+            return flat("support", why.str());
+        }
+        bool placed = false;
+        for (double alpha = o.alpha; alpha >= SlantMinTilt - 1e-9 && !placed; alpha *= 0.8)
+            for (int fan = std::max(1, int(std::ceil(alpha / SlantTransitionStep - 1e-9))); fan >= 1 && !placed; --fan) {
+                std::vector<MultiplanarChunk> chunks = slant_chunks(mesh, alpha, o.psi, fan, floor_z, h);
+                placed = std::all_of(chunks.begin(), chunks.end(), [&](MultiplanarChunk &c) {
+                    c.piece = clip_mesh(mesh, c.clips);
+                    return printable_layers(chunk_piece(mesh, c, h), c, h) >= MinChunkLayers;
+                });
+                if (placed) {
+                    o.alpha  = alpha;
+                    o.fan    = fan;
+                    o.chunks = std::move(chunks);
+                }
+            }
+        if (!placed) {
+            if (refused.empty())
+                refused = "the part is too short for a layer tilted 2 deg to clear its base";
+            continue;
+        }
+        std::tie(o.all, o.tilted) = score_chunks(mesh, f, o.chunks, sin_thresh, h);
+        for (MultiplanarChunk &c : o.chunks) {
+            const std::pair<Score, Score> s = score_chunks(mesh, f, { c }, sin_thresh, h);
+            c.step_area                     = s.first.steps;
+            c.overhang_area                 = s.first.overhang;
+        }
+        choice.angle_deg         = Geometry::rad2deg(o.alpha);
+        choice.direction_deg     = Geometry::rad2deg(o.psi);
+        choice.budget_deg        = Geometry::rad2deg(o.budget);
+        choice.transition_chunks = o.fan - 1;
+        choice.steps             = o.all.steps;
+        choice.overhang          = o.all.overhang;
+        for (size_t k = 1; k < o.chunks.size(); ++k) {
+            MultiplanarCut cut { int(k) - 1, o.chunks[k - 1].clips.back(), o.chunks[k] };
+            cut.chunk.piece.clear();
+            plan.cuts.push_back(std::move(cut));
+        }
+        plan.chunks                 = std::move(o.chunks);
+        plan.step_area              = o.all.steps;
+        plan.residual_overhang_area = o.all.overhang;
+        std::ostringstream note;
+        note << "Slant " << std::fixed << std::setprecision(1) << choice.angle_deg << " deg toward " << std::lround(choice.direction_deg)
+             << " deg (head limit " << choice.budget_deg << " deg), " << choice.transition_chunks << " transition chunks; stair-step "
+             << std::lround(choice.steps) << " mm2 against " << std::lround(choice.planar_steps) << " flat, overhang " << std::lround(choice.overhang)
+             << " mm2 against " << std::lround(choice.planar_overhang);
+        plan.notes.push_back(note.str());
+        plan.slant = choice;
+        return plan;
+    }
+    return flat("height", refused);
+}
+
 Matrix3d chunk_frame(const ToolKinematics &kinematics, const JointPose &joints, const Vec3d &dir)
 {
     const Matrix3d head = kinematics.head_frame(joints);
@@ -1504,6 +1726,15 @@ namespace {
 std::shared_ptr<MultiplanarPlan> mode_plan(PrintObject &object)
 {
     const NonplanarMode mode = object.config().nonplanar_mode.value;
+    if (mode == NonplanarMode::Slant && object.config().nonplanar_atom_toolpath.value.empty()) {
+        const PrintObjectConfig &config = object.config();
+        auto plan = std::make_shared<MultiplanarPlan>(plan_slant(slicing_frame_mesh(object), multiplanar_params(object, nullptr),
+                                                                 config.nonplanar_slant_angle.value, config.nonplanar_slant_direction.value,
+                                                                 config.enable_support.value));
+        for (const std::string &note : plan->notes)
+            BOOST_LOG_TRIVIAL(info) << object.model_object()->name << ": " << note;
+        return plan;
+    }
     if ((mode != NonplanarMode::Multiplanar && mode != NonplanarMode::Auto) || !object.config().nonplanar_atom_toolpath.value.empty())
         return {};
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());

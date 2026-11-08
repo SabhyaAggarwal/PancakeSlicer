@@ -114,6 +114,18 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             if (object->num_printing_regions() != 1 || object->model_object()->is_mm_painted())
                 return { L("Smooth morph requires one material and one set of part settings."), object, "nonplanar_mode" };
         }
+        if (mode == NonplanarMode::Slant) {
+            needs_head = enabled = true;
+            if (config.nonplanar_kinematics.value != RotaryLayout::None || config.spiral_mode || config.belt_printer)
+                return { L("Slant requires a fixed 3-axis printer without spiral vase or belt printing."), object, "nonplanar_mode" };
+            const ModelObject &model = *object->model_object();
+            if (object->num_printing_regions() > 1 || model.is_mm_painted() ||
+                std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_negative_volume() || v->is_modifier(); }))
+                return { L("Slant prints one part with one set of settings. Remove negative volumes, modifiers, painting and parts "
+                           "with their own settings, or use another slicing method."),
+                         object, "nonplanar_mode" };
+            multiplanar_instances += object->instances().size();
+        }
         const double curved_angle = object->config().nonplanar_curved_max_angle.value;
         const double max_angle    = curved_max_angle_limit(mode);
         if (curved_tops_mode(mode) &&

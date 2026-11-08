@@ -788,7 +788,8 @@ static const t_config_enum_values s_keys_map_NonplanarMode = {
     { "oneshot", int(NonplanarMode::OneShot) },
     { "curved_tops", int(NonplanarMode::CurvedTops) },
     { "smooth_morph", int(NonplanarMode::SmoothMorph) },
-    { "nonplanar_top", int(NonplanarMode::NonplanarTop) }
+    { "nonplanar_top", int(NonplanarMode::NonplanarTop) },
+    { "slant", int(NonplanarMode::Slant) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
@@ -5519,6 +5520,8 @@ void PrintConfigDef::init_fff_params()
                       "method); lowest top error, 10-50 % slower than flat.\n"
                       "Smooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to "
                       "about 1.4x flat time.\n"
+                      "Slant: the whole part in parallel flat layers tilted from the bed, as on a belt printer, on a fixed 3-axis head; "
+                      "smoother faces that slope the same way as the layers, flat tops step.\n"
                       " Default: Flat layers. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not "
                       "replace the stored mode.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
@@ -5531,6 +5534,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("smooth_morph");
     def->enum_values.push_back("oneshot");
     def->enum_values.push_back("nonplanar_top");
+    def->enum_values.push_back("slant");
     def->enum_labels.push_back(L("Flat layers"));
     def->enum_labels.push_back(L("Auto"));
     def->enum_labels.push_back(L("Manual"));
@@ -5540,6 +5544,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Smooth morph"));
     def->enum_labels.push_back(L("One-shot field (advanced)"));
     def->enum_labels.push_back(L("Smoothest tops"));
+    def->enum_labels.push_back(L("Slant"));
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
@@ -5658,6 +5663,28 @@ void PrintConfigDef::init_fff_params()
     def->max      = 85;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(45));
+
+    def = this->add("nonplanar_slant_angle", coFloat);
+    def->label    = L("Slant angle");
+    def->category = L("Quality");
+    def->tooltip  = L("Tilt of Slant's layers from the bed. 0: the steepest the print head clears over this part (about 10° on "
+                      "an A1 mini). A larger angle is lowered to that limit. Default: 0. Unit: degrees.");
+    def->sidetext = u8"°";
+    def->min      = 0;
+    def->max      = 45;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_slant_direction", coFloat);
+    def->label    = L("Slant direction");
+    def->category = L("Quality");
+    def->tooltip  = L("Direction about Z, counterclockwise from +X, toward which Slant's layers face and descend. -1: the "
+                      "direction of 8 that leaves the least stair-step and overhang on this part. Default: -1. Unit: degrees.");
+    def->sidetext = u8"°";
+    def->min      = -1;
+    def->max      = 360;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(-1));
     def = this->add("nonplanar_auto_support", coBool);
     def->label    = L("Add support where a part would float");
     def->category = L("Support");

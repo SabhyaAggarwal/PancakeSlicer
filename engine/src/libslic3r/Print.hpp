@@ -369,6 +369,7 @@ public:
     static const std::unordered_set<std::string>& gcode_only_options();
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
+    const Nonplanar::MultiplanarPlan* multiplanar_plan() const { return m_multiplanar.get(); }
     bool                              auto_support() const { return m_auto_support; }
     bool                              auto_support_applied() const { return m_auto_support_applied; }
     SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }

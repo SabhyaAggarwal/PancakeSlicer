@@ -238,6 +238,7 @@ set(lisbslic3r_sources
     Nonplanar/MultiplanarConfirm.cpp
     Nonplanar/MultiplanarConfirm.hpp
     Nonplanar/Multiplanar.hpp
+    Nonplanar/SlantChoice.hpp
     Nonplanar/StrengthRoads.cpp
     Nonplanar/StrengthRoads.hpp
     Nonplanar/SubLayerWalls.cpp

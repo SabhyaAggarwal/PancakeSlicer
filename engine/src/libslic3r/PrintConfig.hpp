@@ -260,7 +260,7 @@ enum class TopTexture : unsigned char { None, Ribs, Knurl };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarWave : unsigned char { Off, Top, Whole, Infill };
 enum class NonplanarWavePattern : unsigned char { Waves, Ripple, Crosshatch };
-enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops, SmoothMorph, NonplanarTop };
+enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops, SmoothMorph, NonplanarTop, Slant };
 inline bool curved_tops_mode(NonplanarMode mode) { return mode == NonplanarMode::CurvedTops || mode == NonplanarMode::NonplanarTop; }
 enum class NonplanarRegionSource : unsigned char { Auto, PaintOnly };
 enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };
@@ -1290,6 +1290,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<NonplanarDeform>, nonplanar_deform))
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
+    ((ConfigOptionFloat,               nonplanar_slant_angle))
+    ((ConfigOptionFloat,               nonplanar_slant_direction))
     ((ConfigOptionBool,                nonplanar_auto_support))
     ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionBool,                nonplanar_steep_skin))
