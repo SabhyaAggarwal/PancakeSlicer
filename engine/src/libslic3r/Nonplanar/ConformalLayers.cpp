@@ -455,16 +455,15 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         const double rho = std::clamp(std::abs(L[s] - T[s]) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
         col.omega        = std::clamp(1. - dist[k] / rho, 0., 1.);
     }
-    if (P.round_sigma > 0.) {
-        const double RoundSigma = P.round_sigma;
-        const long r = long(std::ceil(2. * RoundSigma / g));
+    const auto blur_core = [&](double ConformalLayerField::Column::*field, double sigma) {
+        const long r = long(std::ceil(2. * sigma / g));
         std::vector<double> w(size_t(2 * r + 1));
         for (long d = -r; d <= r; ++d)
-            w[size_t(d + r)] = std::exp(-0.5 * sqr(double(d) * g / RoundSigma));
+            w[size_t(d + r)] = std::exp(-0.5 * sqr(double(d) * g / sigma));
         std::vector<double> sum(N, 0.), wsum(N, 0.), tmp(N), wtmp(N);
         for (size_t k = 0; k < N; ++k)
             if (core[k])
-                sum[k] = F->m_cols[k].tf, wsum[k] = 1.;
+                sum[k] = F->m_cols[k].*field, wsum[k] = 1.;
         for (int axis = 0; axis < 2; ++axis) {
             for (size_t i = 0; i < nx; ++i)
                 for (size_t j = 0; j < ny; ++j) {
@@ -480,16 +479,36 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 }
             sum.swap(tmp), wsum.swap(wtmp);
         }
-        std::vector<double> tf(N);
-        for (size_t k = 0; k < N; ++k) {
-            ConformalLayerField::Column &col = F->m_cols[k];
-            tf[k] = col.tf;
-            if (core[k] && wsum[k] > 0.)
-                tf[k] = std::clamp(sum[k] / wsum[k], col.zb + 0.05, col.T - 0.6 * col.d / col.c);
-        }
         for (size_t k = 0; k < N; ++k)
-            if (core[k])
-                F->m_cols[k].tf = tf[k];
+            if (core[k] && wsum[k] > 0.)
+                sum[k] /= wsum[k];
+        return sum;
+    };
+    {
+        const auto ramp_ok = [&](const ConformalLayerField::Column &col, double d) {
+            const double W = col.T - d / col.c - col.zb, M = col.L - d - col.zb;
+            return M > 1e-3 && W >= ThinRatio * M - 1e-9 && W <= ThickRatio * M + 1e-9;
+        };
+        const std::vector<double> d = blur_core(&ConformalLayerField::Column::d, 2.);
+        for (size_t k = 0; k < N; ++k)
+            if (core[k]) {
+                ConformalLayerField::Column &col = F->m_cols[k];
+                const double d0 = col.d;
+                for (double t : { 1., 0.75, 0.5, 0.25 })
+                    if (ramp_ok(col, d0 + t * (d[k] - d0))) {
+                        col.d = d0 + t * (d[k] - d0);
+                        break;
+                    }
+                col.tf = col.T - col.d / col.c;
+            }
+    }
+    if (P.round_sigma > 0.) {
+        const std::vector<double> tf = blur_core(&ConformalLayerField::Column::tf, P.round_sigma);
+        for (size_t k = 0; k < N; ++k)
+            if (core[k]) {
+                ConformalLayerField::Column &col = F->m_cols[k];
+                col.tf = std::clamp(tf[k], col.zb + 0.05, col.T - 0.6 * col.d / col.c);
+            }
     }
     {
         std::vector<size_t> free;
