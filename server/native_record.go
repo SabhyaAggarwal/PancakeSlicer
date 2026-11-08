@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,7 +159,13 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 		}
 	}
 	failures := uncurvedObjects(record["nonplanar_report"], record["inputs"])
-	failures = append(failures, collidingObjects(record["nonplanar_report"], c, j)...)
+	colliding, touches := collidingObjects(record["nonplanar_report"], c, j)
+	failures = append(failures, colliding...)
+	if len(touches) > 0 {
+		var warnings []string
+		json.Unmarshal(record["object_warnings"], &warnings)
+		record["object_warnings"], _ = json.Marshal(append(warnings, touches...))
+	}
 	if len(failures) > 0 {
 		record["could_not_curve"], _ = json.Marshal(failures)
 	} else {
@@ -230,12 +237,24 @@ func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 
 var verifiedModes = map[string]bool{"smooth_morph": true, "slant": true}
 
-func collidingObjects(raw json.RawMessage, c Config, j *Job) []map[string]any {
+const (
+	refuseDepthMM   = 1.0
+	refuseBodyHits  = 200
+	verifierTimeout = 5 * time.Minute
+)
+
+type clearanceVerdict struct {
+	Hits, BodyHits int
+	MinMM          float64
+	Checked        bool
+}
+
+func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[string]any, warnings []string) {
 	var report struct {
 		Objects []map[string]any `json:"objects"`
 	}
 	if j == nil || !previewableRequest(j.Request) || json.Unmarshal(raw, &report) != nil {
-		return nil
+		return nil, nil
 	}
 	var curved []int
 	for i, o := range report.Objects {
@@ -245,45 +264,64 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) []map[string]any {
 		}
 	}
 	if len(curved) == 0 {
-		return nil
+		return nil, nil
 	}
-	hits, checked := j.morphClearanceHits(c)
-	if checked && hits <= 0 {
-		return nil
+	v := j.morphClearance(c)
+	if v.Checked && v.Hits <= 0 {
+		return nil, nil
 	}
-	var out []map[string]any
+	depth := strconv.FormatFloat(math.Max(0, -v.MinMM), 'f', 2, 64)
+	refuse := !v.Checked || -v.MinMM > refuseDepthMM || v.BodyHits > refuseBodyHits
 	for _, i := range curved {
 		o := report.Objects[i]
 		mode, _ := o["mode"].(string)
 		method := methodLabels[mode]
-		reason := "Could not check " + method + " for collisions; try again or slice flat"
-		if checked {
-			reason = method + " would hit the part in " + strconv.Itoa(hits) + " moves"
+		name, _ := o["name"].(string)
+		if !refuse {
+			warnings = append(warnings, name+": May touch the part in "+strconv.Itoa(v.Hits)+" spots (max "+depth+" mm)")
+			continue
 		}
-		out = append(out, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
+		reason := "Could not check " + method + " for collisions; try again or slice flat"
+		if v.Checked {
+			reason = method + " would hit the part in " + strconv.Itoa(v.Hits) + " moves (max " + depth + " mm)"
+		}
+		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
 			"reason": reason, "try_ignore_duct": false})
 	}
-	return out
+	return failures, warnings
 }
 
-func (j *Job) morphClearanceHits(c Config) (int, bool) {
+func (j *Job) morphClearance(c Config) clearanceVerdict {
 	j.clearanceOnce.Do(func() {
 		gcode := j.OutputPath("gcode")
 		if _, err := os.Stat(gcode); err != nil {
 			j.log("server", "clearance verification found no G-code")
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), verifierTimeout)
 		defer cancel()
 		out, err := exec.CommandContext(ctx, c.Tool, "--verify-gcode", gcode, "--profiles", filepath.Join(c.Resources, "profiles")).Output()
+		v := clearanceVerdict{}
 		for _, line := range strings.Split(string(out), "\n") {
-			if f := strings.Fields(line); len(f) == 2 && f[0] == "clearance_hit_moves" {
-				if n, perr := strconv.Atoi(f[1]); perr == nil {
-					j.clearanceHits, j.clearanceChecked = n, true
-					j.log("server", "verified clearance hit moves "+f[1])
-					return
+			f := strings.Fields(line)
+			switch {
+			case len(f) == 2 && f[0] == "clearance_hit_moves":
+				n, perr := strconv.Atoi(f[1])
+				v.Hits, v.Checked = n, perr == nil
+			case len(f) == 2 && f[0] == "clearance_min_mm":
+				v.MinMM, _ = strconv.ParseFloat(f[1], 64)
+			case len(f) > 2 && f[0] == "clearance_hit_classes":
+				for k := 1; k+1 < len(f); k += 2 {
+					if f[k] == "body" {
+						v.BodyHits, _ = strconv.Atoi(f[k+1])
+					}
 				}
 			}
+		}
+		if v.Checked {
+			j.log("server", "verified clearance hit moves "+strconv.Itoa(v.Hits)+" min "+strconv.FormatFloat(v.MinMM, 'f', 3, 64)+" mm body "+strconv.Itoa(v.BodyHits))
+			j.clearance = v
+			return
 		}
 		why := "no clearance_hit_moves line"
 		if err != nil {
@@ -291,7 +329,7 @@ func (j *Job) morphClearanceHits(c Config) (int, bool) {
 		}
 		j.log("server", "clearance verification gave no count: "+why)
 	})
-	return j.clearanceHits, j.clearanceChecked
+	return j.clearance
 }
 
 func (j *Job) curveRefusal() string {
