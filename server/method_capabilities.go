@@ -24,6 +24,7 @@ type methodRules struct {
 		Hardware  string `json:"hardware"`
 		Feature   string `json:"feature"`
 		Readiness string `json:"readiness"`
+		Disabled  string `json:"disabled"`
 	} `json:"methods"`
 }
 
@@ -111,6 +112,8 @@ func (s *Server) methodDecisions(printer map[string]any) []methodDecision {
 		d := methodDecision{ID: rule.ID, Target: rule.Target, Supported: true}
 		if rule.ID != "off" {
 			switch {
+			case rule.Disabled != "":
+				d.Reason = rule.Disabled
 			case !known:
 				d.Reason = "Resolve the printer axes, kinematics and nozzle before using this method."
 				d.Recovery = "repair_printer"

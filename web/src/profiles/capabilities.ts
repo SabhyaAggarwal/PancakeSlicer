@@ -43,7 +43,8 @@ export function deriveMethodAvailability(context: MethodContext): MethodAvailabi
   const methods: MethodAvailability[] = table.methods.map(rule => {
     let reason: string | undefined, recovery: MethodRecovery = 'change_method';
     if (rule.id !== 'off') {
-      if (!known) { reason = 'Resolve the printer axes, kinematics and nozzle before using this method.'; recovery = 'repair_printer'; }
+      if (rule.disabled) reason = rule.disabled;
+      else if (!known) { reason = 'Resolve the printer axes, kinematics and nozzle before using this method.'; recovery = 'repair_printer'; }
       else if (rule.hardware === 'rotary' && !rotary) reason = 'This method requires configured rotary axes.';
       else if (engine.features.dump_options !== true || rule.target === 'mode' && !engine.modeValues?.includes(rule.id)
         || rule.feature && engine.features[rule.feature] !== true) { reason = 'The current engine does not support this method.'; recovery = 'update_engine'; }

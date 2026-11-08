@@ -64,6 +64,7 @@
     },
     {
       "id": "slant",
+      "disabled": "Slant is being fixed.",
       "target": "mode",
       "hardware": "known",
       "settingPrefixes": [

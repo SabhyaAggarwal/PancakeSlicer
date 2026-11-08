@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func nativeOutputHashes(raw []byte) (hashes map[string]bool, failed int) {
@@ -153,7 +157,9 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			record["nonplanar_report"], _ = json.Marshal(report)
 		}
 	}
-	if failures := uncurvedObjects(record["nonplanar_report"], record["inputs"]); len(failures) > 0 {
+	failures := uncurvedObjects(record["nonplanar_report"], record["inputs"])
+	failures = append(failures, collidingObjects(record["nonplanar_report"], c, j)...)
+	if len(failures) > 0 {
 		record["could_not_curve"], _ = json.Marshal(failures)
 	} else {
 		delete(record, "could_not_curve")
@@ -220,6 +226,72 @@ func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 		out = append(out, entry)
 	}
 	return out
+}
+
+var verifiedModes = map[string]bool{"smooth_morph": true, "slant": true}
+
+func collidingObjects(raw json.RawMessage, c Config, j *Job) []map[string]any {
+	var report struct {
+		Objects []map[string]any `json:"objects"`
+	}
+	if j == nil || !previewableRequest(j.Request) || json.Unmarshal(raw, &report) != nil {
+		return nil
+	}
+	var curved []int
+	for i, o := range report.Objects {
+		mode, _ := o["mode"].(string)
+		if share, _ := o["curved_share"].(float64); verifiedModes[mode] && share > 0 {
+			curved = append(curved, i)
+		}
+	}
+	if len(curved) == 0 {
+		return nil
+	}
+	hits, checked := j.morphClearanceHits(c)
+	if checked && hits <= 0 {
+		return nil
+	}
+	var out []map[string]any
+	for _, i := range curved {
+		o := report.Objects[i]
+		mode, _ := o["mode"].(string)
+		method := methodLabels[mode]
+		reason := "Could not check " + method + " for collisions; try again or slice flat"
+		if checked {
+			reason = method + " would hit the part in " + strconv.Itoa(hits) + " moves"
+		}
+		out = append(out, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
+			"reason": reason, "try_ignore_duct": false})
+	}
+	return out
+}
+
+func (j *Job) morphClearanceHits(c Config) (int, bool) {
+	j.clearanceOnce.Do(func() {
+		gcode := j.OutputPath("gcode")
+		if _, err := os.Stat(gcode); err != nil {
+			j.log("server", "clearance verification found no G-code")
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, c.Tool, "--verify-gcode", gcode, "--profiles", filepath.Join(c.Resources, "profiles")).Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if f := strings.Fields(line); len(f) == 2 && f[0] == "clearance_hit_moves" {
+				if n, perr := strconv.Atoi(f[1]); perr == nil {
+					j.clearanceHits, j.clearanceChecked = n, true
+					j.log("server", "verified clearance hit moves "+f[1])
+					return
+				}
+			}
+		}
+		why := "no clearance_hit_moves line"
+		if err != nil {
+			why = sanitizeToolError(err)
+		}
+		j.log("server", "clearance verification gave no count: "+why)
+	})
+	return j.clearanceHits, j.clearanceChecked
 }
 
 func (j *Job) curveRefusal() string {

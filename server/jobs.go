@@ -110,6 +110,10 @@ type Job struct {
 	stageHistory   *stageHistory
 	persistenceErr error
 
+	clearanceOnce    sync.Once
+	clearanceHits    int
+	clearanceChecked bool
+
 	mu            sync.Mutex
 	transitions   []JobTransition
 	transitionSeq uint64
