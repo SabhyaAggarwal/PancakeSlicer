@@ -1174,11 +1174,20 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 }
             }
             if (m_curved_pass < disc_passes) {
-                double radius = 2.5 * (m_curved_pass + 1);
+                int disc_pass = m_curved_pass;
+                if (owner->config().nonplanar_mode.value == NonplanarMode::NonplanarTop) {
+                    disc_pass = 0;
+                    if (owner->m_nonplanar_repair) {
+                        const Vec2d xy = tip.head<2>() - owner_shift;
+                        for (const RepairHints::Disc &disc : owner->m_nonplanar_repair->planar)
+                            disc_pass += (disc.p - xy).norm() < disc.radius + 2.5 && std::abs(disc.z - tip.z()) < disc.radius + 2.5;
+                    }
+                }
+                double radius = 2.5 * (std::max(0, disc_pass) + 1);
                 for (const HeadBox &box : params.head.boxes)
                     if (box.nozzle && !box.infinite_x && !box.infinite_y &&
                         box.min.z() <= -double(report.per_move[i]) + EPSILON)
-                        radius = std::max(radius, 2.5 * (m_curved_pass + 1) +
+                        radius = std::max(radius, 2.5 * (std::max(0, disc_pass) + 1) +
                             std::max({-box.min.x(), box.max.x(), -box.min.y(), box.max.y()}));
                 if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
                 auto &discs = owner->m_nonplanar_repair->planar;

@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "engine_source_sha": "2ddb06fd12c558b8212bab1b9dbe37369a3f1eb9",
-  "source_snapshot_sha": "2ddb06fd12c558b8212bab1b9dbe37369a3f1eb9",
+  "engine_source_sha": "ee6c00a9ab14ede4783e560a72f148a93f2dfe16",
+  "source_snapshot_sha": "ee6c00a9ab14ede4783e560a72f148a93f2dfe16",
   "source_overlays": {},
-  "reference_release": "engine-reference-2ddb06fd12",
-  "reference_asset": "engine-reference-2ddb06fd12.tar.gz",
-  "reference_sha256": "1ab1435f21c17d562237527222a617144617b1608f74a1bacd35e094ddde6fd5",
-  "reference_binary_sha256": "9d2820b04b9ea4a47c7b191ad98f7966f1a2c0a6ddbbf5f86a419ad4d8540e52",
+  "reference_release": "engine-reference-ee6c00a9ab",
+  "reference_asset": "engine-reference-ee6c00a9ab.tar.gz",
+  "reference_sha256": "1699efe023b7777443b7b4be9379a8eb91056a16eda3ae281aea050d958bc60f",
+  "reference_binary_sha256": "165fd051c893bf21530b04fbabfb7c5ff06436a505ad34fb28a8c52b82c3ea86",
   "reference_live_resources_sha256": "dc997c95418492de68ac2abb07b0329c90555e1aa54a830a54e6ff46bf815a0a"
 }
