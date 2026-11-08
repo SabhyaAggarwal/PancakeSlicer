@@ -6,7 +6,7 @@ import type { ScaleRow } from '../profiles/auto-rules';
 import { filamentCatalog, printerCatalog } from '../profiles/catalog-reads';
 
 type Type = 'printer' | 'filament' | 'print';
-interface V4Record {
+export interface V4Record {
   id: string; type: Type; name: string; revision: number; archived?: { at: number; operationId: string };
   vendor?: string; model?: string; nozzle?: number; machine?: Config; printOverrides?: Config;
   family?: string; brand?: string; material?: string; colour?: string; settings?: Config; fits?: { models?: string[]; nozzles?: number[] };
@@ -23,6 +23,11 @@ const nozzleKey = (n: number) => String(n);
 const writtenFilaments = new Map<string, { family: string; base: ProfileOverlay['base']; metadata?: Config }>();
 const machineName = async (vendor: string, model: string, nozzle: number) =>
   (await printerCatalog()).find((v) => v.id === vendor)?.models.find((m) => m.id === model)?.machines?.[nozzleKey(nozzle)];
+
+export function printFromV4(r: V4Record): ProfileOverlay {
+  const auto = r.scales?.length || r.preferredHeight || r.speedModel ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.speedModel ? { speedModel: r.speedModel } : {}), ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}) } } : {};
+  return { id: r.id, name: r.name, revision: r.revision, kind: 'profile', type: 'process', ...(r.archived ? { archived: r.archived } : {}), base: AUTO, overlay: { ...r.values }, ...auto } as ProfileOverlay;
+}
 
 async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
   for (const r of doc.profiles) if (r.type === 'filament') void filamentCatalog((r.family ?? '').split('/')[0]).catch(() => []);
@@ -45,8 +50,7 @@ async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
       return { ...common, base: written?.base ?? { name, engineName: name, version: '', vendor }, overlay, ...(applicability ? { applicability } : {}),
         ...(written ? (written.metadata ? { metadata: written.metadata } : {}) : { metadata: { family: r.family ?? '' } }) } as ProfileOverlay;
     }
-    const auto = r.scales?.length || r.preferredHeight || r.speedModel ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.speedModel ? { speedModel: r.speedModel } : {}), ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}) } } : {};
-    return { ...common, base: AUTO, overlay: { ...r.values }, ...auto } as ProfileOverlay;
+    return printFromV4(r);
   }));
   return { schema: 1, revision: doc.revision, ...(doc.epoch ? { epoch: doc.epoch } : {}), profiles, printers: { schema: 1, revision: 0, setups: doc.setups ?? {} } };
 }

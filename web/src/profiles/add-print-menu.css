@@ -1,0 +1,25 @@
+:where(.orca-parity) .orca-menu.add-print { width: min(400px, calc(100vw - 16px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(460px, var(--radix-popover-content-available-height, 460px)); transform-origin: var(--radix-popover-content-transform-origin); }
+:where(.orca-parity) .orca-menu.add-print[data-state=open] { animation: add-print-in 130ms ease-out; }
+@keyframes add-print-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .orca-menu.add-print[data-state=open] { animation: none; } }
+:where(.orca-parity) .add-print-body { display: flex; flex-direction: column; min-height: 0; }
+:where(.orca-parity) .add-print-search { flex: none; margin: 8px 8px 4px; width: auto; }
+:where(.orca-parity) .add-print-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 4px; }
+:where(.orca-parity) .orca-menu .menu-item.add-print-row { align-items: flex-start; gap: 12px; padding: 6px 8px; cursor: pointer; }
+:where(.orca-parity) .orca-menu .menu-item.add-print-row[aria-selected=true], :where(.orca-parity) .orca-menu .menu-item.add-print-new[aria-selected=true] { background: var(--overlay); }
+:where(.orca-parity) .orca-menu .menu-item.add-print-new { cursor: pointer; }
+:where(.orca-parity) .add-print-text { flex: 1; min-width: 0; display: grid; }
+:where(.orca-parity) .add-print-name { font-weight: 500; }
+:where(.orca-parity) .add-print-line { color: var(--text-dim); font: var(--t-small); }
+:where(.orca-parity) .add-print-side { flex: none; display: grid; justify-items: end; text-align: right; font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .add-print-state { display: flex; gap: 4px; color: var(--text); font-weight: 500; }
+:where(.orca-parity) .add-print-row[data-added] .add-print-state { color: var(--text-dim); }
+:where(.orca-parity) .add-print-empty { padding: 8px; color: var(--text-dim); font: var(--t-small); }
+:where(.orca-parity) .add-print-error { margin: 0 8px 8px; color: var(--danger); font: var(--t-small); white-space: pre-line; }
+:where(.orca-parity) .add-print-form { display: grid; gap: 8px; padding: 8px; }
+:where(.orca-parity) .add-print-form-head { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+:where(.orca-parity) .add-print-field { display: grid; grid-template-columns: 80px minmax(0, 1fr); align-items: center; gap: 8px; }
+:where(.orca-parity) .add-print-field > span { color: var(--text-dim); }
+:where(.orca-parity) .add-print-field > :is(input, button) { width: 100%; min-width: 0; }
+:where(.orca-parity) .add-print-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+@media (pointer: coarse) { :where(.orca-parity) .orca-menu .menu-item.add-print-row { min-height: 44px; } }

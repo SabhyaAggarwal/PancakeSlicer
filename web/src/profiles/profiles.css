@@ -177,12 +177,6 @@
 :where(.orca-parity) .pf-add-body { padding: 0 16px; }
 :where(.orca-parity) .pf-add-cover { display: block; width: 240px; height: 240px; object-fit: contain; margin: var(--s-4) 0; }
 
-:where(.orca-parity) .orca-menu.pf-new-kind { display: grid; gap: var(--s-1); width: min(400px, calc(100vw - 24px)); padding: var(--s-2); }
-:where(.orca-parity) .pf-new-kind-item { display: grid; gap: 2px; padding: var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink); text-align: left; cursor: pointer; }
-:where(.orca-parity) .pf-new-kind-item:is(:hover, :focus-visible) { background: var(--hover); }
-:where(.orca-parity) .pf-new-kind-item > strong { font: var(--t-label); }
-:where(.orca-parity) .pf-new-kind-item > span { font: var(--t-small); color: var(--ink-3); }
-
 :where(.orca-parity) .dyn-speeds { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
 :where(.orca-parity) .dyn-speed-controls { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-5); align-items: end; }
 :where(.orca-parity) .dyn-speed-controls label { display: flex; flex-direction: column; gap: var(--s-2); }

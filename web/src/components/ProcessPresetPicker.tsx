@@ -1,4 +1,6 @@
+import { useRef, useState } from 'react';
 import { getState, resolvePreset, setState, useStore } from '../state/store';
+import { AddPrintMenu } from '../profiles/AddPrintMenu';
 import { requestPreset } from './PresetCombo';
 import { listProfiles } from '../profiles/pickerSource';
 import { profileKey } from '../profiles/identity';
@@ -23,5 +25,9 @@ export function ProcessPresetPicker() {
   };
   const pick = (id: string) => pickOrOpen('process', id, k => requestPreset('process', 0, k));
   const sel = resolvePreset(getState(), 'process', process), pending = usePickerPending(!!sel.name);
-  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', groups)} memory="orca.parity.process" onPick={pick} footer={[{ label: 'New profile', run: () => setState({ presetUx: { kind: 'presets', type: 'process', add: true } }) }, presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
+  const [adding, setAdding] = useState(false), trigger = useRef<HTMLButtonElement>(null);
+  return <AddPrintMenu anchor={trigger} open={adding} onOpenChange={setAdding} onOpen={(key) => requestPreset('process', 0, key)}
+    onCreated={(key) => { requestPreset('process', 0, key); setState({ presetUx: { kind: 'presets', type: 'process', name: key, edit: true } }); }}>
+    <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', groups)} memory="orca.parity.process" onPick={pick} triggerProps={{ ref: trigger }} footer={[{ label: 'Add', run: () => requestAnimationFrame(() => setAdding(true)) }, presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>
+  </AddPrintMenu>;
 }

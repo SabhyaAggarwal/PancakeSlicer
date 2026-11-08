@@ -4,7 +4,7 @@ import { switchPreset } from '../actions';
 import { selectChanges } from '../state/changes';
 import { getState, presetEdits, resolvePreset, setState, toast, type State } from '../state/store';
 import type { UserPreset } from '../api/types';
-import { clampHeight, DEFAULT_SCALES, scaleValues, type ScaleRow } from './auto-rules';
+import { clampHeight, scaleValues, type ScaleRow } from './auto-rules';
 import { effectiveLayerHeight, effectiveProfileValues, printerOverrides } from './context';
 import { createProfileFromBase } from './catalog';
 import { findProfile, profileKey } from './identity';
@@ -155,13 +155,4 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
     restoreChanges(type, slot, key, before);
     void archiveProfiles(type, [created]).catch((e) => toast(message(e)));
   } });
-}
-
-export function createPrintProfile(kind: 'dynamic' | 'regular', name: string): Promise<string> {
-  return profileCreation((s) => {
-    const everyday = s.userPresets.find((p) => p.type === 'process' && !p.archived && p.name === 'Everyday' && scalesOf(p).length);
-    return { id: `profile:${crypto.randomUUID()}`, type: 'process', kind: 'profile', name: name.trim(), revision: 0, inherits: 'Auto',
-      base: { name: 'Auto', engineName: 'Auto', version: 'auto:1' }, overlay: {}, overrides: {},
-      ...(kind === 'dynamic' ? { auto: { schema: 3, speedModel: structuredClone(speedModelOf(everyday) ?? newSpeedModel()), scales: everyday ? scalesOf(everyday) : [...DEFAULT_SCALES] } } : {}) } as UserPreset;
-  }).commit();
 }
