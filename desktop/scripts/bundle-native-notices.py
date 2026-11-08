@@ -21,7 +21,7 @@ def main():
             notices.append(name+'\n\n'+text+'\n')
     named=re.compile(r'licen[cs]e|copying|copyright|notice|ofl',re.I)
     legal=re.compile(r'copyright|SPDX|@license|\blicen[cs]e\b|permission is hereby|redistribution and use|all rights reserved|this file is part of|public domain',re.I)
-    for directory in ['src','deps','server/vendor','resources/fonts','desktop/src']:
+    for directory in ['engine/src','engine/deps','server/vendor','engine/resources/fonts','desktop/src']:
         for path in sorted((args.root/directory).rglob('*')):
             if not path.is_file() or any(part in {'build','node_modules','__pycache__'} for part in path.relative_to(args.root).parts):continue
             name=path.relative_to(args.root).as_posix()

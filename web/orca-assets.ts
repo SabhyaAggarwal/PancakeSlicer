@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 
-const RESOURCES = fileURLToPath(new URL('../resources', import.meta.url));
+const RESOURCES = fileURLToPath(new URL('../engine/resources', import.meta.url));
 const IMAGES = path.join(RESOURCES, 'images');
 const PROFILES = path.join(RESOURCES, 'profiles');
 const VENDORS = fs.readdirSync(PROFILES).filter(v => fs.existsSync(path.join(PROFILES, `${v}.json`)) && fs.statSync(path.join(PROFILES, v)).isDirectory());

@@ -93,7 +93,7 @@ def mac_libraries(tool, prefix, engine):
 
 def windows_libraries(tool, prefix, engine):
     sources = [p for p in prefix.rglob('*.dll') if 'debug' not in {part.lower() for part in p.parts}]
-    for directory in ['deps/GMP/gmp/lib/win-x64', 'deps/MPFR/mpfr/lib/win-x64']:
+    for directory in ['engine/deps/GMP/gmp/lib/win-x64', 'engine/deps/MPFR/mpfr/lib/win-x64']:
         sources.extend((ROOT / directory).glob('*.dll'))
     redist = os.environ.get('VCToolsRedistDir')
     if not redist:
@@ -148,12 +148,12 @@ def main():
         shutil.rmtree(web)
     shutil.copytree(ROOT / 'web/dist', web, ignore=shutil.ignore_patterns('*.map', '*.pdb', '*.d.ts', 'bundle-report.json'))
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    engine_source = json.loads((ROOT / 'scripts/engine-source.json').read_text())['engine_source_sha']
+    engine_source = json.loads((ROOT / 'engine/scripts/engine-source.json').read_text())['engine_source_sha']
     suffix = '.exe' if args.os == 'win' else ''
     native = engine / ('nonplanar_slice_tool' + suffix)
     shutil.copy2(tool, native)
     native.chmod(0o755)
-    prefix = args.dependency_prefix or ROOT / 'deps/build/OrcaSlicer_dep/usr/local'
+    prefix = args.dependency_prefix or ROOT / 'engine/deps/build/OrcaSlicer_dep/usr/local'
     if args.os == 'mac':
         mac_libraries(native, prefix, engine)
     elif args.os == 'win':
@@ -164,7 +164,7 @@ def main():
         run('strip', '--strip-unneeded', native)
     resources = engine / 'resources'
     for name in ['profiles', 'nonplanar', 'info', 'printers', 'filament_mixing', 'fonts', 'handy_models', 'calib', 'cert', 'flush']:
-        shutil.copytree(ROOT / 'resources' / name, resources / name)
+        shutil.copytree(ROOT / 'engine/resources' / name, resources / name)
     run(sys.executable, ROOT / 'desktop/scripts/compact-profiles.py', resources)
     run(sys.executable, ROOT / 'desktop/scripts/bundle-help.py', '--root', ROOT, '--web', web)
     run(sys.executable, ROOT / 'desktop/scripts/bundle-native-notices.py', '--root', ROOT, '--web', web, '--prefix', prefix)
@@ -203,10 +203,10 @@ def main():
                           '--mount', f'type=bind,src={engine},dst={engine},readonly',
                           '--mount', f'type=bind,src={qualification},dst={qualification}',
                           '--entrypoint', '', image]
-    run(sys.executable, ROOT / 'scripts/qualification/qualify.py', '--command-prefix', json.dumps(command_prefix), '--tool', native,
+    run(sys.executable, ROOT / 'engine/scripts/qualification/qualify.py', '--command-prefix', json.dumps(command_prefix), '--tool', native,
         '--resources', resources, '--engine-source', engine_source, '--publication-source', revision,
         '--reference', args.reference.resolve(), '--output', qualification)
-    run(sys.executable, ROOT / 'scripts/qualification/finalize.py', '--engine', engine,
+    run(sys.executable, ROOT / 'engine/scripts/qualification/finalize.py', '--engine', engine,
         '--qualification', qualification, '--evidence-archive', build / f'PancakeSlicer-{args.os}-{args.arch}-qualification.zip')
     components = {'client_source': revision, 'server_source': revision, 'native_source': engine_source,
                   'native_binary_sha256': digest(native), 'native_resources_sha256': resource_hash,

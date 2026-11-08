@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--output',required=True,type=Path)
     parser.add_argument('--repo',default=os.environ.get('GITHUB_REPOSITORY','ZimengXiong/PancakeSlicer'))
     args=parser.parse_args()
-    source=json.loads((ROOT/'scripts/engine-source.json').read_text(encoding='utf-8'))
+    source=json.loads((ROOT/'engine/scripts/engine-source.json').read_text(encoding='utf-8'))
     args.output.mkdir(parents=True,exist_ok=True)
     archive=args.output/source['reference_asset']
     if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest()!=source['reference_sha256']:

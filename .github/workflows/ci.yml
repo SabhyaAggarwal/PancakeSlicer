@@ -74,19 +74,19 @@ jobs:
         id: deps
         uses: actions/cache/restore@v6
         with:
-          path: deps/build/OrcaSlicer_dep
-          key: native-v2-ubuntu-24.04-x64-${{ hashFiles('deps/**', 'deps_src/**') }}
+          path: engine/deps/build/OrcaSlicer_dep
+          key: native-v2-ubuntu-24.04-x64-${{ hashFiles('engine/deps/**', 'engine/deps_src/**') }}
           restore-keys: native-v2-ubuntu-24.04-x64-
       - name: Build native dependencies
         if: steps.deps.outputs.cache-matched-key == ''
         run: |
-          cmake -S deps -B deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF
-          cmake --build deps/build --target deps --parallel 4
+          cmake -S engine/deps -B engine/deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF
+          cmake --build engine/deps/build --target deps --parallel 4
       - name: Cache native dependencies
         if: steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: deps/build/OrcaSlicer_dep
+          path: engine/deps/build/OrcaSlicer_dep
           key: ${{ steps.deps.outputs.cache-primary-key }}
       - name: Restore compiler cache
         id: ccache
@@ -98,8 +98,8 @@ jobs:
       - name: Build nonplanar_slice_tool
         run: |
           ccache --max-size=1500M
-          cmake -S . -B build-native -G 'Ninja Multi-Config' -DCMAKE_BUILD_TYPE=Release -DSLIC3R_GUI=OFF -DSLIC3R_CAD=OFF \
-            -DBUILD_TESTS=ON -DDEP_BUILD_DIR="$GITHUB_WORKSPACE/deps/build" \
+          cmake -S engine -B build-native -G 'Ninja Multi-Config' -DCMAKE_BUILD_TYPE=Release -DSLIC3R_GUI=OFF -DSLIC3R_CAD=OFF \
+            -DBUILD_TESTS=ON -DDEP_BUILD_DIR="$GITHUB_WORKSPACE/engine/deps/build" \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           cmake --build build-native --config Release --target nonplanar_slice_tool --parallel 4
       - name: Save compiler cache

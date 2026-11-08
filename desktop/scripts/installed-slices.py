@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parents[2]
-sys.path.insert(0,str(ROOT/'scripts/qualification'))
+sys.path.insert(0,str(ROOT/'engine/scripts/qualification'))
 from qualify import compare_case,digest,gcode_lines,resource_digest
 
 
@@ -26,7 +26,7 @@ def main():
     proof=json.loads((reference/'qualification.json').read_text(encoding='utf-8'))
     if not proof['ready'] or digest(tool)!=proof['binary_sha256'] or resource_digest(resources)[0]!=proof['resources_sha256']:
         raise RuntimeError('Installed engine/resources are not the qualified payload')
-    cases=json.loads((ROOT/'scripts/qualification/fixtures/cases.json').read_text(encoding='utf-8'))
+    cases=json.loads((ROOT/'engine/scripts/qualification/fixtures/cases.json').read_text(encoding='utf-8'))
     result={'binary_sha256':digest(tool),'resources_sha256':proof['resources_sha256'],'publication_main_sha':proof['publication_main_sha'],'cases':{}}
     env={**os.environ,'TZ':'UTC','PYTHONUTF8':'1','NONPLANAR_RESOURCES_DIR':str(resources),'NONPLANAR_HEADS_DIR':str(resources/'nonplanar/heads'),'OMP_NUM_THREADS':'1','OPENBLAS_NUM_THREADS':'1'}
     for name in ['benchy_flat','benchy']:
