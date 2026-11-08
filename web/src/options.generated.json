@@ -9004,7 +9004,7 @@
     "type": "Enum",
     "label": "Non-planar mode",
     "full_label": "",
-    "tooltip": "Flat layers: every layer flat, as in standard OrcaSlicer; fastest.\nAuto: on a fixed print head, Smooth morph for a single gentle curved top (a low dome, wave, ramp or lid) and Smoothest tops otherwise; on a printer with rotary axes, curved layers wherever the head clears them.\nManual: the curved settings below, as set.\nMultiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.\nRotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the nozzle. Needs two rotary axes.\nOne-shot field (advanced): rotary curved layers whose layer field is solved for the part from its surface error, support, print time and head clearance, within a minute.\nFast curved tops: curves a top only where it stays near flat print time; the other tops get mid-layer Z smoothing.\nSmoothest tops: bends the top and two shells below over every gentle top (fich-l's OrcaSlicer-Nonplanar method); lowest top error, 10-50 % slower than flat.\nSmooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to about 1.4x flat time.\nSlant: the whole part in parallel flat layers tilted from the bed, as on a belt printer, on a fixed 3-axis head; smoother faces that slope the same way as the layers, flat tops step.\n Default: Flat layers. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not replace the stored mode.",
+    "tooltip": "Flat layers: every layer flat, as in standard OrcaSlicer; fastest.\nAuto: on a fixed print head, Smooth morph for a single gentle curved top (a low dome, wave, ramp or lid) and Smoothest tops otherwise; on a printer with rotary axes, curved layers wherever the head clears them.\nManual: the curved settings below, as set.\nMultiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.\nRotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the nozzle. Needs two rotary axes.\nOne-shot field (advanced): rotary curved layers whose layer field is solved for the part from its surface error, support, print time and head clearance, within a minute.\nFast curved tops: curves a top only where it stays near flat print time; the other tops get mid-layer Z smoothing.\nSmoothest tops: bends the top and two shells below over every gentle top (fich-l's OrcaSlicer-Nonplanar method); lowest top error, 10-50 % slower than flat.\nSmooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to about 1.4x flat time.\nSlant: the whole part in parallel flat layers tilted from the bed, as on a belt printer, on a fixed 3-axis head; smoother faces that slope the same way as the layers, flat tops step.\nConformal layers (experimental): the top shells follow every top up to 20 degrees at a constant thickness, each top one whole layer, sliced on the model itself; flat layers elsewhere, printed in bands the head clears.\n Default: Flat layers. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not replace the stored mode.",
     "category": "Quality",
     "sidetext": "",
     "enum_values": [
@@ -9017,7 +9017,8 @@
       "smooth_morph",
       "oneshot",
       "nonplanar_top",
-      "slant"
+      "slant",
+      "conformal_layers"
     ],
     "enum_labels": [
       "Flat layers",
@@ -9029,7 +9030,8 @@
       "Smooth morph",
       "One-shot field (advanced)",
       "Smoothest tops",
-      "Slant"
+      "Slant",
+      "Conformal layers"
     ],
     "min": -3.4028234663852886e+38,
     "max": 3.4028234663852886e+38,

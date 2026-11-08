@@ -1443,6 +1443,7 @@ var qualifiedNativeSources = map[string]bool{
 	"e69a83a2a2deb3100b6cae36560771540796b63c": true,
 	"d43b328f6b2dc4d5d722af5f4b02b1eb1a37e6f5": true,
 	"f2da892debde50fce99f98fd559cef1fe9b1298f": true,
+	"d13380db0c39b046a1f15d72ee0100aba3f04cf3": true,
 }
 
 var engineTransitions = map[HealthState]map[HealthState]bool{

@@ -71,6 +71,11 @@
       ]
     },
     {
+      "id": "conformal_layers",
+      "target": "mode",
+      "hardware": "known"
+    },
+    {
       "id": "oneshot",
       "target": "mode",
       "hardware": "known",

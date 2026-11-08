@@ -21,7 +21,7 @@ const openMethodChoice = (key: string) => {
 };
 export { canonicalMode } from '../nonplanar-mode';
 import { MODE_LABELS, MODE_HELP as BASE_MODE_HELP } from '../nonplanar-mode';
-const OFFERED_MODES = ['off', 'curved_tops', 'nonplanar_top', 'smooth_morph', 'slant'], ROTARY_MODES = ['multiplanar', 'field'];
+const OFFERED_MODES = ['off', 'curved_tops', 'nonplanar_top', 'smooth_morph', 'slant', 'conformal_layers'], ROTARY_MODES = ['multiplanar', 'field'];
 const MODE_HELP: Record<string, string> = {
   ...BASE_MODE_HELP,
   multiplanar: 'Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.',
