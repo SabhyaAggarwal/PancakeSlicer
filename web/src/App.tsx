@@ -7,7 +7,7 @@ import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from
 import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
 import { setCut, toggleCut } from './plater/cut';
-import { CanvasToolbar, CutPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
+import { CanvasToolbar, CutPanel, PaintPanel, SlantPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { LoadingState } from './components/Notices';
 import { PreviewLoading } from './components/PreviewLoading';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
@@ -204,6 +204,7 @@ export default function App() {
       else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
       else if (e.key === 'Escape') {
         const s = getState();
+        if (s.gizmo === 'slant') { setState({ gizmo: 'none', slant: null }); e.preventDefault(); return; }
         if (!s.selected && s.gizmo === 'none' && !assembly().on && document.activeElement instanceof HTMLCanvasElement) document.activeElement.blur();
         if (assembly().on) setAssembly({ on: false });
         if (s.gizmo === 'move' || s.gizmo === 'rotate' || s.gizmo === 'scale') setState({gizmo: 'none'});
@@ -301,6 +302,7 @@ export default function App() {
             <CanvasToolbar />
             {!projects && tab === 'prepare' && (gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale') && <Suspense fallback={null}><TransformPanel /></Suspense>}
             <CutPanel />
+            <SlantPanel />
             <PaintPanel />
             <LayerHeightPanel />
             <LayerHeightBar />

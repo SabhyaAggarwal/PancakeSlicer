@@ -25,6 +25,7 @@ import { pixelRatio, watchPixelRatio } from './pixelRatio';
 import { raycastBvh, type Bvh } from './bvh';
 import { drawn, instanceBox, instanceMatrix, outsideBed, parsePoints, requestDisplay, volumeWorld } from './geometry';
 import { cutNormal, cutPoint, cutTarget, setCut } from './cut';
+import { setSlant, slantAngles, slantNormal, slantPoint, slantTarget } from './slant';
 import { CONNECTOR, connectorAt, connectorWorld, planeRotation, planeUV, SECTORS } from './cutJoints';
 import { layOnFace, layOnFacePlanes, type LayOnFacePlane } from './transforms';
 import { RotateGizmo } from './rotateGizmo';
@@ -91,6 +92,7 @@ export default function Plater3D() {
     });
     const frames: { at: number; ms: number }[] = [];
     let rotateGizmo: RotateGizmo | null = null;
+    let slantRingsRef: RotateGizmo | null = null;
     const render = () => {
       if (frame || !el.clientWidth || getState().tab !== 'prepare') return;
       frame = requestAnimationFrame(() => {
@@ -106,6 +108,7 @@ export default function Plater3D() {
         grid.group.visible = !assembly().on;
         grid.layer.hidden = assembly().on;
         rotateGizmo?.update();
+        slantRingsRef?.update();
         renderer.render(scene, views.camera);
         placeLabels();
         grid.place(views.camera, el.clientWidth, el.clientHeight, viewOptions().gridlines);
@@ -570,6 +573,7 @@ void main() {
       for (const g of live) if (!drawn(g)) requestDisplay(g, render);
       liveGeometries = live;
       syncCut(s);
+      syncSlant(s);
       syncGizmo(s);
       syncFlatten(s);
       syncOverlay(s);
@@ -682,6 +686,45 @@ void main() {
     renderer.domElement.addEventListener('pointerdown', onJointDown, { capture: true });
     let cutDrag = false;
 
+    const SLANT_COLOR = THREE.ColorManagement.colorSpaceToWorking(new THREE.Color('#FFC43D'), THREE.SRGBColorSpace);
+    const SLANT_OVER = THREE.ColorManagement.colorSpaceToWorking(new THREE.Color('#FF7A1A'), THREE.SRGBColorSpace);
+    const slantFill = new THREE.MeshBasicMaterial({ color: SLANT_COLOR, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
+    const slantEdge = new THREE.LineBasicMaterial({ color: SLANT_COLOR, transparent: true, opacity: 0.95, depthTest: false });
+    const slantPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), slantFill);
+    slantPlane.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]].map(([x, y]) => new THREE.Vector3(x, y, 0))), slantEdge));
+    const slantArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 1, SLANT_COLOR.getHex());
+    slantPlane.add(slantArrow);
+    slantPlane.renderOrder = 2;
+    const slantProxy = new THREE.Object3D();
+    scene.add(slantProxy);
+    let slantDrag = false;
+    let slantRadius = 10;
+    const syncSlant = (s: State) => {
+      const t = s.gizmo === 'slant' && s.slant ? slantTarget(s) : null;
+      if (!t) {
+        if (slantPlane.parent) scene.remove(slantPlane);
+        return;
+      }
+      if (!slantPlane.parent) scene.add(slantPlane);
+      const e = s.slant!, n = slantNormal(e), p = slantPoint(s, e)!;
+      const size = instanceBox(t.o, t.inst).getSize(new THREE.Vector3());
+      const side = 1.4 * Math.max(size.x, size.y, size.z);
+      slantRadius = 0.55 * side;
+      slantPlane.position.copy(p);
+      slantPlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      slantPlane.scale.set(side, side, 1);
+      const down = new THREE.Vector3(Math.cos(e.dir * Math.PI / 180), Math.sin(e.dir * Math.PI / 180), 0).projectOnPlane(n).normalize();
+      slantArrow.setDirection(down.applyQuaternion(slantPlane.quaternion.clone().invert()));
+      slantArrow.setLength(0.45, 0.08, 0.05);
+      const over = e.limit !== undefined && e.tilt > e.limit + 1e-6;
+      const color = over ? SLANT_OVER : SLANT_COLOR;
+      slantFill.color.copy(color);
+      slantFill.opacity = over ? 0.4 : 0.28;
+      slantEdge.color.copy(color);
+      slantArrow.setColor(color.getHex());
+      if (!slantDrag) slantProxy.position.copy(p).add(new THREE.Vector3(slantRadius + 0.25 * side, 0, 0));
+    };
+
     const proxy = new THREE.Object3D();
     scene.add(proxy);
     const tc = new TransformControls(views.camera, renderer.domElement);
@@ -726,6 +769,30 @@ void main() {
       },
     });
     scene.add(rotateGizmo.group);
+    let slantStart: THREE.Vector3 | null = null;
+    let slantTurning = false;
+    const slantRings = new RotateGizmo(renderer.domElement, () => views.camera, render, {
+      start: () => {
+        const e = getState().slant;
+        if (!e) return;
+        slantStart = slantNormal(e);
+        slantTurning = true;
+        controls.enabled = false;
+      },
+      change: (axis, angle) => {
+        if (!slantStart) return;
+        const n = slantStart.clone().applyAxisAngle(new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0), angle);
+        setSlant(slantAngles(n));
+      },
+      end: () => {
+        slantStart = null;
+        slantTurning = false;
+        controls.enabled = true;
+        syncGizmo(getState());
+      },
+    });
+    scene.add(slantRings.group);
+    slantRingsRef = slantRings;
     let dragStart: { x: number; y: number; rotX: number; rotY: number; rotZ: number; scale: [number, number, number];
       volume?: { world: THREE.Matrix4; proxy: THREE.Matrix4 } } | null = null;
     let endStep: (() => void) | null = null;
@@ -735,6 +802,11 @@ void main() {
       tools.send({ type: dragging ? 'DRAG' : 'RELEASE' });
       controls.enabled = !dragging;
       const s = getState();
+      if (s.gizmo === 'slant') {
+        slantDrag = dragging;
+        endStep = null;
+        return;
+      }
       if (s.gizmo === 'cut') {
         cutDrag = dragging;
         endStep = null;
@@ -755,6 +827,11 @@ void main() {
       const s = getState();
       if (s.gizmo === 'cut' && s.cut) {
         setState({ cut: { ...s.cut, z: cutProxy.position.z } });
+        return;
+      }
+      if (s.gizmo === 'slant' && s.slant) {
+        const t = slantTarget(s);
+        if (t) setSlant({ z: Math.max(0, slantProxy.position.z - instanceBox(t.o, t.inst).min.z) });
         return;
       }
       if (!dragStart || !s.selected) return;
@@ -785,6 +862,19 @@ void main() {
     const uniformFactor = (v: THREE.Vector3) => Math.max(0.01, [v.x, v.y, v.z].reduce((a, b) => Math.abs(b - 1) > Math.abs(a - 1) ? b : a, 1));
     const syncGizmo = (s: State) => {
       if (s.gizmo !== 'rotate') rotateGizmo!.detach();
+      if (s.gizmo !== 'slant') slantRings.detach();
+      if (s.gizmo === 'slant') {
+        if (!s.slant || !slantTarget(s)) {
+          slantRings.detach();
+          return tc.detach();
+        }
+        if (tc.mode !== 'translate') tc.setMode('translate');
+        tc.showX = tc.showY = false;
+        tc.showZ = true;
+        if (tc.object !== slantProxy) tc.attach(slantProxy);
+        if (!slantDrag && !slantTurning) slantRings.attach(slantPoint(s, s.slant)!, slantRadius);
+        return;
+      }
       if (s.gizmo === 'cut') {
         if (!s.cut || !cutTarget(s)) return tc.detach();
         if (tc.mode !== 'translate') tc.setMode('translate');
@@ -1524,6 +1614,12 @@ void main() {
       }
       if (last && (s.gizmo !== last.gizmo || s.objects !== last.objects || s.selected !== last.selected) && (measureState().first || measureState().hover || last.gizmo === 'measure'))
         setMeasure({});
+      if (last && s.slant !== last.slant && s.gizmo === 'slant') {
+        syncSlant(s);
+        syncGizmo(s);
+        render();
+        last = { ...last, slant: s.slant };
+      }
       if (last && s.cut !== last.cut && s.gizmo === 'cut') {
         syncCut(s);
         syncGizmo(s);

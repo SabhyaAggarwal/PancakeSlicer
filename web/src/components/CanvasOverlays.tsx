@@ -17,6 +17,7 @@ import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore,
 import { IconButton } from './Icon';
 import { Caret } from './Caret';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
+import { closeSlantPlane, commitSlant, resetSlantAuto, setSlant } from '../plater/slant';
 import { InTopLayer } from './Modal';
 import { useTier } from '../breakpoints';
 import { SliceFailed } from './Notices';
@@ -362,6 +363,33 @@ export function SliceNotification() {
 }
 
 export { Toast } from './Notices';
+
+export function SlantPanel() {
+  const e = useStore((s) => (s.gizmo === 'slant' ? s.slant : null));
+  if (!e) return null;
+  const over = e.limit !== undefined && e.tilt > e.limit + 1e-6;
+  const deg = (v: number) => `${v.toFixed(1)}°`;
+  return (
+    <div className="manip-panel slant-panel">
+      <div className="manip-title">Slant plane</div>
+      <div className="slant-readout" aria-live="polite">{e.auto ? 'Auto: ' : ''}tilt {deg(e.tilt)} toward {deg(((e.dir % 360) + 360) % 360)}</div>
+      <div className="slant-grid">
+        <span>Tilt</span><Num label="Tilt" value={e.tilt} onCommit={(tilt) => setSlant({ tilt: Math.max(0, Math.min(45, tilt)) })} /><span>°</span>
+        <span>Direction</span><Num label="Direction" value={e.dir} onCommit={(dir) => setSlant({ dir: ((dir % 360) + 360) % 360 })} /><span>°</span>
+        <span>Start height</span><Num label="Start height" value={e.z} onCommit={(z) => setSlant({ z: Math.max(0, z) })} /><span>mm</span>
+      </div>
+      {e.limit !== undefined && (over
+        ? <div className="slant-warn" role="alert">Steeper than the head reaches ({deg(e.limit)}) in this direction</div>
+        : <div className="slant-note">The head reaches {deg(e.limit)} in this direction</div>)}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn" disabled={e.auto} onClick={resetSlantAuto}>Reset to auto</button>
+        <span style={{ flex: 1 }} />
+        <button className="btn" onClick={closeSlantPlane}>Cancel</button>
+        <button className="btn primary" onClick={commitSlant}>Done</button>
+      </div>
+    </div>
+  );
+}
 
 const CutJoints = preloadable(() => import('./CutJoints'));
 

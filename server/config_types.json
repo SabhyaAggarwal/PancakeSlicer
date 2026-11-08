@@ -482,6 +482,8 @@
     "nonplanar_shell_layer_height",
     "nonplanar_slant_angle",
     "nonplanar_slant_direction",
+    "nonplanar_slant_morph_layers",
+    "nonplanar_slant_start_height",
     "nonplanar_spiral_top",
     "nonplanar_steep_skin",
     "nonplanar_strength_roads",

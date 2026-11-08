@@ -141,6 +141,8 @@
 "multiplanar_overhang_threshold",
 "nonplanar_slant_angle",
 "nonplanar_slant_direction",
+"nonplanar_slant_morph_layers",
+"nonplanar_slant_start_height",
 "nonplanar_support_interface",
 "nonplanar_atom_toolpath"
 ],

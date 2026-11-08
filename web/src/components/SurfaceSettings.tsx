@@ -4,7 +4,8 @@ import type { Config } from '../api/types';
 import { OPTIONS, modeVisible, type OptionMode } from '../options';
 import { CURVED_DEFAULTS, WAVE_DEFAULTS } from '../intent/surface';
 import { methodSelectionProblem, type MethodAvailability, type MethodAvailabilityResult } from '../profiles/capabilities';
-import { getState, setState } from '../state/store';
+import { getState, setState, useStore } from '../state/store';
+import { openSlantPlane, slantTarget } from '../plater/slant';
 import { toolArtifactManifest } from '../api/client';
 import type { ProfileFields } from './SettingsTab';
 import { Field } from './Field';
@@ -40,6 +41,7 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
   const engine = useEngineHealth();
   useEffect(() => {void probeEngine();}, []);
   const mode = canonicalMode(String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off'));
+  const slantObject = useStore((s) => !!slantTarget(s));
   const wave = String(config.nonplanar_wave ?? OPTIONS.nonplanar_wave?.default ?? 'off');
   const problem = methodSelectionProblem(availability,config);
   const field = (key:string,label?:string,target?:'mode'|'wave') => {
@@ -70,6 +72,16 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
     {field('nonplanar_mode','Slicing method','mode')}
     {notice('mode')}
     {curved && Object.keys(CURVED_DEFAULTS).flatMap(key => key === 'nonplanar_curved_max_angle' ? [field(key), ...duct] : [field(key)])}
+    {mode === 'slant' && availability.allowedModes.includes(mode) && <>
+      {field('nonplanar_slant_angle')}
+      {field('nonplanar_slant_direction')}
+      <div className="opt-line slant-define">
+        <button type="button" className="btn" disabled={!slantObject || readOnly} title={slantObject ? undefined : 'Select an object to define its slant plane'}
+          onClick={openSlantPlane}>Define slant plane</button>
+      </div>
+      {modeVisible('develop', uiMode) && [field('nonplanar_slant_start_height'), field('nonplanar_slant_morph_layers')]}
+      {duct}
+    </>}
     {(availability.allowedWaveModes.length > 0 || wave !== 'off') && field('nonplanar_wave','Wave pattern','wave')}
     {notice('wave')}
     {wave !== 'off' && availability.allowedWaveModes.includes(wave) && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}

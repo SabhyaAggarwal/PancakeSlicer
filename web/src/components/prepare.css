@@ -94,3 +94,8 @@
 :where(.orca-parity) .manip-axis { position: relative; display: block; min-width: 0; }
 :where(.orca-parity) .manip-axis > .axis { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font: var(--t-label); font-size: 11px; pointer-events: none; }
 :where(.orca-parity) .manip-axis > .manip-num { padding-left: 18px; }
+
+:where(.orca-parity) .slant-panel .slant-readout { font-variant-numeric: tabular-nums; color: var(--accent-text); margin-bottom: 6px; }
+:where(.orca-parity) .slant-panel .slant-grid { display: grid; grid-template-columns: auto 80px auto; gap: 4px 8px; align-items: center; }
+:where(.orca-parity) .slant-panel .slant-note { margin-top: 6px; color: var(--muted); }
+:where(.orca-parity) .slant-panel .slant-warn { margin-top: 6px; color: var(--status-warn); }

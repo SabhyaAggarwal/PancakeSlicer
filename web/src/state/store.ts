@@ -136,7 +136,7 @@ export type PresetUx =
 
 export type MainTab = 'projects' | 'prepare' | 'preview' | 'device';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | 'svg' | PaintKind;
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'slant' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | 'svg' | PaintKind;
 
 export interface JobView {
   id?: string;
@@ -152,6 +152,14 @@ export interface JobView {
   calib?: string;
   calibLog?: string[];
   exported?: string;
+}
+
+export interface SlantEdit {
+  z: number;
+  tilt: number;
+  dir: number;
+  auto: boolean;
+  limit?: number;
 }
 
 export interface CutPlane {
@@ -188,6 +196,7 @@ export interface State {
   features: { native_support?: boolean; emboss_svg?: boolean; emboss_svg_surface?: boolean; plate_locks?: boolean; mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
     ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
+  slant: SlantEdit | null;
   loading: string | null;
   machines: SystemPreset[];
   processes: SystemPreset[];
@@ -285,6 +294,7 @@ let state: State = {
   orientConfirm: null,
   settingsClipboard: null,
   cut: null,
+  slant: null,
   loading: 'Connecting',
   machines: [],
   processes: [],

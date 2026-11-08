@@ -658,6 +658,8 @@
             "multiplanar_overhang_threshold",
             "nonplanar_slant_angle",
             "nonplanar_slant_direction",
+            "nonplanar_slant_start_height",
+            "nonplanar_slant_morph_layers",
             "nonplanar_top_shells",
             "nonplanar_bottom_shells",
             "nonplanar_overhangs",
@@ -721,6 +723,24 @@
               "source": "src/slic3r/GUI/Tab.cpp:2901",
               "modes": {
                 "nonplanar_slant_direction": "Expert"
+              }
+            },
+            {
+              "options": [
+                "nonplanar_slant_start_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp",
+              "modes": {
+                "nonplanar_slant_start_height": "Expert"
+              }
+            },
+            {
+              "options": [
+                "nonplanar_slant_morph_layers"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp",
+              "modes": {
+                "nonplanar_slant_morph_layers": "Expert"
               }
             },
             {
@@ -4847,6 +4867,8 @@
     "multiplanar_overhang_threshold": "Advanced",
     "nonplanar_slant_angle": "Expert",
     "nonplanar_slant_direction": "Expert",
+    "nonplanar_slant_start_height": "Expert",
+    "nonplanar_slant_morph_layers": "Expert",
     "nonplanar_top_shells": "Simple",
     "nonplanar_bottom_shells": "Advanced",
     "nonplanar_overhangs": "Advanced",
@@ -7439,7 +7461,9 @@
     {
       "options": [
         "nonplanar_slant_angle",
-        "nonplanar_slant_direction"
+        "nonplanar_slant_direction",
+        "nonplanar_slant_start_height",
+        "nonplanar_slant_morph_layers"
       ],
       "condition": "nonplanar_mode == \"slant\"",
       "effect": "visible",
