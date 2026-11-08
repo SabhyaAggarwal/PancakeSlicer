@@ -870,13 +870,13 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                 s = e;
             }
         }
-        constexpr double LinkMax = 1.5, LinkMaxInside = 1.5, LinkRise = 0.3;
+        constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
         for (size_t i = 1; i < group.entities.size(); ++i) {
             auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);
             auto *next = static_cast<ExtrusionPathConformal *>(group.entities[i]);
             const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
             const Vec3d   d = unscale(b) - unscale(a);
-            const double reach = next->role() == erTopSolidInfill || prev->role() == erTopSolidInfill ? LinkMax : LinkMaxInside;
+            const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls : LinkMax;
             if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
                 continue;
             next->polyline.points.insert(next->polyline.points.begin(), a);
