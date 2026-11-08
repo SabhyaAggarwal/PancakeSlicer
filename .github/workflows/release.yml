@@ -178,7 +178,9 @@ jobs:
           esac
           cmake --build build-native --config Release --target nonplanar_slice_tool --parallel 4
           mkdir -p build-native/tool
-          cp build-native/tests/fff_print/Release/nonplanar_slice_tool* build-native/tool/
+          # macOS links the tool as an .app bundle; take the executable itself.
+          find build-native/tests/fff_print -path '*Release*' -type f \( -name nonplanar_slice_tool -o -name nonplanar_slice_tool.exe \) -exec cp {} build-native/tool/ \;
+          ls -la build-native/tool
       - name: Save compiler cache
         if: always() && steps.ccache.outcome == 'success'
         uses: actions/cache/save@v6
