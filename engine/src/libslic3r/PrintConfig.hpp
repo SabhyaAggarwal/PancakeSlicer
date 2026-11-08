@@ -260,7 +260,7 @@ enum class TopTexture : unsigned char { None, Ribs, Knurl };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarWave : unsigned char { Off, Top, Whole, Infill };
 enum class NonplanarWavePattern : unsigned char { Waves, Ripple, Crosshatch };
-enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops, SmoothMorph, NonplanarTop, Slant };
+enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops, SmoothMorph, NonplanarTop, Slant, ConformalLayers };
 inline bool curved_tops_mode(NonplanarMode mode) { return mode == NonplanarMode::CurvedTops || mode == NonplanarMode::NonplanarTop; }
 enum class NonplanarRegionSource : unsigned char { Auto, PaintOnly };
 enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };

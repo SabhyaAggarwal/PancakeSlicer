@@ -1,4 +1,5 @@
 #include "NativePrint.hpp"
+#include "ConformalLayers.hpp"
 
 #include "ConformalShells.hpp"
 #include "FieldChart.hpp"
@@ -140,6 +141,8 @@ std::shared_ptr<const LayerField> native_field(PrintObject &object)
     const NonplanarMode mode = object.config().nonplanar_mode.value;
     if (!object.config().nonplanar_atom_toolpath.value.empty())
         return {};
+    if (mode == NonplanarMode::ConformalLayers)
+        return conformal_layers_field(object);
     if (mode == NonplanarMode::OneShot) {
         const OneShotState *state = std::as_const(object).oneshot_state();
         if (state == nullptr || !state->field() || state->z_only)
@@ -852,6 +855,20 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     DynamicPrintConfig      config = chunk_print_config(object);
     config.set_deserialize_strict("initial_layer_print_height", object.print()->config().opt_serialize("initial_layer_print_height"));
     config.set_deserialize_strict("ironing_type", "no ironing");
+    const bool conformal = object.config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
+    if (conformal) {
+        config.set_deserialize_strict("top_surface_pattern", "rectilinear");
+        config.set_deserialize_strict("internal_solid_infill_pattern", "rectilinear");
+        config.set_deserialize_strict("infill_wall_overlap", "-5%");
+        config.set_deserialize_strict("top_bottom_infill_wall_overlap", "-5%");
+        if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
+            pattern != nullptr && (pattern->value == ipGrid || pattern->value == ipTriangles || pattern->value == ipStars || pattern->value == ipCubic))
+            config.set_deserialize_strict("sparse_infill_pattern", "rectilinear");
+        config.set_deserialize_strict("top_layer_direction", "-1");
+        config.set_deserialize_strict("bottom_layer_direction", "-1");
+        config.set_deserialize_strict("solid_infill_rotate_template",
+                                      contour_solid_angles(*field, domains, tops, object.printing_region(0).config().solid_infill_direction.value));
+    }
     for (const std::string &key : object.config().keys())
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
             config.set_key_value(key, object.config().option(key)->clone());
@@ -953,7 +970,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             for (size_t i = 0; i < m; ++i) {
                 const Vec3d a = upright ? Vec3d::UnitZ() : Native::tool_axis(*field, tips[i], tilt_cap);
                 axes[i]       = a.cast<float>();
-                heights[i]    = float(std::clamp(Native::bead_height(*field, tips[i], tops[k - 1], tops[k], a), 0.5 * h, 1.6 * h));
+                heights[i]    = float(std::clamp(Native::bead_height(*field, tips[i], tops[k - 1], tops[k], a), (conformal ? 0.25 : 0.5) * h, (conformal ? 1.8 : 1.6) * h));
                 const Vec3d t = tips[std::min(i + 1, m - 1)] - tips[i > 0 ? i - 1 : 0];
                 double      fac = 1.;
                 const Vec3d g   = field->gradient(tips[i]);
@@ -1083,7 +1100,18 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                 write(*roads[ri].path, roads[ri].layer, ri, roads[ri].layer);
     });
     const size_t n_roads = roads.size();
-    FieldOrder   order   = layer_order_field_roads(roads, op);
+    BandOrderStats band_stats;
+    const size_t   conflicts = conformal ? layer_order_head_conflicts(roads, n - 1, op.head) : 0;
+    if (conformal)
+        BOOST_LOG_TRIVIAL(info) << "Conformal layers " << object.model_object()->name << ": " << conflicts
+                                << " cells where whole layers would meet the head";
+    FieldOrder     order = conformal ? band_order_roads(roads, n - 1, conflicts > 0 ? conformal_band_height(op.head, h) :
+                                                                                      std::numeric_limits<double>::infinity(), &band_stats) :
+                                       layer_order_field_roads(roads, op);
+    if (conformal)
+        BOOST_LOG_TRIVIAL(info) << "Conformal layers " << object.model_object()->name << ": band " << band_stats.band << " mm from z "
+                                << band_stats.offset << ", " << band_stats.bands << " bands, " << band_stats.groups << " groups, "
+                                << band_stats.cut_roads << " roads cut";
 
     dump("ordered", [&](const auto &write) {
         size_t ri = 0;
@@ -1096,6 +1124,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     patch.id           = int(result.patches.size());
     patch.kind         = PatchKind::Field;
     patch.native       = true;
+    patch.banded       = conformal && band_stats.bands > 1;
     patch.shell_height = h;
     patch.host_layer   = host_id;
     patch.region_id    = 0;

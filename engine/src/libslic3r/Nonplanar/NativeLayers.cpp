@@ -338,12 +338,18 @@ std::vector<Vec3d> lift_polyline(const Piece &piece, const Polyline &road, const
     Vec2d a  = plane(road.points.front());
     Vec3d la = lift(piece, a, field, level);
     out.push_back(la);
+    constexpr double SampleStep = 1.;
     for (size_t i = 1; i < road.points.size(); ++i) {
-        const Vec2d b  = plane(road.points[i]);
-        const Vec3d lb = lift(piece, b, field, level);
-        seg(a, la, b, lb, 0);
-        a  = b;
-        la = lb;
+        const Vec2d  end = plane(road.points[i]);
+        const size_t n   = size_t(std::max(1., std::ceil((end - a).norm() / SampleStep)));
+        const Vec2d  a0  = a;
+        for (size_t j = 1; j <= n; ++j) {
+            const Vec2d b  = j == n ? end : a0 + (end - a0) * (double(j) / double(n));
+            const Vec3d lb = lift(piece, b, field, level);
+            seg(a, la, b, lb, 0);
+            a  = b;
+            la = lb;
+        }
     }
     return out;
 }

@@ -34,6 +34,8 @@ struct FieldRoad
     bool               by_height = false;
 };
 
+ExtrusionPathConformal *field_sub_path(const ExtrusionPathConformal &src, size_t i0, size_t i1);
+
 struct FieldOrderParams
 {
     HeadEnvelope          head;

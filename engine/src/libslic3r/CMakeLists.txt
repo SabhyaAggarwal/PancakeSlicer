@@ -142,6 +142,8 @@ set(lisbslic3r_sources
     Nonplanar/LayerField.hpp
     Nonplanar/MaterialRules.cpp
     Nonplanar/MaterialRules.hpp
+    Nonplanar/ConformalLayers.cpp
+    Nonplanar/ConformalLayers.hpp
     Nonplanar/FieldOrder.cpp
     Nonplanar/FieldOrder.hpp
     Nonplanar/FieldObjective.cpp

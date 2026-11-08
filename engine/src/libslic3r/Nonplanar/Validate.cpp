@@ -112,6 +112,16 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         instances += object->instances().size();
         const NonplanarMode mode = object->config().nonplanar_mode.value;
         const bool          field = mode == NonplanarMode::Field || mode == NonplanarMode::OneShot;
+        if (mode == NonplanarMode::ConformalLayers) {
+            needs_head = enabled = true;
+            if (config.nonplanar_kinematics.value != RotaryLayout::None || config.spiral_mode || config.belt_printer)
+                return { L("Conformal layers require a fixed 3-axis printer without spiral vase or belt printing."),
+                         object, "nonplanar_mode" };
+            if (object->num_printing_regions() != 1 || object->model_object()->is_mm_painted())
+                return { L("Conformal layers require one material and one set of part settings."), object, "nonplanar_mode" };
+            if (object->config().raft_layers.value > 0)
+                return { L("Conformal layers cannot be printed on a raft."), object, "raft_layers" };
+        }
         if (mode == NonplanarMode::SmoothMorph) {
             needs_head = enabled = true;
             if (config.nonplanar_kinematics.value != RotaryLayout::None || config.spiral_mode || config.belt_printer)

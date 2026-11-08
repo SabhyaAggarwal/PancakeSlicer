@@ -111,6 +111,8 @@ ExtrusionPathConformal *sub_path(const ExtrusionPathConformal &src, size_t i0, s
 
 }
 
+ExtrusionPathConformal *field_sub_path(const ExtrusionPathConformal &src, size_t i0, size_t i1) { return sub_path(src, i0, i1); }
+
 FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationField &field, const FieldOrderParams &params,
                              const std::function<FieldSupport(const std::vector<Vec3d> &)> &support_of,
                              const std::function<void()> &throw_if_canceled)

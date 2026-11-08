@@ -1518,7 +1518,8 @@ void PrintObject::slice_volumes()
                                                            m_config.line_width.get_abs_value(m_print->config().nozzle_diameter.get_at(0)));
     }
     m_native_summary.clear();
-    m_native_field = !m_multiplanar && Nonplanar::native_requested() ? Nonplanar::native_field(*this) : nullptr;
+    m_native_field = !m_multiplanar && (Nonplanar::native_requested() || m_config.nonplanar_mode.value == NonplanarMode::ConformalLayers) ?
+                         Nonplanar::native_field(*this) : nullptr;
     m_field        = m_multiplanar || m_native_field ? nullptr : Nonplanar::clip_field_slices(*this);
     if (m_multiplanar && !m_multiplanar->auto_reason.empty())
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);

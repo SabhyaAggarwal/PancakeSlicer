@@ -3203,7 +3203,8 @@ int main(int argc, char **argv)
             params.contact_bar = true;
             if (full.nonplanar_mode.value == NonplanarMode::Auto && full.nonplanar_kinematics.value == RotaryLayout::None)
                 full.nonplanar_mode.value = NonplanarMode::NonplanarTop;
-            if (curved_tops_mode(full.nonplanar_mode.value) || full.nonplanar_mode.value == NonplanarMode::SmoothMorph) {
+            if (curved_tops_mode(full.nonplanar_mode.value) || full.nonplanar_mode.value == NonplanarMode::SmoothMorph ||
+                full.nonplanar_mode.value == NonplanarMode::ConformalLayers) {
                 params.cone_tolerance = full.nonplanar_mode.value == NonplanarMode::CurvedTops ? full.nonplanar_curved_cone_tolerance.value : 0.13;
                 if (const char *value = std::getenv("NP_CONTACT_CONE_TOL"); value != nullptr)
                     params.cone_tolerance = std::clamp(std::atof(value), 0., 0.13);
@@ -3830,7 +3831,8 @@ int main(int argc, char **argv)
             params.contact_bar        = true;
             if (std::any_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
                     return curved_tops_mode(object->config().nonplanar_mode.value) ||
-                           object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph;
+                           object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph ||
+                           object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
                 })) params.cone_tolerance = curved_tops_cone_tolerance(print);
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }

@@ -9286,11 +9286,16 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
         }
         return hi;
     };
+    const bool fixed_conformal = rotary == nullptr && patch.native && m_layer != nullptr &&
+                                 m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
     auto field_travel = [&](const Vec3d &a, const Vec3d &b, const ToolPose &target, bool in_layer, bool upright, std::vector<ToolPose> &poses) -> bool {
         const Vec3d  qa = field.forward(a), qb = field.forward(b);
         const double ends  = std::max(qa.z(), qb.z());
         const double above = top_along(qa, qb);
+        const bool   banded = fixed_conformal && patch.banded;
         const bool   flat  = (in_layer || (qb - qa).head<2>().norm() < 3.) && above <= ends + 0.1;
+        if (banded && !flat)
+            return false;
         if (flat) {
             const double lo = std::min(qa.z(), qb.z());
             const int    n  = std::max(1, int(std::ceil((b - a).norm() / 0.5)));
@@ -9303,6 +9308,8 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 poses.assign(1, target);
                 return true;
             }
+            if (banded)
+                return false;
         }
         const double level = flat ? ends : std::max(ends, above) + hop;
         std::vector<Vec3d> legs { qa, Vec3d(qa.x(), qa.y(), level), Vec3d(qb.x(), qb.y(), level), qb };

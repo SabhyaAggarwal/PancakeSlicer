@@ -789,7 +789,8 @@ static const t_config_enum_values s_keys_map_NonplanarMode = {
     { "curved_tops", int(NonplanarMode::CurvedTops) },
     { "smooth_morph", int(NonplanarMode::SmoothMorph) },
     { "nonplanar_top", int(NonplanarMode::NonplanarTop) },
-    { "slant", int(NonplanarMode::Slant) }
+    { "slant", int(NonplanarMode::Slant) },
+    { "conformal_layers", int(NonplanarMode::ConformalLayers) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
@@ -5522,6 +5523,8 @@ void PrintConfigDef::init_fff_params()
                       "about 1.4x flat time.\n"
                       "Slant: the whole part in parallel flat layers tilted from the bed, as on a belt printer, on a fixed 3-axis head; "
                       "smoother faces that slope the same way as the layers, flat tops step.\n"
+                      "Conformal layers (experimental): the top shells follow every top up to 20 degrees at a constant thickness, "
+                      "each top one whole layer, sliced on the model itself; flat layers elsewhere, printed in bands the head clears.\n"
                       " Default: Flat layers. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not "
                       "replace the stored mode.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
@@ -5535,6 +5538,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("oneshot");
     def->enum_values.push_back("nonplanar_top");
     def->enum_values.push_back("slant");
+    def->enum_values.push_back("conformal_layers");
     def->enum_labels.push_back(L("Flat layers"));
     def->enum_labels.push_back(L("Auto"));
     def->enum_labels.push_back(L("Manual"));
@@ -5545,6 +5549,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("One-shot field (advanced)"));
     def->enum_labels.push_back(L("Smoothest tops"));
     def->enum_labels.push_back(L("Slant"));
+    def->enum_labels.push_back(L("Conformal layers"));
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
