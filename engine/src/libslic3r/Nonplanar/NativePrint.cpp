@@ -1,5 +1,6 @@
 #include "NativePrint.hpp"
 #include "ConformalLayers.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 
 #include "ConformalShells.hpp"
 #include "FieldChart.hpp"
@@ -866,8 +867,12 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             config.set_deserialize_strict("sparse_infill_pattern", "rectilinear");
         config.set_deserialize_strict("top_layer_direction", "-1");
         config.set_deserialize_strict("bottom_layer_direction", "-1");
+        double dominant = -1.;
         config.set_deserialize_strict("solid_infill_rotate_template",
-                                      contour_solid_angles(*field, domains, tops, object.printing_region(0).config().solid_infill_direction.value));
+                                      contour_solid_angles(*field, domains, tops, object.printing_region(0).config().solid_infill_direction.value,
+                                                           false, &dominant));
+        if (dominant >= 0. && conformal_variant(conformal_cap_step(*object.model_object())).level_bridges)
+            config.set_key_value("internal_bridge_angle", new ConfigOptionFloat(dominant < 1. ? 180. : dominant));
         if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
             pattern != nullptr && (pattern->value == ipRectilinear || pattern->value == ipAlignedRectilinear || pattern->value == ipLine))
             config.set_deserialize_strict("sparse_infill_rotate_template",

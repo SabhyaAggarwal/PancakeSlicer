@@ -486,7 +486,36 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 tf[k] = std::clamp(sum[k] / wsum[k], col.zb + 0.05, col.T - 0.6 * col.d / col.c);
         }
         for (size_t k = 0; k < N; ++k)
-            F->m_cols[k].tf = core[k] || nearest[k] == size_t(-1) ? tf[k] : tf[nearest[k]];
+            if (core[k])
+                F->m_cols[k].tf = tf[k];
+    }
+    {
+        std::vector<size_t> free;
+        for (size_t k = 0; k < N; ++k)
+            if (!core[k] && F->m_cols[k].omega > 0.)
+                free.push_back(k);
+        for (int it = 0; it < 80 && !free.empty(); ++it)
+            for (size_t k : free) {
+                const long i = long(k / ny), j = long(k % ny);
+                ConformalLayerField::Column sum;
+                sum.T = sum.c = sum.L = sum.zb = sum.d = sum.tf = 0.;
+                int n = 0;
+                for (long di = -1; di <= 1; ++di)
+                    for (long dj = -1; dj <= 1; ++dj) {
+                        const long ii = i + di, jj = j + dj;
+                        if ((di == 0 && dj == 0) || ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
+                            continue;
+                        const size_t q = size_t(ii) * ny + size_t(jj);
+                        if (nearest[q] == size_t(-1))
+                            continue;
+                        const ConformalLayerField::Column &o = F->m_cols[q];
+                        sum.T += o.T, sum.c += o.c, sum.L += o.L, sum.zb += o.zb, sum.d += o.d, sum.tf += o.tf, ++n;
+                    }
+                if (n == 0)
+                    continue;
+                ConformalLayerField::Column &col = F->m_cols[k];
+                col.T = sum.T / n, col.c = sum.c / n, col.L = sum.L / n, col.zb = sum.zb / n, col.d = sum.d / n, col.tf = sum.tf / n;
+            }
     }
     if (const char *dump = std::getenv("NP_CONFORMAL_DUMP"); dump != nullptr && *dump != 0) {
         FILE *f = std::fopen(dump, "w");
@@ -508,6 +537,13 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     return F;
 }
 
+ConformalVariant conformal_variant(int step)
+{
+    static const ConformalVariant ladder[] = { { true, true, false, false },  { false, true, false, false }, { true, false, false, false },
+                                               { false, false, false, false }, { false, false, true, false }, { false, false, false, true } };
+    return ladder[std::clamp(step, 0, int(std::size(ladder)) - 1)];
+}
+
 std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObject &object, std::string *summary)
 {
     const PrintObjectConfig &oc = object.config();
@@ -516,11 +552,12 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
     P.layer_height = oc.layer_height.value;
     P.first_layer  = object.print()->config().initial_layer_print_height.value;
     const int step = conformal_cap_step(*object.model_object());
+    const ConformalVariant variant = conformal_variant(step);
     P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value > 12. + 1e-9 ? oc.nonplanar_curved_max_angle.value : 20., 1., 45.);
-    if (step >= 2)
+    if (variant.cap15)
         P.max_angle = std::min(P.max_angle, 15.);
-    P.round_sigma = step >= 1 ? 0. : 2.;
-    if (step >= 3) {
+    P.round_sigma = variant.rounded ? 2. : 0.;
+    if (variant.flat) {
         if (summary)
             *summary = "conformal layers: flat (the export check found the head meeting the curved layers)";
         return nullptr;
@@ -559,8 +596,9 @@ double conformal_band_height(const HeadEnvelope &head, double layer_height)
 }
 
 std::string contour_solid_angles(const LayerField &field, const std::vector<ExPolygons> &domains, const std::vector<double> &levels,
-                                 double flat_angle, bool sparse)
+                                 double flat_angle, bool sparse, double *dominant)
 {
+    std::array<double, 18> votes {};
     constexpr double Step = 2., Eps = 0.25, MinSlope = 0.035;
     std::ostringstream out;
     for (size_t k = 0; k < domains.size() && k < levels.size(); ++k) {
@@ -581,9 +619,18 @@ std::string contour_solid_angles(const LayerField &field, const std::vector<ExPo
         if (n > 0 && slope / double(n) > MinSlope) {
             const double steepest = 0.5 * std::atan2(2. * sxy, sxx - syy) * 180. / M_PI;
             angle = steepest + 90. + (sparse ? (k % 2 ? 45. : -45.) : 0.);
+            const double contour = std::fmod(std::fmod(steepest + 90., 180.) + 180., 180.);
+            votes[size_t(contour / 10.) % 18] += slope;
         }
         angle = std::fmod(std::fmod(angle, 180.) + 180., 180.);
         out << (k ? "," : "") << std::lround(angle);
+    }
+    if (dominant != nullptr) {
+        double total = 0.;
+        for (double v : votes)
+            total += v;
+        const size_t best = size_t(std::max_element(votes.begin(), votes.end()) - votes.begin());
+        *dominant = total > 0. && votes[best] > 0.7 * total ? 10. * double(best) + 5. : -1.;
     }
     return out.str();
 }
@@ -823,13 +870,14 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                 s = e;
             }
         }
-        constexpr double LinkMax = 1.5, LinkRise = 0.3;
+        constexpr double LinkMax = 1.5, LinkMaxInside = 1.5, LinkRise = 0.3;
         for (size_t i = 1; i < group.entities.size(); ++i) {
             auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);
             auto *next = static_cast<ExtrusionPathConformal *>(group.entities[i]);
             const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
             const Vec3d   d = unscale(b) - unscale(a);
-            if (d.head<2>().norm() > LinkMax || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
+            const double reach = next->role() == erTopSolidInfill || prev->role() == erTopSolidInfill ? LinkMax : LinkMaxInside;
+            if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
                 continue;
             next->polyline.points.insert(next->polyline.points.begin(), a);
             if (!next->bead_height.empty())

@@ -1,5 +1,6 @@
 #include "libslic3r/Nonplanar/CurvedTopsScaffold.hpp"
 #include "ClearanceRepair.hpp"
+#include "libslic3r/Nonplanar/ConformalLayers.hpp"
 #include "libslic3r/Nonplanar/StageCache.hpp"
 #include "Point.hpp"
 #include <cstddef>
@@ -923,7 +924,7 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
 {
     std::vector<PrintObject *> picked;
     for (PrintObject *object : m_print.m_objects)
-        if (object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers && conformal_cap_step(*object->model_object()) < 3)
+        if (object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers && conformal_cap_step(*object->model_object()) < ConformalSteps)
             picked.push_back(object);
     static const bool no_fallback = std::getenv("NP_CONFORMAL_NO_FALLBACK") != nullptr;
     if (picked.empty() || !result.nonplanar || no_fallback)
@@ -935,7 +936,6 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
     const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
     if (report.hit_moves == 0)
         return false;
-    static const char *const next_step[] = { "", "with unrounded shells", "with tops up to 15 degrees", "with flat layers" };
     bool changed = false;
     for (PrintObject *object : picked) {
         int step;
@@ -945,10 +945,11 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
         }
         object->invalidate_step(posSlice);
         changed = true;
-        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Conformal layers met the print head in %2% moves; sliced again %3%."),
-                                                  object->model_object()->name, report.hit_moves, next_step[std::clamp(step, 1, 3)]));
+        if (step >= ConformalSteps)
+            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Conformal layers met the print head in %2% moves in every variant; printed "
+                                                           "with flat layers."), object->model_object()->name, report.hit_moves));
         BOOST_LOG_TRIVIAL(warning) << "Conformal layers fallback: " << object->model_object()->name << ", " << report.hit_moves
-                                   << " contact-bar hits, step " << step << (step >= 3 ? ", printed flat" : "");
+                                   << " contact-bar hits, step " << step << (step >= ConformalSteps ? ", printed flat" : "");
     }
     return changed;
 }
