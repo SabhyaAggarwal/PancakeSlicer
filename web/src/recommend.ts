@@ -53,7 +53,7 @@ function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config
   const { kind, capDeg, reachableDeg } = r.limit;
   if (kind === 'access') {
     const moves = r.flatWhy?.match(/met the print head in (\d+) moves/)?.[1];
-    return { why: reachableDeg != null ? `${slope} is steeper than the print head reaches (${whole(reachableDeg)}°)`
+    return { why: reachableDeg != null ? `${slope} is steeper than the ${r.limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${whole(reachableDeg)}°)`
       : moves ? `The print head would hit the part in ${Number(moves).toLocaleString('en-US')} moves` : 'The print head cannot reach this top' };
   }
   if (kind === 'angle') return { why: `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit`, hint: 'try raising Max curved top angle' };
@@ -83,7 +83,7 @@ function partialLine(r: ObjectResult, process: Config, o: PlateObject | undefine
   const whole = (v: number) => String(Math.round(v));
   const limit = r.limit, height = Number({ ...process, ...o?.settings }.nonplanar_curved_max_height);
   const byLimit = !limit ? undefined
-    : limit.kind === 'access' ? (limit.reachableDeg != null ? `steeper than the print head reaches (${whole(limit.reachableDeg)}°)` : 'the print head cannot reach them')
+    : limit.kind === 'access' ? (limit.reachableDeg != null ? `steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${whole(limit.reachableDeg)}°)` : 'the print head cannot reach them')
     : limit.kind === 'angle' ? `above your ${limit.capDeg != null ? `${whole(limit.capDeg)}° ` : ''}curved-top limit`
     : limit.kind === 'height' ? `taller than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height`
     : limit.kind === 'area' ? 'too small for a curved top'
@@ -125,7 +125,7 @@ export function slicedFlatReason(s: State, objectId: number): { why: string; hea
   const o = s.objects.find((p) => p.id === objectId);
   const why = failure?.why ?? (r ? flatReason(r, o, effectiveConfig(s, 'process'))?.why ?? r.flatWhy : undefined);
   if (!why) return null;
-  return { why: why[0].toUpperCase() + why.slice(1), head: r?.limit?.kind === 'access' || !!failure?.tryDuct, tryDuct: !!failure?.tryDuct, limit: r?.limit };
+  return { why: why[0].toUpperCase() + why.slice(1), head: (r?.limit?.kind === 'access' && r.limit.accessBy !== 'nozzle') || !!failure?.tryDuct, tryDuct: !!failure?.tryDuct, limit: r?.limit };
 }
 
 const sliceAgain = () => void import('./actions').then((m) => m.slice());

@@ -1,7 +1,7 @@
 import { Range } from './Range';
 import { useSyncExternalStore } from 'react';
 import { alignSection, sectionView, setSection, subscribeSection } from '../plater/section';
-import { SURFACE_LEGEND, toggleTopSurfaces, useSurfacesSliced, useTopSurfaces } from '../top-surfaces';
+import { SURFACE_LEGEND, toggleTopSurfaces, useSurfaceSource, useTopSurfaces } from '../top-surfaces';
 import { IconButton } from './Icon';
 
 let lastRatio = 0.5;
@@ -10,7 +10,7 @@ export default function CanvasTools() {
   const s = useSyncExternalStore(subscribeSection, sectionView);
   const active = s.ratio > 0;
   const surfaces = useTopSurfaces();
-  const sliced = useSurfacesSliced();
+  const from = useSurfaceSource();
   const toggle = () => { if (active) { lastRatio = s.ratio; setSection({ ratio: 0 }); } else setSection({ ratio: lastRatio }); };
   return (
     <div className="canvas-tools">
@@ -33,7 +33,7 @@ export default function CanvasTools() {
         {surfaces !== 'off' && (
           <span className="canvas-surface-legend" role="status">
             {SURFACE_LEGEND.map(([colour, label]) => <span key={label}><i style={{ background: colour }} />{label}</span>)}
-            <span className="canvas-surface-source">{sliced ? 'From the slice' : 'Estimate until sliced'}</span>
+            <span className="canvas-surface-source">{from === 'slice' ? 'From the slice' : from === 'plan' ? 'Plan until sliced' : 'Estimate until sliced'}</span>
           </span>
         )}
       </span>

@@ -331,7 +331,7 @@ func (m *JobManager) restoreJobs() error {
 				path = filepath.Join(j.ExplodedDir(), "plate.json")
 			} else if j.Request.MeshOp != "" {
 				path = j.OutputPath(meshExt(j.Request))
-			} else if j.Request.Arrange || j.Request.WipeTower || j.Request.Output == "patch-preview" {
+			} else if j.Request.Arrange || j.Request.WipeTower || overlayOutput(j.Request.Output) {
 				path = j.OutputPath("json")
 			}
 			if _, err := os.Stat(path); err != nil {

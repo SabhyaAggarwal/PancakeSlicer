@@ -211,7 +211,7 @@ func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 			method = mode
 		}
 		entry := map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": limit, "reason": reason,
-			"try_ignore_duct": marked && !report.Clearance.Override && (limit == "access" || strings.Contains(reason, "print head"))}
+			"try_ignore_duct": marked && !report.Clearance.Override && o["access_by"] != "nozzle" && (limit == "access" || strings.Contains(reason, "print head"))}
 		for _, k := range []string{"curved_max_angle_deg", "reachable_slope_deg"} {
 			if v, ok := o[k].(float64); ok {
 				entry[k] = v

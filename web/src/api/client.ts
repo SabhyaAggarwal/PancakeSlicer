@@ -89,8 +89,9 @@ const realApi: Api = {
     if (req.allow_mixed_temperatures) fd.append('allow_mixed_temperatures', '1');
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
-    const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
-    const j = await json<{ id: string }>(await postJob(fd, url, { headers: submissionHeaders(req), retry: req.preview_budget === undefined, signal, quiet: req.preview_budget !== undefined }));
+    const overlay = req.preview_budget !== undefined || !!req.plan_tops;
+    const url = req.plan_tops ? '/api/top-surfaces/plan' : req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
+    const j = await json<{ id: string }>(await postJob(fd, url, { headers: submissionHeaders(req), retry: !overlay, signal, quiet: overlay }));
     return j.id;
   },
   status(id) {

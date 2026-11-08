@@ -27,6 +27,7 @@ type ToolFeatures struct {
 	ForcePlanar          bool            `json:"force_planar"`
 	Cut                  bool            `json:"cut"`
 	PatchPreview         bool            `json:"patch_preview"`
+	PlanTops             bool            `json:"plan_tops"`
 	SurfaceGrid          bool            `json:"surface_grid"`
 	Calib                bool            `json:"calib"`
 	Volumes              bool            `json:"volumes"`
@@ -106,6 +107,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ForcePlanar = strings.Contains(usage, "--force-planar")
 	f.Cut = strings.Contains(usage, "--cut-only")
 	f.PatchPreview = strings.Contains(usage, "--patch-preview FILE")
+	f.PlanTops = strings.Contains(usage, "--plan-tops OUT.json")
 	f.SurfaceGrid = strings.Contains(usage, "--surface-grid")
 	f.Calib = strings.Contains(usage, "--calib-params")
 	f.PresetCache = strings.Contains(usage, "--preset-cache DIR")

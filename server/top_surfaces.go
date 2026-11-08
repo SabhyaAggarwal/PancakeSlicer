@@ -13,7 +13,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -447,20 +446,7 @@ func (s *Server) measureSurfaces(ctx context.Context, sum, head string) (*surfac
 	if err != nil {
 		return nil, err
 	}
-	run := func(args ...string) error {
-		cmd := exec.CommandContext(ctx, s.cfg.Tool, args...)
-		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "TMPDIR="+dir, "TMP="+dir, "TEMP="+dir)
-		if err := limitJobMemory(cmd); err != nil {
-			return err
-		}
-		configureJobProcess(cmd)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("the slicer could not read the model: %s", sanitizeToolError(errors.New(lastLine(string(out)))))
-		}
-		return nil
-	}
+	run := func(args ...string) error { return runToolIn(ctx, s.cfg.Tool, dir, args...) }
 	repaired, regions := filepath.Join(dir, "mesh.stl"), filepath.Join(dir, "regions.json")
 	if err := run("--repair-mesh", mesh, repaired); err != nil {
 		return nil, err

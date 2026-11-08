@@ -79,6 +79,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	mux.HandleFunc("POST /api/jobs", s.createJob)
 	mux.HandleFunc("POST /api/patch-preview", s.createJob)
 	mux.HandleFunc("POST /api/top-surfaces", s.topSurfaces)
+	mux.HandleFunc("POST /api/top-surfaces/plan", s.createJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
@@ -500,6 +501,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Output, req.Priority, req.PreviewBudget = "patch-preview", "low", budget
+	} else if r.URL.Path == "/api/top-surfaces/plan" {
+		if !s.cfg.Features.PlanTops {
+			fail(w, 501, "this slicer has no curved tops plan")
+			return
+		}
+		req.Output, req.Priority = "plan-tops", "low"
 	} else if req.Output != "gcode" && req.Output != "gcode.3mf" && req.Output != "3mf" {
 		fail(w, 400, "output must be gcode, gcode.3mf or 3mf")
 		return
@@ -807,7 +814,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.MeshOp == "" && req.Output != "3mf" && req.Output != "patch-preview" {
+	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.MeshOp == "" && req.Output != "3mf" && !overlayOutput(req.Output) {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return

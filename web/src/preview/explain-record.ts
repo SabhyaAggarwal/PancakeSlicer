@@ -115,7 +115,8 @@ export interface ObjectResult { name: string; style: string; fact: string; curve
   topMm2: number;
   printedFlat: boolean;
   flatWhy?: string;
-  limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null };
+  limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null;
+    accessBy?: 'nozzle' | 'head' };
   tops?: { candidates: number; kept: number; dropped: string[] } }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
@@ -126,7 +127,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];
   const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number;
     planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number; curved_extrusion_length_mm?: number;
-    planar_fallback_reason?: string; curved_surfaces_candidates?: number; curved_surfaces_kept?: number;
+    planar_fallback_reason?: string; access_by?: string; curved_surfaces_candidates?: number; curved_surfaces_kept?: number;
     curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] } }[];
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
@@ -165,7 +166,8 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     else if (top >= 1) fact = `Curved top ${pct}%`;
     else fact = 'Flat top, prints as Standard';
     const why = reported.find((r) => r.name === name);
-    const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg) } : undefined;
+    const accessBy = why?.access_by === 'nozzle' || why?.access_by === 'head' ? (why.access_by as 'nozzle' | 'head') : undefined;
+    const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);
     const printedFlat = !!why && !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason);
     const candidates = num(why?.curved_surfaces_candidates), kept = num(why?.curved_surfaces_kept);

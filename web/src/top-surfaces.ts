@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { mutation } from './api/access';
+import { toolFeatures } from './api/client';
+import { jobRequest } from './actions';
 import { withBlobs } from './api/blobs';
 import { canonicalMode } from './nonplanar-mode';
 import { bakeStl, instanceMatrix } from './plater/geometry';
@@ -15,7 +17,8 @@ export type Verdict = 'curves' | 'duct' | 'no' | 'flat';
 export interface Surface { estimate: SurfaceStatus; reason: string; slope: number; span: number; area: number;
   verdict: Verdict;
   line: string; why?: string;
-  share?: number }
+  share?: number;
+  base: Pick<Surface, 'verdict' | 'line' | 'why' | 'share'> }
 export interface InstanceSurfaces { objectId: number; instanceId: number; source: THREE.BufferGeometry; surfaces: Surface[];
   regionOf: Int32Array; geometry: THREE.BufferGeometry;
   overlayRegion: Int32Array;
@@ -30,12 +33,14 @@ const COLOURS: Record<Verdict, RGB | null> = {
 };
 export const SURFACE_LEGEND: [string, string][] = [['#16B3A0', 'Curves'], ['#F5A524', 'Needs Ignore cooling duct'], ['#BE6056', "Can't curve here"]];
 
-function estimated(status: SurfaceStatus, reason: string): Pick<Surface, 'verdict' | 'line' | 'why' | 'share'> {
+function estimated(status: SurfaceStatus, reason: string, share?: number): Pick<Surface, 'verdict' | 'line' | 'why' | 'share'> {
+  const likely = source === 'plan' ? '' : 'Likely ';
   if (status === 'flat') return { verdict: 'flat', line: 'Flat, prints exactly', share: undefined };
-  if (status === 'curves') return { verdict: 'curves', line: 'Likely curves', share: undefined };
-  if (status === 'duct') return { verdict: 'duct', line: 'Likely needs Ignore cooling duct', share: undefined };
-  return { verdict: 'no', line: "Can't curve here", why: reason, share: undefined };
+  if (status === 'curves') return { verdict: 'curves', line: `${likely}curves`.replace(/^./, (c) => c.toUpperCase()), share };
+  if (status === 'duct') return { verdict: 'duct', line: `${likely}needs Ignore cooling duct`.replace(/^./, (c) => c.toUpperCase()), why: source === 'plan' ? reason : undefined, share };
+  return { verdict: 'no', line: "Can't curve here", why: reason, share };
 }
+let source: 'estimate' | 'plan' = 'estimate';
 
 let shown = false, loading = false, ductIgnorable = false;
 let slicedBy: string | null = null;
@@ -48,7 +53,7 @@ export const subscribeTopSurfaces = (l: () => void) => (listeners.add(l), () => 
 export const topSurfacesShown = () => shown;
 export const topSurfaces = () => current;
 export const useTopSurfaces = () => useSyncExternalStore(subscribeTopSurfaces, () => (shown ? (loading ? 'loading' : 'on') : 'off'));
-export const useSurfacesSliced = () => useSyncExternalStore(subscribeTopSurfaces, () => !!slicedBy && current.length > 0);
+export const useSurfaceSource = () => useSyncExternalStore(subscribeTopSurfaces, () => (slicedBy && current.length ? 'slice' : source));
 
 export function toggleTopSurfaces(on = !shown) {
   if (on === shown) return;
@@ -87,13 +92,15 @@ function decodeRuns(b64: string): number[] {
 
 const tint = (rgb: [number, number, number], lift: number): [number, number, number] => rgb.map((v) => v + (1 - v) * lift) as [number, number, number];
 
-function build(o: PlateObject, instanceId: number, regions: { facets: string; status: SurfaceStatus; reason: string; slope_max: number; span: number; area: number }[]): InstanceSurfaces {
+type RegionIn = { facets: string; status: SurfaceStatus; reason: string; slope_max: number; span: number; area: number; share?: number };
+function build(o: PlateObject, instanceId: number, regions: RegionIn[]): InstanceSurfaces {
   const source = o.geometry, pos = source.attributes.position, index = source.index, count = triangles(source);
   const regionOf = new Int32Array(count).fill(-1);
   const surfaces: Surface[] = [];
   const tris: number[] = [], owner: number[] = [];
   regions.forEach((r, k) => {
-    surfaces.push({ estimate: r.status, reason: r.reason, slope: r.slope_max, span: r.span, area: r.area, ...estimated(r.status, r.reason) });
+    const base = estimated(r.status, r.reason, r.share);
+    surfaces.push({ estimate: r.status, reason: r.reason, slope: r.slope_max, span: r.span, area: r.area, ...base, base });
     for (const t of decodeRuns(r.facets)) {
       if (t >= count || regionOf[t] >= 0) continue;
       regionOf[t] = k;
@@ -239,7 +246,7 @@ function applyOutcome() {
     const o = s.objects.find((p) => p.id === inst.objectId), placed = o?.instances.find((i) => i.id === inst.instanceId);
     if (!curvedMoves || !o || !placed) {
       inst.curvedTri = null;
-      inst.surfaces.forEach((f, k) => { inst.surfaces[k] = { ...f, ...estimated(f.estimate, f.reason) }; });
+      inst.surfaces.forEach((f, k) => { inst.surfaces[k] = { ...f, ...f.base }; });
       paint(inst);
       continue;
     }
@@ -266,7 +273,7 @@ function applyOutcome() {
       const share = total[k] > 0 ? done[k] / total[k] : 0;
       const deg = (v: number) => `${Math.round(v)}°`, limit = flat?.limit;
       const why = f.estimate === 'tall' || f.estimate === 'small' ? f.reason
-        : limit?.kind === 'access' && limit.reachableDeg != null ? `Slope up to ${deg(f.slope)} is steeper than the print head reaches (${deg(limit.reachableDeg)})`
+        : limit?.kind === 'access' && limit.reachableDeg != null ? `Slope up to ${deg(f.slope)} is steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg(limit.reachableDeg)})`
         : limit?.kind === 'angle' && limit.capDeg != null ? `Slope up to ${deg(f.slope)} is above your ${deg(limit.capDeg)} curved-top limit`
         : flat?.why ?? 'The slice kept it flat';
       inst.surfaces[k] = share >= 0.5 ? { ...f, verdict: 'curves', line: 'Curves', why: undefined, share }
@@ -277,6 +284,47 @@ function applyOutcome() {
     paint(inst);
   }
   emit();
+}
+
+interface PlanRegion { object: number; facets: string; curved: boolean; curved_share: number; planar_limit: string | null; reachable_slope_deg: number | null;
+  access_by?: 'nozzle' | 'head'; ignore_duct?: { curved: boolean }; area_xy: number; span: number; slope_max: number }
+interface PlanTops { schema: string; ignore_duct: boolean; regions: PlanRegion[] }
+
+function planReason(r: PlanRegion, maxHeight: number): string {
+  const slope = `Slope up to ${Math.round(r.slope_max)}°`, deg = r.reachable_slope_deg != null ? `${Math.round(r.reachable_slope_deg)}°` : null;
+  switch (r.planar_limit) {
+    case 'access': return deg ? `${slope} is steeper than the ${r.access_by === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg})` : 'The print head cannot reach it';
+    case 'angle': return deg ? `${slope} is above the ${deg} curved-top limit` : `${slope} is above the curved-top limit`;
+    case 'height': return `Taller than your ${maxHeight ? `${maxHeight} mm ` : ''}curved-top height`;
+    case 'area': return 'Too small for a curved top';
+    case 'head_unknown': return 'This printer has no print head model';
+    case 'flat': return 'Flat, prints exactly';
+    default: return 'The plan keeps it flat';
+  }
+}
+
+let planJob: string | null = null;
+async function planned(s: State, objects: PlateObject[], mine: number): Promise<InstanceSurfaces[]> {
+  const req = { ...(await jobRequest(s)), events: [], output: 'gcode' as const, plan_tops: true };
+  const id = await s.api!.submit(req);
+  if (planJob) void s.api!.cancel(planJob).catch(() => undefined);
+  planJob = id;
+  const status = await new Promise<{ record?: unknown }>((resolve, reject) => {
+    const stop = s.api!.events(id, { progress() {}, done(st) { stop(); resolve(st); }, error(m) { stop(); reject(new Error(m)); } });
+  });
+  if (planJob === id) planJob = null;
+  if (mine !== generation) return [];
+  const plan = status.record as PlanTops | undefined;
+  if (plan?.schema !== 'orca.nonplanar.plan_tops.v1') throw new Error('the slicer returned no curved tops plan');
+  return objects.flatMap((o) => {
+    const oi = s.objects.indexOf(o), height = settingsOf(s, o).max_height;
+    const regions: RegionIn[] = plan.regions.filter((r) => r.object === oi).map((r) => {
+      const status: SurfaceStatus = r.curved ? 'curves' : r.planar_limit === 'flat' ? 'flat' : !plan.ignore_duct && r.ignore_duct?.curved ? 'duct'
+        : r.planar_limit === 'height' ? 'tall' : r.planar_limit === 'area' ? 'small' : 'steep';
+      return { facets: r.facets, status, reason: planReason(r, height), slope_max: r.slope_max, span: r.span, area: r.area_xy, share: r.curved_share };
+    });
+    return o.instances.map((inst) => build(o, inst.id, regions));
+  });
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -297,6 +345,17 @@ async function request() {
   loading = true;
   emit();
   try {
+    if (toolFeatures.plan_tops === true && !s.project) {
+      source = 'plan';
+      const built = await planned(s, objects, mine);
+      if (mine !== generation) return built.forEach((b) => b.geometry.dispose());
+      current.forEach((c) => c.geometry.dispose());
+      current = built;
+      hover = selected = null;
+      if (curvedMoves) applyOutcome();
+      return;
+    }
+    source = 'estimate';
     const groups = new Map<string, PlateObject[]>();
     for (const o of objects) {
       const k = JSON.stringify(settingsOf(s, o));

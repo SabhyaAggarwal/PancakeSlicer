@@ -179,7 +179,7 @@ func (j *Job) snapshotView() JobView {
 		t := j.finished
 		v.Finished = &t
 	}
-	if j.state == StateDone && !j.Request.Orient && j.Request.Output != "patch-preview" {
+	if j.state == StateDone && !j.Request.Orient && !overlayOutput(j.Request.Output) {
 		v.DownloadURL = "/api/jobs/" + j.ID + "/download"
 		v.Filename = j.DownloadName()
 	}
@@ -721,6 +721,13 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.WipeTower {
 		return append(args, "--wipe-tower-only", j.OutputPath("json"), "--plate", filepath.Join(in, "plate.json"))
 	}
+	if r.Output == "plan-tops" {
+		args = append(args, "--plan-tops", j.OutputPath("json"))
+		if r.Plate {
+			return append(args, "--plate", filepath.Join(in, "plate.json"))
+		}
+		return append(args, filepath.Join(in, r.Files[0]))
+	}
 	if r.Output == "patch-preview" {
 		args = append(args, "--patch-preview", j.OutputPath("json"), "--patch-preview-budget", strconv.FormatFloat(r.PreviewBudget, 'f', -1, 64))
 		if r.Plate {
@@ -793,7 +800,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	if jobResultGet != nil && jobResultGet(m, j, args) {
 		return
 	}
-	if j.Request.Output == "patch-preview" && m.previewCached(j, args) {
+	if overlayOutput(j.Request.Output) && m.previewCached(j, args) {
 		return
 	}
 
@@ -968,7 +975,18 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		if j.Request.MeshOp != "" {
 			kind = meshExt(j.Request)
 		}
-		if kind == "patch-preview" {
+		if kind == "plan-tops" {
+			mapped, err := m.mapPlanFacets(ctx, j, raw)
+			if err != nil {
+				j.setState(StateFailed, "the curved tops plan could not be read: "+sanitizeToolError(err))
+				return
+			}
+			raw = mapped
+			j.mu.Lock()
+			j.slice = raw
+			j.mu.Unlock()
+		}
+		if overlayOutput(kind) {
 			kind = "json"
 			m.keepPreview(j, args, raw)
 		}
@@ -998,6 +1016,8 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	}
 	log.Printf("job %s %s (exit %d)", j.ID, j.State(), code)
 }
+
+func overlayOutput(output string) bool { return output == "patch-preview" || output == "plan-tops" }
 
 func previewableRequest(r JobRequest) bool {
 	return (r.Output == "gcode" || r.Output == "gcode.3mf") && !r.Orient && !r.OrientScores && !r.Explode && r.Cut == "" &&

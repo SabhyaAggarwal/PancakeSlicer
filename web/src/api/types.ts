@@ -122,4 +122,5 @@ export interface JobRequest {
   allow_mixed_temperatures?: boolean;
   priority?: 'low';
   preview_budget?: number;
+  plan_tops?: boolean;
 }

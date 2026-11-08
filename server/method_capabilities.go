@@ -178,7 +178,7 @@ func methodSelection(config map[string]any, decisions []methodDecision) *methodP
 	return nil
 }
 func (s *Server) validateJobMethods(j *Job, req JobRequest, vendor *VendorPresets) *methodProblem {
-	if req.Output == "3mf" || req.Output == "patch-preview" || req.Orient || req.Arrange || req.WipeTower || req.Explode || req.Cut != "" || req.MeshOp != "" {
+	if req.Output == "3mf" || overlayOutput(req.Output) || req.Orient || req.Arrange || req.WipeTower || req.Explode || req.Cut != "" || req.MeshOp != "" {
 		return nil
 	}
 	printer := decodeMethodConfig(vendor.machines[req.Printer].Config)
