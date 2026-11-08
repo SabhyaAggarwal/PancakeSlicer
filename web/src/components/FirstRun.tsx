@@ -6,30 +6,21 @@ import { HoverCard } from 'radix-ui';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { importFetched } from '../plater/handy';
 import { getState, resolvePreset, subscribeStore, toast, useStore } from '../state/store';
-import benchyModel from '../samples/benchy.drc?url';
-import benchyPreview from '../samples/benchy.webp?url';
-import wavesModel from '../samples/serpentine_waves.drc?url';
-import wavesPreview from '../samples/serpentine_waves.webp?url';
-import pyramidsModel from '../samples/four_pyramids.drc?url';
-import pyramidsPreview from '../samples/four_pyramids.webp?url';
-import ridgesModel from '../samples/chevron_ridges.drc?url';
-import ridgesPreview from '../samples/chevron_ridges.webp?url';
-import ripplesModel from '../samples/ripple_cylinder.drc?url';
-import ripplesPreview from '../samples/ripple_cylinder.webp?url';
-import cylinderModel from '../samples/wavy_cylinder.drc?url';
-import cylinderPreview from '../samples/wavy_cylinder.webp?url';
 import { openSetup } from '../onboarding/setup-flow';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
-const SAMPLES: { file: string; label: string; model: string; preview: string }[] = [
-  { file: '3DBenchy.drc', label: 'Benchy', model: benchyModel, preview: benchyPreview },
-  { file: 'serpentine_waves.drc', label: 'Waves', model: wavesModel, preview: wavesPreview },
-  { file: 'four_pyramids.drc', label: 'Pyramids', model: pyramidsModel, preview: pyramidsPreview },
-  { file: 'chevron_ridges.drc', label: 'Ridges', model: ridgesModel, preview: ridgesPreview },
-  { file: 'ripple_cylinder.drc', label: 'Ripples', model: ripplesModel, preview: ripplesPreview },
-  { file: 'wavy_cylinder.drc', label: 'Cylinder', model: cylinderModel, preview: cylinderPreview },
+const assets = import.meta.glob<string>('../samples/*.{drc,webp}', { eager: true, query: '?url', import: 'default' });
+type Variant = { slope?: number; file: string; model: string; preview: string };
+type SampleDef = { label: string; variants: Variant[] };
+const asset = (name: string) => assets[`../samples/${name}`];
+const relief = (label: string, name: string): SampleDef => ({ label, variants: ([[10, ''], [15, '-15'], [30, '-30']] as const).map(([slope, suffix]) =>
+  ({ slope, file: `${name}${suffix}.drc`, model: asset(`${name}${suffix}.drc`), preview: asset(`${name}${suffix}.webp`) })) });
+const SAMPLES: SampleDef[] = [
+  { label: 'Benchy', variants: [{ file: '3DBenchy.drc', model: asset('benchy.drc'), preview: asset('benchy.webp') }] },
+  relief('Waves', 'serpentine_waves'), relief('Pyramids', 'four_pyramids'), relief('Ridges', 'chevron_ridges'),
+  relief('Ripples', 'ripple_cylinder'), relief('Cylinder', 'wavy_cylinder'),
 ];
 const models = new Map<string, Promise<string>>();
 function modelBlobUrl(url: string) {
@@ -44,38 +35,73 @@ function modelBlobUrl(url: string) {
   }
   return p;
 }
+const decoded = new Set<string>();
+function warmPreview(url: string) {
+  if (decoded.has(url)) return;
+  decoded.add(url);
+  const img = new Image(); img.src = url; void img.decode().catch(() => decoded.delete(url));
+}
 let warmed = false;
 function warmSamples() {
   if (warmed) return;
   warmed = true;
-  for (const s of SAMPLES) { const img = new Image(); img.src = s.preview; void img.decode().catch(() => {}); }
+  for (const s of SAMPLES) warmPreview(s.variants[0].preview);
   const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
-  idle(() => { for (const s of SAMPLES) modelBlobUrl(s.model).catch(() => {}); });
+  idle(() => { for (const s of SAMPLES) modelBlobUrl(s.variants[0].model).catch(() => {}); });
 }
-function Sample({ file, label, model, preview }: (typeof SAMPLES)[number]) {
-  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), picked = useRef(false);
-  const pick = async () => {
-    picked.current = true; setOpen(false);
+function warmVariants(variants: Variant[]) {
+  for (const v of variants.slice(1)) { warmPreview(v.preview); modelBlobUrl(v.model).catch(() => {}); }
+}
+const LONG_PRESS_MS = 450;
+function Sample({ label, variants }: SampleDef) {
+  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [shown, setShown] = useState(0);
+  const picked = useRef(false), chip = useRef<HTMLButtonElement>(null), card = useRef<HTMLDivElement>(null);
+  const press = useRef<{ timer?: ReturnType<typeof setTimeout>; long: boolean }>({ long: false });
+  const steps = variants.length > 1;
+  const show = () => { setShown(0); warmVariants(variants); setOpen(true); };
+  const close = () => { picked.current = true; setOpen(false); };
+  const pick = async (v: Variant) => {
+    close();
     if (busy) return;
     setBusy(true);
     try {
-      await importFetched(label, [[await modelBlobUrl(model), file]]);
+      await importFetched(label, [[await modelBlobUrl(v.model), v.file]]);
     } catch (e) {
       toast(`${label}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
   };
-  return <HoverCard.Root open={open} onOpenChange={(v) => setOpen(v && !picked.current)} openDelay={30} closeDelay={60}>
+  const segments = () => [...(card.current?.querySelectorAll<HTMLButtonElement>('.seg > button') ?? [])];
+  const endPress = () => clearTimeout(press.current.timer);
+  return <HoverCard.Root open={open} openDelay={30} closeDelay={60}
+    onOpenChange={(v) => { if (v) { if (!picked.current) show(); } else if (!card.current?.contains(document.activeElement)) setOpen(false); }}>
     <HoverCard.Trigger asChild>
-      <button type="button" className="fr-sample" data-busy={busy || undefined} aria-busy={busy || undefined}
-        onPointerLeave={() => { picked.current = false; }} onBlur={() => { picked.current = false; }} onClick={() => void pick()}>{label}</button>
+      <button ref={chip} type="button" className="fr-sample" data-busy={busy || undefined} aria-busy={busy || undefined}
+        aria-expanded={steps ? open : undefined}
+        onPointerLeave={() => { picked.current = false; endPress(); }} onBlur={() => { picked.current = false; }}
+        onPointerDown={(e) => { press.current.long = false; if (e.pointerType === 'touch') press.current.timer = setTimeout(() => { press.current.long = true; picked.current = false; show(); }, LONG_PRESS_MS); }}
+        onPointerUp={endPress} onPointerCancel={endPress} onContextMenu={(e) => { if (press.current.long) e.preventDefault(); }}
+        onKeyDown={(e) => { if (steps && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); picked.current = false; show(); requestAnimationFrame(() => segments()[0]?.focus()); } }}
+        onClick={() => { if (press.current.long) press.current.long = false; else void pick(variants[0]); }}>{label}</button>
     </HoverCard.Trigger>
-    <HoverCard.Portal>
-      <HoverCard.Content className="fr-preview" side="top" sideOffset={8} collisionPadding={8} aria-hidden>
-        <div className="sample-preview" style={{ backgroundImage: `url(${preview})` }} />
-      </HoverCard.Content>
-    </HoverCard.Portal>
+    <HoverCard.Content ref={card} className="fr-preview" side="top" sideOffset={8} collisionPadding={8}
+      onBlur={(e) => { const to = e.relatedTarget as Node | null; if (!e.currentTarget.contains(to) && to !== chip.current) setOpen(false); }}>
+      <div className="sample-preview" aria-hidden style={{ backgroundImage: `url(${variants[shown].preview})` }} />
+      {steps && <>
+        <div className="seg slant-seg" role="group" aria-label={`${label} top slope`}
+          onKeyDown={(e) => {
+            const all = segments(), i = all.indexOf(document.activeElement as HTMLButtonElement);
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); all[(i + (e.key === 'ArrowRight' ? 1 : all.length - 1)) % all.length]?.focus(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); chip.current?.focus(); }
+          }}>
+          {variants.map((v, i) => <button key={v.file} type="button" tabIndex={i === shown ? 0 : -1} className={i === shown ? 'on' : undefined}
+            aria-label={`Add ${label}, ${v.slope}° top slope`} onPointerEnter={() => setShown(i)} onFocus={() => setShown(i)}
+            onClick={() => void pick(v)}>{v.slope}°</button>)}
+        </div>
+        <div className="fr-preview-hint">Steeper needs Ignore cooling duct</div>
+      </>}
+    </HoverCard.Content>
   </HoverCard.Root>;
 }
 
@@ -97,7 +123,7 @@ function DropZone() {
       <UrlImportInline />
       <div className="fr-samples">
         <span>or try</span>
-        {SAMPLES.map((s) => <Sample key={s.file} {...s} />)}
+        {SAMPLES.map((s) => <Sample key={s.label} {...s} />)}
       </div>
     </div>
   );

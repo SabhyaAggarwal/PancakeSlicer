@@ -54,7 +54,7 @@
   --shadow-pop: 0 6px 18px #0006;
   --icon-filter: grayscale(1) brightness(1.15);
   --space-section: var(--s-5); --space-head: var(--s-3); --space-row: var(--s-3); --space-group: var(--s-6); --control-pad-x: var(--s-4);
-  --slant-angle: 10deg; --slant-radius: 3px; --slant-border: var(--line-strong);
+  --slant-angle: 13.5deg; --slant-radius: 3px; --slant-border: var(--line-strong);
   --slant-fill: var(--control-bg); --slant-fill-hover: var(--hover); --slant-fill-pressed: var(--sunken); --accent-pressed: #C58022;
   --info: #A1D2FF; --success: #3DDC84;
   --bed-plate: #3A3A3A; --bed-texture: #363636; --bed-grid: #7A7A7A; --bed-outline: #D6D6D6;
