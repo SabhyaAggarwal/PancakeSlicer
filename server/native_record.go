@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -138,7 +139,7 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			if summary["clearance_checked"] == "1" {
 				clearance := map[string]any{"checked": true}
 				if previous, ok := report["clearance"].(map[string]any); ok && previous["clearance_override"] == true {
-					clearance["clearance_override"], clearance["duct_graze_moves"] = true, previous["duct_graze_moves"]
+					clearance["clearance_override"] = true
 				}
 				for target, key := range map[string]string{"hits": "clearance_hit_moves", "body_hits": "clearance_body_hit_moves", "machine_hits": "clearance_machine_hit_moves", "cone_graze_moves": "clearance_cone_graze_moves"} {
 					if n, err := strconv.ParseUint(summary[key], 10, 64); err == nil {
@@ -158,9 +159,12 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			record["nonplanar_report"], _ = json.Marshal(report)
 		}
 	}
-	failures := uncurvedObjects(record["nonplanar_report"], record["inputs"])
-	colliding, touches := collidingObjects(record["nonplanar_report"], c, j)
-	failures = append(failures, colliding...)
+	if flat := uncurvedObjects(record["nonplanar_report"], record["inputs"]); len(flat) > 0 {
+		record["printed_flat"], _ = json.Marshal(flat)
+	} else {
+		delete(record, "printed_flat")
+	}
+	failures, touches := collidingObjects(record["nonplanar_report"], c, j)
 	if len(touches) > 0 {
 		var warnings []string
 		json.Unmarshal(record["object_warnings"], &warnings)
@@ -201,12 +205,20 @@ func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 	if inputs.Head.File != "" {
 		var head struct {
 			Boxes []struct {
-				Block bool `json:"block"`
+				Name   string `json:"name"`
+				Duct   *bool  `json:"duct"`
+				Nozzle bool   `json:"nozzle"`
+				Block  bool   `json:"block"`
 			} `json:"boxes"`
 		}
 		if b, err := os.ReadFile(inputs.Head.File); err == nil && json.Unmarshal(b, &head) == nil {
 			for _, box := range head.Boxes {
-				marked = marked || box.Block
+				name := strings.ToLower(box.Name)
+				if box.Duct != nil {
+					marked = marked || *box.Duct
+				} else {
+					marked = marked || (!box.Nozzle && !box.Block && (strings.Contains(name, "duct") || strings.Contains(name, "shroud")))
+				}
 			}
 		}
 	}
@@ -237,16 +249,16 @@ func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 
 var verifiedModes = map[string]bool{"smooth_morph": true, "slant": true}
 
-const (
-	refuseDepthMM   = 1.0
-	refuseBodyHits  = 200
-	verifierTimeout = 5 * time.Minute
-)
+const verifierTimeout = 5 * time.Minute
 
 type clearanceVerdict struct {
-	Hits, BodyHits int
+	Hits, DuctHits int
 	MinMM          float64
 	Checked        bool
+	Tolerance      float64
+	DuctLimit      int
+	IgnoreDuct     bool
+	Settings       bool
 }
 
 func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[string]any, warnings []string) {
@@ -270,25 +282,61 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[str
 	if v.Checked && v.Hits <= 0 {
 		return nil, nil
 	}
-	depth := strconv.FormatFloat(math.Max(0, -v.MinMM), 'f', 2, 64)
-	refuse := !v.Checked || -v.MinMM > refuseDepthMM || v.BodyHits > refuseBodyHits
+	depth := math.Max(0, -v.MinMM)
+	duct := v.DuctHits
+	if v.IgnoreDuct {
+		duct = 0
+	}
+	checked := v.Checked && v.Settings
+	refuse := !checked || depth > v.Tolerance || duct > v.DuctLimit
 	for _, i := range curved {
 		o := report.Objects[i]
 		mode, _ := o["mode"].(string)
 		method := methodLabels[mode]
 		name, _ := o["name"].(string)
 		if !refuse {
-			warnings = append(warnings, name+": May touch the part in "+strconv.Itoa(v.Hits)+" spots (max "+depth+" mm)")
+			if duct > 0 {
+				warnings = append(warnings, name+": May graze the part with the fan duct in "+strconv.Itoa(duct)+" spots")
+			}
 			continue
 		}
 		reason := "Could not check " + method + " for collisions; try again or slice flat"
-		if v.Checked {
-			reason = method + " would hit the part in " + strconv.Itoa(v.Hits) + " moves (max " + depth + " mm)"
+		if checked && depth > v.Tolerance {
+			reason = method + " would hit the part " + strconv.FormatFloat(depth, 'f', 2, 64) + " mm deep, past your " +
+				strconv.FormatFloat(v.Tolerance, 'f', -1, 64) + " mm collision tolerance"
+		} else if checked {
+			reason = method + " would graze the part with the fan duct in " + strconv.Itoa(duct) + " moves, past your limit of " +
+				strconv.Itoa(v.DuctLimit)
 		}
 		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
-			"reason": reason, "try_ignore_duct": false})
+			"reason": reason, "try_ignore_duct": checked && duct > v.DuctLimit && depth <= v.Tolerance})
 	}
 	return failures, warnings
+}
+
+func gcodeSettings(path string, keys ...string) map[string]string {
+	out := map[string]string{}
+	f, err := os.Open(path)
+	if err != nil {
+		return out
+	}
+	defer f.Close()
+	const tail = 4 << 20
+	if st, err := f.Stat(); err == nil && st.Size() > tail {
+		f.Seek(st.Size()-tail, 0)
+	}
+	b, _ := io.ReadAll(f)
+	want := map[string]bool{}
+	for _, k := range keys {
+		want[k] = true
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, ";"))
+		if k, v, ok := strings.Cut(line, " = "); ok && want[k] {
+			out[k] = strings.TrimSpace(v)
+		}
+	}
+	return out
 }
 
 func (j *Job) morphClearance(c Config) clearanceVerdict {
@@ -302,6 +350,7 @@ func (j *Job) morphClearance(c Config) clearanceVerdict {
 		defer cancel()
 		out, err := exec.CommandContext(ctx, c.Tool, "--verify-gcode", gcode, "--profiles", filepath.Join(c.Resources, "profiles")).Output()
 		v := clearanceVerdict{}
+		duct := false
 		for _, line := range strings.Split(string(out), "\n") {
 			f := strings.Fields(line)
 			switch {
@@ -310,16 +359,27 @@ func (j *Job) morphClearance(c Config) clearanceVerdict {
 				v.Hits, v.Checked = n, perr == nil
 			case len(f) == 2 && f[0] == "clearance_min_mm":
 				v.MinMM, _ = strconv.ParseFloat(f[1], 64)
-			case len(f) > 2 && f[0] == "clearance_hit_classes":
+			case len(f) == 2 && f[0] == "clearance_duct_moves":
+				v.DuctHits, _ = strconv.Atoi(f[1])
+				duct = true
+			case len(f) > 2 && f[0] == "clearance_hit_classes" && !duct:
 				for k := 1; k+1 < len(f); k += 2 {
 					if f[k] == "body" {
-						v.BodyHits, _ = strconv.Atoi(f[k+1])
+						v.DuctHits, _ = strconv.Atoi(f[k+1])
 					}
 				}
 			}
 		}
+		settings := gcodeSettings(gcode, "nonplanar_collision_tolerance", "nonplanar_duct_graze_limit", "nonplanar_ignore_duct")
+		tol, e1 := strconv.ParseFloat(settings["nonplanar_collision_tolerance"], 64)
+		limit, e2 := strconv.Atoi(settings["nonplanar_duct_graze_limit"])
+		ignore, ok := settings["nonplanar_ignore_duct"]
+		v.Tolerance, v.DuctLimit, v.IgnoreDuct, v.Settings = tol, limit, ignore == "1", e1 == nil && e2 == nil && ok
+		if !v.Settings {
+			j.log("server", "clearance verification found no Head clearance settings in the G-code")
+		}
 		if v.Checked {
-			j.log("server", "verified clearance hit moves "+strconv.Itoa(v.Hits)+" min "+strconv.FormatFloat(v.MinMM, 'f', 3, 64)+" mm body "+strconv.Itoa(v.BodyHits))
+			j.log("server", "verified clearance hit moves "+strconv.Itoa(v.Hits)+" min "+strconv.FormatFloat(v.MinMM, 'f', 3, 64)+" mm duct "+strconv.Itoa(v.DuctHits))
 			j.clearance = v
 			return
 		}
