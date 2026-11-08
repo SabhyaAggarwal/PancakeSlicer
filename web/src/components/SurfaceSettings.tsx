@@ -65,13 +65,15 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
         : <button type="button" className="link" onClick={() => openMethodChoice(key)}>Choose another method</button>}
     </div>;
   };
-  const curved = (mode === 'curved_tops' || mode === 'nonplanar_top') && availability.allowedModes.includes(mode);
+  const method = mode !== 'off' && availability.allowedModes.includes(mode);
+  const waved = wave !== 'off' && availability.allowedWaveModes.includes(wave);
+  const curved = method && (mode === 'curved_tops' || mode === 'nonplanar_top');
   const ductOn = ['1', 'true'].includes(String(config.nonplanar_ignore_duct ?? OPTIONS.nonplanar_ignore_duct?.default ?? '0'));
-  const duct = modeVisible('develop', uiMode) ? [field('nonplanar_ignore_duct'), ductOn && field('nonplanar_clearance_margin')] : [];
+  const duct = (method || waved) && modeVisible('develop', uiMode) ? [field('nonplanar_ignore_duct'), ductOn && field('nonplanar_clearance_margin')] : [];
   return <section className="optgroup surface-settings" data-engine-state={engine.value}>
     {field('nonplanar_mode','Slicing method','mode')}
     {notice('mode')}
-    {curved && Object.keys(CURVED_DEFAULTS).flatMap(key => key === 'nonplanar_curved_max_angle' ? [field(key), ...duct] : [field(key)])}
+    {curved && Object.keys(CURVED_DEFAULTS).map(key => field(key))}
     {mode === 'slant' && availability.allowedModes.includes(mode) && <>
       {field('nonplanar_slant_angle')}
       {field('nonplanar_slant_direction')}
@@ -80,10 +82,11 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
           onClick={openSlantPlane}>Define slant plane</button>
       </div>
       {modeVisible('develop', uiMode) && [field('nonplanar_slant_start_height'), field('nonplanar_slant_morph_layers')]}
-      {duct}
     </>}
+    {method && duct}
     {(availability.allowedWaveModes.length > 0 || wave !== 'off') && field('nonplanar_wave','Wave pattern','wave')}
     {notice('wave')}
-    {wave !== 'off' && availability.allowedWaveModes.includes(wave) && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}
+    {waved && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}
+    {!method && waved && duct}
   </section>;
 }
