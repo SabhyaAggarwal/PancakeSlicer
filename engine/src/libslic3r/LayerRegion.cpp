@@ -1383,6 +1383,7 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
         return p;
     };
 
+    const double floor_z = this->layer()->object()->layers().front()->print_z;
     std::vector<ExtrusionPath> result;
     ExtrusionPath current(source);
     current.polyline.points.clear();
@@ -1432,6 +1433,11 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
             Point3 p0 = point_at(a, b, ts[j-1], owner, facet, mid);
             Point3 p1 = point_at(a, b, ts[j], owner, facet, mid);
             if (p0 == p1) continue;
+            if (owner >= 0 && std::min(p0.z(), p1.z()) <= scale_(floor_z)) {
+                flush();
+                current_owner = -3;
+                continue;
+            }
             if (owner >= 0) {
                 const double xy = std::hypot(unscale<double>(p1.x() - p0.x()),
                                              unscale<double>(p1.y() - p0.y()));

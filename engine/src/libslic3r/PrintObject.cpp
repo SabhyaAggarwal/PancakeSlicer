@@ -2987,11 +2987,13 @@ PrintObject::detect_nonplanar_surfaces()
             float distance_to_top = 0.0f;
             const int curved_shells = m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop ? m_config.nonplanar_curved_shells.value :
                                                                                                     std::min(1, m_config.nonplanar_curved_shells.value);
+            size_t previous_home = std::numeric_limits<size_t>::max();
             for (int shell_thickness = 0; curved_shells > shell_thickness; ++shell_thickness){
                 for (LayerPtrs::reverse_iterator home_layer_it = this->m_layers.rbegin(); home_layer_it != this->m_layers.rend(); ++home_layer_it){
                     Layer* home_layer        = *home_layer_it;
                     LayerRegion &home_layerm = *home_layer->m_regions[region_id];
-                    if (home_layer->slice_z > nonplanar_surface.stats.max.z - distance_to_top) continue;
+                    if (home_layer->slice_z > nonplanar_surface.stats.max.z - distance_to_top || home_layer->id() >= previous_home) continue;
+                    previous_home = home_layer->id();
 
                     for (LayerPtrs::iterator layer_it = this->m_layers.begin(); layer_it != this->m_layers.end(); ++layer_it){
                         Layer* layer        = *layer_it;
