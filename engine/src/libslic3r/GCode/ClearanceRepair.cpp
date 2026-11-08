@@ -915,9 +915,10 @@ std::map<size_t, int>                       conformal_steps;
 
 int conformal_cap_step(const ModelObject &object)
 {
+    static const int first = std::getenv("NP_CONFORMAL_RUNG") ? std::atoi(std::getenv("NP_CONFORMAL_RUNG")) : 0;
     const std::lock_guard<std::mutex> lock(conformal_step_mutex);
     const auto it = conformal_steps.find(object.id().id);
-    return it == conformal_steps.end() ? 0 : it->second;
+    return std::max(first, it == conformal_steps.end() ? 0 : it->second);
 }
 
 bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
