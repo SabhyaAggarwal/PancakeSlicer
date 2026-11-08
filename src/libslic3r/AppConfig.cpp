@@ -7,7 +7,6 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Format/DRC.hpp"
 #include "AppConfig.hpp"
-
 #include "Preset.hpp"
 #include "Exception.hpp"
 #include "InstanceLock.hpp"
@@ -47,7 +46,6 @@
 #include <string_view>
 
 #ifdef WIN32
-
 #include <boost/uuid/detail/md5.hpp>
 #include <boost/algorithm/hex.hpp>
 #endif
@@ -58,7 +56,10 @@ using namespace nlohmann;
 
 namespace Slic3r {
 
+static const std::string VERSION_CHECK_URL = "https://check-version.orcaslicer.com/latest";
+static const std::string PROFILE_UPDATE_URL = "https://check-version.orcaslicer.com/profile";
 
+constexpr const char* CONFIG_ORCA_UPDATER_URL = "orca_updater_url";
 
 static const std::string MODELS_STR = "models";
 
@@ -87,24 +88,11 @@ std::string AppConfig::get_hms_host()
 {
     std::string sel = get("iot_environment");
     std::string host = "";
-
-
-
-
-
-
-
-
-
-
-
     return "e.bambulab.com";
-
 }
 
 bool AppConfig::get_stealth_mode()
 {
-
     if (!get_bool("firstguide","finish")) {
         return true;
     }
@@ -122,18 +110,15 @@ void AppConfig::reset()
     set_defaults();
 };
 
-
 void AppConfig::set_defaults()
 {
     if (m_mode == EAppMode::Editor) {
 #ifdef SUPPORT_AUTO_CENTER
-
         if (get("autocenter").empty())
             set_bool("autocenter", true);
 #endif
 
 #ifdef SUPPORT_BACKGROUND_PROCESSING
-
         if (get("background_processing").empty())
             set_bool("background_processing", false);
 #endif
@@ -157,27 +142,19 @@ void AppConfig::set_defaults()
             set_bool("associate_step", false);
 
 #endif
-
-
         if (!get("use_legacy_opengl").empty())
             erase("app", "use_legacy_opengl");
-
 
         std::string legacy_networking = get("legacy_networking");
         std::string network_version = get("network_plugin_version");
 
         if (!legacy_networking.empty()) {
-
             bool was_legacy = (legacy_networking == "true" || legacy_networking == "1");
 
             if (was_legacy && network_version.empty()) {
-
                 BOOST_LOG_TRIVIAL(info) << "Migrating legacy_networking=true to network_plugin_version=01.10.01.01";
                 set_network_plugin_version(BAMBU_NETWORK_AGENT_VERSION_LEGACY);
             }
-
-
-
             erase("app", "legacy_networking");
         }
 
@@ -220,11 +197,8 @@ void AppConfig::set_defaults()
     if (get("seq_top_layer_only").empty())
         set("seq_top_layer_only", "1");
 
-
     if (get("preview_dim_previous_layers").empty())
         set_bool("preview_dim_previous_layers", false);
-
-
 
     if (get("preview_dim_previous_layers_brightness").empty())
         set("preview_dim_previous_layers_brightness", "40");
@@ -238,9 +212,6 @@ void AppConfig::set_defaults()
         }
         set("preview_dim_previous_layers_brightness", std::to_string(std::max(0, std::min(brightness, 99))));
     }
-
-
-
 
     if (get("preview_default_view_type").empty())
         set("preview_default_view_type", "auto");
@@ -310,7 +281,6 @@ void AppConfig::set_defaults()
     if (get(SETTING_OPENGL_SKIP_IDENTICAL_FRAMES).empty())
         set_bool(SETTING_OPENGL_SKIP_IDENTICAL_FRAMES, true);
 
-
     set(SETTING_PLUGIN_PAGES_VISIBLE_COUNT, std::to_string(get_plugin_pages_visible_count()));
 
     set(SETTING_SPEED_DIAL_RECENT_COUNT, std::to_string(get_speed_dial_recent_count()));
@@ -333,7 +303,6 @@ void AppConfig::set_defaults()
     if (get(SETTING_OPENGL_SHADING_MODEL).empty())
         set(SETTING_OPENGL_SHADING_MODEL, "gouraud");
 
-
     if (get(SETTING_OPENGL_REALISTIC_SHADOWS).empty())
         set(SETTING_OPENGL_REALISTIC_SHADOWS, get_bool(SETTING_OPENGL_PHONG_BASIC_PLATE_SHADOWS) ? "orbit" : "off");
 
@@ -350,33 +319,21 @@ void AppConfig::set_defaults()
         set_bool("zoom_to_mouse", false);
 
 #ifdef SLIC3R_CAD
-
-
     if (get("enable_cad_feature").empty())
         set_bool("enable_cad_feature", false);
-
-
-
 
     if (get("auto_close_sketch_loops").empty())
         set_bool("auto_close_sketch_loops", true);
 
-
-
-
-
     if (get("design_connector_face_glyph").empty())
         set_bool("design_connector_face_glyph", true);
-
 
     if (get("design_show_bed").empty())
         set_bool("design_show_bed", true);
 #endif
 
-
     if (get("show_hints").empty())
         set_bool("show_hints", false);
-
     if (get("enable_multi_machine").empty())
         set_bool("enable_multi_machine", false);
 
@@ -389,7 +346,6 @@ void AppConfig::set_defaults()
     if (get("show_3d_navigator").empty())
         set_bool("show_3d_navigator", true);
 
-
     if (get("show_fila_switch_tips").empty())
         set_bool("show_fila_switch_tips", true);
 
@@ -398,7 +354,7 @@ void AppConfig::set_defaults()
 
     if (get("show_outline").empty())
         set_bool("show_outline", false);
-
+    
     if (get("show_axes").empty())
         set_bool("show_axes", true);
 
@@ -413,25 +369,17 @@ void AppConfig::set_defaults()
 
 #ifdef _WIN32
 
-
     if (get("use_legacy_3DConnexion").empty())
         set_bool("use_legacy_3DConnexion", true);
-
 
 #ifdef SUPPORT_DARK_MODE
     if (get("dark_color_mode").empty())
         set("dark_color_mode", "0");
 #endif
 
-
     if (get("sys_menu_enabled").empty())
         set("sys_menu_enabled", "1");
-
 #endif
-
-
-
-
 
     if (get("developer_mode").empty())
         set_bool("developer_mode", false);
@@ -451,16 +399,13 @@ void AppConfig::set_defaults()
     if (get("internal_developer_mode").empty())
         set_bool("internal_developer_mode", false);
 
-
     if (get("preset_folder").empty())
         set("preset_folder", "");
-
 
     if (get("slicer_uuid").empty()) {
         boost::uuids::uuid uuid = boost::uuids::random_generator()();
         set("slicer_uuid", to_string(uuid));
     }
-
 
     if (get("stealth_mode").empty()) {
         set_bool("stealth_mode", false);
@@ -487,7 +432,6 @@ void AppConfig::set_defaults()
     if(get("check_stable_update_only").empty()) {
         set_bool("check_stable_update_only", false);
     }
-
 
     if(get("show_splash_screen").empty()) {
         set_bool("show_splash_screen", true);
@@ -617,10 +561,6 @@ void AppConfig::set_defaults()
         set("recent_models", "0");
     }
 
-
-
-
-
     if (get("sync_system_preset").empty()) {
         set_bool("sync_system_preset", true);
     }
@@ -645,15 +585,9 @@ void AppConfig::set_defaults()
         set("max_send", "3");
     }
 
-
     if (get("iot_environment").empty()) {
         set("iot_environment", "3");
     }
-
-
-
-
-
 
     if (get("allow_ip_resolve").empty())
         set_bool("allow_ip_resolve", true);
@@ -675,7 +609,6 @@ void AppConfig::set_defaults()
     if (get("enable_step_mesh_setting").empty()) {
         set_bool("enable_step_mesh_setting", true);
     }
-
     if (get("linear_deflection").empty() && !get("linear_defletion").empty())
         set("linear_deflection", get("linear_defletion"));
     if (get("angle_deflection").empty() && !get("angle_defletion").empty())
@@ -701,7 +634,6 @@ void AppConfig::set_defaults()
 
     if (get("use_printer_agents").empty())
     {
-
         set_bool("use_printer_agents", false);
     }
 
@@ -709,7 +641,6 @@ void AppConfig::set_defaults()
     {
         set_bool("enable_ota", false);
     }
-
 
     erase("app", "main_frame_maximized");
     erase("app", "main_frame_pos");
@@ -723,24 +654,16 @@ void AppConfig::set_defaults()
 #ifdef WIN32
 static std::string appconfig_md5_hash_line(const std::string_view data)
 {
-
-
-
-
     using boost::uuids::detail::md5;
     md5              md5_hash;
-
     md5::digest_type md5_digest{};
     std::string      md5_digest_str;
     md5_hash.process_bytes(data.data(), data.size());
     md5_hash.get_digest(md5_digest);
     boost::algorithm::hex(md5_digest, md5_digest + std::size(md5_digest), std::back_inserter(md5_digest_str));
-
     assert(md5_digest_str.size() == 32);
-
     return "# MD5 checksum " + md5_digest_str + "\n";
 }
-
 
 static bool verify_config_file_checksum(boost::nowide::ifstream &ifs)
 {
@@ -753,12 +676,7 @@ static bool verify_config_file_checksum(boost::nowide::ifstream &ifs)
     ifs.seekg(0, boost::nowide::ifstream::beg);
     std::string whole_config = read_whole_config_file();
 
-
     if (size_t last_comment_pos = whole_config.find_last_of('#'); last_comment_pos != std::string::npos) {
-
-
-
-
         if (std::string_view(whole_config.c_str() + last_comment_pos, whole_config.size() - last_comment_pos) == appconfig_md5_hash_line({ whole_config.data(), last_comment_pos }))
             return true;
     }
@@ -773,9 +691,7 @@ std::string AppConfig::load(bool read_only)
 {
     json j;
 
-
     InstanceLock instance_lock(read_only ? std::string() : lock_path());
-
 
     namespace pt = boost::property_tree;
     pt::ptree tree;
@@ -792,11 +708,9 @@ std::string AppConfig::load(bool read_only)
         std::string total_string = input_stream.str();
         size_t last_pos = total_string.find_last_of('}');
         std::string left_string = total_string.substr(0, last_pos+1);
-
         std::string right_string = total_string.substr(last_pos+2);
 
         std::string md5_str = appconfig_md5_hash_line({left_string.data()});
-
         if (md5_str != right_string)
             BOOST_LOG_TRIVIAL(info) << "The configuration file " << AppConfig::loading_path() <<
             " has a wrong MD5 checksum or the checksum is missing. This may indicate a file corruption or a harmless user edit.";
@@ -807,11 +721,9 @@ std::string AppConfig::load(bool read_only)
     }
     catch(nlohmann::detail::parse_error &err) {
 #ifdef WIN32
-
         ifs.close();
         std::string backup_path = (boost::format("%1%.bak") % AppConfig::loading_path()).str();
         if (boost::filesystem::exists(backup_path)) {
-
             boost::nowide::ifstream backup_ifs(backup_path);
             std::stringstream back_input_stream;
             back_input_stream << backup_ifs.rdbuf();
@@ -821,7 +733,6 @@ std::string AppConfig::load(bool read_only)
             std::string back_right_string = back_total_string.substr(back_last_pos+2);
 
             std::string back_md5_str = appconfig_md5_hash_line({back_left_string.data()});
-
             if (back_md5_str != back_right_string) {
                 BOOST_LOG_TRIVIAL(error) << format("Both \"%1%\" and \"%2%\" are corrupted. It isn't possible to restore configuration from the backup.", AppConfig::loading_path(), backup_path);
                 backup_ifs.close();
@@ -834,7 +745,6 @@ std::string AppConfig::load(bool read_only)
             }
             else {
                 BOOST_LOG_TRIVIAL(info) << format("Configuration file \"%1%\" was corrupted. It has been succesfully restored from the backup \"%2%\".", AppConfig::loading_path(), backup_path);
-
                 j = json::parse(back_left_string);
                 recovered = true;
             }
@@ -851,7 +761,6 @@ std::string AppConfig::load(bool read_only)
         for (auto it = j.begin(); it != j.end(); it++) {
             if (it.key() == MODELS_STR) {
                 for (auto& j_model : it.value()) {
-
                     const auto vendor_name = j_model["vendor"].get<std::string>();
                     auto& vendor = m_vendors[vendor_name];
                     const auto model_name = j_model["model"].get<std::string>();
@@ -974,7 +883,6 @@ std::string AppConfig::load(bool read_only)
         return err.what();
     }
 
-
     auto ini_ver = Semver::parse(get("version"));
     m_legacy_datadir = false;
     if (ini_ver) {
@@ -983,10 +891,7 @@ std::string AppConfig::load(bool read_only)
         ini_ver->set_prerelease(boost::none);
     }
 
-
     if (m_mode == EAppMode::Editor) {
-
-
         if (auto it_section = m_storage.find("extras"); it_section != m_storage.end()) {
             if (auto it_physical_printer = it_section->second.find("physical_printer"); it_physical_printer != it_section->second.end()) {
                 m_storage["presets"]["physical_printer"] = it_physical_printer->second;
@@ -996,19 +901,15 @@ std::string AppConfig::load(bool read_only)
                 m_storage.erase(it_section);
         }
 
-
         if (get(SETTING_CLOUD_PROVIDERS).empty()) {
-
             bool enable_bbl_cloud = get_bool("installed_networking");
             if (enable_bbl_cloud) {
-
                 set(SETTING_CLOUD_PROVIDERS, "orca;bbl");
             } else {
                 set(SETTING_CLOUD_PROVIDERS, "orca");
             }
         }
     }
-
 
     this->set_defaults();
     m_dirty = false;
@@ -1022,8 +923,6 @@ void AppConfig::save()
         throw CriticalException("Calling AppConfig::save() from a worker thread!");
     }
 
-
-
     const auto path = config_path();
 
     json j;
@@ -1033,7 +932,6 @@ void AppConfig::save()
         j["header"] = Slic3r::header_slic3r_generated();
     else
         j["header"] = Slic3r::header_gcodeviewer_generated();
-
 
     for (const auto& kvp : m_storage["app"]) {
         if (kvp.second == "true") {
@@ -1085,7 +983,6 @@ void AppConfig::save()
         j["calis"].push_back(cali_json);
     }
 
-
     for (const auto& category : m_storage) {
         if (category.first.empty())
             continue;
@@ -1121,7 +1018,6 @@ void AppConfig::save()
         }
     }
 
-
     for (const auto& vendor : m_vendors) {
         size_t size_sum = 0;
         for (const auto& model : vendor.second) { size_sum += model.second.size(); }
@@ -1131,7 +1027,6 @@ void AppConfig::save()
             if (model.second.empty()) { continue; }
             const std::vector<std::string> variants(model.second.begin(), model.second.end());
             const auto escaped = escape_strings_cstyle(variants);
-
             json j_model;
             j_model["vendor"] = vendor.first;
             j_model["model"] = model.first;
@@ -1139,7 +1034,6 @@ void AppConfig::save()
             j[MODELS_STR].push_back(j_model);
         }
     }
-
 
     for (const auto& preset : m_printer_settings) {
         j["orca_presets"].push_back(preset.second);
@@ -1163,9 +1057,7 @@ void AppConfig::save()
 
 std::string AppConfig::load(bool read_only)
 {
-
     InstanceLock instance_lock(read_only ? std::string() : lock_path());
-
 
     namespace pt = boost::property_tree;
     pt::ptree tree;
@@ -1175,7 +1067,6 @@ std::string AppConfig::load(bool read_only)
     try {
         ifs.open(AppConfig::loading_path());
 #ifdef WIN32
-
         if (!verify_config_file_checksum(ifs))
             BOOST_LOG_TRIVIAL(info) << "The configuration file " << AppConfig::loading_path() <<
             " has a wrong MD5 checksum or the checksum is missing. This may indicate a file corruption or a harmless user edit.";
@@ -1186,11 +1077,9 @@ std::string AppConfig::load(bool read_only)
     }
     catch (pt::ptree_error& ex) {
 #ifdef WIN32
-
         ifs.close();
         std::string backup_path = (boost::format("%1%.bak") % AppConfig::loading_path()).str();
         if (boost::filesystem::exists(backup_path)) {
-
             boost::nowide::ifstream backup_ifs(backup_path);
             if (!verify_config_file_checksum(backup_ifs)) {
                 BOOST_LOG_TRIVIAL(error) << format("Both \"%1%\" and \"%2%\" are corrupted. It isn't possible to restore configuration from the backup.", AppConfig::loading_path(), backup_path);
@@ -1204,7 +1093,6 @@ std::string AppConfig::load(bool read_only)
             }
             else {
                 BOOST_LOG_TRIVIAL(info) << format("Configuration file \"%1%\" was corrupted. It has been succesfully restored from the backup \"%2%\".", AppConfig::loading_path(), backup_path);
-
                 try {
                     ifs.open(AppConfig::loading_path());
                     pt::read_ini(ifs, tree);
@@ -1219,31 +1107,17 @@ std::string AppConfig::load(bool read_only)
 #endif
             BOOST_LOG_TRIVIAL(info) << format("Failed to parse configuration file \"%1%\": %2%", AppConfig::loading_path(), ex.what());
         if (!recovered) {
-
-
-
-
-
-
-
-
-
-
             return ex.what();
         }
     }
 
-
     for (const auto& section : tree) {
         if (section.second.empty()) {
-
             std::string data = section.second.data();
             if (!data.empty())
-
                 m_storage[""][section.first] = data;
         }
         else if (boost::starts_with(section.first, VENDOR_PREFIX)) {
-
             const auto vendor_name = section.first.substr(VENDOR_PREFIX.size());
             auto& vendor = m_vendors[vendor_name];
             for (const auto& kvp : section.second) {
@@ -1257,28 +1131,21 @@ std::string AppConfig::load(bool read_only)
             }
         }
         else {
-
             std::map<std::string, std::string>& storage = m_storage[section.first];
             for (auto& kvp : section.second)
                 storage[kvp.first] = kvp.second.data();
         }
     }
 
-
     auto ini_ver = Semver::parse(get("version"));
     m_legacy_datadir = false;
     if (ini_ver) {
         m_orig_version = *ini_ver;
-
         ini_ver->set_metadata(boost::none);
         ini_ver->set_prerelease(boost::none);
-
     }
 
-
     if (m_mode == EAppMode::Editor) {
-
-
         if (auto it_section = m_storage.find("extras"); it_section != m_storage.end()) {
             if (auto it_physical_printer = it_section->second.find("physical_printer"); it_physical_printer != it_section->second.end()) {
                 m_storage["presets"]["physical_printer"] = it_physical_printer->second;
@@ -1288,7 +1155,6 @@ std::string AppConfig::load(bool read_only)
                 m_storage.erase(it_section);
         }
     }
-
 
     this->set_defaults();
     m_dirty = false;
@@ -1300,8 +1166,6 @@ void AppConfig::save()
     if (! is_main_thread_active())
         throw CriticalException("Calling AppConfig::save() from a worker thread!");
 
-
-
     const auto path = config_path();
 
     std::stringstream config_ss;
@@ -1309,18 +1173,15 @@ void AppConfig::save()
         config_ss << "# " << Slic3r::header_slic3r_generated() << std::endl;
     else
         config_ss << "# " << Slic3r::header_gcodeviewer_generated() << std::endl;
-
     for (const auto& kvp : m_storage[""])
         config_ss << kvp.first << " = " << kvp.second << std::endl;
-
     for (const auto& category : m_storage) {
-        if (category.first.empty())
-            continue;
+    	if (category.first.empty())
+    		continue;
         config_ss << std::endl << "[" << category.first << "]" << std::endl;
         for (const auto& kvp : category.second)
             config_ss << kvp.first << " = " << kvp.second << std::endl;
 	}
-
     for (const auto &vendor : m_vendors) {
         size_t size_sum = 0;
         for (const auto &model : vendor.second) { size_sum += model.second.size(); }
@@ -1335,7 +1196,6 @@ void AppConfig::save()
             config_ss << MODEL_PREFIX << model.first << " = " << escaped << std::endl;
         }
     }
-
     config_ss << std::endl;
 
     const std::string config_str = config_ss.str();
@@ -1346,16 +1206,10 @@ void AppConfig::save()
 
 bool AppConfig::write_config_file(const std::string &path, std::string body, const std::string &checksum_source)
 {
-
     InstanceLock instance_lock(lock_path());
 #ifdef WIN32
-
-
-
     body += appconfig_md5_hash_line(checksum_source);
 #endif
-
-
     if (const std::error_code ec = write_file_atomically(path, body)) {
         BOOST_LOG_TRIVIAL(error) << "Failed to write the configuration " << path << ": " << ec.message() << "; trying again in 10 s";
         m_retry_save_at = std::chrono::steady_clock::now() + std::chrono::seconds(10);
@@ -1363,7 +1217,6 @@ bool AppConfig::write_config_file(const std::string &path, std::string body, con
     }
     m_retry_save_at = {};
 #ifdef WIN32
-
     const std::string backup_path = (boost::format("%1%.bak") % path).str();
     if (const std::error_code ec = write_file_atomically(backup_path, body))
         BOOST_LOG_TRIVIAL(error) << "Failed to write the backup configuration " << backup_path << ": " << ec.message();
@@ -1393,7 +1246,6 @@ void AppConfig::set_variant(const std::string &vendor, const std::string &model,
         if (it_var == it_m->second.end()) { return; }
         it_m->second.erase(it_var);
     }
-
     m_dirty = true;
 }
 
@@ -1516,25 +1368,6 @@ void AppConfig::update_skein_dir(const std::string &dir)
         return;
     this->set("recent", "last_opened_folder", dir);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 std::string AppConfig::get_last_output_dir(const std::string& alt, const bool removable) const
 {
 	std::string s1 = ("last_export_path");
@@ -1552,7 +1385,6 @@ void AppConfig::update_last_output_dir(const std::string& dir, const bool remova
 	this->set("app", ("last_export_path"), dir);
 }
 
-
 std::string AppConfig::get_last_backup_dir() const
 {
 	const auto it = m_storage.find("app");
@@ -1564,7 +1396,6 @@ std::string AppConfig::get_last_backup_dir() const
 	return "";
 }
 
-
 void AppConfig::update_last_backup_dir(const std::string& dir)
 {
 	this->set("app", "last_backup_path", dir);
@@ -1573,29 +1404,12 @@ void AppConfig::update_last_backup_dir(const std::string& dir)
 
 std::string AppConfig::get_region()
 {
-
     return this->get("region");
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
 
 std::string AppConfig::get_country_code()
 {
     std::string region = get_region();
-
-
-
     if (region == "CHN" || region == "China")
         return "CN";
     else if (region == "USA")
@@ -1804,7 +1618,6 @@ std::vector<std::string> AppConfig::get_cloud_providers() const
         if (!provider.empty())
             result.push_back(provider);
     }
-
     if (std::find(result.begin(), result.end(), "orca") == result.end()) {
         result.insert(result.begin(), "orca");
     }
@@ -1879,7 +1692,19 @@ std::string AppConfig::config_path()
     return path;
 }
 
+std::string AppConfig::version_check_url() const
+{
+    auto from_settings = get("version_check_url");
+    return from_settings.empty() ? VERSION_CHECK_URL : from_settings;
+}
 
+std::string AppConfig::profile_update_url() const
+{
+    std::string orca_updater_url = get(CONFIG_ORCA_UPDATER_URL);
+    if (orca_updater_url.empty())
+        return PROFILE_UPDATE_URL;
+    return orca_updater_url;
+}
 
 bool AppConfig::exists()
 {

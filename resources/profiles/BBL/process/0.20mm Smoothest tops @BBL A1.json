@@ -1,0 +1,26 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @BBL A1",
+	"renamed_from": "0.20mm Non-planar top @BBL A1;0.20mm Non-planar top BBL A1",
+	"inherits": "0.20mm Standard @BBL A1",
+	"from": "system",
+	"setting_id": "2f14dUeI1q3W7SAA",
+	"instantiation": "true",
+	"nonplanar_sublayer_walls": "1",
+	"nonplanar_time_budget": "16",
+	"nonplanar_continuous_top": "1",
+	"top_surface_acceleration": [
+		"5000"
+	],
+	"nonplanar_raised_top_acceleration": [
+		"5000"
+	],
+	"nonplanar_fallback_top_acceleration": [
+		"2000"
+	],
+	"compatible_printers": [
+		"Bambu Lab A1 0.4 nozzle"
+	],
+	"description": "0.20mm Standard for the A1 with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the A1 head.",
+	"include": "fdm_process_nonplanar_top"
+}

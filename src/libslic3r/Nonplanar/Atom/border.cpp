@@ -22,7 +22,7 @@ std::set<std::array<uint32_t, 2>> Border::borderEdges(const uint32_t *triangles,
     std::map<std::pair<uint32_t, uint32_t>, std::vector<uint32_t> > edges;
     for (uint32_t i = 0; i < nfaces; i++) {
         for (uint32_t j = 0; j < 3; j++) {
-            uint32_t v0 = triangles[3*i+j];
+            uint32_t v0 = triangles[3*i+j];       
             uint32_t v1 = triangles[3*i+(j + 1)%3];
             std::pair<uint32_t, uint32_t> e;
             e.first = std::min(v0, v1);

@@ -1,6 +1,3 @@
-
-
-
 import { setState } from './store';
 
 export interface BusyToken { relabel(label: string): void; end(): void }
@@ -25,12 +22,10 @@ export function beginBusy(label: string, signal?: AbortSignal): BusyToken {
   return token;
 }
 
-
 export async function withBusy<T>(label: string, work: (token: BusyToken) => Promise<T>, signal?: AbortSignal): Promise<T> {
   const token = beginBusy(label, signal);
   try { return await work(token); } finally { token.end(); }
 }
-
 
 const startupEntry = { label: 'Connecting' };
 live.push(startupEntry);
@@ -39,10 +34,8 @@ export const startupBusy: BusyToken = {
   end() { const at = live.indexOf(startupEntry); if (at >= 0) { live.splice(at, 1); project(); } },
 };
 
-
 export function busySlot() {
   let token: BusyToken | null = null;
   return { begin(label: string) { token?.end(); return (token = beginBusy(label)); }, end() { token?.end(); token = null; } };
 }
-
 export const openingBusy = busySlot();

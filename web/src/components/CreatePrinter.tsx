@@ -1,7 +1,3 @@
-
-
-
-
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import type { Config, SystemPreset } from '../api/types';
@@ -12,10 +8,10 @@ import { commitProfileRecords } from '../profiles/transactions';
 import { profileKey } from '../profiles/identity';
 import { switchPreset } from '../actions';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
+import { More } from './kit';
 
 const NOZZLES = ['0.2', '0.4', '0.6', '0.8'];
 const first = (v: unknown) => String([v].flat()[0] ?? '');
-
 function rect(area: string) {
   const pts = area.split(',').map((p) => p.split('x').map(Number));
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -25,7 +21,6 @@ function rect(area: string) {
 export default function CreatePrinter({ close }: { close(): void }) {
   const s: State = getState();
   const ready = useStore((st) => st.profileLibraryLoad.state === 'ready');
-
   const catalog = useCatalog('machine', '', true).data, vendors = catalog && 'vendors' in catalog ? catalog.vendors : [];
   const templatesOf = (vendor: string) => (vendors.find((v) => v.id === vendor)?.models ?? []).flatMap((m) => Object.values(m.machines)).sort();
   const current = printerPreset(s);
@@ -45,7 +40,6 @@ export default function CreatePrinter({ close }: { close(): void }) {
     return () => { live = false; };
   }, [onCurrent, template, templateVendor]);
   const base = onCurrent ? current : loaded?.name === template ? loaded : undefined;
-
   const shape = onCurrent ? effectiveConfig(s, 'machine') : base?.config ?? {};
   const r = rect(String(shape.printable_area ?? '0x0,200x0,200x200,0x200'));
   const [vendor, setVendor] = useState('');
@@ -56,7 +50,6 @@ export default function CreatePrinter({ close }: { close(): void }) {
   const [height, setHeight] = useState<number | null>(null);
   const [w, d] = size ?? [r.w, r.d], [ox, oy] = origin ?? [r.ox, r.oy];
   const h = height ?? (Number(shape.printable_height) || 250);
-
   const name = mode === 'nozzle' ? resolvePreset(s,'machine',s.printer).name ?? 'Printer' : `${vendor.trim()} ${model.trim()} ${nozzle} nozzle`;
   const missing = mode === 'printer' && (!vendor.trim() || !model.trim()) ? 'Enter a vendor and a model.'
     : !(Number(nozzle) > 0) ? 'Enter the nozzle diameter.'
@@ -64,8 +57,6 @@ export default function CreatePrinter({ close }: { close(): void }) {
   const create = async () => {
     if (!base || missing) return;
     if (getState().profileLibraryLoad.state !== 'ready') return;
-
-
     const nd = base.config.nozzle_diameter;
     const overrides: Config = {
       printable_area: `${-ox}x${-oy},${w - ox}x${-oy},${w - ox}x${d - oy},${-ox}x${d - oy}`,
@@ -73,7 +64,6 @@ export default function CreatePrinter({ close }: { close(): void }) {
       nozzle_diameter: Array.isArray(nd) ? (nd as unknown[]).map(() => nozzle) : nozzle,
     };
     try {
-
       if (!findCatalogBase(getState(), 'machine', base.name).base) setState((st) => ({ machines: [...st.machines.filter((m) => catalogKey(m) !== catalogKey(base)), base] }));
       const profile=saveProfile(getState(),'machine',name,mode === 'nozzle' ? s.printer : base.name,{...shape,...overrides});
       await commitProfileRecords([profile]);
@@ -94,8 +84,6 @@ export default function CreatePrinter({ close }: { close(): void }) {
       <ModalBody className="modal-fields">
         {seg('Create', mode, setMode, [['printer', 'Printer'], ['nozzle', 'Nozzle']])}
         {mode === 'printer' ? <>
-          <label className="form-row"><span>Vendor</span><input className="text" value={vendor} onChange={(e) => setVendor(e.target.value)} /></label>
-          <label className="form-row"><span>Model</span><input className="text" value={model} onChange={(e) => setModel(e.target.value)} /></label>
           {seg('Start from', fromCurrent ? 'current' : 'template', (v) => setFromCurrent(v === 'current'), [['template', 'Template'], ['current', 'Current']])}
           {!fromCurrent && <>
             <label className="form-row"><span>Template vendor</span>
@@ -105,14 +93,18 @@ export default function CreatePrinter({ close }: { close(): void }) {
               <Dropdown className="combo" value={template} aria-label="Template printer" onValueChange={(next) => { setTemplate(next); setSize(null); setOrigin(null); setHeight(null); }} options={templatesOf(templateVendor).map((m) => ({ value: m, label: m }))} />
             </label>
           </>}
+          <label className="form-row"><span>Vendor</span><input className="text" value={vendor} onChange={(e) => setVendor(e.target.value)} /></label>
+          <label className="form-row"><span>Model</span><input className="text" value={model} onChange={(e) => setModel(e.target.value)} /></label>
         </> : <div className="form-row"><span>Printer</span><span>{resolvePreset(s,'machine',s.printer).name ?? 'Unavailable printer'}</span></div>}
         <label className="form-row"><span>Nozzle</span>
           <span className="modal-unit"><EditableDropdown className="text num" value={nozzle} aria-label="Nozzle diameter" onValueChange={setNozzle} onInputValueChange={setNozzle} options={NOZZLES.map(n => ({value: n, label: n}))} /><span>mm</span></span>
         </label>
-        <h3 className="modal-group">Bed</h3>
-        {num('Width', w, (n) => setSize([n, d]), 1)}{num('Depth', d, (n) => setSize([w, n]), 1)}
-        {num('Origin X', ox, (n) => setOrigin([n, oy]))}{num('Origin Y', oy, (n) => setOrigin([ox, n]))}
-        {num('Max height', h, setHeight, 1)}
+        <p className="hint-text">Bed {w} × {d} × {h} mm</p>
+        <More id="create-printer">
+          {num('Width', w, (n) => setSize([n, d]), 1)}{num('Depth', d, (n) => setSize([w, n]), 1)}
+          {num('Origin X', ox, (n) => setOrigin([n, oy]))}{num('Origin Y', oy, (n) => setOrigin([ox, n]))}
+          {num('Max height', h, setHeight, 1)}
+        </More>
         {missing && (vendor.trim() || model.trim() || mode === 'nozzle') && <p className="modal-error" role="alert">{missing}</p>}
       </ModalBody>
       <ModalFooter lead={!missing && <span data-full-text={name}>{name}</span>}>

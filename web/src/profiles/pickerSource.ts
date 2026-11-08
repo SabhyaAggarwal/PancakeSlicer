@@ -1,4 +1,3 @@
-
 import type { Config, PresetType } from '../api/types';
 import { getState, resolvePreset, toast } from '../state/store';
 import { findProfile } from './identity';
@@ -12,9 +11,7 @@ export interface PickerEntry {
   name: string;
   config: Config;
   vendor: string;
-
   mine: boolean;
-
   reason?: string;
 }
 
@@ -36,7 +33,6 @@ function selectionOwner(){
     project:s.project,projectPresets:s.projectPresets,snapshots:s.profileSnapshots};
 }
 const sameOwner=(a:ReturnType<typeof selectionOwner>,b:ReturnType<typeof selectionOwner>)=>Object.keys(a).every(k=>a[k as keyof typeof a]===b[k as keyof typeof b]);
-
 export function createProfileFromBase(type:PresetType,base:string,slot=0,select?:(key:string)=>void):Promise<void>{
   const load=getState().profileLibraryLoad;
   if(load.state!=='ready'){toast(load.state==='failed'?load.error:'Profiles are still loading.');return Promise.resolve();}
@@ -51,7 +47,6 @@ export function createProfileFromBase(type:PresetType,base:string,slot=0,select?
   intent.flight=(async()=>{
     const name=await catalog.createProfileFromBase(type,source);
     if(intents.get(key)!==intent || !sameOwner(owner,selectionOwner()))return;
-
     intents.delete(key);
     const s=getState(),profile=findProfile(s,type,name);
     if(!profile || profile.archived || profile.kind==='master' || !selectCompatibility(s,type,name).ok)throw new Error('The added profile needs compatibility repair before use. It remains in your library.');

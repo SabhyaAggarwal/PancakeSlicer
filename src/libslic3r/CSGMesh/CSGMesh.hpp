@@ -10,49 +10,19 @@
 
 namespace Slic3r { namespace csg {
 
-
-
-
-
-
-
-
-
-
-
-
 enum class CSGType { Union, Difference, Intersection };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 enum class CSGStackOp { Push, Continue, Pop };
-
 
 template<class CSGPartT> CSGType get_operation(const CSGPartT &part)
 {
     return part.operation;
 }
 
-
 template<class CSGPartT> CSGStackOp get_stack_operation(const CSGPartT &part)
 {
     return part.stack_operation;
 }
-
 
 template<class CSGPartT>
 const indexed_triangle_set *get_mesh(const CSGPartT &part)
@@ -60,14 +30,11 @@ const indexed_triangle_set *get_mesh(const CSGPartT &part)
     return part.its_ptr.get();
 }
 
-
-
 template<class CSGPartT>
 Transform3f get_transform(const CSGPartT &part)
 {
     return part.trafo;
 }
-
 
 struct CSGPart {
     AnyPtr<const indexed_triangle_set> its_ptr;
@@ -86,8 +53,6 @@ struct CSGPart {
     {}
 };
 
-
-
 template<class Cont> bool is_all_positive(const Cont &csgmesh)
 {
     bool is_all_pos =
@@ -99,9 +64,6 @@ template<class Cont> bool is_all_positive(const Cont &csgmesh)
 
     return is_all_pos;
 }
-
-
-
 
 template<class Cont>
 indexed_triangle_set csgmesh_merge_positive_parts(const Cont &csgmesh)

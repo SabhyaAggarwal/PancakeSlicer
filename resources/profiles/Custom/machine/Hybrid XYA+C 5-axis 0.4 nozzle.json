@@ -109,7 +109,7 @@
 	"rotary_firmware_rtcp": "0",
 	"rotary_inverse_time_feed": "1",
 	"nonplanar_max_tilt": "75",
-	"default_print_profile": "0.20mm Non-planar top @Hybrid",
+	"default_print_profile": "0.20mm Smoothest tops @Hybrid",
 	"printer_model": "Hybrid XYA+C 5-axis",
 	"printer_variant": "0.4",
 	"default_filament_profile": [

@@ -19,16 +19,10 @@
 #include <map>
 #endif
 
-
-
 namespace Slic3r {
 namespace Utils {
 
-
-
-
 static const constexpr char *const SLICER_UTC_TIME_FMT = "%Y-%m-%d at %T";
-
 
 static const constexpr char *const ISO8601Z_TIME_FMT = "%Y%m%dT%H%M%SZ";
 
@@ -44,13 +38,7 @@ static const char * get_fmtstr(TimeFormat fmt)
 
 namespace __get_put_time_emulation {
 
-
-
-
 #ifdef _MSC_VER
-
-
-
 
 static const std::map<std::string, std::string> sscanf_fmt_map = {
     {SLICER_UTC_TIME_FMT, "%04d-%02d-%02d at %02d:%02d:%02d"},
@@ -122,9 +110,6 @@ inline GetTimeReturnT get_time(std::tm *tms, const char *fmt)
 
 namespace {
 
-
-
-
 struct std::tm * _gmtime_r(const time_t *timep, struct tm *result)
 {
     assert(timep != nullptr && result != nullptr);
@@ -141,8 +126,6 @@ struct std::tm * _localtime_r(const time_t *timep, struct tm *result)
 {
     assert(timep != nullptr && result != nullptr);
 #ifdef WIN32
-
-
     time_t t = *timep;
     localtime_s(result, &t);
     return result;
@@ -238,9 +221,6 @@ time_t str2time(const std::string &str, TimeZone zone, TimeFormat fmt)
     return str2time(ss, zone, fmtstr.c_str());
 }
 
-
-
-
 std::string millis_to_iso8601(long long unix_millis)
 {
     time_t seconds = static_cast<time_t>(unix_millis / 1000);
@@ -268,12 +248,10 @@ long long iso8601_to_millis(const std::string& iso_time)
 
     int y, M, d, h, m, s, ms = 0;
 
-
     int parsed = sscanf(iso_time.c_str(), "%d-%d-%dT%d:%d:%d.%dZ",
         &y, &M, &d, &h, &m, &s, &ms);
 
     if (parsed < 6) {
-
         parsed = sscanf(iso_time.c_str(), "%d-%d-%dT%d:%d:%dZ",
             &y, &M, &d, &h, &m, &s);
         ms = 0;
@@ -281,15 +259,12 @@ long long iso8601_to_millis(const std::string& iso_time)
 
     if (parsed < 6) return -1;
 
-
     if (parsed >= 7) {
-
         const char* dot = strchr(iso_time.c_str(), '.');
         if (dot) {
             int digits = 0;
             for (const char* p = dot + 1; *p && *p != 'Z' && std::isdigit(*p); ++p)
                 digits++;
-
             while (digits < 3) { ms *= 10; digits++; }
             while (digits > 3) { ms /= 10; digits--; }
         }

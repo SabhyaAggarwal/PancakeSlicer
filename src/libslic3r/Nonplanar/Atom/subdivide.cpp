@@ -1,4 +1,4 @@
-// MIT License; Copyright 2026 Giovanni Cocco and Inria. See LICENSE.
+// MIT License; Copyright 2026 Giovanni Cocco and Inria. See LICENSE.txt.
 #include "subdivide.h"
 #include "border.h"
 #include <algorithm>

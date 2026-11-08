@@ -1,7 +1,3 @@
-
-
-
-
 export type NoticeKind = 'error' | 'warning' | 'success' | 'info';
 export interface NoticeEntry { id: number; message: string; kind: NoticeKind }
 
@@ -13,14 +9,10 @@ export function noticeKind(msg: string): NoticeKind {
   return SUCCESS.test(msg) && !/…$/.test(msg) ? 'success' : 'info';
 }
 
-
-
 export const shouldToast = (msg: string, action?: { label: string } | null, kind?: NoticeKind) =>
   (kind ? kind === 'error' || kind === 'warning' : noticeKind(msg) === 'error') || action?.label === 'Undo';
 
-
 export const noticeMs = (msg: string) => (noticeKind(msg) === 'error' ? 8000 : 3500);
-
 
 const TOAST_STEPS: [RegExp, string][] = [
   [/^Presets failed to load/i, 'Reload the page to try again.'],
@@ -37,10 +29,6 @@ const TOAST_STEPS: [RegExp, string][] = [
 export function toastStep(msg: string): string | null {
   return TOAST_STEPS.find(([re]) => re.test(msg))?.[1] ?? null;
 }
-
-
-
-
 
 const SLICE_CAUSES: [RegExp, string, string][] = [
   [/negative spacing|extrusion width|line width/i, 'A line width is too small', 'Raise it under Process › Quality › Line width.'],

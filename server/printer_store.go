@@ -79,7 +79,6 @@ func loadPrinterStore(dir, resources string, hosts *hostPolicy) (*printerStore, 
 	for _, sp := range file.Connections {
 		p, err := st.config(sp)
 		if err != nil {
-
 			return nil, fmt.Errorf("printer connection %q (%s): %w", sp.Name, sp.ID, err)
 		}
 		st.printers = append(st.printers, p)
@@ -179,7 +178,6 @@ func (m *SendManager) watchTrust(p *PrinterConfig) {
 				log.Printf("warning: cannot record printer %q certificate: %v", p.Name, err)
 				return
 			}
-
 			m.hub.changed()
 			log.Printf("printer %q: trusted its %s certificate on first use", p.Name, map[string]string{"pin": "self-signed", "bambu-ca": "Bambu-signed"}[mode])
 		}
@@ -194,13 +192,11 @@ type connectionEdit struct {
 	Serial     string `json:"serial"`
 	AccessCode string `json:"access_code"`
 	Model      string `json:"model"`
-
-	URL      string `json:"url"`
-	Auth     string `json:"auth"`
-	Username string `json:"username"`
-	Key      string `json:"key"`
-
-	ClearKey bool `json:"clear_key"`
+	URL        string `json:"url"`
+	Auth       string `json:"auth"`
+	Username   string `json:"username"`
+	Key        string `json:"key"`
+	ClearKey   bool   `json:"clear_key"`
 }
 
 func (b *connectionEdit) secret() string {
@@ -322,7 +318,6 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 	sp := storedPrinter{Printer: key, TLS: map[bool]string{true: "tofu"}[body.Kind == "bambu-lan"], Model: body.Model}
 	if prev != nil {
 		sp.ID = prev.id
-
 		if prev.Kind == "bambu-lan" && body.Kind == "bambu-lan" && prev.Host == body.Host && prev.Serial == body.Serial {
 			sp.TLS, sp.Fingerprint, sp.Model = prev.TLS, prev.Fingerprint, cmp.Or(body.Model, prev.model)
 		}
@@ -335,7 +330,6 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, map[bool]string{true: "enter the printer's access code (Settings > Network on the printer)", false: "enter the printer's API key or password"}[body.Kind == "bambu-lan"])
 		return
 	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	p, err := s.editConfig(ctx, body, sp)
@@ -367,6 +361,7 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	audit(map[string]any{"event": map[bool]string{true: "connection_edited", false: "connection_added"}[prev != nil], "printer": key, "kind": p.Kind, "client": s.clientIP(r)})
+	m.cameras.disconnect(key)
 	m.hub.changed()
 	writeJSON(w, map[bool]int{true: 200, false: 201}[prev == nil], p.view())
 }
@@ -398,6 +393,7 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	os.Remove(p.CredentialFile)
+	m.cameras.disconnect(key)
 	audit(map[string]any{"event": "connection_removed", "printer": key, "client": s.clientIP(r)})
 	m.hub.changed()
 	w.WriteHeader(204)
@@ -525,7 +521,6 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := s.clientIP(r)
-
 	if ok, retry := s.sends.allowBurst("test "+client, 10); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
 		fail(w, 429, "too many tests; wait before testing again")
@@ -553,7 +548,6 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, PrinterTest{Stage: stage, Message: err.Error()})
 		return
 	}
-
 	if saved != nil && saved.Kind == "bambu-lan" && saved.Host == p.Host && saved.Serial == p.Serial {
 		p = saved
 	}
@@ -600,7 +594,6 @@ func (s *Server) amsConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, 429, "too many AMS reads; wait before trying again")
 		return
 	}
-
 	if st, ok := s.sends.hub.current(p.Printer); ok && st.Online && st.Trays != nil {
 		writeJSON(w, 200, map[string]any{"trays": st.Trays})
 		return

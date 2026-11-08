@@ -1,9 +1,6 @@
 import { OrderBar } from './OrderBar';
-import { loadSource, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
-
-
-import { slicingText } from '../api/progress';
-import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { loadSource, noteViewerProgress, viewerFirstMoves, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
+import { Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { getState, printerPreset, setState, subscribeStore, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
@@ -21,56 +18,47 @@ import { numberDialog, openFileDialog, slice } from '../actions';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { filamentColor } from '../plater/filamentColor';
 import { setVisibleToolpaths } from '../preview/visible';
-import { preloadable, whenIdle } from '../preloadable';
+import { preloadable } from '../preloadable';
 import './preview.css';
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
-const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
-const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
-
+const ExplainLegend = preloadable(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
+const CompareView = preloadable(() => import('./PreviewExplain').then((m) => ({ default: m.CompareView })));
+const SliceDiff = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.SliceDiff })));
+const SliceDiffSummary = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.SliceDiffSummary })));
+const DoneComparing = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.DoneComparing })));
+const setStandardCompare = (on: boolean) => setCompareWanted(on ? 'standard' : null);
 const GcodeWindow = preloadable(() => import('./GcodeWindow'));
-const ToolPosition = lazy(() => import('./ToolPosition'));
-
+const ToolPosition = preloadable(() => import('./ToolPosition'));
 
 export const jobColours = () => getState().filamentSlots.map((_, i) => filamentColor(getState(), i + 1));
-
 
 export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonplanar'>, ranges: Ranges): ColorContext {
   const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : jobColours()).map(hexToRgb);
   return { view: ui.view, nonplanar: ui.nonplanar, ranges, extruderColors, colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb), clearance: clearanceScale() };
 }
 
-
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
 let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(d: PreviewData): void } | null = null;
 
-
-
-
-
 const extendedJobs = new Set<string>();
-
 let extendedView = false;
-
 export const canExtend = (d: PreviewData) => !!getState().features.moves_extended && !!d.sourceUrl && d.sourceUrl === getState().api?.movesUrl(getState().job.id ?? '');
-
 
 function startLoad(src: { key: string; url?: string; file?: File }) {
   current?.cancel();
   loadSource({ id: src.key });
   const mine = (d: PreviewData) => current?.data === d;
+  const note = (d: PreviewData) => noteViewerProgress({ id: src.key, loaded: d.loaded, total: d.n, bytes: d.bytes });
   const handle = loadMoves(src, {
-    header: (d) => mine(d) && live?.header(d),
-    chunk: (d) => mine(d) && live?.chunk(d),
-
+    header: (d) => { if (!mine(d)) return; note(d); live?.header(d); },
+    chunk: (d) => { if (!mine(d)) return; note(d); live?.chunk(d); viewerFirstMoves(src.key, d.loaded); },
     done: (d) => mine(d) && (live ? live.done(d) : viewerReady(src.key, d.loaded)),
     error: (d) => mine(d) && (live ? live.error(d) : viewerError(src.key, d.error ?? 'Unable to load preview')),
   }, src.key.startsWith('job:') ? jobColours() : undefined);
   current = { key: src.key, ...handle };
   setLoadedStream({ key: src.key, data: handle.data });
 }
-
-
 
 subscribeStore(() => {
   const { job } = getState();
@@ -93,12 +81,10 @@ export interface PreviewUi {
   nonplanar: NonplanarColor;
   vis: Visibility;
   shells: boolean;
-
   surface: boolean;
 }
 
 export function PreviewView() {
-  const plateIndex = useStore((s) => s.plateIndex);
   const job = useStore((s) => s.job);
   const objects = useStore((s) => s.objects);
   const printer = useStore((s) => s.printer);
@@ -117,10 +103,8 @@ export function PreviewView() {
     shells: false,
     surface: false,
   });
-
   const ownStatus = data?.sourceUrl && job.id && data.sourceUrl === getState().api?.movesUrl(job.id) ? job.status : undefined;
   const grid = useSurfaceGrid(ownStatus, ui.surface);
-
   useEffect(() => {
     if (data?.done && ownStatus?.has_surface_grid) loadSurfaceGrid(ownStatus.id).catch(() => {});
   }, [data?.done, ownStatus?.id, ownStatus?.has_surface_grid]);
@@ -145,8 +129,6 @@ export function PreviewView() {
     setTip(id < 0 ? null : { ...explain(data, id, job.status?.record), x, y });
   };
   const lastRanges = useRef(0);
-
-
   const loadBump = useRef<{ pending: boolean } | null>(null);
   const bumpLoad = () => {
     if (loadBump.current) return void (loadBump.current.pending = true);
@@ -163,9 +145,7 @@ export function PreviewView() {
   const [oneLayer, setOneLayer] = useState(false);
   const oneBackup = useRef<number | null>(null);
   const compare = useCompareWanted();
-  const setCompare = setCompareWanted;
-
-
+  const setCompare = setStandardCompare;
 
   const [epoch, setEpoch] = useState(0);
   const [restoring, setRestoring] = useState(false);
@@ -180,8 +160,6 @@ export function PreviewView() {
     };
     const settled = window.setTimeout(() => { lostCount.current = 0; setRestoring(false); }, 1500);
     let lastBump = 0;
-
-
     if (SHOW_STATS) scene.onFrame = () => {
       if (performance.now() - lastBump > 500) {
         lastBump = performance.now();
@@ -210,7 +188,6 @@ export function PreviewView() {
     sceneRef.current?.setColors(colorCtx(d));
   };
 
-
   const handlers: NonNullable<typeof live> = {
     header: (d) => {
       sceneRef.current?.setData(d);
@@ -228,7 +205,6 @@ export function PreviewView() {
       if (current) viewerReady(current.key, d.loaded);
       bump();
     },
-
     error: (d) => {
       if (current) viewerError(current.key, d.error ?? 'Unable to load preview');
       setData(d);
@@ -242,13 +218,11 @@ export function PreviewView() {
       if (live === handlers) live = null;
     };
   });
-
   useEffect(() => setDropped(null), [job.id]);
   useEffect(() => {
     const src = dropped ? { key: `file:${dropped.name}:${dropped.size}`, file: dropped } : source();
     if (!src) {
       loadSource(null);
-
       if (current) {
         current.cancel();
         current = null;
@@ -263,7 +237,6 @@ export function PreviewView() {
       loadSource({id: src.key});
       if (current.data.done) viewerReady(src.key, current.data.loaded);
       else if (current.data.error) viewerError(src.key, current.data.error);
-
       const d = current.data;
       const scene = sceneRef.current;
       if (d.header && scene && !scene.holds(d)) {
@@ -280,7 +253,6 @@ export function PreviewView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id, job.state, dropped, extendTick]);
 
-
   useEffect(() => {
     if (!data?.header) return;
     recolor(data);
@@ -288,10 +260,8 @@ export function PreviewView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.view, ui.nonplanar, ui.vis]);
 
-
   const layerCount = data?.layers.length ?? 0;
   const hi = Math.min(layers[1], Math.max(0, layerCount - 1));
-
   const lo = oneLayer ? hi : Math.min(layers[0], Math.max(0, layerCount - 1));
   const [topFirst, topEnd] = data && layerCount ? data.layerSpan(hi, hi) : [1, 1];
   const topMoves = Math.max(0, topEnd - topFirst);
@@ -304,7 +274,6 @@ export function PreviewView() {
     setLayers(([first]) => [Math.min(first, layer), layer]);
     setMovePos(move - data.layers[layer].first + 1);
   };
-
   useEffect(() => {
     const f = takeGcode();
     if (f) setDropped(f);
@@ -326,7 +295,6 @@ export function PreviewView() {
     setMovePos(move - data.layers[k].first + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, data?.loaded, data?.done, jumpTick]);
-
   useEffect(() => {
     const scene = sceneRef.current;
     if (epoch === 0 || !scene || !data?.header) return;
@@ -345,7 +313,6 @@ export function PreviewView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status, grid, epoch]);
 
-
   (window as unknown as { __preview: unknown }).__preview = {
     scene: sceneRef.current,
     data: current?.data,
@@ -355,13 +322,9 @@ export function PreviewView() {
     setVis: (v: Partial<Visibility>, shells?: boolean) => setUi((u) => ({ ...u, vis: { ...u.vis, ...v }, shells: shells ?? u.shells })),
   };
 
-  useEffect(() => { if (data?.done) whenIdle(() => void GcodeWindow.preload().catch(() => {})); }, [data?.done]);
-
   useEffect(() => { setVisibleToolpaths(data?.done ? { data, layers } : null); }, [data, data?.done, layers]);
   useEffect(() => () => setVisibleToolpaths(null), []);
   useEffect(() => { oneBackup.current = null; }, [layerCount]);
-
-
   const toggleOneLayer = () => {
     if (!layerCount) return;
     const top = layerCount - 1, cur = Math.min(layers[1], top);
@@ -369,14 +332,12 @@ export function PreviewView() {
       oneBackup.current = cur;
       setLayers([0, Number.MAX_SAFE_INTEGER]);
     } else {
-
       const back = oneBackup.current === null || oneBackup.current > top ? Math.floor(top / 2) : oneBackup.current;
       setLayers([0, cur === top ? back : cur]);
     }
     setOneLayer(!oneLayer);
     setMovePos(null);
   };
-
   const jumpToLayer = () => {
     if (!layerCount) return;
     void numberDialog('Jump to layer', `Please enter the layer number. (1 - ${layerCount}):`, hi + 1, 1, layerCount).then((n) => {
@@ -385,7 +346,6 @@ export function PreviewView() {
       setMovePos(null);
     });
   };
-
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -410,24 +370,21 @@ export function PreviewView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [layerCount, topMoves, oneLayer, layers, hi]);
 
-  const loading = data && !data.done && !data.error;
-
   const record = ownStatus?.record;
-  const comparing = compare && !!record && !job.stale;
+  const comparing = !!compare && !!record && !job.stale;
   const hasGrid = !!ownStatus?.has_surface_grid;
-
+  const before = comparing && compare === 'previous';
   const explainKey = useMemo(() => data && record && (
     <Suspense fallback={null}>
-      <ExplainLegend data={data} record={record} hasSurfaceGrid={hasGrid} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
+      {comparing && compare === 'previous' ? <SliceDiff data={data} record={record} />
+        : <ExplainLegend data={data} record={record} hasSurfaceGrid={hasGrid} ui={ui} setUi={setUi} compare={comparing && compare === 'standard'} setCompare={setCompare} />}
     </Suspense>
-  ), [data, record, hasGrid, ui, comparing, setCompare]);
+  ), [data, data?.done, record, hasGrid, ui, comparing, compare, setCompare]);
   useEffect(() => sceneRef.current?.setSurface(grid), [grid, epoch]);
   useEffect(() => {
     void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record]);
-
-
   useEffect(() => {
     extendedView = EXTENDED_VIEWS.has(ui.view);
     if (!data?.header || data.header.extended || !EXTENDED_VIEWS.has(ui.view)) return;
@@ -438,7 +395,7 @@ export function PreviewView() {
     } else setUi((u) => ({ ...u, view: 'feature' }));
   }, [data, ui.view]);
   const status = job.state === 'running' || job.state === 'submitting'
-    ? slicingText(job, plateIndex)
+    ? null
     : !data && !source() && !dropped
     ? job.state === 'done' ? null : objects.length ? 'Not sliced yet' : 'Plate is empty'
     : data?.error
@@ -465,11 +422,9 @@ export function PreviewView() {
         className="preview-canvas"
         onPointerLeave={(e) => e.pointerType === 'mouse' && setTip(null)}
         onPointerMove={(e) => {
-
           if (e.pointerType !== 'mouse') return e.buttons && tip && setTip(null);
           showTip(e, e.buttons !== 0);
         }}
-
         onPointerDown={(e) => (tapAt.current = { x: e.clientX, y: e.clientY })}
         onPointerUp={(e) => {
           const t = tapAt.current;
@@ -487,9 +442,8 @@ export function PreviewView() {
       {status && !restoring && (
         <div className="preview-status" role="status">
           <span>{status}</span>
-          {                                                  }
           {status === 'Not sliced yet' && <button type="button" className="btn-primary" onClick={() => void slice()}>Slice plate</button>}
-          {status === 'Plate is empty' && <button type="button" className="btn-ghost" onClick={() => { setState({ tab: 'prepare' }); openFileDialog(); }}>Add model</button>}
+          {status === 'Plate is empty' && <button type="button" className="btn-primary" onClick={() => { setState({ tab: 'prepare' }); openFileDialog(); }}>Add model</button>}
         </div>
       )}
       {data?.header && (
@@ -501,22 +455,16 @@ export function PreviewView() {
           ranges={ranges.current}
           scene={sceneRef.current}
           explainOnly={comparing || !!grid}
+          summary={before ? <Suspense fallback={null}><SliceDiffSummary record={record!} /></Suspense> : undefined}
+          headAction={before && <Suspense fallback={null}><DoneComparing /></Suspense>}
           explain={explainKey}
         />
       )}
       {comparing && data?.header && (
         <Suspense fallback={null}>
-          <StandardView data={data} record={record!} scene={sceneRef.current} ui={ui}
+          <CompareView source={compare!} data={data} record={record!} scene={sceneRef.current} ui={ui}
             zRange={layerCount ? [data.layers[lo].z, data.layers[hi].z] : [0, 0]} />
         </Suspense>
-      )}
-      {loading && (
-        <div className="preview-loading" role="progressbar" aria-label="Loading toolpaths" aria-valuemin={0} aria-valuemax={100}
-          aria-valuenow={data!.n ? Math.round((100 * data!.loaded) / data!.n) : 0}>
-          <span>Loading toolpaths</span>
-          <span className="preview-loading-bar"><span style={{ width: `${data!.n ? (100 * data!.loaded) / data!.n : 0}%` }} /></span>
-          <span className="preview-loading-n">{(data!.loaded / 1e6).toFixed(2)} / {(data!.n / 1e6).toFixed(2)} M</span>
-        </div>
       )}
       {layerCount > 0 && (
         <LayerSlider

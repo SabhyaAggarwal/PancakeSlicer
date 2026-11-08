@@ -1,6 +1,3 @@
-
-
-
 import * as THREE from 'three';
 import { getState, newId, setState, toast, type PlateObject, type State, type TextSpec, type Volume, type VolumeType } from '../state/store';
 import { undoable } from '../state/history';
@@ -9,12 +6,10 @@ import { bakeStl, bedBounds, nextFreeSpot, volumeGeometry } from './geometry';
 import { meshJob } from './meshOps';
 import { placeVolume } from './volumes';
 
-
 export const TEXT_DEFAULT: TextSpec = { text: 'Embossed text', font: '', size: 10, depth: 1, bold: false, italic: false, lineSpacing: 1, charGap: 0, align: 'center' };
 
 export interface Font { id: string; name: string }
 let fonts: Promise<Font[]> | null = null;
-
 export function loadFonts(): Promise<Font[]> {
   fonts ??= fetch('/api/emboss-fonts').then((r) => (r.ok ? r.json() : { fonts: [] })).then((d: { fonts: Font[] }) => d.fonts).catch(() => []);
   return fonts;
@@ -25,22 +20,15 @@ const fields = (t: TextSpec): Record<string, string> => ({
   char_gap: String(t.charGap), align: t.align, ...(t.bold ? { bold: '1' } : {}), ...(t.italic ? { italic: '1' } : {}),
 });
 
-
-
 export const surfaceOk = (s: State, type: VolumeType) => !!s.features.emboss_surface && (type !== 'part' || !!s.features.emboss_surface_outside);
-
-
 
 async function surfaceMesh(o: PlateObject, type: VolumeType, t: TextSpec) {
   const { geometry } = await meshJob('text', { ...fields(t), ...surfaceFields(t.surface!, type) }, [[await bakeStl(o, new THREE.Matrix4()), 'target.stl']], 'text');
   return inFrame(geometry);
 }
 
-
 export const surfaceFields = ({ at, normal }: NonNullable<TextSpec['surface']>, type: VolumeType): Record<string, string> =>
   ({ use_surface: '1', at: at.join(','), normal: normal.join(','), ...(type === 'part' ? { outside: '1' } : {}) });
-
-
 
 export function inFrame(geometry: THREE.BufferGeometry) {
   geometry.computeBoundingBox();
@@ -49,8 +37,6 @@ export function inFrame(geometry: THREE.BufferGeometry) {
   const centred = volumeGeometry((geometry.attributes.position.array as Float32Array).slice(), (geometry.index?.array as Uint32Array | undefined)?.slice() ?? null, (geometry.attributes.normal?.array as Float32Array | undefined)?.slice());
   return { centred, matrix: new THREE.Matrix4().makeTranslation(d.x, d.y, d.z).elements };
 }
-
-
 
 async function textMesh(t: TextSpec) {
   const { file, geometry } = await meshJob('text', fields(t), [], 'text');
@@ -74,7 +60,6 @@ async function withService<T>(work: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-
 export async function addText(objectId: number | null, type: VolumeType = 'part', spec: TextSpec = TEXT_DEFAULT) {
   await withService(async () => {
     const { file, geometry, centred } = await textMesh(spec);
@@ -95,7 +80,6 @@ export async function addText(objectId: number | null, type: VolumeType = 'part'
   });
 }
 
-
 export function editedText(s = getState()): { object: PlateObject; volume?: Volume; spec: TextSpec } | null {
   const o = s.objects.find((x) => x.id === s.selected?.object);
   if (!o) return null;
@@ -104,12 +88,10 @@ export function editedText(s = getState()): { object: PlateObject; volume?: Volu
   return o.text && !v ? { object: o, spec: o.text } : null;
 }
 
-
 export function placeOnSurface(at: [number, number, number], normal: [number, number, number]) {
   const t = editedText();
   if (t?.volume) void updateText({ ...t.spec, surface: { at, normal } });
 }
-
 
 export async function updateText(spec: TextSpec) {
   const target = editedText();

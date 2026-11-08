@@ -1,8 +1,3 @@
-
-
-
-
-
 #include "../BoundingBox.hpp"
 #include "../ExtrusionEntity.hpp"
 #include "../ExtrusionEntityCollection.hpp"
@@ -111,7 +106,6 @@ static BoundingBoxf extrusionentity_extents(const ExtrusionEntity *extrusion_ent
 
 BoundingBoxf get_print_extrusions_extents(const Print &print)
 {
-
     BoundingBoxf bbox(extrusionentity_extents(print.skirt()));
     return bbox;
 }
@@ -126,7 +120,6 @@ BoundingBoxf get_print_object_extrusions_extents(const PrintObject &print_object
         for (const LayerRegion *layerm : layer->regions()) {
             bbox_this.merge(extrusionentity_extents(layerm->perimeters));
             for (const ExtrusionEntity *ee : layerm->fills.entities)
-
                 bbox_this.merge(extrusionentity_extents(*dynamic_cast<const ExtrusionEntityCollection*>(ee)));
         }
         const SupportLayer *support_layer = dynamic_cast<const SupportLayer*>(layer);
@@ -142,12 +135,8 @@ BoundingBoxf get_print_object_extrusions_extents(const PrintObject &print_object
     return bbox;
 }
 
-
-
 BoundingBoxf get_wipe_tower_extrusions_extents(const Print &print, const coordf_t max_print_z)
 {
-
-
     int plate_idx = print.get_plate_index();
     Vec3d plate_origin = print.get_plate_origin();
     double wipe_tower_x = print.config().wipe_tower_x.get_at(plate_idx) + plate_origin(0);
@@ -176,7 +165,6 @@ BoundingBoxf get_wipe_tower_extrusions_extents(const Print &print, const coordf_
     }
     return bbox;
 }
-
 
 BoundingBoxf get_wipe_tower_priming_extrusions_extents(const Print &print)
 {

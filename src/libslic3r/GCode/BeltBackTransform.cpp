@@ -13,7 +13,6 @@ bool BeltBackTransform::init_from_config(const PrintConfig &config)
     if (!config.belt_printer.value)
         return false;
 
-
     Transform3d forward = BeltTransformPipeline::build_forward_transform(config);
     if (forward.isApprox(Transform3d::Identity()))
         return false;

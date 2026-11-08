@@ -53,9 +53,6 @@ ColorDecomposeRecipeResult lookup_standard_recipe(
     ColorDecomposeRecipeMode mode,
     const std::string& preferred_material_type);
 
-
-
-
 std::string lookup_measured_blend_color(const std::vector<std::string>& component_hexes,
                                        const std::vector<int>& ratios);
 

@@ -32,7 +32,6 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		return "", err
 	}
 	build := func() (*http.Request, error) {
-
 		body := progressReader{io.LimitReader(u.file, u.size), u.progress}
 		switch p.Kind {
 		case "prusalink":
@@ -43,7 +42,6 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 			req.ContentLength = u.size
 			req.Header.Set("Content-Type", "text/x.gcode")
 			req.Header.Set("Overwrite", "?1")
-
 			if u.start {
 				req.Header.Set("Print-After-Upload", "?1")
 			}
@@ -63,7 +61,6 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		if resp, err = h.do(req); err != nil {
 			return "", err
 		}
-
 		if resp.StatusCode != 401 || p.Auth != "digest" || attempt > 0 {
 			break
 		}
@@ -100,7 +97,6 @@ func credentialsRejected(*PrinterConfig) error {
 
 func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Client, error) {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
-
 	target, err := p.hosts.resolve(ctx, base)
 	if err != nil {
 		var refused *hostRefusal
@@ -125,7 +121,6 @@ func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Cli
 			ResponseHeaderTimeout: 2 * time.Minute,
 			DisableKeepAlives:     true,
 		},
-
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return client, nil

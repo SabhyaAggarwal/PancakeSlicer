@@ -8,5 +8,5 @@
 	"nonplanar_surface_spacing": "1",
 	"nonplanar_top_finish_flow": "0.95",
 	"nonplanar_full_conformal_max_thickness": "3",
-	"nonplanar_mode": "auto"
+	"nonplanar_mode": "nonplanar_top"
 }

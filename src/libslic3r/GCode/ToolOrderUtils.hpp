@@ -19,11 +19,8 @@ using FlushMatrix = std::vector<std::vector<float>>;
 namespace MaxFlowGraph {
     const int INF = std::numeric_limits<int>::max();
     const int INVALID_ID = -1;
-
     constexpr int MCMF_MAX_EDGE_COST = 10000000;
 }
-
-
 
 struct Edge
 {
@@ -106,7 +103,6 @@ private:
     std::unordered_map<int, std::vector<int>> m_uv_link_limits;
     std::unordered_map<int, std::vector<int>> m_uv_unlink_limits;
     int num_groups = 0;
-
 
     struct LowerBoundEdge{
         int edge_id;
@@ -200,9 +196,6 @@ int reorder_filaments_for_minimum_flush_volume(const std::vector<unsigned int> &
                                                std::optional<std::function<bool(int, std::vector<int> &)>> get_custom_seq,
                                                std::vector<std::vector<unsigned int>> *filament_sequences,
                                                const std::unordered_map<int, int>& nozzle_status = {});
-
-
-
 
 int reorder_filaments_for_multi_nozzle_extruder(const std::vector<unsigned int>& filament_lists,
                                                 const MultiNozzleUtils::LayeredNozzleGroupResult& nozzle_group_result,

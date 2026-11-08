@@ -1,9 +1,4 @@
 #pragma once
-
-
-
-
-
 #include "libslic3r/Point.hpp"
 #include <utility>
 #include "ConformalShells.hpp"
@@ -26,17 +21,12 @@ namespace Slic3r::Nonplanar {
 
 struct HeadEnvelope;
 
-
-
 struct MeshRays
 {
     const sla::IndexedMesh *imesh = nullptr;
     double                  shift = 0.;
     BoundingBoxf3           bbox;
 };
-
-
-
 
 class ColumnScaleField : public LayerField
 {
@@ -48,10 +38,7 @@ public:
     Vec3d  gradient(const Vec3d &p) const override;
     double identity_below() const override { return m_z0; }
 
-
     double             rho(const Vec2d &xy) const;
-
-
     double             max_slope_near(const Vec2d &xy, double level) const override;
 
 private:
@@ -87,36 +74,18 @@ struct DeformFieldReport
     double saddle_share  = 0.;
 };
 
-
-
-
 std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangle_set &mesh, const DeformFieldParams &params,
                                                            DeformFieldReport *report = nullptr, HeightField *top = nullptr,
                                                            const MeshRays *rays = nullptr);
 
-
-
 indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerField &field, double max_edge);
-
-
-
 
 double deform_band_height(const HeadEnvelope &head, double slope, double inflation = 0.);
 
-
-
 bool deform_slice_requested(const PrintObject &object);
-
-
 bool deform_field_file(const PrintObject &object);
-
-
 bool deform_slice_considered(const PrintObject &object);
-
-
 bool choose_deform_slice(PrintObject &object, ConformalResult &result);
-
-
 
 struct DeformSlice
 {
@@ -126,44 +95,23 @@ struct DeformSlice
         bool                      curved = false;
     };
     DeformFieldReport                    report;
-
-
     std::vector<std::unique_ptr<Planar>> planar;
-
     std::vector<ConformalPatch>          patches;
-
     std::shared_ptr<const LayerField>    field;
-
     double                               floating_mm = -1.;
 };
-
-
-
-
-
-
 bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::string *why = nullptr,
                           double give_up_above = std::numeric_limits<double>::infinity(), const LayerField *field = nullptr,
                           double planar_time = 0., double time_budget = std::numeric_limits<double>::infinity(),
                           const std::function<bool(const DeformFieldReport &)> &admit = {}, const MeshRays *rays = nullptr,
                           bool host_walls = false);
 
-
-
-
 DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const LayerField &field, double layer_height,
                                       const HeightField *top = nullptr);
 
-
-
 double print_time_proxy(const PrintObject &object, const ConformalResult *result, const DeformSlice *slice);
 
-
 void apply_deform_slice(PrintObject &object, DeformSlice &&slice, ConformalResult &result);
-
-
-
-
 
 bool build_deform_slice(PrintObject &object, ConformalResult &result, std::string *why = nullptr);
 

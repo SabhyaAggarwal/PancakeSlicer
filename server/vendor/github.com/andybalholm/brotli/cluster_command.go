@@ -6,6 +6,8 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Computes the bit cost reduction by combining out[idx1] and out[idx2] and if
+   it is below a threshold, stores the pair (idx1, idx2) in the *pairs queue. */
 func compareAndPushToQueueCommand(out []histogramCommand, cluster_size []uint32, idx1 uint32, idx2 uint32, max_num_pairs uint, pairs []histogramPair, num_pairs *uint) {
 	var is_good_pair bool = false
 	var p histogramPair
@@ -55,7 +57,7 @@ func compareAndPushToQueueCommand(out []histogramCommand, cluster_size []uint32,
 	if is_good_pair {
 		p.cost_diff += p.cost_combo
 		if *num_pairs > 0 && histogramPairIsLess(&pairs[0], &p) {
-
+			/* Replace the top of the queue if needed. */
 			if *num_pairs < max_num_pairs {
 				pairs[*num_pairs] = pairs[0]
 				(*num_pairs)++
@@ -74,7 +76,8 @@ func histogramCombineCommand(out []histogramCommand, cluster_size []uint32, symb
 	var min_cluster_size uint = 1
 	var num_pairs uint = 0
 	{
-
+		/* We maintain a vector of histogram pairs, with the property that the pair
+		   with the maximum bit cost reduction is the first. */
 		var idx1 uint
 		for idx1 = 0; idx1 < num_clusters; idx1++ {
 			var idx2 uint
@@ -94,6 +97,7 @@ func histogramCombineCommand(out []histogramCommand, cluster_size []uint32, symb
 			continue
 		}
 
+		/* Take the best pair from the top of heap. */
 		best_idx1 = pairs[0].idx1
 
 		best_idx2 = pairs[0].idx2
@@ -115,17 +119,17 @@ func histogramCombineCommand(out []histogramCommand, cluster_size []uint32, symb
 
 		num_clusters--
 		{
-
+			/* Remove pairs intersecting the just combined best pair. */
 			var copy_to_idx uint = 0
 			for i = 0; i < num_pairs; i++ {
 				var p *histogramPair = &pairs[i]
 				if p.idx1 == best_idx1 || p.idx2 == best_idx1 || p.idx1 == best_idx2 || p.idx2 == best_idx2 {
-
+					/* Remove invalid pair from the queue. */
 					continue
 				}
 
 				if histogramPairIsLess(&pairs[0], p) {
-
+					/* Replace the top of the queue if needed. */
 					var front histogramPair = pairs[0]
 					pairs[0] = *p
 					pairs[copy_to_idx] = front
@@ -139,6 +143,7 @@ func histogramCombineCommand(out []histogramCommand, cluster_size []uint32, symb
 			num_pairs = copy_to_idx
 		}
 
+		/* Push new pairs formed with the combined histogram to the heap. */
 		for i = 0; i < num_clusters; i++ {
 			compareAndPushToQueueCommand(out, cluster_size, best_idx1, clusters[i], max_num_pairs, pairs[0:], &num_pairs)
 		}
@@ -147,6 +152,7 @@ func histogramCombineCommand(out []histogramCommand, cluster_size []uint32, symb
 	return num_clusters
 }
 
+/* What is the bit cost of moving histogram from cur_symbol to candidate. */
 func histogramBitCostDistanceCommand(histogram *histogramCommand, candidate *histogramCommand) float64 {
 	if histogram.total_count_ == 0 {
 		return 0.0

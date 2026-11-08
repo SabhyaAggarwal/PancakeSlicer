@@ -1,0 +1,10532 @@
+#include "slic3r/GUI/CAD/DesignSketchTool.hpp"
+#include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/ImGuiWrapper.hpp"
+#include "slic3r/GUI/CAD/SketchInlineEditor.hpp"
+#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/I18N.hpp"
+#include "libslic3r/format.hpp"
+#include "libslic3r/Utils.hpp"
+
+#include <Eigen/Core>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Edge.hxx>
+#include <Eigen/Geometry>
+#include <functional>
+#include <imgui/imgui.h>
+#include <imgui/imgui_internal.h>
+#include "libslic3r/BuildVolume.hpp"
+#include "slic3r/GUI/Camera.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "libslic3r/CAD/GeometryEngine.hpp"
+
+#include <BRepBndLib.hxx>
+#include <BRep_Builder.hxx>
+#include <Bnd_Box.hxx>
+#include <Standard_Failure.hxx>
+#include <TopoDS_Compound.hxx>
+#include <map>
+#include "libslic3r/TriangleMesh.hpp"
+
+#include <glad/gl.h>
+#include "libslic3r/CAD/SketchEngine.hpp"
+#include "libslic3r/Point.hpp"
+#include <vector>
+#include <math.h>
+#include "libslic3r/CAD/SketchSolver.hpp"
+#include "libslic3r/Line.hpp"
+#include <string>
+#include "libslic3r/CAD/SketchInference.hpp"
+#include <utility>
+#include "libslic3r/CAD/CadDocument.hpp"
+#include "slic3r/GUI/GLModel.hpp"
+#include "libslic3r/BoundingBox.hpp"
+#include <initializer_list>
+#include <wx/gdicmn.h>
+#include <algorithm>
+#include <climits>
+#include <limits>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <cstdarg>
+#include <cstdlib>
+#include <iterator>
+#include "libslic3r/AppConfig.hpp"
+#include "libslic3r/Color.hpp"
+#include "slic3r/GUI/GLSelectionRectangle.hpp"
+
+class TopoDS_Shape;
+
+namespace Slic3r {
+namespace GUI {
+
+static constexpr int kArcFacets = 24;
+
+static bool entity_ref_point(const SketchEntity& e, Vec2d& out);
+static void translate_entity(SketchEntity& e, const Vec2d& d);
+static double point_segment_dist(const Vec2d& p, const Vec2d& a, const Vec2d& b);
+static double entity_pick_dist(const Vec2d& p, const SketchEntity& e);
+static bool   point_in_poly(const Vec2d& q, const std::vector<Vec2d>& poly);
+static bool   ray_triangle(const Vec3d& ro, const Vec3d& rd, const Vec3d& v0, const Vec3d& v1,
+                           const Vec3d& v2, double& t);
+static double ray_segment_dist3(const Vec3d& ro, const Vec3d& rd, const Vec3d& a, const Vec3d& b);
+static double ray_axis_proj(const Linef3& ray, const Vec3d& anchor, const Vec3d& dir);
+
+[[maybe_unused]] static wxPoint world_to_screen_px(const Camera& cam, const Vec3d& world)
+{
+    const Eigen::Matrix4d m = cam.get_projection_matrix().matrix() * cam.get_view_matrix().matrix();
+    const Eigen::Vector4d clip = m * world.homogeneous();
+    if (std::abs(clip.w()) < 1e-9) return wxPoint(-1, -1);
+    const Vec3d ndc = clip.head<3>() / clip.w();
+    const std::array<int, 4>& vp = cam.get_viewport();
+    const double sx = vp[0] + (ndc.x() * 0.5 + 0.5) * vp[2];
+    const double sy = vp[1] + (1.0 - (ndc.y() * 0.5 + 0.5)) * vp[3];
+    return wxPoint(int(sx + 0.5), int(sy + 0.5));
+}
+
+void DesignSketchTool::begin(const SketchPlane& plane, Mode mode)
+{
+    m_sketch_redo.clear();
+
+    m_plane = plane;
+    m_mode = mode;
+    m_step_mode_last = -1;
+    m_points.clear();
+    m_entities.clear();
+    m_construction = false;
+    m_has_cursor = false;
+    m_sel_a = m_sel_b = -1;
+    m_constrain_entities = false;
+    m_pick0 = m_pick1 = m_pick2 = -1;
+    m_constraint_hl.clear();
+    m_constrain_cons.clear();
+    m_awaiting_length = false;
+    m_autoedit_seen = 0;
+    m_autoedit_pending = false;
+    m_selection.clear();
+    m_point_sel.clear();
+    m_constraints.clear();
+    m_dimensions.clear();
+    m_dim_has0 = false;
+    m_pending_dim = -1;
+    m_dof = -1; m_solve_ok = true; m_entity_conflict.clear();
+    m_features.clear();
+    m_open_feature = -1;
+    m_active = true;
+}
+
+void DesignSketchTool::begin_edit(const std::vector<SketchEntity>& entities,
+                                  const std::vector<SketchEntityConstraintDef>& constraints,
+                                  const SketchPlane& plane)
+{
+    begin(plane, Mode::Select);
+    m_entities    = entities;
+    m_constraints = constraints;
+    rebuild_features_from_entities();
+    resolve_live();
+}
+
+void DesignSketchTool::rebuild_features_from_entities()
+{
+    m_features.clear();
+    m_open_feature = -1;
+    const int n = int(m_entities.size());
+    using T = SketchEntity::Type;
+    auto start = [&](int i) { return m_entities[i].p0; };
+    auto end   = [&](int i) { const SketchEntity& e = m_entities[i];
+        return (e.type == T::Line || e.type == T::Arc) ? e.p1 : e.p0; };
+    auto is_near  = [](const Vec2d& a, const Vec2d& b) {
+        return (a - b).norm() <= 0.05 + 1e-3 * std::max(a.norm(), b.norm()); };
+
+    int i = 0;
+    while (i < n) {
+        int j = i; bool closed = false;
+        while (j + 1 < n && is_near(end(j), start(j + 1))) {
+            ++j;
+            if ((j - i) >= 2 && is_near(end(j), start(i))) { closed = true; break; }
+        }
+        const int cnt = j - i + 1;
+        if (!closed || cnt < 3) { ++i; continue; }
+
+        int arcs = 0; bool all_line = true;
+        for (int k = i; k <= j; ++k) {
+            if (m_entities[k].type == T::Arc)       ++arcs;
+            if (m_entities[k].type != T::Line)      all_line = false;
+        }
+        Vec2d c(0, 0); for (int k = i; k <= j; ++k) c += start(k); c /= double(cnt);
+        Feature f; f.begin = i; f.end = j + 1; f.c0 = c;
+
+        if (cnt == 4 && arcs == 2 &&
+            m_entities[i].type   == T::Line && m_entities[i + 1].type == T::Arc &&
+            m_entities[i + 2].type == T::Line && m_entities[i + 3].type == T::Arc) {
+            f.kind  = FeatureKind::Slot;
+            f.c0    = m_entities[i + 3].center;
+            f.c1    = m_entities[i + 1].center;
+            f.param = m_entities[i + 1].radius;
+            m_features.push_back(f);
+        } else if (cnt == 4 && arcs == 4 &&
+                   is_near(m_entities[i].center, m_entities[i + 2].center) &&
+                   std::abs(m_entities[i + 1].radius - m_entities[i + 3].radius) <=
+                       0.02 * std::max(m_entities[i + 1].radius, 1e-6) &&
+                   m_entities[i].radius > m_entities[i + 2].radius) {
+            f.kind  = FeatureKind::ArcSlot;
+            f.c0    = m_entities[i].center;
+            f.c1    = m_entities[i + 3].center;
+            f.param = m_entities[i + 3].radius;
+            m_features.push_back(f);
+        } else if (cnt == 8 && arcs == 4 &&
+                   m_entities[i].type     == T::Line && m_entities[i + 1].type == T::Arc &&
+                   m_entities[i + 2].type == T::Line && m_entities[i + 3].type == T::Arc &&
+                   m_entities[i + 4].type == T::Line && m_entities[i + 5].type == T::Arc &&
+                   m_entities[i + 6].type == T::Line && m_entities[i + 7].type == T::Arc) {
+            const double r = m_entities[i + 1].radius;
+            bool equal_r = true;
+            for (int k : {3, 5, 7})
+                if (std::abs(m_entities[i + k].radius - r) > 0.02 * std::max(r, 1e-6))
+                    equal_r = false;
+            if (equal_r && r > 1e-6) {
+                double cxmin = 1e18, cxmax = -1e18, cymin = 1e18, cymax = -1e18;
+                for (int k : {1, 3, 5, 7}) {
+                    const Vec2d& o = m_entities[i + k].center;
+                    cxmin = std::min(cxmin, o.x()); cxmax = std::max(cxmax, o.x());
+                    cymin = std::min(cymin, o.y()); cymax = std::max(cymax, o.y());
+                }
+                f.kind  = FeatureKind::RoundedRect;
+                f.c0    = Vec2d(cxmin - r, cymin - r);
+                f.c1    = Vec2d(cxmax + r, cymax + r);
+                f.param = r;
+                m_features.push_back(f);
+            }
+        } else if (all_line) {
+            std::vector<double> sidelen(cnt);
+            for (int k = 0; k < cnt; ++k) sidelen[k] = (m_entities[i + k].p1 - m_entities[i + k].p0).norm();
+            const double lmin = *std::min_element(sidelen.begin(), sidelen.end());
+            const double lmax = *std::max_element(sidelen.begin(), sidelen.end());
+            const bool equal_sides = lmin > 1e-6 && (lmax - lmin) / lmax < 0.02;
+            bool all_right = true;
+            for (int k = 0; k < cnt && all_right; ++k) {
+                Vec2d u = m_entities[i + k].p1 - m_entities[i + k].p0;
+                Vec2d v = m_entities[i + (k + 1) % cnt].p1 - m_entities[i + (k + 1) % cnt].p0;
+                if (u.norm() < 1e-9 || v.norm() < 1e-9) { all_right = false; break; }
+                if (std::abs(u.normalized().dot(v.normalized())) > 0.06) all_right = false;
+            }
+            if (cnt == 4 && all_right) {
+                f.kind = FeatureKind::CornerRect; f.c0 = start(i); f.c1 = start(i + 2);
+                m_features.push_back(f);
+            } else if (equal_sides) {
+                f.kind = FeatureKind::Polygon; f.c0 = c; f.c1 = start(i);
+                f.sides = cnt; f.param = (start(i) - c).norm();
+                m_features.push_back(f);
+            }
+        }
+        i = j + 1;
+    }
+}
+
+void DesignSketchTool::set_tool(Mode mode)
+{
+    if (op_ready()) confirm_op();
+    if (tf_ready()) confirm_transform();
+
+    if (on_inline_commit) on_inline_commit();
+
+    m_mode = mode;
+    m_points.clear();
+    m_has_cursor = false;
+    m_cursor_snap = InferenceSnap{};
+    reset_autoedit();
+
+    if (m_open_feature >= 0 && m_open_feature < int(m_features.size())
+        && m_features[m_open_feature].end <= m_features[m_open_feature].begin)
+        m_features.pop_back();
+    m_open_feature = -1;
+
+    m_sel_a = m_sel_b = -1;
+    m_constrain_entities = false;
+    reset_xform();
+    reset_op();
+    reset_tf();
+    m_dim_has0 = false;
+    m_dim_e0   = -1;
+    m_dim_r0   = SketchPointRole::P0;
+    m_pick0 = m_pick1 = m_pick2 = -1;
+    m_point_sel.clear();
+    m_selection.clear();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+void DesignSketchTool::cancel()
+{
+    m_sketch_redo.clear();
+    close_session_chrome();
+    m_active = false;
+    m_step_mode_last = -1;
+    m_points.clear();
+    m_entities.clear();
+    m_construction = false;
+    m_has_cursor = false;
+    m_sel_a = m_sel_b = -1;
+    m_constrain_entities = false;
+    m_pick0 = m_pick1 = m_pick2 = -1;
+    m_constraint_hl.clear();
+    m_constrain_cons.clear();
+    m_awaiting_length = false;
+    m_selection.clear();
+    m_point_sel.clear();
+    m_constraints.clear();
+    m_dimensions.clear();
+    m_dim_has0 = false;
+    m_pending_dim = -1;
+    m_dof = -1; m_solve_ok = true; m_entity_conflict.clear();
+    m_features.clear();
+    m_open_feature = -1;
+    reset_op();
+    reset_xform();
+    reset_tf();
+}
+
+bool DesignSketchTool::confirm_pending()
+{
+    if (op_ready()) { confirm_op();        return true; }
+    if (tf_ready()) { confirm_transform(); return true; }
+    if (!m_points.empty() && end_chain()) return true;
+    return false;
+}
+
+bool DesignSketchTool::end_chain()
+{
+    if (m_mode != Mode::Polyline && m_mode != Mode::BSpline) return false;
+    std::vector<Vec2d> pts;
+    for (const Vec2d& q : m_points)
+        if (pts.empty() || (q - pts.back()).norm() > m_chain_dup_tol) pts.push_back(q);
+    const int base = int(m_entities.size());
+    if (pts.size() >= 2) {
+        if (m_mode == Mode::Polyline) push_open_chain(pts);
+        else                          append_entities(make_bspline(pts));
+        infer_auto_constraints(base);
+    }
+    m_points.clear();
+    emit_step_hint();
+    return true;
+}
+
+void DesignSketchTool::show_refusal(const std::string& why)
+{
+    if (inline_editor != nullptr && inline_editor->refuse(why)) return;
+    notify(why);
+}
+
+bool DesignSketchTool::abort_gesture()
+{
+    if (!gesture_pending()) return false;
+    m_points.clear();
+    m_has_cursor = false;
+    if (has_pending_picks()) {
+        reset_op();
+        reset_tf();
+        m_dim_has0 = false;
+        m_dim_e0   = -1;
+        m_dim_r0   = SketchPointRole::P0;
+        m_pick0 = m_pick1 = m_pick2 = -1;
+        m_sel_a = m_sel_b = -1;
+        m_selection.clear();
+        m_point_sel.clear();
+        if (on_selection_changed) on_selection_changed(0);
+    }
+    emit_step_hint();
+    return true;
+}
+
+bool DesignSketchTool::disarm_tool()
+{
+    if (m_mode == Mode::Select) return false;
+    reset_op();
+    reset_tf();
+    set_tool(Mode::Select);
+    return true;
+}
+
+void DesignSketchTool::request_exit()
+{
+    if (abort_gesture()) return;
+    if (disarm_tool())   return;
+    if (live_sketch_has_work()) { if (on_exit_refused) on_exit_refused(); return; }
+    if (on_exit) on_exit();
+    else         cancel();
+}
+
+void DesignSketchTool::clear_selection()
+{
+    if (m_selection.empty() && m_point_sel.empty()) return;
+    m_selection.clear();
+    m_point_sel.clear();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+bool DesignSketchTool::can_redo_entity() const
+{
+    return m_active && !m_sketch_redo.empty()
+        && m_sketch_redo.back().after_entities == m_entities.size()
+        && m_sketch_redo.back().after_constraints == m_constraints.size();
+}
+
+bool DesignSketchTool::redo_last_entity()
+{
+    if (!can_redo_entity()) { m_sketch_redo.clear(); return false; }
+    SketchSnap s = std::move(m_sketch_redo.back());
+    m_sketch_redo.pop_back();
+    m_entities    = std::move(s.entities);
+    m_constraints = std::move(s.constraints);
+    m_features    = std::move(s.features);
+    m_dimensions  = std::move(s.dimensions);
+    m_selection.clear();
+    m_point_sel.clear();
+    reset_autoedit();
+    resolve_live();
+    if (on_selection_changed) on_selection_changed(0);
+    return true;
+}
+
+bool DesignSketchTool::undo_last_entity()
+{
+    if (!m_active || m_entities.empty()) return false;
+    if (!can_redo_entity()) m_sketch_redo.clear();
+    SketchSnap snap{ m_entities, m_constraints, m_features, m_dimensions, 0, 0 };
+    const int last = int(m_entities.size()) - 1;
+    int begin = last;
+    for (const Feature& f : m_features)
+        if (f.begin <= last && last < f.end && f.end == last + 1) begin = std::min(begin, f.begin);
+    m_selection.clear();
+    for (int i = begin; i <= last; ++i) m_selection.push_back(i);
+    delete_selected();
+    reset_autoedit();
+    snap.after_entities    = m_entities.size();
+    snap.after_constraints = m_constraints.size();
+    m_sketch_redo.push_back(std::move(snap));
+    return true;
+}
+
+void DesignSketchTool::delete_selected()
+{
+    if (m_selection.empty()) return;
+    const int n = int(m_entities.size());
+    std::vector<bool> del(n, false);
+    for (int i : m_selection)
+        if (i >= 0 && i < n) del[i] = true;
+    std::vector<int> remap(n, -1);
+    int next = 0;
+    for (int i = 0; i < n; ++i)
+        if (!del[i]) remap[i] = next++;
+    for (int i = n - 1; i >= 0; --i)
+        if (del[i]) m_entities.erase(m_entities.begin() + i);
+    std::vector<SketchEntityConstraintDef> kept;
+    std::vector<int> con_remap(m_constraints.size(), -1);
+    auto live = [&](int e) { return e < 0 || (e < n && remap[e] >= 0); };
+    auto map  = [&](int e) { return e < 0 ? e : remap[e]; };
+    for (int ci = 0; ci < int(m_constraints.size()); ++ci) {
+        SketchEntityConstraintDef c = m_constraints[ci];
+        if (!live(c.ea) || !live(c.eb) || !live(c.ec)) continue;
+        c.ea = map(c.ea); c.eb = map(c.eb); c.ec = map(c.ec);
+        con_remap[ci] = int(kept.size());
+        kept.push_back(c);
+    }
+    m_constraints.swap(kept);
+    m_selection.clear();
+    m_point_sel.clear();
+    {
+        std::vector<DimAnnot> kept_d;
+        for (DimAnnot a : m_dimensions) {
+            if (!live(a.ea) || !live(a.eb)) continue;
+            if (a.con >= 0) {
+                if (a.con >= int(con_remap.size()) || con_remap[a.con] < 0) continue;
+                a.con = con_remap[a.con];
+            }
+            a.ea = map(a.ea); a.eb = map(a.eb);
+            kept_d.push_back(a);
+        }
+        m_dimensions.swap(kept_d);
+    }
+    m_dim_has0 = false;
+    m_pending_dim = -1;
+    m_dim_e0 = -1;
+    m_dim_r0 = SketchPointRole::P0;
+
+    {
+        std::vector<Feature> kept_f;
+        for (const Feature& f : m_features) {
+            if (f.begin < 0 || f.end > n || f.end <= f.begin) continue;
+            bool whole = true;
+            for (int k = f.begin; k < f.end; ++k)
+                if (del[k]) { whole = false; break; }
+            if (!whole) continue;
+            Feature g = f;
+            g.begin = remap[f.begin];
+            g.end   = remap[f.end - 1] + 1;
+            kept_f.push_back(g);
+        }
+        m_features.swap(kept_f);
+        m_open_feature = -1;
+    }
+
+    reset_autoedit();
+
+    resolve_live();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+int DesignSketchTool::toggle_selection_construction()
+{
+    if (!selection_valid() || m_selection.empty()) return 0;
+    std::vector<bool> hit(m_entities.size(), false);
+    for (int i : m_selection) {
+        const int f = feature_of(i);
+        if (f >= 0)
+            for (int k = m_features[f].begin; k < m_features[f].end; ++k) hit[k] = true;
+        else
+            hit[i] = true;
+    }
+    bool any_real = false;
+    for (size_t i = 0; i < hit.size(); ++i)
+        if (hit[i] && !m_entities[i].construction) { any_real = true; break; }
+    int n = 0;
+    for (size_t i = 0; i < hit.size(); ++i)
+        if (hit[i] && m_entities[i].construction != any_real) { m_entities[i].construction = any_real; ++n; }
+    return n;
+}
+
+bool DesignSketchTool::selection_valid() const
+{
+    for (int i : m_selection)
+        if (i < 0 || i >= int(m_entities.size())) return false;
+    return true;
+}
+
+DesignSketchTool::DimType DesignSketchTool::dimension_kind() const
+{
+    if (!selection_valid()) return DimType::None;
+    if (m_selection.size() == 1) {
+        switch (m_entities[m_selection[0]].type) {
+        case SketchEntity::Type::Line:   return DimType::Length;
+        case SketchEntity::Type::Circle: return DimType::Diameter;
+        case SketchEntity::Type::Arc:    return DimType::Radius;
+        default: return DimType::None;
+        }
+    }
+    if (m_selection.size() == 2) {
+        const SketchEntity& a = m_entities[m_selection[0]];
+        const SketchEntity& b = m_entities[m_selection[1]];
+        const bool aLine = (a.type == SketchEntity::Type::Line);
+        const bool bLine = (b.type == SketchEntity::Type::Line);
+        Vec2d tmp(0, 0);
+        if (aLine && bLine)                                   return DimType::Angle;
+        if (aLine && entity_ref_point(b, tmp))                return DimType::DistanceToLine;
+        if (bLine && entity_ref_point(a, tmp))                return DimType::DistanceToLine;
+        if (entity_ref_point(a, tmp) && entity_ref_point(b, tmp)) return DimType::Distance;
+    }
+    return DimType::None;
+}
+
+double DesignSketchTool::dimension_current() const
+{
+    switch (dimension_kind()) {
+    case DimType::Length:   { const auto& e = m_entities[m_selection[0]]; return (e.p1 - e.p0).norm(); }
+    case DimType::Diameter: return 2.0 * m_entities[m_selection[0]].radius;
+    case DimType::Radius:   return m_entities[m_selection[0]].radius;
+    case DimType::Angle: {
+        const auto& a = m_entities[m_selection[0]];
+        const auto& b = m_entities[m_selection[1]];
+        const Vec2d da = a.p1 - a.p0, db = b.p1 - b.p0;
+        const double na = da.norm(), nb = db.norm();
+        if (na < 1e-9 || nb < 1e-9) return 0.0;
+        const double c = std::max(-1.0, std::min(1.0, da.dot(db) / (na * nb)));
+        return std::acos(c) * 180.0 / M_PI;
+    }
+    case DimType::Distance: {
+        Vec2d ra(0, 0), rb(0, 0);
+        entity_ref_point(m_entities[m_selection[0]], ra);
+        entity_ref_point(m_entities[m_selection[1]], rb);
+        return (rb - ra).norm();
+    }
+    case DimType::DistanceToLine: {
+        const SketchEntity& a = m_entities[m_selection[0]];
+        const SketchEntity& b = m_entities[m_selection[1]];
+        const bool aLine = (a.type == SketchEntity::Type::Line);
+        const SketchEntity& L = aLine ? a : b;
+        const SketchEntity& P = aLine ? b : a;
+        Vec2d rp(0, 0); entity_ref_point(P, rp);
+        Vec2d dir = L.p1 - L.p0;
+        const double n = dir.norm();
+        if (n < 1e-9) return 0.0;
+        const Vec2d nrm(-dir.y() / n, dir.x() / n);
+        return std::abs((rp - L.p0).dot(nrm));
+    }
+    default: return 0.0;
+    }
+}
+
+void DesignSketchTool::apply_angle_between(int ia, int ib, double deg)
+{
+    SketchEntity& A = m_entities[ia];
+    SketchEntity& B = m_entities[ib];
+    const Vec2d aE[2] = { A.p0, A.p1 };
+    const Vec2d bE[2] = { B.p0, B.p1 };
+    int si = -1, sj = -1;
+    double best = 1e-6;
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 2; ++j) {
+            const double d = (aE[i] - bE[j]).squaredNorm();
+            if (d < best) { best = d; si = i; sj = j; }
+        }
+    Vec2d pivot, refDir, bMoving;
+    bool moveP1;
+    if (si >= 0) {
+        pivot   = aE[si];
+        refDir  = aE[1 - si] - pivot;
+        moveP1  = (sj == 0);
+        bMoving = moveP1 ? B.p1 : B.p0;
+    } else {
+        pivot   = B.p0;
+        refDir  = A.p1 - A.p0;
+        moveP1  = true;
+        bMoving = B.p1;
+    }
+    double nr = refDir.norm();
+    if (nr < 1e-9) return;
+    refDir /= nr;
+    const Vec2d db = bMoving - pivot;
+    const double Lb = db.norm();
+    if (Lb < 1e-9) return;
+    const double cross = refDir.x() * db.y() - refDir.y() * db.x();
+    const double sign  = (cross >= 0.0) ? 1.0 : -1.0;
+    const double rad   = sign * deg * M_PI / 180.0;
+    const Vec2d ndir(refDir.x() * std::cos(rad) - refDir.y() * std::sin(rad),
+                     refDir.x() * std::sin(rad) + refDir.y() * std::cos(rad));
+    const Vec2d nb = pivot + Lb * ndir;
+    if (moveP1) B.p1 = nb; else B.p0 = nb;
+}
+
+void DesignSketchTool::apply_dimension(double v)
+{
+    const DimType kind = dimension_kind();
+    const bool needs_positive = (kind == DimType::Length || kind == DimType::Radius ||
+                                 kind == DimType::Diameter);
+    if (!std::isfinite(v) || (needs_positive && v <= 0.0) ||
+        (!needs_positive && kind != DimType::Angle && kind != DimType::None && v < 0.0)) {
+        show_refusal(needs_positive ? _u8L("The value must be greater than zero")
+                                    : _u8L("The value must not be negative (zero means coincident)"));
+        return;
+    }
+    switch (dimension_kind()) {
+    case DimType::Length: {
+        SketchEntity& e = m_entities[m_selection[0]];
+        const Vec2d d = e.p1 - e.p0;
+        const double r = d.norm();
+        if (r > 1e-9 && v > 1e-9) e.p1 = e.p0 + (v / r) * d;
+        break;
+    }
+    case DimType::Diameter: if (v > 1e-9) m_entities[m_selection[0]].radius = 0.5 * v; break;
+    case DimType::Radius:   if (v > 1e-9) m_entities[m_selection[0]].radius = v;       break;
+    case DimType::Angle:    apply_angle_between(m_selection[0], m_selection[1], v);     break;
+    case DimType::Distance: {
+        if (v < 0.0) break;
+        Vec2d ra(0, 0), rb(0, 0);
+        entity_ref_point(m_entities[m_selection[0]], ra);
+        SketchEntity& b = m_entities[m_selection[1]];
+        entity_ref_point(b, rb);
+        const Vec2d d = rb - ra;
+        const double r = d.norm();
+        Vec2d target = ra;
+        if (r > 1e-9) target = ra + (v / r) * d;
+        else          target = ra + Vec2d(v, 0.0);
+        translate_entity(b, target - rb);
+        break;
+    }
+    case DimType::DistanceToLine: {
+        if (v < 0.0) break;
+        const bool aLine = (m_entities[m_selection[0]].type == SketchEntity::Type::Line);
+        const SketchEntity& L = m_entities[m_selection[aLine ? 0 : 1]];
+        SketchEntity& P = m_entities[m_selection[aLine ? 1 : 0]];
+        Vec2d rp(0, 0); entity_ref_point(P, rp);
+        Vec2d dir = L.p1 - L.p0;
+        const double n = dir.norm();
+        if (n < 1e-9) break;
+        const Vec2d nrm(-dir.y() / n, dir.x() / n);
+        const double d0 = (rp - L.p0).dot(nrm);
+        const double sign = (d0 >= 0.0) ? 1.0 : -1.0;
+        translate_entity(P, (sign * v - d0) * nrm);
+        break;
+    }
+    default: break;
+    }
+    record_dimension_constraint(v);
+    resolve_live();
+    if (!m_solve_ok)
+        notify(_u8L("That dimension cannot be satisfied — the sketch is over-constrained"));
+    m_selection.clear();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+void DesignSketchTool::record_dimension_constraint(double v)
+{
+    const DimType k = dimension_kind();
+    auto role = [&](int i) {
+        return (m_entities[i].type == SketchEntity::Type::Point) ? SketchPointRole::P0
+                                                                 : SketchPointRole::Center;
+    };
+    SketchEntityConstraintDef c;
+    switch (k) {
+    case DimType::Length:
+        c.type = SketchConstraintType::Distance;
+        c.ea = m_selection[0]; c.ra = SketchPointRole::P0;
+        c.eb = m_selection[0]; c.rb = SketchPointRole::P1;
+        c.value = v; upsert_dimension_constraint(c); break;
+    case DimType::Diameter:
+        c.type = SketchConstraintType::Diameter; c.ea = m_selection[0]; c.value = v;
+        upsert_dimension_constraint(c); break;
+    case DimType::Radius:
+        c.type = SketchConstraintType::Radius; c.ea = m_selection[0]; c.value = v;
+        upsert_dimension_constraint(c); break;
+    case DimType::Angle:
+        c.type = SketchConstraintType::Angle;
+        c.ea = m_selection[0]; c.eb = m_selection[1]; c.value = v;
+        upsert_dimension_constraint(c); break;
+    case DimType::Distance: {
+        const int ia = m_selection[0], ib = m_selection[1];
+        if (v < 1e-9) c.type = SketchConstraintType::Coincident;
+        else        { c.type = SketchConstraintType::Distance; c.value = v; }
+        c.ea = ia; c.ra = role(ia); c.eb = ib; c.rb = role(ib);
+        upsert_dimension_constraint(c); break;
+    }
+    case DimType::DistanceToLine: {
+        const bool aLine = (m_entities[m_selection[0]].type == SketchEntity::Type::Line);
+        const int ip = m_selection[aLine ? 1 : 0];
+        const int il = m_selection[aLine ? 0 : 1];
+        c.type = SketchConstraintType::PointOnLine;
+        c.ea = ip; c.ra = role(ip); c.eb = il; c.value = v;
+        upsert_dimension_constraint(c); break;
+    }
+    default: break;
+    }
+}
+
+void DesignSketchTool::resolve_live()
+{
+    resolve_live_drag(-1, SketchPointRole::P0);
+}
+
+void DesignSketchTool::resolve_live_drag(int dragged_ei, SketchPointRole dragged_role)
+{
+    const bool has = !m_constraints.empty();
+    m_entity_conflict.assign(m_entities.size(), 0);
+    if (has) {
+        std::vector<SketchEntityConstraintDef> cons = m_constraints;
+        const bool line_end = dragged_ei >= 0 && dragged_ei < int(m_entities.size()) &&
+                              m_entities[dragged_ei].type == SketchEntity::Type::Line &&
+                              (dragged_role == SketchPointRole::P0 || dragged_role == SketchPointRole::P1);
+        if (line_end) {
+            SketchEntityConstraintDef fix;
+            fix.type = SketchConstraintType::Fix;
+            fix.ea   = dragged_ei;
+            fix.ra   = (dragged_role == SketchPointRole::P0) ? SketchPointRole::P1
+                                                             : SketchPointRole::P0;
+            cons.push_back(fix);
+        }
+        const SketchSolveResult r = (dragged_ei >= 0)
+            ? sketch_solve_drag(m_entities, cons, dragged_ei, dragged_role)
+            : sketch_solve(m_entities, cons);
+        m_dof      = r.dof;
+        m_solve_ok = r.ok;
+        if (int(r.skipped.size()) != m_skipped_last) {
+            m_skipped_last = int(r.skipped.size());
+            if (m_skipped_last > 0)
+                notify(format(_u8L("%1% constraint(s) cannot act on this geometry (an ellipse or spline curve, "
+                                   "or a zero-size circle) and are ignored"), m_skipped_last), false);
+        }
+        m_bad_dims.clear();
+        for (int bi : r.bad) {
+            if (bi < 0 || bi >= int(m_constraints.size())) continue;
+            const SketchEntityConstraintDef& c = m_constraints[bi];
+            for (int e : {c.ea, c.eb, c.ec})
+                if (e >= 0 && e < int(m_entity_conflict.size())) m_entity_conflict[e] = 1;
+            for (int di = 0; di < int(m_dimensions.size()); ++di)
+                if (m_dimensions[di].con == bi) m_bad_dims.push_back(di);
+        }
+    } else {
+        m_dof = -1; m_solve_ok = true;
+        m_bad_dims.clear();
+    }
+    if (on_solve_state) on_solve_state(m_dof, m_solve_ok, has);
+    announce_loop_defects();
+}
+
+void DesignSketchTool::announce_loop_defects()
+{
+    bool any = false;
+    for (const RegionLoop& r : region_loops(m_entities))
+        if (r.defect) { any = true; break; }
+    if (any && !m_loop_defect_shown)
+        notify(_u8L("This profile crosses or folds back on itself at the red mark, so it does not bound one region"));
+    m_loop_defect_shown = any;
+}
+
+int DesignSketchTool::feature_of(int ei) const
+{
+    for (int i = int(m_features.size()) - 1; i >= 0; --i)
+        if (ei >= m_features[i].begin && ei < m_features[i].end) return i;
+    return -1;
+}
+
+void DesignSketchTool::begin_feature(FeatureKind kind)
+{
+    Feature f;
+    f.kind  = kind;
+    f.begin = int(m_entities.size());
+    f.end   = f.begin;
+    m_features.push_back(f);
+    m_open_feature = int(m_features.size()) - 1;
+}
+
+void DesignSketchTool::end_feature(const Vec2d& c0, const Vec2d& c1, double param, int sides)
+{
+    if (m_open_feature < 0 || m_open_feature >= int(m_features.size())) return;
+    Feature& f = m_features[m_open_feature];
+    f.end   = int(m_entities.size());
+    f.c0    = c0;
+    f.c1    = c1;
+    f.param = param;
+    f.sides = sides;
+    if (f.end <= f.begin) m_features.pop_back();
+    m_open_feature = -1;
+}
+
+static Vec2d  ellipse_point(const Vec2d& c, double a, double b, double phi, double t);
+static double ellipse_param_of(const Vec2d& center, double a, double b, double phi, const Vec2d& q);
+
+std::vector<DesignSketchTool::Handle> DesignSketchTool::build_handles() const
+{
+    std::vector<Handle> hs;
+    hs.reserve(m_entities.size() * 2);
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const SketchEntity& e = m_entities[i];
+        switch (e.type) {
+        case SketchEntity::Type::Line: {
+            Handle a; a.role = HandleRole::P0; a.ei = int(i); a.pos = e.p0; hs.push_back(a);
+            Handle b; b.role = HandleRole::P1; b.ei = int(i); b.pos = e.p1; hs.push_back(b);
+            break;
+        }
+        case SketchEntity::Type::Circle: {
+            Handle c; c.role = HandleRole::Center; c.ei = int(i); c.pos = e.center; hs.push_back(c);
+            Handle r; r.role = HandleRole::RadiusHandle; r.ei = int(i);
+            r.pos = e.center + Vec2d(e.radius, 0.0); hs.push_back(r);
+            break;
+        }
+        case SketchEntity::Type::Ellipse:
+        case SketchEntity::Type::EllipseArc: {
+            const Vec2d um(std::cos(e.rotation), std::sin(e.rotation));
+            const Vec2d un(-um.y(), um.x());
+            Handle c; c.role = HandleRole::Center; c.ei = int(i); c.pos = e.center; hs.push_back(c);
+            Handle ma; ma.role = HandleRole::MajorAxis; ma.ei = int(i);
+            ma.pos = e.center + um * e.radius; hs.push_back(ma);
+            Handle mi; mi.role = HandleRole::MinorAxis; mi.ei = int(i);
+            mi.pos = e.center + un * e.rminor; hs.push_back(mi);
+            break;
+        }
+        case SketchEntity::Type::BSpline: {
+            for (size_t k = 0; k < e.ctrl.size(); ++k) {
+                Handle h; h.role = HandleRole::BSplineCtrl; h.ei = int(i);
+                h.ctrl_index = int(k); h.pos = e.ctrl[k]; hs.push_back(h);
+            }
+            break;
+        }
+        default: break;
+        }
+    }
+    return hs;
+}
+
+bool DesignSketchTool::hit_test_handle(const Vec2d& p, double tol, Handle& out) const
+{
+    bool found = false;
+    double best = tol;
+    for (const Handle& h : build_handles()) {
+        const double d = (h.pos - p).norm();
+        if (d <= best) { best = d; out = h; out.hovered = true; found = true; }
+    }
+    return found;
+}
+
+bool DesignSketchTool::update_hover(GLCanvas3D& canvas, wxMouseEvent& evt)
+{
+    if (!evt.Moving()) return false;
+    Vec2d p;
+    screen_to_plane(canvas, evt, p);
+    const double tol = screen_tol(canvas, evt, p, kPickPx);
+    const bool   had  = m_has_hover_handle;
+    const Handle prev = m_hover_handle;
+    Handle h;
+    m_has_hover_handle = hit_test_handle(p, tol, h);
+    if (m_has_hover_handle) m_hover_handle = h;
+    return (had != m_has_hover_handle) ||
+           (m_has_hover_handle && (prev.ei != h.ei || prev.role != h.role));
+}
+
+void DesignSketchTool::set_handle(const Handle& h, const Vec2d& target)
+{
+    if (h.ei < 0 || h.ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[h.ei];
+    switch (h.role) {
+    case HandleRole::P0:
+        set_point(h.ei, SketchPointRole::P0, target);     resolve_live_drag(h.ei, SketchPointRole::P0);     break;
+    case HandleRole::P1:
+        set_point(h.ei, SketchPointRole::P1, target);     resolve_live_drag(h.ei, SketchPointRole::P1);     break;
+    case HandleRole::Center:
+        set_point(h.ei, SketchPointRole::Center, target); resolve_live_drag(h.ei, SketchPointRole::Center); break;
+    case HandleRole::RadiusHandle: {
+        const double r = (target - e.center).norm();
+        if (r > 1e-6) e.radius = r;
+        resolve_live();
+        break;
+    }
+    case HandleRole::MajorAxis: {
+        const Vec2d d = target - e.center;
+        const double a = d.norm();
+        if (a > 1e-6) {
+            e.rotation = std::atan2(d.y(), d.x());
+            e.radius   = std::max(a, e.rminor);
+        }
+        if (e.type == SketchEntity::Type::EllipseArc) {
+            e.p0 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.start_angle);
+            e.p1 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.end_angle);
+        }
+        resolve_live();
+        break;
+    }
+    case HandleRole::MinorAxis: {
+        const Vec2d um(std::cos(e.rotation), std::sin(e.rotation));
+        const Vec2d un(-um.y(), um.x());
+        const double b = std::abs((target - e.center).dot(un));
+        if (b > 1e-6) e.rminor = std::min(b, e.radius);
+        if (e.type == SketchEntity::Type::EllipseArc) {
+            e.p0 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.start_angle);
+            e.p1 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.end_angle);
+        }
+        resolve_live();
+        break;
+    }
+    case HandleRole::BSplineCtrl: {
+        const int k = h.ctrl_index;
+        if (k >= 0 && k < int(e.ctrl.size())) {
+            e.ctrl[k] = target;
+            if (k == 0)                       e.p0 = target;
+            if (k == int(e.ctrl.size()) - 1)  e.p1 = target;
+        }
+        resolve_live();
+        break;
+    }
+    default: break;
+    }
+}
+
+bool DesignSketchTool::point_at(int ei, SketchPointRole role, Vec2d& out) const
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return false;
+    const SketchEntity& e = m_entities[ei];
+    switch (role) {
+    case SketchPointRole::P0:     out = e.p0;     return true;
+    case SketchPointRole::P1:     out = e.p1;     return true;
+    case SketchPointRole::Center: out = e.center; return true;
+    }
+    return false;
+}
+
+void DesignSketchTool::set_point(int ei, SketchPointRole role, const Vec2d& v)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    switch (e.type) {
+    case SketchEntity::Type::Line:
+        if (role == SketchPointRole::P0)      e.p0 = v;
+        else if (role == SketchPointRole::P1) e.p1 = v;
+        break;
+    case SketchEntity::Type::Point:
+        e.p0 = v;
+        break;
+    case SketchEntity::Type::Circle:
+        if (role == SketchPointRole::Center)  { e.center = v; e.p0 = v; }
+        break;
+    case SketchEntity::Type::Arc:
+    case SketchEntity::Type::EllipseArc:
+        if (role == SketchPointRole::Center) {
+            const Vec2d d = v - e.center;
+            e.center = v; e.p0 += d; e.p1 += d;
+        }
+        break;
+    case SketchEntity::Type::Ellipse:
+        if (role == SketchPointRole::Center) { e.center = v; e.p0 = v; }
+        break;
+    case SketchEntity::Type::BSpline:
+        if (role == SketchPointRole::P0 && !e.ctrl.empty()) { e.ctrl.front() = v; e.p0 = v; }
+        else if (role == SketchPointRole::P1 && !e.ctrl.empty()) { e.ctrl.back() = v; e.p1 = v; }
+        else if (role == SketchPointRole::Center) {
+            const Vec2d d = v - (e.ctrl.empty() ? e.p0 : e.ctrl.front());
+            for (auto& cp : e.ctrl) cp += d;
+            e.p0 += d; e.p1 += d;
+        }
+        break;
+    }
+}
+
+bool DesignSketchTool::hit_test_point(const Vec2d& p, double tol, int& ei, SketchPointRole& role) const
+{
+    double best = tol;
+    bool found = false;
+    auto consider = [&](int i, SketchPointRole r, const Vec2d& q) {
+        const double d = (q - p).norm();
+        if (d < best) { best = d; ei = i; role = r; found = true; }
+    };
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const SketchEntity& e = m_entities[i];
+        switch (e.type) {
+        case SketchEntity::Type::Line:
+            consider(int(i), SketchPointRole::P0, e.p0);
+            consider(int(i), SketchPointRole::P1, e.p1);
+            break;
+        case SketchEntity::Type::Arc:
+        case SketchEntity::Type::EllipseArc:
+            consider(int(i), SketchPointRole::P0, e.p0);
+            consider(int(i), SketchPointRole::P1, e.p1);
+            consider(int(i), SketchPointRole::Center, e.center);
+            break;
+        case SketchEntity::Type::Circle:
+        case SketchEntity::Type::Ellipse:
+            consider(int(i), SketchPointRole::Center, e.center);
+            break;
+        case SketchEntity::Type::BSpline:
+            consider(int(i), SketchPointRole::P0, e.p0);
+            consider(int(i), SketchPointRole::P1, e.p1);
+            break;
+        case SketchEntity::Type::Point:
+            consider(int(i), SketchPointRole::P0, e.p0);
+            break;
+        }
+    }
+    return found;
+}
+
+double DesignSketchTool::measure_dim(const DimAnnot& a) const
+{
+    Vec2d pa, pb;
+    switch (a.kind) {
+    case DimType::Length:
+        return (a.ea >= 0 && a.ea < int(m_entities.size()))
+                   ? (m_entities[a.ea].p1 - m_entities[a.ea].p0).norm() : 0.0;
+    case DimType::Diameter:
+        return (a.ea >= 0 && a.ea < int(m_entities.size())) ? 2.0 * m_entities[a.ea].radius : 0.0;
+    case DimType::Radius:
+        return (a.ea >= 0 && a.ea < int(m_entities.size())) ? m_entities[a.ea].radius : 0.0;
+    case DimType::Angle: {
+        if (a.ea < 0 || a.ea >= int(m_entities.size())) return 0.0;
+        const SketchEntity& e = m_entities[a.ea];
+        if (e.type != SketchEntity::Type::Line) return 0.0;
+        const Vec2d d = e.p1 - e.p0;
+        if (d.squaredNorm() < 1e-18) return 0.0;
+        double deg = std::atan2(d.y(), d.x()) * 180.0 / M_PI;
+        if (deg < 0.0) deg += 360.0;
+        return deg;
+    }
+    case DimType::Distance:
+        return (point_at(a.ea, a.ra, pa) && point_at(a.eb, a.rb, pb)) ? (pb - pa).norm() : 0.0;
+    case DimType::DistanceToLine: {
+        if (!point_at(a.ea, a.ra, pa) || a.eb < 0 || a.eb >= int(m_entities.size())) return 0.0;
+        const SketchEntity& L = m_entities[a.eb];
+        const Vec2d d = L.p1 - L.p0;
+        const double n = d.norm();
+        if (n < 1e-9) return 0.0;
+        const Vec2d nrm(-d.y() / n, d.x() / n);
+        return std::abs((pa - L.p0).dot(nrm));
+    }
+    default: return 0.0;
+    }
+}
+
+int DesignSketchTool::upsert_constraint(const SketchEntityConstraintDef& c)
+{
+    auto same_operands = [&](const SketchEntityConstraintDef& o) {
+        if (o.ea == c.ea && o.ra == c.ra && o.eb == c.eb && o.rb == c.rb) return true;
+        return o.ea == c.eb && o.ra == c.rb && o.eb == c.ea && o.rb == c.ra;
+    };
+    for (int i = 0; i < int(m_constraints.size()); ++i)
+        if (m_constraints[i].type == c.type && same_operands(m_constraints[i])) {
+            m_constraints[i] = c;
+            return i;
+        }
+    m_constraints.push_back(c);
+    return int(m_constraints.size()) - 1;
+}
+
+int DesignSketchTool::upsert_dimension_constraint(const SketchEntityConstraintDef& c)
+{
+    const bool zero_case = (c.type == SketchConstraintType::Coincident);
+    const bool dist_case = (c.type == SketchConstraintType::Distance);
+    if (zero_case || dist_case) {
+        erase_constraints([&](int, const SketchEntityConstraintDef& d) {
+            const bool same = (d.ea == c.ea && d.eb == c.eb) || (d.ea == c.eb && d.eb == c.ea);
+            if (!same) return false;
+            return zero_case ? (d.type == SketchConstraintType::Distance)
+                             : (d.type == SketchConstraintType::Coincident);
+        });
+    }
+    return upsert_constraint(c);
+}
+
+int DesignSketchTool::upsert_dimension(const DimAnnot& a)
+{
+    for (int i = 0; i < int(m_dimensions.size()); ++i) {
+        const DimAnnot& o = m_dimensions[i];
+        if (o.kind == a.kind && ((o.ea == a.ea && o.eb == a.eb) || (o.ea == a.eb && o.eb == a.ea))) {
+            const Vec2d keep = m_dimensions[i].label_pos;
+            m_dimensions[i] = a;
+            m_dimensions[i].label_pos = keep;
+            return i;
+        }
+    }
+    m_dimensions.push_back(a);
+    return int(m_dimensions.size()) - 1;
+}
+
+SketchEntityConstraintDef DesignSketchTool::constraint_for(const DimAnnot& a) const
+{
+    SketchEntityConstraintDef c;
+    switch (a.kind) {
+    case DimType::Length:
+        c.type = SketchConstraintType::Distance;
+        c.ea = a.ea; c.ra = SketchPointRole::P0;
+        c.eb = a.ea; c.rb = SketchPointRole::P1; c.value = a.value;
+        break;
+    case DimType::Diameter: c.type = SketchConstraintType::Diameter; c.ea = a.ea; c.value = a.value; break;
+    case DimType::Radius:   c.type = SketchConstraintType::Radius;   c.ea = a.ea; c.value = a.value; break;
+    case DimType::Distance:
+        if (a.value < 1e-9) c.type = SketchConstraintType::Coincident;
+        else              { c.type = SketchConstraintType::Distance; c.value = a.value; }
+        c.ea = a.ea; c.ra = a.ra; c.eb = a.eb; c.rb = a.rb;
+        break;
+    case DimType::DistanceToLine:
+        c.type = SketchConstraintType::PointOnLine;
+        c.ea = a.ea; c.ra = a.ra; c.eb = a.eb; c.value = a.value;
+        break;
+    default: break;
+    }
+    return c;
+}
+
+int DesignSketchTool::place_dimension(DimAnnot a)
+{
+    a.value = measure_dim(a);
+    a.con   = upsert_dimension_constraint(constraint_for(a));
+    const int di = upsert_dimension(a);
+    resolve_live();
+    open_value_editor(di);
+    return m_pending_dim;
+}
+
+int DesignSketchTool::hit_test_dimension(const Vec2d& p, double tol) const
+{
+    double best = tol;
+    int bi = -1;
+    for (size_t i = 0; i < m_dimensions.size(); ++i) {
+        const double d = (m_dimensions[i].label_pos - p).norm();
+        if (d < best) { best = d; bi = int(i); }
+    }
+    return bi;
+}
+
+void DesignSketchTool::edit_dimension(int di)
+{
+    if (di < 0 || di >= int(m_dimensions.size())) return;
+    open_value_editor(di);
+}
+
+Vec2d DesignSketchTool::dim_anchor(const DimAnnot& a) const
+{
+    if (a.label_pos.squaredNorm() > 1e-12) return a.label_pos;
+    Vec2d pa, pb;
+    if ((a.kind == DimType::Radius || a.kind == DimType::Diameter) &&
+        point_at(a.ea, SketchPointRole::Center, pa))
+        return pa;
+    const bool ga = point_at(a.ea, a.ra, pa);
+    const bool gb = point_at(a.eb, a.rb, pb);
+    if (ga && gb) return 0.5 * (pa + pb);
+    if (ga)       return pa;
+    if (gb)       return pb;
+    return Vec2d(0, 0);
+}
+
+void DesignSketchTool::open_value_editor(int di)
+{
+    if (di < 0 || di >= int(m_dimensions.size())) return;
+    m_pending_dim = di;
+    if (!on_inline_edit) {
+        if (on_dimension_pick_complete) on_dimension_pick_complete(m_dimensions[di].value);
+        return;
+    }
+    const DimAnnot& a = m_dimensions[di];
+    wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const wxPoint lp = world_to_screen_px(cam, m_plane.to_world(dim_anchor(a)));
+    const std::array<int, 4>& vp = cam.get_viewport();
+    if (lp.x >= vp[0] && lp.y >= vp[1] && lp.x <= vp[0] + vp[2] && lp.y <= vp[1] + vp[3])
+        px = lp;
+    on_inline_edit(px, a.value, dimtype_title(a.kind),
+                   [this](double v) { set_dimension_value(v); },
+                   [this]()         { cancel_dimension_value(); });
+}
+
+void DesignSketchTool::open_angle_editor(int ei)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    if (m_entities[ei].type != SketchEntity::Type::Line) return;
+    if (!on_inline_edit) return;
+    DimAnnot a; a.kind = DimType::Angle; a.ea = ei;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, measure_dim(a), _u8L("Angle (°)"),
+                   [this, ei](double deg) { set_line_angle(ei, deg); },
+                   []()                   {});
+}
+
+bool DesignSketchTool::open_selection_dimension_editor()
+{
+    if (!on_inline_edit || !selection_valid()) return false;
+    const DimType k = dimension_kind();
+    if (k == DimType::None) return false;
+    const std::string title = dimtype_title(k);
+    DimAnnot a; a.kind = k;
+    a.ea = m_selection.empty() ? -1 : m_selection[0];
+    if (m_selection.size() > 1) a.eb = m_selection[1];
+    const Vec2d at = dim_anchor(a);
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    wxPoint px = world_to_screen_px(cam, m_plane.to_world(at));
+    if (px.x < 0 || px.y < 0) px = wxPoint(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, dimension_current(), title,
+                   [this](double v) { apply_dimension(v); },
+                   []()             {});
+    return true;
+}
+
+void DesignSketchTool::set_line_angle(int ei, double deg)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Line) return;
+    const double L = (e.p1 - e.p0).norm();
+    if (L < 1e-9) return;
+    drop_orientation_constraints(ei, ei + 1);
+    const double r = deg * M_PI / 180.0;
+    e.p1 = e.p0 + Vec2d(std::cos(r), std::sin(r)) * L;
+    resolve_live();
+}
+
+void DesignSketchTool::open_next_autoedit_dim()
+{
+    if (!on_inline_edit || !m_active) { m_autoedit_dim_idx = -1; return; }
+    if (m_autoedit_dim_idx < 0 || m_autoedit_dim_idx >= int(m_autoedit_dims.size())) {
+        m_autoedit_dim_idx = -1;
+        return;
+    }
+    const AutoEditStep step = m_autoedit_dims[m_autoedit_dim_idx];
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const wxPoint lp = world_to_screen_px(cam, m_plane.to_world(step.label));
+    const std::array<int, 4>& vp = cam.get_viewport();
+    wxPoint px(m_last_mouse_x, m_last_mouse_y + m_autoedit_dim_idx * 34);
+    if (lp.x >= vp[0] && lp.y >= vp[1] && lp.x <= vp[0] + vp[2] && lp.y <= vp[1] + vp[3])
+        px = lp;
+    on_inline_edit(px, step.value, step.title,
+        [this, step](double v) {
+            if (step.apply) step.apply(v);
+            if (inline_editor != nullptr && inline_editor->is_open()) return;
+            ++m_autoedit_dim_idx;
+            wxGetApp().CallAfter([this] { open_next_autoedit_dim(); });
+        },
+        [this]() { m_autoedit_dim_idx = -1; });
+}
+
+void DesignSketchTool::arm_polyline_segment_edit()
+{
+    const int k = int(m_points.size()) - 1;
+    if (k < 1 || !on_inline_edit) return;
+    const Vec2d a   = m_points[k - 1];
+    const Vec2d mid = 0.5 * (a + m_points[k]);
+    const Vec2d d   = m_points[k] - a;
+    const double L  = d.norm();
+    if (L < 1e-9) return;
+    double deg = std::atan2(d.y(), d.x()) * 180.0 / M_PI; if (deg < 0.0) deg += 360.0;
+
+    m_autoedit_dims.clear();
+    m_autoedit_dims.push_back({ mid, L, [this, k, a](double len) {
+        if (k < int(m_points.size())) {
+            if (!(len > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+            Vec2d dd = m_points[k] - a; const double n = dd.norm();
+            if (n > 1e-9) m_points[k] = a + (len / n) * dd;
+        }
+    }, {}, _u8L("Length") });
+    m_autoedit_dims.push_back({ mid, deg, [this, k, a](double dg) {
+        if (k < int(m_points.size())) {
+            const double len = (m_points[k] - a).norm();
+            const double r   = dg * M_PI / 180.0;
+            m_points[k] = a + len * Vec2d(std::cos(r), std::sin(r));
+        }
+    }, {}, _u8L("Angle (°)") });
+    m_autoedit_dim_idx = 0;
+    wxGetApp().CallAfter([this] { open_next_autoedit_dim(); });
+}
+
+std::string DesignSketchTool::dimtype_title(DimType k) const {
+    switch (k) {
+        case DimType::Length:         return _u8L("Length");
+        case DimType::Diameter:       return _u8L("Diameter");
+        case DimType::Radius:         return _u8L("Radius");
+        case DimType::Angle:          return _u8L("Angle (°)");
+        case DimType::Distance:       return _u8L("Distance");
+        case DimType::DistanceToLine: return _u8L("Distance");
+        default:                      return _u8L("Value");
+    }
+}
+
+static void trace_autoedit(const char* why, size_t n)
+{
+    if (!std::getenv("ORCA_CAD_UXTRACE")) return;
+    fprintf(stderr, "[UX] autoedit %s steps=%zu\n", why, n);
+    fflush(stderr);
+}
+
+void DesignSketchTool::open_primary_autoedit()
+{
+    if (!on_inline_edit) { trace_autoedit("skip: no on_inline_edit host", 0); return; }
+    if (m_awaiting_length) { trace_autoedit("skip: a field is already open", 0); return; }
+    if (!m_active) { trace_autoedit("skip: session ended before the deferred tick", 0); return; }
+
+    m_autoedit_dims.clear();
+
+    for (const DimAnnot& q : m_live_quotes) {
+        if (q.kind == DimType::Angle) {
+            const int ei = q.ea;
+            m_autoedit_dims.push_back({ q.label_pos, measure_dim(q),
+                [this, ei](double v) { set_line_angle(ei, v); }, { ei }, _u8L("Angle (°)") });
+            continue;
+        }
+        DimAnnot a = q;
+        a.value = measure_dim(a);
+        m_autoedit_dims.push_back({ a.label_pos, a.value,
+            [this, a](double v) mutable {
+                const bool positive = a.kind == DimType::Length || a.kind == DimType::Radius || a.kind == DimType::Diameter;
+                if (!std::isfinite(v) || (positive && v <= 0.0) || (!positive && v < 0.0)) {
+                    show_refusal(positive ? _u8L("The value must be greater than zero")
+                                          : _u8L("The value must not be negative (zero means coincident)"));
+                    return;
+                }
+                a.value = v;
+                a.con   = upsert_dimension_constraint(constraint_for(a));
+                upsert_dimension(a);
+                resolve_live();
+            }, { a.ea, a.eb }, dimtype_title(a.kind) });
+    }
+
+    auto span = [this](int fi) {
+        std::vector<int> v;
+        if (fi >= 0 && fi < int(m_features.size()))
+            for (int k = m_features[fi].begin; k < m_features[fi].end; ++k) v.push_back(k);
+        return v;
+    };
+    if (m_live_poly_fi >= 0) {
+        const Feature& f = m_features[m_live_poly_fi];
+        const int fi = m_live_poly_fi;
+        if (f.begin >= 0 && f.begin < int(m_entities.size())) {
+            const double side = (m_entities[f.begin].p1 - m_entities[f.begin].p0).norm();
+            const Vec2d  sp   = m_entities[f.begin].p0 - f.c0;
+            double deg = std::atan2(sp.y(), sp.x()) * 180.0 / M_PI; if (deg < 0.0) deg += 360.0;
+            m_autoedit_dims.push_back({ m_live_poly_side_label,  side, [this, fi](double v){ set_polygon_side(fi, v); }, span(fi), _u8L("Side") });
+            m_autoedit_dims.push_back({ m_live_poly_angle_label, deg,  [this, fi](double v){ set_polygon_angle(fi, v); }, span(fi), _u8L("Angle (°)") });
+        }
+    }
+    if (m_live_rrect_fi >= 0) {
+        const Feature& f = m_features[m_live_rrect_fi];
+        const int fi = m_live_rrect_fi;
+        const double w = std::abs(f.c1.x() - f.c0.x()), h = std::abs(f.c1.y() - f.c0.y()), r = f.param;
+        auto rr_w = [this, fi](double v){ const Feature& g = m_features[fi]; set_rounded_rect(fi, v, std::abs(g.c1.y()-g.c0.y()), g.param); };
+        auto rr_h = [this, fi](double v){ const Feature& g = m_features[fi]; set_rounded_rect(fi, std::abs(g.c1.x()-g.c0.x()), v, g.param); };
+        auto rr_r = [this, fi](double v){ const Feature& g = m_features[fi]; set_rounded_rect(fi, std::abs(g.c1.x()-g.c0.x()), std::abs(g.c1.y()-g.c0.y()), v); };
+        m_autoedit_dims.push_back({ m_live_rrect_w_label, w, rr_w, span(fi), _u8L("Width") });
+        m_autoedit_dims.push_back({ m_live_rrect_h_label, h, rr_h, span(fi), _u8L("Height") });
+        m_autoedit_dims.push_back({ m_live_rrect_r_label, r, rr_r, span(fi), _u8L("Radius") });
+    }
+    if (m_live_aslot_fi >= 0) {
+        const Feature& f = m_features[m_live_aslot_fi];
+        const int fi = m_live_aslot_fi;
+        const double Rc = (f.c1 - f.c0).norm(), fw = 2.0 * f.param;
+        m_autoedit_dims.push_back({ m_live_aslot_r_label, Rc, [this, fi](double v){ const Feature& g = m_features[fi]; set_arc_slot(fi, v, g.param); }, span(fi), _u8L("Radius") });
+        m_autoedit_dims.push_back({ m_live_aslot_w_label, fw, [this, fi](double v){ const Feature& g = m_features[fi]; set_arc_slot(fi, (g.c1-g.c0).norm(), v * 0.5); }, span(fi), _u8L("Width") });
+    }
+    if (m_live_slot_fi >= 0) {
+        const Feature& f = m_features[m_live_slot_fi];
+        const int fi = m_live_slot_fi;
+        const Vec2d  d  = f.c1 - f.c0;
+        const double Lc = d.norm();
+        double deg = std::atan2(d.y(), d.x()) * 180.0 / M_PI; if (deg < 0.0) deg += 360.0;
+        m_autoedit_dims.push_back({ m_live_slot_len_label, Lc, [this, fi](double v){ const Feature& g = m_features[fi]; set_slot(fi, v, g.param); }, span(fi), _u8L("Length") });
+        m_autoedit_dims.push_back({ m_live_slot_w_label, 2.0 * f.param, [this, fi](double v){ const Feature& g = m_features[fi]; set_slot(fi, (g.c1-g.c0).norm(), v * 0.5); }, span(fi), _u8L("Width") });
+        m_autoedit_dims.push_back({ m_live_slot_angle_label, deg, [this, fi](double v){ set_slot_angle(fi, v); }, span(fi), _u8L("Angle (°)") });
+    }
+    if (m_live_arc_ei >= 0) {
+        const int ei = m_live_arc_ei;
+        const SketchEntity& e = m_entities[ei];
+        const double swdeg = std::abs(e.end_angle - e.start_angle) * 180.0 / M_PI;
+        m_autoedit_dims.push_back({ m_live_arc_angle_label, swdeg, [this, ei](double v){ set_arc_sweep(ei, v); }, { ei }, _u8L("Angle (°)") });
+    }
+    if (m_live_ellipse_ei >= 0) {
+        const int ei = m_live_ellipse_ei;
+        const SketchEntity& e = m_entities[ei];
+        m_autoedit_dims.push_back({ m_live_ellipse_major_label, e.radius, [this, ei](double v){ set_ellipse_axis(ei, true,  v); }, { ei }, _u8L("Semi-major axis") });
+        m_autoedit_dims.push_back({ m_live_ellipse_minor_label, e.rminor, [this, ei](double v){ set_ellipse_axis(ei, false, v); }, { ei }, _u8L("Semi-minor axis") });
+        if (e.type == SketchEntity::Type::EllipseArc) {
+            const double swdeg = std::abs(e.end_angle - e.start_angle) * 180.0 / M_PI;
+            m_autoedit_dims.push_back({ m_live_ellipsearc_sweep_label, swdeg,
+                [this, ei](double v){ set_ellipsearc_sweep(ei, v); }, { ei }, _u8L("Angle (°)") });
+        }
+    }
+    if (m_live_obrect_fi >= 0) {
+        const int fi = m_live_obrect_fi;
+        const Feature& f = m_features[fi];
+        const SketchEntity& e0 = m_entities[f.begin];
+        double adeg = std::atan2(e0.p1.y() - e0.p0.y(), e0.p1.x() - e0.p0.x()) * 180.0 / M_PI;
+        if (adeg < 0.0) adeg += 360.0;
+        m_autoedit_dims.push_back({ m_live_obrect_angle_label, adeg,
+            [this, fi](double v){ set_rect_angle(fi, v); }, span(fi), _u8L("Angle (°)") });
+    }
+
+    trace_autoedit(m_autoedit_dims.empty() ? "built NO steps (no live quote matched)" : "opening",
+                   m_autoedit_dims.size());
+    if (!m_autoedit_dims.empty()) {
+        m_autoedit_dim_idx = 0;
+        open_next_autoedit_dim();
+    }
+}
+
+void DesignSketchTool::open_polygon_side_editor(int fi)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || !on_inline_edit) return;
+    const Feature& f = m_features[fi];
+    if (f.begin < 0 || f.begin >= int(m_entities.size())) return;
+    const double side = (m_entities[f.begin].p1 - m_entities[f.begin].p0).norm();
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    // TRN Design sketch: length of one side of a regular polygon (inline value editor title)
+    on_inline_edit(px, side, _u8L("Side"),
+                   [this, fi](double v) { set_polygon_side(fi, v); },
+                   []()                 {});
+}
+
+void DesignSketchTool::open_polygon_angle_editor(int fi)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || !on_inline_edit) return;
+    const Feature& f = m_features[fi];
+    if (f.begin < 0 || f.begin >= int(m_entities.size())) return;
+    const Vec2d sp = m_entities[f.begin].p0 - f.c0;
+    double deg = std::atan2(sp.y(), sp.x()) * 180.0 / M_PI;
+    if (deg < 0.0) deg += 360.0;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, deg, _u8L("Angle (°)"),
+                   [this, fi](double v) { set_polygon_angle(fi, v); },
+                   []()                 {});
+}
+
+void DesignSketchTool::set_polygon_side(int fi, double side)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    if (!(side > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+    const int n = std::max(3, m_features[fi].sides);
+    const double R = side / (2.0 * std::sin(M_PI / double(n)));
+    set_polygon_radius(fi, R);
+}
+
+int DesignSketchTool::erase_constraints(
+    const std::function<bool(int, const SketchEntityConstraintDef&)>& drop)
+{
+    std::vector<int> remap(m_constraints.size(), -1);
+    std::vector<SketchEntityConstraintDef> kept;
+    kept.reserve(m_constraints.size());
+    for (int i = 0; i < int(m_constraints.size()); ++i) {
+        if (drop(i, m_constraints[i])) continue;
+        remap[i] = int(kept.size());
+        kept.push_back(m_constraints[i]);
+    }
+    if (kept.size() == m_constraints.size()) return 0;
+    const int dropped = int(m_constraints.size() - kept.size());
+    m_constraints.swap(kept);
+    for (DimAnnot& a : m_dimensions)
+        if (a.con >= 0) a.con = (a.con < int(remap.size())) ? remap[a.con] : -1;
+    return dropped;
+}
+
+void DesignSketchTool::drop_orientation_constraints(int begin, int end)
+{
+    using CT = SketchConstraintType;
+    auto orient = [](CT t) {
+        return t == CT::Horizontal || t == CT::Vertical || t == CT::Parallel ||
+               t == CT::Perpendicular || t == CT::Angle || t == CT::LockX || t == CT::LockY;
+    };
+    auto in = [&](int e) { return e >= begin && e < end; };
+    erase_constraints([&](int, const SketchEntityConstraintDef& c) {
+        return orient(c.type) && (in(c.ea) || in(c.eb));
+    });
+}
+
+void DesignSketchTool::drop_constraints_referencing(int ei)
+{
+    erase_constraints([&](int, const SketchEntityConstraintDef& c) {
+        return c.ea == ei || c.eb == ei || c.ec == ei;
+    });
+}
+
+bool DesignSketchTool::apply_live_trim(const Vec2d& p, double tol, bool extend)
+{
+    double best = 1e30; int bi = -1;
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const double d = entity_pick_dist(p, m_entities[i]);
+        if (d < best) { best = d; bi = int(i); }
+    }
+    if (bi < 0 || best > tol) return false;
+    using Ty = SketchEntity::Type;
+    const Ty st = m_entities[bi].type;
+    const bool subject_ok = extend ? (st == Ty::Line || st == Ty::Arc)
+                                   : (st == Ty::Line || st == Ty::Arc || st == Ty::Circle);
+    if (!subject_ok) return false;
+    std::vector<SketchEntity> others;
+    others.reserve(m_entities.size());
+    for (size_t i = 0; i < m_entities.size(); ++i)
+        if (int(i) != bi) others.push_back(m_entities[i]);
+    const bool ok = extend ? SketchEngine::extend_entity(m_entities[bi], others, p)
+                           : SketchEngine::trim_entity(m_entities[bi], others, p);
+    if (!ok) return false;
+    drop_constraints_referencing(bi);
+    return true;
+}
+
+bool DesignSketchTool::compute_trim_preview(const Vec2d& p, double tol, bool extend,
+                                            int& subject_ei, std::vector<Vec2d>& removed_poly) const
+{
+    subject_ei = -1;
+    removed_poly.clear();
+
+    double best = 1e30; int bi = -1;
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const double d = entity_pick_dist(p, m_entities[i]);
+        if (d < best) { best = d; bi = int(i); }
+    }
+    if (bi < 0 || best > tol) return false;
+
+    using Ty = SketchEntity::Type;
+    const Ty st = m_entities[bi].type;
+    const bool subject_ok = extend ? (st == Ty::Line || st == Ty::Arc)
+                                   : (st == Ty::Line || st == Ty::Arc || st == Ty::Circle);
+    if (!subject_ok) return false;
+
+    std::vector<SketchEntity> others;
+    others.reserve(m_entities.size());
+    for (size_t i = 0; i < m_entities.size(); ++i)
+        if (int(i) != bi) others.push_back(m_entities[i]);
+
+    const SketchEntity& orig = m_entities[bi];
+    SketchEntity trimmed = orig;
+    const bool ok = extend ? SketchEngine::extend_entity(trimmed, others, p)
+                           : SketchEngine::trim_entity(trimmed, others, p);
+    if (!ok) return false;
+
+    const double EPS2 = 1e-14;
+    const double AEPS = 1e-7;
+    bool closed = false;
+
+    if (orig.type == Ty::Line) {
+        SketchEntity seg = orig;
+        if ((trimmed.p0 - orig.p0).squaredNorm() > EPS2) {
+            seg.p0 = orig.p0; seg.p1 = trimmed.p0;
+        } else if ((trimmed.p1 - orig.p1).squaredNorm() > EPS2) {
+            seg.p0 = trimmed.p1; seg.p1 = orig.p1;
+        } else {
+            return false;
+        }
+        removed_poly = entity_polyline(seg, closed);
+    } else if (orig.type == Ty::Arc) {
+        SketchEntity arc = orig;
+        if (std::abs(trimmed.start_angle - orig.start_angle) > AEPS) {
+            arc.start_angle = orig.start_angle; arc.end_angle = trimmed.start_angle;
+        } else if (std::abs(trimmed.end_angle - orig.end_angle) > AEPS) {
+            arc.start_angle = trimmed.end_angle; arc.end_angle = orig.end_angle;
+        } else {
+            return false;
+        }
+        removed_poly = entity_polyline(arc, closed);
+    } else if (orig.type == Ty::Circle) {
+        if (trimmed.type != Ty::Arc) return false;
+        SketchEntity gap = orig;
+        gap.type        = Ty::Arc;
+        gap.start_angle = trimmed.end_angle;
+        gap.end_angle   = trimmed.start_angle + 2.0 * M_PI;
+        removed_poly = entity_polyline(gap, closed);
+    } else {
+        return false;
+    }
+
+    if (removed_poly.size() < 2) return false;
+    subject_ei = bi;
+    return true;
+}
+
+void DesignSketchTool::set_polygon_angle(int fi, double deg)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.begin >= int(m_entities.size())) return;
+    const Vec2d c = f.c0;
+    const Vec2d sp = m_entities[f.begin].p0 - c;
+    if (sp.squaredNorm() < 1e-12) return;
+    const double cur = std::atan2(sp.y(), sp.x());
+    const double da  = deg * M_PI / 180.0 - cur;
+    drop_orientation_constraints(f.begin, f.end);
+    const double ca = std::cos(da), sa = std::sin(da);
+    auto rot = [&](const Vec2d& pt) -> Vec2d { const Vec2d r = pt - c;
+        return c + Vec2d(r.x() * ca - r.y() * sa, r.x() * sa + r.y() * ca); };
+    for (int i = f.begin; i < f.end && i < int(m_entities.size()); ++i) {
+        SketchEntity& e = m_entities[i];
+        if (e.type != SketchEntity::Type::Line) continue;
+        e.p0 = rot(e.p0); e.p1 = rot(e.p1);
+    }
+}
+
+void DesignSketchTool::drag_polygon_vertex(int fi, int ei, SketchPointRole role, const Vec2d& target)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size())) return;
+    Vec2d c(0, 0); int n = 0;
+    for (int i = f.begin; i < f.end; ++i)
+        if (m_entities[i].type == SketchEntity::Type::Line) { c += m_entities[i].p0; ++n; }
+    if (n == 0) return;
+    c /= double(n);
+    Vec2d vpos;
+    if (!point_at(ei, role, vpos)) return;
+    const Vec2d cur = vpos - c;
+    const Vec2d tgt = target - c;
+    const double curR = cur.norm(), newR = tgt.norm();
+    if (curR < 1e-9 || newR < 1e-6) return;
+    const double s  = newR / curR;
+    const double da = std::atan2(tgt.y(), tgt.x()) - std::atan2(cur.y(), cur.x());
+    const double ca = std::cos(da), sa = std::sin(da);
+    auto tf = [&](const Vec2d& p) -> Vec2d { const Vec2d r = (p - c) * s;
+        return c + Vec2d(r.x() * ca - r.y() * sa, r.x() * sa + r.y() * ca); };
+
+    for (int i = f.begin; i < f.end; ++i) {
+        SketchEntity& e = m_entities[i];
+        if (e.type != SketchEntity::Type::Line) continue;
+        e.p0 = tf(e.p0); e.p1 = tf(e.p1);
+    }
+    f.c0 = c; f.param = newR;
+    drop_orientation_constraints(f.begin, f.end);
+}
+
+void DesignSketchTool::set_polygon_radius(int fi, double R)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || R < 1e-6) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.begin >= int(m_entities.size())) return;
+    const Vec2d  c    = f.c0;
+    const double curR = (m_entities[f.begin].p0 - c).norm();
+    if (curR < 1e-9) return;
+    const double s = R / curR;
+    for (int i = f.begin; i < f.end && i < int(m_entities.size()); ++i) {
+        SketchEntity& e = m_entities[i];
+        if (e.type != SketchEntity::Type::Line) continue;
+        e.p0 = c + (e.p0 - c) * s;
+        e.p1 = c + (e.p1 - c) * s;
+    }
+    f.param = R;
+}
+
+void DesignSketchTool::open_arc_angle_editor(int ei)
+{
+    if (ei < 0 || ei >= int(m_entities.size()) || !on_inline_edit) return;
+    const SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Arc) return;
+    double swdeg = std::abs(e.end_angle - e.start_angle) * 180.0 / M_PI;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, swdeg, _u8L("Angle (°)"),
+                   [this, ei](double v) { set_arc_sweep(ei, v); },
+                   []()                 {});
+}
+
+void DesignSketchTool::set_arc_sweep(int ei, double deg)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Arc || e.radius < 1e-6) return;
+    if (!(deg > 0.0 && deg < 360.0)) { show_refusal(_u8L("The angle must be between 0° and 360°")); return; }
+    double sweep = deg * M_PI / 180.0;
+    const double sign = (e.end_angle >= e.start_angle) ? 1.0 : -1.0;
+    e.end_angle = e.start_angle + sign * sweep;
+    e.p1 = e.center + e.radius * Vec2d(std::cos(e.end_angle), std::sin(e.end_angle));
+    resolve_live();
+}
+
+void DesignSketchTool::drag_arc_handle(int ei, SketchPointRole role, const Vec2d& target)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Arc) return;
+    if (role == SketchPointRole::Center) {
+        const Vec2d d = target - e.center;
+        e.center = target; e.p0 += d; e.p1 += d;
+    } else if (role == SketchPointRole::P0) {
+        const double R = (target - e.center).norm();
+        if (R < 1e-6) return;
+        e.radius = R;
+        e.p0 = e.center + R * Vec2d(std::cos(e.start_angle), std::sin(e.start_angle));
+        e.p1 = e.center + R * Vec2d(std::cos(e.end_angle),   std::sin(e.end_angle));
+    } else if (role == SketchPointRole::P1) {
+        const Vec2d d = target - e.center;
+        if (d.squaredNorm() < 1e-12) return;
+        double da = std::atan2(d.y(), d.x()) - e.start_angle;
+        while (da < 0.0)            da += 2.0 * M_PI;
+        while (da >= 2.0 * M_PI)    da -= 2.0 * M_PI;
+        e.end_angle = e.start_angle + da;
+        e.p1 = e.center + e.radius * Vec2d(std::cos(e.end_angle), std::sin(e.end_angle));
+    }
+    resolve_live();
+}
+
+void DesignSketchTool::drag_ellipsearc_handle(int ei, SketchPointRole role, const Vec2d& target)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::EllipseArc) return;
+    if (role == SketchPointRole::Center) {
+        const Vec2d d = target - e.center;
+        e.center = target; e.p0 += d; e.p1 += d;
+    } else if (role == SketchPointRole::P0 || role == SketchPointRole::P1) {
+        const double t = ellipse_param_of(e.center, e.radius, e.rminor, e.rotation, target);
+        if (role == SketchPointRole::P0) {
+            e.start_angle = t;
+            e.p0 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, t);
+        } else {
+            double t1 = t; while (t1 <= e.start_angle) t1 += 2.0 * M_PI;
+            e.end_angle = t1;
+            e.p1 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, t1);
+        }
+    }
+    resolve_live();
+}
+
+void DesignSketchTool::open_ellipse_axis_editor(int ei, bool major)
+{
+    if (ei < 0 || ei >= int(m_entities.size()) || !on_inline_edit) return;
+    const SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Ellipse && e.type != SketchEntity::Type::EllipseArc) return;
+    const double v = major ? e.radius : e.rminor;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, v, major ? _u8L("Semi-major axis") : _u8L("Semi-minor axis"),
+                   [this, ei, major](double nv) { set_ellipse_axis(ei, major, nv); },
+                   []()                         {});
+}
+
+void DesignSketchTool::set_ellipse_axis(int ei, bool major, double v)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::Ellipse && e.type != SketchEntity::Type::EllipseArc) return;
+    if (!(v > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+    if (major ? v < e.rminor : v > e.radius) {
+        show_refusal(_u8L("The semi-major axis cannot be shorter than the semi-minor axis"));
+        return;
+    }
+    if (major) e.radius = v;
+    else       e.rminor = v;
+    if (e.type == SketchEntity::Type::EllipseArc) {
+        e.p0 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.start_angle);
+        e.p1 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.end_angle);
+    }
+    resolve_live();
+}
+
+void DesignSketchTool::set_ellipsearc_sweep(int ei, double deg)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    SketchEntity& e = m_entities[ei];
+    if (e.type != SketchEntity::Type::EllipseArc) return;
+    if (!(deg > 0.0 && deg < 360.0)) { show_refusal(_u8L("The angle must be between 0° and 360°")); return; }
+    const double sweep = deg * M_PI / 180.0;
+    const double sign  = (e.end_angle >= e.start_angle) ? 1.0 : -1.0;
+    e.end_angle = e.start_angle + sign * sweep;
+    e.p1 = ellipse_point(e.center, e.radius, e.rminor, e.rotation, e.end_angle);
+    resolve_live();
+}
+
+void DesignSketchTool::set_rect_angle(int fi, double deg)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size()) || f.end <= f.begin) return;
+    const SketchEntity& e0 = m_entities[f.begin];
+    const Vec2d d0 = e0.p1 - e0.p0;
+    if (d0.squaredNorm() < 1e-12) return;
+    const double da = deg * M_PI / 180.0 - std::atan2(d0.y(), d0.x());
+    drop_orientation_constraints(f.begin, f.end);
+    const Vec2d pivot = f.c0;
+    const double ca = std::cos(da), sa = std::sin(da);
+    auto rot = [&](const Vec2d& pt) -> Vec2d { const Vec2d r = pt - pivot;
+        return pivot + Vec2d(r.x() * ca - r.y() * sa, r.x() * sa + r.y() * ca); };
+    for (int i = f.begin; i < f.end && i < int(m_entities.size()); ++i) {
+        SketchEntity& e = m_entities[i];
+        e.p0 = rot(e.p0); e.p1 = rot(e.p1);
+    }
+    f.c1 = rot(f.c1);
+}
+
+bool DesignSketchTool::constrain_value_anchor(wxPoint& out) const
+{
+    if (m_pick0 < 0 || m_pick0 >= int(m_entities.size())) return false;
+    auto rep = [](const SketchEntity& e) -> Vec2d {
+        using T = SketchEntity::Type;
+        if (e.type == T::Circle || e.type == T::Arc ||
+            e.type == T::Ellipse || e.type == T::EllipseArc) return e.center;
+        return 0.5 * (e.p0 + e.p1);
+    };
+    Vec2d p = rep(m_entities[m_pick0]);
+    if (m_pick1 >= 0 && m_pick1 < int(m_entities.size()))
+        p = 0.5 * (p + rep(m_entities[m_pick1]));
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const wxPoint sp = world_to_screen_px(cam, m_plane.to_world(p));
+    const std::array<int, 4>& vp = cam.get_viewport();
+    if (sp.x < vp[0] || sp.y < vp[1] || sp.x > vp[0] + vp[2] || sp.y > vp[1] + vp[3]) return false;
+    out = sp;
+    return true;
+}
+
+void DesignSketchTool::open_rounded_rect_editor(int fi, int which)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || !on_inline_edit) return;
+    const Feature& f = m_features[fi];
+    const double w = std::abs(f.c1.x() - f.c0.x());
+    const double h = std::abs(f.c1.y() - f.c0.y());
+    const double r = f.param;
+    const double v = (which == 0) ? w : (which == 1) ? h : r;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, v, which == 0 ? _u8L("Width") : which == 1 ? _u8L("Height") : _u8L("Radius"),
+        [this, fi, which](double nv) {
+            const Feature& g = m_features[fi];
+            double gw = std::abs(g.c1.x() - g.c0.x());
+            double gh = std::abs(g.c1.y() - g.c0.y());
+            double gr = g.param;
+            if (which == 0) gw = nv; else if (which == 1) gh = nv; else gr = nv;
+            set_rounded_rect(fi, gw, gh, gr);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_rounded_rect(int fi, double w, double h, double r)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size()) || f.end <= f.begin) return;
+    if (!(w > 0.0 && h > 0.0 && r > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+    if (r >= std::min(w, h) * 0.5) {
+        show_refusal(_u8L("The corner radius must be less than half the shorter side"));
+        return;
+    }
+    const double xmin = std::min(f.c0.x(), f.c1.x()), ymin = std::min(f.c0.y(), f.c1.y());
+    const double xmax = xmin + w, ymax = ymin + h;
+    std::vector<SketchEntity> rebuilt = rounded_rect_entities(xmin, ymin, xmax, ymax, r);
+    if (int(rebuilt.size()) != f.end - f.begin) return;
+    for (int i = 0; i < int(rebuilt.size()); ++i) {
+        rebuilt[i].construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = rebuilt[i];
+    }
+    f.c0 = Vec2d(xmin, ymin); f.c1 = Vec2d(xmax, ymax); f.param = r;
+    resolve_live();
+}
+
+void DesignSketchTool::open_arc_slot_editor(int fi, bool radius)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || !on_inline_edit) return;
+    const Feature& f = m_features[fi];
+    const double Rc = (f.c1 - f.c0).norm();
+    const double v  = radius ? Rc : (2.0 * f.param);
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, v, radius ? _u8L("Radius") : _u8L("Width"),
+        [this, fi, radius](double nv) {
+            const Feature& g = m_features[fi];
+            const double gRc = (g.c1 - g.c0).norm();
+            if (radius) set_arc_slot(fi, nv, g.param);
+            else        set_arc_slot(fi, gRc, nv * 0.5);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_arc_slot(int fi, double Rc, double w)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size()) || f.end - f.begin != 4) return;
+    const Vec2d center = f.c0;
+    Vec2d dirS = f.c1 - center;
+    const Vec2d Ec = m_entities[f.begin + 1].center;
+    Vec2d dirE = Ec - center;
+    if (dirS.squaredNorm() < 1e-12 || dirE.squaredNorm() < 1e-12) return;
+    dirS.normalize(); dirE.normalize();
+    if (!(Rc > 0.0 && w > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+    if (w >= Rc) {
+        show_refusal(_u8L("The slot is too wide for its radius — the width must be less than twice the radius"));
+        return;
+    }
+    std::vector<SketchEntity> rebuilt =
+        make_arc_slot(center, center + Rc * dirS, center + Rc * dirE, w);
+    if (int(rebuilt.size()) != 4) return;
+    for (int i = 0; i < 4; ++i) {
+        rebuilt[i].construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = rebuilt[i];
+    }
+    f.c1 = center + Rc * dirS; f.param = w;
+    resolve_live();
+}
+
+void DesignSketchTool::open_slot_editor(int fi, int which)
+{
+    if (fi < 0 || fi >= int(m_features.size()) || !on_inline_edit) return;
+    const Feature& f = m_features[fi];
+    const Vec2d  d = f.c1 - f.c0;
+    double deg = std::atan2(d.y(), d.x()) * 180.0 / M_PI; if (deg < 0.0) deg += 360.0;
+    const double v = (which == 0) ? d.norm() : (which == 1) ? 2.0 * f.param : deg;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, v, which == 0 ? _u8L("Length") : which == 1 ? _u8L("Width") : _u8L("Angle (°)"),
+        [this, fi, which](double nv) {
+            const Feature& g = m_features[fi];
+            if      (which == 0) set_slot(fi, nv, g.param);
+            else if (which == 1) set_slot(fi, (g.c1 - g.c0).norm(), nv * 0.5);
+            else                 set_slot_angle(fi, nv);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_slot(int fi, double length, double w)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size()) || f.end - f.begin != 4) return;
+    Vec2d dir = f.c1 - f.c0;
+    if (dir.squaredNorm() < 1e-12) return;
+    dir.normalize();
+    if (!(length > 0.0 && w > 0.0)) { show_refusal(_u8L("The value must be greater than zero")); return; }
+    const Vec2d c0 = f.c0, c1 = f.c0 + length * dir;
+    std::vector<SketchEntity> rebuilt = make_slot(c0, c1, w);
+    if (int(rebuilt.size()) != 4) return;
+    for (int i = 0; i < 4; ++i) {
+        rebuilt[i].construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = rebuilt[i];
+    }
+    f.c1 = c1; f.param = w;
+    resolve_live();
+}
+
+void DesignSketchTool::set_slot_angle(int fi, double deg)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.begin < 0 || f.end > int(m_entities.size()) || f.end - f.begin != 4) return;
+    const double L = (f.c1 - f.c0).norm();
+    if (L < 1e-9) return;
+    const double a = deg * M_PI / 180.0;
+    const Vec2d c1 = f.c0 + L * Vec2d(std::cos(a), std::sin(a));
+    std::vector<SketchEntity> rebuilt = make_slot(f.c0, c1, f.param);
+    if (int(rebuilt.size()) != 4) return;
+    for (int i = 0; i < 4; ++i) {
+        rebuilt[i].construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = rebuilt[i];
+    }
+    f.c1 = c1;
+    resolve_live();
+}
+
+void DesignSketchTool::drag_rect_corner(int fi, const Vec2d& cursor)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.end - f.begin != 4) return;
+    const Vec2d A = m_drag_rect_anchor, B = cursor;
+    if (std::abs(B.x() - A.x()) < 1e-4 || std::abs(B.y() - A.y()) < 1e-4) return;
+    const Vec2d corners[4] = { A, Vec2d(B.x(), A.y()), B, Vec2d(A.x(), B.y()) };
+    for (int i = 0; i < 4; ++i) {
+        SketchEntity e; e.type = SketchEntity::Type::Line;
+        e.p0 = corners[i]; e.p1 = corners[(i + 1) % 4];
+        e.construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = e;
+    }
+    f.c0 = A; f.c1 = B;
+}
+
+void DesignSketchTool::drag_slot_handle(int fi, const Vec2d& cursor)
+{
+    if (fi < 0 || fi >= int(m_features.size())) return;
+    Feature& f = m_features[fi];
+    if (f.end - f.begin != 4) return;
+    const Vec2d c0 = m_drag_slot_c1 ? f.c0 : cursor;
+    const Vec2d c1 = m_drag_slot_c1 ? cursor : f.c1;
+    std::vector<SketchEntity> rebuilt = make_slot(c0, c1, f.param);
+    if (int(rebuilt.size()) != 4) return;
+    for (int i = 0; i < 4; ++i) {
+        rebuilt[i].construction = m_entities[f.begin + i].construction;
+        m_entities[f.begin + i] = rebuilt[i];
+    }
+    f.c0 = c0; f.c1 = c1;
+}
+
+DesignSketchTool::DimType DesignSketchTool::pending_dimension_type() const
+{
+    return (m_pending_dim >= 0 && m_pending_dim < int(m_dimensions.size()))
+               ? m_dimensions[m_pending_dim].kind : DimType::None;
+}
+
+void DesignSketchTool::set_dimension_value(double v)
+{
+    if (m_pending_dim < 0 || m_pending_dim >= int(m_dimensions.size())) return;
+    DimAnnot& a = m_dimensions[m_pending_dim];
+    const bool positive = a.kind == DimType::Length || a.kind == DimType::Radius || a.kind == DimType::Diameter;
+    if (!std::isfinite(v) || (positive && v <= 0.0) || (!positive && a.kind != DimType::Angle && v < 0.0)) {
+        show_refusal(positive ? _u8L("The value must be greater than zero")
+                              : _u8L("The value must not be negative (zero means coincident)"));
+        return;
+    }
+    a.value = v;
+    if (a.con >= 0 && a.con < int(m_constraints.size()))
+        m_constraints[a.con] = constraint_for(a);
+    resolve_live();
+    if (!m_solve_ok)
+        notify(format(_u8L("%1% cannot be satisfied — the sketch is over-constrained"), dimtype_title(a.kind)));
+    m_pending_dim = -1;
+}
+
+void DesignSketchTool::cancel_dimension_value()
+{
+    m_pending_dim = -1;
+}
+
+std::string DesignSketchTool::dim_text(const DimAnnot& a) const
+{
+    char buf[32];
+    const char* prefix = (a.kind == DimType::Diameter) ? "\xC3\x98"
+                       : (a.kind == DimType::Radius)   ? "R" : "";
+    std::snprintf(buf, sizeof(buf), "%.2f", a.value);
+    for (char& ch : buf)
+        if (ch == ',') ch = '.';
+    std::string num(buf);
+    if (num.find('.') != std::string::npos) {
+        while (num.back() == '0') num.pop_back();
+        if (num.back() == '.') num.pop_back();
+    }
+    if (num == "-0") num = "0";
+    return std::string(prefix) + num + (a.kind == DimType::Angle ? "\xC2\xB0" : " mm");
+}
+
+void DesignSketchTool::apply_segment_length(double len)
+{
+    if (m_points.size() == 2 && len > 1e-9) {
+        const Vec2d d = m_points[1] - m_points[0];
+        const double r = d.norm();
+        if (r > 1e-9)
+            m_points[1] = m_points[0] + (len / r) * d;
+    }
+    keep_segment_as_drawn();
+    if (len > 1e-9 && !m_entities.empty()) {
+        const int i = int(m_entities.size()) - 1;
+        if (m_entities[i].type == SketchEntity::Type::Line) {
+            SketchEntityConstraintDef c;
+            c.type = SketchConstraintType::Distance;
+            c.ea = i; c.ra = SketchPointRole::P0;
+            c.eb = i; c.rb = SketchPointRole::P1;
+            c.value = len;
+            m_constraints.push_back(c);
+        }
+    }
+    resolve_live();
+}
+
+void DesignSketchTool::keep_segment_as_drawn()
+{
+    if (m_points.size() == 2) {
+        const int base = int(m_entities.size());
+        push_line(m_points[0], m_points[1]);
+        infer_auto_constraints(base);
+    }
+    m_points.clear();
+    m_has_cursor = false;
+    m_awaiting_length = false;
+}
+
+void DesignSketchTool::finish()
+{
+    close_session_chrome();
+    if (op_ready()) confirm_op();
+    if (tf_ready()) confirm_transform();
+    auto cb = on_commit_entities;
+    std::vector<SketchEntity> ents = m_entities;
+    std::vector<SketchEntityConstraintDef> cons = m_constraints;
+    SketchPlane pl = m_plane;
+    m_active = false;
+    m_points.clear();
+    m_entities.clear();
+    m_constraints.clear();
+    m_dimensions.clear();
+    m_point_sel.clear();
+    m_dim_has0 = false;
+    m_pending_dim = -1;
+    m_has_cursor = false;
+    m_features.clear();
+    m_open_feature = -1;
+    if (cb)
+        cb(ents, cons, pl);
+}
+
+void DesignSketchTool::begin_constrain(const SketchProfile& prof, const SketchPlane& plane)
+{
+    m_plane = plane;
+    m_mode = Mode::Constrain;
+    m_points = prof.points;
+    m_entities.clear();
+    m_has_cursor = false;
+    m_sel_a = m_sel_b = -1;
+    m_constrain_entities = false;
+    m_pick0 = m_pick1 = m_pick2 = -1;
+    m_active = true;
+}
+
+void DesignSketchTool::begin_constrain_entities(const std::vector<SketchEntity>& ents,
+                                                const SketchPlane& plane)
+{
+    m_plane = plane;
+    m_mode = Mode::Constrain;
+    m_constrain_entities = true;
+    m_points.clear();
+    m_entities = ents;
+    m_has_cursor = false;
+    m_sel_a = m_sel_b = -1;
+    m_pick0 = m_pick1 = m_pick2 = -1;
+    m_active = true;
+}
+
+bool DesignSketchTool::selected_segment(int& a, int& b) const
+{
+    if (m_sel_a < 0 || m_sel_b < 0)
+        return false;
+    a = m_sel_a;
+    b = m_sel_b;
+    return true;
+}
+
+bool DesignSketchTool::screen_to_plane(GLCanvas3D& canvas, const wxMouseEvent& evt, Vec2d& out) const
+{
+    Point pos(evt.GetX(), evt.GetY());
+    Linef3 r = canvas.mouse_ray(pos);
+    out = m_plane.project(r.a, r.vector());
+    return true;
+}
+
+bool DesignSketchTool::snap_chain_start(GLCanvas3D& canvas, const wxMouseEvent& evt, Vec2d& p) const
+{
+    if (m_mode != Mode::Polyline || m_points.size() < 3) return false;
+    if ((p - m_points[0]).norm() > screen_tol(canvas, evt, p)) return false;
+    p = m_points[0];
+    InferenceSnap s;
+    s.kind  = InferenceSnap::Kind::Endpoint;
+    s.point = m_points[0];
+    const_cast<DesignSketchTool*>(this)->m_cursor_snap = s;
+    return true;
+}
+
+Vec2d DesignSketchTool::snap_dir(const Vec2d& anchor, const Vec2d& raw, bool& locked) const
+{
+    locked = false;
+    if (m_snap_off) return raw;
+
+    const Vec2d d = raw - anchor;
+    const double r = d.norm();
+    if (r < 1e-9) return raw;
+
+    const double tol_deg = 5.0;
+    double ang = std::atan2(d.y(), d.x()) * 180.0 / M_PI;
+    if (ang < 0.0) ang += 360.0;
+    static const double base[] = {0.0, 30.0, 45.0, 60.0};
+    double best_cand = ang, best_diff = 1e30;
+    for (int q = 0; q < 4; ++q) {
+        for (double b : base) {
+            const double cand = b + 90.0 * q;
+            double diff = std::abs(ang - cand);
+            if (diff > 180.0) diff = 360.0 - diff;
+            if (diff < best_diff) { best_diff = diff; best_cand = cand; }
+        }
+    }
+    if (best_diff > tol_deg) return raw;
+
+    locked = true;
+    const double rad = best_cand * M_PI / 180.0;
+    return anchor + r * Vec2d(std::cos(rad), std::sin(rad));
+}
+
+double DesignSketchTool::screen_tol(GLCanvas3D& canvas, const wxMouseEvent& evt,
+                                    const Vec2d& at, double px) const
+{
+    const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + int(px), evt.GetY()));
+    const Vec2d  p2 = m_plane.project(r2.a, r2.vector());
+    return std::max(1e-3, (p2 - at).norm());
+}
+
+InferenceSnap DesignSketchTool::infer_at(GLCanvas3D& canvas, const wxMouseEvent& evt,
+                                         const Vec2d& raw) const
+{
+    if (evt.ShiftDown()) { InferenceSnap s; s.point = raw; return s; }
+    const double tol = screen_tol(canvas, evt, raw);
+    return infer_point_snap(m_entities, raw, tol);
+}
+
+bool DesignSketchTool::click_snaps() const
+{
+    const size_t n = m_points.size();
+    switch (m_mode) {
+    case Mode::Line: case Mode::Polyline: case Mode::TwoPointCircle: case Mode::ThreePointCircle:
+    case Mode::TangentArc: case Mode::BSpline: case Mode::Point:
+    case Mode::CornerRect: case Mode::CenterRect:
+        return true;
+    case Mode::ObliqueRect: case Mode::RoundedRect: case Mode::ThreePointArc: case Mode::Slot:
+        return n < 2;
+    case Mode::CenterArc: case Mode::ArcSlot:
+        return n == 1;
+    case Mode::CenterCircle: case Mode::Polygon: case Mode::Ellipse: case Mode::EllipseArc:
+        return n == 0;
+    default:
+        return false;
+    }
+}
+
+Vec2d DesignSketchTool::snap_vertex(GLCanvas3D& canvas, const wxMouseEvent& evt,
+                                    const Vec2d& raw, bool& snapped) const
+{
+    const InferenceSnap s = infer_at(canvas, evt, raw);
+    const_cast<DesignSketchTool*>(this)->m_cursor_snap = s;
+    snapped = s.snapped();
+    return s.point;
+}
+
+bool DesignSketchTool::has_coincident(int ea, SketchPointRole ra, int eb, SketchPointRole rb) const
+{
+    for (const auto& c : m_constraints) {
+        if (c.type != SketchConstraintType::Coincident) continue;
+        if ((c.ea == ea && c.ra == ra && c.eb == eb && c.rb == rb) ||
+            (c.ea == eb && c.ra == rb && c.eb == ea && c.rb == ra))
+            return true;
+    }
+    return false;
+}
+
+bool DesignSketchTool::try_add_constraints(const std::vector<SketchEntityConstraintDef>& cands)
+{
+    if (cands.empty()) return true;
+    const size_t mark = m_constraints.size();
+    for (const auto& c : cands) m_constraints.push_back(c);
+    if (solve_sketch_entities(m_entities, m_constraints)) {
+        if (on_constraints_changed) on_constraints_changed();
+        return true;
+    }
+    m_constraints.resize(mark);
+    return false;
+}
+
+bool DesignSketchTool::remove_constraint_near(const Vec2d& p)
+{
+    if (m_glyph_hits.empty() || m_glyph_r <= 0.0) return false;
+    int best = -1;
+    double best_d = m_glyph_r;
+    for (const GlyphHit& g : m_glyph_hits) {
+        const double d = (g.c - p).norm();
+        if (d < best_d && g.con >= 0 && g.con < int(m_constraints.size())) { best_d = d; best = g.con; }
+    }
+    if (best < 0) return false;
+    return remove_constraint(best);
+}
+
+bool DesignSketchTool::remove_constraint(int idx)
+{
+    if (idx < 0 || idx >= int(m_constraints.size())) return false;
+    const size_t before = m_constraints.size();
+    erase_constraints([idx](int i, const SketchEntityConstraintDef&) { return i == idx; });
+    if (m_constraints.size() == before) return false;
+    resolve_live();
+    m_glyph_hits.clear();
+    if (on_constraints_changed) on_constraints_changed();
+    return true;
+}
+
+static int sketch_endpoint_roles(const SketchEntity& e, SketchPointRole out[2])
+{
+    switch (e.type) {
+    case SketchEntity::Type::Line:
+    case SketchEntity::Type::Arc:
+    case SketchEntity::Type::BSpline:
+    case SketchEntity::Type::EllipseArc:
+        out[0] = SketchPointRole::P0; out[1] = SketchPointRole::P1; return 2;
+    case SketchEntity::Type::Point:
+        out[0] = SketchPointRole::P0; return 1;
+    default: return 0;
+    }
+}
+
+void DesignSketchTool::infer_auto_constraints(int base, double ang_tol_rad, double weld_tol)
+{
+    const int n = int(m_entities.size());
+    if (base < 0 || base >= n) return;
+
+
+    std::vector<SketchEntityConstraintDef> coincs;
+    for (int i = base; i < n; ++i) {
+        SketchPointRole ir[2]; const int ni = sketch_endpoint_roles(m_entities[i], ir);
+        for (int a = 0; a < ni; ++a) {
+            Vec2d pa; if (!point_at(i, ir[a], pa)) continue;
+            for (int j = 0; j < n; ++j) {
+                if (j == i) continue;
+                SketchPointRole jr[2]; const int nj = sketch_endpoint_roles(m_entities[j], jr);
+                for (int b = 0; b < nj; ++b) {
+                    if (j >= base && j < i) continue;
+                    Vec2d pb; if (!point_at(j, jr[b], pb)) continue;
+                    if ((pa - pb).squaredNorm() > weld_tol * weld_tol) continue;
+                    if (has_coincident(i, ir[a], j, jr[b])) continue;
+                    SketchEntityConstraintDef c;
+                    c.type = SketchConstraintType::Coincident;
+                    c.ea = i; c.ra = ir[a]; c.eb = j; c.rb = jr[b];
+                    coincs.push_back(c);
+                }
+            }
+        }
+    }
+    try_add_constraints(coincs);
+    std::vector<SketchEntityConstraintDef> axes;
+    for (int i = base; i < n; ++i) {
+        if (m_entities[i].type != SketchEntity::Type::Line) continue;
+        auto ax = infer_axis_constraint(m_entities[i].p0, m_entities[i].p1, ang_tol_rad);
+        if (!ax) continue;
+        SketchEntityConstraintDef c;
+        c.type = *ax;
+        c.ea = i; c.ra = SketchPointRole::P0;
+        c.eb = i; c.rb = SketchPointRole::P1;
+        axes.push_back(c);
+    }
+    if (!try_add_constraints(axes))
+        for (const auto& c : axes) try_add_constraints({ c });
+
+    constexpr int kRelInferMaxBatch = 16;
+    std::vector<SketchEntityConstraintDef> rels;
+    if (n - base <= kRelInferMaxBatch) {
+        const double rel_len_tol = ang_tol_rad > 0.0 ? 0.01 : 0.0;
+        for (int i = base; i < n; ++i) {
+            auto r = infer_relations(m_entities, i, ang_tol_rad, rel_len_tol);
+            rels.insert(rels.end(), r.begin(), r.end());
+        }
+    }
+    if (!rels.empty()) try_add_constraints(rels);
+
+    resolve_live();
+}
+
+static std::vector<Vec2d> circle_polygon(const Vec2d& c, double r, int n = 48)
+{
+    std::vector<Vec2d> v; v.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const double a = 2.0 * M_PI * double(i) / double(n);
+        v.push_back(Vec2d(c.x() + r * std::cos(a), c.y() + r * std::sin(a)));
+    }
+    return v;
+}
+
+static Vec2d ellipse_point(const Vec2d& c, double a, double b, double phi, double t)
+{
+    const double cu = std::cos(phi), su = std::sin(phi);
+    const double x = a * std::cos(t), y = b * std::sin(t);
+    return Vec2d(c.x() + x * cu - y * su, c.y() + x * su + y * cu);
+}
+
+static std::vector<Vec2d> ellipse_polyline(const Vec2d& c, double a, double b, double phi,
+                                           double t0, double t1, int n = 48)
+{
+    std::vector<Vec2d> v; v.reserve(n + 1);
+    for (int i = 0; i <= n; ++i)
+        v.push_back(ellipse_point(c, a, b, phi, t0 + (t1 - t0) * double(i) / double(n)));
+    return v;
+}
+
+static int bspline_degree(int n) { return n >= 4 ? 3 : (n >= 2 ? n - 1 : 0); }
+
+static std::vector<double> bspline_knots(int n, int p)
+{
+    std::vector<double> U;
+    const int interior = n - p - 1;
+    for (int i = 0; i <= p; ++i) U.push_back(0.0);
+    for (int i = 1; i <= interior; ++i) U.push_back(double(i));
+    const double last = double(interior + 1);
+    for (int i = 0; i <= p; ++i) U.push_back(last);
+    return U;
+}
+
+static Vec2d bspline_eval(const std::vector<Vec2d>& P, const std::vector<double>& U, int p, double u)
+{
+    const int n = int(P.size());
+    if (u <= U[p])            return P.front();
+    if (u >= U[n])            return P.back();
+    int k = p;
+    while (k < n - 1 && U[k + 1] <= u) ++k;
+    std::vector<Vec2d> d(p + 1);
+    for (int j = 0; j <= p; ++j) d[j] = P[j + k - p];
+    for (int r = 1; r <= p; ++r)
+        for (int j = p; j >= r; --j) {
+            const double denom = U[j + 1 + k - r] - U[j + k - p];
+            const double a = denom > 1e-12 ? (u - U[j + k - p]) / denom : 0.0;
+            d[j] = (1.0 - a) * d[j - 1] + a * d[j];
+        }
+    return d[p];
+}
+
+static std::vector<Vec2d> bspline_polyline(const std::vector<Vec2d>& ctrl, int samples = 0)
+{
+    const int n = int(ctrl.size());
+    if (n < 2) return ctrl;
+    const int p = bspline_degree(n);
+    const std::vector<double> U = bspline_knots(n, p);
+    const double umax = double(n - p);
+    if (samples <= 0) samples = std::max(24, 14 * (n - 1));
+    std::vector<Vec2d> out; out.reserve(samples + 1);
+    for (int i = 0; i <= samples; ++i)
+        out.push_back(bspline_eval(ctrl, U, p, umax * double(i) / double(samples)));
+    return out;
+}
+
+void DesignSketchTool::push_line(const Vec2d& a, const Vec2d& b)
+{
+    if ((b - a).squaredNorm() < 1e-9)
+        return;
+    SketchEntity e;
+    e.type = SketchEntity::Type::Line;
+    e.p0 = a;
+    e.p1 = b;
+    e.construction = m_construction;
+    m_entities.push_back(e);
+}
+
+bool DesignSketchTool::add_imported_regions(
+    const std::vector<std::vector<std::vector<Vec2d>>>& regions)
+{
+    if (!m_active) return false;
+    const bool saved = m_construction;
+    m_construction = false;
+    size_t before = m_entities.size();
+    for (const auto& region : regions)
+        for (const auto& loop : region)
+            push_closed_lines(loop);
+    m_construction = saved;
+    if (m_entities.size() == before) return false;
+    reset_autoedit();
+    resolve_live();
+    return true;
+}
+
+void DesignSketchTool::push_closed_lines(const std::vector<Vec2d>& corners)
+{
+    const size_t n = corners.size();
+    if (n < 2) return;
+    for (size_t i = 0; i < n; ++i)
+        push_line(corners[i], corners[(i + 1) % n]);
+}
+
+void DesignSketchTool::push_open_chain(const std::vector<Vec2d>& pts)
+{
+    for (size_t i = 0; i + 1 < pts.size(); ++i)
+        push_line(pts[i], pts[i + 1]);
+}
+
+void DesignSketchTool::push_circle(const Vec2d& center, double radius)
+{
+    if (radius < 1e-3) return;
+    SketchEntity e;
+    e.type = SketchEntity::Type::Circle;
+    e.center = center;
+    e.p0 = center;
+    e.radius = radius;
+    e.construction = m_construction;
+    m_entities.push_back(e);
+}
+
+void DesignSketchTool::push_point(const Vec2d& p)
+{
+    SketchEntity e;
+    e.type = SketchEntity::Type::Point;
+    e.p0 = p;
+    e.center = p;
+    e.construction = m_construction;
+    m_entities.push_back(e);
+}
+
+void DesignSketchTool::append_entities(const std::vector<SketchEntity>& ents)
+{
+    for (const SketchEntity& e : ents)
+        m_entities.push_back(e);
+}
+
+static double wrap_2pi(double a)
+{
+    while (a < 0.0)        a += 2.0 * M_PI;
+    while (a >= 2.0 * M_PI) a -= 2.0 * M_PI;
+    return a;
+}
+
+static bool circumcircle(const Vec2d& a, const Vec2d& b, const Vec2d& c,
+                         Vec2d& center, double& radius)
+{
+    const double d = 2.0 * (a.x() * (b.y() - c.y()) +
+                            b.x() * (c.y() - a.y()) +
+                            c.x() * (a.y() - b.y()));
+    if (std::abs(d) < 1e-9)
+        return false;
+    const double a2 = a.squaredNorm(), b2 = b.squaredNorm(), c2 = c.squaredNorm();
+    const double ux = (a2 * (b.y() - c.y()) + b2 * (c.y() - a.y()) + c2 * (a.y() - b.y())) / d;
+    const double uy = (a2 * (c.x() - b.x()) + b2 * (a.x() - c.x()) + c2 * (b.x() - a.x())) / d;
+    center = Vec2d(ux, uy);
+    radius = (a - center).norm();
+    return true;
+}
+
+static SketchEntity make_arc_through(const Vec2d& center, double radius,
+                                     const Vec2d& start, const Vec2d& end,
+                                     const Vec2d& through, bool construction)
+{
+    const double a_start = std::atan2(start.y()  - center.y(), start.x()  - center.x());
+    const double a_end   = std::atan2(end.y()    - center.y(), end.x()    - center.x());
+    const double a_thru  = std::atan2(through.y() - center.y(), through.x() - center.x());
+    const double de = wrap_2pi(a_end  - a_start);
+    const double d3 = wrap_2pi(a_thru - a_start);
+    SketchEntity e;
+    e.type   = SketchEntity::Type::Arc;
+    e.center = center;
+    e.radius = radius;
+    e.p0     = start;
+    e.p1     = end;
+    e.start_angle = a_start;
+    e.end_angle   = (d3 <= de) ? (a_start + de) : (a_start + de - 2.0 * M_PI);
+    e.construction = construction;
+    return e;
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_three_point_circle(const Vec2d& a, const Vec2d& b, const Vec2d& c) const
+{
+    Vec2d center; double radius;
+    if (!circumcircle(a, b, c, center, radius))
+        return {};
+    SketchEntity e;
+    e.type = SketchEntity::Type::Circle;
+    e.center = center;
+    e.p0 = center;
+    e.radius = radius;
+    e.construction = m_construction;
+    return { e };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_three_point_arc(const Vec2d& start, const Vec2d& end, const Vec2d& on_arc) const
+{
+    Vec2d center; double radius;
+    if (!circumcircle(start, end, on_arc, center, radius))
+        return {};
+    return { make_arc_through(center, radius, start, end, on_arc, m_construction) };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_tangent_arc(const Vec2d& start, const Vec2d& end) const
+{
+    Vec2d t(1, 0);
+    bool have_t = false;
+    if (!m_entities.empty()) {
+        const SketchEntity& prev = m_entities.back();
+        if (prev.type == SketchEntity::Type::Line) {
+            t = prev.p1 - prev.p0; have_t = (t.squaredNorm() > 1e-12);
+        } else if (prev.type == SketchEntity::Type::Arc) {
+            const Vec2d r = prev.p1 - prev.center;
+            const double sweep = prev.end_angle - prev.start_angle;
+            t = (sweep >= 0.0) ? Vec2d(-r.y(), r.x()) : Vec2d(r.y(), -r.x());
+            have_t = (r.squaredNorm() > 1e-12);
+        }
+    }
+    const Vec2d se = end - start;
+    if (!have_t || se.squaredNorm() < 1e-12) {
+        SketchEntity e; e.type = SketchEntity::Type::Line; e.p0 = start; e.p1 = end;
+        e.construction = m_construction;
+        return { e };
+    }
+    t.normalize();
+    const Vec2d n(-t.y(), t.x());
+    const double denom = 2.0 * n.dot(se);
+    if (std::abs(denom) < 1e-9) {
+        SketchEntity e; e.type = SketchEntity::Type::Line; e.p0 = start; e.p1 = end;
+        e.construction = m_construction;
+        return { e };
+    }
+    const double R = se.squaredNorm() / denom;
+    const Vec2d center = start + n * R;
+    const double radius = std::abs(R);
+    const Vec2d chord_mid = (start + end) * 0.5;
+    Vec2d to_mid = chord_mid - center;
+    if (to_mid.squaredNorm() < 1e-12) to_mid = n;
+    to_mid.normalize();
+    const Vec2d through = center + to_mid * radius;
+    return { make_arc_through(center, radius, start, end, through, m_construction) };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_center_arc(const Vec2d& center, const Vec2d& start, const Vec2d& end_dir) const
+{
+    const double radius = (start - center).norm();
+    if (radius < 1e-9)
+        return {};
+    const double a_start = std::atan2(start.y()   - center.y(), start.x()   - center.x());
+    const double a_end   = std::atan2(end_dir.y() - center.y(), end_dir.x() - center.x());
+    const double de      = wrap_2pi(a_end - a_start);
+    const Vec2d  end      = center + radius * Vec2d(std::cos(a_end),  std::sin(a_end));
+    const double a_mid    = a_start + de * 0.5;
+    const Vec2d  through   = center + radius * Vec2d(std::cos(a_mid), std::sin(a_mid));
+    return { make_arc_through(center, radius, start, end, through, m_construction) };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_slot(const Vec2d& c0, const Vec2d& c1, double half_width) const
+{
+    std::vector<SketchEntity> out;
+    Vec2d u = c1 - c0;
+    if (u.squaredNorm() < 1e-12 || half_width < 1e-6)
+        return out;
+    u.normalize();
+    const Vec2d nrm(-u.y(), u.x());
+    const double w = half_width;
+    const Vec2d top0 = c0 + nrm * w, top1 = c1 + nrm * w;
+    const Vec2d bot1 = c1 - nrm * w, bot0 = c0 - nrm * w;
+
+    auto line = [&](const Vec2d& p0, const Vec2d& p1) {
+        SketchEntity e; e.type = SketchEntity::Type::Line; e.p0 = p0; e.p1 = p1;
+        e.construction = m_construction; return e;
+    };
+    out.push_back(line(top0, top1));
+    out.push_back(make_arc_through(c1, w, top1, bot1, c1 + u * w, m_construction));
+    out.push_back(line(bot1, bot0));
+    out.push_back(make_arc_through(c0, w, bot0, top0, c0 - u * w, m_construction));
+    return out;
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_arc_slot(const Vec2d& center, const Vec2d& start,
+                                                          const Vec2d& end_dir, double half_width) const
+{
+    std::vector<SketchEntity> out;
+    const double Rc = (start - center).norm();
+    const double w  = half_width;
+    if (Rc < 1e-6 || w < 1e-6 || w >= Rc) return out;
+    const Vec2d dirS = (start - center) / Rc;
+    Vec2d de = end_dir - center;
+    if (de.squaredNorm() < 1e-12) return out;
+    const Vec2d dirE = de.normalized();
+    const double aS = std::atan2(dirS.y(), dirS.x());
+    const double aE = std::atan2(dirE.y(), dirE.x());
+    const double sweep = wrap_2pi(aE - aS);
+    const double aMid  = aS + sweep * 0.5;
+    const Vec2d  uMid(std::cos(aMid), std::sin(aMid));
+    const Vec2d  Sc = center + Rc * dirS;
+    const Vec2d  Ec = center + Rc * dirE;
+    const Vec2d  S_out = center + (Rc + w) * dirS, S_in = center + (Rc - w) * dirS;
+    const Vec2d  E_out = center + (Rc + w) * dirE, E_in = center + (Rc - w) * dirE;
+    const Vec2d  tE(-dirE.y(), dirE.x());
+    const Vec2d  tS(-dirS.y(), dirS.x());
+    out.push_back(make_arc_through(center, Rc + w, S_out, E_out, center + (Rc + w) * uMid, m_construction));
+    out.push_back(make_arc_through(Ec, w, E_out, E_in, Ec + w * tE, m_construction));
+    out.push_back(make_arc_through(center, Rc - w, E_in, S_in, center + (Rc - w) * uMid, m_construction));
+    out.push_back(make_arc_through(Sc, w, S_in, S_out, Sc - w * tS, m_construction));
+    return out;
+}
+
+std::vector<SketchEntity> DesignSketchTool::rounded_rect_entities(double xmin, double ymin,
+                                                                  double xmax, double ymax, double r) const
+{
+    std::vector<SketchEntity> out;
+    auto line = [&](const Vec2d& p0, const Vec2d& p1) {
+        SketchEntity e; e.type = SketchEntity::Type::Line; e.p0 = p0; e.p1 = p1;
+        e.construction = m_construction; return e; };
+    auto corner = [&](const Vec2d& O, const Vec2d& sharp, const Vec2d& start, const Vec2d& end) {
+        const Vec2d thr = O + r * (sharp - O).normalized();
+        return make_arc_through(O, r, start, end, thr, m_construction); };
+    out.push_back(line({xmin + r, ymin}, {xmax - r, ymin}));
+    out.push_back(corner({xmax - r, ymin + r}, {xmax, ymin}, {xmax - r, ymin}, {xmax, ymin + r}));
+    out.push_back(line({xmax, ymin + r}, {xmax, ymax - r}));
+    out.push_back(corner({xmax - r, ymax - r}, {xmax, ymax}, {xmax, ymax - r}, {xmax - r, ymax}));
+    out.push_back(line({xmax - r, ymax}, {xmin + r, ymax}));
+    out.push_back(corner({xmin + r, ymax - r}, {xmin, ymax}, {xmin + r, ymax}, {xmin, ymax - r}));
+    out.push_back(line({xmin, ymax - r}, {xmin, ymin + r}));
+    out.push_back(corner({xmin + r, ymin + r}, {xmin, ymin}, {xmin, ymin + r}, {xmin + r, ymin}));
+    return out;
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_rounded_rect(const Vec2d& a, const Vec2d& b, const Vec2d& radius_pt) const
+{
+    std::vector<SketchEntity> out;
+    const double xmin = std::min(a.x(), b.x()), xmax = std::max(a.x(), b.x());
+    const double ymin = std::min(a.y(), b.y()), ymax = std::max(a.y(), b.y());
+    const double bw = xmax - xmin, bh = ymax - ymin;
+    if (bw < 1e-6 || bh < 1e-6) return out;
+    const Vec2d cs[4] = { {xmin,ymin}, {xmax,ymin}, {xmax,ymax}, {xmin,ymax} };
+    double r = 1e18;
+    for (const Vec2d& c : cs) r = std::min(r, (radius_pt - c).norm());
+    r = std::min(r, std::min(bw, bh) * 0.5);
+    if (r < 1e-6) {
+        auto line = [&](const Vec2d& p0, const Vec2d& p1) {
+            SketchEntity e; e.type = SketchEntity::Type::Line; e.p0 = p0; e.p1 = p1;
+            e.construction = m_construction; return e; };
+        for (int i = 0; i < 4; ++i) out.push_back(line(cs[i], cs[(i + 1) % 4]));
+        return out;
+    }
+    return rounded_rect_entities(xmin, ymin, xmax, ymax, r);
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_polygon(const Vec2d& center, const Vec2d& vertex, int sides) const
+{
+    std::vector<SketchEntity> out;
+    if (sides < 3) sides = 3;
+    const Vec2d rv = vertex - center;
+    const double d = rv.norm();
+    if (d < 1e-6) return out;
+    double R = d, a0 = std::atan2(rv.y(), rv.x());
+    if (m_polygon_circumscribed) {
+        R  = d / std::cos(M_PI / double(sides));
+        a0 = std::atan2(rv.y(), rv.x()) - M_PI / double(sides);
+    }
+    std::vector<Vec2d> verts; verts.reserve(sides);
+    for (int i = 0; i < sides; ++i) {
+        const double a = a0 + 2.0 * M_PI * double(i) / double(sides);
+        verts.push_back(Vec2d(center.x() + R * std::cos(a), center.y() + R * std::sin(a)));
+    }
+    for (int i = 0; i < sides; ++i) {
+        SketchEntity e; e.type = SketchEntity::Type::Line;
+        e.p0 = verts[i]; e.p1 = verts[(i + 1) % sides];
+        e.construction = m_construction;
+        out.push_back(e);
+    }
+    return out;
+}
+
+static void ellipse_axes(const Vec2d& center, const Vec2d& major_end, const Vec2d& minor_pt,
+                         double& a, double& b, double& phi)
+{
+    const Vec2d maj = major_end - center;
+    a   = std::max(maj.norm(), 1e-6);
+    phi = std::atan2(maj.y(), maj.x());
+    const Vec2d n(-std::sin(phi), std::cos(phi));
+    b   = std::min(std::abs((minor_pt - center).dot(n)), a);
+}
+
+static double ellipse_param_of(const Vec2d& center, double a, double b, double phi, const Vec2d& q)
+{
+    const Vec2d d = q - center;
+    const double cu = std::cos(phi), su = std::sin(phi);
+    const double u =  d.x() * cu + d.y() * su;
+    const double v = -d.x() * su + d.y() * cu;
+    return std::atan2(v / std::max(b, 1e-9), u / std::max(a, 1e-9));
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_ellipse(const Vec2d& center, const Vec2d& major_end,
+                                                         const Vec2d& minor_pt) const
+{
+    double a, b, phi;
+    ellipse_axes(center, major_end, minor_pt, a, b, phi);
+    if (b < 1e-6) return {};
+    SketchEntity e;
+    e.type = SketchEntity::Type::Ellipse;
+    e.center = center; e.p0 = center;
+    e.radius = a; e.rminor = b; e.rotation = phi;
+    e.start_angle = 0.0; e.end_angle = 2.0 * M_PI;
+    e.construction = m_construction;
+    return { e };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_ellipse_arc(const Vec2d& center, const Vec2d& major_end,
+                                                             const Vec2d& minor_pt, const Vec2d& start_pt,
+                                                             const Vec2d& end_pt) const
+{
+    double a, b, phi;
+    ellipse_axes(center, major_end, minor_pt, a, b, phi);
+    if (b < 1e-6) return {};
+    double t0 = ellipse_param_of(center, a, b, phi, start_pt);
+    double t1 = ellipse_param_of(center, a, b, phi, end_pt);
+    while (t1 <= t0) t1 += 2.0 * M_PI;
+    SketchEntity e;
+    e.type = SketchEntity::Type::EllipseArc;
+    e.center = center;
+    e.radius = a; e.rminor = b; e.rotation = phi;
+    e.start_angle = t0; e.end_angle = t1;
+    e.p0 = ellipse_point(center, a, b, phi, t0);
+    e.p1 = ellipse_point(center, a, b, phi, t1);
+    e.construction = m_construction;
+    return { e };
+}
+
+std::vector<SketchEntity> DesignSketchTool::make_bspline(const std::vector<Vec2d>& ctrl) const
+{
+    if (ctrl.size() < 2) return {};
+    SketchEntity e;
+    e.type = SketchEntity::Type::BSpline;
+    e.ctrl = ctrl;
+    e.p0 = ctrl.front();
+    e.p1 = ctrl.back();
+    e.construction = m_construction;
+    return { e };
+}
+
+std::vector<Vec2d> DesignSketchTool::entity_polyline(const SketchEntity& e, bool& closed)
+{
+    closed = false;
+    switch (e.type) {
+    case SketchEntity::Type::Line:
+        return { e.p0, e.p1 };
+    case SketchEntity::Type::Circle:
+        closed = true;
+        return circle_polygon(e.center, e.radius);
+    case SketchEntity::Type::Arc: {
+        const int n = kArcFacets;
+        std::vector<Vec2d> pts; pts.reserve(n + 1);
+        for (int i = 0; i <= n; ++i) {
+            const double a = e.start_angle + (e.end_angle - e.start_angle) * double(i) / double(n);
+            pts.push_back(Vec2d(e.center.x() + e.radius * std::cos(a),
+                                e.center.y() + e.radius * std::sin(a)));
+        }
+        return pts;
+    }
+    case SketchEntity::Type::Ellipse:
+        closed = true;
+        return ellipse_polyline(e.center, e.radius, e.rminor, e.rotation, 0.0, 2.0 * M_PI);
+    case SketchEntity::Type::EllipseArc:
+        return ellipse_polyline(e.center, e.radius, e.rminor, e.rotation, e.start_angle, e.end_angle);
+    case SketchEntity::Type::BSpline:
+        return bspline_polyline(e.ctrl);
+    case SketchEntity::Type::Point:
+        return { e.p0 };
+    }
+    return {};
+}
+
+std::vector<std::vector<Vec2d>> DesignSketchTool::closed_regions() const
+{
+    return closed_regions(m_entities);
+}
+
+std::vector<std::vector<Vec2d>> DesignSketchTool::closed_regions(const std::vector<SketchEntity>& ents) const
+{
+    std::vector<std::vector<Vec2d>> out;
+    for (RegionLoop& r : region_loops(ents)) out.push_back(std::move(r.poly));
+    return out;
+}
+
+std::vector<std::vector<int>>
+DesignSketchTool::region_entity_indices(const std::vector<SketchEntity>& ents) const
+{
+    std::vector<std::vector<int>> out;
+    for (RegionLoop& r : region_loops(ents)) out.push_back(std::move(r.ents));
+    return out;
+}
+
+std::vector<std::vector<int>>
+DesignSketchTool::region_entity_indices_with_holes(const std::vector<SketchEntity>& ents) const
+{
+    const std::vector<RegionLoop> loops = region_loops(ents);
+    std::vector<std::vector<int>> out;
+    out.reserve(loops.size());
+    for (const RegionLoop& r : loops) {
+        std::vector<int> ids = r.ents;
+        for (int h : r.holes)
+            if (h >= 0 && h < int(loops.size()))
+                ids.insert(ids.end(), loops[h].ents.begin(), loops[h].ents.end());
+        out.push_back(std::move(ids));
+    }
+    return out;
+}
+
+static void dp_pick_trace(const char* fmt, ...);
+static bool dp_pick_trace_on();
+void DesignSketchTool::hit_display_sketch(const DisplaySketch& d, const Vec2d& p, double tol,
+                                          int& edge_feat, int& edge_reg, int& edge_ent,
+                                          double& edge_d, int& face_feat, int& face_reg) const
+{
+    const std::vector<RegionLoop> loops = region_loops(d.entities);
+    if (dp_pick_trace_on()) {
+        std::string h;
+        for (size_t r = 0; r < loops.size(); ++r) {
+            h += " loop" + std::to_string(r) + "(ents=" + std::to_string(loops[r].ents.size())
+               + ",poly=" + std::to_string(loops[r].poly.size())
+               + ",holes=" + std::to_string(loops[r].holes.size()) + ")";
+        }
+        dp_pick_trace("sketch feat=%d entities=%zu loops=%zu:%s", d.feature, d.entities.size(),
+                      loops.size(), h.c_str());
+    }
+    std::vector<int> ent_region(d.entities.size(), -1);
+    for (int r = 0; r < int(loops.size()); ++r)
+        for (int ei : loops[r].ents)
+            if (ei >= 0 && ei < int(ent_region.size())) ent_region[ei] = r;
+
+    for (int ei = 0; ei < int(d.entities.size()); ++ei) {
+        if (d.entities[ei].construction) continue;
+        const double ed = entity_pick_dist(p, d.entities[ei]);
+        if (ed <= tol * 3.0 && ed < edge_d) {
+            edge_d = ed; edge_feat = d.feature; edge_reg = ent_region[ei]; edge_ent = ei;
+        }
+    }
+    for (int r = 0; r < int(loops.size()); ++r) {
+        if (face_feat >= 0) break;
+        if (!point_in_poly(p, loops[r].poly)) continue;
+        bool in_hole = false;
+        for (int h : loops[r].holes)
+            if (h >= 0 && h < int(loops.size()) && point_in_poly(p, loops[h].poly)) { in_hole = true; break; }
+        if (!in_hole) { face_feat = d.feature; face_reg = r; }
+    }
+    dp_pick_trace("region hit -> feat=%d reg=%d (edge_feat=%d edge_reg=%d edge_ent=%d)",
+                  face_feat, face_reg, edge_feat, edge_reg, edge_ent);
+}
+
+std::vector<SketchEntity> DesignSketchTool::selected_loop_entities() const
+{
+    if (m_display_pick < 0 || m_display_pick_region < 0) return {};
+    for (const DisplaySketch& d : m_display_sketches) {
+        if (d.feature != m_display_pick) continue;
+        const std::vector<RegionLoop> loops = region_loops(d.entities);
+        if (m_display_pick_region >= int(loops.size())) return {};
+        std::vector<SketchEntity> out;
+        auto take = [&](int region) {
+            if (region < 0 || region >= int(loops.size())) return;
+            for (int ei : loops[region].ents)
+                if (ei >= 0 && ei < int(d.entities.size())) out.push_back(d.entities[ei]);
+        };
+        take(m_display_pick_region);
+        for (int h : loops[m_display_pick_region].holes) take(h);
+        return out;
+    }
+    return {};
+}
+
+void DesignSketchTool::set_solid_pick(const std::vector<CadBody>* bodies, const TriangleMesh* mesh,
+                                      const std::vector<int>* tri_face, const std::vector<int>* tri_body,
+                                      const std::vector<bool>* visible,
+                                      const std::vector<Transform3d>* xform)
+{
+    if (bodies == nullptr || bodies->empty() || mesh == nullptr || mesh->its.indices.empty()) {
+        m_solid_bodies = nullptr; m_solid_mesh = nullptr; m_solid_tri_face = nullptr; m_solid_tri_body = nullptr;
+        m_solid_visible = nullptr; m_solid_xform = nullptr;
+    } else {
+        m_solid_bodies = bodies; m_solid_mesh = mesh; m_solid_tri_face = tri_face; m_solid_tri_body = tri_body;
+        m_solid_visible = visible; m_solid_xform = xform;
+    }
+    refresh_body_edges();
+    clear_solid_selection();
+}
+
+static double display_edge_tol(const TopoDS_Shape& shape)
+{
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box);
+    return std::max(1e-3 * (box.IsVoid() ? 1.0 : std::sqrt(box.SquareExtent())), 0.005);
+}
+
+void DesignSketchTool::refresh_body_edges()
+{
+    const size_t n = m_solid_bodies != nullptr ? m_solid_bodies->size() : 0;
+    bool rebuilt = n < m_body_edges_shape.size();
+    m_body_edges.resize(n);
+    m_body_edges_shape.resize(n);
+    m_body_edges_tol.resize(n, 0.0);
+    for (size_t b = 0; b < n; ++b) {
+        if (is_current_shape(int(b), m_body_edges_shape[b]))
+            continue;
+        rebuilt = rebuilt || !m_body_edges_shape[b].IsNull();
+        const TopoDS_Shape& shape = (*m_solid_bodies)[b].shape;
+        m_body_edges_shape[b] = shape;
+        m_body_edges[b].clear();
+        if (shape.IsNull())
+            continue;
+        m_body_edges_tol[b] = display_edge_tol(shape);
+        try {
+            m_body_edges[b] = GeometryEngine::display_edges(shape, m_body_edges_tol[b]);
+        } catch (const Standard_Failure&) {
+            m_body_edges[b].clear();
+        }
+    }
+    if (m_solid_sel != SolidSel::None && !is_current_shape(m_sel_body, m_sel_shape))
+        clear_solid_selection();
+    else if (rebuilt)
+        m_pre = SolidPick{};
+    const auto stale = [this](const FaceHighlight& h) { return !is_current_shape(h.body, h.shape); };
+    if (stale(m_sel_hl)) m_sel_hl = FaceHighlight{};
+    if (stale(m_pre_hl)) m_pre_hl = FaceHighlight{};
+    m_hl_faces.erase(std::remove_if(m_hl_faces.begin(), m_hl_faces.end(), stale), m_hl_faces.end());
+}
+
+const TopoDS_Shape* DesignSketchTool::body_shape(int body) const
+{
+    if (m_solid_bodies == nullptr || body < 0 || body >= int(m_solid_bodies->size()))
+        return nullptr;
+    const TopoDS_Shape& shape = (*m_solid_bodies)[body].shape;
+    return shape.IsNull() ? nullptr : &shape;
+}
+
+bool DesignSketchTool::is_current_shape(int body, const TopoDS_Shape& sampled) const
+{
+    const TopoDS_Shape* shape = body_shape(body);
+    return shape != nullptr && sampled.IsSame(*shape);
+}
+
+void DesignSketchTool::append_ribbons(GLModel::Geometry& g, int body, const std::vector<std::vector<Vec3d>>& polylines,
+                                      const Vec3d& vd, const Vec3d& pull, double hw) const
+{
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned int base = unsigned(g.vertices_count());
+    for (const std::vector<Vec3d>& pl : polylines)
+        for (size_t s = 1; s < pl.size(); ++s) {
+            const Vec3d a = body_xform_pt(body, pl[s - 1]) + pull, c = body_xform_pt(body, pl[s]) + pull;
+            Vec3d dir = c - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) continue;
+            off = off.normalized() * hw;
+            g.add_vertex((Vec3f)(a + off).cast<float>());
+            g.add_vertex((Vec3f)(c + off).cast<float>());
+            g.add_vertex((Vec3f)(c - off).cast<float>());
+            g.add_vertex((Vec3f)(a - off).cast<float>());
+            g.add_triangle(base, base + 1, base + 2);
+            g.add_triangle(base, base + 2, base + 3); base += 4;
+        }
+}
+
+static void render_ribbons(GLModel& model, GLModel::Geometry&& g, const ColorRGBA& colour)
+{
+    if (g.is_empty())
+        return;
+    glsafe(::glEnable(GL_DEPTH_TEST));
+    glsafe(::glDepthFunc(GL_LEQUAL));
+    glsafe(::glDepthMask(GL_FALSE));
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+    model.reset();
+    model.init_from(std::move(g));
+    model.set_color(colour);
+    model.render();
+    glsafe(::glDepthMask(GL_TRUE));
+    glsafe(::glDepthFunc(GL_LESS));
+    glsafe(::glDisable(GL_BLEND));
+    glsafe(::glDisable(GL_DEPTH_TEST));
+}
+
+void DesignSketchTool::render_body_edges()
+{
+    if (m_body_edges_hidden || m_solid_bodies == nullptr)
+        return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d vd = cam.get_dir_forward();
+    const double px = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double hw = 1.0 * px;
+    const Vec3d pull = -vd * (3.0 * px);
+    for (int pass = 0; pass < 2; ++pass) {
+        GLModel::Geometry g;
+        for (int b = 0; b < int(m_body_edges.size()); ++b) {
+            if (m_solid_visible != nullptr && b < int(m_solid_visible->size()) && !(*m_solid_visible)[b])
+                continue;
+            const bool faded = m_pick_only_body >= 0 && m_pick_only_body < int(m_body_edges.size())
+                               && b != m_pick_only_body;
+            if (faded != (pass == 1))
+                continue;
+            append_ribbons(g, b, m_body_edges[b], vd, pull, hw);
+        }
+        render_ribbons(m_body_edges_model, std::move(g), ColorRGBA(0.08f, 0.09f, 0.11f, pass == 0 ? 0.85f : 0.25f));
+    }
+}
+
+Vec3d DesignSketchTool::body_xform_pt(int body, const Vec3d& p) const
+{
+    if (m_solid_xform != nullptr && body >= 0 && body < int(m_solid_xform->size()))
+        return (*m_solid_xform)[body] * p;
+    return p;
+}
+
+bool DesignSketchTool::body_pickable(int b) const
+{
+    if (b < 0) return false;
+    const bool focus_live = m_pick_only_body >= 0 && m_solid_bodies != nullptr
+                            && m_pick_only_body < int(m_solid_bodies->size());
+    if (focus_live && b != m_pick_only_body) return false;
+    if (m_solid_visible == nullptr || b >= int(m_solid_visible->size())) return true;
+    return (*m_solid_visible)[b];
+}
+
+void DesignSketchTool::clear_solid_selection()
+{
+    m_solid_sel = SolidSel::None;
+    m_sel_body = m_sel_face = m_sel_edge = -1;
+    m_sel_shape = TopoDS_Shape();
+    m_sel_edge_pts.clear();
+    m_sel_edges_more.clear();
+    m_sel_edges_more_pts.clear();
+    m_pre = SolidPick{};
+}
+
+std::vector<int> DesignSketchTool::selected_edges() const
+{
+    if (m_solid_sel != SolidSel::Edge || m_sel_edge < 0) return {};
+    std::vector<int> out = m_sel_edges_more;
+    out.push_back(m_sel_edge);
+    return out;
+}
+
+void DesignSketchTool::select_body(int body)
+{
+    if (m_solid_bodies == nullptr || body < 0 || body >= int(m_solid_bodies->size())
+        || !body_pickable(body)) {
+        clear_solid_selection();
+        return;
+    }
+    m_sel_body  = body;
+    m_sel_shape = (*m_solid_bodies)[body].shape;
+    m_sel_face  = m_sel_edge = -1;
+    m_sel_edge_pts.clear();
+    m_sel_edges_more.clear();
+    m_sel_edges_more_pts.clear();
+    m_solid_sel = SolidSel::Whole;
+}
+
+void DesignSketchTool::set_highlight_faces(const std::vector<std::pair<int, int>>& faces)
+{
+    std::map<int, std::vector<int>> by_body;
+    for (const auto& [b, f] : faces)
+        if (body_shape(b) != nullptr)
+            by_body[b].push_back(f);
+    std::vector<FaceHighlight> next;
+    for (auto& [b, fs] : by_body) {
+        FaceHighlight h;
+        for (FaceHighlight& old : m_hl_faces)
+            if (old.body == b)
+                h = std::move(old);
+        cached_face_highlight(h, b, std::move(fs));
+        next.push_back(std::move(h));
+    }
+    m_hl_faces = std::move(next);
+}
+
+DesignSketchTool::FaceHighlight DesignSketchTool::make_face_highlight(int body, std::vector<int> faces) const
+{
+    FaceHighlight h;
+    h.body = body;
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    h.faces = std::move(faces);
+    const TopoDS_Shape* shape = body_shape(body);
+    if (shape == nullptr)
+        return h;
+    h.shape = *shape;
+    if (h.faces.empty())
+        return h;
+    const std::vector<TopoDS_Face> all    = GeometryEngine::faces_of(*shape);
+    const bool                     cached = body < int(m_body_edges_shape.size())
+                                            && is_current_shape(body, m_body_edges_shape[body]);
+    if (cached && h.faces.size() == all.size() && h.faces.front() == 0 && h.faces.back() == int(all.size()) - 1) {
+        h.edges = m_body_edges[body];
+        return h;
+    }
+    TopoDS_Compound picked;
+    BRep_Builder    builder;
+    builder.MakeCompound(picked);
+    for (int f : h.faces)
+        if (f >= 0 && f < int(all.size()))
+            builder.Add(picked, all[f]);
+    try {
+        h.edges = GeometryEngine::display_edges(picked, cached ? m_body_edges_tol[body] : display_edge_tol(*shape));
+    } catch (const Standard_Failure&) {
+        h.edges.clear();
+    }
+    return h;
+}
+
+std::vector<std::pair<int, int>> DesignSketchTool::picked_faces() const
+{
+    std::vector<std::pair<int, int>> out;
+    const TopoDS_Shape* shape = body_shape(m_sel_body);
+    if (shape == nullptr)
+        return out;
+    if (m_solid_sel == SolidSel::Face && m_sel_face >= 0)
+        out.emplace_back(m_sel_body, m_sel_face);
+    else if (m_solid_sel == SolidSel::Whole)
+        for (int f = 0, n = GeometryEngine::face_count(*shape); f < n; ++f)
+            out.emplace_back(m_sel_body, f);
+    return out;
+}
+
+std::vector<std::pair<int, int>> DesignSketchTool::selected_faces() const
+{
+    std::vector<std::pair<int, int>> out = picked_faces();
+    for (const FaceHighlight& h : m_hl_faces)
+        if (is_current_shape(h.body, h.shape))
+            for (int f : h.faces)
+                out.emplace_back(h.body, f);
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+BoundingBoxf3 DesignSketchTool::faces_box(std::vector<std::pair<int, int>> faces) const
+{
+    BoundingBoxf3 box;
+    if (faces.empty() || m_solid_mesh == nullptr || m_solid_tri_face == nullptr || m_solid_tri_body == nullptr)
+        return box;
+    std::sort(faces.begin(), faces.end());
+    const indexed_triangle_set& its = m_solid_mesh->its;
+    const size_t n = std::min({ its.indices.size(), m_solid_tri_face->size(), m_solid_tri_body->size() });
+    for (size_t t = 0; t < n; ++t)
+        if (std::binary_search(faces.begin(), faces.end(), std::make_pair((*m_solid_tri_body)[t], (*m_solid_tri_face)[t])))
+            for (int i = 0; i < 3; ++i)
+                box.merge(its.vertices[its.indices[t][i]].cast<double>());
+    return box;
+}
+
+BoundingBoxf3 DesignSketchTool::sketch_box(const std::vector<SketchEntity>& entities, const SketchPlane& plane)
+{
+    BoundingBoxf3 box;
+    for (const SketchEntity& e : entities) {
+        bool closed = false;
+        for (const Vec2d& p : entity_polyline(e, closed))
+            box.merge(plane.to_world(p));
+    }
+    return box;
+}
+
+BoundingBoxf3 DesignSketchTool::selection_box() const
+{
+    BoundingBoxf3 box = faces_box(selected_faces());
+    if (m_solid_sel == SolidSel::Edge) {
+        for (const Vec3d& p : m_sel_edge_pts)
+            box.merge(p);
+        for (const std::vector<Vec3d>& pts : m_sel_edges_more_pts)
+            for (const Vec3d& p : pts)
+                box.merge(p);
+    } else if (m_solid_sel == SolidSel::Vertex)
+        box.merge(m_sel_vertex_pt);
+    if (m_display_pick >= 0)
+        for (const DisplaySketch& d : m_display_sketches)
+            if (d.feature == m_display_pick)
+                box.merge(sketch_box(m_display_pick_region >= 0 ? selected_loop_entities() : d.entities, d.plane));
+    if (m_active) {
+        for (int i : m_selection)
+            if (i >= 0 && i < int(m_entities.size()))
+                box.merge(sketch_box({ m_entities[i] }, m_plane));
+        for (const auto& [i, role] : m_point_sel)
+            if (i >= 0 && i < int(m_entities.size())) {
+                const SketchEntity& e = m_entities[i];
+                box.merge(m_plane.to_world(role == SketchPointRole::Center ? e.center :
+                                           role == SketchPointRole::P1     ? e.p1 : e.p0));
+            }
+    }
+    return box;
+}
+
+BoundingBoxf3 DesignSketchTool::fit_box(const GLVolumeCollection& volumes) const
+{
+    BoundingBoxf3 box = selection_box();
+    if (!box.defined) {
+        for (const GLVolume* v : volumes.volumes)
+            if (v->is_active)
+                box.merge(v->transformed_bounding_box());
+        for (const DisplaySketch& d : m_display_sketches)
+            box.merge(sketch_box(d.entities, d.plane));
+        if (m_active)
+            box.merge(sketch_box(m_entities, m_plane));
+    }
+    pad_box(box);
+    return box;
+}
+
+void DesignSketchTool::pad_box(BoundingBoxf3& box)
+{
+    if (!box.defined)
+        return;
+    constexpr double min_extent = 10.;
+    const Vec3d grow = (Vec3d::Constant(min_extent) - box.size()).cwiseMax(0.) * 0.5;
+    box.min -= grow;
+    box.max += grow;
+}
+
+const DesignSketchTool::FaceHighlight& DesignSketchTool::cached_face_highlight(FaceHighlight& cache, int body,
+                                                                               std::vector<int> faces) const
+{
+    std::sort(faces.begin(), faces.end());
+    faces.erase(std::unique(faces.begin(), faces.end()), faces.end());
+    if (cache.body != body || cache.faces != faces || !is_current_shape(body, cache.shape))
+        cache = make_face_highlight(body, std::move(faces));
+    return cache;
+}
+
+void DesignSketchTool::render_face_outline(const FaceHighlight& h, bool quiet)
+{
+    if (m_body_edges_hidden || !is_current_shape(h.body, h.shape) || !body_pickable(h.body))
+        return;
+
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d  vd   = cam.get_dir_forward();
+    const double px   = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d  pull = -vd * (4.0 * px);
+    auto draw = [&](double hw_px, const ColorRGBA& colour) {
+        GLModel::Geometry g;
+        append_ribbons(g, h.body, h.edges, vd, pull, hw_px * px);
+        render_ribbons(m_solid_edge_model, std::move(g), colour);
+    };
+    if (quiet) {
+        draw(1.0, design_selection_color(0.8f));
+    } else {
+        draw(2.25, ColorRGBA(0.05f, 0.06f, 0.08f, 1.0f));
+        draw(1.25, design_selection_color());
+    }
+}
+
+static bool dp_pick_trace_on()
+{
+    static const bool on = ::getenv("ORCA_CAD_PICK_TRACE") != nullptr;
+    return on;
+}
+
+static void dp_pick_trace(const char* fmt, ...)
+{
+    if (!dp_pick_trace_on()) return;
+    va_list ap; va_start(ap, fmt);
+    std::fputs("[pick] ", stderr);
+    std::vfprintf(stderr, fmt, ap);
+    std::fputc('\n', stderr);
+    va_end(ap);
+    std::fflush(stderr);
+}
+
+void DesignSketchTool::pick_bodies_in_rectangle()
+{
+    if (m_solid_mesh == nullptr || m_solid_tri_body == nullptr || m_solid_bodies == nullptr)
+        return;
+    const indexed_triangle_set& its = m_solid_mesh->its;
+    std::vector<Vec3d> pts;
+    std::vector<int>   owner;
+    pts.reserve(its.indices.size() * 4);
+    owner.reserve(its.indices.size() * 4);
+    for (size_t i = 0; i < its.indices.size(); ++i) {
+        const int b = (i < m_solid_tri_body->size()) ? (*m_solid_tri_body)[i] : -1;
+        if (!body_pickable(b)) continue;
+        const auto& idx = its.indices[i];
+        Vec3d c = Vec3d::Zero();
+        for (int k = 0; k < 3; ++k) {
+            const Vec3d p = its.vertices[idx(k)].cast<double>();
+            pts.push_back(p); owner.push_back(b); c += p;
+        }
+        pts.push_back(c / 3.0); owner.push_back(b);
+    }
+
+    std::vector<int> hits(m_solid_bodies->size(), 0);
+    if (!pts.empty())
+        for (unsigned int i : m_rubber.contains(pts))
+            if (i < owner.size() && owner[i] >= 0 && owner[i] < int(hits.size()))
+                ++hits[owner[i]];
+
+    int best = -1, best_n = 0;
+    for (int b = 0; b < int(hits.size()); ++b)
+        if (hits[b] > best_n) { best_n = hits[b]; best = b; }
+
+    if (best < 0) clear_solid_selection();
+    else          select_body(best);
+    dp_pick_trace("rubber band -> body=%d (%d samples)", best, best_n);
+    if (on_solid_selection_changed)
+        on_solid_selection_changed(int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+    if (best < 0 && on_empty_pick) on_empty_pick();
+}
+
+bool DesignSketchTool::resolve_solid_pick(GLCanvas3D& canvas, int mx, int my, SolidPick& out) const
+{
+    out = SolidPick{};
+    if (m_solid_bodies == nullptr || m_solid_mesh == nullptr) {
+        dp_pick_trace("no solid data (bodies=%p mesh=%p)",
+                      (const void*) m_solid_bodies, (const void*) m_solid_mesh);
+        return false;
+    }
+    const Linef3 r = canvas.mouse_ray(Point(mx, my));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+
+    const indexed_triangle_set& its = m_solid_mesh->its;
+    int best_face = -1, best_body = -1; double best_t = 1e30;
+    for (size_t i = 0; i < its.indices.size(); ++i) {
+        const auto& idx = its.indices[i];
+        const Vec3d v0 = its.vertices[idx(0)].cast<double>();
+        const Vec3d v1 = its.vertices[idx(1)].cast<double>();
+        const Vec3d v2 = its.vertices[idx(2)].cast<double>();
+        double t;
+        if (ray_triangle(ro, rd, v0, v1, v2, t) && t < best_t) {
+            const int cand_body = (m_solid_tri_body && i < m_solid_tri_body->size()) ? (*m_solid_tri_body)[i] : -1;
+            if (!body_pickable(cand_body)) continue;
+            best_t = t;
+            best_face = (m_solid_tri_face && i < m_solid_tri_face->size()) ? (*m_solid_tri_face)[i] : -1;
+            best_body = cand_body;
+        }
+    }
+    dp_pick_trace("ray tris=%zu -> body=%d face=%d t=%.3f", its.indices.size(),
+                  best_body, best_face, best_t);
+    if (best_face < 0 || best_body < 0 || best_body >= int(m_solid_bodies->size()))
+        return false;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const wxPoint cursor(mx, my);
+    const double  kVertexTolPx = 11.0;
+    const double  kEdgeTolPx   = 8.0;
+
+    auto seg_px = [](const wxPoint& p, const wxPoint& a, const wxPoint& b) {
+        const double vx = b.x - a.x, vy = b.y - a.y;
+        const double wx = p.x - a.x, wy = p.y - a.y;
+        const double L2 = vx * vx + vy * vy;
+        double t = (L2 > 1e-12) ? (wx * vx + wy * vy) / L2 : 0.0;
+        t = std::max(0.0, std::min(1.0, t));
+        return std::hypot(wx - t * vx, wy - t * vy);
+    };
+
+    out.body = best_body;
+    out.face = best_face;
+
+    {
+        const TopoDS_Shape& bshape = (*m_solid_bodies)[out.body].shape;
+        const TopoDS_Face  face    = GeometryEngine::face_by_index(bshape, out.face);
+        double best_ed = 1e30; std::vector<Vec3d> ed_pts; TopoDS_Edge ed_edge; bool have_edge = false;
+        double best_vd = 1e30; Vec3d vtx = Vec3d::Zero(); bool have_vtx = false;
+        int fx0 = INT_MAX, fy0 = INT_MAX, fx1 = INT_MIN, fy1 = INT_MIN;
+        if (!face.IsNull()) {
+            for (const TopoDS_Edge& e : GeometryEngine::edges_of_face(face)) {
+                std::vector<Vec3d> pts = GeometryEngine::sample_edge_world(e);
+                for (Vec3d& q : pts) q = body_xform_pt(out.body, q);
+                if (pts.size() < 2) continue;
+                for (const Vec3d& v : {pts.front(), pts.back()}) {
+                    const wxPoint sp = world_to_screen_px(cam, v);
+                    if (sp.x < 0) continue;
+                    const double d = std::hypot(double(sp.x - cursor.x), double(sp.y - cursor.y));
+                    if (d < best_vd) { best_vd = d; vtx = v; have_vtx = true; }
+                }
+                double d = 1e30;
+                for (size_t s = 1; s < pts.size(); ++s) {
+                    const wxPoint a = world_to_screen_px(cam, pts[s - 1]);
+                    const wxPoint b = world_to_screen_px(cam, pts[s]);
+                    if (a.x < 0 || b.x < 0) continue;
+                    fx0 = std::min({fx0, a.x, b.x}); fx1 = std::max({fx1, a.x, b.x});
+                    fy0 = std::min({fy0, a.y, b.y}); fy1 = std::max({fy1, a.y, b.y});
+                    d = std::min(d, seg_px(cursor, a, b));
+                }
+                if (d < best_ed) { best_ed = d; ed_pts = pts; ed_edge = e; have_edge = true; }
+            }
+        }
+        double vtol = kVertexTolPx, etol = kEdgeTolPx;
+        if (fx1 > fx0 && fy1 > fy0) {
+            const double narrow = double(std::min(fx1 - fx0, fy1 - fy0)) / 3.0;
+            vtol = std::min(vtol, narrow);
+            etol = std::min(etol, narrow);
+        }
+        if (have_vtx && best_vd <= vtol) {
+            out.vertex_pt = vtx;
+            out.kind      = SolidSel::Vertex;
+        } else if (have_edge && best_ed <= etol) {
+            out.edge     = GeometryEngine::edge_index_of(bshape, ed_edge);
+            out.edge_pts = std::move(ed_pts);
+            out.kind     = SolidSel::Edge;
+        } else {
+            out.kind = SolidSel::Face;
+        }
+    }
+    return true;
+}
+
+bool DesignSketchTool::handle_solid_click(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    SolidPick p;
+    if (!resolve_solid_pick(canvas, evt.GetX(), evt.GetY(), p))
+        return false;
+    const SolidSel prev_kind = m_solid_sel;
+    const int      prev_body = m_sel_body, prev_face = m_sel_face, prev_edge = m_sel_edge;
+    const Vec3d    prev_vtx  = m_sel_vertex_pt;
+
+    const bool extend = evt.ShiftDown() || evt.ControlDown() || evt.CmdDown();
+    if (extend && p.kind == SolidSel::Edge && prev_kind == SolidSel::Edge && p.body == prev_body) {
+        auto more = std::find(m_sel_edges_more.begin(), m_sel_edges_more.end(), p.edge);
+        if (p.edge == prev_edge) {
+            if (m_sel_edges_more.empty()) {
+                clear_solid_selection();
+            } else {
+                m_sel_edge     = m_sel_edges_more.back();
+                m_sel_edge_pts = std::move(m_sel_edges_more_pts.back());
+                m_sel_edges_more.pop_back();
+                m_sel_edges_more_pts.pop_back();
+            }
+        } else if (more != m_sel_edges_more.end()) {
+            const size_t k = size_t(more - m_sel_edges_more.begin());
+            m_sel_edges_more.erase(more);
+            m_sel_edges_more_pts.erase(m_sel_edges_more_pts.begin() + k);
+        } else {
+            m_sel_edges_more.push_back(prev_edge);
+            m_sel_edges_more_pts.push_back(std::move(m_sel_edge_pts));
+            m_sel_edge     = p.edge;
+            m_sel_edge_pts = std::move(p.edge_pts);
+            m_sel_face     = p.face;
+        }
+        dp_pick_trace("edge set -> %zu edge(s), current %d", selected_edges().size(), m_sel_edge);
+        if (on_solid_selection_changed)
+            on_solid_selection_changed(int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+        return true;
+    }
+    m_sel_edges_more.clear();
+    m_sel_edges_more_pts.clear();
+
+    m_sel_body      = p.body;
+    m_sel_shape     = (*m_solid_bodies)[p.body].shape;
+    m_sel_face      = p.face;
+    m_sel_edge      = p.edge;
+    m_sel_edge_pts  = std::move(p.edge_pts);
+    m_sel_vertex_pt = p.vertex_pt;
+    m_solid_sel     = p.kind;
+
+    const bool same_pick = m_solid_sel == prev_kind && m_sel_body == prev_body
+        && (m_solid_sel == SolidSel::Vertex ? (m_sel_vertex_pt - prev_vtx).norm() < 1e-9
+          : m_solid_sel == SolidSel::Edge   ? m_sel_edge == prev_edge
+          : m_solid_sel == SolidSel::Face   ? m_sel_face == prev_face
+                                            : true);
+    if (same_pick && m_escalate_repick) {
+        select_body(m_sel_body);
+        dp_pick_trace("re-pick -> escalated to whole body %d", m_sel_body);
+    }
+    dp_pick_trace("pick -> sel=%d body=%d face=%d edge=%d",
+                  int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+    if (on_solid_selection_changed)
+        on_solid_selection_changed(int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+    return true;
+}
+
+bool DesignSketchTool::update_solid_hover(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    SolidPick p;
+    if (!resolve_solid_pick(canvas, evt.GetX(), evt.GetY(), p))
+        p = SolidPick{};
+    const bool same = p.kind == m_pre.kind && p.body == m_pre.body
+        && (p.kind == SolidSel::Vertex ? (p.vertex_pt - m_pre.vertex_pt).norm() < 1e-9
+          : p.kind == SolidSel::Edge   ? p.edge == m_pre.edge
+          : p.kind == SolidSel::Face   ? p.face == m_pre.face
+                                       : true);
+    if (same) return false;
+    m_pre = std::move(p);
+    return true;
+}
+
+void DesignSketchTool::render_solid_sel(SolidSel kind, const std::vector<Vec3d>& edge_pts,
+                                        const Vec3d& vertex_pt, const ColorRGBA& rgb)
+{
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const ColorRGBA cyan(rgb.r(), rgb.g(), rgb.b(), 1.0f);
+
+    if (kind == SolidSel::Edge && edge_pts.size() >= 2) {
+        const Camera& cam = wxGetApp().plater()->get_camera();
+        const Vec3d vd = cam.get_dir_forward();
+        const double hw = 2.0 / std::max(cam.get_zoom(), 1e-6);
+        GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
+        unsigned int base = 0;
+        for (size_t s = 1; s < edge_pts.size(); ++s) {
+            const Vec3d a = edge_pts[s - 1], b = edge_pts[s];
+            Vec3d dir = b - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) off = dir.cross(cam.get_dir_up());
+            if (off.norm() < 1e-9) continue;
+            off.normalize(); off *= hw;
+            g.add_vertex((Vec3f)(a + off).cast<float>());
+            g.add_vertex((Vec3f)(b + off).cast<float>());
+            g.add_vertex((Vec3f)(b - off).cast<float>());
+            g.add_vertex((Vec3f)(a - off).cast<float>());
+            g.add_triangle(base, base + 1, base + 2);
+            g.add_triangle(base, base + 2, base + 3); base += 4;
+        }
+        if (base > 0) {
+            glsafe(::glDisable(GL_DEPTH_TEST));
+            m_solid_edge_model.reset();
+            m_solid_edge_model.init_from(std::move(g));
+            m_solid_edge_model.set_color(cyan);
+            m_solid_edge_model.render();
+        }
+    } else if (kind == SolidSel::Vertex) {
+        const Camera& cam = wxGetApp().plater()->get_camera();
+        Vec3d right = cam.get_dir_right(), up = cam.get_dir_up();
+        const double h = 4.5 / std::max(cam.get_zoom(), 1e-6);
+        right *= h; up *= h;
+        const Vec3d c = vertex_pt;
+        GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
+        g.add_vertex((Vec3f)(c - right - up).cast<float>());
+        g.add_vertex((Vec3f)(c + right - up).cast<float>());
+        g.add_vertex((Vec3f)(c + right + up).cast<float>());
+        g.add_vertex((Vec3f)(c - right + up).cast<float>());
+        g.add_triangle(0, 1, 2);
+        g.add_triangle(0, 2, 3);
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        m_solid_vertex_model.reset();
+        m_solid_vertex_model.init_from(std::move(g));
+        m_solid_vertex_model.set_color(cyan);
+        m_solid_vertex_model.render();
+    }
+}
+
+void DesignSketchTool::render_solid_highlight()
+{
+    const ColorRGBA sel_cyan = design_selection_color();
+
+    for (const FaceHighlight& h : m_hl_faces)
+        render_face_outline(h, false);
+
+    const bool pre_is_sel = m_pre.kind == m_solid_sel && m_pre.body == m_sel_body
+        && (m_pre.kind == SolidSel::Vertex ? (m_pre.vertex_pt - m_sel_vertex_pt).norm() < 1e-9
+          : m_pre.kind == SolidSel::Edge   ? m_pre.edge == m_sel_edge
+          : m_pre.kind == SolidSel::Face   ? m_pre.face == m_sel_face
+                                           : true);
+    if (m_pre.kind == SolidSel::Face && !pre_is_sel)
+        render_face_outline(cached_face_highlight(m_pre_hl, m_pre.body, { m_pre.face }), true);
+    else if (m_pre.kind != SolidSel::None && !pre_is_sel)
+        render_solid_sel(m_pre.kind, m_pre.edge_pts, m_pre.vertex_pt, sel_cyan);
+
+    if (const std::vector<std::pair<int, int>> picked = picked_faces(); !picked.empty()) {
+        std::vector<int> faces;
+        for (const auto& bf : picked)
+            faces.push_back(bf.second);
+        render_face_outline(cached_face_highlight(m_sel_hl, m_sel_body, std::move(faces)), false);
+        return;
+    }
+    render_solid_sel(m_solid_sel, m_sel_edge_pts, m_sel_vertex_pt, sel_cyan);
+    if (m_solid_sel == SolidSel::Edge)
+        for (const std::vector<Vec3d>& pts : m_sel_edges_more_pts)
+            render_solid_sel(SolidSel::Edge, pts, Vec3d::Zero(), sel_cyan);
+}
+
+void DesignSketchTool::render_view_helpers()
+{
+    if (!m_show_planes && !m_show_axes) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d vd = cam.get_dir_forward();
+    const double hw = 1.5 / std::max(cam.get_zoom(), 1e-6);
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+    if (m_show_planes) {
+        const double H = 40.0;
+        SketchPlane pl[3];
+        pl[0].origin = Vec3d(0,0,0); pl[0].x_axis = Vec3d(1,0,0); pl[0].y_axis = Vec3d(0,1,0); pl[0].normal = Vec3d(0,0,1);
+        pl[1].origin = Vec3d(0,0,0); pl[1].x_axis = Vec3d(1,0,0); pl[1].y_axis = Vec3d(0,0,1); pl[1].normal = Vec3d(0,1,0);
+        pl[2].origin = Vec3d(0,0,0); pl[2].x_axis = Vec3d(0,1,0); pl[2].y_axis = Vec3d(0,0,1); pl[2].normal = Vec3d(1,0,0);
+        GLModel::Geometry fill; fill.format = { EPT::Triangles, EVL::P3 };
+        unsigned int fb = 0;
+        for (const SketchPlane& p : pl) {
+            const Vec3d c[4] = { p.to_world(Vec2d(-H,-H)), p.to_world(Vec2d(H,-H)),
+                                 p.to_world(Vec2d(H,H)),   p.to_world(Vec2d(-H,H)) };
+            fill.add_vertex((Vec3f)c[0].cast<float>()); fill.add_vertex((Vec3f)c[1].cast<float>());
+            fill.add_vertex((Vec3f)c[2].cast<float>()); fill.add_triangle(fb, fb+1, fb+2); fb += 3;
+            fill.add_vertex((Vec3f)c[0].cast<float>()); fill.add_vertex((Vec3f)c[2].cast<float>());
+            fill.add_vertex((Vec3f)c[3].cast<float>()); fill.add_triangle(fb, fb+1, fb+2); fb += 3;
+        }
+        if (fb > 0) { GLModel fm; fm.init_from(std::move(fill));
+            fm.set_color(ColorRGBA(0.42f, 0.52f, 0.78f, 0.20f)); fm.render(); }
+    }
+
+    if (m_show_axes) {
+        const double L = 60.0;
+        struct Ax { Vec3d dir; ColorRGBA col; };
+        const Ax axes[3] = { { Vec3d(1,0,0), ColorRGBA(0.92f, 0.28f, 0.28f, 0.9f) },
+                             { Vec3d(0,1,0), ColorRGBA(0.30f, 0.80f, 0.34f, 0.9f) },
+                             { Vec3d(0,0,1), ColorRGBA(0.32f, 0.55f, 0.95f, 0.9f) } };
+        for (const Ax& ax : axes) {
+            const Vec3d a = Vec3d(0,0,0), b = ax.dir * L;
+            Vec3d dir = (b - a).normalized();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) off = dir.cross(cam.get_dir_up());
+            if (off.norm() < 1e-9) continue;
+            off.normalize(); off *= hw * 1.5;
+            GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
+            g.add_vertex((Vec3f)(a + off).cast<float>()); g.add_vertex((Vec3f)(b + off).cast<float>());
+            g.add_vertex((Vec3f)(b - off).cast<float>()); g.add_vertex((Vec3f)(a - off).cast<float>());
+            g.add_triangle(0, 1, 2); g.add_triangle(0, 2, 3);
+            GLModel m; m.init_from(std::move(g)); m.set_color(ax.col); m.render();
+        }
+    }
+    glsafe(::glDisable(GL_BLEND));
+}
+
+void DesignSketchTool::render_datum_planes()
+{
+    if (m_datum_planes.empty()) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const double H = 40.0;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d vd = cam.get_dir_forward();
+    const double hw = 1.5 / std::max(cam.get_zoom(), 1e-6);
+
+    GLModel::Geometry fill;   fill.format   = { EPT::Triangles, EVL::P3 };
+    GLModel::Geometry border; border.format = { EPT::Triangles, EVL::P3 };
+    unsigned int fb = 0, bb = 0;
+    for (size_t pi = 0; pi < m_datum_planes.size(); ++pi) {
+        const SketchPlane& p = m_datum_planes[pi];
+        const double hu = (pi < m_datum_sizes.size() && m_datum_sizes[pi].x() > 1e-6)
+                              ? m_datum_sizes[pi].x() * 0.5 : H;
+        const double hv = (pi < m_datum_sizes.size() && m_datum_sizes[pi].y() > 1e-6)
+                              ? m_datum_sizes[pi].y() * 0.5 : H;
+        const Vec3d c[4] = { p.to_world(Vec2d(-hu, -hv)), p.to_world(Vec2d(hu, -hv)),
+                             p.to_world(Vec2d(hu, hv)),   p.to_world(Vec2d(-hu, hv)) };
+        fill.add_vertex((Vec3f)c[0].cast<float>()); fill.add_vertex((Vec3f)c[1].cast<float>());
+        fill.add_vertex((Vec3f)c[2].cast<float>()); fill.add_triangle(fb, fb + 1, fb + 2); fb += 3;
+        fill.add_vertex((Vec3f)c[0].cast<float>()); fill.add_vertex((Vec3f)c[2].cast<float>());
+        fill.add_vertex((Vec3f)c[3].cast<float>()); fill.add_triangle(fb, fb + 1, fb + 2); fb += 3;
+        for (int s = 0; s < 4; ++s) {
+            const Vec3d a = c[s], b = c[(s + 1) & 3];
+            Vec3d dir = b - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) off = dir.cross(cam.get_dir_up());
+            if (off.norm() < 1e-9) continue;
+            off.normalize(); off *= hw;
+            border.add_vertex((Vec3f)(a + off).cast<float>());
+            border.add_vertex((Vec3f)(b + off).cast<float>());
+            border.add_vertex((Vec3f)(b - off).cast<float>());
+            border.add_vertex((Vec3f)(a - off).cast<float>());
+            border.add_triangle(bb, bb + 1, bb + 2);
+            border.add_triangle(bb, bb + 2, bb + 3); bb += 4;
+        }
+    }
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+    if (fb > 0) {
+        GLModel fm; fm.init_from(std::move(fill));
+        fm.set_color(ColorRGBA(0.62f, 0.52f, 0.95f, 0.10f));
+        fm.render();
+    }
+    if (bb > 0) {
+        GLModel bm; bm.init_from(std::move(border));
+        bm.set_color(ColorRGBA(0.70f, 0.60f, 1.0f, 0.85f));
+        bm.render();
+    }
+    glsafe(::glDisable(GL_BLEND));
+}
+
+void DesignSketchTool::set_extrude_gizmo(const SketchPlane& plane, const Vec2d& centroid,
+                                         double depth, double depth2, bool two_sided, bool flip)
+{
+    m_ex_active    = true;
+    m_ex_plane     = plane;
+    m_ex_centroid  = centroid;
+    m_ex_depth     = std::max(0.0, depth);
+    m_ex_depth2    = std::max(0.0, depth2);
+    m_ex_two_sided = two_sided;
+    m_ex_flip      = flip;
+}
+
+void DesignSketchTool::clear_extrude_gizmo()
+{
+    m_ex_active = false;
+    m_ex_drag   = -1;
+}
+
+void DesignSketchTool::render_mate_connectors()
+{
+    if (m_mate_connectors.empty()) return;
+    static const bool style_A = [] {
+        const char* s = ::getenv("ORCA_CAD_GLYPH");
+        return s && (*s == 'A' || *s == 'a');
+    }();
+    const bool face_style = !style_A
+                         && wxGetApp().app_config->get_bool("design_connector_face_glyph")
+                         && [] { const char* s = ::getenv("ORCA_CAD_GLYPH");
+                                 return !(s && (*s == 'D' || *s == 'd')); }();
+
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double R    = 22.0 * upp;
+    const double lw   = std::max(0.9 * upp, 1e-4);
+
+    const ColorRGBA gold (0.93f, 0.66f, 0.09f, 1.0f);
+    const ColorRGBA blue (0.18f, 0.44f, 0.93f, 1.0f);
+    const ColorRGBA grey (0.42f, 0.46f, 0.52f, 1.0f);
+    const ColorRGBA warn (0.72f, 0.55f, 0.22f, 1.0f);
+
+    const SketchPlane saved = m_plane;
+
+    for (const MateConnectorGlyph& g : m_mate_connectors) {
+        const Vec3d X = g.x.normalized();
+        const Vec3d Y = g.y.normalized();
+        const Vec3d Z = X.cross(Y).normalized();
+        const ColorRGBA body = (g.role == 2) ? blue : grey;
+
+        if (face_style && !g.roll_undefined) {
+            render_mate_face(g.origin, X, Y, Z, R, body);
+        } else {
+
+        SketchPlane cp; cp.origin = g.origin + Z * (0.7 * upp);
+        cp.x_axis = X; cp.y_axis = Y; cp.normal = Z;
+        m_plane = cp;
+        {
+            std::vector<std::pair<Vec2d, Vec2d>> segs;
+            const int N = 40;
+            for (int i = 0; i < N; ++i) {
+                const double a0 = (2.0 * M_PI * i) / N, a1 = (2.0 * M_PI * (i + 1)) / N;
+                segs.emplace_back(Vec2d(R * std::cos(a0), R * std::sin(a0)),
+                                  Vec2d(R * std::cos(a1), R * std::sin(a1)));
+            }
+            glsafe(::glEnable(GL_DEPTH_TEST));
+            draw_strokes(m_mc_stroke_model, segs, lw, g.roll_undefined ? warn : body);
+
+            std::vector<std::pair<Vec2d, Vec2d>> q;
+            const double qr = R * 0.84;
+            const int    QN = 10;
+            for (int i = 0; i < QN; ++i) {
+                const double a0 = (M_PI_2 * i) / QN, a1 = (M_PI_2 * (i + 1)) / QN;
+                q.emplace_back(Vec2d(qr * std::cos(a0), qr * std::sin(a0)),
+                               Vec2d(qr * std::cos(a1), qr * std::sin(a1)));
+            }
+            q.emplace_back(Vec2d(0, 0), Vec2d(qr, 0));
+            q.emplace_back(Vec2d(0, 0), Vec2d(0, qr));
+            if (!g.roll_undefined) {
+                for (int i = 1; i < 5; ++i) {
+                    const double a = (M_PI_2 * i) / 5.0;
+                    q.emplace_back(Vec2d(0, 0), Vec2d(qr * std::cos(a), qr * std::sin(a)));
+                }
+                q.emplace_back(Vec2d(R, 0), Vec2d(R * 1.28, 0));
+            }
+            draw_strokes(m_mc_stroke_model, q, lw, g.roll_undefined ? warn : gold);
+        }
+        }
+        SketchPlane bb; bb.origin = g.origin; bb.x_axis = right; bb.y_axis = up;
+        bb.normal = cam.get_dir_forward().normalized();
+        m_plane = bb;
+
+        auto arrow = [&](const Vec3d& dir, double len, const ColorRGBA& col, bool filled_head) {
+            const Vec3d tipw = g.origin + dir * len;
+            const Vec2d tip2((tipw - g.origin).dot(right), (tipw - g.origin).dot(up));
+            std::vector<std::pair<Vec2d, Vec2d>> segs;
+            if (tip2.norm() < R * 0.28) {
+                const int N = 24;
+                const double rr = R * 0.30;
+                for (int i = 0; i < N; ++i) {
+                    const double a0 = (2.0 * M_PI * i) / N, a1 = (2.0 * M_PI * (i + 1)) / N;
+                    segs.emplace_back(Vec2d(rr * std::cos(a0), rr * std::sin(a0)),
+                                      Vec2d(rr * std::cos(a1), rr * std::sin(a1)));
+                }
+                draw_strokes(m_mc_stroke_model, segs, lw, col);
+                return;
+            }
+            const Vec2d u = tip2.normalized();
+            const Vec2d n(-u.y(), u.x());
+            const double as = R * 0.42;
+            const Vec2d back = tip2 - u * as;
+            segs.emplace_back(Vec2d(0, 0), back);
+            segs.emplace_back(tip2, back + n * (as * 0.45));
+            segs.emplace_back(tip2, back - n * (as * 0.45));
+            if (filled_head) {
+                segs.emplace_back(back + n * (as * 0.45), back - n * (as * 0.45));
+                segs.emplace_back(back + n * (as * 0.22), tip2);
+                segs.emplace_back(back - n * (as * 0.22), tip2);
+            } else {
+                segs.emplace_back(back + n * (as * 0.45), back - n * (as * 0.45));
+            }
+            glsafe(::glDisable(GL_DEPTH_TEST));
+            draw_strokes(m_mc_stroke_model, segs, lw, col);
+        };
+
+        if (style_A) {
+            arrow(X, R * 1.15, ColorRGBA(0.85f, 0.29f, 0.24f, 1.0f), true);
+            arrow(Y, R * 1.15, ColorRGBA(0.23f, 0.65f, 0.35f, 1.0f), true);
+            arrow(Z, R * 1.60, blue, true);
+        } else {
+            arrow(Z, R * 2.10, body, g.role == 2);
+        }
+    }
+
+    for (const auto& lnk : m_mate_links) {
+        const Vec3d d = lnk.second - lnk.first;
+        const double L = d.norm();
+        if (L < 1e-9) continue;
+        SketchPlane lp;
+        lp.origin = lnk.first;
+        lp.x_axis = d / L;
+        lp.y_axis = lp.x_axis.cross(cam.get_dir_forward().normalized());
+        if (lp.y_axis.norm() < 1e-6) lp.y_axis = lp.x_axis.cross(up);
+        lp.y_axis.normalize();
+        lp.normal = lp.x_axis.cross(lp.y_axis);
+        m_plane = lp;
+
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        const double dash = 6.0 * upp;
+        const double step = std::max(dash + 4.0 * upp, L / 400.0);
+        for (double t = 0.0; t < L; t += step)
+            segs.emplace_back(Vec2d(t, 0.0), Vec2d(std::min(t + dash, L), 0.0));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_mc_stroke_model, segs, lw, grey);
+    }
+
+    m_plane = saved;
+}
+
+static const Vec2d kBearOutline[] = {
+    {+0.3842, +0.3294}, {+0.3156, +0.4002}, {+0.2424, +0.3294},
+    {-0.2524, +0.3294}, {-0.3377, +0.3877}, {-0.3693, +0.3298},
+    {-0.3256, +0.2631}, {-0.4893, -0.3337}, {-0.3960, -0.4002},
+    {+0.4151, -0.4002}, {+0.5000, -0.3154}, {+0.3156, +0.2631},
+};
+static const Vec2d kBearChin[] = {
+    {-0.2682, -0.3578}, {+0.2628, -0.3578}, {+0.2237, -0.1786},
+};
+static const Vec3d kBearMarks[] = {
+    {-0.1997, +0.1760, +0.0590},
+    {+0.1947, +0.1760, +0.0590},
+    {+0.2797, +0.0760, +0.0380},
+};
+static const double kBearPlateZ = +0.0360;
+static const Vec2d kBearSnoutBase[] = {
+    {-0.0727, -0.2417},
+    {+0.0630, -0.2417},
+    {+0.0259, +0.1939},
+    {-0.0356, +0.1939},
+};
+static const Vec3d kBearCrest[] = {
+    {-0.0048, -0.1793, +0.2073},
+    {-0.0048, +0.1605, +0.1279},
+};
+
+void DesignSketchTool::render_mate_face(const Vec3d& origin, const Vec3d& X, const Vec3d& Y,
+                                        const Vec3d& Z, double R, const ColorRGBA& body)
+{
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d fwd   = cam.get_dir_forward().normalized();
+    const double S    = 2.0 * R;
+    const Vec3d light = (-0.35 * right + 0.55 * up - 0.76 * fwd).normalized();
+
+    auto to_world = [&](const Vec3d& p) {
+        return origin + X * (p.x() * S) + Y * (p.y() * S) + Z * (p.z() * S);
+    };
+
+    struct Facet { std::vector<Vec3d> w; ColorRGBA c; double depth; };
+    std::vector<Facet> facets;
+    auto emit = [&](std::vector<Vec3d> pts, const ColorRGBA& base, bool shade) {
+        if (pts.size() < 3) return;
+        Facet f; f.w.reserve(pts.size());
+        for (const Vec3d& p : pts) f.w.push_back(to_world(p));
+        const Vec3d n0 = (f.w[1] - f.w[0]).cross(f.w[2] - f.w[0]);
+        Vec3d n = Z;
+        if (n0.norm() > 1e-12) n = n0.normalized();
+        if (n.dot(fwd) > 0.0) n = -n;
+        double k = 1.0;
+        if (shade) {
+            k = 0.42 + 0.58 * std::max(0.0, n.dot(light));
+        }
+        f.c = ColorRGBA(float(base.r() * k), float(base.g() * k), float(base.b() * k), base.a());
+        double d = 0.0;
+        for (const Vec3d& p : f.w) d += p.dot(fwd);
+        f.depth = d / double(f.w.size());
+        facets.push_back(std::move(f));
+    };
+
+    const int NO = int(sizeof(kBearOutline) / sizeof(kBearOutline[0]));
+    const double zp = kBearPlateZ;
+
+    for (int i = 0; i < NO; ++i) {
+        const Vec2d& a = kBearOutline[i];
+        const Vec2d& b = kBearOutline[(i + 1) % NO];
+        emit({ Vec3d(a.x(), a.y(), 0.0), Vec3d(b.x(), b.y(), 0.0),
+               Vec3d(b.x(), b.y(), zp),  Vec3d(a.x(), a.y(), zp) }, body, true);
+    }
+    {
+        std::vector<Vec3d> top;
+        top.reserve(NO);
+        for (int i = 0; i < NO; ++i) top.emplace_back(kBearOutline[i].x(), kBearOutline[i].y(), zp);
+        emit(std::move(top), body, true);
+    }
+
+    const ColorRGBA mark(body.r() * 0.30f, body.g() * 0.30f, body.b() * 0.30f, 1.0f);
+    const double zm = zp + 0.004;
+    for (const Vec3d& m : kBearMarks) {
+        std::vector<Vec3d> disc;
+        const int N = 12;
+        for (int i = 0; i < N; ++i) {
+            const double a = (2.0 * M_PI * i) / N;
+            disc.emplace_back(m.x() + m.z() * std::cos(a), m.y() + m.z() * std::sin(a), zm);
+        }
+        emit(std::move(disc), mark, false);
+    }
+    {
+        std::vector<Vec3d> chin;
+        for (const Vec2d& p : kBearChin) chin.emplace_back(p.x(), p.y(), zm);
+        emit(std::move(chin), mark, false);
+    }
+
+    {
+        const ColorRGBA gold(0.93f, 0.66f, 0.09f, 1.0f);
+        const double widen = 1.8;
+        const Vec3d& A = kBearCrest[0];
+        const Vec3d& B = kBearCrest[1];
+        auto base = [&](int i) {
+            return Vec3d(kBearSnoutBase[i].x() * widen, kBearSnoutBase[i].y(), zp);
+        };
+        const Vec3d nl = base(0), nr = base(1), tr = base(2), tl = base(3);
+        emit({ nl, tl, B, A }, gold, true);
+        emit({ nr, A, B, tr }, gold, true);
+        emit({ nl, A, nr }, gold, true);
+        emit({ tr, B, tl }, gold, true);
+    }
+
+    std::sort(facets.begin(), facets.end(),
+              [](const Facet& a, const Facet& b) { return a.depth > b.depth; });
+
+    const SketchPlane saved = m_plane;
+    SketchPlane bb; bb.origin = origin; bb.x_axis = right; bb.y_axis = up; bb.normal = fwd;
+    m_plane = bb;
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    for (const Facet& f : facets) {
+        std::vector<Vec2d> poly;
+        poly.reserve(f.w.size());
+        for (const Vec3d& p : f.w) poly.emplace_back((p - origin).dot(right), (p - origin).dot(up));
+        draw_fill(m_mc_fill_model, poly, f.c);
+    }
+    m_plane = saved;
+}
+
+void DesignSketchTool::render_extrude_gizmo()
+{
+    if (!m_ex_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d fwd   = cam.get_dir_forward().normalized();
+    const Vec3d base  = m_ex_plane.to_world(m_ex_centroid);
+    const Vec3d ndir  = (m_ex_flip ? -1.0 : 1.0) * m_ex_plane.normal.normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+
+    const SketchPlane saved = m_plane;
+    SketchPlane bb; bb.origin = base; bb.x_axis = right; bb.y_axis = up; bb.normal = fwd;
+    m_plane = bb;
+    const ColorRGBA arrowc(1.0f, 0.62f, 0.16f, 1.0f);
+
+    auto draw_arrow = [&](double depth, bool flip_side) {
+        if (depth <= 1e-6) return;
+        const Vec3d dirw = (flip_side ? -1.0 : 1.0) * ndir;
+        const Vec3d tipw = base + dirw * depth;
+        const Vec2d tip2((tipw - base).dot(right), (tipw - base).dot(up));
+        if (tip2.norm() < 1e-6) return;
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.18, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm * (as * 0.5));
+        draw_strokes(m_ex_arrow_model, segs, std::max(0.7 * upp, 1e-4), arrowc);
+        DimAnnot a; a.kind = DimType::Distance; a.value = depth;
+        draw_text(m_line_model, dim_text(a), tip2 + u * (th * 1.4), th, arrowc);
+    };
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    draw_arrow(m_ex_depth, false);
+    if (m_ex_two_sided) draw_arrow(m_ex_depth2, true);
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_extrude_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int& which) const
+{
+    if (!m_ex_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double tol = 7.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d ndir = (m_ex_flip ? -1.0 : 1.0) * m_ex_plane.normal.normalized();
+    const Vec3d base = m_ex_plane.to_world(m_ex_centroid);
+    double dA = 1e30, dB = 1e30;
+    if (m_ex_depth  > 1e-6) dA = ray_segment_dist3(ro, rd, base, base + ndir * m_ex_depth);
+    if (m_ex_two_sided && m_ex_depth2 > 1e-6)
+        dB = ray_segment_dist3(ro, rd, base, base - ndir * m_ex_depth2);
+    if (dA <= tol && dA <= dB) { which = 0; return true; }
+    if (dB <= tol)             { which = 1; return true; }
+    return false;
+}
+
+void DesignSketchTool::drag_extrude_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Vec3d nd = (m_ex_flip ? -1.0 : 1.0) * m_ex_plane.normal.normalized();
+    const Vec3d e  = (which == 1 ? -1.0 : 1.0) * nd;
+    const Vec3d base = m_ex_plane.to_world(m_ex_centroid);
+    const Vec3d w0 = base - ro;
+    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+    const double denom = a * c - b * b;
+    if (std::abs(denom) < 1e-7) return;
+    const double depth = std::max(0.01, (b * ee - c * dd) / denom);
+    if (which == 1) m_ex_depth2 = depth; else m_ex_depth = depth;
+    if (on_extrude_depth_changed) on_extrude_depth_changed(depth, which == 1);
+}
+
+void DesignSketchTool::open_extrude_editor(int which)
+{
+    if (!on_inline_edit) return;
+    const double cur = (which == 1) ? m_ex_depth2 : m_ex_depth;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, cur, "",
+        [this, which](double v) {
+            const double d = std::max(0.01, v);
+            if (which == 1) m_ex_depth2 = d; else m_ex_depth = d;
+            if (on_extrude_depth_changed) on_extrude_depth_changed(d, which == 1);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_datum_gizmo(const SketchPlane& plane, double usize, double vsize,
+                                       const Vec3d& base_origin, const Vec3d& base_normal,
+                                       double offset, bool offset_on)
+{
+    m_dz_active = true;
+    m_dz_plane  = plane;
+    m_dz_usize  = std::max(1.0, usize);
+    m_dz_vsize  = std::max(1.0, vsize);
+    m_dz_anchor = base_origin;
+    m_dz_normal = base_normal.normalized();
+    m_dz_offset = offset;
+    m_dz_offset_on = offset_on;
+}
+
+void DesignSketchTool::clear_datum_gizmo()
+{
+    m_dz_active = false;
+    m_dz_drag   = -1;
+}
+
+void DesignSketchTool::render_datum_gizmo()
+{
+    if (!m_dz_active) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d vd    = cam.get_dir_forward();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double hs   = 6.0 * upp;
+    const double hw   = 1.5 * upp;
+    const double hu   = m_dz_usize * 0.5, hv = m_dz_vsize * 0.5;
+    const SketchPlane& p = m_dz_plane;
+
+    const Vec3d c[4] = { p.to_world(Vec2d(-hu, -hv)), p.to_world(Vec2d(hu, -hv)),
+                         p.to_world(Vec2d(hu, hv)),   p.to_world(Vec2d(-hu, hv)) };
+    GLModel::Geometry border; border.format = { EPT::Triangles, EVL::P3 };
+    unsigned int bb = 0;
+    for (int s = 0; s < 4; ++s) {
+        const Vec3d a = c[s], b = c[(s + 1) & 3];
+        Vec3d dir = b - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+        Vec3d off = dir.cross(vd);
+        if (off.norm() < 1e-9) off = dir.cross(up);
+        if (off.norm() < 1e-9) continue;
+        off.normalize(); off *= hw;
+        border.add_vertex((Vec3f)(a + off).cast<float>()); border.add_vertex((Vec3f)(b + off).cast<float>());
+        border.add_vertex((Vec3f)(b - off).cast<float>()); border.add_vertex((Vec3f)(a - off).cast<float>());
+        border.add_triangle(bb, bb + 1, bb + 2); border.add_triangle(bb, bb + 2, bb + 3); bb += 4;
+    }
+
+    const Vec2d hpos[4] = { Vec2d(hu, 0), Vec2d(-hu, 0), Vec2d(0, hv), Vec2d(0, -hv) };
+    GLModel::Geometry handles; handles.format = { EPT::Triangles, EVL::P3 };
+    unsigned int hb = 0;
+    for (int i = 0; i < 4; ++i) {
+        const Vec3d ctr = p.to_world(hpos[i]);
+        const Vec3d q0 = ctr - right * hs - up * hs, q1 = ctr + right * hs - up * hs,
+                    q2 = ctr + right * hs + up * hs, q3 = ctr - right * hs + up * hs;
+        handles.add_vertex((Vec3f)q0.cast<float>()); handles.add_vertex((Vec3f)q1.cast<float>());
+        handles.add_vertex((Vec3f)q2.cast<float>()); handles.add_vertex((Vec3f)q3.cast<float>());
+        handles.add_triangle(hb, hb + 1, hb + 2); handles.add_triangle(hb, hb + 2, hb + 3); hb += 4;
+    }
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    if (bb > 0) {
+        GLModel m; m.init_from(std::move(border));
+        m.set_color(ColorRGBA(1.0f, 0.62f, 0.16f, 0.9f));
+        m.render();
+    }
+    if (hb > 0) {
+        GLModel m; m.init_from(std::move(handles));
+        m.set_color(ColorRGBA(1.0f, 0.72f, 0.28f, 1.0f));
+        m.render();
+    }
+
+    if (m_dz_offset_on) {
+        const Vec3d tip = m_dz_anchor + m_dz_normal * m_dz_offset;
+        Vec3d off = m_dz_normal.cross(vd);
+        if (off.norm() < 1e-9) off = m_dz_normal.cross(up);
+        GLModel::Geometry shaft; shaft.format = { EPT::Triangles, EVL::P3 };
+        if (off.norm() > 1e-9 && (tip - m_dz_anchor).norm() > 1e-9) {
+            off.normalize(); off *= hw;
+            shaft.add_vertex((Vec3f)(m_dz_anchor + off).cast<float>());
+            shaft.add_vertex((Vec3f)(tip + off).cast<float>());
+            shaft.add_vertex((Vec3f)(tip - off).cast<float>());
+            shaft.add_vertex((Vec3f)(m_dz_anchor - off).cast<float>());
+            shaft.add_triangle(0, 1, 2); shaft.add_triangle(0, 2, 3);
+            GLModel sm; sm.init_from(std::move(shaft));
+            sm.set_color(ColorRGBA(0.30f, 0.78f, 1.0f, 0.95f));
+            sm.render();
+        }
+        GLModel::Geometry tipsq; tipsq.format = { EPT::Triangles, EVL::P3 };
+        const Vec3d t0 = tip - right * hs - up * hs, t1 = tip + right * hs - up * hs,
+                    t2 = tip + right * hs + up * hs, t3 = tip - right * hs + up * hs;
+        tipsq.add_vertex((Vec3f)t0.cast<float>()); tipsq.add_vertex((Vec3f)t1.cast<float>());
+        tipsq.add_vertex((Vec3f)t2.cast<float>()); tipsq.add_vertex((Vec3f)t3.cast<float>());
+        tipsq.add_triangle(0, 1, 2); tipsq.add_triangle(0, 2, 3);
+        GLModel tm; tm.init_from(std::move(tipsq));
+        tm.set_color(ColorRGBA(0.45f, 0.86f, 1.0f, 1.0f));
+        tm.render();
+    }
+}
+
+bool DesignSketchTool::hit_test_datum_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int& which) const
+{
+    if (!m_dz_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double tol = 9.0 / std::max(cam.get_zoom(), 1e-6);
+    const double hu = m_dz_usize * 0.5, hv = m_dz_vsize * 0.5;
+    const Vec2d hpos[4] = { Vec2d(hu, 0), Vec2d(-hu, 0), Vec2d(0, hv), Vec2d(0, -hv) };
+    double best = tol; which = -1;
+    for (int i = 0; i < 4; ++i) {
+        const Vec3d pt = m_dz_plane.to_world(hpos[i]);
+        const Vec3d w  = pt - ro;
+        const double t = w.dot(rd) / std::max(rd.dot(rd), 1e-12);
+        const double d = (w - rd * t).norm();
+        if (d < best) { best = d; which = i; }
+    }
+    if (m_dz_offset_on) {
+        const Vec3d pt = m_dz_anchor + m_dz_normal * m_dz_offset;
+        const Vec3d w  = pt - ro;
+        const double t = w.dot(rd) / std::max(rd.dot(rd), 1e-12);
+        const double d = (w - rd * t).norm();
+        if (d < best) { best = d; which = 4; }
+    }
+    return which >= 0;
+}
+
+void DesignSketchTool::drag_datum_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    if (which == 4) {
+        const Vec3d e = m_dz_normal;
+        const Vec3d w0 = m_dz_anchor - ro;
+        const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+        const double denom = a * c - b * b;
+        if (std::abs(denom) < 1e-7) return;
+        m_dz_offset = (b * ee - c * dd) / denom;
+        m_dz_plane.origin = m_dz_anchor + m_dz_normal * m_dz_offset;
+        if (on_datum_offset_changed) on_datum_offset_changed(m_dz_offset);
+        return;
+    }
+    const bool  uaxis = (which == 0 || which == 1);
+    const Vec3d e   = (uaxis ? m_dz_plane.x_axis : m_dz_plane.y_axis).normalized();
+    const Vec3d base = m_dz_plane.origin;
+    const Vec3d w0 = base - ro;
+    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+    const double denom = a * c - b * b;
+    if (std::abs(denom) < 1e-7) return;
+    const double s    = (b * ee - c * dd) / denom;
+    const double size = std::max(2.0, 2.0 * std::abs(s));
+    if (uaxis) m_dz_usize = size; else m_dz_vsize = size;
+    if (on_datum_size_changed) on_datum_size_changed(m_dz_usize, m_dz_vsize);
+}
+
+void DesignSketchTool::set_helix_gizmo(const SketchPlane& plane, double radius, double pitch,
+                                       double height, double taper, bool left_handed)
+{
+    m_hx_active = true;
+    m_hx_plane  = plane;
+    m_hx_radius = radius;
+    m_hx_pitch  = pitch;
+    m_hx_height = height;
+    m_hx_taper  = taper;
+    m_hx_left   = left_handed;
+}
+
+void DesignSketchTool::clear_helix_gizmo()
+{
+    m_hx_active = false;
+    m_hx_drag   = -1;
+}
+
+Vec3d DesignSketchTool::helix_point(double t) const
+{
+    const Vec3d O = m_hx_plane.origin;
+    const Vec3d n = m_hx_plane.normal.normalized();
+    const Vec3d u = m_hx_plane.x_axis.normalized();
+    const Vec3d v = m_hx_plane.y_axis.normalized();
+    const double a = (m_hx_left ? -1.0 : 1.0) * 2.0 * M_PI * t;
+    const double z = m_hx_pitch * t;
+    double rt = m_hx_radius + z * std::tan(m_hx_taper * M_PI / 180.0);
+    if (rt < 0.0) rt = 0.0;
+    return O + u * (rt * std::cos(a)) + v * (rt * std::sin(a)) + n * z;
+}
+
+void DesignSketchTool::render_helix_gizmo()
+{
+    if (!m_hx_active) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d vd    = cam.get_dir_forward();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double hs   = 6.0 * upp;
+    const double hw   = 1.5 * upp;
+    const Vec3d O     = m_hx_plane.origin;
+    const Vec3d n     = m_hx_plane.normal.normalized();
+    const double turns = m_hx_pitch > 1e-9 ? m_hx_height / m_hx_pitch : 0.0;
+
+    const int segs = std::min(2048, std::max(48, int(turns * 32.0)));
+    GLModel::Geometry curve; curve.format = { EPT::Triangles, EVL::P3 };
+    unsigned int cb = 0;
+    auto add_seg = [&](const Vec3d& a, const Vec3d& b) {
+        Vec3d dir = b - a; if (dir.norm() < 1e-9) return; dir.normalize();
+        Vec3d off = dir.cross(vd);
+        if (off.norm() < 1e-9) off = dir.cross(up);
+        if (off.norm() < 1e-9) return;
+        off.normalize(); off *= hw;
+        curve.add_vertex((Vec3f)(a + off).cast<float>()); curve.add_vertex((Vec3f)(b + off).cast<float>());
+        curve.add_vertex((Vec3f)(b - off).cast<float>()); curve.add_vertex((Vec3f)(a - off).cast<float>());
+        curve.add_triangle(cb, cb + 1, cb + 2); curve.add_triangle(cb, cb + 2, cb + 3); cb += 4;
+    };
+    for (int i = 0; i < segs; ++i)
+        add_seg(helix_point(turns * i / segs), helix_point(turns * (i + 1) / segs));
+
+    const Vec3d top = O + n * m_hx_height;
+    GLModel::Geometry axis; axis.format = { EPT::Triangles, EVL::P3 };
+    {
+        Vec3d dir = top - O;
+        if (dir.norm() > 1e-9) {
+            dir.normalize();
+            Vec3d off = dir.cross(vd);
+            if (off.norm() < 1e-9) off = dir.cross(up);
+            if (off.norm() > 1e-9) {
+                off.normalize(); off *= hw * 0.6;
+                axis.add_vertex((Vec3f)(O + off).cast<float>()); axis.add_vertex((Vec3f)(top + off).cast<float>());
+                axis.add_vertex((Vec3f)(top - off).cast<float>()); axis.add_vertex((Vec3f)(O - off).cast<float>());
+                axis.add_triangle(0, 1, 2); axis.add_triangle(0, 2, 3);
+            }
+        }
+    }
+
+    const Vec3d hpts[3] = { helix_point(0.0), top,
+                            helix_point(m_hx_height < m_hx_pitch ? turns : 1.0) };
+    const ColorRGBA hcol[3] = { ColorRGBA(1.0f, 0.72f, 0.28f, 1.0f),
+                                ColorRGBA(0.45f, 0.86f, 1.0f, 1.0f),
+                                ColorRGBA(0.30f, 0.80f, 0.34f, 1.0f) };
+    const ColorRGBA hot(1.0f, 0.85f, 0.2f, 1.0f);
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    if (cb > 0) {
+        GLModel m; m.init_from(std::move(curve));
+        m.set_color(ColorRGBA(1.0f, 0.62f, 0.16f, 0.9f));
+        m.render();
+    }
+    if (!axis.vertices.empty()) {
+        GLModel m; m.init_from(std::move(axis));
+        m.set_color(ColorRGBA(0.42f, 0.46f, 0.52f, 0.55f));
+        m.render();
+    }
+    for (int i = 0; i < 3; ++i) {
+        const Vec3d ctr = hpts[i];
+        const Vec3d q0 = ctr - right * hs - up * hs, q1 = ctr + right * hs - up * hs,
+                    q2 = ctr + right * hs + up * hs, q3 = ctr - right * hs + up * hs;
+        GLModel::Geometry sq; sq.format = { EPT::Triangles, EVL::P3 };
+        sq.add_vertex((Vec3f)q0.cast<float>()); sq.add_vertex((Vec3f)q1.cast<float>());
+        sq.add_vertex((Vec3f)q2.cast<float>()); sq.add_vertex((Vec3f)q3.cast<float>());
+        sq.add_triangle(0, 1, 2); sq.add_triangle(0, 2, 3);
+        GLModel m; m.init_from(std::move(sq));
+        m.set_color(m_hx_drag == i ? hot : hcol[i]);
+        m.render();
+    }
+}
+
+bool DesignSketchTool::hit_test_helix_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int& which) const
+{
+    if (!m_hx_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double tol = 9.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d O = m_hx_plane.origin;
+    const Vec3d n = m_hx_plane.normal.normalized();
+    const double turns = m_hx_pitch > 1e-9 ? m_hx_height / m_hx_pitch : 0.0;
+    const Vec3d hpts[3] = { helix_point(0.0), O + n * m_hx_height,
+                            helix_point(m_hx_height < m_hx_pitch ? turns : 1.0) };
+    double best = tol; which = -1;
+    for (int i = 0; i < 3; ++i) {
+        const Vec3d w  = hpts[i] - ro;
+        const double t = w.dot(rd) / std::max(rd.dot(rd), 1e-12);
+        const double d = (w - rd * t).norm();
+        if (d < best) { best = d; which = i; }
+    }
+    return which >= 0;
+}
+
+void DesignSketchTool::drag_helix_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const SketchPlane& p = m_hx_plane;
+    const Vec3d O = p.origin, n = p.normal.normalized();
+
+    if (which == 0) {
+        const Vec2d lp = p.project(ro, rd);
+        m_hx_radius = std::max(0.01, lp.norm());
+    } else {
+        const Vec3d e   = n;
+        const Vec3d w0  = O - ro;
+        const double a  = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+        const double denom = a * c - b * b;
+        if (std::abs(denom) < 1e-7) return;
+        const double s = (b * ee - c * dd) / denom;
+        if (which == 1) m_hx_height = std::max(0.0, s);
+        else            m_hx_pitch  = std::max(0.01, s);
+    }
+    if (on_helix_changed) on_helix_changed(m_hx_radius, m_hx_pitch, m_hx_height);
+}
+
+void DesignSketchTool::set_rib_gizmo(const SketchPlane& plane, const Vec2d& p0, const Vec2d& p1,
+                                     double thickness)
+{
+    m_rb_active    = true;
+    m_rb_plane     = plane;
+    m_rb_p0        = p0;
+    m_rb_p1        = p1;
+    m_rb_thickness = thickness;
+}
+
+void DesignSketchTool::clear_rib_gizmo()
+{
+    m_rb_active = false;
+    m_rb_drag   = -1;
+}
+
+static bool rib_frame(const Vec2d& p0, const Vec2d& p1, double thickness,
+                      Vec2d& d, Vec2d& perp, Vec2d& mid, double& half)
+{
+    const Vec2d seg = p1 - p0;
+    const double len = seg.norm();
+    if (len < 1e-9) return false;
+    d    = seg / len;
+    perp = Vec2d(-d.y(), d.x());
+    mid  = 0.5 * (p0 + p1);
+    half = thickness * 0.5;
+    return true;
+}
+
+void DesignSketchTool::render_rib_gizmo()
+{
+    if (!m_rb_active) return;
+    Vec2d d, perp, mid; double half;
+    if (!rib_frame(m_rb_p0, m_rb_p1, m_rb_thickness, d, perp, mid, half)) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d vd    = cam.get_dir_forward();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double hs   = 6.0 * upp;
+    const double hw   = 1.5 * upp;
+    const Vec3d c[4] = { m_rb_plane.to_world(m_rb_p0 + perp * half),
+                         m_rb_plane.to_world(m_rb_p1 + perp * half),
+                         m_rb_plane.to_world(m_rb_p1 - perp * half),
+                         m_rb_plane.to_world(m_rb_p0 - perp * half) };
+    GLModel::Geometry border; border.format = { EPT::Triangles, EVL::P3 };
+    unsigned int bb = 0;
+    for (int s = 0; s < 4; ++s) {
+        const Vec3d a = c[s], b = c[(s + 1) & 3];
+        Vec3d dir = b - a; if (dir.norm() < 1e-9) continue; dir.normalize();
+        Vec3d off = dir.cross(vd);
+        if (off.norm() < 1e-9) off = dir.cross(up);
+        if (off.norm() < 1e-9) continue;
+        off.normalize(); off *= hw;
+        border.add_vertex((Vec3f)(a + off).cast<float>()); border.add_vertex((Vec3f)(b + off).cast<float>());
+        border.add_vertex((Vec3f)(b - off).cast<float>()); border.add_vertex((Vec3f)(a - off).cast<float>());
+        border.add_triangle(bb, bb + 1, bb + 2); border.add_triangle(bb, bb + 2, bb + 3); bb += 4;
+    }
+
+    const Vec3d hpts[2] = { m_rb_plane.to_world(mid + perp * half),
+                            m_rb_plane.to_world(mid - perp * half) };
+    const ColorRGBA hot(1.0f, 0.85f, 0.2f, 1.0f);
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    if (bb > 0) {
+        GLModel m; m.init_from(std::move(border));
+        m.set_color(ColorRGBA(1.0f, 0.62f, 0.16f, 0.9f));
+        m.render();
+    }
+    for (int i = 0; i < 2; ++i) {
+        const Vec3d ctr = hpts[i];
+        const Vec3d q0 = ctr - right * hs - up * hs, q1 = ctr + right * hs - up * hs,
+                    q2 = ctr + right * hs + up * hs, q3 = ctr - right * hs + up * hs;
+        GLModel::Geometry sq; sq.format = { EPT::Triangles, EVL::P3 };
+        sq.add_vertex((Vec3f)q0.cast<float>()); sq.add_vertex((Vec3f)q1.cast<float>());
+        sq.add_vertex((Vec3f)q2.cast<float>()); sq.add_vertex((Vec3f)q3.cast<float>());
+        sq.add_triangle(0, 1, 2); sq.add_triangle(0, 2, 3);
+        GLModel m; m.init_from(std::move(sq));
+        m.set_color(m_rb_drag == i ? hot : ColorRGBA(0.30f, 0.80f, 0.34f, 1.0f));
+        m.render();
+    }
+}
+
+bool DesignSketchTool::hit_test_rib_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int& which) const
+{
+    if (!m_rb_active) return false;
+    Vec2d d, perp, mid; double half;
+    if (!rib_frame(m_rb_p0, m_rb_p1, m_rb_thickness, d, perp, mid, half)) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double tol = 9.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d hpts[2] = { m_rb_plane.to_world(mid + perp * half),
+                            m_rb_plane.to_world(mid - perp * half) };
+    double best = tol; which = -1;
+    for (int i = 0; i < 2; ++i) {
+        const Vec3d w  = hpts[i] - ro;
+        const double t = w.dot(rd) / std::max(rd.dot(rd), 1e-12);
+        const double dd = (w - rd * t).norm();
+        if (dd < best) { best = dd; which = i; }
+    }
+    return which >= 0;
+}
+
+void DesignSketchTool::drag_rib_handle(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    (void)which;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    Vec2d d, perp, mid; double half;
+    if (!rib_frame(m_rb_p0, m_rb_p1, m_rb_thickness, d, perp, mid, half)) return;
+    const Vec2d lp = m_rb_plane.project(ro, rd);
+    const Vec2d w  = lp - m_rb_p0;
+    const double dist = std::abs(w.x() * d.y() - w.y() * d.x());
+    m_rb_thickness = std::max(0.01, 2.0 * dist);
+    if (on_rib_thickness_changed) on_rib_thickness_changed(m_rb_thickness);
+}
+
+namespace {
+std::vector<std::pair<Vec2d, Vec2d>> text_strokes(const std::string& text, double height, Vec2d& size);
+
+void paint_back_to_front(std::vector<PlanePiece>&& in, size_t k, const std::vector<SketchPlane>& planes, double eps,
+                         const Vec3d& eye, const Vec3d& forward, bool perspective, std::vector<PlanePiece>& out)
+{
+    if (in.empty())
+        return;
+    if (k == planes.size()) {
+        std::move(in.begin(), in.end(), std::back_inserter(out));
+        return;
+    }
+    const Vec3d  n = planes[k].x_axis.cross(planes[k].y_axis).normalized();
+    const double d = n.dot(planes[k].origin);
+    std::vector<PlanePiece> front, back, on;
+    for (PlanePiece& piece : in) {
+        if (piece.plane == int(k)) {
+            on.push_back(std::move(piece));
+            continue;
+        }
+        std::vector<double> s;
+        int                 sides = 0;
+        for (const Vec3d& c : piece.corners) {
+            s.push_back(n.dot(c) - d);
+            sides |= s.back() > eps ? 1 : s.back() < -eps ? 2 : 0;
+        }
+        if (sides == 0)
+            on.push_back(std::move(piece));
+        else if (sides == 1)
+            front.push_back(std::move(piece));
+        else if (sides == 2)
+            back.push_back(std::move(piece));
+        else {
+            PlanePiece   f{ piece.plane, {} }, b{ piece.plane, {} };
+            const size_t m = piece.corners.size();
+            for (size_t i = 0; i < m; ++i) {
+                const size_t j = (i + 1) % m;
+                const Vec3d& a = piece.corners[i];
+                if (s[i] >= -eps) f.corners.push_back(a);
+                if (s[i] <= eps)  b.corners.push_back(a);
+                if ((s[i] > eps && s[j] < -eps) || (s[i] < -eps && s[j] > eps)) {
+                    const Vec3d x = a + (piece.corners[j] - a) * (s[i] / (s[i] - s[j]));
+                    f.corners.push_back(x);
+                    b.corners.push_back(x);
+                }
+            }
+            front.push_back(std::move(f));
+            back.push_back(std::move(b));
+        }
+    }
+    const bool eye_in_front = perspective ? n.dot(eye) - d > 0. : n.dot(forward) < 0.;
+    paint_back_to_front(std::move(eye_in_front ? back : front), k + 1, planes, eps, eye, forward, perspective, out);
+    std::move(on.begin(), on.end(), std::back_inserter(out));
+    paint_back_to_front(std::move(eye_in_front ? front : back), k + 1, planes, eps, eye, forward, perspective, out);
+}
+
+double label_height(double half) { return 0.30 * half; }
+Vec2d  label_centre(double half, const Vec2d& size) { return Vec2d::Constant(0.88 * half) - 0.5 * size; }
+
+Vec2d datum_label_anchor(double half) { return Vec2d(-0.8 * half, 0.84 * half); }
+
+bool is_base_plane(int base) { return base >= 0 && base < 3; }
+
+Vec3d reference_octant() { return Vec3d(1., -1., 1.); }
+}
+
+std::vector<PlanePiece> planes_back_to_front(const std::vector<SketchPlane>& planes, double half,
+                                             const Vec3d& eye, const Vec3d& forward, bool perspective)
+{
+    std::vector<PlanePiece> squares;
+    for (int i = 0; i < int(planes.size()); ++i) {
+        const SketchPlane& p = planes[i];
+        squares.push_back({ i, { p.to_world(Vec2d(-half, -half)), p.to_world(Vec2d(half, -half)),
+                                 p.to_world(Vec2d(half, half)),   p.to_world(Vec2d(-half, half)) } });
+    }
+    std::vector<PlanePiece> out;
+    paint_back_to_front(std::move(squares), 0, planes, 1e-6 * std::max(half, 1.), eye, forward, perspective, out);
+    return out;
+}
+
+SketchPlane reference_square(const SketchPlane& plane, int base, double half)
+{
+    SketchPlane square = plane;
+    if (is_base_plane(base)) {
+        const Vec3d o = reference_octant();
+        square.origin += (reference_square_gap(half) + half) * (plane.x_axis.dot(o) * plane.x_axis + plane.y_axis.dot(o) * plane.y_axis);
+    }
+    return square;
+}
+
+std::array<Vec3d, 4> reference_label_box(const SketchPlane& square, double half, const std::string& text)
+{
+    const double th = label_height(half);
+    Vec2d        size;
+    text_strokes(text, th, size);
+    const Vec2d c = label_centre(half, size);
+    const Vec2d r = 0.5 * size + Vec2d::Constant(0.15 * th);
+    return { square.to_world(c + Vec2d(-r.x(), -r.y())), square.to_world(c + Vec2d(r.x(), -r.y())),
+             square.to_world(c + Vec2d(r.x(), r.y())), square.to_world(c + Vec2d(-r.x(), r.y())) };
+}
+
+int pick_reference_square(const std::vector<SketchPlane>& squares, double half, const Vec3d& from, const Vec3d& dir)
+{
+    int    best   = -1;
+    double best_t = std::numeric_limits<double>::max();
+    for (int i = 0; i < int(squares.size()); ++i) {
+        const SketchPlane& s  = squares[i];
+        const Vec3d        n  = s.x_axis.cross(s.y_axis);
+        const double       dn = n.dot(dir);
+        if (std::abs(dn) < 1e-12)
+            continue;
+        const double t = n.dot(s.origin - from) / dn;
+        if (t <= 0. || t >= best_t)
+            continue;
+        const Vec3d d = from + dir * t - s.origin;
+        if (std::abs(d.dot(s.x_axis)) <= half && std::abs(d.dot(s.y_axis)) <= half) {
+            best   = i;
+            best_t = t;
+        }
+    }
+    return best;
+}
+
+void DesignSketchTool::set_base_pick(std::vector<SketchPlane> planes, std::vector<int> bases,
+                                     std::vector<std::string> labels)
+{
+    m_dbp_active = !planes.empty();
+    m_dbp_planes = std::move(planes);
+    m_dbp_base   = std::move(bases);
+    m_dbp_labels = std::move(labels);
+    if (m_dbp_hover >= int(m_dbp_planes.size())) m_dbp_hover = -1;
+}
+
+void DesignSketchTool::clear_base_pick()
+{
+    m_dbp_active = false;
+    m_dbp_planes.clear();
+    m_dbp_base.clear();
+    m_dbp_labels.clear();
+    m_dbp_hover = -1;
+}
+
+double DesignSketchTool::dbp_half_extent() const
+{
+    double half = 20.0;
+    if (auto* pl = wxGetApp().plater()) {
+        const BoundingBoxf bb = pl->build_volume().bounding_volume2d();
+        const double w = bb.max.x() - bb.min.x(), d = bb.max.y() - bb.min.y();
+        if (w > 1.0 && d > 1.0) half = 0.08 * std::max(w, d);
+    }
+    return half;
+}
+
+std::vector<SketchPlane> DesignSketchTool::dbp_squares(double half) const
+{
+    std::vector<SketchPlane> squares;
+    for (size_t i = 0; i < m_dbp_planes.size(); ++i)
+        squares.push_back(reference_square(m_dbp_planes[i], i < m_dbp_base.size() ? m_dbp_base[i] : -1, half));
+    return squares;
+}
+
+void DesignSketchTool::render_reference_axes(const Vec3d& origin, double half)
+{
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d   vd  = cam.get_dir_forward();
+    const double  upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double  len = 1.2 * (reference_square_gap(half) + 2.0 * half);
+    constexpr double kDash = 0.07, kDotFrom = 0.10, kDotTo = 0.115, kPeriod = 0.145;
+    const ColorRGBA  colours[3] = { ColorRGBA(0.92f, 0.28f, 0.28f, 1.0f), ColorRGBA(0.30f, 0.80f, 0.34f, 1.0f),
+                                    ColorRGBA(0.32f, 0.55f, 0.95f, 1.0f) };
+    for (int k = 0; k < 3; ++k) {
+        const Vec3d                     axis = Vec3d::Unit(k) * (len * reference_octant()[k]);
+        std::vector<std::vector<Vec3d>> strokes;
+        for (double t = 0.; t < 1.; t += kPeriod) {
+            strokes.push_back({ origin + axis * t, origin + axis * std::min(t + kDash, 1.) });
+            if (t + kDotFrom < 1.)
+                strokes.push_back({ origin + axis * (t + kDotFrom), origin + axis * std::min(t + kDotTo, 1.) });
+        }
+        GLModel::Geometry g;
+        append_ribbons(g, -1, strokes, vd, Vec3d::Zero(), 1.5 * upp);
+        if (g.is_empty())
+            continue;
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(colours[k]);
+        m.render();
+    }
+
+    const Vec3d right = cam.get_dir_right(), up = cam.get_dir_up();
+    auto        disc  = [&](double radius_px, const ColorRGBA& colour) {
+        constexpr int     kSides = 24;
+        GLModel::Geometry g;
+        g.format = { EPT::Triangles, EVL::P3 };
+        g.add_vertex((Vec3f) origin.cast<float>());
+        for (int i = 0; i < kSides; ++i) {
+            const double a = 2. * M_PI * i / kSides;
+            g.add_vertex((Vec3f) (origin + (right * std::cos(a) + up * std::sin(a)) * (radius_px * upp)).cast<float>());
+        }
+        for (int i = 0; i < kSides; ++i)
+            g.add_triangle(0, 1 + i, 1 + (i + 1) % kSides);
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(colour);
+        m.render();
+    };
+    disc(6.0, ColorRGBA(0.30f, 0.30f, 0.32f, 1.0f));
+    disc(4.5, ColorRGBA(0.92f, 0.92f, 0.92f, 1.0f));
+}
+
+void DesignSketchTool::render_base_pick()
+{
+    if (!m_dbp_active || m_dbp_planes.empty()) return;
+    using EPT = GLModel::Geometry::EPrimitiveType;
+    using EVL = GLModel::Geometry::EVertexLayout;
+    const double                   H        = dbp_half_extent();
+    const std::vector<SketchPlane> squares  = dbp_squares(H);
+    const int                      selected = selected_base ? selected_base() : -1;
+    auto base_of = [this](size_t i) { return i < m_dbp_base.size() ? m_dbp_base[i] : -1; };
+    enum class Look { Idle, Hover, Selected };
+    auto look = [&](size_t i) {
+        return base_of(i) >= 0 && base_of(i) == selected ? Look::Selected : int(i) == m_dbp_hover ? Look::Hover : Look::Idle;
+    };
+    auto hue = [&](size_t i) {
+        switch (base_of(i)) {
+        case 0: return ColorRGBA(0.30f, 0.55f, 0.95f, 1.0f);
+        case 1: return ColorRGBA(0.35f, 0.80f, 0.45f, 1.0f);
+        case 2: return ColorRGBA(0.92f, 0.42f, 0.42f, 1.0f);
+        default: return ColorRGBA(0.55f, 0.60f, 0.72f, 1.0f);
+        }
+    };
+    auto fill = [&](size_t i) {
+        ColorRGBA c = look(i) == Look::Hover ? ColorRGBA(0.80f, 0.80f, 0.80f, 1.0f) : hue(i);
+        c.a(look(i) == Look::Selected ? 0.85f : look(i) == Look::Hover ? 0.45f : 0.50f);
+        return c;
+    };
+    auto ink = [&](size_t i) {
+        switch (look(i)) {
+        case Look::Selected: return ColorRGBA(0.20f, 0.25f, 0.35f, 1.0f);
+        case Look::Hover: return ColorRGBA(0.62f, 0.62f, 0.62f, 1.0f);
+        default: return hue(i);
+        }
+    };
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    glsafe(::glDisable(GL_CULL_FACE));
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA));
+
+    for (size_t i = 0; i < m_dbp_planes.size(); ++i)
+        if (is_base_plane(base_of(i))) {
+            render_reference_axes(m_dbp_planes[i].origin, H);
+            break;
+        }
+
+    const std::vector<PlanePiece> pieces = planes_back_to_front(squares, H, cam.get_position(), cam.get_dir_forward(),
+                                                                cam.get_type() == Camera::EType::Perspective);
+    const SketchPlane             saved_plane = m_plane;
+    for (size_t k = 0; k < pieces.size(); ++k) {
+        const PlanePiece& piece = pieces[k];
+        const size_t      i     = size_t(piece.plane);
+        GLModel::Geometry g;
+        g.format = { EPT::Triangles, EVL::P3 };
+        for (const Vec3d& q : piece.corners) g.add_vertex((Vec3f)q.cast<float>());
+        for (unsigned int c = 1; c + 1 < piece.corners.size(); ++c) g.add_triangle(0, c, c + 1);
+        GLModel m;
+        m.init_from(std::move(g));
+        m.set_color(fill(i));
+        m.render();
+
+        if (!is_base_plane(base_of(i)) || i >= m_dbp_labels.size() || m_dbp_labels[i].empty()
+            || std::any_of(pieces.begin() + k + 1, pieces.end(), [&](const PlanePiece& p) { return p.plane == piece.plane; }))
+            continue;
+        const double th = label_height(H);
+        Vec2d        size;
+        std::vector<std::pair<Vec2d, Vec2d>> strokes = text_strokes(m_dbp_labels[i], th, size);
+        const Vec2d  c = label_centre(H, size);
+        for (auto& [a, b] : strokes) {
+            a += c;
+            b += c;
+        }
+        m_plane = squares[i];
+        draw_strokes(m_line_model, strokes, 0.07 * th, ink(i));
+    }
+    for (size_t i = 0; i < m_dbp_planes.size() && i < m_dbp_labels.size(); ++i)
+        if (!is_base_plane(base_of(i)) && !m_dbp_labels[i].empty()) {
+            m_plane = squares[i];
+            draw_text(m_line_model, m_dbp_labels[i], datum_label_anchor(H), H * 0.10, ink(i));
+        }
+    m_plane = saved_plane;
+    glsafe(::glDisable(GL_BLEND));
+}
+
+int DesignSketchTool::hit_test_base_pick(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_dbp_active) return -1;
+    const double                   H       = dbp_half_extent();
+    const std::vector<SketchPlane> squares = dbp_squares(H);
+    const Camera&                  cam     = wxGetApp().plater()->get_camera();
+    const Eigen::Matrix4d      to_clip = cam.get_projection_matrix().matrix() * cam.get_view_matrix().matrix();
+    const std::array<int, 4>& vp      = cam.get_viewport();
+    auto to_screen = [&](const Vec3d& x, Vec2d& out) {
+        const Eigen::Vector4d clip = to_clip * x.homogeneous();
+        if (clip.w() <= 1e-9)
+            return false;
+        const Vec3d ndc = clip.head<3>() / clip.w();
+        out = Vec2d(vp[0] + (ndc.x() * 0.5 + 0.5) * vp[2], vp[1] + (1.0 - (ndc.y() * 0.5 + 0.5)) * vp[3]);
+        return true;
+    };
+    const Vec2d mouse(evt.GetX(), evt.GetY());
+    int         lbest = -1;
+    double      lbest_d = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < squares.size() && i < m_dbp_labels.size(); ++i) {
+        if (m_dbp_labels[i].empty()) continue;
+        Vec2d centre;
+        if (is_base_plane(i < m_dbp_base.size() ? m_dbp_base[i] : -1)) {
+            const std::array<Vec3d, 4> box = reference_label_box(squares[i], H, m_dbp_labels[i]);
+            std::array<Vec2d, 4>       q;
+            bool                       seen = true;
+            for (size_t c = 0; c < 4 && seen; ++c) seen = to_screen(box[c], q[c]);
+            if (!seen) continue;
+            double area = 0.;
+            bool   left = true, right = true;
+            for (size_t c = 0; c < 4; ++c) {
+                const Vec2d& a = q[c];
+                const Vec2d& b = q[(c + 1) % 4];
+                const double s = (b.x() - a.x()) * (mouse.y() - a.y()) - (b.y() - a.y()) * (mouse.x() - a.x());
+                left  = left && s >= 0.;
+                right = right && s <= 0.;
+                area += a.x() * b.y() - b.x() * a.y();
+            }
+            if (std::abs(area) < 8. || !(left || right))
+                continue;
+            centre = 0.25 * (q[0] + q[1] + q[2] + q[3]);
+        } else {
+            if (!to_screen(squares[i].to_world(datum_label_anchor(H)), centre)) continue;
+            const double hw = (9.0 + 5.0 * double(m_dbp_labels[i].size())) * double(m_render_scale);
+            const double hh = 11.0 * double(m_render_scale);
+            if (std::abs(mouse.x() - centre.x()) > hw || std::abs(mouse.y() - centre.y()) > hh) continue;
+        }
+        const double d = (mouse - centre).squaredNorm();
+        if (d < lbest_d) { lbest_d = d; lbest = int(i); }
+    }
+    if (lbest >= 0) return lbest;
+
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    return pick_reference_square(squares, H, r.a, r.b - r.a);
+}
+
+void DesignSketchTool::set_move_gizmo(int body, const Vec3d& pivot, const Transform3d& base_xform,
+                                      double body_radius)
+{
+    m_mv_active     = true;
+    m_mv_body       = body;
+    m_mv_base       = pivot;
+    m_mv_base_xform = base_xform;
+    m_mv_offset     = Vec3d::Zero();
+    m_mv_rot        = Eigen::Matrix3d::Identity();
+    m_mv_drag       = -1;
+    m_mv_radius     = std::max(body_radius, 0.0);
+    m_pick_pending  = false;
+    m_pre           = SolidPick{};
+}
+
+double DesignSketchTool::move_gizmo_arm(const Camera& cam) const
+{
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double screen_min = 70.0 * upp;
+    return std::max(screen_min, m_mv_radius * 1.25);
+}
+
+void DesignSketchTool::clear_move_gizmo()
+{
+    m_mv_active = false;
+    m_mv_drag   = -1;
+    m_mv_body   = -1;
+    m_mv_offset = Vec3d::Zero();
+    m_mv_rot    = Eigen::Matrix3d::Identity();
+}
+
+Transform3d DesignSketchTool::compose_move_xform() const
+{
+    const Vec3d p = m_mv_base;
+    Transform3d R = Transform3d::Identity();
+    R.linear() = m_mv_rot;
+    const Transform3d rot_about_pivot =
+        Transform3d(Eigen::Translation3d(p)) * R * Transform3d(Eigen::Translation3d(-p));
+    return Transform3d(Eigen::Translation3d(m_mv_offset)) * rot_about_pivot * m_mv_base_xform;
+}
+
+void DesignSketchTool::ring_basis(int axis, Vec3d& e, Vec3d& u, Vec3d& v) const
+{
+    switch (axis) {
+    case 0: e = Vec3d::UnitX(); u = Vec3d::UnitY(); v = Vec3d::UnitZ(); break;
+    case 1: e = Vec3d::UnitY(); u = Vec3d::UnitZ(); v = Vec3d::UnitX(); break;
+    default:e = Vec3d::UnitZ(); u = Vec3d::UnitX(); v = Vec3d::UnitY(); break;
+    }
+}
+
+void DesignSketchTool::render_move_gizmo()
+{
+    if (!m_mv_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const Vec3d fwd   = cam.get_dir_forward().normalized();
+    const Vec3d anchor = m_mv_base + m_mv_offset;
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+    const double L    = move_gizmo_arm(cam);
+
+    const SketchPlane saved = m_plane;
+    SketchPlane bb; bb.origin = anchor; bb.x_axis = right; bb.y_axis = up; bb.normal = fwd;
+    m_plane = bb;
+
+    const Vec3d axes[3]   = { Vec3d::UnitX(), Vec3d::UnitY(), Vec3d::UnitZ() };
+    const ColorRGBA cols[3] = { ColorRGBA(0.92f, 0.28f, 0.28f, 1.0f),
+                                ColorRGBA(0.30f, 0.80f, 0.34f, 1.0f),
+                                ColorRGBA(0.32f, 0.55f, 0.95f, 1.0f) };
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    for (int a = 0; a < 3; ++a) {
+        const Vec3d tipw = anchor + axes[a] * L;
+        const Vec2d tip2((tipw - anchor).dot(right), (tipw - anchor).dot(up));
+        if (tip2.norm() < 1e-6) continue;
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm * (as * 0.5));
+        draw_strokes(m_mv_arrow_model, segs, std::max(0.7 * upp, 1e-4), cols[a]);
+        const double off = m_mv_offset[a];
+        if (std::abs(off) > 1e-4) {
+            DimAnnot da; da.kind = DimType::Distance; da.value = std::abs(off);
+            draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, cols[a]);
+        }
+    }
+    m_plane = saved;
+
+    const double R = 0.83 * move_gizmo_arm(cam);
+    for (int a = 0; a < 3; ++a) {
+        Vec3d e, u, v; ring_basis(a, e, u, v);
+        SketchPlane rp; rp.origin = anchor; rp.x_axis = u; rp.y_axis = v; rp.normal = e;
+        m_plane = rp;
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        const int N = 48;
+        Vec2d prev(R, 0.0);
+        for (int i = 1; i <= N; ++i) {
+            const double t = 2.0 * M_PI * double(i) / double(N);
+            const Vec2d cur(R * std::cos(t), R * std::sin(t));
+            segs.emplace_back(prev, cur); prev = cur;
+        }
+        draw_strokes(m_mv_arrow_model, segs, std::max(0.55 * upp, 1e-4), cols[a]);
+    }
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_move_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt, int& axis) const
+{
+    if (!m_mv_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double L   = move_gizmo_arm(cam);
+    const Vec3d anchor = m_mv_base + m_mv_offset;
+    const Vec3d axes[3] = { Vec3d::UnitX(), Vec3d::UnitY(), Vec3d::UnitZ() };
+    int best = -1; double bestd = 7.0 * upp;
+    for (int a = 0; a < 3; ++a) {
+        const double d = ray_segment_dist3(ro, rd, anchor, anchor + axes[a] * L);
+        if (d <= bestd) { bestd = d; best = a; }
+    }
+    if (best < 0) return false;
+    axis = best; return true;
+}
+
+void DesignSketchTool::grab_move_arrow(int axis, const Linef3& ray)
+{
+    m_mv_drag       = axis;
+    m_mv_grab_along = ray_axis_proj(ray, m_mv_base + m_mv_offset, Vec3d::Unit(axis));
+}
+
+void DesignSketchTool::drag_move_arrow(const Linef3& ray)
+{
+    if (m_mv_drag < 0 || m_mv_drag > 2) return;
+    const double proj = ray_axis_proj(ray, m_mv_base + m_mv_offset, Vec3d::Unit(m_mv_drag));
+    if (std::isnan(proj)) return;
+    if (std::isnan(m_mv_grab_along)) { m_mv_grab_along = proj; return; }
+    m_mv_offset[m_mv_drag] += proj - m_mv_grab_along;
+    if (on_body_move_changed) on_body_move_changed(m_mv_body, compose_move_xform());
+}
+
+void DesignSketchTool::open_move_editor(int axis)
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, m_mv_offset[axis], "",
+        [this, axis](double v) {
+            m_mv_offset[axis] = v;
+            if (on_body_move_changed) on_body_move_changed(m_mv_body, compose_move_xform());
+        },
+        []() {});
+}
+
+bool DesignSketchTool::hit_test_move_arc(GLCanvas3D& canvas, const wxMouseEvent& evt, int& axis) const
+{
+    if (!m_mv_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double R = 0.83 * move_gizmo_arm(cam);
+    const Vec3d anchor = m_mv_base + m_mv_offset;
+    int best = -1; double bestd = 7.0 * upp;
+    const int N = 48;
+    for (int a = 0; a < 3; ++a) {
+        Vec3d e, u, v; ring_basis(a, e, u, v);
+        Vec3d prev = anchor + R * u;
+        for (int i = 1; i <= N; ++i) {
+            const double t = 2.0 * M_PI * double(i) / double(N);
+            const Vec3d cur = anchor + R * (std::cos(t) * u + std::sin(t) * v);
+            const double d = ray_segment_dist3(ro, rd, prev, cur);
+            if (d <= bestd) { bestd = d; best = a; }
+            prev = cur;
+        }
+    }
+    if (best < 0) return false;
+    axis = best; return true;
+}
+
+bool DesignSketchTool::arc_mouse_angle(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis, double& ang) const
+{
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    Vec3d e, u, v; ring_basis(axis, e, u, v);
+    const Vec3d p = m_mv_base + m_mv_offset;
+    const double denom = rd.dot(e);
+    if (std::abs(denom) < 1e-9) return false;
+    const Vec3d hit = ro + ((p - ro).dot(e) / denom) * rd;
+    const Vec3d d = hit - p;
+    ang = std::atan2(d.dot(v), d.dot(u));
+    return true;
+}
+
+void DesignSketchTool::drag_move_arc(GLCanvas3D& canvas, const wxMouseEvent& evt, int axis)
+{
+    double ang;
+    if (!arc_mouse_angle(canvas, evt, axis, ang)) return;
+    Vec3d e, u, v; ring_basis(axis, e, u, v);
+    const double delta = ang - m_mv_arc_a0;
+    m_mv_rot = Eigen::AngleAxisd(delta, e).toRotationMatrix() * m_mv_rot_start;
+    if (on_body_move_changed) on_body_move_changed(m_mv_body, compose_move_xform());
+}
+
+bool DesignSketchTool::set_fillet_gizmo(const Vec3d& body_centroid, double radius)
+{
+    if (m_sel_edge_pts.size() < 2) { m_fl_active = false; return false; }
+    const size_t n = m_sel_edge_pts.size();
+    double total = 0.0;
+    for (size_t i = 1; i < n; ++i) total += (m_sel_edge_pts[i] - m_sel_edge_pts[i - 1]).norm();
+    m_fl_anchor = m_sel_edge_pts[0];
+    Vec3d t = m_sel_edge_pts[n - 1] - m_sel_edge_pts[0];
+    const double half = 0.5 * total;
+    double acc = 0.0;
+    for (size_t i = 1; i < n; ++i) {
+        const Vec3d seg = m_sel_edge_pts[i] - m_sel_edge_pts[i - 1];
+        const double L = seg.norm();
+        if (acc + L >= half && L > 1e-12) {
+            m_fl_anchor = m_sel_edge_pts[i - 1] + seg * ((half - acc) / L);
+            t = seg;
+            break;
+        }
+        acc += L;
+    }
+    if (t.norm() < 1e-9) return false;
+    t.normalize();
+    Vec3d r = m_fl_anchor - body_centroid;
+    r -= r.dot(t) * t;
+    if (r.norm() < 1e-6) {
+        r = t.cross(Vec3d::UnitZ());
+        if (r.norm() < 1e-6) r = t.cross(Vec3d::UnitX());
+    }
+    m_fl_dir    = r.normalized();
+    m_fl_radius = std::max(0.01, radius);
+    if (!m_fl_active) m_fl_drag = false;
+    m_fl_active = true;
+    return true;
+}
+
+void DesignSketchTool::clear_fillet_gizmo()
+{
+    m_fl_active = false;
+    m_fl_drag   = false;
+}
+
+void DesignSketchTool::render_fillet_gizmo()
+{
+    if (!m_fl_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+    const double L    = std::max(m_fl_radius, 40.0 * upp);
+    const Vec3d tipw  = m_fl_anchor + m_fl_dir * L;
+
+    const SketchPlane saved = m_plane;
+    SketchPlane bb; bb.origin = m_fl_anchor; bb.x_axis = right; bb.y_axis = up; bb.normal = cam.get_dir_forward().normalized();
+    m_plane = bb;
+    const ColorRGBA arrowc(1.0f, 0.62f, 0.16f, 1.0f);
+
+    const Vec2d tip2((tipw - m_fl_anchor).dot(right), (tipw - m_fl_anchor).dot(up));
+    if (tip2.norm() > 1e-6) {
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm * (as * 0.5));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_fl_arrow_model, segs, std::max(0.7 * upp, 1e-4), arrowc);
+        DimAnnot da; da.kind = DimType::Radius; da.value = m_fl_radius;
+        draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, arrowc);
+    }
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_fillet_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_fl_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double L   = std::max(m_fl_radius, 40.0 * upp);
+    return ray_segment_dist3(ro, rd, m_fl_anchor, m_fl_anchor + m_fl_dir * L) <= 12.0 * upp;
+}
+
+double DesignSketchTool::fillet_axis_proj(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Vec3d e = m_fl_dir;
+    const Vec3d w0 = m_fl_anchor - ro;
+    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+    const double denom = a * c - b * b;
+    if (std::abs(denom) < 1e-7) return std::nan("");
+    return (b * ee - c * dd) / denom;
+}
+
+void DesignSketchTool::start_fillet_drag(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    m_fl_drag        = true;
+    m_fl_press_x     = evt.GetX();
+    m_fl_press_y     = evt.GetY();
+    m_fl_grab_radius = m_fl_radius;
+    const double p   = fillet_axis_proj(canvas, evt);
+    m_fl_grab_proj   = std::isnan(p) ? 0.0 : p;
+}
+
+void DesignSketchTool::drag_fillet_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const double proj = fillet_axis_proj(canvas, evt);
+    if (std::isnan(proj)) return;
+    m_fl_radius = std::max(0.01, m_fl_grab_radius + (proj - m_fl_grab_proj));
+    if (on_fillet_radius_changed) on_fillet_radius_changed(m_fl_radius);
+}
+
+void DesignSketchTool::open_fillet_editor()
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, m_fl_radius, "",
+        [this](double v) {
+            m_fl_radius = std::max(0.01, v);
+            if (on_fillet_radius_changed) on_fillet_radius_changed(m_fl_radius);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_hole_gizmo(const SketchPlane& plane, double x, double y,
+                                      double diameter, double depth, bool through)
+{
+    m_hl_plane    = plane;
+    m_hl_x        = x;
+    m_hl_y        = y;
+    m_hl_diameter = std::max(0.01, diameter);
+    m_hl_depth    = std::max(0.01, depth);
+    m_hl_through  = through;
+    if (!m_hl_active) m_hl_drag = -1;
+    m_hl_active   = true;
+}
+
+void DesignSketchTool::clear_hole_gizmo()
+{
+    m_hl_active = false;
+    m_hl_drag   = -1;
+}
+
+void DesignSketchTool::set_hole_face_bounds(bool has, double umin, double umax, double vmin, double vmax)
+{
+    m_hl_has_bounds = has;
+    m_hl_umin = umin; m_hl_umax = umax; m_hl_vmin = vmin; m_hl_vmax = vmax;
+}
+
+void DesignSketchTool::render_hole_gizmo()
+{
+    if (!m_hl_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+
+    const Vec3d centre = m_hl_plane.to_world(Vec2d(m_hl_x, m_hl_y));
+    const Vec3d nrm    = m_hl_plane.normal.normalized();
+    const Vec3d ddir   = m_hl_plane.x_axis.normalized();
+    const double r     = std::max(0.01, m_hl_diameter * 0.5);
+
+    const SketchPlane saved = m_plane;
+
+    {
+        m_plane = m_hl_plane;
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        const int N = 48;
+        for (int i = 0; i < N; ++i) {
+            const double a0 = (2.0 * M_PI * i) / N, a1 = (2.0 * M_PI * (i + 1)) / N;
+            segs.emplace_back(Vec2d(m_hl_x + r * std::cos(a0), m_hl_y + r * std::sin(a0)),
+                              Vec2d(m_hl_x + r * std::cos(a1), m_hl_y + r * std::sin(a1)));
+        }
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_hl_stroke_model, segs, std::max(0.6 * upp, 1e-4), ColorRGBA(1.0f, 0.62f, 0.16f, 1.0f));
+        m_plane = saved;
+    }
+
+    SketchPlane bb; bb.origin = centre; bb.x_axis = right; bb.y_axis = up; bb.normal = cam.get_dir_forward().normalized();
+    m_plane = bb;
+    const ColorRGBA amber(1.0f, 0.62f, 0.16f, 1.0f);
+    const ColorRGBA blue (0.30f, 0.55f, 1.0f, 1.0f);
+
+    auto arrow_to = [&](const Vec3d& tipw, const ColorRGBA& col, const DimAnnot& da) {
+        const Vec2d tip2((tipw - centre).dot(right), (tipw - centre).dot(up));
+        if (tip2.norm() <= 1e-6) return;
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm2(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm2 * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm2 * (as * 0.5));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_hl_stroke_model, segs, std::max(0.7 * upp, 1e-4), col);
+        draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, col);
+    };
+
+    {
+        const double L = std::max(r, 40.0 * upp);
+        DimAnnot da; da.kind = DimType::Diameter; da.value = m_hl_diameter;
+        arrow_to(centre + ddir * L, amber, da);
+    }
+    if (!m_hl_through) {
+        const double L = std::max(m_hl_depth, 40.0 * upp);
+        DimAnnot da; da.kind = DimType::Distance; da.value = m_hl_depth;
+        arrow_to(centre + nrm * L, blue, da);
+    }
+
+    m_plane = saved;
+
+    {
+        using EPT = GLModel::Geometry::EPrimitiveType;
+        using EVL = GLModel::Geometry::EVertexLayout;
+        const double hs = 9.0 * upp;
+        const Vec3d U = ddir * hs, V = m_hl_plane.y_axis.normalized() * hs, Nn = nrm * hs;
+        Vec3d c8[8];
+        for (int i = 0; i < 8; ++i)
+            c8[i] = centre + ((i & 1) ? U : -U) + ((i & 2) ? V : -V) + ((i & 4) ? Nn : -Nn);
+        const int faces[6][4] = { {0,1,3,2},{4,6,7,5},{0,4,5,1},{2,3,7,6},{0,2,6,4},{1,5,7,3} };
+        const float shade[6]  = { 0.78f, 1.0f, 0.86f, 0.92f, 0.70f, 0.96f };
+        glsafe(::glEnable(GL_DEPTH_TEST));
+        glsafe(::glDisable(GL_CULL_FACE));
+        for (int f = 0; f < 6; ++f) {
+            GLModel::Geometry g; g.format = { EPT::Triangles, EVL::P3 };
+            for (int k = 0; k < 4; ++k) g.add_vertex((Vec3f)c8[faces[f][k]].cast<float>());
+            g.add_triangle(0, 1, 2); g.add_triangle(0, 2, 3);
+            GLModel m; m.init_from(std::move(g));
+            m.set_color(ColorRGBA(1.0f * shade[f], 0.62f * shade[f], 0.16f * shade[f], 1.0f));
+            m.render();
+        }
+    }
+}
+
+int DesignSketchTool::hit_test_hole_handle(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_hl_active) return -1;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+
+    const Vec3d centre = m_hl_plane.to_world(Vec2d(m_hl_x, m_hl_y));
+    const Vec3d nrm    = m_hl_plane.normal.normalized();
+    const Vec3d ddir   = m_hl_plane.x_axis.normalized();
+    const double rad   = std::max(m_hl_diameter * 0.5, 40.0 * upp);
+    const double depL  = std::max(m_hl_depth, 40.0 * upp);
+    const double tol   = 12.0 * upp;
+
+    if (ray_segment_dist3(ro, rd, centre, centre) <= 9.0 * upp) return 0;
+
+    int best = -1; double bestd = tol;
+    const double dD = ray_segment_dist3(ro, rd, centre, centre + ddir * rad);
+    if (dD < bestd) { bestd = dD; best = 1; }
+    if (!m_hl_through) {
+        const double dZ = ray_segment_dist3(ro, rd, centre, centre + nrm * depL);
+        if (dZ < bestd) { bestd = dZ; best = 2; }
+    }
+    return best;
+}
+
+double DesignSketchTool::hole_axis_proj(GLCanvas3D& canvas, const wxMouseEvent& evt,
+                                        const Vec3d& anchor, const Vec3d& dir) const
+{
+    return ray_axis_proj(canvas.mouse_ray(Point(evt.GetX(), evt.GetY())), anchor, dir);
+}
+
+void DesignSketchTool::start_hole_drag(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    m_hl_drag    = which;
+    m_hl_press_x = evt.GetX();
+    m_hl_press_y = evt.GetY();
+    const Vec3d centre = m_hl_plane.to_world(Vec2d(m_hl_x, m_hl_y));
+    if (which == 0) {
+        const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+        m_hl_grab_uv = m_hl_plane.project(r.a, r.b - r.a);
+        m_hl_grab_x  = m_hl_x;
+        m_hl_grab_y  = m_hl_y;
+    } else if (which == 1 || which == 2) {
+        const Vec3d dir = (which == 1) ? m_hl_plane.x_axis.normalized() : m_hl_plane.normal.normalized();
+        const double p  = hole_axis_proj(canvas, evt, centre, dir);
+        m_hl_grab_proj  = std::isnan(p) ? 0.0 : p;
+        m_hl_grab_val   = (which == 1) ? m_hl_diameter * 0.5 : m_hl_depth;
+    }
+}
+
+void DesignSketchTool::drag_hole_handle(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    if (m_hl_drag >= 3) return;
+    if (m_hl_drag == 0) {
+        const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+        const Vec2d uv = m_hl_plane.project(r.a, r.b - r.a);
+        m_hl_x = m_hl_grab_x + (uv.x() - m_hl_grab_uv.x());
+        m_hl_y = m_hl_grab_y + (uv.y() - m_hl_grab_uv.y());
+    } else {
+        const Vec3d centre = m_hl_plane.to_world(Vec2d(m_hl_x, m_hl_y));
+        const Vec3d dir = (m_hl_drag == 1) ? m_hl_plane.x_axis.normalized() : m_hl_plane.normal.normalized();
+        const double proj = hole_axis_proj(canvas, evt, centre, dir);
+        if (std::isnan(proj)) return;
+        const double v = std::max(0.01, m_hl_grab_val + (proj - m_hl_grab_proj));
+        if (m_hl_drag == 1) m_hl_diameter = 2.0 * v;
+        else                m_hl_depth    = v;
+    }
+    if (on_hole_changed) on_hole_changed(m_hl_x, m_hl_y, m_hl_diameter, m_hl_depth);
+}
+
+void DesignSketchTool::open_hole_editor(int which)
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    if (which == 1) {
+        on_inline_edit(px, m_hl_diameter, "",
+            [this](double v) {
+                m_hl_diameter = std::max(0.01, v);
+                if (on_hole_changed) on_hole_changed(m_hl_x, m_hl_y, m_hl_diameter, m_hl_depth);
+            },
+            []() {});
+    } else if (which == 2) {
+        on_inline_edit(px, m_hl_depth, "",
+            [this](double v) {
+                m_hl_depth = std::max(0.01, v);
+                if (on_hole_changed) on_hole_changed(m_hl_x, m_hl_y, m_hl_diameter, m_hl_depth);
+            },
+            []() {});
+    } else if (which == 3) {
+        const double ru = m_hl_has_bounds ? m_hl_umin : 0.0;
+        on_inline_edit(px, m_hl_x - ru, "",
+            [this, ru](double v) {
+                m_hl_x = ru + v;
+                if (on_hole_changed) on_hole_changed(m_hl_x, m_hl_y, m_hl_diameter, m_hl_depth);
+            },
+            []() {});
+    } else if (which == 4) {
+        const double rv = m_hl_has_bounds ? m_hl_vmin : 0.0;
+        on_inline_edit(px, m_hl_y - rv, "",
+            [this, rv](double v) {
+                m_hl_y = rv + v;
+                if (on_hole_changed) on_hole_changed(m_hl_x, m_hl_y, m_hl_diameter, m_hl_depth);
+            },
+            []() {});
+    }
+}
+
+void DesignSketchTool::set_thread_gizmo(const SketchPlane& plane, double x, double y,
+                                        double radius, double height)
+{
+    m_th_plane  = plane;
+    m_th_x      = x;
+    m_th_y      = y;
+    m_th_radius = std::max(0.01, radius);
+    m_th_height = std::max(0.01, height);
+    if (!m_th_active) m_th_drag = -1;
+    m_th_active = true;
+}
+
+void DesignSketchTool::clear_thread_gizmo()
+{
+    m_th_active = false;
+    m_th_drag   = -1;
+}
+
+void DesignSketchTool::render_thread_gizmo()
+{
+    if (!m_th_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+
+    const Vec3d centre = m_th_plane.to_world(Vec2d(m_th_x, m_th_y));
+    const Vec3d nrm    = m_th_plane.normal.normalized();
+    const Vec3d ddir   = m_th_plane.x_axis.normalized();
+    const double r     = std::max(0.01, m_th_radius);
+
+    const SketchPlane saved = m_plane;
+
+    {
+        m_plane = m_th_plane;
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        const int N = 48;
+        for (int i = 0; i < N; ++i) {
+            const double a0 = (2.0 * M_PI * i) / N, a1 = (2.0 * M_PI * (i + 1)) / N;
+            segs.emplace_back(Vec2d(m_th_x + r * std::cos(a0), m_th_y + r * std::sin(a0)),
+                              Vec2d(m_th_x + r * std::cos(a1), m_th_y + r * std::sin(a1)));
+        }
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_th_stroke_model, segs, std::max(0.6 * upp, 1e-4), ColorRGBA(0.55f, 0.80f, 0.30f, 1.0f));
+        m_plane = saved;
+    }
+
+    SketchPlane bb; bb.origin = centre; bb.x_axis = right; bb.y_axis = up; bb.normal = cam.get_dir_forward().normalized();
+    m_plane = bb;
+    const ColorRGBA green(0.55f, 0.80f, 0.30f, 1.0f);
+    const ColorRGBA blue (0.30f, 0.55f, 1.0f, 1.0f);
+
+    auto arrow_to = [&](const Vec3d& tipw, const ColorRGBA& col, const DimAnnot& da) {
+        const Vec2d tip2((tipw - centre).dot(right), (tipw - centre).dot(up));
+        if (tip2.norm() <= 1e-6) return;
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm2(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm2 * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm2 * (as * 0.5));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_th_stroke_model, segs, std::max(0.7 * upp, 1e-4), col);
+        draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, col);
+    };
+
+    {
+        const double L = std::max(r, 40.0 * upp);
+        DimAnnot da; da.kind = DimType::Radius; da.value = m_th_radius;
+        arrow_to(centre + ddir * L, green, da);
+    }
+    {
+        const double L = std::max(m_th_height, 40.0 * upp);
+        DimAnnot da; da.kind = DimType::Distance; da.value = m_th_height;
+        arrow_to(centre + nrm * L, blue, da);
+    }
+    {
+        const double s = 7.0 * upp;
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(-s, -s), Vec2d(s, -s));
+        segs.emplace_back(Vec2d( s, -s), Vec2d(s,  s));
+        segs.emplace_back(Vec2d( s,  s), Vec2d(-s, s));
+        segs.emplace_back(Vec2d(-s,  s), Vec2d(-s, -s));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_th_stroke_model, segs, std::max(0.7 * upp, 1e-4), green);
+    }
+
+    m_plane = saved;
+}
+
+int DesignSketchTool::hit_test_thread_handle(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_th_active) return -1;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+
+    const Vec3d centre = m_th_plane.to_world(Vec2d(m_th_x, m_th_y));
+    const Vec3d nrm    = m_th_plane.normal.normalized();
+    const Vec3d ddir   = m_th_plane.x_axis.normalized();
+    const double rad   = std::max(m_th_radius, 40.0 * upp);
+    const double hL    = std::max(m_th_height, 40.0 * upp);
+    const double tol   = 12.0 * upp;
+
+    if (ray_segment_dist3(ro, rd, centre, centre) <= tol) return 0;
+    int best = -1; double bestd = tol;
+    const double dR = ray_segment_dist3(ro, rd, centre, centre + ddir * rad);
+    if (dR < bestd) { bestd = dR; best = 1; }
+    const double dH = ray_segment_dist3(ro, rd, centre, centre + nrm * hL);
+    if (dH < bestd) { bestd = dH; best = 2; }
+    return best;
+}
+
+void DesignSketchTool::start_thread_drag(GLCanvas3D& canvas, const wxMouseEvent& evt, int which)
+{
+    m_th_drag    = which;
+    m_th_press_x = evt.GetX();
+    m_th_press_y = evt.GetY();
+    const Vec3d centre = m_th_plane.to_world(Vec2d(m_th_x, m_th_y));
+    if (which == 0) {
+        const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+        m_th_grab_uv = m_th_plane.project(r.a, r.b - r.a);
+        m_th_grab_x  = m_th_x;
+        m_th_grab_y  = m_th_y;
+    } else {
+        const Vec3d dir = (which == 1) ? m_th_plane.x_axis.normalized() : m_th_plane.normal.normalized();
+        const double p  = hole_axis_proj(canvas, evt, centre, dir);
+        m_th_grab_proj  = std::isnan(p) ? 0.0 : p;
+        m_th_grab_val   = (which == 1) ? m_th_radius : m_th_height;
+    }
+}
+
+void DesignSketchTool::drag_thread_handle(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    if (m_th_drag == 0) {
+        const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+        const Vec2d uv = m_th_plane.project(r.a, r.b - r.a);
+        m_th_x = m_th_grab_x + (uv.x() - m_th_grab_uv.x());
+        m_th_y = m_th_grab_y + (uv.y() - m_th_grab_uv.y());
+    } else {
+        const Vec3d centre = m_th_plane.to_world(Vec2d(m_th_x, m_th_y));
+        const Vec3d dir = (m_th_drag == 1) ? m_th_plane.x_axis.normalized() : m_th_plane.normal.normalized();
+        const double proj = hole_axis_proj(canvas, evt, centre, dir);
+        if (std::isnan(proj)) return;
+        const double v = std::max(0.01, m_th_grab_val + (proj - m_th_grab_proj));
+        if (m_th_drag == 1) m_th_radius = v;
+        else                m_th_height = v;
+    }
+    if (on_thread_changed) on_thread_changed(m_th_x, m_th_y, m_th_radius, m_th_height);
+}
+
+void DesignSketchTool::open_thread_editor(int which)
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    if (which == 1) {
+        on_inline_edit(px, m_th_radius, "",
+            [this](double v) {
+                m_th_radius = std::max(0.01, v);
+                if (on_thread_changed) on_thread_changed(m_th_x, m_th_y, m_th_radius, m_th_height);
+            },
+            []() {});
+    } else if (which == 2) {
+        on_inline_edit(px, m_th_height, "",
+            [this](double v) {
+                m_th_height = std::max(0.01, v);
+                if (on_thread_changed) on_thread_changed(m_th_x, m_th_y, m_th_radius, m_th_height);
+            },
+            []() {});
+    }
+}
+
+void DesignSketchTool::set_shell_gizmo(const Vec3d& face_centroid, const Vec3d& inward_dir,
+                                       double thickness)
+{
+    m_sh_anchor    = face_centroid;
+    if (inward_dir.norm() > 1e-9) m_sh_dir = inward_dir.normalized();
+    m_sh_thickness = std::max(0.01, thickness);
+    if (!m_sh_active) m_sh_drag = false;
+    m_sh_active = true;
+}
+
+void DesignSketchTool::clear_shell_gizmo()
+{
+    m_sh_active = false;
+    m_sh_drag   = false;
+}
+
+void DesignSketchTool::render_shell_gizmo()
+{
+    if (!m_sh_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+    const double L    = std::max(m_sh_thickness, 40.0 * upp);
+    const Vec3d tipw  = m_sh_anchor + m_sh_dir * L;
+
+    const SketchPlane saved = m_plane;
+    SketchPlane bb; bb.origin = m_sh_anchor; bb.x_axis = right; bb.y_axis = up; bb.normal = cam.get_dir_forward().normalized();
+    m_plane = bb;
+    const ColorRGBA teal(0.20f, 0.80f, 0.75f, 1.0f);
+
+    const Vec2d tip2((tipw - m_sh_anchor).dot(right), (tipw - m_sh_anchor).dot(up));
+    if (tip2.norm() > 1e-6) {
+        const Vec2d u = tip2.normalized();
+        const Vec2d nrm(-u.y(), u.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(0, 0), tip2);
+        const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+        const Vec2d back = tip2 - u * as;
+        segs.emplace_back(tip2, back + nrm * (as * 0.5));
+        segs.emplace_back(tip2, back - nrm * (as * 0.5));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_sh_stroke_model, segs, std::max(0.7 * upp, 1e-4), teal);
+        DimAnnot da; da.kind = DimType::Distance; da.value = m_sh_thickness;
+        draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, teal);
+    }
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_shell_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_sh_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double L   = std::max(m_sh_thickness, 40.0 * upp);
+    return ray_segment_dist3(ro, rd, m_sh_anchor, m_sh_anchor + m_sh_dir * L) <= 12.0 * upp;
+}
+
+void DesignSketchTool::start_shell_drag(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    m_sh_drag      = true;
+    m_sh_press_x   = evt.GetX();
+    m_sh_press_y   = evt.GetY();
+    m_sh_grab_val  = m_sh_thickness;
+    const double p = hole_axis_proj(canvas, evt, m_sh_anchor, m_sh_dir);
+    m_sh_grab_proj = std::isnan(p) ? 0.0 : p;
+}
+
+void DesignSketchTool::drag_shell_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const double proj = hole_axis_proj(canvas, evt, m_sh_anchor, m_sh_dir);
+    if (std::isnan(proj)) return;
+    m_sh_thickness = std::max(0.01, m_sh_grab_val + (proj - m_sh_grab_proj));
+    if (on_shell_thickness_changed) on_shell_thickness_changed(m_sh_thickness);
+}
+
+void DesignSketchTool::open_shell_editor()
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, m_sh_thickness, "",
+        [this](double v) {
+            m_sh_thickness = std::max(0.01, v);
+            if (on_shell_thickness_changed) on_shell_thickness_changed(m_sh_thickness);
+        },
+        []() {});
+}
+
+static Vec3d rv_yaxis(const Vec3d& axis, const Vec3d& ref, bool flip)
+{
+    Vec3d y = axis.cross(ref);
+    if (y.norm() < 1e-9) return ref;
+    y.normalize();
+    return flip ? -y : y;
+}
+
+static Vec3d dr_yaxis(const Vec3d& axis, const Vec3d& ref)
+{
+    Vec3d y = axis.cross(ref);
+    if (y.norm() < 1e-9) return ref;
+    y.normalize();
+    return y;
+}
+
+void DesignSketchTool::set_draft_gizmo(const Vec3d& face_centroid, const Vec3d& face_normal, double angle)
+{
+    m_dr_center = face_centroid;
+    m_dr_angle  = std::min(89.0, std::max(-89.0, angle));
+    m_dr_axis   = Vec3d::UnitZ();
+    Vec3d ref = face_normal - face_normal.dot(m_dr_axis) * m_dr_axis;
+    if (ref.norm() < 1e-6) ref = Vec3d::UnitX();
+    m_dr_ref    = ref / ref.norm();
+    m_dr_radius = 12.0;
+    if (!m_dr_active) m_dr_drag = false;
+    m_dr_active = true;
+}
+
+void DesignSketchTool::clear_draft_gizmo()
+{
+    m_dr_active = false;
+    m_dr_drag   = false;
+}
+
+void DesignSketchTool::render_draft_gizmo()
+{
+    if (!m_dr_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th  = std::max(15.0 * upp, 1e-4);
+    const Vec3d yax  = dr_yaxis(m_dr_axis, m_dr_ref);
+
+    const SketchPlane saved = m_plane;
+    SketchPlane rp; rp.origin = m_dr_center; rp.x_axis = m_dr_ref; rp.y_axis = yax; rp.normal = m_dr_axis;
+    m_plane = rp;
+    const ColorRGBA arcc(0.15f, 0.92f, 1.0f, 1.0f);
+    const double r = m_dr_radius;
+    const double a = m_dr_angle * M_PI / 180.0;
+    const int    N = std::max(8, int(std::abs(a) / (M_PI / 32.0)));
+
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    Vec2d prev(r, 0.0);
+    for (int i = 1; i <= N; ++i) {
+        const double t = a * double(i) / double(N);
+        const Vec2d cur(r * std::cos(t), r * std::sin(t));
+        segs.emplace_back(prev, cur);
+        prev = cur;
+    }
+    const Vec2d tip(r * std::cos(a), r * std::sin(a));
+    segs.emplace_back(Vec2d(0, 0), Vec2d(r, 0));
+    segs.emplace_back(Vec2d(0, 0), tip);
+    const Vec2d tang(-std::sin(a), std::cos(a));
+    const Vec2d radial = tip.normalized();
+    const double as = std::max(r * 0.14, th);
+    segs.emplace_back(tip, tip - tang * as - radial * (as * 0.5));
+    segs.emplace_back(tip, tip - tang * as + radial * (as * 0.5));
+    const double hs = std::max(th * 0.8, r * 0.05);
+    const Vec2d du = radial * hs, dv = Vec2d(-radial.y(), radial.x()) * hs;
+    segs.emplace_back(tip + du, tip + dv);
+    segs.emplace_back(tip + dv, tip - du);
+    segs.emplace_back(tip - du, tip - dv);
+    segs.emplace_back(tip - dv, tip + du);
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    draw_strokes(m_dr_stroke_model, segs, std::max(0.8 * upp, 1e-4), arcc);
+    DimAnnot da; da.kind = DimType::Angle; da.value = m_dr_angle;
+    draw_text(m_line_model, dim_text(da), tip * 1.14, th, arcc);
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_draft_handle(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_dr_active) return false;
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d yax = dr_yaxis(m_dr_axis, m_dr_ref);
+    const double a  = m_dr_angle * M_PI / 180.0;
+    const double tol = 16.0 * upp;
+    auto ray_pt = [&](const Vec3d& p) {
+        const double t = (p - ro).dot(rd) / std::max(rd.dot(rd), 1e-12);
+        return (p - (ro + t * rd)).norm();
+    };
+    const Vec3d tip = m_dr_center + m_dr_radius * (std::cos(a) * m_dr_ref + std::sin(a) * yax);
+    const Vec3d ref = m_dr_center + m_dr_radius * m_dr_ref;
+    const int N = 48;
+    for (int i = 0; i <= N; ++i) {
+        const double f = double(i) / double(N);
+        const double th = a * f;
+        const Vec3d arc = m_dr_center + m_dr_radius * (std::cos(th) * m_dr_ref + std::sin(th) * yax);
+        if (ray_pt(arc) <= tol) return true;
+        if (ray_pt(m_dr_center + f * (tip - m_dr_center)) <= tol) return true;
+        if (ray_pt(m_dr_center + f * (ref - m_dr_center)) <= tol) return true;
+    }
+    return false;
+}
+
+void DesignSketchTool::drag_draft_arc(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    const double denom = rd.dot(m_dr_axis);
+    if (std::abs(denom) < 1e-9) return;
+    const double t = (m_dr_center - ro).dot(m_dr_axis) / denom;
+    const Vec3d  p = ro + t * rd;
+    const Vec3d yax = dr_yaxis(m_dr_axis, m_dr_ref);
+    const double u = (p - m_dr_center).dot(m_dr_ref);
+    const double v = (p - m_dr_center).dot(yax);
+    double deg = std::atan2(v, u) * 180.0 / M_PI;
+    deg = std::min(89.0, std::max(-89.0, deg));
+    m_dr_angle = deg;
+    if (m_on_draft_angle_changed) m_on_draft_angle_changed(deg);
+}
+
+void DesignSketchTool::set_cut_gizmo(const SketchPlane& plane, double offset, const Vec3d& body_center, double half_extent)
+{
+    m_ct_n  = plane.normal.normalized();
+    m_ct_u  = plane.x_axis.normalized();
+    m_ct_v  = plane.y_axis.normalized();
+    Vec3d rel = body_center - plane.origin;
+    m_ct_base = plane.origin + (rel - rel.dot(m_ct_n) * m_ct_n);
+    m_ct_offset = offset;
+    m_ct_half   = std::max(half_extent, 10.0);
+    if (!m_ct_active) m_ct_drag = false;
+    m_ct_active = true;
+}
+
+void DesignSketchTool::clear_cut_gizmo()
+{
+    m_ct_active = false;
+    m_ct_drag   = false;
+}
+
+void DesignSketchTool::render_cut_gizmo()
+{
+    if (!m_ct_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const Vec3d right = cam.get_dir_right().normalized();
+    const Vec3d up    = cam.get_dir_up().normalized();
+    const double upp  = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th   = std::max(15.0 * upp, 1e-4);
+    const ColorRGBA teal(0.20f, 0.80f, 0.75f, 1.0f);
+
+    {
+        const Vec3d cutpos = m_ct_base + m_ct_offset * m_ct_n;
+        const SketchPlane saved = m_plane;
+        SketchPlane rp; rp.origin = cutpos; rp.x_axis = m_ct_u; rp.y_axis = m_ct_v; rp.normal = m_ct_n;
+        m_plane = rp;
+        const double h = m_ct_half;
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        segs.emplace_back(Vec2d(-h, -h), Vec2d( h, -h));
+        segs.emplace_back(Vec2d( h, -h), Vec2d( h,  h));
+        segs.emplace_back(Vec2d( h,  h), Vec2d(-h,  h));
+        segs.emplace_back(Vec2d(-h,  h), Vec2d(-h, -h));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_ct_rect_model, segs, std::max(0.7 * upp, 1e-4), teal);
+        m_plane = saved;
+    }
+
+    {
+        const double L_sign = (std::abs(m_ct_offset) < 40.0 * upp)
+            ? std::copysign(40.0 * upp, (m_ct_offset == 0.0 ? 1.0 : m_ct_offset))
+            : m_ct_offset;
+        const Vec3d tipw = m_ct_base + m_ct_n * L_sign;
+
+        const SketchPlane saved = m_plane;
+        SketchPlane bb; bb.origin = m_ct_base; bb.x_axis = right; bb.y_axis = up;
+        bb.normal = cam.get_dir_forward().normalized();
+        m_plane = bb;
+
+        const Vec2d tip2((tipw - m_ct_base).dot(right), (tipw - m_ct_base).dot(up));
+        if (tip2.norm() > 1e-6) {
+            const Vec2d u = tip2.normalized();
+            const Vec2d nrm(-u.y(), u.x());
+            std::vector<std::pair<Vec2d, Vec2d>> segs;
+            segs.emplace_back(Vec2d(0, 0), tip2);
+            const double as = std::max(tip2.norm() * 0.20, th * 0.9);
+            const Vec2d back = tip2 - u * as;
+            segs.emplace_back(tip2, back + nrm * (as * 0.5));
+            segs.emplace_back(tip2, back - nrm * (as * 0.5));
+            glsafe(::glDisable(GL_DEPTH_TEST));
+            draw_strokes(m_ct_stroke_model, segs, std::max(0.7 * upp, 1e-4), teal);
+            DimAnnot da; da.kind = DimType::Distance; da.value = m_ct_offset;
+            draw_text(m_line_model, dim_text(da), tip2 + u * (th * 1.4), th, teal);
+        }
+        m_plane = saved;
+    }
+}
+
+bool DesignSketchTool::hit_test_cut_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_ct_active) return false;
+    const Linef3 r = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = r.a, rd = r.b - r.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double L_sign = (std::abs(m_ct_offset) < 40.0 * upp)
+        ? std::copysign(40.0 * upp, (m_ct_offset == 0.0 ? 1.0 : m_ct_offset))
+        : m_ct_offset;
+    return ray_segment_dist3(ro, rd, m_ct_base, m_ct_base + m_ct_n * L_sign) <= 12.0 * upp;
+}
+
+void DesignSketchTool::start_cut_drag(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    m_ct_drag      = true;
+    m_ct_grab_val  = m_ct_offset;
+    const double p = hole_axis_proj(canvas, evt, m_ct_base, m_ct_n);
+    m_ct_grab_proj = std::isnan(p) ? 0.0 : p;
+}
+
+void DesignSketchTool::drag_cut_arrow(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const double proj = hole_axis_proj(canvas, evt, m_ct_base, m_ct_n);
+    if (std::isnan(proj)) return;
+    m_ct_offset = m_ct_grab_val + (proj - m_ct_grab_proj);
+    if (m_on_cut_offset_changed) m_on_cut_offset_changed(m_ct_offset);
+}
+
+void DesignSketchTool::set_revolve_gizmo(const SketchPlane& plane, const Vec2d& centroid,
+                                         const Vec3d& axis_origin, const Vec3d& axis_dir,
+                                         double angle, bool flip)
+{
+    const Vec3d ax = axis_dir.normalized();
+    const Vec3d cw = plane.to_world(centroid);
+    const double axial = (cw - axis_origin).dot(ax);
+    m_rv_center = axis_origin + axial * ax;
+    Vec3d ref = cw - m_rv_center;
+    double r = ref.norm();
+    if (r < 1e-6) { ref = plane.normal.normalized(); r = std::max(plane.normal.norm(), 1.0); }
+    m_rv_axis   = ax;
+    m_rv_ref    = ref / ref.norm();
+    m_rv_radius = std::max(r, 1.0);
+    m_rv_angle  = std::min(360.0, std::max(1.0, std::abs(angle)));
+    m_rv_flip   = flip;
+    if (!m_rv_active) m_rv_drag = false;
+    m_rv_active = true;
+}
+
+void DesignSketchTool::clear_revolve_gizmo()
+{
+    m_rv_active = false;
+    m_rv_drag   = false;
+}
+
+void DesignSketchTool::render_revolve_gizmo()
+{
+    if (!m_rv_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th  = std::max(15.0 * upp, 1e-4);
+    const Vec3d yax  = rv_yaxis(m_rv_axis, m_rv_ref, m_rv_flip);
+
+    const SketchPlane saved = m_plane;
+    SketchPlane rp; rp.origin = m_rv_center; rp.x_axis = m_rv_ref; rp.y_axis = yax; rp.normal = m_rv_axis;
+    m_plane = rp;
+    const ColorRGBA arcc(0.15f, 0.92f, 1.0f, 1.0f);
+    const double r = m_rv_radius;
+    const double a = m_rv_angle * M_PI / 180.0;
+    const int    N = std::max(8, int(a / (M_PI / 32.0)));
+
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    Vec2d prev(r, 0.0);
+    for (int i = 1; i <= N; ++i) {
+        const double t = a * double(i) / double(N);
+        const Vec2d cur(r * std::cos(t), r * std::sin(t));
+        segs.emplace_back(prev, cur);
+        prev = cur;
+    }
+    const Vec2d tip(r * std::cos(a), r * std::sin(a));
+    segs.emplace_back(Vec2d(0, 0), Vec2d(r, 0));
+    segs.emplace_back(Vec2d(0, 0), tip);
+    const Vec2d tang(-std::sin(a), std::cos(a));
+    const Vec2d radial = tip.normalized();
+    const double as = std::max(r * 0.14, th);
+    segs.emplace_back(tip, tip - tang * as - radial * (as * 0.5));
+    segs.emplace_back(tip, tip - tang * as + radial * (as * 0.5));
+    const double hs = std::max(th * 0.8, r * 0.05);
+    const Vec2d du = radial * hs, dv = Vec2d(-radial.y(), radial.x()) * hs;
+    segs.emplace_back(tip + du, tip + dv);
+    segs.emplace_back(tip + dv, tip - du);
+    segs.emplace_back(tip - du, tip - dv);
+    segs.emplace_back(tip - dv, tip + du);
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    draw_strokes(m_rv_stroke_model, segs, std::max(0.8 * upp, 1e-4), arcc);
+    DimAnnot da; da.kind = DimType::Angle; da.value = m_rv_angle;
+    draw_text(m_line_model, dim_text(da), tip * 1.14, th, arcc);
+    SketchPlane ap; ap.origin = m_rv_center; ap.x_axis = m_rv_axis; ap.y_axis = m_rv_ref;
+    ap.normal = m_rv_axis.cross(m_rv_ref);
+    m_plane = ap;
+    std::vector<std::pair<Vec2d, Vec2d>> dashes;
+    const double L = 1.6 * r, dash = std::max(r * 0.08, th * 0.5);
+    for (double u = -L; u < L; u += 2.0 * dash)
+        dashes.emplace_back(Vec2d(u, 0.0), Vec2d(std::min(u + dash, L), 0.0));
+    draw_strokes(m_rv_stroke_model, dashes, std::max(0.8 * upp, 1e-4), ColorRGBA(1.0f, 0.55f, 0.1f, 1.0f));
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_revolve_handle(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_rv_active) return false;
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const Vec3d yax = rv_yaxis(m_rv_axis, m_rv_ref, m_rv_flip);
+    const double a  = m_rv_angle * M_PI / 180.0;
+    const double tol = 16.0 * upp;
+    auto ray_pt = [&](const Vec3d& p) {
+        const double t = (p - ro).dot(rd) / std::max(rd.dot(rd), 1e-12);
+        return (p - (ro + t * rd)).norm();
+    };
+    const Vec3d tip = m_rv_center + m_rv_radius * (std::cos(a) * m_rv_ref + std::sin(a) * yax);
+    const Vec3d ref = m_rv_center + m_rv_radius * m_rv_ref;
+    const int N = 48;
+    for (int i = 0; i <= N; ++i) {
+        const double f = double(i) / double(N);
+        const double th = a * f;
+        const Vec3d arc = m_rv_center + m_rv_radius * (std::cos(th) * m_rv_ref + std::sin(th) * yax);
+        if (ray_pt(arc) <= tol) return true;
+        if (ray_pt(m_rv_center + f * (tip - m_rv_center)) <= tol) return true;
+        if (ray_pt(m_rv_center + f * (ref - m_rv_center)) <= tol) return true;
+    }
+    return false;
+}
+
+void DesignSketchTool::drag_revolve_arc(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    const double denom = rd.dot(m_rv_axis);
+    if (std::abs(denom) < 1e-9) return;
+    const double t = (m_rv_center - ro).dot(m_rv_axis) / denom;
+    const Vec3d  p = ro + t * rd;
+    const Vec3d yax = rv_yaxis(m_rv_axis, m_rv_ref, m_rv_flip);
+    const double u = (p - m_rv_center).dot(m_rv_ref);
+    const double v = (p - m_rv_center).dot(yax);
+    double deg = std::atan2(v, u) * 180.0 / M_PI;
+    if (deg < 0.0) deg += 360.0;
+    deg = std::min(360.0, std::max(1.0, deg));
+    m_rv_angle = deg;
+    if (on_revolve_angle_changed) on_revolve_angle_changed(deg);
+}
+
+void DesignSketchTool::open_revolve_editor()
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, m_rv_angle, "",
+        [this](double v) {
+            m_rv_angle = std::min(360.0, std::max(1.0, v));
+            if (on_revolve_angle_changed) on_revolve_angle_changed(m_rv_angle);
+        },
+        []() {});
+}
+
+void DesignSketchTool::set_pattern_gizmo(const SketchPlane& plane, const Vec3d& body_centroid,
+                                         bool circular, int count, int dir, double spacing, double angle)
+{
+    m_pt_circular = circular;
+    m_pt_base     = body_centroid;
+    m_pt_count    = std::max(1, count);
+    m_pt_spacing  = std::max(0.01, spacing);
+    m_pt_angle    = std::min(360.0, std::max(1.0, angle));
+    m_pt_dirw     = (dir == 1 ? plane.y_axis : plane.x_axis).normalized();
+    m_pt_origin   = plane.origin;
+    m_pt_normal   = plane.normal.normalized();
+    const double axial = (body_centroid - plane.origin).dot(m_pt_normal);
+    m_pt_ccenter = plane.origin + axial * m_pt_normal;
+    Vec3d ref = body_centroid - m_pt_ccenter;
+    double r = ref.norm();
+    if (r < 1e-6) { ref = m_pt_dirw; r = 1.0; }
+    m_pt_cref   = ref / ref.norm();
+    m_pt_radius = std::max(r, 1.0);
+    if (!m_pt_active) m_pt_drag = false;
+    m_pt_active = true;
+}
+
+void DesignSketchTool::clear_pattern_gizmo()
+{
+    m_pt_active = false;
+    m_pt_drag   = false;
+}
+
+static double pt_linear_len(double spacing, int count)
+{
+    return std::max(spacing * double(std::max(1, count) - 1), spacing);
+}
+
+void DesignSketchTool::render_pattern_gizmo()
+{
+    if (!m_pt_active) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    const double th  = std::max(15.0 * upp, 1e-4);
+    const ColorRGBA col(0.15f, 0.92f, 1.0f, 1.0f);
+    const SketchPlane saved = m_plane;
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+
+    if (!m_pt_circular) {
+        const Vec3d perp = m_pt_normal.cross(m_pt_dirw).normalized();
+        SketchPlane fp; fp.origin = m_pt_base; fp.x_axis = m_pt_dirw; fp.y_axis = perp; fp.normal = m_pt_normal;
+        m_plane = fp;
+        const int copies = std::max(1, m_pt_count);
+        const double L = pt_linear_len(m_pt_spacing, copies);
+        segs.emplace_back(Vec2d(0, 0), Vec2d(L, 0));
+        const double as = std::max(L * 0.12, th);
+        segs.emplace_back(Vec2d(L, 0), Vec2d(L - as,  as * 0.5));
+        segs.emplace_back(Vec2d(L, 0), Vec2d(L - as, -as * 0.5));
+        const double tk = std::max(th, L * 0.05);
+        for (int i = 0; i < copies; ++i) {
+            const double x = m_pt_spacing * i;
+            segs.emplace_back(Vec2d(x, -tk), Vec2d(x, tk));
+        }
+        const Vec2d E(L, 0);
+        const double hs = std::max(th * 0.8, L * 0.04);
+        segs.emplace_back(E + Vec2d(hs, 0), E + Vec2d(0, hs));
+        segs.emplace_back(E + Vec2d(0, hs), E + Vec2d(-hs, 0));
+        segs.emplace_back(E + Vec2d(-hs, 0), E + Vec2d(0, -hs));
+        segs.emplace_back(E + Vec2d(0, -hs), E + Vec2d(hs, 0));
+        glsafe(::glDisable(GL_DEPTH_TEST));
+        draw_strokes(m_pt_stroke_model, segs, std::max(0.8 * upp, 1e-4), col);
+        DimAnnot da; da.kind = DimType::Distance; da.value = m_pt_spacing;
+        draw_text(m_line_model, dim_text(da), Vec2d(m_pt_spacing * 0.5, tk * 1.7), th, col);
+        m_plane = saved;
+        return;
+    }
+
+    const Vec3d yax = m_pt_normal.cross(m_pt_cref).normalized();
+    SketchPlane rp; rp.origin = m_pt_ccenter; rp.x_axis = m_pt_cref; rp.y_axis = yax; rp.normal = m_pt_normal;
+    m_plane = rp;
+    const double r = m_pt_radius;
+    const double a = m_pt_angle * M_PI / 180.0;
+    const int    N = std::max(8, int(a / (M_PI / 32.0)));
+    Vec2d prev(r, 0.0);
+    for (int i = 1; i <= N; ++i) {
+        const double t = a * double(i) / double(N);
+        const Vec2d cur(r * std::cos(t), r * std::sin(t));
+        segs.emplace_back(prev, cur);
+        prev = cur;
+    }
+    const Vec2d tip(r * std::cos(a), r * std::sin(a));
+    segs.emplace_back(Vec2d(0, 0), Vec2d(r, 0));
+    segs.emplace_back(Vec2d(0, 0), tip);
+    const Vec2d tang(-std::sin(a), std::cos(a));
+    const Vec2d radial = tip.normalized();
+    const double as = std::max(r * 0.14, th);
+    segs.emplace_back(tip, tip - tang * as - radial * (as * 0.5));
+    segs.emplace_back(tip, tip - tang * as + radial * (as * 0.5));
+    const double hs = std::max(th * 0.8, r * 0.05);
+    const Vec2d du = radial * hs, dv = Vec2d(-radial.y(), radial.x()) * hs;
+    segs.emplace_back(tip + du, tip + dv);
+    segs.emplace_back(tip + dv, tip - du);
+    segs.emplace_back(tip - du, tip - dv);
+    segs.emplace_back(tip - dv, tip + du);
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    draw_strokes(m_pt_stroke_model, segs, std::max(0.8 * upp, 1e-4), col);
+    DimAnnot da; da.kind = DimType::Angle; da.value = m_pt_angle;
+    draw_text(m_line_model, dim_text(da), tip * 1.14, th, col);
+    m_plane = saved;
+}
+
+bool DesignSketchTool::hit_test_pattern_handle(GLCanvas3D& canvas, const wxMouseEvent& evt) const
+{
+    if (!m_pt_active) return false;
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double upp = 1.0 / std::max(cam.get_zoom(), 1e-6);
+    auto ray_pt = [&](const Vec3d& p) {
+        const double t = (p - ro).dot(rd) / std::max(rd.dot(rd), 1e-12);
+        return (p - (ro + t * rd)).norm();
+    };
+    if (!m_pt_circular) {
+        const double tol = 8.0 * upp;
+        const double L = pt_linear_len(m_pt_spacing, m_pt_count);
+        return ray_segment_dist3(ro, rd, m_pt_base, m_pt_base + m_pt_dirw * L) <= tol;
+    }
+    const double tol = 16.0 * upp;
+    const Vec3d yax = m_pt_normal.cross(m_pt_cref).normalized();
+    const double a  = m_pt_angle * M_PI / 180.0;
+    const Vec3d tip = m_pt_ccenter + m_pt_radius * (std::cos(a) * m_pt_cref + std::sin(a) * yax);
+    const Vec3d ref = m_pt_ccenter + m_pt_radius * m_pt_cref;
+    const int N = 48;
+    for (int i = 0; i <= N; ++i) {
+        const double f = double(i) / double(N);
+        const Vec3d arc = m_pt_ccenter + m_pt_radius * (std::cos(a * f) * m_pt_cref + std::sin(a * f) * yax);
+        if (ray_pt(arc) <= tol) return true;
+        if (ray_pt(m_pt_ccenter + f * (tip - m_pt_ccenter)) <= tol) return true;
+        if (ray_pt(m_pt_ccenter + f * (ref - m_pt_ccenter)) <= tol) return true;
+    }
+    return false;
+}
+
+void DesignSketchTool::drag_pattern_handle(GLCanvas3D& canvas, const wxMouseEvent& evt)
+{
+    const Linef3 ray = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+    const Vec3d ro = ray.a, rd = ray.b - ray.a;
+    if (!m_pt_circular) {
+        const Vec3d e = m_pt_dirw;
+        const Vec3d w0 = m_pt_base - ro;
+        const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+        const double denom = a * c - b * b;
+        if (std::abs(denom) < 1e-7) return;
+        const double span = std::max(0.01, (b * ee - c * dd) / denom);
+        const int div = std::max(1, m_pt_count - 1);
+        m_pt_spacing = std::max(0.1, span / double(div));
+        if (on_pattern_changed) on_pattern_changed(m_pt_spacing);
+        return;
+    }
+    const double denom = rd.dot(m_pt_normal);
+    if (std::abs(denom) < 1e-9) return;
+    const double t = (m_pt_ccenter - ro).dot(m_pt_normal) / denom;
+    const Vec3d  p = ro + t * rd;
+    const Vec3d yax = m_pt_normal.cross(m_pt_cref).normalized();
+    double deg = std::atan2((p - m_pt_ccenter).dot(yax), (p - m_pt_ccenter).dot(m_pt_cref)) * 180.0 / M_PI;
+    if (deg < 0.0) deg += 360.0;
+    m_pt_angle = std::min(360.0, std::max(1.0, deg));
+    if (on_pattern_changed) on_pattern_changed(m_pt_angle);
+}
+
+void DesignSketchTool::open_pattern_editor()
+{
+    if (!on_inline_edit) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    const double cur = m_pt_circular ? m_pt_angle : m_pt_spacing;
+    on_inline_edit(px, cur, "",
+        [this](double v) {
+            if (m_pt_circular) m_pt_angle = std::min(360.0, std::max(1.0, v));
+            else               m_pt_spacing = std::max(0.1, v);
+            if (on_pattern_changed) on_pattern_changed(m_pt_circular ? m_pt_angle : m_pt_spacing);
+        },
+        []() {});
+}
+
+std::vector<DesignSketchTool::RegionLoop>
+DesignSketchTool::region_loops(const std::vector<SketchEntity>& ents) const
+{
+    std::vector<RegionLoop> regions;
+    const double eps2 = sketch_join_tol() * sketch_join_tol();
+    auto is_near = [&](const Vec2d& a, const Vec2d& b) { return (a - b).squaredNorm() < eps2; };
+
+    struct Seg { std::vector<Vec2d> pts; int ent{-1}; bool used{false}; };
+    std::vector<Seg> segs;
+    for (int i = 0; i < int(ents.size()); ++i) {
+        const SketchEntity& e = ents[i];
+        if (e.construction) continue;
+        bool closed = false;
+        if (e.type == SketchEntity::Type::Circle || e.type == SketchEntity::Type::Ellipse) {
+            regions.push_back({ entity_polyline(e, closed), { i } });
+        } else if (e.type == SketchEntity::Type::Line || e.type == SketchEntity::Type::Arc
+                   || e.type == SketchEntity::Type::EllipseArc
+                   || e.type == SketchEntity::Type::BSpline) {
+            std::vector<Vec2d> p = entity_polyline(e, closed);
+            if (p.size() >= 2) segs.push_back({ std::move(p), i, false });
+        }
+    }
+
+    for (size_t s = 0; s < segs.size(); ++s) {
+        if (segs[s].used) continue;
+        segs[s].used = true;
+        std::vector<Vec2d> loop = segs[s].pts;
+        std::vector<int>   loop_ents = { segs[s].ent };
+        const Vec2d start = loop.front();
+        Vec2d cur = loop.back();
+        bool extended = true;
+        while (extended && !is_near(cur, start)) {
+            extended = false;
+            for (size_t t = 0; t < segs.size(); ++t) {
+                if (segs[t].used) continue;
+                const std::vector<Vec2d>& q = segs[t].pts;
+                if (is_near(q.front(), cur)) {
+                    for (size_t k = 1; k < q.size(); ++k) loop.push_back(q[k]);
+                    cur = q.back();
+                } else if (is_near(q.back(), cur)) {
+                    for (int k = int(q.size()) - 2; k >= 0; --k) loop.push_back(q[k]);
+                    cur = q.front();
+                } else {
+                    continue;
+                }
+                segs[t].used = true;
+                loop_ents.push_back(segs[t].ent);
+                extended = true;
+                break;
+            }
+        }
+        if (is_near(cur, start) && loop.size() >= 4) {
+            loop.pop_back();
+            regions.push_back({ std::move(loop), std::move(loop_ents), {} });
+        }
+    }
+
+    auto poly_area = [](const std::vector<Vec2d>& q) {
+        double a2 = 0.0;
+        for (size_t i = 0, j = q.size() - 1; i < q.size(); j = i++)
+            a2 += (q[j].x() + q[i].x()) * (q[j].y() - q[i].y());
+        return std::abs(a2) * 0.5;
+    };
+    auto point_in = [](const Vec2d& pt, const std::vector<Vec2d>& q) {
+        bool in = false;
+        for (size_t i = 0, j = q.size() - 1; i < q.size(); j = i++) {
+            const Vec2d& A = q[i]; const Vec2d& B = q[j];
+            if (((A.y() > pt.y()) != (B.y() > pt.y())) &&
+                (pt.x() < (B.x() - A.x()) * (pt.y() - A.y()) / (B.y() - A.y()) + A.x()))
+                in = !in;
+        }
+        return in;
+    };
+    auto interior_point = [](const std::vector<Vec2d>& q) {
+        size_t k = 0;
+        for (size_t i = 1; i < q.size(); ++i)
+            if (q[i].y() < q[k].y() || (q[i].y() == q[k].y() && q[i].x() < q[k].x())) k = i;
+        const Vec2d& v = q[k];
+        Vec2d a = q[(k + q.size() - 1) % q.size()] - v;
+        Vec2d b = q[(k + 1) % q.size()] - v;
+        const double la = a.norm(), lb = b.norm();
+        if (la < 1e-12 || lb < 1e-12) return v;
+        a /= la; b /= lb;
+        Vec2d bis = a + b;
+        if (bis.norm() < 1e-12) return v;
+        bis.normalize();
+        return Vec2d(v + bis * (1e-3 * std::min(la, lb)));
+    };
+    std::vector<Vec2d> probe(regions.size());
+    for (size_t i = 0; i < regions.size(); ++i)
+        if (regions[i].poly.size() >= 3) probe[i] = interior_point(regions[i].poly);
+        else if (!regions[i].poly.empty()) probe[i] = regions[i].poly.front();
+    for (size_t i = 0; i < regions.size(); ++i) {
+        if (regions[i].poly.empty()) continue;
+        int    best = -1;
+        double best_area = 0.0;
+        for (size_t j = 0; j < regions.size(); ++j) {
+            if (i == j || regions[j].poly.size() < 3) continue;
+            if (!point_in(probe[i], regions[j].poly)) continue;
+            const double a2 = poly_area(regions[j].poly);
+            if (best < 0 || a2 < best_area) { best = int(j); best_area = a2; }
+        }
+        if (best >= 0) regions[best].holes.push_back(int(i));
+    }
+    for (RegionLoop& r : regions)
+        r.defect = sketch_loop_defect(ents, r.ents, r.defect_at);
+    return regions;
+}
+
+int DesignSketchTool::region_at(const Vec2d& p) const
+{
+    const std::vector<RegionLoop> regions = region_loops(m_entities);
+    auto inside = [](const Vec2d& q, const std::vector<Vec2d>& poly) {
+        bool in = false;
+        for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+            const Vec2d& a = poly[i];
+            const Vec2d& b = poly[j];
+            if (((a.y() > q.y()) != (b.y() > q.y())) &&
+                (q.x() < (b.x() - a.x()) * (q.y() - a.y()) / (b.y() - a.y()) + a.x()))
+                in = !in;
+        }
+        return in;
+    };
+    auto poly_area = [](const std::vector<Vec2d>& q) {
+        double a2 = 0.0;
+        for (size_t i = 0, j = q.size() - 1; i < q.size(); j = i++)
+            a2 += (q[j].x() + q[i].x()) * (q[j].y() - q[i].y());
+        return std::abs(a2) * 0.5;
+    };
+    int    best = -1;
+    double best_area = 0.0;
+    for (size_t i = 0; i < regions.size(); ++i) {
+        if (regions[i].poly.size() < 3) continue;
+        if (!inside(p, regions[i].poly)) continue;
+        bool in_hole = false;
+        for (int h : regions[i].holes) {
+            if (h < 0 || h >= int(regions.size()) || regions[h].poly.size() < 3) continue;
+            if (inside(p, regions[h].poly)) { in_hole = true; break; }
+        }
+        if (in_hole) continue;
+        const double a = poly_area(regions[i].poly);
+        if (best < 0 || a < best_area) { best = int(i); best_area = a; }
+    }
+    return best;
+}
+
+static std::vector<std::vector<Vec2d>> dash_polyline(const std::vector<Vec2d>& pts, bool closed,
+                                                     double dash, double gap)
+{
+    std::vector<std::vector<Vec2d>> out;
+    if (pts.size() < 2 || dash <= 0.0 || gap <= 0.0) return out;
+    const size_t segs = closed ? pts.size() : pts.size() - 1;
+    bool   on   = true;
+    double left = dash;
+    std::vector<Vec2d> cur;
+    if (on) cur.push_back(pts[0]);
+    for (size_t i = 0; i < segs; ++i) {
+        const Vec2d a = pts[i], b = pts[(i + 1) % pts.size()];
+        double seg = (b - a).norm();
+        if (seg < 1e-12) continue;
+        const Vec2d dir = (b - a) / seg;
+        double t = 0.0;
+        while (seg - t > left) {
+            t += left;
+            const Vec2d p = a + dir * t;
+            if (on) { cur.push_back(p); out.push_back(cur); cur.clear(); }
+            else    { cur.clear(); cur.push_back(p); }
+            on   = !on;
+            left = on ? dash : gap;
+        }
+        left -= (seg - t);
+        if (on) cur.push_back(b);
+    }
+    if (on && cur.size() >= 2) out.push_back(cur);
+    return out;
+}
+
+void DesignSketchTool::draw_quad_strip(GLModel& model, const std::vector<Vec2d>& pts, bool closed, const ColorRGBA& color)
+{
+    if (pts.size() < 2)
+        return;
+
+    const double hw = 0.3;
+    GLModel::Geometry g;
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned int base = 0;
+
+    const size_t segs = closed ? pts.size() : pts.size() - 1;
+    for (size_t i = 0; i < segs; ++i) {
+        const Vec2d a = pts[i];
+        const Vec2d b = pts[(i + 1) % pts.size()];
+        const Vec2d d = b - a;
+        const double len = d.norm();
+        if (len < 1e-6)
+            continue;
+        const Vec2d n(-d.y() / len, d.x() / len);
+        const Vec2d o = n * hw;
+        g.add_vertex((Vec3f)m_plane.to_world(a + o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(b + o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(b - o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(a - o).cast<float>());
+        g.add_triangle(base, base + 1, base + 2);
+        g.add_triangle(base, base + 2, base + 3);
+        base += 4;
+    }
+
+    if (base > 0) {
+        model.reset();
+        model.init_from(std::move(g));
+        model.set_color(color);
+        model.render();
+    }
+}
+
+namespace {
+double poly_signed_area(const std::vector<Vec2d>& p)
+{
+    double a = 0.0;
+    for (size_t i = 0, n = p.size(); i < n; ++i) {
+        const Vec2d& u = p[i];
+        const Vec2d& v = p[(i + 1) % n];
+        a += u.x() * v.y() - v.x() * u.y();
+    }
+    return 0.5 * a;
+}
+bool pt_in_tri(const Vec2d& p, const Vec2d& a, const Vec2d& b, const Vec2d& c)
+{
+    auto cross = [](const Vec2d& u, const Vec2d& v, const Vec2d& w) {
+        return (v.x() - u.x()) * (w.y() - u.y()) - (v.y() - u.y()) * (w.x() - u.x());
+    };
+    const double d1 = cross(a, b, p), d2 = cross(b, c, p), d3 = cross(c, a, p);
+    const bool neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+    const bool pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+    return !(neg && pos);
+}
+std::vector<std::array<unsigned, 3>> ear_clip(const std::vector<Vec2d>& poly)
+{
+    std::vector<std::array<unsigned, 3>> tris;
+    const size_t n = poly.size();
+    if (n < 3) return tris;
+    std::vector<unsigned> idx(n);
+    for (unsigned i = 0; i < n; ++i) idx[i] = i;
+    if (poly_signed_area(poly) < 0.0) std::reverse(idx.begin(), idx.end());
+    int guard = 0;
+    while (idx.size() > 3 && guard++ < int(10 * n)) {
+        bool clipped = false;
+        const int m = int(idx.size());
+        for (int i = 0; i < m; ++i) {
+            const unsigned i0 = idx[(i + m - 1) % m];
+            const unsigned i1 = idx[i];
+            const unsigned i2 = idx[(i + 1) % m];
+            const Vec2d& a = poly[i0]; const Vec2d& b = poly[i1]; const Vec2d& c = poly[i2];
+            const double cr = (b.x() - a.x()) * (c.y() - a.y()) - (b.y() - a.y()) * (c.x() - a.x());
+            if (cr <= 0.0) continue;
+            bool ear = true;
+            for (int j = 0; j < m; ++j) {
+                const unsigned ij = idx[j];
+                if (ij == i0 || ij == i1 || ij == i2) continue;
+                if (pt_in_tri(poly[ij], a, b, c)) { ear = false; break; }
+            }
+            if (!ear) continue;
+            tris.push_back({ i0, i1, i2 });
+            idx.erase(idx.begin() + i);
+            clipped = true;
+            break;
+        }
+        if (!clipped) break;
+    }
+    if (idx.size() == 3) tris.push_back({ idx[0], idx[1], idx[2] });
+    return tris;
+}
+}
+void DesignSketchTool::draw_fill_holed(GLModel& model, const std::vector<Vec2d>& outer,
+                                       const std::vector<std::vector<Vec2d>>& holes,
+                                       const ColorRGBA& color)
+{
+    if (outer.size() < 3) return;
+    if (holes.empty()) { draw_fill(model, outer, color); return; }
+
+    std::vector<const std::vector<Vec2d>*> contours;
+    contours.push_back(&outer);
+    for (const auto& h : holes) if (h.size() >= 3) contours.push_back(&h);
+
+    double ymin = outer[0].y(), ymax = ymin, xmin = outer[0].x(), xmax = xmin;
+    for (const auto* c : contours)
+        for (const Vec2d& v : *c) {
+            ymin = std::min(ymin, v.y()); ymax = std::max(ymax, v.y());
+            xmin = std::min(xmin, v.x()); xmax = std::max(xmax, v.x());
+        }
+    if (ymax - ymin < 1e-9) return;
+
+    const int    ROWS = 256;
+    const double dy   = (ymax - ymin) / ROWS;
+
+    GLModel::Geometry g;
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned base = 0;
+    std::vector<double> xs;
+    for (int row = 0; row < ROWS; ++row) {
+        const double y0 = ymin + dy * row, y1 = y0 + dy, ym = 0.5 * (y0 + y1);
+        xs.clear();
+        for (const auto* c : contours) {
+            const std::vector<Vec2d>& q = *c;
+            for (size_t i = 0, j = q.size() - 1; i < q.size(); j = i++) {
+                const Vec2d& A = q[i]; const Vec2d& B = q[j];
+                if ((A.y() > ym) == (B.y() > ym)) continue;
+                xs.push_back(A.x() + (ym - A.y()) * (B.x() - A.x()) / (B.y() - A.y()));
+            }
+        }
+        if (xs.size() < 2) continue;
+        std::sort(xs.begin(), xs.end());
+        for (size_t k = 0; k + 1 < xs.size(); k += 2) {
+            const double xa = xs[k], xb = xs[k + 1];
+            if (xb - xa < 1e-9) continue;
+            g.add_vertex((Vec3f)m_plane.to_world(Vec2d(xa, y0)).cast<float>());
+            g.add_vertex((Vec3f)m_plane.to_world(Vec2d(xb, y0)).cast<float>());
+            g.add_vertex((Vec3f)m_plane.to_world(Vec2d(xb, y1)).cast<float>());
+            g.add_vertex((Vec3f)m_plane.to_world(Vec2d(xa, y1)).cast<float>());
+            g.add_triangle(base, base + 1, base + 2);
+            g.add_triangle(base, base + 2, base + 3);
+            base += 4;
+        }
+    }
+    if (base == 0) return;
+    model.reset();
+    model.init_from(std::move(g));
+    model.set_color(color);
+    model.render();
+}
+
+void DesignSketchTool::draw_fill(GLModel& model, const std::vector<Vec2d>& poly, const ColorRGBA& color)
+{
+    if (poly.size() < 3) return;
+    const auto tris = ear_clip(poly);
+    if (tris.empty()) return;
+    GLModel::Geometry g;
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    for (const Vec2d& p : poly)
+        g.add_vertex((Vec3f)m_plane.to_world(p).cast<float>());
+    for (const auto& t : tris)
+        g.add_triangle(t[0], t[1], t[2]);
+    model.reset();
+    model.init_from(std::move(g));
+    model.set_color(color);
+    model.render();
+}
+
+void DesignSketchTool::draw_vertices(GLModel& model, const std::vector<Vec2d>& pts, const ColorRGBA& color,
+                                     double half_size)
+{
+    if (pts.empty())
+        return;
+
+    const double hs = half_size;
+    GLModel::Geometry g;
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned int base = 0;
+    for (const Vec2d& p : pts) {
+        g.add_vertex((Vec3f)m_plane.to_world(p + Vec2d(-hs, -hs)).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(p + Vec2d( hs, -hs)).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(p + Vec2d( hs,  hs)).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(p + Vec2d(-hs,  hs)).cast<float>());
+        g.add_triangle(base, base + 1, base + 2);
+        g.add_triangle(base, base + 2, base + 3);
+        base += 4;
+    }
+
+    model.reset();
+    model.init_from(std::move(g));
+    model.set_color(color);
+    model.render();
+}
+
+void DesignSketchTool::draw_strokes(GLModel& model, const std::vector<std::pair<Vec2d, Vec2d>>& segs,
+                                    double hw, const ColorRGBA& color)
+{
+    GLModel::Geometry g;
+    g.format = { GLModel::Geometry::EPrimitiveType::Triangles, GLModel::Geometry::EVertexLayout::P3 };
+    unsigned int base = 0;
+    for (const auto& s : segs) {
+        const Vec2d a = s.first, b = s.second;
+        const Vec2d d = b - a;
+        const double len = d.norm();
+        if (len < 1e-6) continue;
+        const Vec2d n(-d.y() / len, d.x() / len);
+        const Vec2d o = n * hw;
+        g.add_vertex((Vec3f)m_plane.to_world(a + o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(b + o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(b - o).cast<float>());
+        g.add_vertex((Vec3f)m_plane.to_world(a - o).cast<float>());
+        g.add_triangle(base, base + 1, base + 2);
+        g.add_triangle(base, base + 2, base + 3);
+        base += 4;
+    }
+    if (base > 0) {
+        model.reset();
+        model.init_from(std::move(g));
+        model.set_color(color);
+        model.render();
+    }
+}
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+inline double rad(double deg) { return deg * kPi / 180.0; }
+
+void poly(std::vector<std::pair<Vec2d, Vec2d>>& out, std::initializer_list<Vec2d> p)
+{
+    auto it = p.begin();
+    if (it == p.end()) return;
+    Vec2d prev = *it++;
+    for (; it != p.end(); ++it) { out.emplace_back(prev, *it); prev = *it; }
+}
+void arc(std::vector<std::pair<Vec2d, Vec2d>>& out, double cx, double cy, double rx, double ry,
+         double a0, double a1, int n = 14)
+{
+    Vec2d prev(cx + rx * std::cos(a0), cy + ry * std::sin(a0));
+    for (int i = 1; i <= n; ++i) {
+        const double t = a0 + (a1 - a0) * (double)i / n;
+        const Vec2d cur(cx + rx * std::cos(t), cy + ry * std::sin(t));
+        out.emplace_back(prev, cur);
+        prev = cur;
+    }
+}
+
+void glyph_strokes(char c, std::vector<std::pair<Vec2d, Vec2d>>& out, double& advance)
+{
+    advance = 0.72;
+    switch (c) {
+    case '0':
+        arc(out, 0.30, 0.50, 0.25, 0.48, 0.0, 2.0 * kPi);
+        break;
+    case '1':
+        poly(out, {Vec2d(0.13, 0.76), Vec2d(0.33, 1.0), Vec2d(0.33, 0.0)});
+        poly(out, {Vec2d(0.13, 0.0), Vec2d(0.53, 0.0)});
+        advance = 0.52;
+        break;
+    case '2':
+        arc(out, 0.30, 0.72, 0.25, 0.25, rad(170), rad(-45));
+        poly(out, {Vec2d(0.477, 0.543), Vec2d(0.06, 0.0), Vec2d(0.56, 0.0)});
+        break;
+    case '3':
+        arc(out, 0.30, 0.74, 0.24, 0.24, rad(160), rad(-90));
+        arc(out, 0.30, 0.26, 0.26, 0.26, rad(90), rad(-160));
+        break;
+    case '4':
+        poly(out, {Vec2d(0.42, 1.0), Vec2d(0.04, 0.32), Vec2d(0.58, 0.32)});
+        poly(out, {Vec2d(0.42, 1.0), Vec2d(0.42, 0.0)});
+        break;
+    case '5':
+        poly(out, {Vec2d(0.54, 1.0), Vec2d(0.12, 1.0), Vec2d(0.11, 0.52)});
+        arc(out, 0.27, 0.30, 0.27, 0.27, rad(130), rad(-120));
+        break;
+    case '6':
+        arc(out, 0.30, 0.28, 0.26, 0.26, 0.0, 2.0 * kPi);
+        arc(out, 0.30, 0.55, 0.30, 0.45, rad(90), rad(190));
+        break;
+    case '7':
+        poly(out, {Vec2d(0.05, 1.0), Vec2d(0.57, 1.0), Vec2d(0.22, 0.0)});
+        break;
+    case '8':
+        arc(out, 0.30, 0.73, 0.22, 0.25, 0.0, 2.0 * kPi);
+        arc(out, 0.30, 0.26, 0.26, 0.26, 0.0, 2.0 * kPi);
+        break;
+    case '9':
+        arc(out, 0.30, 0.70, 0.26, 0.26, 0.0, 2.0 * kPi);
+        arc(out, 0.28, 0.55, 0.28, 0.55, rad(15), rad(-90));
+        break;
+    case '.':
+    case ',':
+        poly(out, {Vec2d(0.10, 0.08), Vec2d(0.24, 0.08)});
+        poly(out, {Vec2d(0.17, 0.02), Vec2d(0.17, 0.15)});
+        advance = 0.30;
+        break;
+    case '-':
+        poly(out, {Vec2d(0.10, 0.5), Vec2d(0.50, 0.5)});
+        advance = 0.62;
+        break;
+    case 'R':
+        poly(out, {Vec2d(0.08, 0.0), Vec2d(0.08, 1.0), Vec2d(0.38, 1.0)});
+        arc(out, 0.38, 0.75, 0.17, 0.25, rad(90), rad(-90));
+        poly(out, {Vec2d(0.38, 0.50), Vec2d(0.08, 0.50)});
+        poly(out, {Vec2d(0.30, 0.50), Vec2d(0.58, 0.0)});
+        advance = 0.80;
+        break;
+    case 'X':
+        poly(out, {Vec2d(0.06, 1.0), Vec2d(0.58, 0.0)});
+        poly(out, {Vec2d(0.58, 1.0), Vec2d(0.06, 0.0)});
+        advance = 0.72;
+        break;
+    case 'Y':
+        poly(out, {Vec2d(0.06, 1.0), Vec2d(0.32, 0.52)});
+        poly(out, {Vec2d(0.58, 1.0), Vec2d(0.32, 0.52)});
+        poly(out, {Vec2d(0.32, 0.52), Vec2d(0.32, 0.0)});
+        advance = 0.72;
+        break;
+    case 'Z':
+        poly(out, {Vec2d(0.06, 1.0), Vec2d(0.58, 1.0), Vec2d(0.06, 0.0), Vec2d(0.58, 0.0)});
+        advance = 0.72;
+        break;
+    case ' ':
+        advance = 0.5;
+        break;
+    default:
+        advance = 0.5;
+        break;
+    }
+}
+
+std::vector<std::pair<Vec2d, Vec2d>> text_strokes(const std::string& text, double height, Vec2d& size)
+{
+    std::vector<std::pair<Vec2d, Vec2d>> out;
+    double                               pen = 0.;
+    for (char c : text) {
+        std::vector<std::pair<Vec2d, Vec2d>> glyph;
+        double                               advance = 0.;
+        glyph_strokes(c, glyph, advance);
+        for (const auto& [a, b] : glyph)
+            out.emplace_back((a + Vec2d(pen, 0.)) * height, (b + Vec2d(pen, 0.)) * height);
+        pen += advance;
+    }
+    BoundingBoxf box;
+    for (const auto& [a, b] : out) {
+        box.merge(a);
+        box.merge(b);
+    }
+    if (!box.defined) {
+        size = Vec2d::Zero();
+        return out;
+    }
+    const Vec2d mid = box.center();
+    for (auto& [a, b] : out) {
+        a -= mid;
+        b -= mid;
+    }
+    size = box.size();
+    return out;
+}
+}
+
+void DesignSketchTool::draw_dim_label(const std::string& txt, const Vec2d& plane_center)
+{
+    if (txt.empty()) return;
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const wxPoint sp = world_to_screen_px(cam, m_plane.to_world(plane_center));
+    if (sp.x < 0 && sp.y < 0) return;
+    ImGuiWrapper* imgui = wxGetApp().imgui();
+    ImGuiWrapper::push_common_window_style(m_render_scale);
+    imgui->set_next_window_pos((float)sp.x, (float)sp.y, ImGuiCond_Always, 0.5f, 0.5f);
+    imgui->set_next_window_bg_alpha(0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(1.0f, 1.0f));
+    const std::string win = "##sketchdim" + std::to_string(m_dim_label_seq++);
+    imgui->begin(win, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration
+                       | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing
+                       | ImGuiWindowFlags_NoNav);
+    ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+    ImGui::AlignTextToFramePadding();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 ts  = ImGui::CalcTextSize(txt.c_str());
+    {
+        ImVec2 wp = ImGui::GetWindowPos();
+        const ImVec2 ws = ImGui::GetWindowSize();
+        for (int guard = 0; guard < 8; ++guard) {
+            bool hit = false;
+            for (const LabelRect& r : m_label_rects) {
+                const double ix = std::min(double(wp.x) + ws.x, r.x + r.w) - std::max(double(wp.x), r.x);
+                const double iy = std::min(double(wp.y) + ws.y, r.y + r.h) - std::max(double(wp.y), r.y);
+                if (ix > 2.0 && iy > 2.0) { hit = true; break; }
+            }
+            if (!hit) break;
+            wp.y += ws.y + 2.0f;
+            ImGui::SetWindowPos(wp, ImGuiCond_Always);
+        }
+        m_label_rects.push_back({double(wp.x), double(wp.y), double(ws.x), double(ws.y)});
+    }
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImGuiStyle& st = ImGui::GetStyle();
+    dl->AddRectFilled(ImVec2(pos.x - st.FramePadding.x, pos.y + st.FramePadding.y),
+                      ImVec2(pos.x + ts.x + 2.0f * st.FramePadding.x,
+                             pos.y + ts.y + 2.0f * st.FramePadding.y),
+                      ImGuiWrapper::to_ImU32(ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f)));
+    ImGui::SetCursorScreenPos(ImVec2(pos.x + st.FramePadding.x, pos.y));
+    imgui->text(txt);
+    imgui->end();
+    ImGui::PopStyleVar(3);
+    ImGuiWrapper::pop_common_window_style();
+}
+
+void DesignSketchTool::draw_text(GLModel& , const std::string& s, const Vec2d& center,
+                                 double , const ColorRGBA& )
+{
+    if ((center - m_autoedit_label_pos).squaredNorm() < 1e-9) return;
+    draw_dim_label(s, center);
+}
+
+bool DesignSketchTool::draw_dim_quote(const DimAnnot& a, double th, const ColorRGBA& dimcol,
+                                      Vec2d& out_label)
+{
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    if (a.kind == DimType::Length || a.kind == DimType::Distance) {
+        Vec2d pa, pb;
+        if (a.kind == DimType::Length) {
+            if (a.ea < 0 || a.ea >= int(m_entities.size())) return false;
+            pa = m_entities[a.ea].p0; pb = m_entities[a.ea].p1;
+        } else if (!point_at(a.ea, a.ra, pa) || !point_at(a.eb, a.rb, pb)) {
+            return false;
+        }
+        const Vec2d d = pb - pa;
+        const double L = d.norm();
+        if (L < 1e-6) return false;
+        const Vec2d u = d / L;
+        const Vec2d nrm(-u.y(), u.x());
+        const double side = (a.side != 0.0) ? a.side : 1.0;
+        const double off  = side * std::max(L * 0.18, 8.0);
+        const Vec2d A2 = pa + nrm * off, B2 = pb + nrm * off;
+        segs.emplace_back(A2, B2);
+        const double as = std::max(L * 0.04, 2.0);
+        auto arrow = [&](const Vec2d& tip, const Vec2d& dir) {
+            const Vec2d back = tip + dir * as;
+            segs.emplace_back(tip, back + nrm * (as * 0.5));
+            segs.emplace_back(tip, back - nrm * (as * 0.5));
+        };
+        arrow(A2, u); arrow(B2, -u);
+        out_label = (A2 + B2) * 0.5 + nrm * (side * (th * 0.7 + 1.5));
+    } else if (a.kind == DimType::Diameter || a.kind == DimType::Radius) {
+        if (a.ea < 0 || a.ea >= int(m_entities.size())) return false;
+        const SketchEntity& e = m_entities[a.ea];
+        const Vec2d c = e.center;
+        const double r = e.radius;
+        if (r < 1e-6) return false;
+        const Vec2d u(1.0, 0.0);
+        const double as = std::max(r * 0.12, 2.0);
+        if (a.kind == DimType::Diameter) {
+            const Vec2d p1 = c - u * r, p2 = c + u * r;
+            segs.emplace_back(p1, p2);
+            segs.emplace_back(p1, p1 + u * as + Vec2d(0, 1) * (as * 0.5));
+            segs.emplace_back(p1, p1 + u * as - Vec2d(0, 1) * (as * 0.5));
+            segs.emplace_back(p2, p2 - u * as + Vec2d(0, 1) * (as * 0.5));
+            segs.emplace_back(p2, p2 - u * as - Vec2d(0, 1) * (as * 0.5));
+            out_label = c + Vec2d(0, 1) * (th * 0.8);
+        } else {
+            const Vec2d p2 = c + u * r;
+            segs.emplace_back(c, p2);
+            segs.emplace_back(p2, p2 - u * as + Vec2d(0, 1) * (as * 0.5));
+            segs.emplace_back(p2, p2 - u * as - Vec2d(0, 1) * (as * 0.5));
+            out_label = (c + p2) * 0.5 + Vec2d(0, 1) * (th * 0.8);
+        }
+    } else if (a.kind == DimType::DistanceToLine) {
+        Vec2d pa;
+        if (!point_at(a.ea, a.ra, pa) || a.eb < 0 || a.eb >= int(m_entities.size())) return false;
+        const SketchEntity& Ln = m_entities[a.eb];
+        const Vec2d ld = Ln.p1 - Ln.p0;
+        const double n = ld.norm();
+        if (n < 1e-9) return false;
+        const Vec2d u = ld / n;
+        const double t = (pa - Ln.p0).dot(u);
+        const Vec2d foot = Ln.p0 + u * t;
+        segs.emplace_back(pa, foot);
+        out_label = (pa + foot) * 0.5 + u * (th * 0.7 + 1.5);
+    } else if (a.kind == DimType::Angle) {
+        if (a.ea < 0 || a.ea >= int(m_entities.size())) return false;
+        const SketchEntity& e = m_entities[a.ea];
+        if (e.type != SketchEntity::Type::Line) return false;
+        const Vec2d d = e.p1 - e.p0;
+        const double L = d.norm();
+        if (L < 1e-6) return false;
+        double ang = std::atan2(d.y(), d.x());
+        const double rr = std::max(std::min(L * 0.35, 40.0), th * 1.6);
+        segs.emplace_back(e.p0, e.p0 + Vec2d(rr * 1.15, 0.0));
+        const int N = 20;
+        Vec2d prev = e.p0 + Vec2d(rr, 0.0);
+        for (int i = 1; i <= N; ++i) {
+            const double t = ang * double(i) / N;
+            const Vec2d cur = e.p0 + Vec2d(rr * std::cos(t), rr * std::sin(t));
+            segs.emplace_back(prev, cur); prev = cur;
+        }
+        const double mid = ang * 0.5;
+        out_label = e.p0 + Vec2d(std::cos(mid), std::sin(mid)) * (rr + th * 1.1);
+    } else {
+        return false;
+    }
+    draw_strokes(m_highlight_model, segs, 0.2, dimcol);
+    draw_text(m_line_model, dim_text(a), out_label, th, dimcol);
+    return true;
+}
+
+void DesignSketchTool::render_dimensions(double unit_per_px)
+{
+    if (m_dimensions.empty()) return;
+    const ColorRGBA dimcol(0.85f, 0.85f, 0.85f, 1.0f);
+    const double th = std::max(15.0 * unit_per_px, 1e-4);
+    for (size_t di = 0; di < m_dimensions.size(); ++di) {
+        Vec2d label;
+        const bool bad = std::find(m_bad_dims.begin(), m_bad_dims.end(), int(di)) != m_bad_dims.end();
+        const ColorRGBA col = bad ? ColorRGBA(0.92f, 0.35f, 0.35f, 1.0f) : dimcol;
+        if (draw_dim_quote(m_dimensions[di], th, col, label))
+            m_dimensions[di].label_pos = label;
+    }
+}
+
+void DesignSketchTool::render_live_quotes(double unit_per_px)
+{
+    m_live_quotes.clear();
+    m_live_poly_fi = -1;
+    m_live_poly_side_label = m_live_poly_angle_label = Vec2d(1e18, 1e18);
+    m_live_arc_ei = -1;
+    m_live_arc_angle_label = Vec2d(1e18, 1e18);
+    m_live_ellipse_ei = -1;
+    m_live_ellipse_major_label = m_live_ellipse_minor_label = Vec2d(1e18, 1e18);
+    m_live_ellipsearc_sweep_label = Vec2d(1e18, 1e18);
+    m_live_obrect_fi = -1;
+    m_live_obrect_angle_label = Vec2d(1e18, 1e18);
+    m_live_rrect_fi = -1;
+    m_live_rrect_w_label = m_live_rrect_h_label = m_live_rrect_r_label = Vec2d(1e18, 1e18);
+    m_live_aslot_fi = -1;
+    m_live_aslot_r_label = m_live_aslot_w_label = Vec2d(1e18, 1e18);
+    m_live_slot_fi = -1;
+    m_live_slot_len_label = m_live_slot_w_label = m_live_slot_angle_label = Vec2d(1e18, 1e18);
+    if (is_edit_op_mode() || is_transform_mode()) return;
+    int ei = -1;
+    if (m_dragging_point && m_drag_ei >= 0)  ei = m_drag_ei;
+    else if (m_dragging_handle)              ei = m_drag_handle.ei;
+    else if (m_selection.size() == 1)        ei = m_selection[0];
+    else if (!m_selection.empty()) {
+        const int f0 = feature_of(m_selection.front());
+        if (f0 >= 0) {
+            bool same_feature = true;
+            for (int s : m_selection)
+                if (feature_of(s) != f0) { same_feature = false; break; }
+            if (same_feature) ei = m_selection.front();
+        }
+    }
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    const SketchEntity& e = m_entities[ei];
+
+    std::vector<DimAnnot> protos;
+    auto add_len = [&](int line_ei, double side) {
+        if (line_ei < 0 || line_ei >= int(m_entities.size())) return;
+        if (m_entities[line_ei].type != SketchEntity::Type::Line) return;
+        DimAnnot a; a.kind = DimType::Length; a.ea = line_ei; a.side = side; protos.push_back(a);
+    };
+
+    const int fi = feature_of(ei);
+    if (fi >= 0) {
+        const Feature& f = m_features[fi];
+        switch (f.kind) {
+        case FeatureKind::CornerRect:
+        case FeatureKind::CenterRect: {
+            add_len(f.begin + 0,  1.0);
+            add_len(f.begin + 1, -1.0);
+            if (f.begin >= 0 && f.begin < int(m_entities.size())) {
+                const SketchEntity& e0 = m_entities[f.begin];
+                Vec2d d0 = e0.p1 - e0.p0;
+                if (d0.squaredNorm() > 1e-12) {
+                    double deg = std::atan2(d0.y(), d0.x()) * 180.0 / M_PI;
+                    const double off = std::fmod(std::fmod(deg, 90.0) + 90.0, 90.0);
+                    if (off > 2.0 && off < 88.0) {
+                        const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+                        const double th = std::max(15.0 * unit_per_px, 1e-4);
+                        double adeg = deg; if (adeg < 0.0) adeg += 360.0;
+                        const Vec2d mid = 0.5 * (e0.p0 + e0.p1);
+                        Vec2d nrm(-d0.y(), d0.x()); if (nrm.squaredNorm() > 1e-12) nrm.normalize();
+                        m_live_obrect_angle_label = mid + nrm * (th * 1.4);
+                        DimAnnot at; at.kind = DimType::Angle; at.value = adeg;
+                        draw_text(m_line_model, dim_text(at), m_live_obrect_angle_label, th, dc);
+                        m_live_obrect_fi = fi;
+                    }
+                }
+            }
+            break;
+        }
+        case FeatureKind::Slot: {
+            const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+            const double th = std::max(15.0 * unit_per_px, 1e-4);
+            Vec2d u = f.c1 - f.c0;
+            const double Lc = u.norm();
+            if (Lc > 1e-9) {
+                u /= Lc;
+                const Vec2d n(-u.y(), u.x());
+                const double w = f.param;
+                DimAnnot len; len.kind = DimType::Length; len.value = Lc;
+                m_live_slot_len_label = 0.5 * (f.c0 + f.c1) + n * (w + th * 2.0);
+                draw_text(m_line_model, dim_text(len), m_live_slot_len_label, th, dc);
+                DimAnnot rd; rd.kind = DimType::Length; rd.value = 2.0 * w;
+                m_live_slot_w_label = f.c1 + u * (w + th * 2.0);
+                draw_text(m_line_model, dim_text(rd), m_live_slot_w_label, th, dc);
+                double deg = std::atan2(f.c1.y() - f.c0.y(), f.c1.x() - f.c0.x()) * 180.0 / M_PI;
+                if (deg < 0.0) deg += 360.0;
+                DimAnnot an; an.kind = DimType::Angle; an.value = deg;
+                m_live_slot_angle_label = f.c0 - u * (w + th * 2.0);
+                draw_text(m_line_model, dim_text(an), m_live_slot_angle_label, th, dc);
+                m_live_slot_fi = fi;
+            }
+            break;
+        }
+        case FeatureKind::Polygon: {
+            if (f.begin < int(m_entities.size()) &&
+                m_entities[f.begin].type == SketchEntity::Type::Line) {
+                const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+                const double th = std::max(15.0 * unit_per_px, 1e-4);
+                const SketchEntity& e0 = m_entities[f.begin];
+                const Vec2d m0 = 0.5 * (e0.p0 + e0.p1);
+                Vec2d u0 = e0.p1 - e0.p0;
+                if (u0.squaredNorm() > 1e-12) u0.normalize();
+                const Vec2d n0(-u0.y(), u0.x());
+                const double outsign = ((m0 + n0) - f.c0).norm() >= (m0 - f.c0).norm() ? 1.0 : -1.0;
+                DimAnnot side; side.kind = DimType::Length; side.ea = f.begin; side.side = outsign;
+                side.value = measure_dim(side);
+                Vec2d slbl;
+                if (draw_dim_quote(side, th, dc, slbl)) m_live_poly_side_label = slbl;
+
+                const Vec2d sp = m_entities[f.begin].p0 - f.c0;
+                const double R = sp.norm();
+                if (R > 1e-6) {
+                    double av = std::atan2(sp.y(), sp.x());
+                    double avdeg = av * 180.0 / M_PI; if (avdeg < 0.0) avdeg += 360.0;
+                    const double rr = R + th * 2.5;
+                    std::vector<std::pair<Vec2d, Vec2d>> asegs;
+                    asegs.emplace_back(f.c0, f.c0 + Vec2d(rr, 0.0));
+                    asegs.emplace_back(f.c0, f.c0 + Vec2d(std::cos(av), std::sin(av)) * rr);
+                    const int N = 20; Vec2d prev = f.c0 + Vec2d(rr, 0.0);
+                    for (int i = 1; i <= N; ++i) {
+                        const double t = av * double(i) / N;
+                        const Vec2d cur = f.c0 + Vec2d(rr * std::cos(t), rr * std::sin(t));
+                        asegs.emplace_back(prev, cur); prev = cur;
+                    }
+                    const double mid = av * 0.5;
+                    const Vec2d albl = f.c0 + Vec2d(std::cos(mid), std::sin(mid)) * (rr + th * 1.2);
+                    DimAnnot at; at.kind = DimType::Angle; at.value = avdeg;
+                    draw_strokes(m_highlight_model, asegs, 0.6, dc);
+                    draw_text(m_line_model, dim_text(at), albl, th, dc);
+                    m_live_poly_angle_label = albl;
+                }
+                m_live_poly_fi = fi;
+            }
+            break;
+        }
+        case FeatureKind::RoundedRect: {
+            const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+            const double th = std::max(15.0 * unit_per_px, 1e-4);
+            const double xmin = std::min(f.c0.x(), f.c1.x()), xmax = std::max(f.c0.x(), f.c1.x());
+            const double ymin = std::min(f.c0.y(), f.c1.y()), ymax = std::max(f.c0.y(), f.c1.y());
+            const double w = xmax - xmin, h = ymax - ymin, r = f.param;
+            const double off = th * 2.0;
+            std::vector<std::pair<Vec2d, Vec2d>> segs;
+            const double yb = ymin - off;
+            segs.emplace_back(Vec2d(xmin, ymin), Vec2d(xmin, yb));
+            segs.emplace_back(Vec2d(xmax, ymin), Vec2d(xmax, yb));
+            segs.emplace_back(Vec2d(xmin, yb),   Vec2d(xmax, yb));
+            const double xl = xmin - off;
+            segs.emplace_back(Vec2d(xmin, ymin), Vec2d(xl, ymin));
+            segs.emplace_back(Vec2d(xmin, ymax), Vec2d(xl, ymax));
+            segs.emplace_back(Vec2d(xl, ymin),   Vec2d(xl, ymax));
+            const Vec2d rc(xmax - r, ymax - r);
+            segs.emplace_back(rc, rc + Vec2d(r, r).normalized() * r);
+            draw_strokes(m_highlight_model, segs, 0.6, dc);
+            DimAnnot wa; wa.kind = DimType::Length; wa.value = w;
+            DimAnnot ha; ha.kind = DimType::Length; ha.value = h;
+            DimAnnot ra; ra.kind = DimType::Radius; ra.value = r;
+            m_live_rrect_w_label = Vec2d((xmin + xmax) * 0.5, yb - th * 0.8);
+            m_live_rrect_h_label = Vec2d(xl - th * 0.8, (ymin + ymax) * 0.5);
+            m_live_rrect_r_label = rc + Vec2d(r, r).normalized() * (r + th * 1.2);
+            draw_text(m_line_model, dim_text(wa), m_live_rrect_w_label, th, dc);
+            draw_text(m_line_model, dim_text(ha), m_live_rrect_h_label, th, dc);
+            draw_text(m_line_model, dim_text(ra), m_live_rrect_r_label, th, dc);
+            m_live_rrect_fi = fi;
+            break;
+        }
+        case FeatureKind::ArcSlot: {
+            if (f.begin + 1 < int(m_entities.size())) {
+                const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+                const double th = std::max(15.0 * unit_per_px, 1e-4);
+                const Vec2d  center = f.c0;
+                const double Rc = (f.c1 - center).norm();
+                const double w  = f.param;
+                Vec2d dirS = (f.c1 - center);
+                Vec2d dirE = (m_entities[f.begin + 1].center - center);
+                if (dirS.squaredNorm() > 1e-12 && dirE.squaredNorm() > 1e-12 && Rc > 1e-6) {
+                    dirS.normalize(); dirE.normalize();
+                    const double aS = std::atan2(dirS.y(), dirS.x());
+                    double sweep = std::atan2(dirE.y(), dirE.x()) - aS;
+                    while (sweep < 0) sweep += 2.0 * M_PI;
+                    const double aMid = aS + sweep * 0.5;
+                    const Vec2d uMid(std::cos(aMid), std::sin(aMid));
+                    std::vector<std::pair<Vec2d, Vec2d>> segs;
+                    segs.emplace_back(center, center + uMid * Rc);
+                    segs.emplace_back(center + dirS * (Rc + w), center + dirS * (Rc - w));
+                    draw_strokes(m_highlight_model, segs, 0.6, dc);
+                    DimAnnot ra; ra.kind = DimType::Radius; ra.value = Rc;
+                    DimAnnot wa; wa.kind = DimType::Length; wa.value = 2.0 * w;
+                    m_live_aslot_r_label = center + uMid * (Rc * 0.5) + Vec2d(0, th);
+                    m_live_aslot_w_label = center + dirS * (Rc + w) + dirS * (th * 1.2);
+                    draw_text(m_line_model, dim_text(ra), m_live_aslot_r_label, th, dc);
+                    draw_text(m_line_model, dim_text(wa), m_live_aslot_w_label, th, dc);
+                    m_live_aslot_fi = fi;
+                }
+            }
+            break;
+        }
+        default: break;
+        }
+    }
+
+    if (protos.empty() && m_live_poly_fi < 0 && m_live_rrect_fi < 0 &&
+        m_live_aslot_fi < 0 && m_live_slot_fi < 0) {
+        switch (e.type) {
+        case SketchEntity::Type::Line: {
+            DimAnnot len; len.kind = DimType::Length; len.ea = ei; len.side = 1.0; protos.push_back(len);
+            DimAnnot ang; ang.kind = DimType::Angle;  ang.ea = ei; ang.eb = -1;    protos.push_back(ang);
+            break;
+        }
+        case SketchEntity::Type::Circle: {
+            DimAnnot a; a.kind = DimType::Radius; a.ea = ei; protos.push_back(a); break;
+        }
+        case SketchEntity::Type::Arc: {
+            DimAnnot a; a.kind = DimType::Radius; a.ea = ei; protos.push_back(a); break;
+        }
+        default: break;
+        }
+    }
+
+    if (m_live_poly_fi < 0 && m_live_rrect_fi < 0 && m_live_aslot_fi < 0 && m_live_slot_fi < 0 &&
+        e.type == SketchEntity::Type::Arc && e.radius > 1e-6) {
+        const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+        const double th = std::max(15.0 * unit_per_px, 1e-4);
+        const Vec2d  c  = e.center;
+        const double a0 = e.start_angle, a1 = e.end_angle;
+        const double sweep = a1 - a0;
+        double swdeg = std::abs(sweep) * 180.0 / M_PI;
+        const double rr = e.radius + th * 2.5;
+        std::vector<std::pair<Vec2d, Vec2d>> asegs;
+        asegs.emplace_back(c, c + Vec2d(std::cos(a0), std::sin(a0)) * rr);
+        asegs.emplace_back(c, c + Vec2d(std::cos(a1), std::sin(a1)) * rr);
+        const int N = 24; Vec2d prev = c + Vec2d(std::cos(a0), std::sin(a0)) * rr;
+        for (int i = 1; i <= N; ++i) {
+            const double t = a0 + sweep * double(i) / N;
+            const Vec2d cur = c + Vec2d(rr * std::cos(t), rr * std::sin(t));
+            asegs.emplace_back(prev, cur); prev = cur;
+        }
+        const double mid = a0 + sweep * 0.5;
+        const Vec2d albl = c + Vec2d(std::cos(mid), std::sin(mid)) * (rr + th * 1.2);
+        DimAnnot at; at.kind = DimType::Angle; at.value = swdeg;
+        draw_strokes(m_highlight_model, asegs, 0.6, dc);
+        draw_text(m_line_model, dim_text(at), albl, th, dc);
+        m_live_arc_angle_label = albl;
+        m_live_arc_ei = ei;
+    }
+
+    if (m_live_poly_fi < 0 && m_live_rrect_fi < 0 &&
+        (e.type == SketchEntity::Type::Ellipse || e.type == SketchEntity::Type::EllipseArc) &&
+        e.radius > 1e-6 && e.rminor > 1e-6) {
+        const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+        const double th = std::max(15.0 * unit_per_px, 1e-4);
+        const Vec2d  c  = e.center;
+        const Vec2d  um(std::cos(e.rotation), std::sin(e.rotation));
+        const Vec2d  un(-um.y(), um.x());
+        std::vector<std::pair<Vec2d, Vec2d>> segs;
+        const Vec2d majEnd = c + um * e.radius, minEnd = c + un * e.rminor;
+        segs.emplace_back(c, majEnd);
+        segs.emplace_back(c, minEnd);
+        draw_strokes(m_highlight_model, segs, 0.6, dc);
+        DimAnnot ma; ma.kind = DimType::Length; ma.value = e.radius;
+        DimAnnot mi; mi.kind = DimType::Length; mi.value = e.rminor;
+        const Vec2d majLbl = c + um * (e.radius * 0.5) + un * (th * 1.0);
+        const Vec2d minLbl = c + un * (e.rminor * 0.5) + um * (th * 1.0);
+        draw_text(m_line_model, dim_text(ma), majLbl, th, dc);
+        draw_text(m_line_model, dim_text(mi), minLbl, th, dc);
+        m_live_ellipse_major_label = majLbl;
+        m_live_ellipse_minor_label = minLbl;
+        m_live_ellipse_ei = ei;
+        if (e.type == SketchEntity::Type::EllipseArc) {
+            const double midp = 0.5 * (e.start_angle + e.end_angle);
+            const Vec2d  mp   = ellipse_point(c, e.radius, e.rminor, e.rotation, midp);
+            Vec2d outw = mp - c; if (outw.squaredNorm() > 1e-12) outw.normalize();
+            m_live_ellipsearc_sweep_label = mp + outw * (th * 1.5);
+            DimAnnot sw; sw.kind = DimType::Angle;
+            sw.value = std::abs(e.end_angle - e.start_angle) * 180.0 / M_PI;
+            draw_text(m_line_model, dim_text(sw), m_live_ellipsearc_sweep_label, th, dc);
+        }
+    }
+
+    if (protos.empty()) return;
+
+    const ColorRGBA dimcol(0.30f, 0.88f, 0.66f, 1.0f);
+    const double th = std::max(15.0 * unit_per_px, 1e-4);
+    for (DimAnnot a : protos) {
+        bool driven = false;
+        for (const DimAnnot& d : m_dimensions)
+            if (d.ea == a.ea && d.kind == a.kind) { driven = true; break; }
+        if (driven) continue;
+        a.value = measure_dim(a);
+        Vec2d label;
+        if (draw_dim_quote(a, th, dimcol, label)) {
+            a.label_pos = label;
+            m_live_quotes.push_back(a);
+        }
+    }
+}
+
+void DesignSketchTool::build_constraint_glyphs(double unit_per_px,
+                                               const std::vector<SketchEntityConstraintDef>& cons,
+                                               std::vector<std::pair<Vec2d, Vec2d>>& out)
+{
+    m_glyph_hits.clear();
+    if (cons.empty() || m_entities.empty()) return;
+    using T = SketchConstraintType;
+    const double s = std::max(11.0 * unit_per_px, 1e-4);
+    const double step = s * 1.5;
+    auto anchor_of = [&](int ei) -> Vec2d {
+        if (ei < 0 || ei >= int(m_entities.size())) return Vec2d(0, 0);
+        const SketchEntity& e = m_entities[ei];
+        switch (e.type) {
+        case SketchEntity::Type::Line:    return 0.5 * (e.p0 + e.p1);
+        case SketchEntity::Type::Circle:
+        case SketchEntity::Type::Ellipse:
+        case SketchEntity::Type::Arc:
+        case SketchEntity::Type::EllipseArc: return e.center;
+        case SketchEntity::Type::BSpline:  return 0.5 * (e.p0 + e.p1);
+        case SketchEntity::Type::Point:    return e.p0;
+        }
+        return e.p0;
+    };
+
+    auto seg = [&](std::vector<std::pair<Vec2d, Vec2d>>& v, Vec2d a, Vec2d b) { v.emplace_back(a, b); };
+    auto circ = [&](std::vector<std::pair<Vec2d, Vec2d>>& v, Vec2d c, double r) {
+        const int n = 12; Vec2d prev(c.x() + r, c.y());
+        for (int i = 1; i <= n; ++i) {
+            const double t = 2.0 * 3.14159265358979 * i / n;
+            Vec2d cur(c.x() + r * std::cos(t), c.y() + r * std::sin(t));
+            v.emplace_back(prev, cur); prev = cur;
+        }
+    };
+    auto unit_glyph = [&](T type, std::vector<std::pair<Vec2d, Vec2d>>& v) {
+        switch (type) {
+        case T::Horizontal: seg(v, {-0.5, 0}, {0.5, 0}); break;
+        case T::Vertical:   seg(v, {0, -0.5}, {0, 0.5}); break;
+        case T::Parallel:   seg(v, {-0.35, -0.5}, {0.0, 0.5}); seg(v, {0.05, -0.5}, {0.4, 0.5}); break;
+        case T::Perpendicular: seg(v, {-0.4, 0.5}, {-0.4, -0.4}); seg(v, {-0.4, -0.4}, {0.5, -0.4}); break;
+        case T::Coincident: circ(v, {0, 0}, 0.42); break;
+        case T::Concentric: circ(v, {0, 0}, 0.5); circ(v, {0, 0}, 0.24); break;
+        case T::EqualLength:seg(v, {-0.4, 0.16}, {0.4, 0.16}); seg(v, {-0.4, -0.16}, {0.4, -0.16}); break;
+        case T::Tangent:    circ(v, {0, -0.1}, 0.35); seg(v, {-0.5, 0.42}, {0.5, 0.42}); break;
+        case T::Midpoint:   seg(v, {-0.4, 0}, {0.4, 0}); seg(v, {0, -0.18}, {0, 0.18}); break;
+        case T::Symmetric:  seg(v, {0, -0.5}, {0, 0.5});
+                            seg(v, {-0.5, 0.4}, {-0.15, 0}); seg(v, {-0.5, -0.4}, {-0.15, 0});
+                            seg(v, {0.5, 0.4}, {0.15, 0}); seg(v, {0.5, -0.4}, {0.15, 0}); break;
+        case T::Fix:        seg(v, {-0.4, -0.4}, {0.4, -0.4}); seg(v, {0.4, -0.4}, {0.4, 0.4});
+                            seg(v, {0.4, 0.4}, {-0.4, 0.4}); seg(v, {-0.4, 0.4}, {-0.4, -0.4}); break;
+        case T::Angle:      seg(v, {-0.4, -0.4}, {0.4, -0.4}); seg(v, {-0.4, -0.4}, {0.3, 0.4}); break;
+        case T::Radius:     circ(v, {0, 0}, 0.45); seg(v, {0, 0}, {0.45, 0}); break;
+        case T::Diameter:   circ(v, {0, 0}, 0.45); seg(v, {-0.45, 0}, {0.45, 0}); break;
+        case T::PointOnLine:
+        case T::PointOnObject: seg(v, {-0.5, -0.3}, {0.5, -0.3}); circ(v, {0, 0.05}, 0.16); break;
+        case T::Distance:
+        case T::LockX:
+        case T::LockY:      seg(v, {-0.4, 0}, {0.4, 0}); break;
+        }
+    };
+
+    std::vector<int> stack(m_entities.size(), 0);
+    const Vec2d up(0.0, 1.0);
+    m_glyph_r = 0.6 * s;
+    for (size_t ci = 0; ci < cons.size(); ++ci) {
+        const SketchEntityConstraintDef& d = cons[ci];
+        if (d.ea < 0 || d.ea >= int(m_entities.size())) continue;
+        const int k = stack[d.ea]++;
+        const Vec2d center = anchor_of(d.ea) + up * (step * (1.0 + k));
+        m_glyph_hits.push_back({center, int(ci)});
+        std::vector<std::pair<Vec2d, Vec2d>> cell;
+        unit_glyph(d.type, cell);
+        for (auto& sgp : cell)
+            out.emplace_back(center + sgp.first * s, center + sgp.second * s);
+    }
+}
+
+void DesignSketchTool::draw_entities_preview(const std::vector<SketchEntity>& ents, const ColorRGBA& color)
+{
+    std::vector<Vec2d> point_markers;
+    for (const SketchEntity& e : ents) {
+        if (e.type == SketchEntity::Type::Point) { point_markers.push_back(e.p0); continue; }
+        bool closed = false;
+        std::vector<Vec2d> poly = entity_polyline(e, closed);
+        draw_quad_strip(m_highlight_model, poly, closed, color);
+    }
+    if (!point_markers.empty())
+        draw_vertices(m_highlight_model, point_markers, color);
+}
+
+void DesignSketchTool::reset_op()
+{
+    m_op_a = m_op_b = -1;
+    m_op_value = 0.0;
+    m_op_anchor = Vec2d(0, 0);
+    m_op_dir = Vec2d(0, 0);
+    m_op_label = Vec2d(1e18, 1e18);
+    m_op_ghost.clear();
+    m_op_dragging_arrow = false;
+    m_mirror_targets.clear();
+    m_op_chain.clear();
+}
+
+std::vector<SketchEntity> DesignSketchTool::op_chain_entities() const
+{
+    std::vector<SketchEntity> out;
+    for (int i : m_op_chain)
+        if (i >= 0 && i < int(m_entities.size())) out.push_back(m_entities[i]);
+    return out;
+}
+
+void DesignSketchTool::reset_xform()
+{
+    m_xform_base.clear();
+    m_xform_feat = -1;
+    m_xform_handle = -1;
+    m_xform_offset = Vec2d(0, 0);
+    m_xform_sx = m_xform_sy = 1.0;
+    m_xform_min = m_xform_max = Vec2d(0, 0);
+}
+
+void DesignSketchTool::begin_imported_transform(
+        int feat, const std::vector<std::vector<std::vector<Vec2d>>>& base_regions,
+        const SketchPlane& plane, const Vec2d& offset, double sx, double sy)
+{
+    cancel();
+    m_plane = plane;
+    m_mode  = Mode::TransformArt;
+    m_xform_base   = base_regions;
+    m_xform_feat   = feat;
+    m_xform_offset = offset;
+    m_xform_sx = (std::abs(sx) > 1e-6) ? sx : 1.0;
+    m_xform_sy = (std::abs(sy) > 1e-6) ? sy : 1.0;
+    m_xform_handle = -1;
+    Vec2d mn(1e30, 1e30), mx(-1e30, -1e30);
+    for (const auto& region : m_xform_base)
+        for (const auto& contour : region)
+            for (const Vec2d& p : contour) {
+                mn.x() = std::min(mn.x(), p.x()); mn.y() = std::min(mn.y(), p.y());
+                mx.x() = std::max(mx.x(), p.x()); mx.y() = std::max(mx.y(), p.y());
+            }
+    if (mx.x() < mn.x()) { mn = Vec2d(0, 0); mx = Vec2d(0, 0); }
+    m_xform_min = mn; m_xform_max = mx;
+    m_active = true;
+    m_has_cursor = false;
+}
+
+void DesignSketchTool::xform_world_corners(Vec2d out[4]) const
+{
+    const double x0 = m_xform_min.x() * m_xform_sx + m_xform_offset.x();
+    const double x1 = m_xform_max.x() * m_xform_sx + m_xform_offset.x();
+    const double y0 = m_xform_min.y() * m_xform_sy + m_xform_offset.y();
+    const double y1 = m_xform_max.y() * m_xform_sy + m_xform_offset.y();
+    out[0] = Vec2d(x0, y0); out[1] = Vec2d(x1, y0);
+    out[2] = Vec2d(x1, y1); out[3] = Vec2d(x0, y1);
+}
+
+int DesignSketchTool::hit_test_xform_handle(const Vec2d& p, double tol) const
+{
+    Vec2d c[4]; xform_world_corners(c);
+    int best = -1; double bd = tol;
+    for (int i = 0; i < 4; ++i) { const double d = (c[i] - p).norm(); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) return best;
+    if ((0.5 * (c[0] + c[2]) - p).norm() <= tol) return 4;
+    return -1;
+}
+
+void DesignSketchTool::drag_xform_handle(const Vec2d& target)
+{
+    if (m_xform_handle < 0) return;
+    if (m_xform_handle == 4) {
+        m_xform_offset += (target - m_xform_anchor);
+        m_xform_anchor  = target;
+        emit_xform();
+        return;
+    }
+    auto base_corner = [&](int i) {
+        return Vec2d((i == 1 || i == 2) ? m_xform_max.x() : m_xform_min.x(),
+                     (i == 2 || i == 3) ? m_xform_max.y() : m_xform_min.y());
+    };
+    const int h = m_xform_handle;
+    const Vec2d bg = base_corner(h);
+    const Vec2d ba = base_corner((h + 2) % 4);
+    const Vec2d O  = m_xform_anchor;
+    const double dbx = bg.x() - ba.x(), dby = bg.y() - ba.y();
+    if (std::abs(dbx) > 1e-9) {
+        double nsx = (target.x() - O.x()) / dbx;
+        if (std::abs(nsx) < 1e-4) nsx = (nsx < 0 ? -1e-4 : 1e-4);
+        m_xform_sx = nsx;
+        m_xform_offset.x() = O.x() - ba.x() * nsx;
+    }
+    if (std::abs(dby) > 1e-9) {
+        double nsy = (target.y() - O.y()) / dby;
+        if (std::abs(nsy) < 1e-4) nsy = (nsy < 0 ? -1e-4 : 1e-4);
+        m_xform_sy = nsy;
+        m_xform_offset.y() = O.y() - ba.y() * nsy;
+    }
+    emit_xform();
+}
+
+void DesignSketchTool::emit_xform()
+{
+    if (on_imported_transform)
+        on_imported_transform(m_xform_feat, m_xform_offset, m_xform_sx, m_xform_sy);
+}
+
+void DesignSketchTool::render_xform_gizmo()
+{
+    if (m_mode != Mode::TransformArt) return;
+    Vec2d c[4]; xform_world_corners(c);
+    const ColorRGBA box(0.30f, 0.88f, 0.66f, 1.0f);
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    for (int i = 0; i < 4; ++i) segs.emplace_back(c[i], c[(i + 1) % 4]);
+    draw_strokes(m_highlight_model, segs, 0.6, box);
+    const Camera& cam = wxGetApp().plater()->get_camera();
+    const double hs = 7.0 / std::max(cam.get_zoom(), 1e-6);
+    const ColorRGBA hcol(0.30f, 0.88f, 0.66f, 1.0f);
+    const ColorRGBA hhot(1.0f, 0.85f, 0.2f, 1.0f);
+    auto square = [&](const Vec2d& q, const ColorRGBA& col) {
+        const std::vector<Vec2d> sq = { q + Vec2d(-hs, -hs), q + Vec2d(hs, -hs),
+                                        q + Vec2d(hs, hs), q + Vec2d(-hs, hs) };
+        draw_fill(m_fill_model, sq, col);
+    };
+    for (int i = 0; i < 4; ++i) square(c[i], m_xform_handle == i ? hhot : hcol);
+    square(0.5 * (c[0] + c[2]), m_xform_handle == 4 ? hhot : hcol);
+}
+
+bool DesignSketchTool::op_ready() const
+{
+    switch (m_mode) {
+    case Mode::Fillet:
+    case Mode::Chamfer: return m_op_a >= 0 && m_op_b >= 0;
+    case Mode::Offset:  return m_op_a >= 0;
+    case Mode::Mirror:  return m_op_a >= 0 && !m_mirror_targets.empty();
+    default: return false;
+    }
+}
+
+bool DesignSketchTool::op_corner(int a, int b, Vec2d& C, Vec2d& bis, double& theta) const
+{
+    if (a < 0 || b < 0 || a >= int(m_entities.size()) || b >= int(m_entities.size())) return false;
+    const SketchEntity& ea = m_entities[a];
+    const SketchEntity& eb = m_entities[b];
+    if (ea.type != SketchEntity::Type::Line || eb.type != SketchEntity::Type::Line) return false;
+    const Vec2d da = ea.p1 - ea.p0, db = eb.p1 - eb.p0;
+    const double denom = da.x() * db.y() - da.y() * db.x();
+    if (std::abs(denom) < 1e-12) return false;
+    const Vec2d diff = eb.p0 - ea.p0;
+    const double s = (diff.x() * db.y() - diff.y() * db.x()) / denom;
+    C = ea.p0 + s * da;
+    Vec2d ua = ((ea.p0 - C).norm() <= (ea.p1 - C).norm()) ? (ea.p1 - C) : (ea.p0 - C);
+    Vec2d ub = ((eb.p0 - C).norm() <= (eb.p1 - C).norm()) ? (eb.p1 - C) : (eb.p0 - C);
+    if (ua.norm() < 1e-12 || ub.norm() < 1e-12) return false;
+    ua.normalize(); ub.normalize();
+    theta = std::acos(std::max(-1.0, std::min(1.0, ua.dot(ub))));
+    bis = ua + ub;
+    if (bis.norm() < 1e-12) return false;
+    bis.normalize();
+    return true;
+}
+
+void DesignSketchTool::recompute_op_ghost()
+{
+    m_op_ghost.clear();
+    if (m_mode == Mode::Fillet || m_mode == Mode::Chamfer) {
+        if (m_op_a < 0 || m_op_b < 0) return;
+        Vec2d C, bis; double theta;
+        if (op_corner(m_op_a, m_op_b, C, bis, theta)) { m_op_anchor = C; m_op_dir = bis; }
+        SketchEntity a_out, b_out, extra;
+        const bool ok = (m_mode == Mode::Fillet)
+            ? SketchEngine::fillet_lines(m_entities[m_op_a], m_entities[m_op_b], m_op_value, a_out, b_out, extra)
+            : SketchEngine::chamfer_lines(m_entities[m_op_a], m_entities[m_op_b], m_op_value, a_out, b_out, extra);
+        if (ok) m_op_ghost = { a_out, b_out, extra };
+    } else if (m_mode == Mode::Offset) {
+        if (m_op_a < 0) return;
+        const SketchEntity& e = m_entities[m_op_a];
+        if (e.type == SketchEntity::Type::Line) {
+            m_op_anchor = 0.5 * (e.p0 + e.p1);
+            Vec2d u = e.p1 - e.p0; if (u.norm() > 1e-12) u.normalize();
+            m_op_dir = Vec2d(-u.y(), u.x());
+        } else if (e.type == SketchEntity::Type::Circle || e.type == SketchEntity::Type::Arc) {
+            const bool ccw = e.type == SketchEntity::Type::Circle || e.end_angle >= e.start_angle;
+            m_op_anchor = e.center + Vec2d(e.radius, 0.0);
+            m_op_dir = Vec2d(ccw ? -1.0 : 1.0, 0.0);
+        }
+        m_op_ghost = SketchEngine::offset_entities(op_chain_entities(), m_op_value);
+        if (m_op_chain.size() > 1 && std::abs(m_op_value) > 1e-12 && !m_op_ghost.empty()) {
+            double best = 1e30; Vec2d closest = m_op_anchor;
+            for (const SketchEntity& g : m_op_ghost) {
+                bool closed = false;
+                const std::vector<Vec2d> pl = entity_polyline(g, closed);
+                for (size_t k = 0; k + 1 < pl.size(); ++k) {
+                    const Vec2d a = pl[k], d = pl[k + 1] - pl[k];
+                    const double l2 = d.squaredNorm();
+                    const double t = l2 > 1e-24 ? std::clamp((m_op_anchor - a).dot(d) / l2, 0.0, 1.0) : 0.0;
+                    const Vec2d q = a + t * d;
+                    if ((q - m_op_anchor).norm() < best) { best = (q - m_op_anchor).norm(); closest = q; }
+                }
+            }
+            const Vec2d v = closest - m_op_anchor;
+            if (v.norm() > 1e-12) m_op_dir = (m_op_value > 0 ? 1.0 : -1.0) * v.normalized();
+        }
+    } else if (m_mode == Mode::Mirror) {
+        if (m_op_a < 0 || m_mirror_targets.empty()) return;
+        const SketchEntity& axis = m_entities[m_op_a];
+        std::vector<SketchEntity> src;
+        for (int ti : m_mirror_targets)
+            if (ti >= 0 && ti < int(m_entities.size())) src.push_back(m_entities[ti]);
+        m_op_ghost = SketchEngine::mirror_entities(src, axis.p0, axis.p1);
+    }
+}
+
+void DesignSketchTool::op_pick(int ei)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    const SketchEntity::Type t = m_entities[ei].type;
+    switch (m_mode) {
+    case Mode::Fillet:
+    case Mode::Chamfer:
+        if (t != SketchEntity::Type::Line) return;
+        if (m_op_a < 0) m_op_a = ei;
+        else if (ei != m_op_a) {
+            Vec2d cC, cBis; double cTh = 0.0;
+            if (!op_corner(m_op_a, ei, cC, cBis, cTh)) {
+                notify(_u8L("Those two lines do not meet at a corner — pick two lines that do"));
+                return;
+            }
+            m_op_b = ei;
+            const double la = (m_entities[m_op_a].p1 - m_entities[m_op_a].p0).norm();
+            const double lb = (m_entities[m_op_b].p1 - m_entities[m_op_b].p0).norm();
+            m_op_value = std::max(0.001, 0.2 * std::min(la, lb));
+            recompute_op_ghost();
+        }
+        break;
+    case Mode::Offset: {
+        m_op_a = ei;
+        m_op_chain.clear();
+        for (int ci : connected_loop(ei))
+            if (m_entities[ci].construction == m_entities[ei].construction) m_op_chain.push_back(ci);
+        if (m_op_chain.empty()) m_op_chain.push_back(ei);
+        Vec2d lo(1e30, 1e30), hi(-1e30, -1e30);
+        for (int ci : m_op_chain) {
+            bool closed = false;
+            for (const Vec2d& q : entity_polyline(m_entities[ci], closed)) { lo = lo.cwiseMin(q); hi = hi.cwiseMax(q); }
+        }
+        const double sz = (hi.x() >= lo.x()) ? std::max(hi.x() - lo.x(), hi.y() - lo.y()) : 1.0;
+        m_op_value = std::max(0.001, 0.05 * sz);
+        recompute_op_ghost();
+        break;
+    }
+    case Mode::Mirror:
+        if (m_op_a < 0) {
+            if (t != SketchEntity::Type::Line) return;
+            m_op_a = ei;
+        } else if (ei != m_op_a) {
+            auto it = std::find(m_mirror_targets.begin(), m_mirror_targets.end(), ei);
+            if (it == m_mirror_targets.end()) m_mirror_targets.push_back(ei);
+            else                              m_mirror_targets.erase(it);
+            recompute_op_ghost();
+        }
+        break;
+    default: break;
+    }
+    m_selection.clear();
+    if (m_op_a >= 0) m_selection.push_back(m_op_a);
+    if (m_op_b >= 0) m_selection.push_back(m_op_b);
+    for (int ti : m_mirror_targets) m_selection.push_back(ti);
+    for (int ci : m_op_chain) if (ci != m_op_a) m_selection.push_back(ci);
+    if (on_selection_changed) on_selection_changed(int(m_selection.size()));
+}
+
+bool DesignSketchTool::hit_test_op_arrow(const Vec2d& p, double tol) const
+{
+    if (!op_ready() || m_mode == Mode::Mirror) return false;
+    const Vec2d tip = m_op_anchor + m_op_dir * m_op_value;
+    return point_segment_dist(p, m_op_anchor, tip) <= tol * 1.5;
+}
+
+void DesignSketchTool::drag_op_arrow(const Vec2d& target)
+{
+    const double v = (target - m_op_anchor).dot(m_op_dir);
+    if (m_mode == Mode::Offset) m_op_value = v;
+    else                        m_op_value = std::max(0.001, v);
+    recompute_op_ghost();
+}
+
+void DesignSketchTool::open_op_editor()
+{
+    if (!on_inline_edit || !op_ready() || m_mode == Mode::Mirror) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, m_op_value, m_mode == Mode::Offset ? _u8L("Distance") : m_mode == Mode::Fillet ? _u8L("Radius") : _u8L("Size"),
+        [this](double v) {
+            if (m_mode != Mode::Offset && v <= 0.0) {
+                show_refusal(_u8L("The size must be greater than zero"));
+                return;
+            }
+            m_op_value   = v;
+            if (op_ready()) confirm_op();
+            else            recompute_op_ghost();
+        },
+        []() {});
+}
+
+void DesignSketchTool::render_op_gizmo(double unit_per_px)
+{
+    m_op_label = Vec2d(1e18, 1e18);
+    if (!op_ready()) return;
+    const ColorRGBA ghostc(0.30f, 0.88f, 0.66f, 0.55f);
+    draw_entities_preview(m_op_ghost, ghostc);
+    if (m_mode == Mode::Mirror) return;
+    const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+    const double th = std::max(15.0 * unit_per_px, 1e-4);
+    const Vec2d dir = (m_op_value >= 0 ? m_op_dir : -m_op_dir);
+    const Vec2d tip = m_op_anchor + m_op_dir * m_op_value;
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    segs.emplace_back(m_op_anchor, tip);
+    const double as = std::max(std::abs(m_op_value) * 0.18, th * 0.8);
+    const Vec2d nrm(-dir.y(), dir.x());
+    const Vec2d back = tip - dir * as;
+    segs.emplace_back(tip, back + nrm * (as * 0.5));
+    segs.emplace_back(tip, back - nrm * (as * 0.5));
+    draw_strokes(m_highlight_model, segs, 0.6, dc);
+    DimAnnot a;
+    a.kind  = (m_mode == Mode::Fillet) ? DimType::Radius : DimType::Distance;
+    a.value = std::abs(m_op_value);
+    m_op_label = tip + dir * (th * 1.2);
+    draw_text(m_line_model, dim_text(a), m_op_label, th, dc);
+}
+
+static bool entity_moved(const SketchEntity& a, const SketchEntity& b, double tol)
+{
+    if (a.type != b.type) return true;
+    auto moved = [tol](const Vec2d& p, const Vec2d& q) { return (p - q).norm() > tol; };
+    if (moved(a.p0, b.p0)) return true;
+    switch (a.type) {
+    case SketchEntity::Type::Point:
+        return false;
+    case SketchEntity::Type::Line:
+        return moved(a.p1, b.p1);
+    case SketchEntity::Type::Circle:
+        return moved(a.center, b.center) || std::abs(a.radius - b.radius) > tol;
+    case SketchEntity::Type::Arc:
+        return moved(a.p1, b.p1) || moved(a.center, b.center)
+            || std::abs(a.radius - b.radius) > tol
+            || std::abs((a.end_angle - a.start_angle) - (b.end_angle - b.start_angle)) > tol;
+    case SketchEntity::Type::Ellipse:
+    case SketchEntity::Type::EllipseArc:
+        return moved(a.center, b.center) || std::abs(a.radius - b.radius) > tol
+            || std::abs(a.rminor - b.rminor) > tol || std::abs(a.rotation - b.rotation) > tol;
+    default:
+        return moved(a.p1, b.p1);
+    }
+}
+
+void DesignSketchTool::confirm_op()
+{
+    if (!op_ready()) return;
+    using R  = SketchPointRole;
+    using CT = SketchConstraintType;
+
+    if (m_mode == Mode::Fillet || m_mode == Mode::Chamfer) {
+        const bool fillet = (m_mode == Mode::Fillet);
+        SketchEntity a_out, b_out, extra;
+        const bool ok = fillet
+            ? SketchEngine::fillet_lines(m_entities[m_op_a], m_entities[m_op_b], m_op_value, a_out, b_out, extra)
+            : SketchEngine::chamfer_lines(m_entities[m_op_a], m_entities[m_op_b], m_op_value, a_out, b_out, extra);
+        if (!ok) {
+            notify(fillet
+                ? _u8L("Fillet: the radius overruns a leg, or the two lines do not meet at a corner")
+                : _u8L("Chamfer: the distance overruns a leg, or the two lines do not meet at a corner"));
+            reset_op();
+            return;
+        }
+        const int a = m_op_a, b = m_op_b;
+        m_entities[a] = a_out; m_entities[b] = b_out;
+        const int xi = int(m_entities.size());
+        m_entities.push_back(extra);
+        auto role_near = [](const SketchEntity& ln, const Vec2d& q) -> R {
+            return ((ln.p0 - q).squaredNorm() <= (ln.p1 - q).squaredNorm()) ? R::P0 : R::P1; };
+        const R ra = role_near(m_entities[a], extra.p0);
+        const R rb = role_near(m_entities[b], extra.p1);
+        auto refs = [](const SketchEntityConstraintDef& d, int e, R r) {
+            return (d.ea == e && d.ra == r) || (d.eb == e && d.rb == r); };
+        auto self_len = [](const SketchEntityConstraintDef& d, int e) {
+            return d.type == CT::Distance && d.ea == e && d.eb == e; };
+        const int released = erase_constraints([&](int, const SketchEntityConstraintDef& d) {
+            return (d.type == CT::Coincident && refs(d, a, ra) && refs(d, b, rb))
+                || self_len(d, a) || self_len(d, b);
+        });
+        if (released > 0)
+            notify(format(_u8L("%1% constraint(s) the fillet/chamfer invalidated were removed"), released), false);
+        auto coin = [&](R xr, int ln, R lr) {
+            SketchEntityConstraintDef d; d.type = CT::Coincident; d.ea = xi; d.ra = xr; d.eb = ln; d.rb = lr; return d; };
+        if (fillet) {
+            auto tang = [&](int ln) {
+                SketchEntityConstraintDef d; d.type = CT::Tangent; d.ea = xi; d.eb = ln; return d; };
+            const std::vector<std::vector<SketchEntityConstraintDef>> ladder = {
+                { coin(R::P0, a, ra), coin(R::P1, b, rb), tang(a), tang(b) },
+                { coin(R::P0, a, ra), coin(R::P1, b, rb), tang(a) },
+                { coin(R::P0, a, ra), coin(R::P1, b, rb) },
+            };
+            for (const auto& set : ladder) if (try_add_constraints(set)) break;
+        } else {
+            try_add_constraints({ coin(R::P0, a, ra), coin(R::P1, b, rb) });
+        }
+    } else if (m_mode == Mode::Offset) {
+        const int a = m_op_a;
+        auto out = SketchEngine::offset_entities(op_chain_entities(), m_op_value);
+        if (out.empty()) {
+            notify(_u8L("Offset: an ellipse or a spline has no parallel of its own kind — pick lines, arcs or circles"));
+            reset_op();
+            return;
+        }
+        const int ni = int(m_entities.size());
+        const bool single = m_op_chain.size() <= 1;
+        for (auto& o : out) m_entities.push_back(o);
+        const SketchEntity::Type st = m_entities[a].type;
+        SketchEntityConstraintDef d; d.ea = a; d.eb = ni;
+        bool emit = single;
+        if (st == SketchEntity::Type::Line)                                   d.type = CT::Parallel;
+        else if (st == SketchEntity::Type::Arc || st == SketchEntity::Type::Circle) d.type = CT::Concentric;
+        else                                                                  emit = false;
+        if (emit) try_add_constraints({ d });
+    } else if (m_mode == Mode::Mirror) {
+        const SketchEntity axis = m_entities[m_op_a];
+        const std::vector<SketchEntity> before = m_entities;
+        const size_t cmark = m_constraints.size();
+        std::vector<std::pair<int, SketchEntity>> fresh;
+        for (int ti : m_mirror_targets) {
+            if (ti < 0 || ti >= int(before.size())) continue;
+            auto out = SketchEngine::mirror_entities({ before[ti] }, axis.p0, axis.p1);
+            if (out.empty()) continue;
+            const int mi = int(m_entities.size());
+            for (auto& m : out) { fresh.emplace_back(int(m_entities.size()), m); m_entities.push_back(m); }
+            SketchEntityConstraintDef d; d.type = CT::Symmetric; d.ea = ti; d.eb = mi; d.ec = m_op_a;
+            const SketchEntity::Type st = before[ti].type;
+            std::vector<std::vector<SketchEntityConstraintDef>> ladder;
+            if (st == SketchEntity::Type::Line) {
+                d.ra = R::P0; d.rb = R::P0; auto p0 = d;
+                d.ra = R::P1; d.rb = R::P1; auto p1 = d;
+                ladder = { { p0, p1 }, { p0 } };
+            } else if (st == SketchEntity::Type::Arc) {
+                d.ra = R::Center; d.rb = R::Center; auto ct = d;
+                d.ra = R::P0;     d.rb = R::P0;     auto p0 = d;
+                d.ra = R::P1;     d.rb = R::P1;     auto p1 = d;
+                ladder = { { p0, p1 }, { ct, p0 }, { ct } };
+            } else if (st == SketchEntity::Type::Circle) {
+                d.ra = R::Center; d.rb = R::Center; ladder = { { d } };
+            } else if (st == SketchEntity::Type::Point) {
+                d.ra = R::P0; d.rb = R::P0; ladder = { { d } };
+            }
+            for (const auto& set : ladder) if (try_add_constraints(set)) break;
+        }
+        bool disturbed = false;
+        for (size_t i = 0; i < before.size() && !disturbed; ++i)
+            disturbed = entity_moved(before[i], m_entities[i], 1e-6);
+        for (const auto& f : fresh)
+            if (!disturbed && f.first < int(m_entities.size()))
+                disturbed = entity_moved(f.second, m_entities[f.first], 1e-6);
+        if (disturbed) {
+            m_constraints.resize(cmark);
+            for (size_t i = 0; i < before.size(); ++i) m_entities[i] = before[i];
+            for (const auto& f : fresh)
+                if (f.first < int(m_entities.size())) m_entities[f.first] = f.second;
+        }
+    }
+    reset_op();
+    m_selection.clear();
+    resolve_live();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+void DesignSketchTool::reset_tf()
+{
+    m_tf_targets.clear();
+    m_tf_pivot = Vec2d(0, 0);
+    m_tf_delta = Vec2d(0, 0);
+    m_tf_angle = 0.0;
+    m_tf_scale = 1.0;
+    m_tf_count = 3;
+    m_tf_handle_r = 1.0;
+    m_tf_ghost.clear();
+    m_tf_handle = -1;
+    m_tf_dragging = false;
+    m_tf_label_a = Vec2d(1e18, 1e18);
+    m_tf_label_b = Vec2d(1e18, 1e18);
+}
+
+bool DesignSketchTool::tf_ready() const { return !m_tf_targets.empty(); }
+
+void DesignSketchTool::compute_tf_pivot()
+{
+    using T = SketchEntity::Type;
+    auto cen = [](const SketchEntity& e) -> Vec2d {
+        switch (e.type) {
+        case T::Line: return 0.5 * (e.p0 + e.p1);
+        case T::Arc: case T::Circle: case T::Ellipse: case T::EllipseArc: return e.center;
+        case T::BSpline:
+            if (!e.ctrl.empty()) { Vec2d s(0, 0); for (const auto& p : e.ctrl) s += p; return s / double(e.ctrl.size()); }
+            return 0.5 * (e.p0 + e.p1);
+        default: return e.p0;
+        }
+    };
+    Vec2d c(0, 0); int n = 0;
+    for (int ti : m_tf_targets)
+        if (ti >= 0 && ti < int(m_entities.size())) { c += cen(m_entities[ti]); ++n; }
+    if (n == 0) { m_tf_pivot = Vec2d(0, 0); m_tf_handle_r = 1.0; return; }
+    m_tf_pivot = c / double(n);
+    double r = 0.0;
+    for (int ti : m_tf_targets) {
+        if (ti < 0 || ti >= int(m_entities.size())) continue;
+        const SketchEntity& e = m_entities[ti];
+        auto upd = [&](const Vec2d& p) { r = std::max(r, (p - m_tf_pivot).norm()); };
+        switch (e.type) {
+        case T::Line: upd(e.p0); upd(e.p1); break;
+        case T::Arc: case T::Circle: case T::Ellipse: case T::EllipseArc:
+            upd(e.center + Vec2d(e.radius, 0)); upd(e.center - Vec2d(e.radius, 0)); break;
+        case T::BSpline: for (const auto& p : e.ctrl) upd(p); break;
+        default: upd(e.p0); break;
+        }
+    }
+    m_tf_handle_r = std::max(r, 1.0);
+}
+
+void DesignSketchTool::tf_pick(int ei)
+{
+    if (ei < 0 || ei >= int(m_entities.size())) return;
+    auto it = std::find(m_tf_targets.begin(), m_tf_targets.end(), ei);
+    if (it == m_tf_targets.end()) m_tf_targets.push_back(ei);
+    else                          m_tf_targets.erase(it);
+    compute_tf_pivot();
+    if (!m_tf_targets.empty()) {
+        const double step = std::max(m_tf_handle_r * 1.5, 1.0);
+        switch (m_mode) {
+        case Mode::Move:
+            if (m_tf_delta.norm() < 1e-9) m_tf_delta = Vec2d(step, 0.0);
+            break;
+        case Mode::Array:
+            if (m_tf_delta.norm() < 1e-9) {
+                Vec2d d(step, 0.0);
+                if (m_tf_targets.size() == 1) {
+                    const SketchEntity& e = m_entities[m_tf_targets[0]];
+                    if (e.type == SketchEntity::Type::Line) {
+                        Vec2d t = e.p1 - e.p0;
+                        if (t.norm() > 1e-9) { t.normalize(); d = Vec2d(-t.y(), t.x()) * step; }
+                    }
+                }
+                m_tf_delta = d;
+            }
+            break;
+        case Mode::Rotate:     if (std::abs(m_tf_angle) < 1e-9) m_tf_angle = M_PI / 4.0; break;
+        case Mode::PolarArray: if (std::abs(m_tf_angle) < 1e-9) m_tf_angle = 2.0 * M_PI;  break;
+        case Mode::Scale:      if (std::abs(m_tf_scale - 1.0) < 1e-9) m_tf_scale = 2.0;   break;
+        default: break;
+        }
+    }
+    recompute_tf_ghost();
+    m_selection = m_tf_targets;
+    if (on_selection_changed) on_selection_changed(int(m_selection.size()));
+}
+
+void DesignSketchTool::recompute_tf_ghost()
+{
+    m_tf_ghost.clear();
+    if (m_tf_targets.empty()) return;
+    std::vector<SketchEntity> src;
+    for (int ti : m_tf_targets)
+        if (ti >= 0 && ti < int(m_entities.size())) src.push_back(m_entities[ti]);
+    if (src.empty()) return;
+    const int count = std::max(2, m_tf_count);
+    switch (m_mode) {
+    case Mode::Move:
+        m_tf_ghost = SketchEngine::transform_entities(src, m_tf_delta, 0.0, 1.0, Vec2d(0, 0));
+        break;
+    case Mode::Rotate:
+        m_tf_ghost = SketchEngine::transform_entities(src, Vec2d(0, 0), m_tf_angle, 1.0, m_tf_pivot);
+        break;
+    case Mode::Scale:
+        m_tf_ghost = SketchEngine::transform_entities(src, Vec2d(0, 0), 0.0, m_tf_scale, m_tf_pivot);
+        break;
+    case Mode::Array:
+        m_tf_ghost = SketchEngine::array_entities(src, count, m_tf_delta, 0.0, m_tf_pivot);
+        break;
+    case Mode::PolarArray:
+        m_tf_ghost = SketchEngine::array_entities(src, count, Vec2d(0, 0), m_tf_angle / double(count), m_tf_pivot);
+        break;
+    default: break;
+    }
+}
+
+Vec2d DesignSketchTool::tf_handle_pos() const
+{
+    switch (m_mode) {
+    case Mode::Move:
+    case Mode::Array:      return m_tf_pivot + m_tf_delta;
+    case Mode::Rotate:
+    case Mode::PolarArray: return m_tf_pivot + m_tf_handle_r * Vec2d(std::cos(m_tf_angle), std::sin(m_tf_angle));
+    case Mode::Scale:      return m_tf_pivot + Vec2d(m_tf_scale * m_tf_handle_r, 0.0);
+    default:               return m_tf_pivot;
+    }
+}
+
+bool DesignSketchTool::hit_test_tf_handle(const Vec2d& p, double tol) const
+{
+    if (!tf_ready()) return false;
+    return (tf_handle_pos() - p).norm() <= tol * 2.5;
+}
+
+void DesignSketchTool::drag_tf_handle(const Vec2d& target)
+{
+    switch (m_mode) {
+    case Mode::Move:
+    case Mode::Array:
+        m_tf_delta = target - m_tf_pivot;
+        break;
+    case Mode::Rotate:
+    case Mode::PolarArray: {
+        const Vec2d d = target - m_tf_pivot;
+        if (d.norm() > 1e-9) m_tf_angle = std::atan2(d.y(), d.x());
+        break;
+    }
+    case Mode::Scale: {
+        const double r = (target - m_tf_pivot).norm();
+        m_tf_scale = std::max(1e-3, r / std::max(m_tf_handle_r, 1e-9));
+        break;
+    }
+    default: break;
+    }
+    recompute_tf_ghost();
+}
+
+void DesignSketchTool::open_tf_editor_a()
+{
+    if (!on_inline_edit || !tf_ready()) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    double cur;
+    if (m_mode == Mode::Rotate || m_mode == Mode::PolarArray) cur = m_tf_angle * 180.0 / M_PI;
+    else if (m_mode == Mode::Scale)                           cur = m_tf_scale;
+    else                                                       cur = m_tf_delta.norm();
+    Vec2d dir = m_tf_delta; if (dir.norm() > 1e-9) dir.normalize(); else dir = Vec2d(1, 0);
+    const char* title = (m_mode == Mode::Rotate || m_mode == Mode::PolarArray) ? L("Angle (°)")
+                      : (m_mode == Mode::Scale) ? L("Scale factor") : L("Distance");
+    on_inline_edit(px, cur, _u8L(title),
+        [this, dir](double v) {
+            switch (m_mode) {
+            case Mode::Move: case Mode::Array:        m_tf_delta = dir * v; break;
+            case Mode::Rotate: case Mode::PolarArray: m_tf_angle = v * M_PI / 180.0; break;
+            case Mode::Scale:
+                if (v <= 0.0) { show_refusal(_u8L("The scale factor must be greater than zero")); return; }
+                m_tf_scale = v;
+                break;
+            default: break;
+            }
+            confirm_transform();
+        },
+        []() {});
+}
+
+void DesignSketchTool::open_tf_editor_count()
+{
+    if (!on_inline_edit || !tf_ready()) return;
+    if (m_mode != Mode::Array && m_mode != Mode::PolarArray) return;
+    const wxPoint px(m_last_mouse_x, m_last_mouse_y);
+    on_inline_edit(px, double(std::max(2, m_tf_count)), _u8L("Copies"),
+        [this](double v) {
+            if (v < 2.0 || std::abs(v - std::round(v)) > 1e-9) {
+                show_refusal(_u8L("The number of copies must be a whole number, 2 or more"));
+                return;
+            }
+            m_tf_count   = int(std::round(v));
+            confirm_transform();
+        },
+        []() {});
+}
+
+void DesignSketchTool::render_tf_gizmo(double unit_per_px)
+{
+    m_tf_label_a = Vec2d(1e18, 1e18);
+    m_tf_label_b = Vec2d(1e18, 1e18);
+    if (!tf_ready()) return;
+    const ColorRGBA ghostc(0.30f, 0.88f, 0.66f, 0.55f);
+    draw_entities_preview(m_tf_ghost, ghostc);
+
+    const ColorRGBA dc(0.30f, 0.88f, 0.66f, 1.0f);
+    const ColorRGBA hot(1.0f, 0.85f, 0.2f, 1.0f);
+    const double th = std::max(15.0 * unit_per_px, 1e-4);
+    const Vec2d handle = tf_handle_pos();
+
+    std::vector<std::pair<Vec2d, Vec2d>> segs;
+    segs.emplace_back(m_tf_pivot, handle);
+    if (m_mode == Mode::Move || m_mode == Mode::Array || m_mode == Mode::Scale) {
+        Vec2d dir = handle - m_tf_pivot; const double L = dir.norm();
+        if (L > 1e-9) {
+            dir /= L;
+            const double as = std::max(L * 0.15, th * 0.8);
+            const Vec2d nrm(-dir.y(), dir.x());
+            const Vec2d back = handle - dir * as;
+            segs.emplace_back(handle, back + nrm * (as * 0.5));
+            segs.emplace_back(handle, back - nrm * (as * 0.5));
+        }
+    }
+    draw_strokes(m_highlight_model, segs, 0.6, dc);
+
+    const double hs = 6.0 * unit_per_px;
+    const std::vector<Vec2d> sq = { handle + Vec2d(-hs, -hs), handle + Vec2d(hs, -hs),
+                                    handle + Vec2d(hs, hs),   handle + Vec2d(-hs, hs) };
+    draw_fill(m_fill_model, sq, m_tf_dragging ? hot : dc);
+    draw_vertices(m_vertex_model, { m_tf_pivot }, dc, std::max(3.0 * unit_per_px, 1e-4));
+
+    std::string txt_a;
+    if (m_mode == Mode::Rotate || m_mode == Mode::PolarArray) {
+        DimAnnot a; a.kind = DimType::Angle; a.value = std::abs(m_tf_angle) * 180.0 / M_PI;
+        txt_a = dim_text(a);
+    } else if (m_mode == Mode::Scale) {
+        char b[24]; std::snprintf(b, sizeof(b), "x%.2f", m_tf_scale);
+        for (char& ch : b) if (ch == ',') ch = '.';
+        txt_a = b;
+    } else {
+        DimAnnot a; a.kind = DimType::Distance; a.value = m_tf_delta.norm();
+        txt_a = dim_text(a);
+    }
+    Vec2d outw = handle - m_tf_pivot; if (outw.norm() > 1e-9) outw.normalize(); else outw = Vec2d(1, 0);
+    m_tf_label_a = handle + outw * (th * 1.2);
+    draw_text(m_line_model, txt_a, m_tf_label_a, th, dc);
+
+    if (m_mode == Mode::Array || m_mode == Mode::PolarArray) {
+        char cb[16]; std::snprintf(cb, sizeof(cb), "x%d", std::max(2, m_tf_count));
+        m_tf_label_b = m_tf_pivot + Vec2d(th * 1.5, th * 1.5);
+        draw_text(m_line_model, cb, m_tf_label_b, th, dc);
+    }
+}
+
+void DesignSketchTool::confirm_transform()
+{
+    if (!tf_ready()) { reset_tf(); return; }
+    using CT = SketchConstraintType;
+    const std::vector<int> targets = m_tf_targets;
+    auto is_target = [&](int e) {
+        return e >= 0 && std::find(targets.begin(), targets.end(), e) != targets.end();
+    };
+
+    if (m_mode == Mode::Move || m_mode == Mode::Rotate || m_mode == Mode::Scale) {
+        const Mode mode = m_mode;
+        for (int ti : targets) {
+            if (ti < 0 || ti >= int(m_entities.size())) continue;
+            std::vector<SketchEntity> out;
+            if (mode == Mode::Move)
+                out = SketchEngine::transform_entities({ m_entities[ti] }, m_tf_delta, 0.0, 1.0, Vec2d(0, 0));
+            else if (mode == Mode::Rotate)
+                out = SketchEngine::transform_entities({ m_entities[ti] }, Vec2d(0, 0), m_tf_angle, 1.0, m_tf_pivot);
+            else
+                out = SketchEngine::transform_entities({ m_entities[ti] }, Vec2d(0, 0), 0.0, m_tf_scale, m_tf_pivot);
+            if (!out.empty()) m_entities[ti] = out[0];
+        }
+        const int released = erase_constraints([&](int, const SketchEntityConstraintDef& d) {
+            if (!(is_target(d.ea) || is_target(d.eb) || is_target(d.ec))) return false;
+            const bool self = (d.ea == d.eb);
+            if (mode == Mode::Move) {
+                switch (d.type) {
+                case CT::Coincident: case CT::PointOnLine: case CT::PointOnObject:
+                case CT::Concentric: case CT::Symmetric:   case CT::Midpoint:
+                case CT::Fix:        case CT::LockX:        case CT::LockY:   return true;
+                case CT::Distance: return !self;
+                default:           return false;
+                }
+            } else if (mode == Mode::Rotate) {
+                switch (d.type) {
+                case CT::EqualLength: case CT::Radius: case CT::Diameter: return false;
+                case CT::Distance: return !self;
+                default:           return true;
+                }
+            } else {
+                switch (d.type) {
+                case CT::Horizontal: case CT::Vertical: case CT::Parallel:
+                case CT::Perpendicular: case CT::Angle: return false;
+                default:                                return true;
+                }
+            }
+        });
+        if (released > 0)
+            notify(format(_u8L("%1% constraint(s) released by the transform"), released), false);
+    } else if (m_mode == Mode::Array || m_mode == Mode::PolarArray) {
+        const bool polar = (m_mode == Mode::PolarArray);
+        const int  count = std::max(2, m_tf_count);
+        for (int ti : targets) {
+            if (ti < 0 || ti >= int(m_entities.size())) continue;
+            const SketchEntity src = m_entities[ti];
+            std::vector<SketchEntity> copies = polar
+                ? SketchEngine::array_entities({ src }, count, Vec2d(0, 0), m_tf_angle / double(count), m_tf_pivot)
+                : SketchEngine::array_entities({ src }, count, m_tf_delta, 0.0, m_tf_pivot);
+            if (copies.empty()) continue;
+            const int base = int(m_entities.size());
+            for (auto& c : copies) m_entities.push_back(c);
+            const int nc = int(copies.size());
+            const SketchEntity::Type st = src.type;
+            std::vector<std::vector<SketchEntityConstraintDef>> ladder;
+            if (st == SketchEntity::Type::Line) {
+                auto mk = [&](bool eq, bool par) {
+                    std::vector<SketchEntityConstraintDef> w;
+                    for (int k = 0; k < nc; ++k) {
+                        const int ci = base + k;
+                        if (par) { SketchEntityConstraintDef dp; dp.type = CT::Parallel;    dp.ea = ti; dp.eb = ci; w.push_back(dp); }
+                        if (eq)  { SketchEntityConstraintDef de; de.type = CT::EqualLength;  de.ea = ti; de.eb = ci; w.push_back(de); }
+                    }
+                    return w;
+                };
+                if (polar) ladder = { mk(true, false) };
+                else       ladder = { mk(true, true), mk(false, true) };
+            } else if (st == SketchEntity::Type::Arc || st == SketchEntity::Type::Circle) {
+                const bool can_conc = polar && (m_tf_pivot - src.center).norm() < 1e-6;
+                auto mk = [&](bool conc) {
+                    std::vector<SketchEntityConstraintDef> w;
+                    for (int k = 0; k < nc; ++k) {
+                        const int ci = base + k;
+                        SketchEntityConstraintDef dr; dr.type = CT::Radius; dr.ea = ci; dr.value = src.radius; w.push_back(dr);
+                        if (conc) {
+                            SketchEntityConstraintDef dco; dco.type = CT::Concentric;
+                            dco.ea = ti; dco.ra = SketchPointRole::Center; dco.eb = ci; dco.rb = SketchPointRole::Center;
+                            w.push_back(dco);
+                        }
+                    }
+                    return w;
+                };
+                ladder = can_conc ? std::vector<std::vector<SketchEntityConstraintDef>>{ mk(true), mk(false) }
+                                  : std::vector<std::vector<SketchEntityConstraintDef>>{ mk(false) };
+            }
+            bool bound = false;
+            for (auto& w : ladder) if (!w.empty() && try_add_constraints(w)) { bound = true; break; }
+            if (!bound)
+                notify(_u8L("The array copies are unconstrained — the solver refused every binding"), false);
+        }
+    }
+    reset_tf();
+    m_selection.clear();
+    resolve_live();
+    if (on_selection_changed) on_selection_changed(0);
+}
+
+const ColorRGBA* DesignSketchTool::sketch_hl_color(int feature) const
+{
+    for (const auto& h : m_hl_sketches) if (h.first == feature) return &h.second;
+    return nullptr;
+}
+
+void DesignSketchTool::emit_step_hint()
+{
+    if (!on_step_changed || !m_active) return;
+    int step = 0, picks = 0;
+    if (is_edit_op_mode()) {
+        picks = (m_mode == Mode::Mirror) ? int(m_mirror_targets.size())
+                                         : int(m_op_a >= 0) + int(m_op_b >= 0);
+        step  = (m_op_a < 0) ? 0 : (op_ready() ? 2 : 1);
+    } else if (is_transform_mode()) {
+        picks = int(m_tf_targets.size());
+        step  = m_tf_targets.empty() ? 0 : 1;
+    } else if (m_mode == Mode::Constrain && m_constrain_entities) {
+        picks = int(m_pick0 >= 0) + int(m_pick1 >= 0) + int(m_pick2 >= 0);
+    } else if (m_mode == Mode::Select || m_mode == Mode::Constrain) {
+        picks = int(m_selection.size());
+    } else if (m_mode == Mode::Dimension) {
+        step = m_dim_has0 ? 1 : 0;
+    } else {
+        step = int(m_points.size());
+    }
+    if (int(m_mode) == m_step_mode_last && step == m_step_last && picks == m_step_picks_last)
+        return;
+    m_step_mode_last = int(m_mode); m_step_last = step; m_step_picks_last = picks;
+    on_step_changed(m_mode, step, picks);
+}
+
+void DesignSketchTool::render(GLCanvas3D& canvas)
+{
+    m_dim_label_seq = 0;
+    m_label_rects.clear();
+    m_render_scale  = canvas.get_scale();
+    m_autoedit_label_pos = Vec2d(1e18, 1e18);
+    if (inline_editor != nullptr && m_autoedit_dim_idx >= 0
+        && m_autoedit_dim_idx < int(m_autoedit_dims.size()))
+        m_autoedit_label_pos = m_autoedit_dims[m_autoedit_dim_idx].label;
+    emit_step_hint();
+    if (inline_editor != nullptr)
+        inline_editor->render(*wxGetApp().imgui(), m_render_scale);
+    ScopeGuard field_on_top([this] { if (inline_editor != nullptr) inline_editor->bring_to_front(); });
+    if (render_overlays)
+        render_overlays();
+    (void)canvas;
+    if (!has_display()) {
+        if (on_readout) on_readout(std::string());
+        return;
+    }
+    render_view_helpers();
+    m_rubber.render(canvas);
+    if (m_active && m_mode != Mode::Constrain && m_entities.empty() && m_points.empty()
+        && m_display_sketches.empty()) {
+        if (on_readout) on_readout(std::string());
+        return;
+    }
+
+
+    if (m_active && is_creation_autoedit_mode() && m_points.empty() &&
+        m_open_feature < 0 && !m_awaiting_length) {
+        const int n = int(m_entities.size());
+        if (m_autoedit_seen >= 0 && n > m_autoedit_seen && n > 0) {
+            m_selection.clear();
+            m_selection.push_back(n - 1);
+            m_autoedit_pending = true;
+        }
+        m_autoedit_seen = n;
+    }
+
+    GLShaderProgram* shader = wxGetApp().get_shader("flat");
+    if (shader == nullptr)
+        return;
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+    glsafe(::glDisable(GL_CULL_FACE));
+    shader->start_using();
+    const Camera& camera = wxGetApp().plater()->get_camera();
+    shader->set_uniform("view_model_matrix", camera.get_view_matrix());
+    shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+
+    render_body_edges();
+
+    if (!m_display_sketches.empty()) {
+        const SketchPlane saved_plane = m_plane;
+        const ColorRGBA dface = design_idle_face_color();
+        const ColorRGBA sface = design_selection_color(0.34f);
+        const ColorRGBA dwire(1.0f, 0.55f, 0.1f, 1.0f);
+        const ColorRGBA swire = design_selection_color();
+        glsafe(::glEnable(GL_BLEND));
+        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+        for (const DisplaySketch& ds : m_display_sketches) {
+            m_plane = ds.plane;
+            const std::vector<RegionLoop> loops = region_loops(ds.entities);
+            for (int r = 0; r < int(loops.size()); ++r) {
+                const bool sel = (ds.feature == m_display_pick && r == m_display_pick_region);
+                const ColorRGBA* hlc = sketch_hl_color(ds.feature);
+                ColorRGBA fc = sel ? sface : dface;
+                if (hlc && !sel) { fc = *hlc; fc.a(0.20f); }
+                std::vector<std::vector<Vec2d>> hp;
+                for (int h : loops[r].holes)
+                    if (h >= 0 && h < int(loops.size())) hp.push_back(loops[h].poly);
+                draw_fill_holed(m_fill_model, loops[r].poly, hp, fc);
+            }
+        }
+        glsafe(::glDisable(GL_BLEND));
+        for (const DisplaySketch& ds : m_display_sketches) {
+            m_plane = ds.plane;
+            std::vector<char> sel_ent(ds.entities.size(), 0);
+            if (ds.feature == m_display_pick && m_display_pick_region >= 0) {
+                const std::vector<RegionLoop> loops = region_loops(ds.entities);
+                if (m_display_pick_region < int(loops.size())) {
+                    auto mark = [&](int region) {
+                        if (region < 0 || region >= int(loops.size())) return;
+                        for (int ei : loops[region].ents)
+                            if (ei >= 0 && ei < int(sel_ent.size())) sel_ent[ei] = 1;
+                    };
+                    mark(m_display_pick_region);
+                    for (int h : loops[m_display_pick_region].holes) mark(h);
+                }
+            }
+            std::vector<Vec2d> point_markers, sel_point_markers;
+            for (int i = 0; i < int(ds.entities.size()); ++i) {
+                const SketchEntity& e = ds.entities[i];
+                if (e.type == SketchEntity::Type::Point) {
+                    (sel_ent[i] ? sel_point_markers : point_markers).push_back(e.p0);
+                    continue;
+                }
+                bool closed = false;
+                std::vector<Vec2d> poly = entity_polyline(e, closed);
+                const ColorRGBA* hlc = sketch_hl_color(ds.feature);
+                ColorRGBA wc = sel_ent[i] ? swire : (hlc ? *hlc : dwire);
+                draw_quad_strip(m_line_model, poly, closed, wc);
+            }
+            if (!point_markers.empty()) {
+                const ColorRGBA* hlc = sketch_hl_color(ds.feature);
+                draw_vertices(m_vertex_model, point_markers, hlc ? *hlc : dwire);
+            }
+            if (!sel_point_markers.empty())
+                draw_vertices(m_highlight_model, sel_point_markers, swire);
+        }
+        m_plane = saved_plane;
+    }
+
+    if (!m_active) {
+        render_datum_planes();
+        render_mate_connectors();
+        render_solid_highlight();
+        if (draws_reference_axes()) render_base_pick();
+        if (m_dz_active) render_datum_gizmo();
+        if (m_hx_active) render_helix_gizmo();
+        if (m_rb_active) render_rib_gizmo();
+        if (m_ex_active) render_extrude_gizmo();
+        if (m_mv_active) render_move_gizmo();
+        if (m_fl_active) render_fillet_gizmo();
+        if (m_hl_active) render_hole_gizmo();
+        if (m_th_active) render_thread_gizmo();
+        if (m_sh_active) render_shell_gizmo();
+        if (m_rv_active) render_revolve_gizmo();
+        if (m_dr_active) render_draft_gizmo();
+        if (m_ct_active) render_cut_gizmo();
+        if (m_pt_active) render_pattern_gizmo();
+        shader->stop_using();
+        glsafe(::glEnable(GL_CULL_FACE));
+        glsafe(::glEnable(GL_DEPTH_TEST));
+        return;
+    }
+
+    if (m_mode == Mode::TransformArt) {
+        render_xform_gizmo();
+        shader->stop_using();
+        glsafe(::glEnable(GL_CULL_FACE));
+        glsafe(::glEnable(GL_DEPTH_TEST));
+        return;
+    }
+
+    const ColorRGBA orange(1.0f, 0.55f, 0.1f, 1.0f);
+    const ColorRGBA yellow(1.0f, 0.85f, 0.2f, 1.0f);
+    const ColorRGBA grey(0.55f, 0.55f, 0.60f, 1.0f);
+
+    if (m_mode == Mode::Constrain) {
+        const ColorRGBA sel_col = design_selection_color();
+        if (m_constrain_entities) {
+            std::vector<Vec2d> markers;
+            for (size_t i = 0; i < m_entities.size(); ++i) {
+                const SketchEntity& e = m_entities[i];
+                const bool sel = (int(i) == m_pick0 || int(i) == m_pick1 || int(i) == m_pick2);
+                const bool hl = !sel && std::find(m_constraint_hl.begin(), m_constraint_hl.end(),
+                                                   int(i)) != m_constraint_hl.end();
+                const ColorRGBA col = sel ? sel_col : hl ? yellow : e.construction ? grey : orange;
+                if (e.type == SketchEntity::Type::Point) { markers.push_back(e.p0); continue; }
+                bool closed = false;
+                std::vector<Vec2d> poly = entity_polyline(e, closed);
+                draw_quad_strip((sel || hl) ? m_highlight_model : m_line_model, poly, closed, col);
+            }
+            if (!markers.empty())
+                draw_vertices(m_vertex_model, markers, orange);
+            {
+                const double upp = 1.0 / std::max(camera.get_zoom(), 1e-6);
+                std::vector<std::pair<Vec2d, Vec2d>> glyphs;
+                build_constraint_glyphs(upp, m_constrain_cons, glyphs);
+                if (!glyphs.empty()) {
+                    const ColorRGBA badge(0.45f, 0.95f, 0.70f, 1.0f);
+                    draw_strokes(m_fill_model, glyphs, std::max(0.9 * upp, 1e-4), badge);
+                }
+            }
+            shader->stop_using();
+            glsafe(::glEnable(GL_CULL_FACE));
+            glsafe(::glEnable(GL_DEPTH_TEST));
+            return;
+        }
+        draw_quad_strip(m_line_model, m_points, true, orange);
+        draw_vertices(m_vertex_model, m_points, orange);
+        if (m_sel_a >= 0 && m_sel_b >= 0 &&
+            m_sel_a < int(m_points.size()) && m_sel_b < int(m_points.size())) {
+            std::vector<Vec2d> seg = { m_points[m_sel_a], m_points[m_sel_b] };
+            draw_quad_strip(m_highlight_model, seg, false, sel_col);
+        }
+        shader->stop_using();
+        glsafe(::glEnable(GL_CULL_FACE));
+        glsafe(::glEnable(GL_DEPTH_TEST));
+        return;
+    }
+
+    {
+        const std::vector<RegionLoop> loops = region_loops(m_entities);
+        if (!loops.empty()) {
+            glsafe(::glEnable(GL_BLEND));
+            glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+            std::vector<char> is_hole(loops.size(), 0);
+            for (const RegionLoop& L : loops)
+                for (int h : L.holes)
+                    if (h >= 0 && h < int(is_hole.size())) is_hole[h] = 1;
+            std::vector<Vec2d> defects;
+            for (size_t r = 0; r < loops.size(); ++r) {
+                if (loops[r].defect) defects.push_back(loops[r].defect_at);
+                if (is_hole[r]) continue;
+                std::vector<std::vector<Vec2d>> hp;
+                for (int h : loops[r].holes)
+                    if (h >= 0 && h < int(loops.size())) hp.push_back(loops[h].poly);
+                draw_fill_holed(m_fill_model, loops[r].poly, hp,
+                                loops[r].defect ? ColorRGBA(1.0f, 0.22f, 0.22f, 0.18f) : design_idle_face_color());
+            }
+            glsafe(::glDisable(GL_BLEND));
+            if (!defects.empty())
+                draw_vertices(m_vertex_model, defects, ColorRGBA(1.0f, 0.22f, 0.22f, 1.0f),
+                              5.0 / std::max(camera.get_zoom(), 1e-6));
+        }
+    }
+
+    const ColorRGBA white(1.0f, 1.0f, 1.0f, 1.0f);
+    const ColorRGBA sel_col = design_selection_color();
+    const ColorRGBA green(0.30f, 0.85f, 0.42f, 1.0f);
+    const ColorRGBA conflict(1.0f, 0.22f, 0.22f, 1.0f);
+    const ColorRGBA opref(0.80f, 0.45f, 1.0f, 1.0f);
+    const double    upp_dash = 1.0 / std::max(camera.get_zoom(), 1e-6);
+    const ColorRGBA editing(1.0f, 0.78f, 0.10f, 1.0f);
+    const bool fully = (m_dof == 0 && m_solve_ok);
+    const std::vector<int>* edit_hi =
+        (m_autoedit_dim_idx >= 0 && m_autoedit_dim_idx < int(m_autoedit_dims.size()))
+            ? &m_autoedit_dims[m_autoedit_dim_idx].hi : nullptr;
+    std::vector<Vec2d> point_markers, sel_point_markers;
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const SketchEntity& e = m_entities[i];
+        const bool selected =
+            std::find(m_selection.begin(), m_selection.end(), int(i)) != m_selection.end();
+        const bool editing_this =
+            edit_hi && std::find(edit_hi->begin(), edit_hi->end(), int(i)) != edit_hi->end();
+        const bool bad = i < m_entity_conflict.size() && m_entity_conflict[i];
+        const bool op_ref = is_edit_op_mode() && int(i) == m_op_a;
+        ColorRGBA col;
+        if (editing_this)        col = editing;
+        else if (op_ref)         col = opref;
+        else if (selected)       col = sel_col;
+        else if (bad)            col = conflict;
+        else if (e.construction) col = grey;
+        else                     col = fully ? green : orange;
+        if (e.type == SketchEntity::Type::Point) {
+            (selected ? sel_point_markers : point_markers).push_back(e.p0);
+            continue;
+        }
+        bool closed = false;
+        std::vector<Vec2d> poly = entity_polyline(e, closed);
+        GLModel& target = (selected || editing_this || op_ref) ? m_highlight_model : m_line_model;
+        if (e.construction) {
+            for (const std::vector<Vec2d>& d : dash_polyline(poly, closed, 9.0 * upp_dash, 6.0 * upp_dash))
+                draw_quad_strip(target, d, false, col);
+        } else {
+            draw_quad_strip(target, poly, closed, col);
+        }
+    }
+    if (!point_markers.empty())
+        draw_vertices(m_vertex_model, point_markers, yellow);
+    if (!sel_point_markers.empty())
+        draw_vertices(m_highlight_model, sel_point_markers, sel_col);
+
+    if (!m_constraints.empty()) {
+        std::vector<std::pair<Vec2d, Vec2d>> glyphs;
+        build_constraint_glyphs(upp_dash, m_constraints, glyphs);
+        if (!glyphs.empty())
+            draw_strokes(m_fill_model, glyphs, std::max(0.9 * upp_dash, 1e-4),
+                         ColorRGBA(0.45f, 0.95f, 0.70f, 1.0f));
+    }
+
+    m_show_handles = (m_mode == Mode::Select || m_mode == Mode::Dimension);
+    if (m_show_handles) {
+        std::vector<Vec2d> handles, sel_handles;
+        auto add_h = [&](int ei, SketchPointRole r, const Vec2d& q) {
+            const bool s = std::find(m_point_sel.begin(), m_point_sel.end(),
+                                     std::make_pair(ei, r)) != m_point_sel.end();
+            (s ? sel_handles : handles).push_back(q);
+        };
+        for (size_t i = 0; i < m_entities.size(); ++i) {
+            const SketchEntity& e = m_entities[i];
+            switch (e.type) {
+            case SketchEntity::Type::Line:
+                add_h(int(i), SketchPointRole::P0, e.p0);
+                add_h(int(i), SketchPointRole::P1, e.p1);
+                break;
+            case SketchEntity::Type::Arc:
+            case SketchEntity::Type::EllipseArc:
+                add_h(int(i), SketchPointRole::P0, e.p0);
+                add_h(int(i), SketchPointRole::P1, e.p1);
+                add_h(int(i), SketchPointRole::Center, e.center);
+                break;
+            case SketchEntity::Type::Circle:
+            case SketchEntity::Type::Ellipse:
+                add_h(int(i), SketchPointRole::Center, e.center);
+                break;
+            case SketchEntity::Type::BSpline:
+                add_h(int(i), SketchPointRole::P0, e.p0);
+                add_h(int(i), SketchPointRole::P1, e.p1);
+                break;
+            case SketchEntity::Type::Point:
+                break;
+            }
+        }
+        if (!handles.empty())     draw_vertices(m_vertex_model, handles, ColorRGBA(0.65f, 0.65f, 0.30f, 1.0f));
+        if (!sel_handles.empty()) draw_vertices(m_highlight_model, sel_handles, sel_col);
+
+        std::vector<Vec2d> mids;
+        for (const SketchEntity& e : m_entities) {
+            if (e.type == SketchEntity::Type::Line)
+                mids.push_back(0.5 * (e.p0 + e.p1));
+            else if (e.type == SketchEntity::Type::Arc) {
+                const double am = 0.5 * (e.start_angle + e.end_angle);
+                mids.push_back(Vec2d(e.center.x() + e.radius * std::cos(am),
+                                     e.center.y() + e.radius * std::sin(am)));
+            }
+        }
+        if (!mids.empty())
+            draw_vertices(m_vertex_model, mids, ColorRGBA(0.85f, 0.85f, 0.88f, 1.0f), 0.9);
+        const double upp = 1.0 / std::max(camera.get_zoom(), 1e-6);
+        std::vector<Vec2d> radius_h;
+        for (const Handle& h : build_handles())
+            if (h.role == HandleRole::RadiusHandle || h.role == HandleRole::MajorAxis ||
+                h.role == HandleRole::MinorAxis    || h.role == HandleRole::BSplineCtrl)
+                radius_h.push_back(h.pos);
+        if (!radius_h.empty())
+            draw_vertices(m_vertex_model, radius_h, ColorRGBA(0.95f, 0.95f, 0.95f, 1.0f),
+                          std::max(4.0 * upp, 1e-4));
+        if (m_has_hover_handle)
+            draw_vertices(m_highlight_model, { m_hover_handle.pos }, white,
+                          std::max(5.5 * upp, 1e-4));
+    }
+
+    render_dimensions(1.0 / std::max(camera.get_zoom(), 1e-6));
+    render_live_quotes(1.0 / std::max(camera.get_zoom(), 1e-6));
+    if (m_autoedit_pending) {
+        m_autoedit_pending = false;
+        trace_autoedit("pending -> deferring open", 0);
+        wxGetApp().CallAfter([this] { open_primary_autoedit(); });
+    }
+    if (is_edit_op_mode())
+        render_op_gizmo(1.0 / std::max(camera.get_zoom(), 1e-6));
+    if (is_transform_mode())
+        render_tf_gizmo(1.0 / std::max(camera.get_zoom(), 1e-6));
+
+    const ColorRGBA preview = m_construction ? grey : orange;
+    switch (m_mode) {
+
+    case Mode::Select:
+    case Mode::Dimension:
+        break;
+
+    case Mode::Polyline: {
+        std::vector<Vec2d> pts = m_points;
+        if (m_has_cursor)
+            pts.push_back(m_cursor);
+        draw_quad_strip(m_highlight_model, pts, false, preview);
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_cursor_locked && m_has_cursor && !m_points.empty()) {
+            const ColorRGBA lock(0.10f, 0.85f, 0.80f, 1.0f);
+            std::vector<Vec2d> seg = { m_points.back(), m_cursor };
+            draw_quad_strip(m_line_model, seg, false, lock);
+        }
+        break;
+    }
+
+    case Mode::Line: {
+        std::vector<Vec2d> pts = m_points;
+        if (m_has_cursor && m_points.size() == 1)
+            pts.push_back(m_cursor);
+        if (pts.size() >= 2) {
+            const ColorRGBA col = (m_cursor_locked && m_points.size() == 1)
+                                      ? ColorRGBA(0.10f, 0.85f, 0.80f, 1.0f) : preview;
+            draw_quad_strip(m_highlight_model, pts, false, col);
+        }
+        draw_vertices(m_vertex_model, m_points, yellow);
+        break;
+    }
+
+    case Mode::CornerRect: {
+        if (m_points.size() == 1 && m_has_cursor) {
+            const Vec2d A = m_points[0];
+            const Vec2d B = m_cursor;
+            std::vector<Vec2d> corners = { A, Vec2d(B.x(), A.y()), B, Vec2d(A.x(), B.y()) };
+            draw_quad_strip(m_highlight_model, corners, true, preview);
+        }
+        break;
+    }
+
+    case Mode::CenterRect: {
+        if (m_points.size() == 1 && m_has_cursor) {
+            const Vec2d C = m_points[0];
+            const Vec2d P = m_cursor;
+            const double hx = std::abs(P.x() - C.x());
+            const double hy = std::abs(P.y() - C.y());
+            std::vector<Vec2d> corners = {
+                Vec2d(C.x() - hx, C.y() - hy), Vec2d(C.x() + hx, C.y() - hy),
+                Vec2d(C.x() + hx, C.y() + hy), Vec2d(C.x() - hx, C.y() + hy) };
+            draw_quad_strip(m_highlight_model, corners, true, preview);
+            draw_vertices(m_vertex_model, { C }, yellow);
+        }
+        break;
+    }
+
+    case Mode::ObliqueRect: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 2 && m_has_cursor) {
+            const Vec2d A = m_points[0], B = m_points[1];
+            Vec2d u = B - A;
+            if (u.squaredNorm() > 1e-12) {
+                u.normalize();
+                const Vec2d n(-u.y(), u.x());
+                const double w = n.dot(m_cursor - A);
+                draw_quad_strip(m_highlight_model, { A, B, B + n * w, A + n * w }, true, preview);
+            }
+        }
+        break;
+    }
+
+    case Mode::RoundedRect: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            const Vec2d A = m_points[0], B = m_cursor;
+            draw_quad_strip(m_highlight_model, { A, Vec2d(B.x(), A.y()), B, Vec2d(A.x(), B.y()) }, true, preview);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            draw_entities_preview(make_rounded_rect(m_points[0], m_points[1], m_cursor), preview);
+        }
+        break;
+    }
+
+    case Mode::CenterCircle: {
+        if (m_points.size() == 1 && m_has_cursor) {
+            const Vec2d C = m_points[0];
+            const double r = (m_cursor - C).norm();
+            draw_quad_strip(m_highlight_model, circle_polygon(C, r), true, preview);
+            draw_vertices(m_vertex_model, { C }, yellow);
+        }
+        break;
+    }
+
+    case Mode::TwoPointCircle: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            const Vec2d C = (m_points[0] + m_cursor) * 0.5;
+            const double r = (m_cursor - m_points[0]).norm() * 0.5;
+            draw_quad_strip(m_highlight_model, circle_polygon(C, r), true, preview);
+        }
+        break;
+    }
+
+    case Mode::ThreePointCircle: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 2 && m_has_cursor)
+            draw_entities_preview(make_three_point_circle(m_points[0], m_points[1], m_cursor), preview);
+        break;
+    }
+
+    case Mode::ThreePointArc: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 2 && m_has_cursor)
+            draw_entities_preview(make_three_point_arc(m_points[0], m_points[1], m_cursor), preview);
+        break;
+    }
+
+    case Mode::TangentArc: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor)
+            draw_entities_preview(make_tangent_arc(m_points[0], m_cursor), preview);
+        break;
+    }
+
+    case Mode::CenterArc: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            SketchEntity g; g.type = SketchEntity::Type::Circle; g.center = m_points[0];
+            g.p0 = m_points[0]; g.radius = (m_cursor - m_points[0]).norm(); g.construction = true;
+            draw_entities_preview({ g }, preview);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            draw_entities_preview(make_center_arc(m_points[0], m_points[1], m_cursor), preview);
+        }
+        break;
+    }
+
+    case Mode::Slot: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            draw_quad_strip(m_highlight_model, { m_points[0], m_cursor }, false, grey);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            Vec2d u = m_points[1] - m_points[0];
+            if (u.squaredNorm() > 1e-12) {
+                u.normalize();
+                const Vec2d n(-u.y(), u.x());
+                const double w = std::abs(n.dot(m_cursor - m_points[0]));
+                draw_entities_preview(make_slot(m_points[0], m_points[1], w), preview);
+            }
+        }
+        break;
+    }
+
+    case Mode::ArcSlot: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            SketchEntity g; g.type = SketchEntity::Type::Circle; g.center = m_points[0];
+            g.p0 = m_points[0]; g.radius = (m_cursor - m_points[0]).norm(); g.construction = true;
+            draw_entities_preview({ g }, preview);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            draw_entities_preview(make_center_arc(m_points[0], m_points[1], m_cursor), preview);
+        } else if (m_points.size() == 3 && m_has_cursor) {
+            const double Rc = (m_points[1] - m_points[0]).norm();
+            const double w  = std::abs((m_cursor - m_points[0]).norm() - Rc);
+            draw_entities_preview(make_arc_slot(m_points[0], m_points[1], m_points[2], w), preview);
+        }
+        break;
+    }
+
+    case Mode::Polygon: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor)
+            draw_entities_preview(make_polygon(m_points[0], m_cursor, m_polygon_sides), preview);
+        break;
+    }
+
+    case Mode::Ellipse: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            SketchEntity g; g.type = SketchEntity::Type::Line;
+            g.p0 = m_points[0]; g.p1 = m_cursor; g.construction = true;
+            draw_entities_preview({ g }, preview);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            draw_entities_preview(make_ellipse(m_points[0], m_points[1], m_cursor), preview);
+        }
+        break;
+    }
+
+    case Mode::EllipseArc: {
+        draw_vertices(m_vertex_model, m_points, yellow);
+        if (m_points.size() == 1 && m_has_cursor) {
+            SketchEntity g; g.type = SketchEntity::Type::Line;
+            g.p0 = m_points[0]; g.p1 = m_cursor; g.construction = true;
+            draw_entities_preview({ g }, preview);
+        } else if (m_points.size() == 2 && m_has_cursor) {
+            draw_entities_preview(make_ellipse(m_points[0], m_points[1], m_cursor), preview);
+        } else if (m_points.size() == 3 && m_has_cursor) {
+            std::vector<SketchEntity> full = make_ellipse(m_points[0], m_points[1], m_points[2]);
+            for (auto& e : full) e.construction = true;
+            draw_entities_preview(full, preview);
+        } else if (m_points.size() == 4 && m_has_cursor) {
+            draw_entities_preview(make_ellipse_arc(m_points[0], m_points[1], m_points[2],
+                                                   m_points[3], m_cursor), preview);
+        }
+        break;
+    }
+
+    case Mode::BSpline: {
+        std::vector<Vec2d> poles = m_points;
+        if (m_has_cursor) poles.push_back(m_cursor);
+        if (poles.size() >= 2) {
+            std::vector<SketchEntity> guide;
+            for (size_t i = 1; i < poles.size(); ++i) {
+                SketchEntity g; g.type = SketchEntity::Type::Line;
+                g.p0 = poles[i - 1]; g.p1 = poles[i]; g.construction = true;
+                guide.push_back(g);
+            }
+            draw_entities_preview(guide, grey);
+        }
+        if (poles.size() >= 2)
+            draw_quad_strip(m_highlight_model, bspline_polyline(poles), false, preview);
+        draw_vertices(m_vertex_model, m_points, yellow);
+        break;
+    }
+
+    case Mode::Trim:
+    case Mode::Extend: {
+        if (m_has_cursor) {
+            const double upp = 1.0 / std::max(camera.get_zoom(), 1e-6);
+            int subj = -1;
+            std::vector<Vec2d> removed;
+            const ColorRGBA cut(1.0f, 0.2f, 0.2f, 1.0f);
+            if (compute_trim_preview(m_cursor, 24.0 * upp, m_mode == Mode::Extend, subj, removed))
+                draw_quad_strip(m_highlight_model, removed, false, cut);
+        }
+        break;
+    }
+
+    case Mode::Point:
+    case Mode::Constrain:
+        break;
+    }
+
+    if (m_has_cursor && m_mode != Mode::Constrain && m_cursor_snap.snapped()) {
+        ColorRGBA hint(1.0f, 0.55f, 0.1f, 1.0f);
+        switch (m_cursor_snap.kind) {
+        case InferenceSnap::Kind::Midpoint: hint = ColorRGBA(0.35f, 0.90f, 0.75f, 1.0f); break;
+        case InferenceSnap::Kind::Center: hint = ColorRGBA(1.0f, 0.85f, 0.2f, 1.0f); break;
+        case InferenceSnap::Kind::Origin: hint = ColorRGBA(1.0f, 0.30f, 0.85f, 1.0f); break;
+        case InferenceSnap::Kind::OnEdge: hint = ColorRGBA(0.45f, 0.70f, 1.0f, 1.0f); break;
+        default: break;
+        }
+        draw_vertices(m_highlight_model, { m_cursor_snap.point }, hint);
+    }
+
+    shader->stop_using();
+    glsafe(::glEnable(GL_CULL_FACE));
+    glsafe(::glEnable(GL_DEPTH_TEST));
+
+    if (on_readout) on_readout(build_readout());
+}
+
+std::string DesignSketchTool::build_readout() const
+{
+    auto en = [](char* b) { for (char* c = b; *c; ++c) if (*c == ',') *c = '.'; };
+    if (m_active && (m_mode == Mode::Line || m_mode == Mode::Polyline) &&
+        !m_points.empty() && m_has_cursor) {
+        const Vec2d d = m_cursor - m_points.back();
+        double ang = std::atan2(d.y(), d.x()) * 180.0 / M_PI; if (ang < 0.0) ang += 360.0;
+        char b[80]; std::snprintf(b, sizeof(b), "L %.2f mm    %.1f\xC2\xB0", d.norm(), ang);
+        en(b);
+        std::string out = b;
+        if (m_mode == Mode::Polyline && m_points.size() >= 2)
+            out += "      " + _u8L("right-click or double-click to finish, click start to close");
+        return out;
+    }
+    if (!m_active) return std::string();
+    std::string out;
+    for (const DimAnnot& q : m_live_quotes) {
+        if (!out.empty()) out += "    ";
+        out += dim_text(q);
+    }
+    return out;
+}
+
+static double point_segment_dist(const Vec2d& p, const Vec2d& a, const Vec2d& b)
+{
+    const Vec2d ab = b - a;
+    const double len2 = ab.squaredNorm();
+    if (len2 < 1e-12)
+        return (p - a).norm();
+    double t = (p - a).dot(ab) / len2;
+    t = std::max(0.0, std::min(1.0, t));
+    return (p - (a + t * ab)).norm();
+}
+
+static bool point_in_poly(const Vec2d& q, const std::vector<Vec2d>& poly)
+{
+    if (poly.size() < 3) return false;
+    bool in = false;
+    for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+        const Vec2d& a = poly[i];
+        const Vec2d& b = poly[j];
+        if (((a.y() > q.y()) != (b.y() > q.y())) &&
+            (q.x() < (b.x() - a.x()) * (q.y() - a.y()) / (b.y() - a.y()) + a.x()))
+            in = !in;
+    }
+    return in;
+}
+
+static bool ray_triangle(const Vec3d& ro, const Vec3d& rd,
+                         const Vec3d& v0, const Vec3d& v1, const Vec3d& v2, double& t)
+{
+    const Vec3d e1 = v1 - v0, e2 = v2 - v0;
+    const Vec3d p = rd.cross(e2);
+    const double det = e1.dot(p);
+    if (std::abs(det) < 1e-12) return false;
+    const double inv = 1.0 / det;
+    const Vec3d s = ro - v0;
+    const double u = s.dot(p) * inv;
+    if (u < -1e-9 || u > 1.0 + 1e-9) return false;
+    const Vec3d q = s.cross(e1);
+    const double v = rd.dot(q) * inv;
+    if (v < -1e-9 || u + v > 1.0 + 1e-9) return false;
+    t = e2.dot(q) * inv;
+    return t > 1e-9;
+}
+
+static double ray_segment_dist3(const Vec3d& ro, const Vec3d& rd, const Vec3d& a, const Vec3d& b)
+{
+    const Vec3d d1 = rd, d2 = b - a, r = ro - a;
+    const double A = d1.dot(d1), B = d1.dot(d2), C = d2.dot(d2), D = d1.dot(r), E = d2.dot(r);
+    const double denom = A * C - B * B;
+    double s = (std::abs(denom) > 1e-12) ? (A * E - B * D) / denom : 0.0;
+    s = std::max(0.0, std::min(1.0, s));
+    double tt = (B * s - D) / std::max(A, 1e-12);
+    tt = std::max(0.0, tt);
+    const Vec3d pr = ro + tt * d1, ps = a + s * d2;
+    return (pr - ps).norm();
+}
+
+static double ray_axis_proj(const Linef3& ray, const Vec3d& anchor, const Vec3d& dir)
+{
+    const Vec3d ro = ray.a, rd = ray.vector();
+    const Vec3d e = dir;
+    const Vec3d w0 = anchor - ro;
+    const double a = e.dot(e), b = e.dot(rd), c = rd.dot(rd), dd = e.dot(w0), ee = rd.dot(w0);
+    const double denom = a * c - b * b;
+    if (std::abs(denom) < 1e-4 * std::max(a * c, 1e-12)) return std::nan("");
+    return (b * ee - c * dd) / denom;
+}
+
+static double entity_pick_dist(const Vec2d& p, const SketchEntity& e)
+{
+    switch (e.type) {
+    case SketchEntity::Type::Line:   return point_segment_dist(p, e.p0, e.p1);
+    case SketchEntity::Type::Point:  return (p - e.p0).norm();
+    case SketchEntity::Type::Circle:
+    case SketchEntity::Type::Arc:    return std::abs((p - e.center).norm() - e.radius);
+    case SketchEntity::Type::Ellipse:
+    case SketchEntity::Type::EllipseArc: {
+        const double cu = std::cos(e.rotation), su = std::sin(e.rotation);
+        const bool full = (e.type == SketchEntity::Type::Ellipse);
+        const double t0 = full ? 0.0 : e.start_angle;
+        const double t1 = full ? 2.0 * M_PI : e.end_angle;
+        const int n = 48;
+        double best = 1e30; Vec2d prev;
+        for (int i = 0; i <= n; ++i) {
+            const double t = t0 + (t1 - t0) * double(i) / n;
+            const double lx = e.radius * std::cos(t), ly = e.rminor * std::sin(t);
+            const Vec2d q(e.center.x() + lx * cu - ly * su,
+                          e.center.y() + lx * su + ly * cu);
+            if (i > 0) best = std::min(best, point_segment_dist(p, prev, q));
+            prev = q;
+        }
+        return best;
+    }
+    case SketchEntity::Type::BSpline: {
+        const std::vector<Vec2d> poly = bspline_polyline(e.ctrl);
+        double best = 1e30;
+        for (size_t i = 1; i < poly.size(); ++i)
+            best = std::min(best, point_segment_dist(p, poly[i - 1], poly[i]));
+        return best;
+    }
+    }
+    return 1e30;
+}
+
+static void entity_endpoints(const SketchEntity& e, std::vector<Vec2d>& out)
+{
+    out.clear();
+    if (e.type == SketchEntity::Type::Line) {
+        out.push_back(e.p0);
+        out.push_back(e.p1);
+    } else if (e.type == SketchEntity::Type::Arc) {
+        out.push_back(e.center + e.radius * Vec2d(std::cos(e.start_angle), std::sin(e.start_angle)));
+        out.push_back(e.center + e.radius * Vec2d(std::cos(e.end_angle),   std::sin(e.end_angle)));
+    }
+}
+
+static bool entity_ref_point(const SketchEntity& e, Vec2d& out)
+{
+    switch (e.type) {
+    case SketchEntity::Type::Point:  out = e.p0;     return true;
+    case SketchEntity::Type::Circle:
+    case SketchEntity::Type::Arc:
+    case SketchEntity::Type::Ellipse:
+    case SketchEntity::Type::EllipseArc: out = e.center; return true;
+    default:                         return false;
+    }
+}
+
+static void translate_entity(SketchEntity& e, const Vec2d& d)
+{
+    e.p0 += d;
+    e.p1 += d;
+    e.center += d;
+    for (auto& cp : e.ctrl) cp += d;
+}
+
+int DesignSketchTool::add_entities_scripted(const std::vector<SketchEntity>& ents)
+{
+    if (ents.empty()) return -1;
+    const int base = int(m_entities.size());
+    for (const SketchEntity& e : ents) m_entities.push_back(e);
+    infer_auto_constraints(base, 0.0, 0.0);
+    resolve_live();
+    m_autoedit_seen = int(m_entities.size());
+    return base;
+}
+
+bool DesignSketchTool::select_indices(const std::vector<int>& idx)
+{
+    m_selection.clear();
+    m_point_sel.clear();
+    const int n = int(m_entities.size());
+    for (int i : idx)
+        if (i >= 0 && i < n &&
+            std::find(m_selection.begin(), m_selection.end(), i) == m_selection.end())
+            m_selection.push_back(i);
+    if (on_selection_changed) on_selection_changed(int(m_selection.size()));
+    return !m_selection.empty();
+}
+
+DesignSketchTool::LoopReport DesignSketchTool::loop_report() const
+{
+    LoopReport out;
+
+    const auto regs = region_loops(m_entities);
+    out.loops.reserve(regs.size());
+    for (const auto& r : regs) {
+        LoopInfo li;
+        li.ents   = r.ents;
+        li.holes  = r.holes;
+        li.closed = true;
+        li.defect    = r.defect;
+        li.defect_at = r.defect_at;
+        if (r.ents.size() == 1 && r.ents[0] >= 0 && r.ents[0] < int(m_entities.size()) &&
+            (m_entities[r.ents[0]].type == SketchEntity::Type::Circle ||
+             m_entities[r.ents[0]].type == SketchEntity::Type::Ellipse)) {
+            const SketchEntity& c = m_entities[r.ents[0]];
+            li.area = (c.type == SketchEntity::Type::Circle)
+                          ? M_PI * c.radius * c.radius
+                          : M_PI * c.radius * c.rminor;
+        } else {
+            auto ent_ends = [&](int ei, Vec2d& a, Vec2d& b) {
+                a = m_entities[ei].p0; b = m_entities[ei].p1;
+            };
+            const double eps = 1e-6;
+            double area2 = 0.0;
+            bool   exact = true;
+            Vec2d  cur(0, 0);
+            for (size_t k = 0; k < r.ents.size(); ++k) {
+                const int ei = r.ents[k];
+                if (ei < 0 || ei >= int(m_entities.size())) { exact = false; break; }
+                const SketchEntity& e = m_entities[ei];
+                if (e.type != SketchEntity::Type::Line && e.type != SketchEntity::Type::Arc) {
+                    exact = false; break;
+                }
+                Vec2d A, B; ent_ends(ei, A, B);
+                bool rev = false;
+                if (k == 0) {
+                    if (r.ents.size() > 1) {
+                        Vec2d C, D; ent_ends(r.ents[1], C, D);
+                        if ((A - C).norm() < eps || (A - D).norm() < eps) rev = true;
+                    }
+                } else {
+                    if ((B - cur).norm() < eps)      rev = true;
+                    else if ((A - cur).norm() >= eps) { exact = false; break; }
+                }
+                const Vec2d P = rev ? B : A;
+                const Vec2d Q = rev ? A : B;
+                if (e.type == SketchEntity::Type::Line) {
+                    area2 += P.x() * Q.y() - Q.x() * P.y();
+                } else {
+                    const double a0 = rev ? e.end_angle   : e.start_angle;
+                    const double a1 = rev ? e.start_angle : e.end_angle;
+                    area2 += e.center.x() * e.radius * (std::sin(a1) - std::sin(a0))
+                           - e.center.y() * e.radius * (std::cos(a1) - std::cos(a0))
+                           + e.radius * e.radius * (a1 - a0);
+                }
+                cur = Q;
+            }
+            if (exact) {
+                li.area = 0.5 * area2;
+            } else {
+                double a = 0.0;
+                for (size_t i = 0; i + 1 < r.poly.size(); ++i)
+                    a += r.poly[i].x() * r.poly[i + 1].y() - r.poly[i + 1].x() * r.poly[i].y();
+                if (r.poly.size() > 2)
+                    a += r.poly.back().x() * r.poly.front().y() - r.poly.front().x() * r.poly.back().y();
+                li.area = 0.5 * a;
+            }
+        }
+        out.loops.push_back(std::move(li));
+    }
+
+    struct End { Vec2d p; };
+    std::vector<End> ends;
+    for (const SketchEntity& e : m_entities) {
+        if (e.construction) continue;
+        if (e.type == SketchEntity::Type::Line || e.type == SketchEntity::Type::Arc ||
+            e.type == SketchEntity::Type::EllipseArc || e.type == SketchEntity::Type::BSpline) {
+            ends.push_back({ e.p0 });
+            ends.push_back({ e.p1 });
+        }
+    }
+    const double eps = sketch_join_tol();
+    for (size_t i = 0; i < ends.size(); ++i) {
+        int met = 0;
+        for (size_t j = 0; j < ends.size(); ++j) {
+            if (i == j) continue;
+            if ((ends[i].p - ends[j].p).norm() < eps) ++met;
+        }
+        if (met == 0) {
+            bool dup = false;
+            for (const Vec2d& q : out.open_ends)
+                if ((q - ends[i].p).norm() < eps) { dup = true; break; }
+            if (!dup) out.open_ends.push_back(ends[i].p);
+        }
+    }
+    return out;
+}
+
+int DesignSketchTool::heal_coincidences(double tol, bool ignore_construction)
+{
+    if (tol <= 0.0) tol = 1e-3;
+
+    const int n = int(m_entities.size());
+    int welded = 0;
+    std::vector<SketchEntityConstraintDef> cands;
+    for (int i = 0; i < n; ++i) {
+        if (ignore_construction && m_entities[i].construction) continue;
+        SketchPointRole ir[2]; const int ni = sketch_endpoint_roles(m_entities[i], ir);
+        for (int a = 0; a < ni; ++a) {
+            Vec2d pa; if (!point_at(i, ir[a], pa)) continue;
+            for (int j = i + 1; j < n; ++j) {
+                if (ignore_construction && m_entities[j].construction) continue;
+                SketchPointRole jr[2]; const int nj = sketch_endpoint_roles(m_entities[j], jr);
+                for (int b = 0; b < nj; ++b) {
+                    Vec2d pb; if (!point_at(j, jr[b], pb)) continue;
+                    const double d = (pa - pb).norm();
+                    if (d > tol) continue;
+                    if (has_coincident(i, ir[a], j, jr[b])) continue;
+                    if (d > 0.0) { set_point(j, jr[b], pa); pb = pa; }
+                    SketchEntityConstraintDef c;
+                    c.type = SketchConstraintType::Coincident;
+                    c.ea = i; c.ra = ir[a]; c.eb = j; c.rb = jr[b];
+                    cands.push_back(c);
+                    ++welded;
+                }
+            }
+        }
+    }
+    if (!cands.empty()) {
+        try_add_constraints(cands);
+        resolve_live();
+    }
+    return welded;
+}
+
+bool DesignSketchTool::select_at_screen(GLCanvas3D& canvas, int sx, int sy)
+{
+    if (!is_active()) return false;
+    const Linef3 ray  = canvas.mouse_ray(Point(sx, sy));
+    const Linef3 ray8 = canvas.mouse_ray(Point(sx + 8, sy));
+    const Vec2d  p    = m_plane.project(ray.a,  ray.vector());
+    const Vec2d  p8   = m_plane.project(ray8.a, ray8.vector());
+    const double tol  = std::max(1e-3, (p8 - p).norm());
+
+    int ei = -1; SketchPointRole role = SketchPointRole::P0;
+    if (hit_test_point(p, tol, ei, role)) {
+        if (ei >= 0 && ei < int(m_entities.size())
+            && m_entities[ei].type == SketchEntity::Type::Point) {
+            if (std::find(m_selection.begin(), m_selection.end(), ei) != m_selection.end())
+                return false;
+            m_selection.assign(1, ei);
+            m_point_sel.clear();
+            if (on_selection_changed) on_selection_changed(1);
+            return true;
+        }
+        const auto pr = std::make_pair(ei, role);
+        if (std::find(m_point_sel.begin(), m_point_sel.end(), pr) != m_point_sel.end())
+            return false;
+        m_selection.clear();
+        m_point_sel.assign(1, pr);
+        if (on_selection_changed) on_selection_changed(1);
+        return true;
+    }
+
+    const int hit = hit_test(p, tol);
+    if (hit < 0) return false;
+    if (std::find(m_selection.begin(), m_selection.end(), hit) != m_selection.end())
+        return false;
+    m_selection.assign(1, hit);
+    m_point_sel.clear();
+    if (on_selection_changed) on_selection_changed(1);
+    return true;
+}
+
+int DesignSketchTool::hit_test(const Vec2d& p, double tol) const
+{
+    double best = tol;
+    int bi = -1;
+    for (size_t i = 0; i < m_entities.size(); ++i) {
+        const double d = entity_pick_dist(p, m_entities[i]);
+        if (d < best) { best = d; bi = int(i); }
+    }
+    return bi;
+}
+
+std::vector<int> DesignSketchTool::connected_loop(int seed) const
+{
+    std::vector<int> out;
+    if (seed < 0 || seed >= int(m_entities.size())) return out;
+    const double eps2 = sketch_join_tol() * sketch_join_tol();
+    std::vector<bool> vis(m_entities.size(), false);
+    std::vector<int> stack = { seed };
+    vis[seed] = true;
+    while (!stack.empty()) {
+        const int cur = stack.back();
+        stack.pop_back();
+        out.push_back(cur);
+        std::vector<Vec2d> ce;
+        entity_endpoints(m_entities[cur], ce);
+        if (ce.empty()) continue;
+        for (size_t j = 0; j < m_entities.size(); ++j) {
+            if (vis[j]) continue;
+            std::vector<Vec2d> je;
+            entity_endpoints(m_entities[j], je);
+            if (je.empty()) continue;
+            bool adj = false;
+            for (const Vec2d& a : ce)
+                for (const Vec2d& b : je)
+                    if ((a - b).squaredNorm() < eps2) { adj = true; break; }
+            if (adj) { vis[j] = true; stack.push_back(int(j)); }
+        }
+    }
+    return out;
+}
+
+bool DesignSketchTool::right_abandon()
+{
+    if (m_points.empty())
+        return false;
+    m_points.clear();
+    m_has_cursor = false;
+    return true;
+}
+
+bool DesignSketchTool::on_mouse(wxMouseEvent& evt, GLCanvas3D& canvas)
+{
+    if (evt.RightDown()) {
+        m_right_press = evt;
+        return false;
+    }
+    return on_mouse_impl(evt, canvas);
+}
+
+bool DesignSketchTool::take_right_click(GLCanvas3D& canvas)
+{
+    auto press = std::exchange(m_right_press, {});
+    return press && on_mouse_impl(*press, canvas);
+}
+
+bool DesignSketchTool::on_mouse_impl(wxMouseEvent& evt, GLCanvas3D& canvas)
+{
+    m_last_mouse_x = evt.GetX();
+    m_last_mouse_y = evt.GetY();
+
+    if (m_awaiting_length) {
+        if (m_mode == Mode::Polyline && (evt.RightDown() || evt.LeftDClick()) && on_inline_dismiss)
+            on_inline_dismiss();
+        else if (evt.Dragging() || evt.GetWheelRotation() != 0)
+            return false;
+        else if (evt.LeftDown()) {
+            if (on_inline_commit) on_inline_commit();
+            return true;
+        }
+        else
+            return true;
+    }
+
+    if (!m_active) {
+        if (evt.LeftDClick()) {
+            int f = -1, r = -1, e = -1, ff = -1, fr = -1; double dbest = 1e30;
+            const Linef3 dray  = canvas.mouse_ray(Point(evt.GetX(), evt.GetY()));
+            const Linef3 dray8 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            for (const DisplaySketch& d : m_display_sketches) {
+                const Vec2d dp  = d.plane.project(dray.a,  dray.vector());
+                const Vec2d dp8 = d.plane.project(dray8.a, dray8.vector());
+                hit_display_sketch(d, dp, std::max(1e-3, (dp8 - dp).norm()), f, r, e, dbest, ff, fr);
+            }
+            const int target = (f >= 0) ? f : ff;
+            if (target >= 0 && on_display_sketch_activated) {
+                dp_pick_trace("double-click -> edit sketch feature %d (entity %d)", target, e);
+                on_display_sketch_activated(target);
+                return true;
+            }
+            canvas.zoom_to_volumes();
+            return true;
+        }
+        if (m_mv_active) {
+            if (m_mv_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                if (m_mv_drag < 3) drag_move_arrow(canvas.mouse_ray(Point(evt.GetX(), evt.GetY())));
+                else               drag_move_arc(canvas, evt, m_mv_drag - 3);
+                return true;
+            }
+            if (evt.LeftUp() && m_mv_drag >= 0) {
+                const int d = m_mv_drag; m_mv_drag = -1;
+                const bool moved = std::abs(evt.GetX() - m_mv_press_x) +
+                                   std::abs(evt.GetY() - m_mv_press_y) > 3;
+                if (!moved && d < 3) open_move_editor(d);
+                return true;
+            }
+            if (evt.RightDown()) return false;
+            if (evt.LeftDown()) {
+                int axis = -1;
+                if (hit_test_move_arrow(canvas, evt, axis)) {
+                    grab_move_arrow(axis, canvas.mouse_ray(Point(evt.GetX(), evt.GetY())));
+                    m_mv_press_x = evt.GetX(); m_mv_press_y = evt.GetY();
+                    return true;
+                }
+                if (hit_test_move_arc(canvas, evt, axis)) {
+                    m_mv_drag = 3 + axis; m_mv_press_x = evt.GetX(); m_mv_press_y = evt.GetY();
+                    m_mv_rot_start = m_mv_rot;
+                    double a0; if (arc_mouse_angle(canvas, evt, axis, a0)) m_mv_arc_a0 = a0;
+                    return true;
+                }
+                return false;
+            }
+            if (evt.Moving()) return false;
+        }
+        if (m_dz_active) {
+            if (m_dz_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_datum_handle(canvas, evt, m_dz_drag);
+                return true;
+            }
+            if (evt.LeftUp() && m_dz_drag >= 0) { m_dz_drag = -1; return true; }
+            if (evt.LeftDown()) {
+                int which = -1;
+                if (hit_test_datum_handle(canvas, evt, which)) {
+                    m_dz_drag = which; m_dz_press_x = evt.GetX(); m_dz_press_y = evt.GetY();
+                    return true;
+                }
+            }
+        }
+        if (m_hx_active) {
+            if (m_hx_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_helix_handle(canvas, evt, m_hx_drag);
+                return true;
+            }
+            if (evt.LeftUp() && m_hx_drag >= 0) { m_hx_drag = -1; return true; }
+            if (evt.LeftDown()) {
+                int which = -1;
+                if (hit_test_helix_handle(canvas, evt, which)) {
+                    m_hx_drag = which; m_hx_press_x = evt.GetX(); m_hx_press_y = evt.GetY();
+                    return true;
+                }
+            }
+        }
+        if (m_rb_active) {
+            if (m_rb_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_rib_handle(canvas, evt, m_rb_drag);
+                return true;
+            }
+            if (evt.LeftUp() && m_rb_drag >= 0) { m_rb_drag = -1; return true; }
+            if (evt.LeftDown()) {
+                int which = -1;
+                if (hit_test_rib_handle(canvas, evt, which)) {
+                    m_rb_drag = which;
+                    return true;
+                }
+            }
+        }
+        if (m_dbp_active && evt.Moving() && !evt.LeftIsDown()) {
+            const int h = hit_test_base_pick(canvas, evt);
+            if (h != m_dbp_hover) {
+                m_dbp_hover = h;
+                canvas.set_as_dirty();
+                if (h >= 0) return true;
+            }
+        }
+        if (m_ex_active) {
+            if (m_ex_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_extrude_arrow(canvas, evt, m_ex_drag);
+                return true;
+            }
+            if (evt.LeftUp() && m_ex_drag >= 0) {
+                const int which = m_ex_drag; m_ex_drag = -1;
+                const bool moved = std::abs(evt.GetX() - m_ex_press_x) +
+                                   std::abs(evt.GetY() - m_ex_press_y) > 3;
+                if (!moved) open_extrude_editor(which);
+                return true;
+            }
+            if (evt.LeftDown()) {
+                int which = -1;
+                if (hit_test_extrude_arrow(canvas, evt, which)) {
+                    m_ex_drag = which; m_ex_press_x = evt.GetX(); m_ex_press_y = evt.GetY();
+                    return true;
+                }
+            }
+        }
+        if (m_rv_active) {
+            if (m_rv_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_revolve_arc(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_rv_drag) {
+                m_rv_drag = false;
+                const bool moved = std::abs(evt.GetX() - m_rv_press_x) +
+                                   std::abs(evt.GetY() - m_rv_press_y) > 3;
+                if (!moved) open_revolve_editor();
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_revolve_handle(canvas, evt)) {
+                m_rv_drag = true; m_rv_press_x = evt.GetX(); m_rv_press_y = evt.GetY();
+                return true;
+            }
+        }
+        if (m_dr_active) {
+            if (m_dr_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_draft_arc(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_dr_drag) {
+                m_dr_drag = false;
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_draft_handle(canvas, evt)) {
+                m_dr_drag = true; m_dr_press_x = evt.GetX(); m_dr_press_y = evt.GetY();
+                return true;
+            }
+        }
+        if (m_ct_active) {
+            if (m_ct_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_cut_arrow(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_ct_drag) {
+                m_ct_drag = false;
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_cut_arrow(canvas, evt)) {
+                start_cut_drag(canvas, evt);
+                return true;
+            }
+        }
+        if (m_pt_active) {
+            if (m_pt_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_pattern_handle(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_pt_drag) {
+                m_pt_drag = false;
+                const bool moved = std::abs(evt.GetX() - m_pt_press_x) +
+                                   std::abs(evt.GetY() - m_pt_press_y) > 3;
+                if (!moved) open_pattern_editor();
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_pattern_handle(canvas, evt)) {
+                m_pt_drag = true; m_pt_press_x = evt.GetX(); m_pt_press_y = evt.GetY();
+                return true;
+            }
+        }
+        if (m_fl_active) {
+            if (m_fl_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_fillet_arrow(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_fl_drag) {
+                m_fl_drag = false;
+                const bool moved = std::abs(evt.GetX() - m_fl_press_x) +
+                                   std::abs(evt.GetY() - m_fl_press_y) > 3;
+                if (!moved) open_fillet_editor();
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_fillet_arrow(canvas, evt)) {
+                start_fillet_drag(canvas, evt);
+                return true;
+            }
+        }
+        if (m_hl_active) {
+            if (m_hl_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_hole_handle(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_hl_drag >= 0) {
+                const int which = m_hl_drag; m_hl_drag = -1;
+                const bool moved = std::abs(evt.GetX() - m_hl_press_x) +
+                                   std::abs(evt.GetY() - m_hl_press_y) > 3;
+                if (!moved) open_hole_editor(which);
+                return true;
+            }
+            if (evt.LeftDown()) {
+                const int which = hit_test_hole_handle(canvas, evt);
+                if (which >= 0) { start_hole_drag(canvas, evt, which); return true; }
+            }
+        }
+        if (m_th_active) {
+            if (m_th_drag >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+                drag_thread_handle(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_th_drag >= 0) {
+                const int which = m_th_drag; m_th_drag = -1;
+                const bool moved = std::abs(evt.GetX() - m_th_press_x) +
+                                   std::abs(evt.GetY() - m_th_press_y) > 3;
+                if (!moved) open_thread_editor(which);
+                return true;
+            }
+            if (evt.LeftDown()) {
+                const int which = hit_test_thread_handle(canvas, evt);
+                if (which >= 0) { start_thread_drag(canvas, evt, which); return true; }
+            }
+        }
+        if (m_sh_active) {
+            if (m_sh_drag && evt.Dragging() && evt.LeftIsDown()) {
+                drag_shell_arrow(canvas, evt);
+                return true;
+            }
+            if (evt.LeftUp() && m_sh_drag) {
+                m_sh_drag = false;
+                const bool moved = std::abs(evt.GetX() - m_sh_press_x) +
+                                   std::abs(evt.GetY() - m_sh_press_y) > 3;
+                if (!moved) open_shell_editor();
+                return true;
+            }
+            if (evt.LeftDown() && hit_test_shell_arrow(canvas, evt)) {
+                start_shell_drag(canvas, evt);
+                return true;
+            }
+        }
+        if (evt.Moving() && !evt.LeftIsDown() && !m_rubber.is_dragging()) {
+            if (update_solid_hover(canvas, evt)) canvas.set_as_dirty();
+            return false;
+        }
+        const bool left_drag_sweeps =
+            evt.ShiftDown() || std::atoi(wxGetApp().app_config->get("left_mouse_drag_action").c_str()) == 0;
+        if (evt.Dragging() && evt.LeftIsDown() && m_pick_pending && (left_drag_sweeps || m_rubber.is_dragging())) {
+            if (!m_rubber.is_dragging()) {
+                if (std::max(std::abs(evt.GetX() - m_pick_press_x),
+                             std::abs(evt.GetY() - m_pick_press_y)) <= 8)
+                    return false;
+                m_rubber.start_dragging(Vec2d(m_pick_press_x, m_pick_press_y),
+                                        GLSelectionRectangle::Select);
+            }
+            m_rubber.dragging(Vec2d(evt.GetX(), evt.GetY()));
+            return true;
+        }
+        if (m_rubber.is_dragging() && !evt.LeftIsDown()) {
+            m_pick_pending = false;
+            if (evt.LeftUp()) pick_bodies_in_rectangle();
+            m_rubber.stop_dragging();
+            return evt.LeftUp();
+        }
+        if (evt.LeftDown()) {
+            m_pick_press_x = evt.GetX();
+            m_pick_press_y = evt.GetY();
+            m_pick_pending = true;
+            dp_pick_trace("down x=%d y=%d", evt.GetX(), evt.GetY());
+            return false;
+        }
+        if (!(evt.LeftUp() && m_pick_pending)) {
+            if (evt.LeftUp()) dp_pick_trace("up with no pending press (press was eaten upstream)");
+            return false;
+        }
+        m_pick_pending = false;
+        dp_pick_trace("up x=%d y=%d drift=%d", evt.GetX(), evt.GetY(),
+                      std::max(std::abs(evt.GetX() - m_pick_press_x),
+                               std::abs(evt.GetY() - m_pick_press_y)));
+        if (std::max(std::abs(evt.GetX() - m_pick_press_x),
+                     std::abs(evt.GetY() - m_pick_press_y)) > 8) {
+            dp_pick_trace("rejected as drag");
+            return false;
+        }
+        Point pos(evt.GetX(), evt.GetY());
+        const Linef3 ray  = canvas.mouse_ray(pos);
+        const Linef3 ray8 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+        int    edge_feat = -1, edge_reg = -1, edge_ent = -1; double edge_d = 1e30;
+        int    face_feat = -1, face_reg = -1;
+        dp_pick_trace("display sketches available: %zu", m_display_sketches.size());
+        for (const DisplaySketch& d : m_display_sketches) {
+            const Vec2d p   = d.plane.project(ray.a,  ray.vector());
+            const Vec2d p8  = d.plane.project(ray8.a, ray8.vector());
+            const double tol = std::max(1e-3, (p8 - p).norm());
+            hit_display_sketch(d, p, tol, edge_feat, edge_reg, edge_ent, edge_d, face_feat, face_reg);
+        }
+        if (edge_feat >= 0) {
+            m_display_pick = edge_feat; m_display_pick_region = edge_reg;
+            if (on_display_sketch_selected) on_display_sketch_selected(edge_feat, edge_reg, edge_ent);
+            return true;
+        }
+        if (handle_solid_click(canvas, evt)) return true;
+        if (face_feat >= 0) {
+            m_display_pick = face_feat; m_display_pick_region = face_reg;
+            if (on_display_sketch_selected) on_display_sketch_selected(face_feat, face_reg, -1);
+            return true;
+        }
+        m_display_pick = -1; m_display_pick_region = -1;
+        if (m_solid_sel != SolidSel::None) {
+            clear_solid_selection();
+            dp_pick_trace("clicked empty space -> selection cleared");
+            if (on_solid_selection_changed)
+                on_solid_selection_changed(int(m_solid_sel), m_sel_body, m_sel_face, m_sel_edge);
+        }
+        if (m_dbp_active) {
+            const int h = hit_test_base_pick(canvas, evt);
+            if (h >= 0 && h < int(m_dbp_base.size())) {
+                if (on_datum_base_picked) on_datum_base_picked(m_dbp_base[h]);
+                return true;
+            }
+        }
+        if (on_empty_pick) on_empty_pick();
+        return false;
+    }
+
+    if (m_mode == Mode::Trim || m_mode == Mode::Extend) {
+        if (evt.Moving()) { screen_to_plane(canvas, evt, m_cursor); m_has_cursor = true; return true; }
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            const double tol = std::max(1e-3, (m_plane.project(r2.a, r2.vector()) - p).norm());
+            if (apply_live_trim(p, screen_tol(canvas, evt, p, kToolPickPx), m_mode == Mode::Extend)) {
+                resolve_live();
+            } else {
+                notify(m_mode == Mode::Extend
+                    ? _u8L("Extend: click a line or an arc that can reach another entity")
+                    : _u8L("Trim: click a segment where it crosses another entity"));
+            }
+            return true;
+        }
+        if (evt.RightDown()) return false;
+        return false;
+    }
+
+    if (is_edit_op_mode()) {
+        if (evt.Moving()) {
+            screen_to_plane(canvas, evt, m_cursor);
+            m_has_cursor = true;
+            return true;
+        }
+        if (m_op_dragging_arrow && evt.Dragging() && evt.LeftIsDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            drag_op_arrow(p);
+            return true;
+        }
+        if (evt.LeftUp()) {
+            if (m_op_dragging_arrow) { m_op_dragging_arrow = false; return true; }
+            return false;
+        }
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            const double tol = std::max(1e-3, (m_plane.project(r2.a, r2.vector()) - p).norm());
+            if (op_ready() && m_mode != Mode::Mirror) {
+                const double ltol = std::max(tol, screen_tol(canvas, evt, p, kLabelPx));
+                if ((m_op_label - p).norm() <= ltol) { open_op_editor(); return true; }
+                if (hit_test_op_arrow(p, tol))        { m_op_dragging_arrow = true; return true; }
+            }
+            double best = 1e30; int bi = -1;
+            for (size_t i = 0; i < m_entities.size(); ++i) {
+                const double d = entity_pick_dist(p, m_entities[i]);
+                if (d < best) { best = d; bi = int(i); }
+            }
+            if (bi >= 0 && best <= screen_tol(canvas, evt, p, kToolPickPx)) { op_pick(bi); return true; }
+            if (op_ready()) notify(_u8L("Press Enter or ✓ to apply, Esc to discard"), false);
+            else if (m_op_a >= 0) { reset_op(); m_selection.clear(); if (on_selection_changed) on_selection_changed(0); }
+            return true;
+        }
+        if (evt.RightDown()) {
+            if (m_op_a < 0 && m_mirror_targets.empty()) return false;
+            reset_op();
+            m_selection.clear();
+            if (on_selection_changed) on_selection_changed(0);
+            return true;
+        }
+        return false;
+    }
+
+    if (is_transform_mode()) {
+        if (evt.Moving()) {
+            screen_to_plane(canvas, evt, m_cursor);
+            m_has_cursor = true;
+            return true;
+        }
+        if (m_tf_dragging && evt.Dragging() && evt.LeftIsDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            drag_tf_handle(p);
+            return true;
+        }
+        if (evt.LeftUp()) {
+            if (m_tf_dragging) { m_tf_dragging = false; return true; }
+            return false;
+        }
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            const double tol = std::max(1e-3, (m_plane.project(r2.a, r2.vector()) - p).norm());
+            if (tf_ready()) {
+                const double ltol = std::max(tol, screen_tol(canvas, evt, p, kLabelPx));
+                if ((m_tf_label_a - p).norm() <= ltol) { open_tf_editor_a();     return true; }
+                if ((m_tf_label_b - p).norm() <= ltol) { open_tf_editor_count(); return true; }
+                if (hit_test_tf_handle(p, tol))        { m_tf_dragging = true;   return true; }
+            }
+            double best = 1e30; int bi = -1;
+            for (size_t i = 0; i < m_entities.size(); ++i) {
+                const double d = entity_pick_dist(p, m_entities[i]);
+                if (d < best) { best = d; bi = int(i); }
+            }
+            if (bi >= 0 && best <= screen_tol(canvas, evt, p, kToolPickPx)) { tf_pick(bi); return true; }
+            if (tf_ready()) notify(_u8L("Press Enter or ✓ to apply, Esc to discard"), false);
+            return true;
+        }
+        if (evt.RightDown()) {
+            if (m_tf_targets.empty()) return false;
+            reset_tf();
+            m_selection.clear();
+            if (on_selection_changed) on_selection_changed(0);
+            return true;
+        }
+        return false;
+    }
+
+    if (m_mode == Mode::TransformArt) {
+        if (evt.Moving()) {
+            screen_to_plane(canvas, evt, m_cursor);
+            m_has_cursor = true;
+            return true;
+        }
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            const double tol = screen_tol(canvas, evt, p, kPickPx);
+            const int h = hit_test_xform_handle(p, tol);
+            if (h >= 0) {
+                m_xform_handle = h;
+                if (h == 4) m_xform_anchor = p;
+                else { Vec2d c[4]; xform_world_corners(c); m_xform_anchor = c[(h + 2) % 4]; }
+            }
+            return true;
+        }
+        if (m_xform_handle >= 0 && evt.Dragging() && evt.LeftIsDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            drag_xform_handle(p);
+            return true;
+        }
+        if (evt.LeftUp()) { m_xform_handle = -1; return true; }
+        if (evt.RightDown()) return false;
+        return false;
+    }
+
+    if (m_mode == Mode::Constrain) {
+        if (m_constrain_entities) {
+            if (evt.LeftDown()) {
+                Vec2d p;
+                screen_to_plane(canvas, evt, p);
+                double best = 1e30;
+                int bi = -1;
+                for (size_t i = 0; i < m_entities.size(); ++i) {
+                    const double d = entity_pick_dist(p, m_entities[i]);
+                    if (d < best) { best = d; bi = int(i); }
+                }
+                if (bi >= 0 && best > screen_tol(canvas, evt, p, kToolPickPx)) {
+                    bi = -1;
+                    m_pick0 = m_pick1 = m_pick2 = -1;
+                }
+                if (bi >= 0) {
+                    if (m_pick0 < 0)                                         { m_pick0 = bi; m_pick0_pt = p; }
+                    else if (m_pick1 < 0 && bi != m_pick0)                    m_pick1 = bi;
+                    else if (m_pick1 >= 0 && m_pick2 < 0 && bi != m_pick0 && bi != m_pick1) m_pick2 = bi;
+                    else                                                     { m_pick0 = bi; m_pick1 = m_pick2 = -1; m_pick0_pt = p; }
+                }
+                return true;
+            }
+            return false;
+        }
+        if (evt.LeftDown()) {
+            if (m_points.size() < 2)
+                return false;
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            const size_t n = m_points.size();
+            double best = 1e30;
+            int bi = -1;
+            for (size_t i = 0; i < n; ++i) {
+                const double d = point_segment_dist(p, m_points[i], m_points[(i + 1) % n]);
+                if (d < best) { best = d; bi = int(i); }
+            }
+            if (bi >= 0) {
+                m_sel_a = bi;
+                m_sel_b = int((bi + 1) % n);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    if (m_mode == Mode::Select) {
+        if (update_hover(canvas, evt)) return true;
+        const bool extend = evt.ShiftDown() || evt.ControlDown();
+
+        if (evt.LeftDown() && !extend) {
+            Vec2d gp;
+            if (screen_to_plane(canvas, evt, gp) && remove_constraint_near(gp)) {
+                if (on_selection_changed)
+                    on_selection_changed(int(m_selection.size() + m_point_sel.size()));
+                return true;
+            }
+        }
+
+        if (m_dragging_point && evt.Dragging() && evt.LeftIsDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            if (m_drag_poly_fi >= 0)
+                drag_polygon_vertex(m_drag_poly_fi, m_drag_ei, m_drag_role, p);
+            else if (m_drag_rect_fi >= 0)
+                drag_rect_corner(m_drag_rect_fi, p);
+            else if (m_drag_slot_fi >= 0)
+                drag_slot_handle(m_drag_slot_fi, p);
+            else if (m_drag_ei >= 0 && m_drag_ei < int(m_entities.size()) &&
+                     m_entities[m_drag_ei].type == SketchEntity::Type::Arc)
+                drag_arc_handle(m_drag_ei, m_drag_role, p);
+            else if (m_drag_ei >= 0 && m_drag_ei < int(m_entities.size()) &&
+                     m_entities[m_drag_ei].type == SketchEntity::Type::EllipseArc)
+                drag_ellipsearc_handle(m_drag_ei, m_drag_role, p);
+            else {
+                set_point(m_drag_ei, m_drag_role, p);
+                resolve_live_drag(m_drag_ei, m_drag_role);
+            }
+            return true;
+        }
+        if (m_dragging_handle && evt.Dragging() && evt.LeftIsDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            set_handle(m_drag_handle, p);
+            return true;
+        }
+        if (evt.LeftUp()) {
+            if (m_dragging_point) {
+                Vec2d p;
+                screen_to_plane(canvas, evt, p);
+                if (m_drag_poly_fi >= 0)
+                    drag_polygon_vertex(m_drag_poly_fi, m_drag_ei, m_drag_role, p);
+                else if (m_drag_rect_fi >= 0)
+                    drag_rect_corner(m_drag_rect_fi, p);
+                else if (m_drag_slot_fi >= 0)
+                    drag_slot_handle(m_drag_slot_fi, p);
+                else if (m_drag_ei >= 0 && m_drag_ei < int(m_entities.size()) &&
+                         m_entities[m_drag_ei].type == SketchEntity::Type::Arc)
+                    drag_arc_handle(m_drag_ei, m_drag_role, p);
+                else if (m_drag_ei >= 0 && m_drag_ei < int(m_entities.size()) &&
+                         m_entities[m_drag_ei].type == SketchEntity::Type::EllipseArc)
+                    drag_ellipsearc_handle(m_drag_ei, m_drag_role, p);
+                else {
+                    set_point(m_drag_ei, m_drag_role, p);
+                    resolve_live_drag(m_drag_ei, m_drag_role);
+                }
+                m_dragging_point = false;
+                m_drag_ei = -1;
+                m_drag_poly_fi = -1;
+                m_drag_rect_fi = -1;
+                m_drag_slot_fi = -1;
+                return true;
+            }
+            if (m_dragging_handle) {
+                Vec2d p;
+                screen_to_plane(canvas, evt, p);
+                set_handle(m_drag_handle, p);
+                m_dragging_handle = false;
+                return true;
+            }
+            return false;
+        }
+
+        if (evt.LeftDown() || evt.LeftDClick()) {
+            m_dragging_point = false;
+            m_dragging_handle = false;
+            m_drag_poly_fi = -1;
+            m_drag_rect_fi = -1;
+            m_drag_slot_fi = -1;
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            if (evt.LeftDClick()) {
+                const int di = hit_test_dimension(p, screen_tol(canvas, evt, p, kLabelPx));
+                if (di >= 0) { edit_dimension(di); return true; }
+            }
+            const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            const Vec2d p2 = m_plane.project(r2.a, r2.vector());
+            const double tol = std::max(1e-3, (p2 - p).norm());
+
+            if (evt.LeftDown()) {
+                const double ltol = std::max(tol, screen_tol(canvas, evt, p, kLabelPx));
+                const int di = hit_test_dimension(p, ltol);
+                if (di >= 0) { open_value_editor(di); return true; }
+                for (const DimAnnot& q : m_live_quotes) {
+                    if ((q.label_pos - p).norm() <= ltol) {
+                        if (q.kind == DimType::Angle)
+                            open_angle_editor(q.ea);
+                        else
+                            place_dimension(q);
+                        return true;
+                    }
+                }
+                if (m_live_poly_fi >= 0) {
+                    if ((m_live_poly_side_label - p).norm() <= ltol) {
+                        open_polygon_side_editor(m_live_poly_fi);
+                        return true;
+                    }
+                    if ((m_live_poly_angle_label - p).norm() <= ltol) {
+                        open_polygon_angle_editor(m_live_poly_fi);
+                        return true;
+                    }
+                }
+                if (m_live_arc_ei >= 0 && (m_live_arc_angle_label - p).norm() <= ltol) {
+                    open_arc_angle_editor(m_live_arc_ei);
+                    return true;
+                }
+                if (m_live_ellipse_ei >= 0) {
+                    if ((m_live_ellipse_major_label - p).norm() <= ltol) {
+                        open_ellipse_axis_editor(m_live_ellipse_ei, true);
+                        return true;
+                    }
+                    if ((m_live_ellipse_minor_label - p).norm() <= ltol) {
+                        open_ellipse_axis_editor(m_live_ellipse_ei, false);
+                        return true;
+                    }
+                }
+                if (m_live_rrect_fi >= 0) {
+                    if ((m_live_rrect_w_label - p).norm() <= ltol) { open_rounded_rect_editor(m_live_rrect_fi, 0); return true; }
+                    if ((m_live_rrect_h_label - p).norm() <= ltol) { open_rounded_rect_editor(m_live_rrect_fi, 1); return true; }
+                    if ((m_live_rrect_r_label - p).norm() <= ltol) { open_rounded_rect_editor(m_live_rrect_fi, 2); return true; }
+                }
+                if (m_live_aslot_fi >= 0) {
+                    if ((m_live_aslot_r_label - p).norm() <= ltol) { open_arc_slot_editor(m_live_aslot_fi, true);  return true; }
+                    if ((m_live_aslot_w_label - p).norm() <= ltol) { open_arc_slot_editor(m_live_aslot_fi, false); return true; }
+                }
+                if (m_live_slot_fi >= 0) {
+                    if ((m_live_slot_len_label   - p).norm() <= ltol) { open_slot_editor(m_live_slot_fi, 0); return true; }
+                    if ((m_live_slot_w_label     - p).norm() <= ltol) { open_slot_editor(m_live_slot_fi, 1); return true; }
+                    if ((m_live_slot_angle_label - p).norm() <= ltol) { open_slot_editor(m_live_slot_fi, 2); return true; }
+                }
+            }
+
+            if (evt.LeftDown()) {
+                Handle hh;
+                if (hit_test_handle(p, tol, hh) &&
+                    (hh.role == HandleRole::RadiusHandle || hh.role == HandleRole::MajorAxis ||
+                     hh.role == HandleRole::MinorAxis || hh.role == HandleRole::BSplineCtrl)) {
+                    m_dragging_handle = true;
+                    m_drag_handle     = hh;
+                    m_selection.clear();
+                    m_point_sel.clear();
+                    m_selection.push_back(hh.ei);
+                    if (on_selection_changed)
+                        on_selection_changed(int(m_selection.size()));
+                    return true;
+                }
+            }
+
+            if (evt.LeftDown()) {
+                int pe; SketchPointRole pr;
+                if (hit_test_point(p, tol, pe, pr)) {
+                    const auto key = std::make_pair(pe, pr);
+                    auto it = std::find(m_point_sel.begin(), m_point_sel.end(), key);
+                    if (extend) {
+                        if (it == m_point_sel.end()) m_point_sel.push_back(key);
+                        else m_point_sel.erase(it);
+                    } else {
+                        m_selection.clear();
+                        m_point_sel.clear();
+                        m_point_sel.push_back(key);
+                    }
+                    m_dragging_point = true;
+                    m_drag_ei = pe;
+                    m_drag_role = pr;
+                    const int pf = feature_of(pe);
+                    m_drag_poly_fi = (pf >= 0 && m_features[pf].kind == FeatureKind::Polygon) ? pf : -1;
+                    m_drag_rect_fi = -1; m_drag_slot_fi = -1;
+                    if (pf >= 0 && m_drag_poly_fi < 0) {
+                        const Feature& ft = m_features[pf];
+                        if (ft.kind == FeatureKind::CornerRect || ft.kind == FeatureKind::CenterRect) {
+                            const SketchEntity& e0 = m_entities[ft.begin];
+                            const Vec2d d0 = e0.p1 - e0.p0;
+                            const bool aa = std::abs(d0.x()) < 1e-6 || std::abs(d0.y()) < 1e-6;
+                            Vec2d gp;
+                            if (aa && point_at(pe, pr, gp)) {
+                                Vec2d opp;
+                                opp.x() = (std::abs(gp.x() - ft.c0.x()) < std::abs(gp.x() - ft.c1.x())) ? ft.c1.x() : ft.c0.x();
+                                opp.y() = (std::abs(gp.y() - ft.c0.y()) < std::abs(gp.y() - ft.c1.y())) ? ft.c1.y() : ft.c0.y();
+                                m_drag_rect_fi = pf; m_drag_rect_anchor = opp;
+                            }
+                        } else if (ft.kind == FeatureKind::Slot &&
+                                   pr == SketchPointRole::Center &&
+                                   (pe == ft.begin + 1 || pe == ft.begin + 3)) {
+                            m_drag_slot_fi = pf;
+                            m_drag_slot_c1 = (pe == ft.begin + 1);
+                        }
+                    }
+                    if (on_selection_changed)
+                        on_selection_changed(int(m_selection.size() + m_point_sel.size()));
+                    return true;
+                }
+            }
+
+            const int hit = hit_test(p, tol);
+
+            if (evt.LeftDClick() && hit >= 0) {
+                if (!extend) m_selection.clear();
+                for (int idx : connected_loop(hit))
+                    if (std::find(m_selection.begin(), m_selection.end(), idx) == m_selection.end())
+                        m_selection.push_back(idx);
+            } else if (hit >= 0) {
+                auto it = std::find(m_selection.begin(), m_selection.end(), hit);
+                if (extend) {
+                    if (it == m_selection.end()) m_selection.push_back(hit);
+                    else m_selection.erase(it);
+                } else {
+                    m_selection.clear();
+                    m_point_sel.clear();
+                    m_selection.push_back(hit);
+                }
+            } else if (!extend) {
+                if (evt.LeftDown() && on_face_selected) {
+                    const int reg = region_at(p);
+                    if (reg >= 0) {
+                        m_selection.clear();
+                        m_point_sel.clear();
+                        on_face_selected(reg);
+                        return true;
+                    }
+                }
+                m_selection.clear();
+                m_point_sel.clear();
+            }
+            if (on_selection_changed)
+                on_selection_changed(int(m_selection.size() + m_point_sel.size()));
+            return true;
+        }
+        if (evt.RightDown()) {
+            return false;
+        }
+        return false;
+    }
+
+    if (m_mode == Mode::Dimension) {
+        if (update_hover(canvas, evt)) return true;
+        if (evt.LeftDClick()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            const int di = hit_test_dimension(p, screen_tol(canvas, evt, p, kLabelPx));
+            if (di >= 0) edit_dimension(di);
+            m_dim_has0 = false;
+            return true;
+        }
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            const Linef3 r2 = canvas.mouse_ray(Point(evt.GetX() + 8, evt.GetY()));
+            const Vec2d p2 = m_plane.project(r2.a, r2.vector());
+            const double tol = std::max(1e-3, (p2 - p).norm());
+            int pe; SketchPointRole pr;
+            const bool got_pt = hit_test_point(p, tol, pe, pr);
+            const int he = hit_test(p, tol);
+            if (!m_dim_has0) {
+                if (got_pt) {
+                    m_dim_e0 = pe; m_dim_r0 = pr; m_dim_has0 = true;
+                } else if (he >= 0) {
+                    DimAnnot a; a.ea = he;
+                    const SketchEntity::Type t = m_entities[he].type;
+                    if (t == SketchEntity::Type::Line)        { a.kind = DimType::Length;   place_dimension(a); }
+                    else if (t == SketchEntity::Type::Circle) { a.kind = DimType::Diameter; place_dimension(a); }
+                    else if (t == SketchEntity::Type::Arc)    { a.kind = DimType::Radius;   place_dimension(a); }
+                    else
+                        notify(_u8L("No dimension for that entity yet — click a line, a circle, an arc, or two points"));
+                }
+            } else {
+                if (got_pt && !(pe == m_dim_e0 && pr == m_dim_r0)) {
+                    DimAnnot a; a.kind = DimType::Distance;
+                    a.ea = m_dim_e0; a.ra = m_dim_r0; a.eb = pe; a.rb = pr;
+                    place_dimension(a);
+                } else if (he >= 0 && m_entities[he].type == SketchEntity::Type::Line) {
+                    DimAnnot a; a.kind = DimType::DistanceToLine;
+                    a.ea = m_dim_e0; a.ra = m_dim_r0; a.eb = he;
+                    place_dimension(a);
+                } else if (he >= 0) {
+                    notify(_u8L("Click a second point, or a line to measure the distance to"), false);
+                }
+                m_dim_has0 = false;
+            }
+            return true;
+        }
+        if (evt.RightDown()) {
+            if (!m_dim_has0) return false;
+            m_dim_has0 = false;
+            return true;
+        }
+        return false;
+    }
+
+    if (evt.Moving()) {
+        m_snap_off = evt.ShiftDown();
+        screen_to_plane(canvas, evt, m_cursor);
+        m_has_cursor = true;
+        m_cursor_locked = false;
+        bool vsnap = false;
+        if (click_snaps()) m_cursor = snap_vertex(canvas, evt, m_cursor, vsnap);
+        else               m_cursor_snap = InferenceSnap{};
+        if (snap_chain_start(canvas, evt, m_cursor)) vsnap = true;
+        const bool line_like = (m_mode == Mode::Polyline || m_mode == Mode::Line);
+        if (line_like && !m_points.empty() && !vsnap)
+            m_cursor = snap_dir(m_points.back(), m_cursor, m_cursor_locked);
+        if (on_cursor_metrics && line_like && !m_points.empty() && !m_awaiting_length) {
+            const Vec2d d = m_cursor - m_points.back();
+            on_cursor_metrics(d.norm(), std::atan2(d.y(), d.x()) * 180.0 / M_PI, m_cursor_locked);
+        }
+        return true;
+    }
+
+    switch (m_mode) {
+
+    case Mode::Polyline: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            m_snap_off = evt.ShiftDown();
+            bool vsnap = false;
+            p = snap_vertex(canvas, evt, p, vsnap);
+            if (snap_chain_start(canvas, evt, p)) {
+                const int base = int(m_entities.size());
+                push_closed_lines(m_points);
+                infer_auto_constraints(base);
+                m_points.clear();
+                return true;
+            }
+            if (!m_points.empty() && !vsnap) {
+                bool lk = false;
+                p = snap_dir(m_points.back(), p, lk);
+            }
+            m_chain_dup_tol = screen_tol(canvas, evt, p, 3.0);
+            m_points.push_back(p);
+            arm_polyline_segment_edit();
+            return true;
+        }
+        if (evt.LeftDClick()) {
+            if (m_points.size() >= 2) end_chain();
+            return true;
+        }
+        if (evt.RightDown() && m_points.empty())
+            return false;
+        if (evt.RightDown()) {
+            end_chain();
+            return true;
+        }
+        break;
+    }
+
+    case Mode::Line: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            m_snap_off = evt.ShiftDown();
+            bool vsnap = false;
+            p = snap_vertex(canvas, evt, p, vsnap);
+            if (m_points.empty()) {
+                m_points.push_back(p);
+                return true;
+            }
+            bool lk = false;
+            if (!vsnap) p = snap_dir(m_points.back(), p, lk);
+            m_points.push_back(p);
+            keep_segment_as_drawn();
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::CornerRect: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            if (m_points.empty()) {
+                m_points.push_back(p);
+            } else {
+                const Vec2d A = m_points[0];
+                const Vec2d B = p;
+                const int base = int(m_entities.size());
+                begin_feature(FeatureKind::CornerRect);
+                push_closed_lines({ A, Vec2d(B.x(), A.y()), B, Vec2d(A.x(), B.y()) });
+                infer_auto_constraints(base);
+                end_feature(A, B);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::CenterRect: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            if (m_points.empty()) {
+                m_points.push_back(p);
+            } else {
+                const Vec2d C = m_points[0];
+                const double hx = std::abs(p.x() - C.x());
+                const double hy = std::abs(p.y() - C.y());
+                const int base = int(m_entities.size());
+                begin_feature(FeatureKind::CenterRect);
+                push_closed_lines({
+                    Vec2d(C.x() - hx, C.y() - hy), Vec2d(C.x() + hx, C.y() - hy),
+                    Vec2d(C.x() + hx, C.y() + hy), Vec2d(C.x() - hx, C.y() + hy) });
+                infer_auto_constraints(base);
+                end_feature(Vec2d(C.x() - hx, C.y() - hy), Vec2d(C.x() + hx, C.y() + hy));
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::ObliqueRect: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.size() < 2)
+                p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                const Vec2d A = m_points[0], B = m_points[1];
+                Vec2d u = B - A;
+                if (u.squaredNorm() > 1e-12) {
+                    u.normalize();
+                    const Vec2d n(-u.y(), u.x());
+                    const double w = n.dot(m_points[2] - A);
+                    const int base = int(m_entities.size());
+                    begin_feature(FeatureKind::CornerRect);
+                    push_closed_lines({ A, B, B + n * w, A + n * w });
+                    infer_auto_constraints(base);
+                    end_feature(A, B + n * w);
+                }
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::RoundedRect: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.size() < 2)
+                p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                const int base = int(m_entities.size());
+                begin_feature(FeatureKind::RoundedRect);
+                append_entities(make_rounded_rect(m_points[0], m_points[1], m_points[2]));
+                infer_auto_constraints(base);
+                const Vec2d a = m_points[0], b = m_points[1];
+                const double xmin=std::min(a.x(),b.x()), xmax=std::max(a.x(),b.x());
+                const double ymin=std::min(a.y(),b.y()), ymax=std::max(a.y(),b.y());
+                const double bw=xmax-xmin, bh=ymax-ymin;
+                const Vec2d cs[4]={{xmin,ymin},{xmax,ymin},{xmax,ymax},{xmin,ymax}};
+                double r=1e18; for(const Vec2d&c:cs) r=std::min(r,(m_points[2]-c).norm());
+                r=std::min(r, std::min(bw,bh)*0.5);
+                end_feature(Vec2d(xmin,ymin), Vec2d(xmax,ymax), r);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::CenterCircle: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            if (m_points.empty()) {
+                m_points.push_back(p);
+            } else {
+                const Vec2d C = m_points[0];
+                push_circle(C, (p - C).norm());
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::TwoPointCircle: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 2) {
+                const Vec2d C = (m_points[0] + m_points[1]) * 0.5;
+                push_circle(C, (m_points[1] - m_points[0]).norm() * 0.5);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::ThreePointCircle: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                append_entities(make_three_point_circle(m_points[0], m_points[1], m_points[2]));
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::ThreePointArc: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.size() < 2)
+                p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                const int base = int(m_entities.size());
+                append_entities(make_three_point_arc(m_points[0], m_points[1], m_points[2]));
+                infer_auto_constraints(base);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::TangentArc: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 2) {
+                const int base = int(m_entities.size());
+                append_entities(make_tangent_arc(m_points[0], m_points[1]));
+                infer_auto_constraints(base);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::CenterArc: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.size() == 1)
+                p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                const int base = int(m_entities.size());
+                append_entities(make_center_arc(m_points[0], m_points[1], m_points[2]));
+                infer_auto_constraints(base);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::Slot: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            if (m_points.size() < 2) {
+                m_points.push_back(p);
+            } else {
+                Vec2d u = m_points[1] - m_points[0];
+                if (u.squaredNorm() > 1e-12) {
+                    u.normalize();
+                    const Vec2d n(-u.y(), u.x());
+                    const double w = std::abs(n.dot(p - m_points[0]));
+                    const int base = int(m_entities.size());
+                    begin_feature(FeatureKind::Slot);
+                    append_entities(make_slot(m_points[0], m_points[1], w));
+                    infer_auto_constraints(base);
+                    end_feature(m_points[0], m_points[1], w);
+                }
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::ArcSlot: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.size() == 1)
+                p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 4) {
+                const double Rc = (m_points[1] - m_points[0]).norm();
+                const double w  = std::abs((m_points[3] - m_points[0]).norm() - Rc);
+                const int base = int(m_entities.size());
+                begin_feature(FeatureKind::ArcSlot);
+                append_entities(make_arc_slot(m_points[0], m_points[1], m_points[2], w));
+                infer_auto_constraints(base);
+                end_feature(m_points[0], m_points[1], w);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::Polygon: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            if (m_points.empty()) {
+                m_points.push_back(p);
+            } else {
+                const int base = int(m_entities.size());
+                begin_feature(FeatureKind::Polygon);
+                append_entities(make_polygon(m_points[0], p, m_polygon_sides));
+                infer_auto_constraints(base);
+                end_feature(m_points[0], p, (p - m_points[0]).norm(), m_polygon_sides);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::Ellipse: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.empty()) p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 3) {
+                const int base = int(m_entities.size());
+                append_entities(make_ellipse(m_points[0], m_points[1], m_points[2]));
+                infer_auto_constraints(base);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::EllipseArc: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            bool vsnap = false;
+            if (m_points.empty()) p = snap_vertex(canvas, evt, p, vsnap);
+            m_points.push_back(p);
+            if (m_points.size() == 5) {
+                const int base = int(m_entities.size());
+                append_entities(make_ellipse_arc(m_points[0], m_points[1], m_points[2],
+                                                  m_points[3], m_points[4]));
+                infer_auto_constraints(base);
+                m_points.clear();
+            }
+            return true;
+        }
+        if (evt.RightDown()) return right_abandon();
+        break;
+    }
+
+    case Mode::BSpline: {
+        if (evt.LeftDown()) {
+            Vec2d p; screen_to_plane(canvas, evt, p);
+            m_snap_off = evt.ShiftDown();
+            bool vsnap = false;
+            p = snap_vertex(canvas, evt, p, vsnap);
+            m_chain_dup_tol = screen_tol(canvas, evt, p, 3.0);
+            m_points.push_back(p);
+            return true;
+        }
+        if (evt.RightDown() && m_points.empty())
+            return false;
+        if (evt.LeftDClick() || evt.RightDown()) {
+            end_chain();
+            return true;
+        }
+        break;
+    }
+
+    case Mode::Point: {
+        if (evt.LeftDown()) {
+            Vec2d p;
+            screen_to_plane(canvas, evt, p);
+            { bool vsnap = false; if (click_snaps()) p = snap_vertex(canvas, evt, p, vsnap); }
+            push_point(p);
+            return true;
+        }
+        if (evt.RightDown()) return false;
+        break;
+    }
+
+    case Mode::Constrain:
+        break;
+    }
+
+    if (evt.Dragging())
+        return false;
+
+    return false;
+}
+
+}}

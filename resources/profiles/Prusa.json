@@ -1,6 +1,6 @@
 {
 	"name": "Prusa",
-	"version": "02.04.00.44",
+	"version": "02.04.00.46",
 	"force_update": "0",
 	"description": "Prusa configurations",
 	"machine_model_list": [
@@ -235,20 +235,20 @@
 			"sub_path": "process/0.55mm Draft @MK3S 0.8.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MINI",
-			"sub_path": "process/0.20mm Non-planar top @MINI.json"
+			"name": "0.20mm Smoothest tops @MINI",
+			"sub_path": "process/0.20mm Smoothest tops @MINI.json"
 		},
 		{
-			"name": "0.12mm Non-planar top @MINI 0.25",
-			"sub_path": "process/0.12mm Non-planar top @MINI 0.25.json"
+			"name": "0.12mm Smoothest tops @MINI 0.25",
+			"sub_path": "process/0.12mm Smoothest tops @MINI 0.25.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MINI 0.6",
-			"sub_path": "process/0.20mm Non-planar top @MINI 0.6.json"
+			"name": "0.20mm Smoothest tops @MINI 0.6",
+			"sub_path": "process/0.20mm Smoothest tops @MINI 0.6.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MINI 0.8",
-			"sub_path": "process/0.20mm Non-planar top @MINI 0.8.json"
+			"name": "0.20mm Smoothest tops @MINI 0.8",
+			"sub_path": "process/0.20mm Smoothest tops @MINI 0.8.json"
 		},
 		{
 			"name": "0.15mm Standard @MK3.5 0.6",
@@ -579,8 +579,8 @@
 			"sub_path": "process/process_common_xl_5t.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK3S 0.4",
-			"sub_path": "process/0.20mm Non-planar top @MK3S 0.4.json"
+			"name": "0.20mm Smoothest tops @MK3S 0.4",
+			"sub_path": "process/0.20mm Smoothest tops @MK3S 0.4.json"
 		},
 		{
 			"name": "0.05mm Detail @MK3.5",
@@ -663,8 +663,8 @@
 			"sub_path": "process/0.25mm Speed @MK3.5.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MINIIS",
-			"sub_path": "process/0.20mm Non-planar top @MINIIS.json"
+			"name": "0.20mm Smoothest tops @MINIIS",
+			"sub_path": "process/0.20mm Smoothest tops @MINIIS.json"
 		},
 		{
 			"name": "0.05mm Detail @MINIIS",
@@ -747,8 +747,8 @@
 			"sub_path": "process/0.25mm Speed @MINIIS.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK4",
-			"sub_path": "process/0.20mm Non-planar top @MK4.json"
+			"name": "0.20mm Smoothest tops @MK4",
+			"sub_path": "process/0.20mm Smoothest tops @MK4.json"
 		},
 		{
 			"name": "fdm_process_mk4_mmu3",
@@ -851,16 +851,16 @@
 			"sub_path": "process/0.20mm SOLUBLE INTERFACE @CORE One L 0.4.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK4S 0.4",
-			"sub_path": "process/0.20mm Non-planar top @MK4S 0.4.json"
-		},
-		{
 			"name": "0.20mm SPEED @CORE One 0.4",
 			"sub_path": "process/0.20mm SPEED @CORE One 0.4.json"
 		},
 		{
 			"name": "0.20mm SPEED @CORE One L 0.4",
 			"sub_path": "process/0.20mm SPEED @CORE One L 0.4.json"
+		},
+		{
+			"name": "0.20mm Smoothest tops @MK4S 0.4",
+			"sub_path": "process/0.20mm Smoothest tops @MK4S 0.4.json"
 		},
 		{
 			"name": "0.20mm SPEED @CORE One 0.5",
@@ -899,16 +899,16 @@
 			"sub_path": "process/0.20mm STRUCTURAL @MK4S 0.6.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK4S HF0.4",
-			"sub_path": "process/0.20mm Non-planar top @MK4S HF0.4.json"
-		},
-		{
 			"name": "0.20mm SPEED @CORE One HF 0.4",
 			"sub_path": "process/0.20mm SPEED @CORE One HF 0.4.json"
 		},
 		{
 			"name": "0.20mm SPEED @CORE One L HF 0.4",
 			"sub_path": "process/0.20mm SPEED @CORE One L HF 0.4.json"
+		},
+		{
+			"name": "0.20mm Smoothest tops @MK4S HF0.4",
+			"sub_path": "process/0.20mm Smoothest tops @MK4S HF0.4.json"
 		},
 		{
 			"name": "0.15mm STRUCTURAL @MK4S 0.4",
@@ -1331,8 +1331,8 @@
 			"sub_path": "process/0.20mm STRUCTURAL @CORE One L 0.6.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @CORE One HF 0.4",
-			"sub_path": "process/0.20mm Non-planar top @CORE One HF 0.4.json"
+			"name": "0.20mm Smoothest tops @CORE One HF 0.4",
+			"sub_path": "process/0.20mm Smoothest tops @CORE One HF 0.4.json"
 		},
 		{
 			"name": "fdm_process_coreone_indx",
@@ -1347,12 +1347,12 @@
 			"sub_path": "process/0.15mm STRUCTURAL @CORE One L 0.4.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @CORE One 0.4",
-			"sub_path": "process/0.20mm Non-planar top @CORE One 0.4.json"
-		},
-		{
 			"name": "0.20mm STRUCTURAL @COREONE0.4 + MMU3",
 			"sub_path": "process/0.20mm STRUCTURAL @COREONE0.4 + MMU3.json"
+		},
+		{
+			"name": "0.20mm Smoothest tops @CORE One 0.4",
+			"sub_path": "process/0.20mm Smoothest tops @CORE One 0.4.json"
 		},
 		{
 			"name": "0.25mm STRUCTURAL @CORE One HF 0.4",
@@ -1467,12 +1467,12 @@
 			"sub_path": "process/0.55mm SPEED @CORE One L HF 0.8.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK4 MMU3 0.4",
-			"sub_path": "process/0.20mm Non-planar top @MK4 MMU3 0.4.json"
+			"name": "0.20mm Smoothest tops @MK4 MMU3 0.4",
+			"sub_path": "process/0.20mm Smoothest tops @MK4 MMU3 0.4.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @MK4 MMU3 HF0.4",
-			"sub_path": "process/0.20mm Non-planar top @MK4 MMU3 HF0.4.json"
+			"name": "0.20mm Smoothest tops @MK4 MMU3 HF0.4",
+			"sub_path": "process/0.20mm Smoothest tops @MK4 MMU3 HF0.4.json"
 		},
 		{
 			"name": "0.05mm DETAIL @COREONE0.25 + MMU3",
@@ -1571,8 +1571,8 @@
 			"sub_path": "process/0.15mm STRUCTURAL @COREONE0.4 + MMU3.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @COREONE0.4 + MMU3",
-			"sub_path": "process/0.20mm Non-planar top @COREONE0.4 + MMU3.json"
+			"name": "0.20mm Smoothest tops @COREONE0.4 + MMU3",
+			"sub_path": "process/0.20mm Smoothest tops @COREONE0.4 + MMU3.json"
 		},
 		{
 			"name": "0.25mm STRUCTURAL @COREONE0.4 + MMU3",

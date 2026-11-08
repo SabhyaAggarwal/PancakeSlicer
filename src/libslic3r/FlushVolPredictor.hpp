@@ -25,12 +25,9 @@ namespace FlushPredict
         LABColor() = default;
         LABColor(double l_,double a_,double b_):l(l_),a(a_),b(b_){}
     };
-
     LABColor RGB2LAB(const RGBColor& color);
-
     float calc_color_distance(const LABColor& lab1, const LABColor& lab2);
     float calc_color_distance(const RGBColor& rgb1, const RGBColor& rgb2);
-
     bool is_similar_color(const RGBColor& from, const RGBColor& to, float distance_threshold = 5.0);
 
 }

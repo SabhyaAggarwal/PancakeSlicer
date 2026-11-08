@@ -18,8 +18,6 @@ namespace TextureBake {
 
 namespace {
 
-
-
 void tangent_basis(const Vec3f &n, Vec3f &t1, Vec3f &t2)
 {
     const Vec3f a = (std::abs(n.x()) < 0.9f) ? Vec3f(1.f, 0.f, 0.f) : Vec3f(0.f, 1.f, 0.f);
@@ -39,7 +37,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
     if (count == 0 || !sample || settings.iterations <= 0)
         return result;
 
-
     QuantizedPointMap  weld(WELD_GRID_GEOMETRY, std::min(count, size_t(1) << 22));
     std::vector<int>   vid(count);
     std::vector<Vec3f> pos;
@@ -49,8 +46,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
             pos.push_back(geometry.pos[i]);
     }
     const size_t nv = pos.size();
-
-
 
     std::vector<uint32_t> start(nv + 1, 0);
     for (size_t i = 0; i < count; ++i)
@@ -92,9 +87,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
     };
     rebuild_frames();
 
-
-
-
     double h_lo = std::numeric_limits<double>::max(), h_hi = -h_lo;
     {
         std::vector<float> h0(nv, 0.f);
@@ -111,7 +103,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
     if (!(h_range > 0.0))
         return result;
     const double target   = h_lo + h_range * settings.contour_level;
-
     const double min_grad = h_range * settings.min_gradient_fraction;
 
     std::vector<uint8_t> ever_moved(nv, 0);
@@ -131,8 +122,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
                 if (eps <= 0.f)
                     continue;
 
-
-
                 const double h  = double(sample(pos[v], n, n));
                 const double gx = (double(sample(pos[v] + t1 * eps, n, n)) -
                                    double(sample(pos[v] - t1 * eps, n, n))) / (2.0 * double(eps));
@@ -141,10 +130,8 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
                 const double g2 = gx * gx + gy * gy;
                 if (g2 <= 0.0)
                     continue;
-
                 if (std::sqrt(g2) * double(edge_len[v]) < min_grad)
                     continue;
-
 
                 const double s   = -(h - target) / g2;
                 Vec3f        d   = t1 * float(s * gx) + t2 * float(s * gy);
@@ -159,8 +146,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
             }
         });
 
-
-
         size_t applied = 0;
         for (size_t v = 0; v < nv; ++v) {
             if (!want[v])
@@ -172,8 +157,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
                 const size_t t = size_t(inc[k]) / 3;
                 const Vec3f &a = pos[size_t(vid[t * 3])];
                 const Vec3f  n2 = (pos[size_t(vid[t * 3 + 1])] - a).cross(pos[size_t(vid[t * 3 + 2])] - a);
-
-
                 if (n2.squaredNorm() <= 0.f || n2.normalized().dot(nrm[v]) < 0.f)
                     ok = false;
             }
@@ -193,7 +176,6 @@ RelocateResult relocate_to_contours(const TriSoup &geometry, const HeightSampleF
     for (size_t v = 0; v < nv; ++v)
         if (ever_moved[v])
             ++result.moved;
-
 
     for (size_t i = 0; i < count; ++i)
         result.geometry.pos[i] = pos[size_t(vid[i])];

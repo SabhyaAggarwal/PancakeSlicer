@@ -29,14 +29,19 @@ const libraryV4File = "library.json"
 func seededLibraryV4(epoch string) map[string]json.RawMessage {
 	profiles := []map[string]any{}
 	for _, s := range starterProfiles {
-		intent := map[string]string{}
-		for k, v := range starterIntent {
-			intent[k] = v
+		values := map[string]string{}
+		for k, v := range starterValues {
+			values[k] = v
 		}
-		for k, v := range s.intent {
-			intent[k] = v
+		for k, v := range s.values {
+			values[k] = v
 		}
-		p := map[string]any{"id": "profile:starter-" + s.id, "type": "print", "name": s.name, "revision": 1, "intent": intent, "scales": defaultScales}
+		p := map[string]any{"id": "profile:starter-" + s.id, "type": "print", "name": s.name, "revision": 1, "values": values, "scales": defaultScales}
+		speedSeed := map[string]string{"everyday": "standard", "strong": "strength", "fine-detail": "fine", "draft": "draft"}[s.id]
+		p["speedModel"] = newSpeedModel(speedSeed)
+		for _, f := range profileRules.SpeedFeatures {
+			delete(values, f.Key)
+		}
 		if s.auto.PreferredHeight != nil {
 			p["preferredHeight"] = *s.auto.PreferredHeight
 		}
@@ -70,9 +75,10 @@ type v4Record struct {
 		Models  []string  `json:"models,omitempty"`
 		Nozzles []float64 `json:"nozzles,omitempty"`
 	} `json:"fits,omitempty"`
-	Intent          map[string]json.RawMessage `json:"intent,omitempty"`
+	Values          map[string]json.RawMessage `json:"values,omitempty"`
 	Scales          []autoScale                `json:"scales,omitempty"`
 	PreferredHeight *float64                   `json:"preferredHeight,omitempty"`
+	SpeedModel      *speedModel                `json:"speedModel,omitempty"`
 }
 
 func (r *v4Record) live() bool { return len(r.Archived) == 0 || string(r.Archived) == "null" }
@@ -112,7 +118,7 @@ func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 		}
 		printerOnly := r.Vendor != "" || r.Model != "" || r.Nozzle != 0 || r.Machine != nil || r.PrintOverrides != nil
 		filamentOnly := r.Family != "" || r.Brand != "" || r.Material != "" || r.Colour != "" || r.Settings != nil || r.Fits != nil
-		printOnly := r.Intent != nil || r.Scales != nil || r.PreferredHeight != nil
+		printOnly := r.Values != nil || r.Scales != nil || r.PreferredHeight != nil || r.SpeedModel != nil
 		switch r.Type {
 		case "printer":
 			if filamentOnly || printOnly || r.Vendor == "" || r.Model == "" || !(r.Nozzle > 0) {
@@ -127,9 +133,9 @@ func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 			}
 		case "print":
 			if printerOnly || filamentOnly {
-				return nil, bad("a print profile is {intent?, scales?, preferredHeight?}")
+				return nil, bad("a print profile is {values?, scales?, preferredHeight?, speedModel?}")
 			}
-			if err := validateAuto(map[string]json.RawMessage{"auto": must(json.Marshal(autoProfile{Schema: 3, Scales: append([]autoScale{}, r.Scales...), PreferredHeight: r.PreferredHeight}))}, "process"); err != nil {
+			if err := validateAuto(map[string]json.RawMessage{"auto": must(json.Marshal(autoProfile{Schema: 3, Scales: append([]autoScale{}, r.Scales...), PreferredHeight: r.PreferredHeight, SpeedModel: r.SpeedModel}))}, "process"); err != nil {
 				return nil, bad(strings.TrimPrefix(err.Error(), "auto."))
 			}
 		default:
@@ -157,21 +163,64 @@ func (l *libraryStore) read() (*libraryV4Envelope, error) {
 		err = errors.New("invalid stored library")
 	}
 	if err == nil {
-		dropUnscalableRows(e.Document)
+		migrateProfiles(e.Document)
 	}
 	return &e, err
 }
 
-func dropUnscalableRows(doc map[string]json.RawMessage) {
+func migrateProfiles(doc map[string]json.RawMessage) {
 	var profiles []map[string]json.RawMessage
 	if json.Unmarshal(doc["profiles"], &profiles) != nil {
 		return
 	}
 	changed := false
 	for _, p := range profiles {
-		var rows []autoScale
-		if stringValue(p["type"]) != "print" || json.Unmarshal(p["scales"], &rows) != nil {
+		if stringValue(p["type"]) != "print" {
 			continue
+		}
+		if legacy, ok := p["intent"]; ok {
+			values := map[string]json.RawMessage{}
+			json.Unmarshal(legacy, &values)
+			var owned map[string]json.RawMessage
+			json.Unmarshal(p["values"], &owned)
+			for k, v := range owned {
+				values[k] = v
+			}
+			p["values"], _ = json.Marshal(values)
+			delete(p, "intent")
+			changed = true
+		}
+		var rows []autoScale
+		json.Unmarshal(p["scales"], &rows)
+		var legacy struct {
+			Schema           int                `json:"schema"`
+			Intent           string             `json:"intent"`
+			Multipliers      map[string]float64 `json:"multipliers"`
+			OuterWallCeiling float64            `json:"outerWallCeiling"`
+		}
+		json.Unmarshal(p["speedModel"], &legacy)
+		if len(p["speedModel"]) == 0 && len(rows) > 0 {
+			seed := "standard"
+			switch stringValue(p["id"]) {
+			case "profile:starter-fine-detail":
+				seed = "fine"
+			case "profile:starter-draft":
+				seed = "draft"
+			case "profile:starter-strong":
+				seed = "strength"
+			}
+			p["speedModel"], _ = json.Marshal(newSpeedModel(seed))
+			changed = true
+		} else if legacy.Schema == 1 {
+			if _, ok := profileRules.SpeedSeeds[legacy.Intent]; ok {
+				model := newSpeedModel(legacy.Intent)
+				for k, v := range legacy.Multipliers {
+					model.Multipliers[k] = v
+				}
+				model.OuterWallCeiling = legacy.OuterWallCeiling
+				p["speedModel"], _ = json.Marshal(model)
+				changed = true
+			}
 		}
 		kept := slices.DeleteFunc(slices.Clone(rows), func(r autoScale) bool { return slices.Contains(profileRules.NotScalable, r.Key) })
 		if len(kept) != len(rows) {
@@ -245,13 +294,12 @@ func (s *Server) libraryRoutes(mux *http.ServeMux) {
 			libraryFailure(w, 409, "revision_conflict", "The library changed. Reload it and reapply this change.", "reload", revision)
 			return
 		}
-		dropUnscalableRows(in.Document)
+		migrateProfiles(in.Document)
 		next, err := v4Profiles(in.Document)
 		if err != nil {
 			libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
 			return
 		}
-
 		previous, _ := v4Profiles(e.Document)
 		setups := string(in.Document["setups"])
 		for id, p := range previous {

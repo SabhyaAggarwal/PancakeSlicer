@@ -27,8 +27,6 @@ struct HollowingConfig
 
 enum HollowingFlags { hfRemoveInsideTriangles = 0x1 };
 
-
-
 struct Interior;
 struct InteriorDeleter { void operator()(Interior *p); };
 using  InteriorPtr = std::unique_ptr<Interior, InteriorDeleter>;
@@ -53,16 +51,16 @@ struct DrainHole
     {}
 
     bool operator==(const DrainHole &sp) const;
-
+    
     bool operator!=(const DrainHole &sp) const { return !(sp == (*this)); }
 
     bool is_inside(const Vec3f& pt) const;
 
     bool get_intersections(const Vec3f& s, const Vec3f& dir,
                            std::array<std::pair<float, Vec3d>, 2>& out) const;
-
+    
     indexed_triangle_set to_mesh() const;
-
+    
     template<class Archive> inline void serialize(Archive &ar)
     {
         ar(pos, normal, radius, height, failed);
@@ -79,9 +77,7 @@ InteriorPtr generate_interior(const TriangleMesh &mesh,
                               const HollowingConfig &  = {},
                               const JobController &ctl = {});
 
-
 void hollow_mesh(TriangleMesh &mesh, const HollowingConfig &cfg, int flags = 0);
-
 
 void hollow_mesh(TriangleMesh &mesh, const Interior &interior, int flags = 0);
 

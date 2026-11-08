@@ -24,8 +24,6 @@ struct WaveResult {
 void write_wave_verification(const std::string &path, size_t grazes, size_t hits,
                              const std::vector<WaveResult> &results);
 
-
-
 class WaveField
 {
 public:

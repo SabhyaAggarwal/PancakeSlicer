@@ -1,4 +1,3 @@
-
 import { download, importFiles, openFileDialog, pickModelFiles, saveProject } from '../actions';
 import { registerCommand } from '../commands/registry';
 import { whenFresh } from '../flow/slice';
@@ -9,9 +8,7 @@ const api = () => import('./api');
 export const fileVerbs = {
   new: () => void api().then((m) => m.newProject()),
   projects: () => setState({ tab: 'projects' }),
-
   import: () => { if (getState().tab === 'projects') pickModelFiles((files) => newProjectFrom(files)); else openFileDialog(); },
-
   'export-gcode': () => whenFresh(download),
   'export-3mf': () => void saveProject(),
   undo: () => void import('../state/history').then((m) => m.undo()),
@@ -19,11 +16,9 @@ export const fileVerbs = {
 } as const;
 export type FileVerb = keyof typeof fileVerbs;
 
-
 export async function newProjectFrom(files: FileList | File[]) {
   if(await (await api()).newProject())await importFiles(files);
 }
-
 
 window.addEventListener('orca-desktop-menu', (e) => {
   const verb = (e as CustomEvent<string>).detail;

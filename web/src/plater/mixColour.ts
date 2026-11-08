@@ -1,5 +1,3 @@
-
-
 import { COEF, INTERCEPT, RECIPES } from './mixerModel';
 
 const POWERS: number[][] = [];
@@ -14,7 +12,6 @@ for (let d = 0; d <= 4; d++) {
 const rgb = (hex: string) => (/^#[0-9a-f]{6}/i.test(hex) ? [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16)) : [128, 128, 128]);
 const hexOf = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 
-
 function lerp(a: number[], b: number[], t: number): number[] {
   if (t <= 0) return a;
   if (t >= 1) return b;
@@ -26,7 +23,6 @@ function lerp(a: number[], b: number[], t: number): number[] {
   });
 }
 
-
 function labHex([l, a, b]: number[]): string {
   const inv = (t: number) => (t ** 3 > 216 / 24389 ? t ** 3 : (t * 116 - 16) / (24389 / 27));
   const fy = (l + 16) / 116, X = 0.95047 * inv(a / 500 + fy), Y = inv(fy), Z = 1.08883 * inv(fy - b / 200);
@@ -34,7 +30,6 @@ function labHex([l, a, b]: number[]): string {
   return hexOf([3.2406 * X - 1.5372 * Y - 0.4986 * Z, -0.9689 * X + 1.8758 * Y + 0.0415 * Z, 0.0557 * X - 0.204 * Y + 1.057 * Z]
     .map((c) => Math.max(0, Math.min(255, Math.round(g(c) * 255)))));
 }
-
 
 function measured(hexes: string[], weights: number[]): string | null {
   const n = hexes.length;
@@ -71,7 +66,6 @@ function measured(hexes: string[], weights: number[]): string | null {
   const w = near.slice(0, 3).map(({ a, d }) => ({ a, w: 1 / (d * d) })), den = w.reduce((s, x) => s + x.w, 0);
   return labHex([0, 1, 2].map((c) => w.reduce((s, x) => s + x.w * x.a.lab[c], 0) / den));
 }
-
 
 export function blend(hexes: string[], weights: number[]): string {
   const m = hexes.length >= 2 ? measured(hexes, weights) : null;

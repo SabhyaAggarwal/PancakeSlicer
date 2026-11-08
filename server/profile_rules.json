@@ -31,5 +31,114 @@
     "elefant_foot_compensation", "enable_arc_fitting", "ironing_flow",
     "prime_tower_width", "prime_tower_brim_width", "z_direction_outwall_speed_continuous", "monotonic_travel_into_wall"
   ],
-  "sourceOrder": ["catalog", "printer", "print", "scale", "printer override", "filament", "project"]
+  "sourceOrder": ["catalog", "printer", "print", "scale", "printer override", "filament", "project"],
+  "speedFeatures": [
+    {
+      "key": "outer_wall_speed",
+      "label": "Outer wall",
+      "width": "outer_wall_line_width",
+      "acceleration": "outer_wall_acceleration"
+    },
+    {
+      "key": "small_perimeter_speed",
+      "label": "Small perimeters",
+      "width": "outer_wall_line_width",
+      "acceleration": "outer_wall_acceleration",
+      "relativeTo": "outer_wall_speed"
+    },
+    {
+      "key": "inner_wall_speed",
+      "label": "Inner wall",
+      "width": "inner_wall_line_width",
+      "acceleration": "inner_wall_acceleration"
+    },
+    {
+      "key": "sparse_infill_speed",
+      "label": "Sparse infill",
+      "width": "sparse_infill_line_width",
+      "acceleration": "sparse_infill_acceleration"
+    },
+    {
+      "key": "internal_solid_infill_speed",
+      "label": "Internal solid infill",
+      "width": "internal_solid_infill_line_width",
+      "acceleration": "internal_solid_infill_acceleration"
+    },
+    {
+      "key": "top_surface_speed",
+      "label": "Top surface",
+      "width": "top_surface_line_width",
+      "acceleration": "top_surface_acceleration"
+    },
+    {
+      "key": "gap_infill_speed",
+      "label": "Gap fill",
+      "width": "line_width",
+      "acceleration": "default_acceleration"
+    },
+    {
+      "key": "support_speed",
+      "label": "Support",
+      "width": "support_line_width",
+      "acceleration": "default_acceleration"
+    },
+    {
+      "key": "support_interface_speed",
+      "label": "Support interface",
+      "width": "support_line_width",
+      "acceleration": "default_acceleration"
+    },
+    {
+      "key": "bridge_speed",
+      "label": "Bridge",
+      "width": "bridge",
+      "acceleration": "bridge_acceleration"
+    },
+    {
+      "key": "initial_layer_speed",
+      "label": "First layer",
+      "width": "initial_layer_line_width",
+      "acceleration": "initial_layer_acceleration",
+      "firstLayer": true
+    },
+    {
+      "key": "initial_layer_infill_speed",
+      "label": "First layer infill",
+      "width": "initial_layer_line_width",
+      "acceleration": "initial_layer_acceleration",
+      "firstLayer": true
+    },
+    {
+      "key": "travel_speed",
+      "label": "Travel",
+      "width": "",
+      "acceleration": "travel_acceleration"
+    }
+  ],
+  "speedIntents": {
+    "standard": {
+      "multipliers": {},
+      "outerWallCeiling": 200
+    },
+    "strength": {
+      "multipliers": {},
+      "outerWallCeiling": 200
+    },
+    "fine": {
+      "multipliers": {
+        "outer_wall_speed": 0.9,
+        "top_surface_speed": 0.9,
+        "small_perimeter_speed": 0.9
+      },
+      "outerWallCeiling": 180
+    },
+    "draft": {
+      "multipliers": {
+        "inner_wall_speed": 1.3,
+        "sparse_infill_speed": 1.3,
+        "internal_solid_infill_speed": 1.3
+      },
+      "outerWallCeiling": 200
+    }
+  }
 }

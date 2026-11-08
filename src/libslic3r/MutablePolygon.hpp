@@ -14,10 +14,6 @@
 
 namespace Slic3r {
 
-
-
-
-
 class MutablePolygon
 {
 public:
@@ -70,20 +66,15 @@ public:
         friend class range;
     };
 
-
     class range
     {
     public:
         range(MutablePolygon& poly) : range(poly.begin(), poly.end()) {}
         range(MutablePolygon::iterator begin, MutablePolygon::iterator end) : m_begin(begin), m_end(end) {}
 
-
         MutablePolygon::iterator    begin() const { return m_begin; }
-
         MutablePolygon::iterator    end()   const { return m_end; }
-
         bool                        empty() const { return !m_begin.valid(); }
-
 
         MutablePolygon::iterator    process_next() {
             assert(!this->empty());
@@ -121,8 +112,6 @@ public:
         }
 
     private:
-
-
         MutablePolygon::iterator    m_begin;
         MutablePolygon::iterator    m_end;
 
@@ -146,7 +135,7 @@ public:
         m_data.clear();
         m_head      = IndexType(-1);
         m_head_free = { IndexType(-1) };
-        this->assign_inner(begin, end, reserve);
+        this->assign_inner(begin, end, reserve);  
     };
 
     void assign(const Polygon &rhs, size_t reserve = 0) {
@@ -179,32 +168,22 @@ public:
     iterator        begin()        { return { this, m_head }; }
     const_iterator  cbegin() const { return { this, m_head }; }
     const_iterator  begin()  const { return this->cbegin(); }
-
     iterator        end()          { return { this, this->empty() ? -1 : this->at(m_head).prev }; }
     const_iterator  cend()   const { return { this, this->empty() ? -1 : this->at(m_head).prev }; }
     const_iterator  end()    const { return this->cend(); }
 
-
-
     iterator        remove(const iterator it) { assert(it.m_data == this); return { this, this->remove(it.m_idx) }; }
-
-
     iterator        insert(const iterator it, const PointType pt) { assert(it.m_data == this); return { this, this->insert(it.m_idx, pt) }; }
 
 private:
     struct LinkedPoint {
-
         PointType point;
-
         IndexType prev;
-
         IndexType next;
     };
     std::vector<LinkedPoint>    m_data;
-
     IndexType                   m_size { 0 };
     IndexType                   m_head { IndexType(-1) };
-
     IndexType                   m_head_free { IndexType(-1) };
 
     LinkedPoint&          at(IndexType i)       { return m_data[i]; }
@@ -251,7 +230,6 @@ private:
         IndexType n;
         IndexType j = this->at(i).prev;
         if (m_head_free == -1) {
-
             n = IndexType(m_data.size());
             m_data.push_back({ pt, j, i });
         } else {
@@ -266,34 +244,10 @@ private:
         return n;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 };
 
-inline bool operator==(const MutablePolygon &p1, const MutablePolygon &p2)
-{
+inline bool operator==(const MutablePolygon &p1, const MutablePolygon &p2) 
+{ 
     if (p1.size() != p2.size())
         return false;
     if (p1.empty())
@@ -311,7 +265,6 @@ inline bool operator==(const MutablePolygon &p1, const MutablePolygon &p2)
 }
 
 inline bool operator!=(const MutablePolygon &p1, const MutablePolygon &p2) { return ! (p1 == p2); }
-
 
 void remove_duplicates(MutablePolygon &polygon);
 void remove_duplicates(MutablePolygon &polygon, double eps);
@@ -337,7 +290,7 @@ inline ExPolygons remove_duplicates(ExPolygons expolygons, coord_t scaled_eps, d
 void smooth_outward(MutablePolygon &polygon, coord_t clip_dist_scaled);
 
 inline Polygon smooth_outward(Polygon polygon, coord_t clip_dist_scaled)
-{
+{ 
     MutablePolygon mp(polygon, polygon.size() * 2);
     smooth_outward(mp, clip_dist_scaled);
     mp.polygon(polygon);
@@ -345,7 +298,7 @@ inline Polygon smooth_outward(Polygon polygon, coord_t clip_dist_scaled)
 }
 
 inline Polygons smooth_outward(Polygons polygons, coord_t clip_dist_scaled)
-{
+{ 
     MutablePolygon mp;
     for (Polygon &polygon : polygons) {
         mp.assign(polygon, polygon.size() * 2);

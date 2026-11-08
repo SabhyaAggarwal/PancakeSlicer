@@ -12,13 +12,15 @@ import (
 var profileRulesData []byte
 
 var profileRules = func() (r struct {
-	Round             float64     `json:"round"`
-	MaxLayerOfNozzle  float64     `json:"maxLayerOfNozzle"`
-	LineWidthOfNozzle [2]float64  `json:"lineWidthOfNozzle"`
-	DefaultScales     []autoScale `json:"defaultScales"`
-	PrintDefaultKeys  []string    `json:"printDefaultKeys"`
-	SourceOrder       []string    `json:"sourceOrder"`
-	NotScalable       []string    `json:"notScalable"`
+	Round             float64              `json:"round"`
+	MaxLayerOfNozzle  float64              `json:"maxLayerOfNozzle"`
+	LineWidthOfNozzle [2]float64           `json:"lineWidthOfNozzle"`
+	DefaultScales     []autoScale          `json:"defaultScales"`
+	PrintDefaultKeys  []string             `json:"printDefaultKeys"`
+	SourceOrder       []string             `json:"sourceOrder"`
+	NotScalable       []string             `json:"notScalable"`
+	SpeedFeatures     []speedFeature       `json:"speedFeatures"`
+	SpeedSeeds        map[string]speedSeed `json:"speedIntents"`
 	Heights           struct {
 		Step, MinOfNozzle, MinFloor, MaxOfNozzle float64
 	} `json:"heights"`

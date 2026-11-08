@@ -13,13 +13,10 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Execution/ExecutionTBB.hpp"
-
 #include "libslic3r/MeshBoolean.hpp"
 
 namespace Slic3r { namespace csg {
     enum class BooleanFailReason { OK, MeshEmpty, NotBoundAVolume, SelfIntersect, NoIntersection};
-
-
 
 template<class CSGPartT>
 MeshBoolean::cgal::CGALMeshPtr get_cgalmesh(const CSGPartT &csgpart)
@@ -38,14 +35,11 @@ MeshBoolean::cgal::CGALMeshPtr get_cgalmesh(const CSGPartT &csgpart)
     try {
         ret = MeshBoolean::cgal::triangle_mesh_to_cgal(m);
     } catch (...) {
-
         ret = nullptr;
     }
 
     return ret;
 }
-
-
 
 template<class CSGPartT>
 MeshBoolean::mcut::McutMeshPtr get_mcutmesh(const CSGPartT& csgpart)
@@ -65,7 +59,6 @@ MeshBoolean::mcut::McutMeshPtr get_mcutmesh(const CSGPartT& csgpart)
         ret = MeshBoolean::mcut::triangle_mesh_to_mcut(m);
     }
     catch (...) {
-
         ret = nullptr;
     }
 
@@ -159,8 +152,6 @@ namespace detail_mcut {
     }
 
 }
-
-
 template<class It>
 void perform_csgmesh_booleans_cgal(MeshBoolean::cgal::CGALMeshPtr &cgalm,
                               const Range<It>                &csgrange)
@@ -210,7 +201,6 @@ void perform_csgmesh_booleans_cgal(MeshBoolean::cgal::CGALMeshPtr &cgalm,
     cgalm = std::move(opstack.top().cgalptr);
 }
 
-
 template<class It>
 void perform_csgmesh_booleans_mcut(MeshBoolean::mcut::McutMeshPtr& mcutm,
     const Range<It>& csgrange)
@@ -258,7 +248,7 @@ void perform_csgmesh_booleans_mcut(MeshBoolean::mcut::McutMeshPtr& mcutm,
     }
 
     mcutm = std::move(opstack.top().mcutptr);
-
+    
 }
 
 
@@ -275,7 +265,6 @@ std::tuple<BooleanFailReason,std::string, It> check_csgmesh_booleans(const Range
         std::advance(it, i);
         auto &csgpart = *it;
         auto m = get_cgalmesh(csgpart);
-
 
         if (!get_mesh(csgpart) && get_stack_operation(csgpart) != CSGStackOp::Continue) {
             cgalmeshes[i] = MeshBoolean::cgal::triangle_mesh_to_cgal(indexed_triangle_set{});
@@ -341,7 +330,6 @@ std::tuple<BooleanFailReason, std::string, It> check_csgmesh_booleans(const Rang
             std::advance(it, i);
             auto& csgpart = *it;
             auto m = get_mcutmesh(csgpart);
-
 
             if (!get_mesh(csgpart) && get_stack_operation(csgpart) != CSGStackOp::Continue) {
                 McutMeshes[i] = MeshBoolean::mcut::triangle_mesh_to_mcut(indexed_triangle_set{});

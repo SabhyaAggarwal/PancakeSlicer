@@ -48,10 +48,8 @@ typedef struct _assemble_plate_info {
 enum class AssembleListResult {
     Success,
     FileNotFound,
-
     ConfigError
 };
-
 
 AssembleListResult load_assemble_plate_list(const std::string &config_file, std::vector<assemble_plate_info_t> &assemble_plate_info_list, int max_plate_count);
 

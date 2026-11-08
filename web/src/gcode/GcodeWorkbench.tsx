@@ -8,9 +8,6 @@ import { resetOption, setOption } from '../state/store';
 import { GcodeEditor, openSearchPanel } from './GcodeEditor';
 import './gcode.css';
 
-
-
-
 type Editor = { set(key: string, value: ConfigValue): void; reset(key: string): void };
 const text = (v: ConfigValue | undefined): string => Array.isArray(v) ? String(v[0] ?? '') : v == null ? '' : String(v);
 const lines = (s: string) => s.trim() ? s.replace(/\n$/, '').split('\n').length : 0;
@@ -48,8 +45,6 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
   const modified = (k: string) => k in dirty;
 
   useSettingsGroups();
-
-
   if (!fill && keys.length < 3) {
     const id = `${type}/Custom G-code`, open = isGroupOpen(id, !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100);
     return <section className="optgroup gcode-group" data-collapsed={open ? undefined : ''}>
@@ -81,7 +76,6 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
     </section>
   </div></div>;
 }
-
 
 function CompactHook({ k, label, fullLabel, value, template, modified, readOnly, configKeys, onCommit, onReset }: {
   k: string; label: string; fullLabel: string; value: string; template: string; modified: boolean; readOnly?: boolean; configKeys: readonly string[]; onCommit(t: string): void; onReset(): void;

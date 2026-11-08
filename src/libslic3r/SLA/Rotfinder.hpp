@@ -42,22 +42,6 @@ public:
     const RotOptimizeStatusCB &statuscb() const { return m_statuscb; }
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Vec2d find_best_misalignment_rotation(const ModelObject &modelobj,
                                       const RotOptimizeParams & = {});
 

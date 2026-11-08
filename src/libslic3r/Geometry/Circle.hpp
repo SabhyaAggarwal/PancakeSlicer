@@ -12,8 +12,6 @@
 
 namespace Slic3r { namespace Geometry {
 
-
-
 template<typename Vector>
 Vector circle_center(const Vector &a, const Vector &bsrc, const Vector &csrc, typename Vector::Scalar epsilon)
 {
@@ -23,9 +21,7 @@ Vector circle_center(const Vector &a, const Vector &bsrc, const Vector &csrc, ty
 	Scalar lb = b.squaredNorm();
 	Scalar lc = c.squaredNorm();
     if (Scalar d = b.x() * c.y() - b.y() * c.x(); std::abs(d) < epsilon) {
-
-
-        Scalar lbc = (csrc - bsrc).squaredNorm();
+    	Scalar lbc = (csrc - bsrc).squaredNorm();
 		return Scalar(0.5) * (
 			lb > lc && lb > lbc ? a + bsrc :
 			lc > lb && lc > lbc ? a + csrc : bsrc + csrc);
@@ -34,7 +30,6 @@ Vector circle_center(const Vector &a, const Vector &bsrc, const Vector &csrc, ty
         return a + Vector(- v.y(), v.x()) / (2 * d);
     }
 }
-
 
 template<typename Vector>
 struct CircleSq {
@@ -56,12 +51,11 @@ struct CircleSq {
     bool contains(const Vector &p) const { return (p - this->center).squaredNorm() < this->radius2; }
     bool contains(const Vector &p, const Scalar epsilon2) const { return (p - this->center).squaredNorm() < this->radius2 + epsilon2; }
 
-    CircleSq inflated(Scalar epsilon) const
-        { assert(this->radius2 >= 0); Scalar r = sqrt(this->radius2) + epsilon; return { this->center, r * r }; }
+    CircleSq inflated(Scalar epsilon) const 
+    	{ assert(this->radius2 >= 0); Scalar r = sqrt(this->radius2) + epsilon; return { this->center, r * r }; }
 
     static CircleSq make_invalid() { return CircleSq { { 0, 0 }, -1 }; }
 };
-
 
 template<typename Vector>
 struct Circle {
@@ -75,7 +69,6 @@ struct Circle {
     Circle(const Vector &a, const Vector &b) : center(Scalar(0.5) * (a + b)) { radius = (a - center).norm(); }
     Circle(const Vector &a, const Vector &b, const Vector &c, const Scalar epsilon) { *this = CircleSq(a, b, c, epsilon); }
 
-
     template<typename Vector2>
     explicit Circle(const CircleSq<Vector2> &c) : center(c.center), radius(c.radius2 <= 0 ? c.radius2 : sqrt(c.radius2)) {}
     template<typename Vector2>
@@ -85,7 +78,7 @@ struct Circle {
     bool valid() const { return ! this->invalid(); }
     bool contains(const Vector &p) const { return (p - this->center).squaredNorm() <= this->radius * this->radius; }
     bool contains(const Vector &p, const Scalar epsilon) const
-        { Scalar re = this->radius + epsilon; return (p - this->center).squaredNorm() < re * re; }
+    	{ Scalar re = this->radius + epsilon; return (p - this->center).squaredNorm() < re * re; }
 
     Circle inflated(Scalar epsilon) const { assert(this->radius >= 0); return { this->center, this->radius + epsilon }; }
 
@@ -95,18 +88,14 @@ struct Circle {
 using Circlef = Circle<Vec2f>;
 using Circled = Circle<Vec2d>;
 
-
 Point circle_center_taubin_newton(const Points::const_iterator& input_start, const Points::const_iterator& input_end, size_t cycles = 20);
 inline Point circle_center_taubin_newton(const Points& input, size_t cycles = 20) { return circle_center_taubin_newton(input.cbegin(), input.cend(), cycles); }
-
 
 Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_start, const Vec2ds::const_iterator& input_end, size_t cycles = 20);
 inline Vec2d circle_center_taubin_newton(const Vec2ds& input, size_t cycles = 20) { return circle_center_taubin_newton(input.cbegin(), input.cend(), cycles); }
 Circled circle_taubin_newton(const Vec2ds& input, size_t cycles = 20);
 
-
 Circled circle_ransac(const Vec2ds& input, size_t iterations = 20, double* min_error = nullptr);
-
 
 template<typename Vector, typename Points>
 CircleSq<Vector> smallest_enclosing_circle2_welzl(const Points &points, const typename Vector::Scalar epsilon)
@@ -117,17 +106,15 @@ CircleSq<Vector> smallest_enclosing_circle2_welzl(const Points &points, const ty
     if (! points.empty()) {
 	    const auto &p0 = points[0].template cast<Scalar>();
 	    if (points.size() == 1) {
-            circle.center = p0;
-            circle.radius2 = epsilon * epsilon;
+	    	circle.center = p0;
+	    	circle.radius2 = epsilon * epsilon;
 	    } else {
 		    circle = CircleSq<Vector>(p0, points[1].template cast<Scalar>()).inflated(epsilon);
 		    for (size_t i = 2; i < points.size(); ++ i)
 		        if (const Vector &p = points[i].template cast<Scalar>(); ! circle.contains(p)) {
-
 		            circle = CircleSq<Vector>(p0, p).inflated(epsilon);
 		            for (size_t j = 1; j < i; ++ j)
 		                if (const Vector &q = points[j].template cast<Scalar>(); ! circle.contains(q)) {
-
 		                    circle = CircleSq<Vector>(p, q).inflated(epsilon);
 		                    for (size_t k = 0; k < j; ++ k)
 		                        if (const Vector &r = points[k].template cast<Scalar>(); ! circle.contains(r))
@@ -140,23 +127,16 @@ CircleSq<Vector> smallest_enclosing_circle2_welzl(const Points &points, const ty
     return circle;
 }
 
-
 template<typename Vector, typename Points>
 Circle<Vector> smallest_enclosing_circle_welzl(const Points &points, const typename Vector::Scalar epsilon)
 {
     return Circle<Vector>(smallest_enclosing_circle2_welzl<Vector, Points>(points, epsilon));
 }
 
-
 inline Circled smallest_enclosing_circle_welzl(const Points &points)
 {
     return smallest_enclosing_circle_welzl<Vec2d, Points>(points, SCALED_EPSILON);
 }
-
-
-
-
-
 
 template<typename T>
 int ray_circle_intersections_r2_lv2_c(T r2, T a, T b, T lv2, T c, std::pair<Eigen::Matrix<T, 2, 1, Eigen::DontAlign>, Eigen::Matrix<T, 2, 1, Eigen::DontAlign>> &out)
@@ -178,8 +158,6 @@ int ray_circle_intersections(T r, T a, T b, T c, std::pair<Eigen::Matrix<T, 2, 1
 {
     T lv2 = a * a + b * b;
     if (lv2 < T(SCALED_EPSILON * SCALED_EPSILON)) {
-
-
         return false;
     }
     return ray_circle_intersections_r2_lv2_c2(r * r, a, b, a * a + b * b, c, out);

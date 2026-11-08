@@ -1,4 +1,3 @@
-
 import type { PresetType, UserPreset } from '../api/types';
 import { findProfile, profileKey, withProfileIdentity } from './identity';
 import { catalogAnchor, findCatalogBase, resolveProfile, type ProfileCatalog } from './model';
@@ -17,7 +16,6 @@ export function restoreArchivedProfile(profile: UserPreset): UserPreset {
   const {archived:_archived,...rest} = withProfileIdentity(profile);
   return {...rest,revision:(profile.revision ?? 0)+1};
 }
-
 export function editableMaster(s: ProfileCatalog, type: PresetType, baseKey: string): UserPreset {
   const existing = findProfile(s,type,baseKey);
   if (existing?.kind === 'master' && profileKey(existing) === baseKey) return existing;

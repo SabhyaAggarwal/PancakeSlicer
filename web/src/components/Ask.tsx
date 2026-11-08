@@ -1,9 +1,7 @@
-
-
 import { useState, useSyncExternalStore } from 'react';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
-type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; buttons?: [string, string | null]; danger?: boolean; resolve(v: string | null): void };
+type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; buttons?: [string, string | null]; danger?: boolean; alternative?: string; resolve(v: string | null): void };
 let current: Ask | null = null;
 const listeners = new Set<() => void>();
 const show = (a: Ask | null) => {
@@ -16,20 +14,20 @@ const ask = (a: Omit<Ask, 'resolve'>) =>
     show({ ...a, resolve });
   });
 
-
 export const confirmDialog = (title: string, message: string, buttons?: [string, string], danger?: boolean) => ask({ title, message, buttons, danger }).then((v) => v !== null);
-
 export const messageDialog = (title: string, message: string) => ask({ title, message, buttons: ['Close', null] }).then(() => undefined);
-
 export const promptDialog = (title: string, value: string) => ask({ title, value }).then((v) => v?.trim() || null);
-
 export const numberDialog = (title: string, prompt: string, value: number, min: number, max: number) =>
   ask({ title, message: prompt, value: String(value), range: [min, max] }).then((v) => v === null || v.trim() === '' ? null : Math.min(max, Math.max(min, Math.round(Number(v)))))
     .then((n) => (n === null || Number.isNaN(n) ? null : n));
 
-
 export const choiceDialog = (title: string, message: string, choices: string[]) =>
   ask({ title, message, value: '0', choices }).then((v) => (v === null ? null : Number(v)));
+
+export const importObjectsDialog = (file: string, count: number, skipped: string[], allowNew: boolean) =>
+  ask({ title: 'Import 3MF', message: `${file}\n${count} ${count === 1 ? 'object' : 'objects'}${skipped.length ? `\nSkipped: ${skipped.join(', ')}.` : ''}`,
+    buttons: ['Import objects', 'Cancel'], ...(allowNew ? { alternative: 'New project from objects' } : {}) })
+    .then((v) => v === null ? null : v === 'alternative' ? 'new' : 'import');
 
 function AskDialog({ a }: { a: Ask }) {
   const [text, setText] = useState(a.value ?? '');
@@ -53,6 +51,7 @@ function AskDialog({ a }: { a: Ask }) {
         </ModalBody>
         <ModalFooter>
           {a.buttons?.[1] !== null && <button type="button" className="btn" onClick={() => done(null)}>{a.buttons?.[1] ?? 'Cancel'}</button>}
+          {a.alternative && <button type="button" className="btn" onClick={() => done('alternative')}>{a.alternative}</button>}
           <button type="submit" className={a.danger ? 'btn-danger' : 'btn-primary'}>{primary}</button>
         </ModalFooter>
       </form>

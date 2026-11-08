@@ -1,5 +1,3 @@
-
-
 import type { Config, ConfigValue } from '../api/types';
 import { canCurvedTops, canSurfaceWaves } from '../api/client';
 import { OPTIONS } from '../options';
@@ -33,7 +31,6 @@ export function surfaceUnavailable(id: SurfaceId): string | undefined {
   if (id === 'waves' && (!canSurfaceWaves() || !OPTIONS.nonplanar_wave?.enum_values?.includes('whole'))) return WAVES_COMING;
 }
 
-
 export function surfaceValues(id: SurfaceId): Config {
   return {
     nonplanar_mode: id === 'smooth' ? 'curved_tops' : 'off',
@@ -42,7 +39,6 @@ export function surfaceValues(id: SurfaceId): Config {
     ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'whole' : 'off' } : {}),
   };
 }
-
 
 export function writeSurface(id: SurfaceId) {
   if (surfaceUnavailable(id)) return;
@@ -55,8 +51,6 @@ export function writeSurface(id: SurfaceId) {
 export function applySurface(id: SurfaceId) {
   undoable(`Surface: ${SURFACE_NAMES[id]}`, () => writeSurface(id));
 }
-
-
 
 export function keepCurvedTop(extraPercent: number) {
   undoable('Keep curved top', () => {

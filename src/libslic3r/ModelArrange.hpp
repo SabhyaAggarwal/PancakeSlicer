@@ -20,7 +20,6 @@ using arrangement::ArrangeParams;
 using arrangement::InfiniteBed;
 using arrangement::CircleBed;
 
-
 using VirtualBedFn = std::function<void(arrangement::ArrangePolygon&)>;
 
 [[noreturn]] inline void throw_if_out_of_bed(arrangement::ArrangePolygon& ap)
@@ -44,7 +43,7 @@ bool arrange_objects(Model &              model,
     ModelInstancePtrs instances;
     auto&& input = get_arrange_polys(model, instances);
     arrangement::arrange(input, bed, params);
-
+    
     return apply_arrange_polys(input, instances, vfn);
 }
 

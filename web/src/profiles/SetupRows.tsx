@@ -1,5 +1,3 @@
-
-
 import { useState } from 'react';
 import { OPTIONS } from '../options';
 import { getState, printerPreset, setState, toast, useStore } from '../state/store';
@@ -8,11 +6,9 @@ import { flushModified } from '../flush-state';
 import { Dropdown } from '../components/Dropdown';
 import { Glyph } from '../components/Glyph';
 import { MenuButton, type MenuEntry } from '../components/Menu';
-
 import './profiles.css';
 import { modelKey, nozzleOf, printerModels } from './machines';
 import { NozzleSizeFields } from '../multinozzle/NozzleControls';
-
 
 export function NozzleField() {
   const machine = useStore((s) => printerPreset(s));
@@ -23,8 +19,6 @@ export function NozzleField() {
   if (sizes.length < 2 || !machine) return null;
   return <NozzleSizeFields config={machine.config} sizes={sizes} />;
 }
-
-
 
 export function PlateTypeField() {
   const machine = useStore((s) => printerPreset(s));
@@ -50,12 +44,9 @@ export function addFilament() {
   void import('../plater/mixed').then((m) => m.addPhysical()).catch((error) => toast(String(error)));
 }
 
-
 export function addSlot(name: string) {
   void import('../plater/mixed').then((m) => m.addPhysical(undefined, name)).catch((error) => toast(String(error)));
 }
-
-
 
 export function removeSlot(i: number) {
   void import('../plater/mixed').then(({ removeSlotAt }) => {
@@ -65,8 +56,6 @@ export function removeSlot(i: number) {
     toast([`Removed filament ${i + 1}`, ...notes].join('; '), { label: 'Undo', run: undo });
   });
 }
-
-
 
 export function FilamentMenu() {
   const slots = useStore((s) => s.filamentSlots.length);

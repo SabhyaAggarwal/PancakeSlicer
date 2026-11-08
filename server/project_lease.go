@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
@@ -21,7 +22,6 @@ type projectLease struct {
 	Label    string `json:"label"`
 	Since    int64  `json:"since"`
 	LastSeen int64  `json:"lastSeen"`
-
 	Previous string `json:"previous,omitempty"`
 }
 type leaseHolder struct {
@@ -97,7 +97,6 @@ func (st *workspaceStore) claimLease(id, session string) {
 }
 
 func (st *workspaceStore) leaseRoutes(mux *http.ServeMux) {
-
 	mux.HandleFunc("GET /api/project-leases/{id}", func(w http.ResponseWriter, r *http.Request) {
 		st.locked(w, func(d *workspaceData) {
 			id, err := canonicalWorkspaceProject(d, r.PathValue("id"))
@@ -114,12 +113,12 @@ func (st *workspaceStore) leaseRoutes(mux *http.ServeMux) {
 			writeJSON(w, 200, out)
 		})
 	})
-
 	mux.HandleFunc("POST /api/project-leases/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			Session string `json:"session"`
-			Label   string `json:"label"`
-			Take    bool   `json:"take"`
+			Session  string   `json:"session"`
+			Label    string   `json:"label"`
+			Take     bool     `json:"take"`
+			Previous []string `json:"previous"`
 		}
 		if !workspaceDecode(w, r, &in) {
 			return
@@ -142,6 +141,12 @@ func (st *workspaceStore) leaseRoutes(mux *http.ServeMux) {
 				if in.Label != "" {
 					l.Label = in.Label
 				}
+			case l.live(now) && len(in.Previous) <= 8 && l.Session != in.Session && slices.Contains(in.Previous, l.Session):
+				l.Session, l.LastSeen = in.Session, now.UnixMilli()
+				if in.Label != "" {
+					l.Label = in.Label
+				}
+				st.saveLeases()
 			case l.live(now) && !in.Take:
 				leaseFailure(w, l, in.Session, 0)
 				return
@@ -158,7 +163,6 @@ func (st *workspaceStore) leaseRoutes(mux *http.ServeMux) {
 				"ttlMs": leaseTTL.Milliseconds(), "heartbeatMs": leaseHeartbeat.Milliseconds()})
 		})
 	})
-
 	mux.HandleFunc("POST /api/project-leases/{id}/release", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Session string `json:"session"`

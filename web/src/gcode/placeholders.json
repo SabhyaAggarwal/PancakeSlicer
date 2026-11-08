@@ -19,13 +19,13 @@
      "key": "position",
      "vector": true,
      "label": "Position",
-     "tooltip": "Position of the extruder at the beginning of the custom G-code block. If the custom G-code travels somewhere else, it should write to this variable so OrcaSlicer knows where it travels from when it gets control back."
+     "tooltip": "Extruder position at the start of the custom G-code block. Update this variable if your custom G-code moves the toolhead so PancakeSlicer knows where to resume from."
     },
     {
      "key": "e_retracted",
      "vector": true,
      "label": "Retraction",
-     "tooltip": "Retraction state at the beginning of the custom G-code block. If the custom G-code moves the extruder axis, it should write to this variable so OrcaSlicer de-retracts correctly when it gets control back."
+     "tooltip": "Retraction state at the start of the custom G-code block. Update this variable if your custom G-code moves the extruder so PancakeSlicer primes the right amount when resuming."
     },
     {
      "key": "e_restart_extra",
@@ -491,7 +491,7 @@
      "key": "toolchange_count",
      "vector": false,
      "label": "Toolchange count",
-     "tooltip": "The number of toolchanges throught the print."
+     "tooltip": "Total number of toolchanges across the print."
     },
     {
      "key": "old_retract_length",
@@ -503,7 +503,7 @@
      "key": "new_retract_length",
      "vector": false,
      "label": "New retract length",
-     "tooltip": "The retraction lenght of the new filament."
+     "tooltip": "Retraction length for the incoming filament."
     },
     {
      "key": "old_retract_length_toolchange",

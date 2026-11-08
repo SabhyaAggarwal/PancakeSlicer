@@ -15,10 +15,6 @@
 
 namespace Slic3r {
 
-
-
-
-
 class InfillPolylineOutput {
 public:
     InfillPolylineOutput(const double scale_out) : m_scale_out(scale_out) {}
@@ -27,15 +23,12 @@ public:
     void            add_point(const Vec2d& pt) { m_out.emplace_back(this->scaled(pt)); }
     Points&& result() { return std::move(m_out); }
     virtual bool    clips() const { return false; }
-
     const Point     scaled(const Vec2d& fpt) const { return { coord_t(floor(fpt.x() * m_scale_out + 0.5)), coord_t(floor(fpt.y() * m_scale_out + 0.5)) }; }
 
 protected:
-
     Points          m_out;
 
 private:
-
     double          m_scale_out;
 };
 
@@ -47,9 +40,9 @@ public:
 
 protected:
     void _fill_surface_single(
-        const FillParams                &params,
+        const FillParams                &params, 
         unsigned int                     thickness_layers,
-        const std::pair<float, Point>   &direction,
+        const std::pair<float, Point>   &direction, 
         ExPolygon                        expolygon,
         Polylines                       &polylines_out) override;
 
@@ -57,10 +50,10 @@ protected:
     virtual bool centered() const = 0;
 
     friend class InfillPolylineClipper;
-
+    
     virtual void generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double resolution, InfillPolylineOutput &output) = 0;
     virtual void generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double resolution,
-                                      const FillParams &  , InfillPolylineOutput &output)
+                                      const FillParams & , InfillPolylineOutput &output)
     {
         this->generate(min_x, min_y, max_x, max_y, resolution, output);
     }

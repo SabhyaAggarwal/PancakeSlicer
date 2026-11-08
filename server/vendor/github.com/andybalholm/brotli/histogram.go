@@ -2,6 +2,7 @@ package brotli
 
 import "math"
 
+/* The distance symbols effectively used by "Large Window Brotli" (32-bit). */
 const numHistogramDistanceSymbols = 544
 
 type histogramLiteral struct {
@@ -194,6 +195,7 @@ func buildHistogramsWithContext(cmds []command, literal_split *blockSplit, inser
 		blockSplitIteratorNext(&insert_and_copy_it)
 		histogramAddCommand(&insert_and_copy_histograms[insert_and_copy_it.type_], uint(cmd.cmd_prefix_))
 
+		/* TODO: unwrap iterator blocks. */
 		for j = uint(cmd.insert_len_); j != 0; j-- {
 			var context uint
 			blockSplitIteratorNext(&literal_it)

@@ -1,10 +1,4 @@
-
-
-
-
-
-
-
+// Based on original work by Alexander Þór licensed under the GPLv3:
 
 #include <cmath>
 #include <limits>
@@ -44,7 +38,6 @@ SmallAreaInfillFlowCompensator::SmallAreaInfillFlowCompensator(const Slic3r::GCo
 
             if (std::getline(iss, value_str, ',')) {
                 try {
-
                     value_str = std::regex_replace(value_str, std::regex("^\\s+|\\s+$"), "");
                     if (value_str.empty()) {
                         continue;

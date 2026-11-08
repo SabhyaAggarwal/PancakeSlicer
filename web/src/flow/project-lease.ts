@@ -1,11 +1,4 @@
-
-
-
-
-
-
-
-import { sessionId } from '../api/session';
+import { predecessorSessions, sessionId } from '../api/session';
 import { createMachine, useMachine } from './fsm';
 
 export interface LeaseHolder { label: string; since: number; lastSeen: number }
@@ -16,7 +9,6 @@ type LeaseEvent =
   | { type: 'GRANTED'; id: string; heartbeatMs?: number } | { type: 'HELD'; id: string; holder: LeaseHolder } | { type: 'LOST'; id: string; holder: LeaseHolder };
 
 const path = (id: string) => `/api/project-leases/${encodeURIComponent(id)}`;
-
 export function deviceLabel(ua = navigator.userAgent): string {
   const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
   const os = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS'
@@ -24,19 +16,25 @@ export function deviceLabel(ua = navigator.userAgent): string {
   return os ? `${browser} on ${os}` : browser;
 }
 
+let inflight = false, queued: { id: string; take: boolean } | null = null, retryTimer: ReturnType<typeof setTimeout> | undefined;
 async function request(id: string, take: boolean) {
+  if (inflight) { queued = { id, take: take || (queued?.id === id && queued.take) }; return; }
+  inflight = true; clearTimeout(retryTimer); retryTimer = undefined;
   const same = (e: LeaseEvent) => lease.send(e);
   try {
+    const previous = await predecessorSessions();
     const response = await fetch(path(id), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-Orca-Session': sessionId },
-      body: JSON.stringify({ session: sessionId, label: deviceLabel(), take }), signal: AbortSignal.timeout(10_000) });
+      body: JSON.stringify({ session: sessionId, label: deviceLabel(), take, ...(previous.length ? { previous } : {}) }), signal: AbortSignal.timeout(10_000) });
     const body = await response.json().catch(() => ({}));
-
     if (response.ok || response.status === 404 || response.status === 405) return same({ type: 'GRANTED', id, heartbeatMs: body.heartbeatMs });
     if (response.status === 409 && body.holder) return same({ type: body.code === 'lease_lost' ? 'LOST' : 'HELD', id, holder: body.holder });
     throw new Error(`lease ${response.status}`);
   } catch {
-
-    setTimeout(() => lease.send({ type: 'RETRY', id }), 5_000);
+    retryTimer = setTimeout(() => { retryTimer = undefined; lease.send({ type: 'RETRY', id }); }, 5_000);
+  } finally {
+    inflight = false;
+    const next = queued; queued = null;
+    if (next) void request(next.id, next.take);
   }
 }
 const release = (id: string | null) => {
@@ -58,12 +56,10 @@ export const lease = createMachine<LeaseState, LeaseEvent, LeaseContext>({
       on: { OPEN: opened, CLOSE: closed, TAKE: { action: () => ({ take: true }) }, RETRY: { target: 'requesting', guard: mine },
         GRANTED: granted, HELD: { target: 'viewing', guard: mine, action: holderOf }, LOST: { target: 'lost', guard: mine, action: holderOf } } },
     editing: {
-
       after: { ms: (c) => c.heartbeatMs, target: 'editing', action: (c) => { if (c.id) void request(c.id, false); } },
       on: { OPEN: opened, CLOSE: closed, TAKE: {}, RETRY: { guard: mine, action: (c) => { if (c.id) void request(c.id, false); } },
         GRANTED: { guard: mine }, HELD: { target: 'viewing', guard: mine, action: holderOf }, LOST: { target: 'lost', guard: mine, action: holderOf } } },
     viewing: {
-
       after: { ms: (c) => c.heartbeatMs, target: 'requesting' },
       on: { OPEN: opened, CLOSE: closed, TAKE: { target: 'requesting', action: () => ({ take: true }) }, RETRY: {},
         GRANTED: granted, HELD: { guard: mine, action: holderOf }, LOST: { guard: mine, action: holderOf } } },
@@ -73,14 +69,16 @@ export const lease = createMachine<LeaseState, LeaseEvent, LeaseContext>({
   },
 });
 
-
 export const leaseWritable = () => lease.get().value === 'editing' || lease.get().value === 'idle';
-
 export const leaseSettled = (): Promise<void> => lease.get().value !== 'requesting' ? Promise.resolve()
   : new Promise((resolve) => { const stop = lease.subscribe((s) => { if (s.value !== 'requesting') { stop(); resolve(); } }); });
 export const takeControl = () => lease.send({ type: 'TAKE' });
+export async function acquireLease(id: string): Promise<boolean> {
+  if (lease.get().context.id !== id || lease.get().value === 'idle') lease.send({ type: 'OPEN', id });
+  await leaseSettled();
+  return leaseWritable();
+}
 export const useProjectLease = () => useMachine(lease);
-
 export function leaseRefused(error: unknown, id: string): boolean {
   const e = error as { code?: string; message?: string };
   if (e?.code !== 'lease_held' && e?.code !== 'lease_lost') return false;
@@ -89,20 +87,19 @@ export function leaseRefused(error: unknown, id: string): boolean {
   return true;
 }
 
-
 export function followProjectLease(current: () => string | null, subscribe: (f: () => void) => () => void, onWritable: (from: LeaseState, id: string) => void) {
   let shown: string | null = null;
   const sync = () => {
     const id = current();
     if (id === shown) return;
     shown = id;
+    if (id && lease.get().context.id === id && lease.get().value !== 'idle') return;
     lease.send(id ? { type: 'OPEN', id } : { type: 'CLOSE' });
   };
   let was = leaseWritable(), before: LeaseState = lease.get().value, readOnly: LeaseState = before;
   lease.subscribe((s) => {
     const now = leaseWritable();
     if (s.value === 'viewing' || s.value === 'lost') readOnly = s.value;
-
     else if (s.value === 'requesting' && (before === 'idle' || before === 'editing')) readOnly = 'idle';
     if (now && !was && s.context.id) onWritable(readOnly, s.context.id);
     was = now; before = s.value;

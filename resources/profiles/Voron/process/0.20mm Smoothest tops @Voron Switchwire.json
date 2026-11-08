@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @Voron Switchwire",
+	"renamed_from": "0.20mm Non-planar top @Voron Switchwire;0.20mm Non-planar top Voron Switchwire",
+	"inherits": "0.20mm Standard @Voron",
+	"from": "system",
+	"setting_id": "FZrW4ocMNixqnFXR",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Voron Switchwire 250 0.4 nozzle"
+	]
+}

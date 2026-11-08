@@ -8,19 +8,22 @@ import "encoding/binary"
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Class to model the static dictionary. */
+
 const maxStaticDictionaryMatchLen = 37
 
 const kInvalidMatch uint32 = 0xFFFFFFF
 
-/*
-Copyright 2013 Google Inc. All Rights Reserved.
+/* Copyright 2013 Google Inc. All Rights Reserved.
 
-	Distributed under MIT license.
-	See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 func hash(data []byte) uint32 {
 	var h uint32 = binary.LittleEndian.Uint32(data) * kDictHashMul32
 
+	/* The higher bits contain more mixture from the multiplication,
+	   so we take our results from there. */
 	return h >> uint(32-kDictNumBits)
 }
 
@@ -41,13 +44,15 @@ func isMatch(d *dictionary, w dictWord, data []byte, max_length uint) bool {
 		var offset uint = uint(d.offsets_by_length[w.len]) + uint(w.len)*uint(w.idx)
 		var dict []byte = d.data[offset:]
 		if w.transform == 0 {
-
+			/* Match against base dictionary word. */
 			return findMatchLengthWithLimit(dict, data, uint(w.len)) == uint(w.len)
 		} else if w.transform == 10 {
-
+			/* Match against uppercase first transform.
+			   Note that there are only ASCII uppercase words in the lookup table. */
 			return dict[0] >= 'a' && dict[0] <= 'z' && (dict[0]^32) == data[0] && findMatchLengthWithLimit(dict[1:], data[1:], uint(w.len)-1) == uint(w.len-1)
 		} else {
-
+			/* Match against uppercase all transform.
+			   Note that there are only ASCII uppercase words in the lookup table. */
 			var i uint
 			for i = 0; i < uint(w.len); i++ {
 				if dict[i] >= 'a' && dict[i] <= 'z' {
@@ -86,11 +91,14 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 				var maxlen uint
 				var len uint
 
+				/* Transform "" + BROTLI_TRANSFORM_IDENTITY + "" */
 				if matchlen == l {
 					addMatch(id, l, l, matches)
 					has_found_match = true
 				}
 
+				/* Transforms "" + BROTLI_TRANSFORM_OMIT_LAST_1 + "" and
+				   "" + BROTLI_TRANSFORM_OMIT_LAST_1 + "ing " */
 				if matchlen >= l-1 {
 					addMatch(id+12*n, l-1, l, matches)
 					if l+2 < max_length && data[l-1] == 'i' && data[l] == 'n' && data[l+1] == 'g' && data[l+2] == ' ' {
@@ -100,6 +108,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 					has_found_match = true
 				}
 
+				/* Transform "" + BROTLI_TRANSFORM_OMIT_LAST_# + "" (# = 2 .. 9) */
 				minlen = min_length
 
 				if l > 9 {
@@ -119,6 +128,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 
 				s = data[l:]
 
+				/* Transforms "" + BROTLI_TRANSFORM_IDENTITY + <suffix> */
 				if s[0] == ' ' {
 					addMatch(id+n, l+1, l, matches)
 					if s[1] == 'a' {
@@ -290,12 +300,16 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 				}
 			} else {
 				var is_all_caps bool = (w.transform != transformUppercaseFirst)
+				/* Set is_all_caps=0 for BROTLI_TRANSFORM_UPPERCASE_FIRST and
+				    is_all_caps=1 otherwise (BROTLI_TRANSFORM_UPPERCASE_ALL)
+				transform. */
 
 				var s []byte
 				if !isMatch(dict.words, w, data, max_length) {
 					continue
 				}
 
+				/* Transform "" + kUppercase{First,All} + "" */
 				var tmp int
 				if is_all_caps {
 					tmp = 44
@@ -309,6 +323,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 					continue
 				}
 
+				/* Transforms "" + kUppercase{First,All} + <suffix> */
 				s = data[l:]
 
 				if s[0] == ' ' {
@@ -409,6 +424,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 		}
 	}
 
+	/* Transforms with prefixes " " and "." */
 	if max_length >= 5 && (data[0] == ' ' || data[0] == '.') {
 		var is_space bool = (data[0] == ' ')
 		var offset uint = uint(dict.buckets[hash(data[1:])])
@@ -427,6 +443,8 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 					continue
 				}
 
+				/* Transforms " " + BROTLI_TRANSFORM_IDENTITY + "" and
+				   "." + BROTLI_TRANSFORM_IDENTITY + "" */
 				var tmp int
 				if is_space {
 					tmp = 6
@@ -440,6 +458,9 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 					continue
 				}
 
+				/* Transforms " " + BROTLI_TRANSFORM_IDENTITY + <suffix> and
+				   "." + BROTLI_TRANSFORM_IDENTITY + <suffix>
+				*/
 				s = data[l+1:]
 
 				if s[0] == ' ' {
@@ -479,12 +500,16 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 				}
 			} else if is_space {
 				var is_all_caps bool = (w.transform != transformUppercaseFirst)
+				/* Set is_all_caps=0 for BROTLI_TRANSFORM_UPPERCASE_FIRST and
+				    is_all_caps=1 otherwise (BROTLI_TRANSFORM_UPPERCASE_ALL)
+				transform. */
 
 				var s []byte
 				if !isMatch(dict.words, w, data[1:], max_length-1) {
 					continue
 				}
 
+				/* Transforms " " + kUppercase{First,All} + "" */
 				var tmp int
 				if is_all_caps {
 					tmp = 85
@@ -498,6 +523,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 					continue
 				}
 
+				/* Transforms " " + kUppercase{First,All} + <suffix> */
 				s = data[l+1:]
 
 				if s[0] == ' ' {
@@ -563,7 +589,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 	}
 
 	if max_length >= 6 {
-
+		/* Transforms with prefixes "e ", "s ", ", " and "\xC2\xA0" */
 		if (data[1] == ' ' && (data[0] == 'e' || data[0] == 's' || data[0] == ',')) || (data[0] == 0xC2 && data[1] == 0xA0) {
 			var offset uint = uint(dict.buckets[hash(data[2:])])
 			var end bool = offset == 0
@@ -595,7 +621,7 @@ func findAllStaticDictionaryMatches(dict *encoderDictionary, data []byte, min_le
 	}
 
 	if max_length >= 9 {
-
+		/* Transforms with prefixes " the " and ".com/" */
 		if (data[0] == ' ' && data[1] == 't' && data[2] == 'h' && data[3] == 'e' && data[4] == ' ') || (data[0] == '.' && data[1] == 'c' && data[2] == 'o' && data[3] == 'm' && data[4] == '/') {
 			var offset uint = uint(dict.buckets[hash(data[5:])])
 			var end bool = offset == 0

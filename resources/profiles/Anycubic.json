@@ -1,6 +1,6 @@
 {
 	"name": "Anycubic",
-	"version": "02.04.00.11",
+	"version": "02.04.00.12",
 	"force_update": "0",
 	"description": "Anycubic configurations",
 	"machine_model_list": [
@@ -527,40 +527,40 @@
 			"sub_path": "process/0.16mm High Quality @Anycubic Kobra 3 V2 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 2 Max 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 2 Max 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 2 Max 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 2 Max 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 2 Neo 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 2 Neo 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 2 Neo 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 2 Neo 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 2 Plus 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 2 Plus 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 2 Plus 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 2 Plus 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 2 Pro 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 2 Pro 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 2 Pro 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 2 Pro 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 3 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 3 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 3 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 3 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 3 Max 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 3 Max 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 3 Max 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 3 Max 0.4 nozzle.json"
 		},
 		{
 			"name": "0.20mm High Quality @Anycubic Kobra 3 V2 0.4 nozzle",
 			"sub_path": "process/0.20mm High Quality @Anycubic Kobra 3 V2 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra 3 V2 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra 3 V2 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra 3 V2 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra 3 V2 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Anycubic Kobra2",
-			"sub_path": "process/0.20mm Non-planar top @Anycubic Kobra2.json"
+			"name": "0.20mm Smoothest tops @Anycubic Kobra2",
+			"sub_path": "process/0.20mm Smoothest tops @Anycubic Kobra2.json"
 		},
 		{
 			"name": "0.24mm Standard @Anycubic Kobra 3 V2 0.6 nozzle",

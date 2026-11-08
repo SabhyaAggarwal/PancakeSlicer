@@ -1,29 +1,21 @@
-
-
-
-
-
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 
-export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config;                                                                  locked?: boolean }
+export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config;  locked?: boolean }
 
 export interface ProjectMaterials {
   plates: ProjectPlate[];
+  skipped?: string[];
   config: Config;
   colours: string[];
   matrix: number[] | null;
   multiplier: number | null;
-
   hasConfig: boolean;
-
   builds: { object: number; instance: number }[];
 }
 
 export interface ProjectItem {
-
   id: string;
-
   instance: number;
   buildIndex: number;
   plateIndex: number;
@@ -31,23 +23,13 @@ export interface ProjectItem {
   extruder: number;
   printable: boolean;
   settings: Config;
-
   origin: [number, number, number];
-
   rotZ: number;
-
-
-
   transform: number[];
-
   parts: number;
-
-
   paint?: ArchivePaint;
-
   partTris?: number[];
 }
-
 
 export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy' | 'color', Record<string, string>>>;
 const PAINT_ATTRS = [['support', 'paint_supports'], ['seam', 'paint_seam'], ['fuzzy', 'paint_fuzzy_skin'], ['color', 'paint_color']] as const;
@@ -62,12 +44,10 @@ interface Obj {
 
 const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
 
-
 function parseTransform(t: string | undefined): number[] {
   const v = (t ?? '').trim().split(/\s+/).map(Number);
   return v.length === 12 && v.every(Number.isFinite) ? v : IDENTITY;
 }
-
 
 function compose(a: number[], b: number[]): number[] {
   const out = new Array(12).fill(0);
@@ -80,9 +60,16 @@ function compose(a: number[], b: number[]): number[] {
   return out;
 }
 
-const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+const attr = (tag: string, name: string) => {
+  const m = new RegExp(`\\s${name}\\s*=\\s*([\"'])(.*?)\\1`).exec(tag);
+  return m ? unescapeXml(m[2]) : undefined;
+};
 
 function parseModel(text: string): { objects: Map<string, Obj>; build: { objectid: string; transform: number[]; printable: boolean }[] } {
+  const unit = attr(/<model\b([^>]*)>/.exec(text)?.[1] ?? '', 'unit') ?? 'millimeter';
+  const factor = ({ micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 } as Record<string, number>)[unit];
+  if (!factor) throw new Error(`Unsupported 3MF unit: ${unit}`);
+  const transform = (value: string | undefined) => parseTransform(value).map((v, i) => i >= 9 ? v * factor : v);
   const objects = new Map<string, Obj>();
   const objRe = /<object\b([^>]*)>([\s\S]*?)<\/object>/g;
   for (let m; (m = objRe.exec(text)); ) {
@@ -95,17 +82,21 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
       const vEnd = body.indexOf('</vertices>', vStart);
       const vText = body.slice(vStart, vEnd);
       const verts: number[] = [];
-      const vRe = /<vertex\s+x="([^"]+)"\s+y="([^"]+)"\s+z="([^"]+)"/g;
-      for (let v; (v = vRe.exec(vText)); ) verts.push(+v[1], +v[2], +v[3]);
+      for (const v of vText.matchAll(/<vertex\b([^>]*)\/?>/g)) {
+        const xyz = ['x', 'y', 'z'].map((key) => Number(attr(v[1], key)) * factor);
+        if (!xyz.every(Number.isFinite)) throw new Error('Invalid 3MF vertex');
+        verts.push(...xyz);
+      }
       const tText = body.slice(body.indexOf('<triangles', vEnd), body.indexOf('</triangles>', vEnd));
       const tris: number[] = [];
-      const tRe = /<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"([^>]*)>/g;
-      for (let t; (t = tRe.exec(tText)); ) {
-        if (t[4].includes('paint_')) for (const [kind, key] of PAINT_ATTRS) {
-          const value = attr(t[4], key);
+      for (const t of tText.matchAll(/<triangle\b([^>]*)\/?>/g)) {
+        if (t[1].includes('paint_')) for (const [kind, key] of PAINT_ATTRS) {
+          const value = attr(t[1], key);
           if (value) ((obj.paint ??= {})[kind] ??= {})[String(tris.length / 3)] = value;
         }
-        tris.push(+t[1], +t[2], +t[3]);
+        const indices = ['v1', 'v2', 'v3'].map((key) => Number(attr(t[1], key)));
+        if (!indices.every((v) => Number.isInteger(v) && v >= 0 && v < verts.length / 3)) throw new Error('Invalid 3MF triangle');
+        tris.push(...indices);
       }
       obj.vertices = new Float32Array(verts);
       obj.triangles = new Uint32Array(tris);
@@ -113,7 +104,7 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
     const cRe = /<component\b([^>]*)\/?>/g;
     for (let c; (c = cRe.exec(body)); ) {
       const objectid = attr(c[1], 'objectid');
-      if (objectid) obj.components.push({ objectid, path: attr(c[1], 'p:path'), transform: parseTransform(attr(c[1], 'transform')) });
+      if (objectid) obj.components.push({ objectid, path: attr(c[1], '(?:[\\w-]+:)?path'), transform: transform(attr(c[1], 'transform')) });
     }
     objects.set(id, obj);
   }
@@ -122,36 +113,49 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
   const iRe = /<item\b([^>]*)\/?>/g;
   for (let i; (i = iRe.exec(buildText)); ) {
     const objectid = attr(i[1], 'objectid');
-    if (objectid) build.push({ objectid, transform: parseTransform(attr(i[1], 'transform')), printable: attr(i[1], 'printable') !== '0' });
+    if (objectid) build.push({ objectid, transform: transform(attr(i[1], 'transform')), printable: attr(i[1], 'printable') !== '0' });
   }
   return { objects, build };
 }
 
+function normalizePath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.split('/')) {
+    if (part === '..') parts.pop();
+    else if (part && part !== '.') parts.push(part);
+  }
+  return parts.join('/');
+}
 
 function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }> {
   const out = new Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }>();
   if (!text) return out;
-  const re = /<object\s+id="([^"]+)">([\s\S]*?)<\/object>/g;
-  for (let m; (m = re.exec(text)); ) {
-    const own = m[2].split(/<part\b/)[0];
-    const meta = (key: string) => new RegExp(`<metadata\\s+key="${key}"\\s+value="([^"]*)"`).exec(own)?.[1];
-    const settings: Config = {};
-    for (const v of own.matchAll(/<metadata\s+key="([^"]+)"\s+value="([^"]*)"/g))
-      if (v[1] !== 'name' && v[1] !== 'extruder') settings[v[1]] = unescapeXml(v[2]);
-    const volumes = new Set([...m[2].matchAll(/<part\s+id="([^"]+)"\s+subtype="([^"]+)"/g)].filter((p) => p[2] !== 'normal_part').map((p) => p[1]));
-    out.set(m[1], { name: meta('name'), extruder: Number(meta('extruder')) || undefined, settings, volumes });
+  for (const object of text.matchAll(/<object\b([^>]*)>([\s\S]*?)<\/object>/g)) {
+    const id = attr(object[1], 'id');
+    if (!id) continue;
+    const own = object[2].split(/<(?:part|volume)\b/)[0];
+    const metadata = (body: string): Config => {
+      const values: Config = {};
+      for (const m of body.matchAll(/<metadata\b([^>]*?)(?:\/>|>([\s\S]*?)<\/metadata>)/g)) {
+        const key = attr(m[1], 'key');
+        if (key) values[key] = attr(m[1], 'value') ?? unescapeXml(m[2] ?? '');
+      }
+      return values;
+    };
+    const values = metadata(own);
+    const volumes = new Set([...object[2].matchAll(/<part\b([^>]*)>/g)]
+      .filter((p) => attr(p[1], 'subtype') !== 'normal_part').map((p) => attr(p[1], 'id')!));
+    const firstVolume = /<volume\b[^>]*>([\s\S]*?)<\/volume>/.exec(object[2])?.[1];
+    const extruder = Number(values.extruder ?? (firstVolume ? metadata(firstVolume).extruder : undefined)) || undefined;
+    out.set(id, { name: values.name === undefined ? undefined : String(values.name), extruder,
+      settings: Object.fromEntries(Object.entries(values).filter(([k]) => k !== 'name' && k !== 'extruder')), volumes });
   }
   return out;
 }
 
 const unescapeXml = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-
-
-
-
-
-export async function readProject(file: File, partsOnly = false): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
+export async function readProject(file: File, objectsOnly = false): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const zip = await new Promise<Record<string, Uint8Array>>((resolve, reject) => unzip(bytes, (err, data) => (err ? reject(err) : resolve(data))));
   const entry = (p: string) => zip[p.replace(/^\//, '')] ?? Object.entries(zip).find(([k]) => k.toLowerCase() === p.replace(/^\//, '').toLowerCase())?.[1];
@@ -170,35 +174,45 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     return m;
   };
   const root = model(rootPath);
-  const settings = parseSettings(entry('Metadata/model_settings.config') && strFromU8(entry('Metadata/model_settings.config')!));
-
+  const settingsBytes = entry('Metadata/model_settings.config') ?? entry('Metadata/Slic3r_PE_model.config');
+  const settings = parseSettings(settingsBytes && strFromU8(settingsBytes));
 
   const collect = (path: string, id: string, t: number[], out: number[], depth = 0) => {
     const o = model(path).objects.get(id);
-    if (!o || depth > 8) return;
+    if (!o) throw new Error(`Missing 3MF mesh object ${id}`);
+    if (depth > 64) throw new Error('Cyclic or excessively nested 3MF components');
     if (o.vertices && o.triangles) {
       const v = o.vertices;
-      for (const k of o.triangles) {
+      const mirrored = t[0] * (t[4] * t[8] - t[5] * t[7]) - t[3] * (t[1] * t[8] - t[2] * t[7]) + t[6] * (t[1] * t[5] - t[2] * t[4]) < 0;
+      for (let corner = 0; corner < o.triangles.length; corner++) {
+        const k = o.triangles[mirrored && corner % 3 !== 0 ? corner + (corner % 3 === 1 ? 1 : -1) : corner];
         const x = v[3 * k], y = v[3 * k + 1], z = v[3 * k + 2];
         out.push(x * t[0] + y * t[3] + z * t[6] + t[9], x * t[1] + y * t[4] + z * t[7] + t[10], x * t[2] + y * t[5] + z * t[8] + t[11]);
       }
     }
-    const skip = partsOnly && depth === 0 ? settings.get(id)?.volumes : undefined;
-    for (const c of o.components)
-      if (!skip?.has(c.objectid)) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
+    for (const c of o.components) {
+      const childPath = c.path ? normalizePath(/^(?:\/|3D\/)/i.test(c.path) ? c.path : `${path.slice(0, path.lastIndexOf('/') + 1)}${c.path}`) : path;
+      collect(childPath, c.objectid, compose(c.transform, t), out, depth + 1);
+    }
   };
-
 
   const leaves = (path: string, id: string, out: Obj[] = [], depth = 0): Obj[] => {
     const o = model(path).objects.get(id);
     if (!o || depth > 8) return out;
     if (o.vertices && o.triangles) out.push(o);
-    for (const c of o.components) leaves(c.path ?? path, c.objectid, out, depth + 1);
+    for (const c of o.components) leaves(c.path ? normalizePath(/^(?:\/|3D\/)/i.test(c.path) ? c.path : `${path.slice(0, path.lastIndexOf('/') + 1)}${c.path}`) : path, c.objectid, out, depth + 1);
     return out;
   };
 
   const configBytes = entry('Metadata/project_settings.config');
-  const config = configBytes ? JSON.parse(strFromU8(configBytes)) : {};
+  let config: Config = {};
+  try { config = configBytes ? JSON.parse(strFromU8(configBytes)) : {}; }
+  catch (error) { if (!objectsOnly) throw error; }
+  const skipped = new Set<string>();
+  if (configBytes || entry('Metadata/Slic3r_PE.config') || settingsBytes) skipped.add('settings');
+  if (Object.keys(zip).some((p) => /\.(png|jpg|jpeg)$/i.test(p))) skipped.add('thumbnails');
+  for (const [path, bytes] of Object.entries(zip)) if (/\.model$/i.test(path) && /(?:paint_|slic3rpe:mmu_segmentation|slic3rpe:custom_supports)/.test(strFromU8(bytes))) skipped.add('painting');
+  if (Object.keys(zip).some((p) => /^Metadata\//i.test(p))) skipped.add('metadata');
   const metadata = entry('Metadata/model_settings.config');
   const plateText = metadata ? strFromU8(metadata) : '';
   const membership = new Map<string, number>();
@@ -213,7 +227,6 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     const index = Number(values.plater_id);
     if (!Number.isInteger(index) || index < 1) continue;
     const settings = { ...values };
-
     for (const [stored, native] of [['filament_maps', 'filament_map'], ['filament_volume_maps', 'filament_volume_map'], ['filament_nozzle_maps', 'filament_nozzle_map']]) {
       if (settings[stored] !== undefined) { settings[native] = settings[stored]; delete settings[stored]; }
     }
@@ -228,7 +241,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
   }
   if (!plates.length) plates.push({ index: 1, name: '', origin: [0, 0], settings: {} });
   plates.sort((a, b) => a.index - b.index);
-  const points = (Array.isArray(config.printable_area) ? config.printable_area : String(config.printable_area ?? '').split(',')).map((s: string) => s.split('x').map(Number));
+  const points = (Array.isArray(config.printable_area) ? config.printable_area : String(config.printable_area ?? '').split(',')).map((s) => String(s).split('x').map(Number));
   const width = Math.max(...points.map((p: number[]) => p[0])) - Math.min(...points.map((p: number[]) => p[0]));
   const depth = Math.max(...points.map((p: number[]) => p[1])) - Math.min(...points.map((p: number[]) => p[1]));
   const columns = Math.ceil(Math.sqrt(Math.max(...plates.map((p) => p.index))));
@@ -239,25 +252,24 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     const meta = settings.get(b.objectid);
     const instance = counts.get(b.objectid) ?? 0;
     counts.set(b.objectid, instance + 1);
-    const plateIndex = membership.get(`${b.objectid}:${instance}`) ?? (plates.length === 1 ? plates[0].index : 0);
-    if (!plateIndex) throw new Error('Cannot resolve saved plate membership for every build item');
+    const plateIndex = membership.get(`${b.objectid}:${instance}`) ?? (objectsOnly || plates.length === 1 ? plates[0].index : 0);
+    if (!plateIndex && !objectsOnly) throw new Error('Cannot resolve saved plate membership for every build item');
     const plate = plates.find((p) => p.index === plateIndex);
     return {
       id: b.objectid, instance, buildIndex: i, plateIndex,
       printable: b.printable,
-      settings: meta?.settings ?? {},
-      name: unescapeXml(meta?.name ?? root.objects.get(b.objectid)?.name ?? `Object ${i + 1}`),
+      settings: objectsOnly ? {} : meta?.settings ?? {},
+      name: meta?.name ?? root.objects.get(b.objectid)?.name ?? `Object ${i + 1}`,
       extruder: meta?.extruder ?? 1,
       origin: [b.transform[9] - (plate?.origin[0] ?? 0), b.transform[10] - (plate?.origin[1] ?? 0), b.transform[11]] as [number, number, number],
       rotZ: Math.atan2(b.transform[1], b.transform[0]) * 180 / Math.PI,
       transform: loadedItem(b),
-      ...volumesOf(b.objectid),
+      ...(objectsOnly ? { parts: 1 } : volumesOf(b.objectid)),
     };
   });
   function volumesOf(id: string): { parts: number; paint?: ArchivePaint; partTris?: number[] } {
     const list = leaves(rootPath, id);
     if (list.length === 1) return { parts: 1, ...(list[0].paint ? { paint: list[0].paint } : {}) };
-
     const nonParts = settings.get(id)?.volumes;
     const comps = root.objects.get(id)?.components ?? [];
     if (!list.length || root.objects.get(id)?.vertices || comps.length !== list.length || comps.some((c) => nonParts?.has(c.objectid)))
@@ -271,7 +283,6 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     }
     return { parts: list.length, partTris: list.map((leaf) => leaf.triangles!.length / 3), ...(Object.keys(paint).length ? { paint } : {}) };
   }
-
   function loadedItem(b: { objectid: string; transform: number[] }) {
     const comps = root.objects.get(b.objectid)?.components ?? [];
     if (comps.length !== 1) return b.transform;
@@ -294,5 +305,10 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     .map(String);
   const materials = { plates, config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null,
     hasConfig: !!configBytes || !!entry('Metadata/Slic3r_PE.config'), builds: items.map((it) => ({ object: Number(it.id), instance: it.instance })) };
+  if (objectsOnly) {
+    materials.config = {}; materials.colours = []; materials.matrix = null; materials.multiplier = null; materials.hasConfig = false;
+    materials.plates = plates.map((p) => ({ index: p.index, name: '', origin: p.origin, settings: {} }));
+    return { items, materials: { ...materials, skipped: [...skipped] }, mesh };
+  }
   return { items, materials, mesh };
 }

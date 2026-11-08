@@ -17,7 +17,6 @@
 
 namespace Slic3r { namespace Geometry {
 
-
 Polygon convex_hull(Points pts)
 {
     std::sort(pts.begin(), pts.end(), [](const Point& a, const Point& b) { return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
@@ -28,13 +27,11 @@ Polygon convex_hull(Points pts)
     if (n >= 3) {
         int k = 0;
         hull.points.resize(2 * n);
-
         for (int i = 0; i < n; ++ i) {
             while (k >= 2 && Geometry::orient(pts[i], hull[k-2], hull[k-1]) != Geometry::ORIENTATION_CCW)
                 -- k;
             hull[k ++] = pts[i];
         }
-
         for (int i = n-2, t = k+1; i >= 0; i--) {
             while (k >= t && Geometry::orient(pts[i], hull[k-2], hull[k-1]) != Geometry::ORIENTATION_CCW)
                 -- k;
@@ -50,7 +47,6 @@ Polygon convex_hull(Points pts)
 Pointf3s convex_hull(Pointf3s points)
 {
     assert(points.size() >= 3);
-
     std::sort(points.begin(), points.end(), [](const Vec3d &a, const Vec3d &b){ return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
 
     int n = points.size(), k = 0;
@@ -59,7 +55,6 @@ Pointf3s convex_hull(Pointf3s points)
     if (n >= 3)
     {
         hull.resize(2 * n);
-
 
         for (int i = 0; i < n; ++i)
         {
@@ -77,7 +72,6 @@ Pointf3s convex_hull(Pointf3s points)
 
             hull[k++] = points[i];
         }
-
 
         for (int i = n - 2, t = k + 1; i >= 0; --i)
         {
@@ -163,10 +157,6 @@ inline Scalar dotperp(const Point &a, const Point &b)
 
 using boost::multiprecision::abs;
 
-
-
-
-
 int cmp_angles(const Point &dir, const Point &dirA, const Point &dirB) {
     int128_t dotA = dot(dir, dirA);
     int128_t dotB = dot(-dir, dirB);
@@ -176,9 +166,6 @@ int cmp_angles(const Point &dir, const Point &dirA, const Point &dirB) {
 
     return diff > 0? -1 : (diff < 0 ? 1 : 0);
 }
-
-
-
 
 class Idx
 {
@@ -207,16 +194,9 @@ public:
 
 enum class AntipodalVisitMode { Full, EdgesOnly };
 
-
-
-
-
-
-
 template<AntipodalVisitMode mode = AntipodalVisitMode::Full, class Fn>
 void visit_antipodals (Idx& ia, Idx &ib, Fn &&fn)
 {
-
     int cmp = cmp_angles(ia.prev_dir(), ia.dir(), ib.dir());
     Idx *current = cmp <= 0 ? &ia : &ib, *other = cmp <= 0 ? &ib : &ia;
     Idx *initial = current;
@@ -228,8 +208,6 @@ void visit_antipodals (Idx& ia, Idx &ib, Fn &&fn)
     while (visitor_continue && !finished) {
         Point current_dir_a = current == &ia ? current->dir() : -current->dir();
         visitor_continue = fn(ia.idx(), ib.idx(), current_dir_a);
-
-
 
         if constexpr (mode == AntipodalVisitMode::Full)
             if (cmp == 0 && visitor_continue) {
@@ -255,9 +233,6 @@ bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
 {
     using namespace rotcalip;
 
-
-
-
     struct BB
     {
         size_t         xmin = 0, xmax = 0, ymin = 0, ymax = 0;
@@ -282,12 +257,6 @@ bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
     BoundingBox bbA{{A[bA.xmin].x(), A[bA.ymin].y()}, {A[bA.xmax].x(), A[bA.ymax].y()}};
     BoundingBox bbB{{B[bB.xmin].x(), B[bB.ymin].y()}, {B[bB.xmax].x(), B[bB.ymax].y()}};
 
-
-
-
-
-
-
     Idx imin{bA.xmin, A}, imax{bB.xmax, B};
     if (B[bB.xmin] < imin.pt())  imin = Idx{bB.xmin, B};
     if (imax.pt()  < A[bA.xmax]) imax = Idx{bA.xmax, A};
@@ -305,8 +274,6 @@ bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
     visit_antipodals<AntipodalVisitMode::EdgesOnly>(
         imin, imax,
         [&imin, &imax, &found_divisor](size_t ia, size_t ib, const Point &dir) {
-
-
             const Polygon &A = imin.poly(), &B = imax.poly();
 
             Point ref_a = A[(ia + 2) % A.size()], ref_b = B[(ib + 2) % B.size()];
@@ -314,17 +281,8 @@ bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
             bool is_left_a = dotperp( dir, ref_a - A[ia]) > 0;
             bool is_left_b = dotperp(-dir, ref_b - B[ib]) > 0;
 
-
-
-
-
-
-
-
-
             auto d = dotperp(dir, B[ib] - A[ia]);
             if (d == 0) {
-
                 found_divisor = (is_left_a && is_left_b) || (!is_left_a && !is_left_b);
             } else if (d > 0) {
                 found_divisor = !is_left_a && !is_left_b;
@@ -335,12 +293,8 @@ bool convex_polygons_intersect(const Polygon &A, const Polygon &B)
             return !found_divisor;
         });
 
-
     return !found_divisor;
 }
-
-
-
 
 std::pair<std::vector<Vec2d>, std::vector<Vec2d>> decompose_convex_polygon_top_bottom(const std::vector<Vec2d> &src)
 {
@@ -348,11 +302,9 @@ std::pair<std::vector<Vec2d>, std::vector<Vec2d>> decompose_convex_polygon_top_b
     std::vector<Vec2d> &bottom = out.first;
     std::vector<Vec2d> &top    = out.second;
 
-
     auto left_bottom  = std::min_element(src.begin(), src.end(), [](const auto &l, const auto &r) { return l.x() < r.x() || (l.x() == r.x() && l.y() < r.y()); });
     auto right_top    = std::max_element(src.begin(), src.end(), [](const auto &l, const auto &r) { return l.x() < r.x() || (l.x() == r.x() && l.y() < r.y()); });
     if (left_bottom != src.end() && left_bottom != right_top) {
-
         if (left_bottom < right_top) {
             bottom.assign(left_bottom, right_top + 1);
             size_t cnt = (src.end() - right_top) + (left_bottom + 1 - src.begin());
@@ -366,7 +318,6 @@ std::pair<std::vector<Vec2d>, std::vector<Vec2d>> decompose_convex_polygon_top_b
             bottom.insert(bottom.end(), src.begin(), right_top + 1);
             top.assign(right_top, left_bottom + 1);
         }
-
         if (bottom.size() > 1) {
             auto it = bottom.end();
             for (-- it; it != bottom.begin() && (it - 1)->x() == bottom.back().x(); -- it) ;
@@ -381,37 +332,30 @@ std::pair<std::vector<Vec2d>, std::vector<Vec2d>> decompose_convex_polygon_top_b
     }
 
     if (top.size() < 2 || bottom.size() < 2) {
-
         top.clear();
         bottom.clear();
     }
     return out;
 }
 
-
 bool inside_convex_polygon(const std::pair<std::vector<Vec2d>, std::vector<Vec2d>> &top_bottom_decomposition, const Vec2d &pt)
 {
     auto it_bottom = std::lower_bound(top_bottom_decomposition.first.begin(),  top_bottom_decomposition.first.end(),  pt, [](const auto &l, const auto &r){ return l.x() < r.x(); });
     auto it_top    = std::lower_bound(top_bottom_decomposition.second.begin(), top_bottom_decomposition.second.end(), pt, [](const auto &l, const auto &r){ return l.x() < r.x(); });
     if (it_bottom == top_bottom_decomposition.first.end()) {
-
         assert(it_top == top_bottom_decomposition.second.end());
         return false;
     }
     if (it_bottom == top_bottom_decomposition.first.begin()) {
-
         if (pt.x() < it_bottom->x()) {
-
             assert(pt.x() < it_top->x());
             return false;
         }
-
         assert(pt.x() == it_bottom->x());
         assert(pt.x() == it_top->x());
         assert(it_bottom->y() <= pt.y() && pt.y() <= it_top->y());
         return pt.y() >= it_bottom->y() && pt.y() <= it_top->y();
     }
-
 
     assert(it_bottom != top_bottom_decomposition.first .begin() && it_bottom != top_bottom_decomposition.first .end());
     assert(it_top    != top_bottom_decomposition.second.begin() && it_top    != top_bottom_decomposition.second.end());

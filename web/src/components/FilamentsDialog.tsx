@@ -1,7 +1,5 @@
 import { savePreferences } from '../saved-preferences';
 import { Check } from './Check';
-
-
 import { Dropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import { compatible, getState, setState } from '../state/store';
@@ -20,8 +18,6 @@ export default function FilamentsDialog({ close }: { close(): void }) {
   const mark = (names: string[], on: boolean) => setChosen((c) => { const n = new Set(c); names.forEach((x) => (on ? n.add(x) : n.delete(x))); return n; });
   const count = all.filter((p) => chosen.has(p.name)).length;
   const ok = () => {
-
-
     const before = getState().filamentsToUse, names = new Set(all.map((p) => p.name));
     const value = !before && count === all.length ? null : [...(before ?? []).filter((n) => !names.has(n)), ...all.filter((p) => chosen.has(p.name)).map((p) => p.name)];
     savePreferences({'orca.web.filamentsToUse': value});

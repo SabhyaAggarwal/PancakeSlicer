@@ -30,8 +30,11 @@ var nat64 = netip.MustParsePrefix("64:ff9b::/96")
 var lanPrefixes = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"}
 
 func parseHostPolicy(list, listen string) (*hostPolicy, error) {
-	if strings.TrimSpace(list) == "" {
+	switch strings.TrimSpace(list) {
+	case "off":
 		return nil, nil
+	case "":
+		return nil, errors.New("printer-network is empty: give lan, CIDRs and host names, or off")
 	}
 	h := &hostPolicy{}
 	for _, entry := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' }) {
@@ -169,7 +172,6 @@ func (h *hostPolicy) check(ip netip.Addr, named bool) string {
 		return ""
 	}
 	for _, p := range h.prefixes {
-
 		if p.Contains(ip) && (!ip.Is4() || p.Bits() >= 31 || ip != p.Addr() && ip != lastAddr(p)) {
 			return ""
 		}

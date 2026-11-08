@@ -1,7 +1,3 @@
-
-
-
-
 import type { ComponentType } from 'react';
 import { threeReady } from '../three-runtime';
 

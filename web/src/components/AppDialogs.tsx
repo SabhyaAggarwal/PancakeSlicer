@@ -1,38 +1,34 @@
 import { savePreferences } from '../saved-preferences';
+import { preloadable } from '../preloadable';
 import { Check } from './Check';
-
-
-import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
+import { Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
 import { cameraPrefsSnapshot, setCameraPrefs, subscribeCamera, type CameraPrefs } from '../camera';
 import { InfoTip } from './InfoTip';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
-const About = lazy(() => import('./About'));
-const PlateSettings = lazy(() => import('./PlateSettings'));
-const CloneDialog = lazy(() => import('./CloneDialog'));
-const SimplifyDialog = lazy(() => import('./SimplifyDialog'));
-const FilamentsDialog = lazy(() => import('./FilamentsDialog'));
-const ObjectTable = lazy(() => import('./ObjectTable'));
-const CreatePrinter = lazy(() => import('./CreatePrinter'));
-const SendDialog = lazy(() => import('./SendDialog'));
-const WhatYouCanDo = lazy(() => import('./WhatYouCanDo'));
-const MixedFilaments = lazy(() => import('./MixedFilaments'));
-const SetupWizard = lazy(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
+const About = preloadable(() => import('./About'));
+const PlateSettings = preloadable(() => import('./PlateSettings'));
+const CloneDialog = preloadable(() => import('./CloneDialog'));
+const SimplifyDialog = preloadable(() => import('./SimplifyDialog'));
+const FilamentsDialog = preloadable(() => import('./FilamentsDialog'));
+const ObjectTable = preloadable(() => import('./ObjectTable'));
+const CreatePrinter = preloadable(() => import('./CreatePrinter'));
+const SendDialog = preloadable(() => import('./SendDialog'));
+const WhatYouCanDo = preloadable(() => import('./WhatYouCanDo'));
+const MixedFilaments = preloadable(() => import('./MixedFilaments'));
+const SetupWizard = preloadable(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
 
 const close = () => setState({ appDialog: null });
 const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
 const THEMES: [ThemePref, string][] = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
 
-
 function setDeveloperMode(developerMode: boolean) {
   savePreferences({'orca.developer_mode':developerMode ? '1' : '0'});
   setState({ developerMode });
 }
-
-
 
 function setMixedTemperatures(on: boolean) {
   savePreferences({'orca.enable_high_low_temp_mixed_printing':on ? '1' : '0'});
@@ -52,7 +48,7 @@ function Preferences() {
         <div className="form-row"><span>Theme</span><span className="seg" role="radiogroup" aria-label="Theme">{THEMES.map(([value, label]) =>
           <button key={value} type="button" role="radio" aria-checked={pref === value} data-autofocus={pref === value ? '' : undefined} onClick={() => setThemePref(value)}>{label}</button>)}</span></div>
         <h3 className="modal-group">Camera</h3>
-        <div className="form-row"><span>Style<InfoTip label="Camera style">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
+        <div className="form-row"><span>Mouse controls<InfoTip label="Mouse controls">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
           <span className="seg" role="radiogroup" aria-label="Camera style">{(['default', 'touchpad'] as const).map((value) =>
             <button key={value} type="button" role="radio" aria-checked={camera.style === value} onClick={() => setCameraPrefs({ style: value as CameraPrefs['style'] })}>{value === 'default' ? 'Default' : 'Touchpad'}</button>)}</span></div>
         <label className="form-row"><span>Orbit speed</span>
@@ -69,11 +65,10 @@ function Preferences() {
   );
 }
 
-
 const SHORTCUTS: [string, [string, string][]][] = [
   ['Global', [
     [`${mod}+N`, 'New project'], [`${mod}+O`, 'Open project'], [`${mod}+S`, 'Save'], [`${mod}+Shift+S`, 'Save as'],
-    [`${mod}+I`, 'Import models'], [`${mod}+R`, 'Slice'], [`${mod}+G`, 'Export'],
+    [`${mod}+I`, 'Import models'], [`${mod}+G`, 'Export'],
     [`${mod}+Z`, 'Undo'], [`${mod}+Y / ${mod}+Shift+Z`, 'Redo'], [`${mod}+F`, 'Search settings'], [`${mod}+P`, 'Preferences'],
     [`${mod}+\\`, 'Hide / show sidebar'], ['Tab', 'Prepare / Preview (in a 3D view)'], ['Shift+Tab / Esc', 'Leave the 3D view'], ['?', 'Shortcuts'],
     ['0 … 6', 'Views: default, top, bottom, front, rear, left, right'], ['I / O', 'Zoom in / out'],
@@ -97,7 +92,6 @@ const SHORTCUTS: [string, [string, string][]][] = [
   ]],
 ];
 
-
 function Keys({ keys }: { keys: string }) {
   return (
     <span className="keys">
@@ -115,7 +109,6 @@ function Shortcuts() {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
   const tab = useStore((s) => s.tab);
-
   const pages = [...SHORTCUTS].sort(([a], [b]) => Number(b.toLowerCase() === tab) - Number(a.toLowerCase() === tab))
     .map(([page, rows]) => [page, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || k.toLowerCase().includes(q))] as const)
     .filter(([, rows]) => rows.length);

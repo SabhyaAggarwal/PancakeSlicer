@@ -1,4 +1,5 @@
 :where(.orca-parity) .ol-row.linked:not(.selected) { background: var(--sunken); box-shadow: none; }
+
 :where(.orca-parity) .xf { flex: none; padding: var(--s-2) var(--s-4) var(--s-3); border-bottom: 1px solid var(--line); background: var(--panel); }
 :where(.orca-parity) .xf-head { display: flex; align-items: center; gap: var(--s-3); height: var(--h-compact); }
 :where(.orca-parity) .xf-label { margin-right: auto; font: var(--t-label); text-transform: none; color: var(--ink-2); overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
@@ -9,13 +10,17 @@
 :where(.orca-parity) .xf-key { font: var(--t-small); color: var(--ink-2); white-space: normal; }
 :where(.orca-parity) .xf-act { display: grid; place-items: center; }
 :where(.orca-parity) .xf-act .icon-btn { width: var(--h-compact); height: var(--h-compact); min-width: 0; min-height: 0; padding: 0; }
+
 :where(.orca-parity) .manip-num { height: var(--h-compact); min-width: 0; width: 100%; font: var(--t-num); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .manip-num:disabled { background: var(--sunken); border-color: var(--line); color: var(--ink-3); }
 :where(.orca-parity) .manip-num:disabled::placeholder { color: var(--ink-3); opacity: 1; }
+
 :where(.orca-parity) .manip-panel { background: var(--panel); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: none; }
+
 :where(.orca-parity) .object-info { display: flex; gap: var(--s-4); align-items: center; max-width: none; white-space: normal; padding: var(--s-1) var(--s-3);
   background: var(--panel); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-3); font: var(--t-num); font-size: 12px; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .object-info-error { white-space: normal; color: var(--danger); font: var(--t-small); }
+
 :where(.orca-parity) .canvas-toolbar { background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: none; max-width: calc(100% - 2 * var(--s-4)); }
 :where(.orca-parity) .tb-items { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; height: 32px; overflow: hidden; }
 :where(.orca-parity) .canvas-toolbar.open .tb-items { height: auto; }
@@ -23,6 +28,7 @@
 :where(.orca-parity) .tb-sep { background: var(--line); align-self: center; height: 20px; }
 :where(.orca-parity) .tb-more { flex: none; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink-2); font: var(--t-title); cursor: pointer; }
 :where(.orca-parity) .tb-more:hover, :where(.orca-parity) .canvas-toolbar.open .tb-more { color: var(--ink); background: var(--sunken); }
+
 :where(.orca-parity) .nav3d-face { background: var(--panel); color: var(--ink-2); border: 1px solid var(--line-strong); font: var(--t-label); font-size: 9px; letter-spacing: var(--label-track); text-transform: none; }
 :where(.orca-parity) .nav3d-face:hover { color: var(--ink); background: var(--sunken); border-color: var(--ink-2); }
 :where(.orca-parity) .tb-items { flex: 1 1 auto; } :where(.orca-parity) .canvas-toolbar.open { align-items: flex-start; }
@@ -33,13 +39,26 @@
 :where(.orca-parity) .xf-btn[aria-pressed='true'] { color: var(--ink); background: var(--sunken); }
 :where(.orca-parity) .xf-btn:disabled { color: var(--ink-disabled); cursor: default; }
 :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .xf-key, :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .axis { color: var(--ink-3); }
-:where(.orca-parity) .transform-anchor { position: absolute; left: 12px; top: 56px; width: 0; height: 0; pointer-events: none; }
+
+:where(.orca-parity) .transform-anchor { position: absolute; left: var(--cv-inset); top: var(--cv-band); width: 0; height: 0; pointer-events: none; }
 :where(.orca-parity) .transform-floating { z-index: 30; width: min(380px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 8px 12px 12px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--panel); box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .transform-floating .xf-head { height: auto; min-height: 28px; }
 :where(.orca-parity) .xf-selection { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; padding: 2px 0 6px; }
+:where(.orca-parity) .transform-floating { display: flex; flex-direction: column; gap: var(--s-3); }
+:where(.orca-parity) .xf-actions, :where(.orca-parity) .xf-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+@media (pointer: fine) { :where(.orca-parity) .transform-floating :is(.xf-actions, .xf-rot-row) :is(.btn, .btn-ghost) { min-height: var(--h-compact); padding: 0 var(--s-3); } }
+:where(.orca-parity) .xf-foot { justify-content: space-between; }
+:where(.orca-parity) .xf-more { min-height: var(--h-compact); padding: 0 var(--s-2); color: var(--ink-2); }
+:where(.orca-parity) .xf-rot { display: grid; gap: var(--s-2); }
+:where(.orca-parity) .xf-rot-row { display: grid; grid-template-columns: 24px max-content minmax(0, 110px) max-content; justify-content: start; gap: var(--s-2); align-items: center; }
+:where(.orca-parity) .xf-rot-row .axis { font: var(--t-label); text-align: center; }
+:where(.orca-parity) .transform-floating .xf-selection { margin-top: calc(-1 * var(--s-3)); padding-bottom: 0; }
+:where(.orca-parity) .xf-steps { --seg-h: var(--h-compact); grid-column: span 2; }
+
 :where(.orca-parity) .canvas-area { container-type: inline-size; }
+:where(.orca-parity) .canvas-area { --cv-inset: var(--s-4); --cv-band: calc(2 * var(--cv-inset) + 50px); }
 :where(.orca-parity) .canvas-toolbar img, :where(.orca-parity) .toolbar img { filter: var(--icon-filter); }
-:where(.orca-parity) .objects-panel { --op-w: clamp(220px, 30cqw, 280px); position: absolute; z-index: 6; top: 56px; left: var(--s-4); display: flex; flex-direction: column;
+:where(.orca-parity) .objects-panel { --op-w: clamp(260px, 34cqw, 340px); position: absolute; z-index: 6; top: var(--cv-band); left: var(--cv-inset); display: flex; flex-direction: column;
   max-width: var(--op-w); max-height: calc(100% - 56px - 200px); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow-pop); color: var(--ink); }
 :where(.orca-parity) .objects-panel[data-open] { width: var(--op-w); }
 :where(.orca-parity) .op-head { flex: none; display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: var(--h-compact); padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
@@ -50,21 +69,25 @@
 :where(.orca-parity) .op-body { min-height: 0; overflow: auto; padding: 0 var(--s-2) var(--s-2); scrollbar-width: none; overscroll-behavior: contain; }
 :where(.orca-parity) .op-body::-webkit-scrollbar { display: none; }
 :where(.orca-parity) .op-body .object-list { max-height: none; min-height: 0; border: 0; }
-:where(.orca-parity) .op-body .ol-row { border-radius: var(--r-1); }
+:where(.orca-parity) .op-body .ol-row { border-radius: var(--r-1); column-gap: var(--s-1); }
+:where(.orca-parity) .op-body:not(:has(.ol-status:not(:empty))) .ol-status { display: none; }
 :where(.orca-parity) .op-body .search-bar { margin-bottom: var(--s-1); border-radius: var(--control-radius); }
-:where(.orca-parity) .canvas-area:has(.objects-panel) :is(.transform-anchor, .manip-panel) { top: 100px; }
+:where(.orca-parity) .canvas-area:has(.objects-panel) :is(.transform-anchor, .manip-panel) { top: calc(var(--cv-band) + 44px); }
 @media (min-width: 900px) {
-  :where(.orca-parity) .canvas-area:has(.objects-panel) .notifications { max-width: calc(100% - 156px - 2 * var(--s-4) - clamp(220px, 30cqw, 280px)); }
+  :where(.orca-parity) .canvas-area:has(.objects-panel) .notifications { max-width: calc(100% - 156px - 2 * var(--cv-inset) - clamp(260px, 34cqw, 340px)); }
 }
 :where(.orca-parity) .outliner-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
 @container (max-width: 780px) {
   :where(.orca-parity) .transform-anchor { top: 112px; }
 }
-:where(.orca-parity) .canvas-toolbar .tb-tool-btn { width: 32px; height: 32px; min-width: 0; min-height: 0; border-radius: var(--control-radius); cursor: pointer; }
+
+:where(.orca-parity) .tool-glyph { display: inline-block; flex: none; background: currentColor; -webkit-mask: var(--glyph) var(--glyph-at) / var(--glyph-size) no-repeat; mask: var(--glyph) var(--glyph-at) / var(--glyph-size) no-repeat; }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; border-radius: var(--control-radius); color: var(--ink); cursor: pointer; }
 :where(.orca-parity) .canvas-toolbar .tb-tool-btn:hover:not([aria-disabled=true]):not(.active) { background: var(--hover); }
-:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active { background: var(--accent); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active { background: var(--accent); color: var(--on-accent); }
 :where(.orca-parity) .canvas-toolbar .tb-tool-btn.active:hover { background: var(--accent-strong); }
-:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active img { filter: brightness(0) invert(1); }
-:where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true], :where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true]:hover { background: none; cursor: not-allowed; }
-:where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true] img { opacity: 0.4; }
-:where(.orca-parity) .canvas-more { display: inline-flex; align-items: center; gap: var(--s-2); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true], :where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true]:hover { background: none; color: color-mix(in srgb, var(--ink) 50%, var(--panel)); cursor: not-allowed; }
+:where(.orca-parity) .canvas-more { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink); font: var(--t-body); }
+:where(.orca-parity) .orca-menu[aria-label="Model tools"] .orca-menu-label { gap: var(--s-3); }
+:where(.orca-parity) .orca-menu[aria-label="Model tools"] .orca-menu-key:not(:empty) { min-width: 20px; margin-left: var(--s-4); padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--sunken); color: inherit; font: var(--t-small); text-align: center; }
+:where(.orca-parity) .gizmo-readout { position: absolute; z-index: 30; pointer-events: none; padding: var(--s-1) var(--s-2); border: 1px solid var(--line); border-radius: var(--r-1); background: var(--panel); color: var(--ink); font: var(--t-num); font-variant-numeric: tabular-nums; white-space: nowrap; }

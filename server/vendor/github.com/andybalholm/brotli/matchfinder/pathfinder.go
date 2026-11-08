@@ -7,21 +7,35 @@ import (
 	"slices"
 )
 
+// Pathfinder is a MatchFinder that uses hash chains to find matches, and a
+// shortest-path optimizer to choose which matches to use.
 type Pathfinder struct {
+	// MaxDistance is the maximum distance (in bytes) to look back for
+	// a match. The default is 65535.
 	MaxDistance int
 
+	// MinLength is the length of the shortest match to return.
+	// The default is 4.
 	MinLength int
 
+	// HashLen is the number of bytes to use to calculate the hashes.
+	// The maximum is 8 and the default is 6.
 	HashLen int
 
+	// TableBits is the number of bits in the hash table indexes.
+	// The default is 17 (128K entries).
 	TableBits int
 
+	// ChainLength is how many entries to search on the "match chain" of older
+	// locations with the same hash as the current location.
 	ChainLength int
 
 	table []uint32
 	chain []uint32
 
 	history []byte
+
+	// holding onto buffers to reduce allocations:
 
 	arrivals     []arrival
 	foundMatches []absoluteMatch
@@ -36,6 +50,10 @@ func (q *Pathfinder) Reset() {
 	q.chain = q.chain[:0]
 }
 
+// An arrival represents how we got to a certain byte position.
+// The cost is the total cost to get there from the beginning of the block.
+// If distance > 0, the arrival is with a match.
+// If distance == 0, the arrival is with a run of literals.
 type arrival struct {
 	length   uint32
 	distance uint32
@@ -73,6 +91,8 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		byteCost[b] = float32(cost)
 	}
 
+	// Each element in arrivals corresponds to the position just after
+	// the corresponding byte in src.
 	arrivals := q.arrivals
 	if len(arrivals) < len(src) {
 		arrivals = make([]arrival, len(src))
@@ -85,7 +105,7 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 	}
 
 	if len(q.history) > q.MaxDistance*2 {
-
+		// Trim down the history buffer.
 		delta := len(q.history) - q.MaxDistance
 		copy(q.history, q.history[delta:])
 		q.history = q.history[:q.MaxDistance]
@@ -97,11 +117,13 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		}
 	}
 
+	// Append src to the history buffer.
 	historyLen := len(q.history)
 	q.history = append(q.history, src...)
 	q.chain = append(q.chain, make([]uint32, len(src))...)
 	src = q.history
 
+	// Calculate hashes and build the chain.
 	for i := historyLen; i < len(src)-7; i++ {
 		h := ((binary.LittleEndian.Uint64(src[i:]) & (1<<(8*q.HashLen) - 1)) * hashMul64) >> (64 - q.TableBits)
 		candidate := int(q.table[h])
@@ -112,6 +134,8 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		}
 	}
 
+	// Look for matches, and collect them in foundMatches. Later we'll figure out
+	// which ones to actually use.
 	foundMatches := q.foundMatches[:0]
 	var prevMatch absoluteMatch
 	i := historyLen
@@ -130,7 +154,7 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		var currentMatch absoluteMatch
 
 		if i >= prevMatch.End && prevMatch != (absoluteMatch{}) {
-
+			// Look for a repeat match at i+1.
 			prevDistance := prevMatch.Start - prevMatch.Match
 			if binary.LittleEndian.Uint32(src[i+1:]) == binary.LittleEndian.Uint32(src[i+1-prevDistance:]) {
 				m := extendMatch2(src, i+1, i+1-prevDistance, i+1)
@@ -168,17 +192,20 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		}
 
 		if i < prevMatch.End && currentMatch.End-currentMatch.Start <= prevMatch.End-prevMatch.Start {
-
+			// We were looking for an overlapping match, but we didn't find one longer
+			// than the previous match. So we'll go back to sequential search,
+			// starting right after the previous match.
 			i = prevMatch.End
 			continue
 		}
 
 		if currentMatch == (absoluteMatch{}) {
-
+			// No match found. Continue with sequential search.
 			i++
 			continue
 		}
 
+		// We've found a match; now look for matches overlapping the end of it.
 		prevMatch = currentMatch
 		i = currentMatch.End + 2 - q.HashLen
 	}
@@ -226,7 +253,8 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 			for j := m.Start + q.MinLength; j <= m.End; j++ {
 				adjustedCost := matchCost
 				if j-m.Start < 6 {
-
+					// Matches shorter than 6 are comparatively rare, and therefore
+					// have longer codes.
 					adjustedCost += float32(6-(j-m.Start)) * 2
 				}
 				a := &arrivals[j-historyLen-1]
@@ -240,13 +268,16 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 			}
 		}
 
+		// If a match from an earlier position extends far enough past the current
+		// position, try using the tail of it, starting from here.
 		if unmatched == 0 && pending.Start != i && pending.End >= i+q.MinLength &&
 			!(arrivedHere.length != 0 && arrivedHere.distance == uint32(pending.Start-pending.Match)) {
 			matchCost := baseMatchCost + float32(bits.Len(uint(pending.Start-pending.Match)))
 			for j := i + q.MinLength; j <= pending.End; j++ {
 				adjustedCost := matchCost
 				if j-i < 6 {
-
+					// Matches shorter than 6 are comparatively rare, and therefore
+					// have longer codes.
 					adjustedCost += float32(6-(j-i)) * 2
 				}
 				a := &arrivals[j-historyLen-1]
@@ -270,6 +301,7 @@ func (q *Pathfinder) FindMatches(dst []Match, src []byte) []Match {
 		}
 	}
 
+	// We've found the shortest path; now walk it backward and store the matches.
 	matches := q.matches[:0]
 	i = len(arrivals) - 1
 	for i >= 0 {

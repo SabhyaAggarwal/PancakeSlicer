@@ -21,22 +21,22 @@ from shapely.geometry import Polygon as ShPoly
 from shapely.ops import unary_union
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNIT = os.path.join(HERE, 'belt_temp_provino_unit.stl')
-SURF_GAP = 25.0
+UNIT = os.path.join(HERE, 'belt_temp_provino_unit.stl')   # single provino, keel-first
+SURF_GAP = 25.0            # surface-to-surface gap between provini (mm) — user spec
 TEXT_H = 9.0
-TEXT_DEPTH = 0.8
+TEXT_DEPTH = 0.8           # engraving depth (numbers are CUT into the face, not raised:
+                          # a raised number is an unsupported Y-overhang on the belt)
+TEXT_OVERSHOOT = 0.6       # extra height poking out of the face for a clean boolean cut
 
-TEXT_OVERSHOOT = 0.6
-
-
+# Temperature ranges (start, end) per filament family, 5 C step. File name encodes them.
 RANGES = [(230,190),(270,230),(250,230),(280,240),(240,210),(320,280)]
 
 unit = trimesh.load(UNIT)
 dY = unit.bounds[1,1] - unit.bounds[0,1]
-PITCH = dY + SURF_GAP
+PITCH = dY + SURF_GAP                       # designed-Y pitch == C++ contract constant
 print(f"unit dY={dY:.2f}  PITCH={PITCH:.3f}  (C++ contract: print_z[i]=i*{PITCH:.3f}*cos45)")
 
-
+# 50 mm face normal (0,-1,1)/sqrt2 ; UPRIGHT basis u=+X det(+1) (verified non-mirrored)
 n = np.array([0,-1,1.])/np.sqrt(2)
 u = np.array([1,0,0.]); v = np.array([0,1,1.])/np.sqrt(2)
 R = np.column_stack([u,v,n])
@@ -66,8 +66,8 @@ for t_start, t_end in RANGES:
     for i,T in enumerate(temps):
         c = unit.copy(); c.apply_translation([0, i*PITCH, 0])
         t = text_mesh(str(T)); M=np.eye(4); M[:3,:3]=R; t.apply_transform(M)
-
-
+        # place the text spanning from TEXT_DEPTH inside the face to TEXT_OVERSHOOT outside,
+        # then CUT it out of the provino (engrave) — no raised material, no Y-overhang.
         t.apply_translation(face_c - n*TEXT_DEPTH + np.array([0,i*PITCH,0]))
         c = trimesh.boolean.difference([c, t], engine='manifold')
         parts.append(c)

@@ -54,28 +54,28 @@
 */
 
 #if defined(__GNUC__) && defined(__i386__) && ! defined(__MINGW32__)
+/* We'll use this version by default only where we know it helps.
 
+   regparm() generates warnings on Solaris boxes.   See SF bug #692878.
 
-
-
-
-
-
-
-
+   Instability reported with egcs on a RedHat Linux 7.3.
+   Let's comment out:
+   #define FASTCALL __attribute__((stdcall, regparm(3)))
+   and let's try this:
+*/
 #  define FASTCALL __attribute__((regparm(3)))
 #  define PTRFASTCALL __attribute__((regparm(3)))
 #endif
 
+/* Using __fastcall seems to have an unexpected negative effect under
+   MS VC++, especially for function pointers, so we won't use it for
+   now on that platform. It may be reconsidered for a future release
+   if it can be made more effective.
+   Likely reason: __fastcall on Windows is like stdcall, therefore
+   the compiler cannot perform stack optimizations for call clusters.
+*/
 
-
-
-
-
-
-
-
-
+/* Make sure all of these are defined if they aren't already. */
 
 #ifndef FASTCALL
 #  define FASTCALL
@@ -93,9 +93,9 @@
 #  if ! defined(__cplusplus) && ! defined(inline)
 #    ifdef __GNUC__
 #      define inline __inline
-#    endif
+#    endif /* __GNUC__ */
 #  endif
-#endif
+#endif /* XML_MIN_SIZE */
 
 #ifdef __cplusplus
 #  define inline inline
@@ -105,13 +105,13 @@
 #  endif
 #endif
 
-#include <limits.h>
+#include <limits.h> // ULONG_MAX
 
 #if defined(_WIN32)                                                            \
     && (! defined(__USE_MINGW_ANSI_STDIO)                                      \
         || (1 - __USE_MINGW_ANSI_STDIO - 1 == 0))
 #  define EXPAT_FMT_ULL(midpart) "%" midpart "I64u"
-#  if defined(_WIN64)
+#  if defined(_WIN64) // Note: modifiers "td" and "zu" do not work for MinGW
 #    define EXPAT_FMT_PTRDIFF_T(midpart) "%" midpart "I64d"
 #    define EXPAT_FMT_SIZE_T(midpart) "%" midpart "I64u"
 #  else
@@ -122,7 +122,7 @@
 #  define EXPAT_FMT_ULL(midpart) "%" midpart "llu"
 #  if ! defined(ULONG_MAX)
 #    error Compiler did not define ULONG_MAX for us
-#  elif ULONG_MAX == 18446744073709551615u
+#  elif ULONG_MAX == 18446744073709551615u // 2^64-1
 #    define EXPAT_FMT_PTRDIFF_T(midpart) "%" midpart "ld"
 #    define EXPAT_FMT_SIZE_T(midpart) "%" midpart "lu"
 #  else
@@ -135,17 +135,17 @@
 #  define UNUSED_P(p) (void)p
 #endif
 
-
-
-
-
+/* NOTE BEGIN If you ever patch these defaults to greater values
+              for non-attack XML payload in your environment,
+              please file a bug report with libexpat.  Thank you!
+*/
 #define EXPAT_BILLION_LAUGHS_ATTACK_PROTECTION_MAXIMUM_AMPLIFICATION_DEFAULT   \
   100.0f
 #define EXPAT_BILLION_LAUGHS_ATTACK_PROTECTION_ACTIVATION_THRESHOLD_DEFAULT    \
-  8388608
+  8388608 // 8 MiB, 2^23
+/* NOTE END */
 
-
-#include "expat.h"
+#include "expat.h" // so we can use type XML_Parser below
 
 #ifdef __cplusplus
 extern "C" {

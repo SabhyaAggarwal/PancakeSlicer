@@ -18,10 +18,7 @@
 #include <vector>
 #include <utility>
 
-
-
 namespace Slic3r { namespace MultiNozzleUtils {
-
 std::vector<NozzleInfo> build_nozzle_list(std::vector<NozzleGroupInfo> nozzle_groups)
 {
     std::vector<NozzleInfo> ret;
@@ -81,8 +78,6 @@ void normalize_nozzle_map_per_layer(std::vector<std::vector<int>>               
     std::unordered_map<int, int> first_used_nozzle;
     std::unordered_map<int, int> first_used_layer;
 
-
-
     for (int layer_id = 0; layer_id < total_layers; ++layer_id) {
         auto &layer_map = layer_filament_nozzle_maps[layer_id];
         const auto &used = layer_id < static_cast<int>(layer_filaments.size()) ? layer_filaments[layer_id] : std::vector<unsigned int>();
@@ -100,7 +95,6 @@ void normalize_nozzle_map_per_layer(std::vector<std::vector<int>>               
         }
     }
 
-
     for (int layer_id = 0; layer_id < total_layers; ++layer_id) {
         auto &layer_map = layer_filament_nozzle_maps[layer_id];
         for (int filament_id = 0; filament_id < static_cast<int>(layer_map.size()); ++filament_id) {
@@ -109,7 +103,6 @@ void normalize_nozzle_map_per_layer(std::vector<std::vector<int>>               
         }
     }
 }
-
 
 static bool has_filament_mapped_to_multiple_nozzles(const std::vector<std::vector<int>> &layer_filament_nozzle_maps,
                                                     const std::vector<unsigned int>     &used_filaments)
@@ -300,15 +293,12 @@ std::vector<int> LayeredNozzleGroupResult::get_used_extruders() const
 std::vector<int> LayeredNozzleGroupResult::get_used_extruders(int layer_id) const
 {
     std::set<int> used_extruders;
-
     std::vector<unsigned int> target_filaments = get_used_filaments(layer_id);
     for (auto filament_id : target_filaments) {
         if (layer_id != -1) {
-
             auto nozzle_opt = get_nozzle_for_filament(static_cast<int>(filament_id), layer_id);
             if (nozzle_opt) { used_extruders.insert(nozzle_opt->extruder_id); }
         } else {
-
             auto nozzles = get_nozzles_for_filament(static_cast<int>(filament_id));
             for (const auto &nozzle : nozzles) { used_extruders.insert(nozzle.extruder_id); }
         }
@@ -463,7 +453,6 @@ const std::vector<int> &LayeredNozzleGroupResult::get_layer_filament_nozzle_map(
     return _default_filament_nozzle_map;
 }
 
-
 FilamentChangeSimResult simulate_filament_change_time(
     const std::vector<int>&           logical_filaments,
     const std::vector<NozzleInfo>&    nozzle_list,
@@ -478,20 +467,15 @@ FilamentChangeSimResult simulate_filament_change_time(
     if (logical_filaments.empty() || nozzle_list.empty() || filament_change_seq.empty() || nozzle_change_seq.empty())
         return result;
 
-
-
-
     const float load_ams_to_selector   = time_params.standard_load_time   - time_params.selector_load_time;
     const float unload_ams_to_selector = time_params.standard_unload_time - time_params.selector_unload_time;
     const float load_selector_to_ext   = time_params.selector_load_time;
     const float unload_ext_to_selector = time_params.selector_unload_time;
 
-
     std::unordered_map<int, int> nozzle_to_extruder;
     nozzle_to_extruder.reserve(nozzle_list.size());
     for (const auto& nozzle : nozzle_list)
         nozzle_to_extruder[nozzle.group_id] = nozzle.extruder_id;
-
 
     std::unordered_map<int, int> filament_to_group;
     filament_to_group.reserve(logical_filaments.size());
@@ -509,21 +493,17 @@ FilamentChangeSimResult simulate_filament_change_time(
         return ams_preload_enabled[group_id];
     };
 
-
     enum class Location { IN_AMS, IN_SELECTOR, IN_EXTRUDER };
     std::unordered_map<int, Location> filament_location;
     std::unordered_map<int, int>      filament_extruder;
     std::unordered_map<int, int>      extruder_filament;
-
     std::unordered_map<int, std::unordered_set<int>> ams_group_occupied;
 
     filament_location.reserve(logical_filaments.size());
     filament_extruder.reserve(logical_filaments.size());
 
-
     for (int f : logical_filaments)
         filament_location[f] = Location::IN_AMS;
-
 
     NozzleStatusRecorder sliced_recorder;
 
@@ -539,10 +519,6 @@ FilamentChangeSimResult simulate_filament_change_time(
         if (nozzle_iter == nozzle_to_extruder.end()) continue;
 
         int E = nozzle_iter->second;
-
-
-
-
         if (calc_sliced_time) {
             int old_nozzle_in_E        = sliced_recorder.get_nozzle_in_extruder(E);
             int old_filament_in_nozzle = sliced_recorder.get_filament_in_nozzle(nozzle_id);
@@ -559,7 +535,6 @@ FilamentChangeSimResult simulate_filament_change_time(
             sliced_recorder.set_nozzle_status(nozzle_id, B, E);
         }
 
-
         int A = -1;
         {
             auto it = extruder_filament.find(E);
@@ -570,12 +545,10 @@ FilamentChangeSimResult simulate_filament_change_time(
         int group_B = get_group(B);
         int group_A = (A != -1) ? get_group(A) : -1;
 
-
         auto group_it = ams_group_occupied.find(group_B);
         if (group_it != ams_group_occupied.end()) {
             for (int X : group_it->second) {
                 if (X == B) continue;
-
                 Location loc_X = filament_location[X];
                 if (loc_X == Location::IN_EXTRUDER) {
                     actual_time += unload_ext_to_selector + unload_ams_to_selector;
@@ -589,9 +562,6 @@ FilamentChangeSimResult simulate_filament_change_time(
             }
             group_it->second.clear();
         }
-
-
-
 
         bool step3_executed = false;
         float step3_time = 0.0f;
@@ -621,9 +591,6 @@ FilamentChangeSimResult simulate_filament_change_time(
 
         actual_time += std::max(step3_time, step3_5_time);
 
-
-
-
         float step4_time = 0.0f;
         Location loc_B = filament_location[B];
         if (loc_B == Location::IN_AMS) {
@@ -631,7 +598,6 @@ FilamentChangeSimResult simulate_filament_change_time(
         } else if (loc_B == Location::IN_SELECTOR) {
             step4_time = load_selector_to_ext;
         }
-
 
         extruder_filament[E]  = B;
         filament_location[B]  = Location::IN_EXTRUDER;
@@ -659,8 +625,6 @@ FilamentChangeSimResult simulate_filament_change_time(
     result.sliced_time = sliced_time;
     return result;
 }
-
-
 
 bool NozzleStatusRecorder::is_nozzle_empty(int nozzle_id) const
 {
@@ -716,7 +680,6 @@ int LayeredNozzleGroupResult::estimate_seq_flush_weight(const std::vector<std::v
         int last_filament = recorder.get_filament_in_nozzle(nozzle_id);
 
         if(last_filament!= -1 && last_filament != filament){
-
             if (extruder_id >= 0 && extruder_id < static_cast<int>(flush_matrix.size()) &&
                 last_filament >= 0 && last_filament < static_cast<int>(flush_matrix[extruder_id].size()) &&
                 filament >= 0 && filament < static_cast<int>(flush_matrix[extruder_id][last_filament].size())) {
@@ -729,8 +692,6 @@ int LayeredNozzleGroupResult::estimate_seq_flush_weight(const std::vector<std::v
 
     return get_weight_from_volume(total_flush_volume);
 }
-
-
 
 std::optional<StaticNozzleGroupResult> StaticNozzleGroupResult::create(
     const std::vector<FilamentInfo>& filaments_info,
@@ -751,7 +712,6 @@ std::optional<StaticNozzleGroupResult> StaticNozzleGroupResult::create(
         auto fil_id = filament_info.id;
         auto nozzles_id     = filament_info.group_id;
         std::set<int> nozzles_set(nozzles_id.begin(), nozzles_id.end());
-
         if (nozzles_set.empty()) {
             for (const auto& nozzle_entry : nozzle_list_map)
                 nozzles_set.insert(nozzle_entry.first);
@@ -853,8 +813,6 @@ std::optional<NozzleInfo> StaticNozzleGroupResult::get_first_nozzle_for_filament
     return std::nullopt;
 }
 
-
-
 std::string NozzleInfo::serialize() const
 {
     std::ostringstream oss;
@@ -913,10 +871,6 @@ std::vector<NozzleInfo> load_nozzle_infos_with_compatibility(
     if(!has_nozzle_info && !has_valid_filament_info){
         BOOST_LOG_TRIVIAL(warning)<<__FUNCTION__ << ": building nozzle list from filament map and volume types";
 
-
-
-
-
         const size_t extruder_count = nozzle_diameter.size();
 
         std::vector<NozzleVolumeType> volume_types_fixed = extruder_volume_types;
@@ -949,8 +903,6 @@ std::vector<NozzleInfo> load_nozzle_infos_with_compatibility(
             NozzleInfo info;
             info.diameter = format_diameter_to_str(filament.nozzle_diameter);
             info.group_id = group_id;
-
-
             info.extruder_id = (filament.id >= 0 && filament.id < static_cast<int>(filament_map.size()))
                                    ? filament_map[filament.id] - 1
                                    : 0;

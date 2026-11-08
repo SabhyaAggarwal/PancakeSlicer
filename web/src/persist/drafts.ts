@@ -1,7 +1,6 @@
-
 import type { StoredDocBase } from './backend';
 import { projectId } from './identity';
-import { requireWorkspaceService, routeKey, serviceRequest } from './service';
+import { putAsset, readAsset, requireWorkspaceService, routeKey, serviceRequest } from './service';
 import { createMachine, type Machine } from '../flow/fsm';
 import { captureProjectWire, prepareOnce, projectJson as serviceJson, projectWrite } from './project-wire';
 export interface ProjectFailure {
@@ -14,13 +13,11 @@ export interface ProjectDraftMeta {
 }
 export interface ProjectDraft extends ProjectDraftMeta { doc: StoredDocBase; blobs: Record<string, Blob> }
 export interface ProjectDraftStore {
-
   list(projectId?: string): Promise<ProjectDraft[]>;
   listMetadata(projectId?: string): Promise<ProjectDraftMeta[]>;
   load(id: string): Promise<ProjectDraft | null>;
   asset(key: string): Promise<Blob | null>;
   put(draft: ProjectDraft): Promise<void>;
-
   remove(id: string, throughSequence: number): Promise<void>;
 }
 export interface ProjectDraftMutationSnapshot {
@@ -32,9 +29,6 @@ const publishMutations = () => {
   mutationSnapshot = { pending: mutations.size, revision: mutationSnapshot.revision + 1, error: failedMutations.values().next().value ?? null };
   mutationListeners.forEach((listener) => listener());
 };
-
-
-
 const lockName = (id: string) => `drafts-writer:${id}`;
 type WriterEvent = { type: 'BEGIN' } | { type: 'BYE' } | { type: 'LOCK_GONE' };
 const writers = new Map<string, Machine<'live' | 'gone', WriterEvent, Record<string, never>>>();
@@ -50,12 +44,10 @@ function remoteWriter(id: string) {
   } }));
   return m;
 }
-
 export async function settleDraftWriters(): Promise<void> {
   const remote = new Set([...mutations.values()].map((entry) => entry.writer).filter((id) => id !== writer));
   for (const key of failedMutations.keys()) { const id = key.slice(0, key.indexOf('/')); if (id !== writer) remote.add(id); }
   if (!remote.size || typeof navigator === 'undefined' || !navigator.locks) return;
-
   const state = await navigator.locks.query(), held = new Set([...(state.held ?? []), ...(state.pending ?? [])].map((lock) => lock.name));
   for (const id of remote) if (!held.has(lockName(id))) remoteWriter(id).send({ type: 'LOCK_GONE' });
 }
@@ -84,12 +76,10 @@ if (typeof window !== 'undefined') {
       if (![...mutations.values()].some((entry) => entry.writer === writer)) mutationChannel?.postMessage({ writer, phase: 'bye' } satisfies MutationMessage);
     });
   }
-
   void navigator.locks?.request(lockName(writer), () => new Promise<never>(() => {})).catch(() => {});
 }
 export const projectDraftMutationSnapshot = (): ProjectDraftMutationSnapshot => mutationSnapshot;
 export const subscribeProjectDraftMutations = (listener: () => void) => { mutationListeners.add(listener); return () => { mutationListeners.delete(listener); }; };
-
 export function beginProjectDraftMutation(id: string): (error?: unknown) => void {
   const token = `${writer}.${++mutationSerial}`;
   const announce = (message: MutationMessage) => {
@@ -117,21 +107,17 @@ function validMetadata(meta: ProjectDraftMeta | undefined): meta is ProjectDraft
     (meta.failure === null || !!meta.failure && ['conflict', 'deleted', 'quota', 'unavailable', 'interrupted', 'decode'].includes(meta.failure.kind) &&
       typeof meta.failure.name === 'string' && typeof meta.failure.message === 'string' && meta.failure.projectId === meta.projectId && Number.isSafeInteger(meta.failure.expectedRevision));
 }
-const assetPath = (key: string) => `/api/assets/${routeKey(key)}`;
 const draftPath = (key: string) => `/api/drafts/${routeKey(key)}`;
-const uploaded = new WeakMap<Blob, Set<string>>();
-
+const acknowledged = new Map<string, number>();
 const pendingDrafts = new Map<string, Promise<RequestInit>>();
 const serviceDraftStore: ProjectDraftStore = {
   async list(projectId) {
     const metadata = await this.listMetadata(projectId);
-    const drafts: ProjectDraft[] = [];
-    for (const meta of metadata) {
+    return Promise.all(metadata.map(async (meta) => {
       const draft = await this.load(meta.id);
       if (!draft) throw new Error('A recovery draft changed while reading inventory. Refresh before mutation.');
-      drafts.push(draft);
-    }
-    return drafts;
+      return draft;
+    }));
   },
   async listMetadata(projectId) {
     const records = await serviceJson<ServiceDraft[]>('/api/drafts');
@@ -149,9 +135,9 @@ const serviceDraftStore: ProjectDraftStore = {
     return { ...document, blobs: {} };
   },
   async asset(key) {
-    const response = await serviceRequest(assetPath(key), undefined, true);
-    if (!response) throw new Error(`Recovery model asset is missing: ${key}`);
-    return response.blob();
+    const blob = await readAsset(key);
+    if (!blob) throw new Error(`Recovery model asset is missing: ${key}`);
+    return blob;
   },
   put: (draft) => mutate(draft.id, async () => {
     const { blobs: _blobs, ...document } = draft;
@@ -164,20 +150,17 @@ const serviceDraftStore: ProjectDraftStore = {
     for (const key of Object.keys(draft.doc.files ?? {})) {
       const blob = draft.blobs[key];
       if (!(blob instanceof Blob)) throw new Error(`Draft model file is missing: ${key}`);
-
-      if (!uploaded.get(blob)?.has(key)) {
-        if (!await serviceRequest(assetPath(key), { method: 'HEAD' }, true)) await serviceRequest(assetPath(key), { method: 'PUT', body: blob });
-        const keys = uploaded.get(blob) ?? new Set<string>(); keys.add(key); uploaded.set(blob, keys);
-      }
+      await putAsset(key, blob);
     }
     const ack = await serviceJson<{sequence:number}>(draftPath(draft.id), request);
     if (!ack || ack.sequence !== draft.sequence) throw new Error('Invalid draft acknowledgement');
+    acknowledged.set(draft.id, Math.max(acknowledged.get(draft.id) ?? 0, ack.sequence));
     if (pendingDrafts.get(key) === preparation) pendingDrafts.delete(key);
   }),
   remove: (id, throughSequence) => mutate(id, async () => {
+    if ((acknowledged.get(id) ?? 0) > throughSequence) return;
     try { await serviceRequest(`${draftPath(id)}?throughSequence=${throughSequence}`, { method: 'DELETE' }, true); }
     catch (error) {
-
       if ((error as {status?:number}).status === 409) return;
       throw error;
     }

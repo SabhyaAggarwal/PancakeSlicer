@@ -1,0 +1,19 @@
+#ifndef slic3r_GUI_Utils_FixModelByCgal_hpp_
+#define slic3r_GUI_Utils_FixModelByCgal_hpp_
+
+#include <string>
+#include <wx/string.h>
+
+namespace Slic3r::GUI { class ProgressDialog; }
+
+namespace Slic3r {
+
+class Model;
+class ModelObject;
+class Print;
+
+extern bool fix_model_with_cgal_gui(ModelObject &model_object, int volume_idx, GUI::ProgressDialog &progress_dlg, const wxString &msg_header, std::string &fix_result, bool keep_painting);
+
+}
+
+#endif

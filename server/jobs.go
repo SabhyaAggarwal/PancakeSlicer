@@ -23,80 +23,55 @@ import (
 )
 
 type JobRequest struct {
-	Library *resolveRequest `json:"library,omitempty"`
-
-	SubmittedFilaments []string         `json:"submitted_filaments,omitempty"`
-	Submission         *submittedConfig `json:"submission,omitempty"`
-	SourcePlates       []projectPlate   `json:"source_plates,omitempty"`
-	PlateIndex         int              `json:"plate_index,omitempty"`
-	Orient             bool             `json:"orient,omitempty"`
-
-	OrientScores bool `json:"orient_scores,omitempty"`
-
-	Arrange           bool    `json:"arrange,omitempty"`
-	ArrangeSpacing    float64 `json:"arrange_spacing,omitempty"`
-	ArrangeNoRotation bool    `json:"arrange_no_rotation,omitempty"`
-
-	ArrangeMaterials string `json:"arrange_materials,omitempty"`
-
-	WipeTower bool `json:"wipe_tower,omitempty"`
-
-	Explode bool `json:"explode,omitempty"`
-
-	AllowMixedTemperatures bool `json:"allow_mixed_temperatures,omitempty"`
-
-	Cut           string `json:"cut,omitempty"`
-	CutKeep       string `json:"cut_keep,omitempty"`
-	CutPlaceLower bool   `json:"cut_place_lower,omitempty"`
-
-	CutConnectors string `json:"cut_connectors,omitempty"`
-	CutDovetail   string `json:"cut_dovetail,omitempty"`
-
-	MeshOp            string  `json:"mesh_op,omitempty"`
-	SimplifyRatio     float64 `json:"simplify_ratio,omitempty"`
-	SimplifyTriangles int     `json:"simplify_triangles,omitempty"`
-
-	SimplifyMaxError float64 `json:"simplify_max_error,omitempty"`
-
-	BooleanOp string `json:"boolean_op,omitempty"`
-
-	Text []string `json:"text,omitempty"`
-
-	TextSurface []string `json:"text_surface,omitempty"`
-
-	ExportFormat string      `json:"export_format,omitempty"`
-	DracoBits    int         `json:"draco_bits,omitempty"`
-	Vendor       string      `json:"vendor"`
-	Printer      string      `json:"printer"`
-	Process      string      `json:"process"`
-	Filaments    []string    `json:"filaments"`
-	Overrides    [][2]string `json:"overrides"`
-	Events       []string    `json:"events"`
-	Files        []string    `json:"files"`
-	Plate        bool        `json:"plate"`
-	Output       string      `json:"output"`
-	Filename     string      `json:"filename,omitempty"`
-
-	ProjectSettings [][2]string `json:"project_settings,omitempty"`
-
-	ForcePlanar bool `json:"force_planar,omitempty"`
-
-	Floating bool `json:"floating,omitempty"`
-
-	Calib       string `json:"calib,omitempty"`
-	CalibParams string `json:"calib_params,omitempty"`
-
-	CalibHead string `json:"calib_head,omitempty"`
-
-	Edits bool `json:"edits,omitempty"`
-
-	Priority string `json:"priority,omitempty"`
-
-	Session string `json:"session,omitempty"`
-
-	SliceGroup string `json:"slice_group,omitempty"`
-
-	PreviewBudget float64 `json:"preview_budget,omitempty"`
+	Library                *resolveRequest  `json:"library,omitempty"`
+	SubmittedFilaments     []string         `json:"submitted_filaments,omitempty"`
+	Submission             *submittedConfig `json:"submission,omitempty"`
+	SourcePlates           []projectPlate   `json:"source_plates,omitempty"`
+	PlateIndex             int              `json:"plate_index,omitempty"`
+	Orient                 bool             `json:"orient,omitempty"`
+	OrientScores           bool             `json:"orient_scores,omitempty"`
+	Arrange                bool             `json:"arrange,omitempty"`
+	ArrangeSpacing         float64          `json:"arrange_spacing,omitempty"`
+	ArrangeNoRotation      bool             `json:"arrange_no_rotation,omitempty"`
+	ArrangeMaterials       string           `json:"arrange_materials,omitempty"`
+	WipeTower              bool             `json:"wipe_tower,omitempty"`
+	Explode                bool             `json:"explode,omitempty"`
+	AllowMixedTemperatures bool             `json:"allow_mixed_temperatures,omitempty"`
+	Cut                    string           `json:"cut,omitempty"`
+	CutKeep                string           `json:"cut_keep,omitempty"`
+	CutPlaceLower          bool             `json:"cut_place_lower,omitempty"`
+	CutConnectors          string           `json:"cut_connectors,omitempty"`
+	CutDovetail            string           `json:"cut_dovetail,omitempty"`
+	MeshOp                 string           `json:"mesh_op,omitempty"`
+	SimplifyRatio          float64          `json:"simplify_ratio,omitempty"`
+	SimplifyTriangles      int              `json:"simplify_triangles,omitempty"`
+	SimplifyMaxError       float64          `json:"simplify_max_error,omitempty"`
+	BooleanOp              string           `json:"boolean_op,omitempty"`
+	Text                   []string         `json:"text,omitempty"`
+	TextSurface            []string         `json:"text_surface,omitempty"`
+	ExportFormat           string           `json:"export_format,omitempty"`
+	DracoBits              int              `json:"draco_bits,omitempty"`
+	Vendor                 string           `json:"vendor"`
+	Printer                string           `json:"printer"`
+	Process                string           `json:"process"`
+	Filaments              []string         `json:"filaments"`
+	Overrides              [][2]string      `json:"overrides"`
+	Events                 []string         `json:"events"`
+	Files                  []string         `json:"files"`
+	Plate                  bool             `json:"plate"`
+	Output                 string           `json:"output"`
+	Filename               string           `json:"filename,omitempty"`
+	ProjectSettings        [][2]string      `json:"project_settings,omitempty"`
+	ForcePlanar            bool             `json:"force_planar,omitempty"`
+	Floating               bool             `json:"floating,omitempty"`
+	Calib                  string           `json:"calib,omitempty"`
+	CalibParams            string           `json:"calib_params,omitempty"`
+	CalibHead              string           `json:"calib_head,omitempty"`
+	Edits                  bool             `json:"edits,omitempty"`
+	Priority               string           `json:"priority,omitempty"`
+	Session                string           `json:"session,omitempty"`
+	SliceGroup             string           `json:"slice_group,omitempty"`
+	PreviewBudget          float64          `json:"preview_budget,omitempty"`
 }
 
 type Event struct {
@@ -153,8 +128,7 @@ type Job struct {
 	stage         string
 	progress      *float64
 	send          *Transfer
-
-	resultReady bool
+	resultReady   bool
 }
 
 type JobView struct {
@@ -176,15 +150,12 @@ type JobView struct {
 	RetryOf        string          `json:"retry_of,omitempty"`
 	QueuePosition  int             `json:"queue_position"`
 	ETA            *float64        `json:"eta_seconds,omitempty"`
-
-	ResultReady bool `json:"result_ready,omitempty"`
-
-	HasSurfaceGrid bool `json:"has_surface_grid"`
+	ResultReady    bool            `json:"result_ready,omitempty"`
+	HasSurfaceGrid bool            `json:"has_surface_grid"`
 }
 
 func (j *Job) View() JobView {
 	v := j.snapshotView()
-
 	var record map[string]json.RawMessage
 	if bytes.Contains(v.Slice, []byte(`"surface_grid"`)) && json.Unmarshal(v.Slice, &record) == nil && record["surface_grid"] != nil {
 		delete(record, "surface_grid")
@@ -257,7 +228,6 @@ func (j *Job) notifyLocked() {
 func (j *Job) appendLocked(e Event) {
 	j.nextEvent++
 	e.ID, e.Seq = j.nextEvent, uint64(j.nextEvent)
-
 	if len(e.Line) > maxEventBytes {
 		e.Line = e.Line[:maxEventBytes]
 	}
@@ -468,7 +438,6 @@ func (m *JobManager) Start(j *Job) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	j.mu.Lock()
 	j.cancel = cancel
-
 	j.queuePosition = 0
 	j.setStateLocked(StateQueued, "")
 	err := j.persistenceErr
@@ -592,7 +561,6 @@ func (m *JobManager) Shutdown() {
 	close(m.stop)
 	for _, j := range m.jobs {
 		j.mu.Lock()
-
 		if !j.state.Finished() && j.state != StateQueued {
 			j.stopReason = "server shutting down"
 			if j.cancel != nil {
@@ -655,7 +623,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	r := j.Request
 	in := filepath.Join(j.Dir, "input")
 	if r.Explode {
-
 		return []string{"--explode-3mf", filepath.Join(in, r.Files[0]), j.ExplodedDir()}
 	}
 	if r.MeshOp == "export" {
@@ -672,7 +639,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return []string{"--mesh-boolean", r.BooleanOp, "--a", filepath.Join(in, r.Files[0]), "--b", filepath.Join(in, r.Files[1]), j.OutputPath("stl")}
 	}
 	if r.MeshOp == "svg" {
-
 		args := append([]string{"--emboss-svg", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}, r.Text...)
 		if len(r.TextSurface) > 0 {
 			args = append(append(args, "--use-surface", "--surface", filepath.Join(in, r.Files[1])), r.TextSurface...)
@@ -680,7 +646,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return args
 	}
 	if r.MeshOp == "text" {
-
 		args := append([]string{"--emboss-text", j.OutputPath("stl"), "--profiles", filepath.Join(m.cfg.Resources, "profiles")}, r.Text...)
 		if len(r.TextSurface) > 0 {
 			args = append(append(args, "--use-surface", "--surface", filepath.Join(in, r.Files[0])), r.TextSurface...)
@@ -688,7 +653,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return args
 	}
 	if r.MeshOp != "" {
-
 		args := []string{"--" + r.MeshOp + "-mesh", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}
 		if r.SimplifyMaxError > 0 {
 			return append(args, "--max-error", strconv.FormatFloat(r.SimplifyMaxError, 'f', -1, 64))
@@ -711,6 +675,7 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if dir := presetCacheDir(m); dir != "" {
 		args = append(args, "--preset-cache", dir)
 	}
+	args = append(args, stageCacheArgs(m)...)
 	for _, f := range r.Filaments {
 		args = append(args, "--filament", f)
 	}
@@ -728,7 +693,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return append(args, flag, filepath.Join(in, r.Files[0]))
 	}
 	if r.Cut != "" {
-
 		args = append(args, "--cut-only", r.Cut, "--cut-keep", r.CutKeep, "-o", j.OutputPath("stl"))
 		if r.CutPlaceLower {
 			args = append(args, "--cut-place-lower")
@@ -758,7 +722,6 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return append(args, "--wipe-tower-only", j.OutputPath("json"), "--plate", filepath.Join(in, "plate.json"))
 	}
 	if r.Output == "patch-preview" {
-
 		args = append(args, "--patch-preview", j.OutputPath("json"), "--patch-preview-budget", strconv.FormatFloat(r.PreviewBudget, 'f', -1, 64))
 		if r.Plate {
 			return append(args, "--plate", filepath.Join(in, "plate.json"))
@@ -851,7 +814,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	}
 	configureJobProcess(cmd)
 	cmd.WaitDelay = 5 * time.Second
-
 	stdout, stdoutWriter := io.Pipe()
 	stderr, stderrWriter := io.Pipe()
 	defer stdout.Close()
@@ -888,7 +850,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		defer readers.Done()
 		scanLines(stdout, func(l string) {
 			j.log("stdout", l)
-
 			if l == "progress json 100" && previewableRequest(j.Request) {
 				published.Add(1)
 				go func() {
@@ -918,7 +879,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 					rotation = values
 				}
 			}
-
 			if f := strings.Fields(l); j.Request.Cut != "" && len(f) == 8 && f[0] == "cut_piece" && f[2] == "triangles" && f[4] == "open_edges" && f[6] == "volume_mm3" {
 				triangles, e1 := strconv.Atoi(f[3])
 				open, e2 := strconv.Atoi(f[5])
@@ -934,7 +894,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		scanLines(stderr, func(l string) { lastErr.add(l); j.log("stderr", l) })
 	}()
 	waitErr := cmd.Wait()
-
 	if cmd.Cancel != nil {
 		cmd.Cancel()
 	}
@@ -979,7 +938,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			recordErr = errors.New("missing cut pieces")
 		}
 	}
-
 	if !j.Request.Orient && j.Request.Cut == "" && j.Request.Output == "3mf" {
 		recordErr = nil
 		raw = nil

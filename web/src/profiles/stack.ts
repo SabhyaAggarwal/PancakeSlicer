@@ -1,5 +1,3 @@
-
-
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { OPTIONS } from '../options';
 import { undoable } from '../state/history';
@@ -10,7 +8,6 @@ import {
 } from '../state/store';
 
 export { same };
-
 export { selectChanges as changesOf } from '../state/changes';
 export type Change = SettingChange;
 export type Layer = 'default' | 'system' | 'mine' | 'project' | 'plate' | 'object' | 'part' | 'range';
@@ -31,7 +28,6 @@ const rowOf = (c: SettingChange): StackRow => ({
   value: c.now, object: c.owner.object, volume: c.owner.volume, range: c.owner.range, change: c,
 });
 
-
 export function valueStack(s: State, type: PresetType, key: string, slot = 0): StackRow[] {
   const rows: StackRow[] = [];
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
@@ -45,12 +41,10 @@ export function valueStack(s: State, type: PresetType, key: string, slot = 0): S
   return rows;
 }
 
-
 export const overridesOf = (s: State, key: string): StackRow[] =>
   selectChanges(s, 'process').filter((c) => c.key === key && c.scope !== 'project').map(rowOf);
 
 export const sourceOf = (s: State, type: PresetType, key: string, slot = 0) => valueStack(s, type, key, slot).at(-1);
-
 
 export function revert(c: SettingChange) {
   const { object, volume, range } = c.owner;
@@ -60,8 +54,6 @@ export function revert(c: SettingChange) {
     if (c.key === 'layer_height') return editRange(object!, range!, { layer_height: Number(c.was ?? OPTIONS.layer_height?.default ?? 0.2) });
     return removeRangeOptions(object!, range!, [c.key]);
   }
-
-
   undoable(`Reset setting "${OPTIONS[c.key]?.label || c.key}"`, () => setState((s) => {
     const drop = (cfg: Config) => { const next = { ...cfg }; delete next[c.key]; return next; };
     const patch: Partial<State> = {};
@@ -76,7 +68,6 @@ export function revert(c: SettingChange) {
   }));
 }
 
-
 export const changeCount = (s: State, type: PresetType, slot = 0) =>
   selectChanges(s, type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined).length;
 
@@ -84,7 +75,6 @@ export function revertAll(type: PresetType, slot = 0) {
   const list = selectChanges(getState(), type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined);
   if (list.length) undoable('Revert all', () => list.forEach(revert));
 }
-
 
 export function takeValue(type: PresetType, key: string, value: ConfigValue, slot = 0) {
   const s = getState();

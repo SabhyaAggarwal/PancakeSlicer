@@ -40,7 +40,6 @@ func sendBambu(ctx context.Context, u *upload) (string, error) {
 	if _, err := u.file.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-
 	tlsConfig := p.tlsConfig(p.Serial)
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(4)
 	host, err := p.resolvedHost(ctx)
@@ -99,7 +98,6 @@ func dialTLS(ctx context.Context, host string, port int, config *tls.Config) (*t
 		}
 		return nil, handshakeError(err, port)
 	}
-
 	context.AfterFunc(ctx, func() { conn.SetDeadline(time.Unix(1, 0)) })
 	return conn, nil
 }
@@ -250,7 +248,6 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return err
 		}
 	}
-
 	if u.resend {
 		if text, err := c.cmd(213, 15*time.Second, "SIZE %s", u.filename); err == nil && strings.TrimSpace(text) == strconv.FormatInt(u.size, 10) {
 			u.onCard = true
@@ -269,7 +266,6 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 	}
 	hi, _ := strconv.Atoi(m[5])
 	lo, _ := strconv.Atoi(m[6])
-
 	step = "data connection"
 	raw, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(hi<<8|lo)))
 	if err != nil {
@@ -306,7 +302,6 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return rerr
 		}
 	}
-
 	if err = data.CloseWrite(); err != nil {
 		return err
 	}
@@ -409,7 +404,6 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	defer conn.Close()
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	name := strings.TrimSuffix(u.filename, ".gcode.3mf")
-
 	mapping := []int{}
 	if u.options.amsMapping != nil {
 		mapping = u.options.amsMapping
@@ -429,14 +423,14 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	}}); err != nil {
 		return fail(err)
 	}
-
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
 	for {
 		kind, body, err := mqttRead(r)
 		if err != nil {
 			if os.IsTimeout(err) {
 				mqttWrite(conn, 0xE0, nil)
-				return "Uploaded " + u.filename + " and sent the start command; the printer did not confirm within 20 s, so check its screen.", nil
+				u.outcome = "waiting_for_printer"
+				return "Sent, waiting for the printer to start. No confirmation within 20 s; check its screen before sending again.", nil
 			}
 			return fail(err)
 		}
@@ -464,6 +458,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		if m.Command == "project_file" && m.Sequence == sequence {
 			if strings.EqualFold(m.Result, "success") {
 				mqttWrite(conn, 0xE0, nil)
+				u.outcome = "printing"
 				return u.placed() + " and started printing.", nil
 			}
 			reason := m.Reason
@@ -477,6 +472,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		}
 		if (m.State == "PREPARE" || m.State == "RUNNING") && (m.Subtask == name || m.GcodeFile == u.filename) {
 			mqttWrite(conn, 0xE0, nil)
+			u.outcome = "printing"
 			return u.placed() + " and started printing.", nil
 		}
 	}
@@ -640,26 +636,48 @@ func bambuModel(product, code string) string {
 }
 
 type AMSTray struct {
-	Kind     string `json:"kind,omitempty"`
-	Extruder *int   `json:"extruder,omitempty"`
-	ID       int    `json:"id"`
-	AMS      int    `json:"ams"`
-	Slot     int    `json:"slot"`
-	Type     string `json:"type"`
-	Color    string `json:"color"`
-	Name     string `json:"name,omitempty"`
-
+	Kind       string `json:"kind,omitempty"`
+	Extruder   *int   `json:"extruder,omitempty"`
+	ID         int    `json:"id"`
+	AMS        int    `json:"ams"`
+	Slot       int    `json:"slot"`
+	Type       string `json:"type"`
+	Color      string `json:"color"`
+	Name       string `json:"name,omitempty"`
 	FilamentID string `json:"filament_id,omitempty"`
+	Spool      string `json:"spool,omitempty"`
+	Remaining  *int   `json:"remaining,omitempty"`
+	Active     bool   `json:"active,omitempty"`
 }
 
 type bambuExternalTray struct {
-	ID    string `json:"id"`
-	Type  string `json:"tray_type"`
-	Color string `json:"tray_color"`
-	Idx   string `json:"tray_info_idx"`
+	ID        string `json:"id"`
+	Type      string `json:"tray_type"`
+	Color     string `json:"tray_color"`
+	Idx       string `json:"tray_info_idx"`
+	UUID      string `json:"tray_uuid"`
+	Remaining *int   `json:"remain"`
+}
+
+func spoolID(uuid string) string {
+	if strings.Trim(uuid, "0") == "" {
+		return ""
+	}
+	return uuid
 }
 
 type bambuReport struct {
+	SpeedMode *int            `json:"spd_lvl"`
+	StartTime json.RawMessage `json:"start_time"`
+	Lights    []struct {
+		Node string `json:"node"`
+		Mode string `json:"mode"`
+	} `json:"lights_report"`
+	HMS []struct {
+		Attr    uint32 `json:"attr"`
+		Code    uint32 `json:"code"`
+		Message string `json:"message"`
+	} `json:"hms"`
 	State               string          `json:"gcode_state"`
 	Percent             *float64        `json:"mc_percent"`
 	Remaining           *int            `json:"mc_remaining_time"`
@@ -686,15 +704,18 @@ type bambuReport struct {
 	Subtask             string          `json:"subtask_name"`
 	Error               int64           `json:"print_error"`
 	AMS                 *struct {
-		AMS []struct {
+		TrayNow json.RawMessage `json:"tray_now"`
+		AMS     []struct {
 			ID   string `json:"id"`
 			Info string `json:"info"`
 			Tray []struct {
-				ID    string `json:"id"`
-				Type  string `json:"tray_type"`
-				Color string `json:"tray_color"`
-				Name  string `json:"tray_sub_brands"`
-				Idx   string `json:"tray_info_idx"`
+				Remaining *int   `json:"remain"`
+				ID        string `json:"id"`
+				Type      string `json:"tray_type"`
+				Color     string `json:"tray_color"`
+				Name      string `json:"tray_sub_brands"`
+				Idx       string `json:"tray_info_idx"`
+				UUID      string `json:"tray_uuid"`
 			} `json:"tray"`
 		} `json:"ams"`
 	} `json:"ams"`
@@ -740,7 +761,7 @@ func (b *bambuReport) trays() []AMSTray {
 				if kind == "ams-lite-mixed" {
 					id = 24 + slot
 				}
-				trays = append(trays, AMSTray{ID: id, AMS: a, Slot: slot, Kind: kind, Extruder: extruder, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
+				trays = append(trays, AMSTray{ID: id, AMS: a, Slot: slot, Kind: kind, Extruder: extruder, Remaining: t.Remaining, Active: b.activeTray(a, slot, false), Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx, Spool: spoolID(t.UUID)})
 			}
 		}
 	}
@@ -753,9 +774,11 @@ func (b *bambuReport) trays() []AMSTray {
 		if err != nil || !isExternalTray(id) {
 			id = 255
 		}
-		extruder := 255 - id
-		extruder = 1 - extruder
-		trays = append(trays, AMSTray{ID: id, AMS: id, Slot: 0, Kind: "external", Extruder: &extruder, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
+		var extruder *int
+		if len(externals) > 1 {
+			extruder = ptr(1 - (255 - id))
+		}
+		trays = append(trays, AMSTray{ID: id, AMS: id, Slot: 0, Kind: "external", Active: b.activeTray(id, 0, true), Extruder: extruder, Remaining: e.Remaining, Type: e.Type, Color: color(e.Color), FilamentID: e.Idx, Spool: spoolID(e.UUID)})
 	}
 	return trays
 }
@@ -763,6 +786,27 @@ func (b *bambuReport) trays() []AMSTray {
 func (b *bambuReport) status() PrinterStatus {
 	st := PrinterStatus{Online: true, Detail: b.State, File: b.Subtask, Layer: b.Layer, Layers: b.Layers, Trays: b.trays(), Nozzles: b.nozzles(), Fans: b.fans()}
 	st.Controls = b.controls()
+	if b.Device != nil && b.Device.Extruder != nil {
+		for _, extruder := range b.Device.Extruder.Info {
+			st.NozzleTemps = append(st.NozzleTemps, NozzleTemp{ID: extruder.ID, Actual: float64(extruder.Temp & 65535), Target: float64(extruder.Temp >> 16)})
+		}
+	}
+	st.SpeedMode = b.SpeedMode
+	if started := bambuNumber(b.StartTime); started != nil && *started > 0 {
+		t := time.Unix(int64(*started), 0).UTC()
+		st.StartedAt = &t
+	}
+	for _, light := range b.Lights {
+		if light.Node == "chamber_light" {
+			st.Light = ptr(light.Mode == "on")
+		}
+	}
+	for _, h := range b.HMS {
+		st.Messages = append(st.Messages, PrinterMessage{Code: fmt.Sprintf("%08X-%08X", h.Attr, h.Code), Message: h.Message})
+	}
+	if b.Error != 0 && b.Error != bambuCancelled {
+		st.Messages = append(st.Messages, PrinterMessage{Code: fmt.Sprintf("%08X", b.Error)})
+	}
 	st.State = map[string]string{"IDLE": "idle", "PREPARE": "busy", "SLICING": "busy", "RUNNING": "printing", "PAUSE": "paused", "FINISH": "finished", "FAILED": "failed"}[b.State]
 	if st.State == "" {
 		st.State = "busy"
@@ -882,6 +926,10 @@ func controlBambu(ctx context.Context, p *PrinterConfig, secret, action string) 
 }
 
 func bambuCommand(ctx context.Context, p *PrinterConfig, secret string, command map[string]any) error {
+	return bambuScopedCommand(ctx, p, secret, "print", command)
+}
+
+func bambuScopedCommand(ctx context.Context, p *PrinterConfig, secret, scope string, command map[string]any) error {
 	conn, r, err := mqttSession(ctx, p, secret)
 	if err != nil {
 		return err
@@ -890,30 +938,27 @@ func bambuCommand(ctx context.Context, p *PrinterConfig, secret string, command 
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	command["sequence_id"] = sequence
 	action, _ := command["command"].(string)
-	if err := mqttPublish(conn, p, map[string]any{"print": command}); err != nil {
+	if err := mqttPublish(conn, p, map[string]any{scope: command}); err != nil {
 		return err
 	}
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
 	for {
 		kind, body, err := mqttRead(r)
 		if err != nil {
-
 			mqttWrite(conn, 0xE0, nil)
 			return nil
 		}
-		var message struct {
-			Print struct {
-				Command  string `json:"command"`
-				Sequence string `json:"sequence_id"`
-				Result   string `json:"result"`
-				Reason   string `json:"reason"`
-				ErrCode  int    `json:"err_code"`
-			} `json:"print"`
+		var message map[string]struct {
+			Command  string `json:"command"`
+			Sequence string `json:"sequence_id"`
+			Result   string `json:"result"`
+			Reason   string `json:"reason"`
+			ErrCode  int    `json:"err_code"`
 		}
 		if json.Unmarshal(mqttPayload(kind, body), &message) != nil {
 			continue
 		}
-		if m := message.Print; m.Command == action && m.Sequence == sequence {
+		if m := message[scope]; m.Command == action && m.Sequence == sequence {
 			mqttWrite(conn, 0xE0, nil)
 			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
 				return errors.New("the printer refused the command: turn on LAN Only and Developer Mode on the printer")

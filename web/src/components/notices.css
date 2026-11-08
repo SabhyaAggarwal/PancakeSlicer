@@ -1,18 +1,24 @@
-:where(.orca-parity) .toast { position: fixed; left: 50%; bottom: var(--s-7); transform: translateX(-50%); z-index: 50; display: flex; align-items: flex-start; gap: var(--s-3);
+:where(.orca-parity) .toast { position: fixed; left: 50%; bottom: var(--s-7); transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: var(--s-3);
   min-width: 260px; max-width: min(560px, calc(100vw - 2 * var(--s-5))); padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); background: var(--panel); color: var(--ink);
-  font: var(--t-body); border: 1px solid var(--line-strong);  border-radius: var(--r-2); animation: notice-in var(--dur-2) var(--ease); }
-:where(.orca-parity) .toast-error { border-left: 3px solid var(--danger); }
-:where(.orca-parity) .toast-warning { border-left: 3px solid var(--warn); }
-:where(.orca-parity) .toast-success { border-left: 3px solid var(--accent); }
+  font: var(--t-body); border: 1px solid var(--line); border-radius: var(--r-2); animation: notice-in var(--dur-2) var(--ease); }
+:where(.orca-parity) .toast-error .toast-text > :first-child { color: var(--danger); }
+:where(.orca-parity) .toast-warning .toast-text > :first-child { color: var(--status-warn); }
+:where(.orca-parity) .toast-success .toast-text > :first-child { color: var(--success); }
 :where(.orca-parity) .toast-icon { flex: none; margin-top: 1px; }
 :where(.orca-parity) .toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: text; }
 :where(.orca-parity) .toast-step { color: var(--ink-2); }
-:where(.orca-parity) .toast-action { flex: none; height: auto; padding: 0 var(--s-2); }
-:where(.orca-parity) .toast-close { flex: none; margin: calc(-1 * var(--s-1)) calc(-1 * var(--s-1)) 0 0; }
+:where(.orca-parity) .toast :is(.toast-action, .toast-close) { flex: none; height: 24px; min-height: 24px; margin-block: -3px; }
+:where(.orca-parity) .toast .toast-action { padding: 0 var(--s-2); }
+:where(.orca-parity) .toast .toast-close { width: 24px; min-width: 24px; padding: 0; margin-right: calc(-1 * var(--s-1)); }
+@media (pointer: coarse), (hover: none), (max-width: 599px) {
+  :where(.orca-parity) .toast :is(.toast-action, .toast-close) { position: relative; }
+  :where(.orca-parity) .toast :is(.toast-action, .toast-close)::before { content: ''; position: absolute; inset: 50% auto auto 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
+}
 @media (min-width: 900px) { :where(.orca-parity) .app:has(.main:not(.sidebar-hidden) .sidebar) .toast { left: calc(50% + var(--workspace-rail-width) / 2); } }
 :where(.orca-parity) .app:has(.canvas-area[data-viewport=preview]) .toast { bottom: 76px; }
 @keyframes notice-in { from { opacity: 0; transform: translate(-50%, var(--s-2)); } }
 :where(.orca-parity) .notifications > .toast { position: static; transform: none; left: auto; bottom: auto; min-width: 0; max-width: none; width: 100%; box-sizing: border-box; animation: notice-slide var(--dur-2) var(--ease); }
+
 :where(.orca-parity) .top-layer { position: fixed; inset: 0 auto auto 0; z-index: 110; pointer-events: none; }
 :where(.orca-parity) .top-layer > * { pointer-events: auto; }
 :where(.orca-parity) .top-layer > .notif-group { position: fixed; top: var(--s-5); left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 2 * var(--s-5)));
@@ -20,12 +26,12 @@
 :where(.orca-parity) .top-layer > .notif-group:empty { display: none; }
 :where(.orca-parity) .notification { animation: notice-slide var(--dur-2) var(--ease); }
 @keyframes notice-slide { from { opacity: 0; transform: translateY(var(--s-2)); } }
-:where(.orca-parity) .slice-failed .notif-title img { flex: none; }
 :where(.orca-parity) .slice-failed-actions { display: flex; align-items: flex-start; gap: var(--s-4); margin-top: var(--s-3); flex-wrap: wrap; }
 :where(.orca-parity) .slice-failed details { flex: 1; min-width: 120px; color: var(--ink-2); }
 :where(.orca-parity) .slice-failed summary { cursor: pointer; line-height: var(--h-compact); width: max-content; }
 :where(.orca-parity) .slice-failed-raw { margin: var(--s-2) 0; max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
   font: var(--t-num); font-size: 12px; color: var(--ink); background: var(--sunken); border-radius: var(--r-1); padding: var(--s-3); }
+
 :where(.orca-parity) .loading-state { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; width: min(320px, calc(100% - 2 * var(--s-5)));
   padding: var(--s-4); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); color: var(--ink); pointer-events: none; }
 :where(.orca-parity) .loading-label { display: flex; justify-content: space-between; gap: var(--s-4); font: var(--t-body); overflow: hidden; }

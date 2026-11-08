@@ -1,6 +1,4 @@
-
 import { useEffect, useState } from 'react';
-
 
 export function Num({ value, onCommit, step = 1, label }: { value?: number; onCommit: (v: number) => void; step?: number; label?: string }) {
   const shown = value === undefined ? '' : value.toFixed(2);

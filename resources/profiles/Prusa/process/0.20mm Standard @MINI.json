@@ -8,7 +8,7 @@
 	"travel_acceleration": "2500",
 	"nonplanar_overhangs": "1",
 	"nonplanar_bridges": "1",
-	"nonplanar_mode": "auto",
+	"nonplanar_mode": "nonplanar_top",
 	"initial_layer_speed": "20",
 	"initial_layer_infill_speed": "25",
 	"gap_infill_speed": "40",

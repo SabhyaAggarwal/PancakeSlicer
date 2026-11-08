@@ -11,9 +11,6 @@
 namespace Slic3r { namespace opt {
 
 namespace detail {
-
-
-
 template<size_t N>
 long num_iter(const std::array<size_t, N> &idx, size_t gridsz)
 {
@@ -22,20 +19,12 @@ long num_iter(const std::array<size_t, N> &idx, size_t gridsz)
     return ret;
 }
 
-
-
-
 struct AlgBurteForce {
     bool to_min;
     StopCriteria stc;
     size_t gridsz;
 
     AlgBurteForce(const StopCriteria &cr, size_t gs): stc{cr}, gridsz{gs} {}
-
-
-
-
-
 
     template<int D, size_t N, class Fn, class Cmp>
     bool run(std::array<size_t, N> &idx,
@@ -65,7 +54,6 @@ struct AlgBurteForce {
 
                 result.score = score;
                 result.optimum = inp;
-
 
                 if (absdiff < stc.abs_score_diff() ||
                     absdiff < stc.rel_score_diff() * std::abs(score))

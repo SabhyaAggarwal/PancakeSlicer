@@ -23,23 +23,23 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #ifndef __MPFR_FROM_MPF__
 #define __MPFR_FROM_MPF__
 
-
+/* types */
 #define mpf_t mpfr_t
 #define mpf_srcptr mpfr_srcptr
 #define mpf_ptr mpfr_ptr
 
-
+/* Get current Rounding Mode */
 #ifndef MPFR_DEFAULT_RND
 # define MPFR_DEFAULT_RND mpfr_get_default_rounding_mode ()
 #endif
 
-
+/* mpf_init initalizes at 0 */
 #undef mpf_init
 #define mpf_init(x) mpfr_init_set_ui ((x), 0, MPFR_DEFAULT_RND)
 #undef mpf_init2
 #define mpf_init2(x,p) (mpfr_init2((x),(p)), mpfr_set_ui ((x), 0, MPFR_DEFAULT_RND))
 
-
+/* functions which don't take as argument the rounding mode */
 #undef mpf_ceil
 #define mpf_ceil mpfr_ceil
 #undef mpf_clear
@@ -79,7 +79,7 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #undef mpf_dump
 #define mpf_dump mpfr_dump
 
-
+/* functions which take as argument the rounding mode */
 #undef mpf_abs
 #define mpf_abs(x,y) mpfr_abs(x,y,MPFR_DEFAULT_RND)
 #undef mpf_add
@@ -172,4 +172,4 @@ http://www.gnu.org/licenses/ or write to the Free Software Foundation, Inc.,
 #undef mpz_set_f
 #define mpz_set_f(z,f) mpfr_get_z(z,f,MPFR_DEFAULT_RND)
 
-#endif
+#endif /* __MPFR_FROM_MPF__ */

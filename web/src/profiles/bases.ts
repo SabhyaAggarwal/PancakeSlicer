@@ -1,6 +1,4 @@
-
-
-
+import { speedModelOf, SPEED_KEYS } from './speed-rules';
 import type { Config, PresetType, UserPreset } from '../api/types';
 import { getState, resolvePreset, type State } from '../state/store';
 import { OPTIONS } from '../options';
@@ -21,11 +19,9 @@ const anchorOf = (p: UserPreset) => `${p.base?.name ?? p.inherits}|${p.base?.ver
 
 export const childrenOf = (s: State, type: PresetType, key: string) => s.userPresets.filter((p) => p.type === type && live(p) && p.parentId === key);
 export const baseOf = (s: State, type: PresetType, key: string) => { const p = findProfile(s, type, key); return p?.parentId ? findProfile(s, type, p.parentId) : undefined; };
-
 const depth = (s: State, type: PresetType, key: string) => profileChain(s, type, resolveProfile(s, type, key)).length;
 const subtreeDepth = (s: State, type: PresetType, key: string): number =>
   1 + Math.max(0, ...childrenOf(s, type, key).map((c) => subtreeDepth(s, type, profileKey(c))));
-
 
 export function baseCandidates(s: State, type: PresetType, key?: string): UserPreset[] {
   const self = key ? record(s, type, key) : undefined, below = key ? subtreeDepth(s, type, key) : 1;
@@ -37,7 +33,6 @@ export function baseCandidates(s: State, type: PresetType, key?: string): UserPr
 }
 
 const linkOf = (p: UserPreset, type: PresetType): ChainLink => ({ ...(p as unknown as ChainLink), type, overlay: p.overlay ?? p.overrides ?? {} });
-
 function storedRecord(s: State, type: PresetType, p: UserPreset, link: ChainLink): UserPreset {
   const root = resolvePreset(s, type, profileKey(p)).base?.config ?? {}, overlay = link.overlay;
   const baseline = Object.fromEntries(Object.keys(overlay).map((k) => [k, p.baseline?.[k] ?? root[k] ?? null]));
@@ -51,7 +46,6 @@ export async function setBaseRole(type: PresetType, key: string, role: BaseRole 
   await commit([next]);
 }
 
-
 export async function createBasedOn(type: PresetType, parentKey: string, name: string): Promise<string> {
   const { profileCreation } = await import('./transactions');
   return profileCreation((st) => {
@@ -64,7 +58,6 @@ export async function createBasedOn(type: PresetType, parentKey: string, name: s
 
 export interface ValueChange { key: string; label: string; from: string; to: string }
 const shown = (v: Config[string] | undefined) => v === undefined ? '—' : Array.isArray(v) ? v.join(', ') : String(v);
-
 export function changeBasePreview(s: State, type: PresetType, key: string, parentKey: string | null): ValueChange[] {
   const p = record(s, type, key), moved = { ...p, parentId: parentKey ?? undefined } as UserPreset;
   const next = { ...s, userPresets: s.userPresets.map((x) => (x === p ? moved : x)) } as State;
@@ -77,8 +70,6 @@ export async function changeBase(type: PresetType, key: string, parentKey: strin
   if (parentKey) next.parentId = parentKey; else delete next.parentId;
   await commit([next]);
 }
-
-
 
 export async function archiveBases(type: PresetType, keys: string[]) {
   const s = getState(), operationId = `archive:${crypto.randomUUID()}`, { archiveProfile } = await import('./library-actions');
@@ -96,12 +87,10 @@ export async function archiveBases(type: PresetType, keys: string[]) {
   await commit([...[...moved.values()].filter((p) => !keys.includes(profileKey(p))), ...archived], operationId);
 }
 
-
 export async function resetSettingToBase(type: PresetType, key: string, setting: string) {
   const s = getState(), p = record(s, type, key);
   await commit([storedRecord(s, type, p, resetToBase(linkOf(p, type), setting))]);
 }
-
 export async function detachFromBase(type: PresetType, key: string) {
   const s = getState(), p = record(s, type, key), links = profileChain(s, type, resolveProfile(s, type, key));
   let link = linkOf(p, type);
@@ -110,8 +99,6 @@ export async function detachFromBase(type: PresetType, key: string) {
   delete next.parentId;
   await commit([next]);
 }
-
-
 
 export type { SettingOrigin };
 export type SettingSource = SettingOrigin;
@@ -123,9 +110,8 @@ export function settingSources(s: State, type: PresetType, key: string): Record<
   if (hit) return hit;
   const out = type === 'process' ? { ...originsOf(resolveProfile(s, type, key).user) } : {};
   if (type === 'process' && key === s.process) {
-
     const project = s.projectPresets?.process ?? {}, plate = s.projectPlates?.find((p) => p.index === s.plateIndex)?.settings ?? {};
-    for (const k of Object.keys(printerOverrides(s))) if (!(k in project) && !(k in plate) && !(k in s.dirty.process)) out[k] = 'printer';
+    for (const k of Object.keys(printerOverrides(s))) if (!(k in project) && !(k in plate) && !(k in s.dirty.process) && !(speedModelOf(resolveProfile(s, type, key).source) && SPEED_KEYS.has(k))) out[k] = 'printer';
   }
   byProfile.set(id, out);
   return out;

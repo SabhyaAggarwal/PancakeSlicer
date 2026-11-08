@@ -1,6 +1,5 @@
 import { Range } from './Range';
-
-
+import { More } from './kit';
 import { useEffect, useSyncExternalStore } from 'react';
 import { getState, setState, updateObject, useStore } from '../state/store';
 import { autoGenerate, brimPainted, defaultEarRadius, earsUi, setEars, setEarsUi, subscribeEarsUi } from '../plater/brimEars';
@@ -21,20 +20,20 @@ export default function BrimEarsPanel() {
   return (
     <div className="manip-panel brim-ears">
       <div className="manip-title">Brim Ears</div>
-      <div className="cut-joint-hint">Left mouse button: Add or Select · Right mouse button: Remove · Ctrl+Mouse wheel: Brim ear radius</div>
+      <div className="cut-joint-hint">{['Left mouse button: Add or Select', 'Right mouse button: Remove', 'Ctrl+Mouse wheel: Brim ear radius'].map((t) => <span key={t}>{t}</span>)}</div>
       {row('Brim ear radius', ui.radius, 0.1, 20, 0.1, (radius) => {
         setEarsUi({ radius });
         if (ui.selected.length) setEars(o.id, ears.map((e, i) => (ui.selected.includes(i) ? { ...e, r: radius } : e)), 'Change brim ear radius');
       })}
-      <div className="cut-joint-section">Create</div>
-      {row('Max angle', ui.maxAngle, 0, 180, 0.5, (maxAngle) => setEarsUi({ maxAngle }))}
-      {row('Detection radius', ui.detection, 0, 100, 0.1, (detection) => setEarsUi({ detection }))}
-      <button type="button" className="btn" title="Generate brim ears using Max angle and Detection radius" onClick={() => autoGenerate(o, ui.maxAngle, ui.detection, ui.radius)}>Auto-generate</button>
-      <div className="cut-joint-section">Remove</div>
       <div className="cut-joint-buttons">
-        <button type="button" className="btn" disabled={!ui.selected.length} onClick={() => { setEars(o.id, ears.filter((_, i) => !ui.selected.includes(i)), 'Delete brim ear'); setEarsUi({ selected: [] }); }}>Selected</button>
-        <button type="button" className="btn" disabled={!ears.length} onClick={() => { setEars(o.id, [], 'Delete all brim ears'); setEarsUi({ selected: [] }); }}>All</button>
+        <button type="button" className="btn" onClick={() => autoGenerate(o, ui.maxAngle, ui.detection, ui.radius)}>Auto-generate</button>
+        <button type="button" className="btn" disabled={!ui.selected.length} onClick={() => { setEars(o.id, ears.filter((_, i) => !ui.selected.includes(i)), 'Delete brim ear'); setEarsUi({ selected: [] }); }}>Remove selected</button>
+        <button type="button" className="btn" disabled={!ears.length} onClick={() => { setEars(o.id, [], 'Delete all brim ears'); setEarsUi({ selected: [] }); }}>Remove all</button>
       </div>
+      <More id="brim-ears">
+        {row('Max angle', ui.maxAngle, 0, 180, 0.5, (maxAngle) => setEarsUi({ maxAngle }))}
+        {row('Detection radius', ui.detection, 0, 100, 0.1, (detection) => setEarsUi({ detection }))}
+      </More>
       {!painted && ears.length > 0 && (
         <div className="brim-warning">
           Warning: The brim type is not set to "painted", the brim ears will not take effect!

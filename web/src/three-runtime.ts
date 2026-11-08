@@ -1,8 +1,3 @@
-
-
-
-
-
 import type * as Three from 'three';
 import type * as GeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 

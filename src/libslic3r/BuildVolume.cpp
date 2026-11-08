@@ -30,7 +30,6 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
     m_polygon     = Polygon::new_scale(printable_area);
     assert(m_polygon.is_counter_clockwise());
 
-
     m_convex_hull = Geometry::convex_hull(m_polygon.points);
     m_bbox        = get_extents(m_convex_hull);
     m_area        = m_polygon.area();
@@ -39,18 +38,13 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
     m_bboxf = BoundingBoxf3{ to_3d(bboxf.min, 0.), to_3d(bboxf.max, printable_height) };
 
     if (printable_area.size() >= 4 && std::abs((m_area - double(m_bbox.size().x()) * double(m_bbox.size().y()))) < sqr(SCALED_EPSILON)) {
-
         m_type = BuildVolume_Type::Rectangle;
         m_circle.center = 0.5 * (m_bbox.min.cast<double>() + m_bbox.max.cast<double>());
         m_circle.radius = 0.5 * m_bbox.size().cast<double>().norm();
     } else if (printable_area.size() > 3) {
-
-
-
         m_circle = Geometry::circle_ransac(printable_area);
         bool is_circle = true;
 #ifndef NDEBUG
-
         double max_error = 0;
 #endif
         Vec2d prev = printable_area.back();
@@ -60,7 +54,6 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
 #endif
             if (
                 std::abs((p - m_circle.center).norm() - m_circle.radius) > 0.005 ||
-
                 m_circle.radius - (0.5 * (prev + p) - m_circle.center).norm() > 3.) {
                 is_circle = false;
                 break;
@@ -75,10 +68,8 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
     }
 
     if (printable_area.size() >= 3 && m_type == BuildVolume_Type::Invalid) {
-
         m_circle = Geometry::smallest_enclosing_circle_welzl(m_convex_hull.points);
         m_type   = (m_convex_hull.area() - m_area) < sqr(SCALED_EPSILON) ? BuildVolume_Type::Convex : BuildVolume_Type::Custom;
-
         auto convex_decomposition = [](const Polygon &in, double epsilon) {
             Polygon src = expand(in, float(epsilon)).front();
             std::vector<Vec2d> pts;
@@ -108,7 +99,6 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
 
             if (extruder_shape.empty())
             {
-
                 BOOST_LOG_TRIVIAL(warning) << boost::format("Found invalid extruder_printable_area of index %1%")%index;
                 assert(false);
                 m_extruder_shapes.clear();
@@ -146,7 +136,6 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
                     for (const Vec2d &p : extruder_shape) {
                         if (
                             std::abs((p - extruder_volume.circle.center).norm() - extruder_volume.circle.radius) > 0.005 ||
-
                             extruder_volume.circle.radius - (0.5 * (prev + p) -extruder_volume.circle.center).norm() > 3.) {
                             is_circle = false;
                             break;
@@ -161,14 +150,12 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
                 }
 
                 if (m_type == BuildVolume_Type::Invalid) {
-
                     extruder_volume.same_with_bed = true;
                     extruder_volume.type = m_type;
                     extruder_volume.bbox = m_bbox;
                     extruder_volume.bboxf = m_bboxf;
                     extruder_volume.circle = m_circle;
                 }
-
                 extruder_volume.bboxf.min.z() = -std::numeric_limits<double>::max();
             }
             m_extruder_volumes.push_back(std::move(extruder_volume));
@@ -187,16 +174,12 @@ BuildVolume::BuildVolume(const std::vector<Vec2d> &printable_area, const double 
 
         m_shared_volume.type = static_cast<int>(m_type);
         m_shared_volume.zs[0] = 0.f;
-
     }
 
     BOOST_LOG_TRIVIAL(debug) << "BuildVolume printable_area clasified as: " << this->type_name();
 }
 
 #if 0
-
-
-
 static inline BuildVolume::ObjectState rectangle_test(const indexed_triangle_set &its, const Transform3f &trafo, const Vec2f min, const Vec2f max, const float max_z)
 {
     bool inside = false;
@@ -204,21 +187,16 @@ static inline BuildVolume::ObjectState rectangle_test(const indexed_triangle_set
 
     auto sign = [](const Vec3f& pt) -> char { return pt.z() > 0 ? 1 : pt.z() < 0 ? -1 : 0; };
 
-
     auto test_intersection = [&inside, &outside, min, max, max_z](const Vec3f& p1, const Vec3f& p2, const Vec3f& p3) -> bool {
-
         Vec3f pmin = p1.cwiseMin(p2).cwiseMin(p3);
         Vec3f pmax = p1.cwiseMax(p2).cwiseMax(p3);
         bool tri_inside = false;
         bool tri_outside = false;
         if (pmax.x() < min.x() || pmin.x() > max.x() || pmax.y() < min.y() || pmin.y() > max.y()) {
-
             tri_outside = true;
         } else if (pmin.x() >= min.x() && pmax.x() <= max.x() && pmin.y() >= min.y() && pmax.y() <= max.y()) {
-
             tri_inside = true;
         } else {
-
             Vec2f v1(- p2.y() + p1.y(), p2.x() - p1.x());
             Vec2f v2(- p2.y() + p2.y(), p3.x() - p2.x());
             Vec2f v3(- p1.y() + p3.y(), p1.x() - p3.x());
@@ -236,20 +214,15 @@ static inline BuildVolume::ObjectState rectangle_test(const indexed_triangle_set
         return inside && outside;
     };
 
-
     auto clip_edge = [](const Vec3f &p1, const Vec3f &p2) -> Vec3f {
         const float t = (world_min_z - p1.z()) / (p2.z() - p1.z());
         return { p1.x() + (p2.x() - p1.x()) * t, p1.y() + (p2.y() - p1.y()) * t, world_min_z };
     };
 
-
-
     auto clip_and_test1 = [&test_intersection, &clip_edge](const Vec3f &p1, const Vec3f &p2, const Vec3f &p3, bool p1above) -> bool {
         Vec3f pa = clip_edge(p1, p2);
         return p1above ? test_intersection(p1, pa, p3) : test_intersection(pa, p2, p3);
     };
-
-
 
     auto clip_and_test2 = [&test_intersection, &clip_edge](const Vec3f &p1, const Vec3f &p2, const Vec3f &p3, bool p2above) -> bool {
         Vec3f pa = clip_edge(p1, p2);
@@ -263,34 +236,27 @@ static inline BuildVolume::ObjectState rectangle_test(const indexed_triangle_set
         bool clips[3] = { signs[0] * signs[1] == -1, signs[1] * signs[2] == -1, signs[2] * signs[0] == -1 };
         if (clips[0]) {
             if (clips[1]) {
-
                 if (clip_and_test2(pts[0], pts[1], pts[2], signs[1] > 0))
                     break;
             } else if (clips[2]) {
-
                 if (clip_and_test2(pts[2], pts[0], pts[1], signs[0] > 0))
                     break;
             } else {
-
                 if (clip_and_test1(pts[0], pts[1], pts[2], signs[0] > 0))
                     break;
             }
         } else if (clips[1]) {
             if (clips[2]) {
-
                 if (clip_and_test2(pts[0], pts[1], pts[2], signs[1] > 0))
                     break;
             } else {
-
                 if (clip_and_test1(pts[1], pts[2], pts[0], signs[1] > 0))
                     break;
             }
         } else if (clips[2]) {
-
             if (clip_and_test1(pts[2], pts[0], pts[1], signs[2] > 0))
                 break;
         } else if (signs[0] >= 0 && signs[1] >= 0 && signs[2] >= 0) {
-
             if (test_intersection(pts[0], pts[1], pts[2]))
                 break;
         }
@@ -298,8 +264,6 @@ static inline BuildVolume::ObjectState rectangle_test(const indexed_triangle_set
     return inside ? (outside ? BuildVolume::ObjectState::Colliding : BuildVolume::ObjectState::Inside) : BuildVolume::ObjectState::Outside;
 }
 #endif
-
-
 
 template<typename InsideFn>
 BuildVolume::ObjectState object_state_templ(const indexed_triangle_set &its, const Transform3f &trafo, bool may_be_below_bed, bool convex, InsideFn is_inside)
@@ -312,8 +276,6 @@ BuildVolume::ObjectState object_state_templ(const indexed_triangle_set &its, con
 
     if (may_be_below_bed)
     {
-
-
         std::vector<char> sides;
         sides.reserve(its.vertices.size());
 
@@ -326,7 +288,6 @@ BuildVolume::ObjectState object_state_templ(const indexed_triangle_set &its, con
             const int        s = sign(pt);
             sides.emplace_back(s);
             if (s >= 0) {
-
                 ++ num_above;
                 if (is_inside(pt))
                     ++ num_inside;
@@ -338,30 +299,22 @@ BuildVolume::ObjectState object_state_templ(const indexed_triangle_set &its, con
         }
 
         if (num_above == 0)
-
-
             return BuildVolume::ObjectState::Below;
-
 
         inside  = num_inside > 0;
         outside = num_inside < num_above;
-
         if (num_above < its.vertices.size() && !(inside && outside) && (!(inside && !below_outside) || !convex)) {
-
             for (const stl_triangle_vertex_indices &tri : its.indices) {
                 const int s[3] = { sides[tri(0)], sides[tri(1)], sides[tri(2)] };
                 if (std::min(s[0], std::min(s[1], s[2])) < 0 && std::max(s[0], std::max(s[1], s[2])) > 0) {
-
                     int iprev = 2;
                     for (int iedge = 0; iedge < 3; ++ iedge) {
                         if (s[iprev] * s[iedge] == -1) {
-
                             const stl_vertex p1 = trafo * its.vertices[tri(iprev)];
                             const stl_vertex p2 = trafo * its.vertices[tri(iedge)];
                             assert(sign(p1) == s[iprev]);
                             assert(sign(p2) == s[iedge]);
                             assert(p1.z() * p2.z() < 0);
-
                             const float t = (world_min_z - p1.z()) / (p2.z() - p1.z());
                             (is_inside(Vec3f(p1.x() + (p2.x() - p1.x()) * t, p1.y() + (p2.y() - p1.y()) * t, world_min_z)) ? inside : outside) = true;
                         }
@@ -375,7 +328,6 @@ BuildVolume::ObjectState object_state_templ(const indexed_triangle_set &its, con
     }
     else
     {
-
         assert(! may_be_below_bed);
         num_above = its.vertices.size();
         for (const stl_vertex &v : its.vertices) {
@@ -402,9 +354,6 @@ BuildVolume::ObjectState BuildVolume::object_state(const indexed_triangle_set& i
         if (ignore_bottom)
             build_volume.min.z() = -std::numeric_limits<double>::max();
         BoundingBox3Base<Vec3f> build_volumef(build_volume.min.cast<float>(), build_volume.max.cast<float>());
-
-
-
         return object_state_templ(its, trafo, may_be_below_bed, true, [build_volumef](const Vec3f &pt) { return build_volumef.contains(pt); });
     }
     case BuildVolume_Type::Circle:
@@ -415,7 +364,6 @@ BuildVolume::ObjectState BuildVolume::object_state(const indexed_triangle_set& i
             object_state_templ(its, trafo, may_be_below_bed, true, [circle, z = m_max_print_height + SceneEpsilon](const Vec3f &pt) { return pt.z() < z && circle.contains(to_2d(pt)); });
     }
     case BuildVolume_Type::Convex:
-
     case BuildVolume_Type::Custom:
         return m_max_print_height == 0.0 ?
             object_state_templ(its, trafo, may_be_below_bed, m_type == BuildVolume_Type::Convex, [this](const Vec3f &pt) { return Geometry::inside_convex_polygon(m_top_bottom_convex_hull_decomposition_scene, to_2d(pt).cast<double>()); }) :
@@ -544,12 +492,10 @@ bool BuildVolume::all_paths_inside(const GCodeProcessorResult& paths, const Boun
             build_volume.max.z() = std::numeric_limits<double>::max();
         if (ignore_bottom)
             build_volume.min.z() = -std::numeric_limits<double>::max();
-
         if (paths.moves.empty())
             return build_volume.contains(paths_bbox.min) && build_volume.contains(paths_bbox.max);
         if (paths_bbox.defined && build_volume.contains(paths_bbox))
             return true;
-
 
         const BoundingBox3Base<Vec3f> build_volumef(build_volume.min.cast<float>(), build_volume.max.cast<float>());
         return std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, build_volumef](const GCodeProcessorResult::MoveVertex &move)
@@ -567,7 +513,6 @@ bool BuildVolume::all_paths_inside(const GCodeProcessorResult& paths, const Boun
                 { return ! move_valid(move) || ((to_2d(move.position) - c).squaredNorm() <= r2 && move.position.z() <= z); });
     }
     case BuildVolume_Type::Convex:
-
     case BuildVolume_Type::Custom:
         return m_max_print_height == 0.0 ?
             std::all_of(paths.moves.begin(), paths.moves.end(), [move_valid, this](const GCodeProcessorResult::MoveVertex &move)
@@ -601,7 +546,6 @@ std::string_view BuildVolume::type_name(BuildVolume_Type type)
     case BuildVolume_Type::Convex:    return "Convex"sv;
     case BuildVolume_Type::Custom:    return "Custom"sv;
     }
-
     assert(false);
     return {};
 }

@@ -1,0 +1,20 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @Elegoo N4 0.4 nozzle",
+	"renamed_from": "0.20mm Non-planar top @Elegoo N4 0.4 nozzle;0.20mm Non-planar top Elegoo N4 0.4 nozzle",
+	"inherits": "0.20mm Standard @Elegoo N4 0.4 nozzle",
+	"from": "system",
+	"setting_id": "hN0IvNQ7CphTpUz9",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_ironing": "1",
+	"nonplanar_flow_mod": "1",
+	"nonplanar_surface_spacing": "1",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Elegoo Neptune 4 0.4 nozzle"
+	],
+	"description": "0.20mm Standard with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled elegoo-neptune4 head."
+}

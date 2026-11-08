@@ -1,5 +1,3 @@
-
-
 import { Choice } from '../components/kit';
 import { Dropdown } from '../components/Dropdown';
 import { setLayerHeight, useStore } from '../state/store';
@@ -9,11 +7,9 @@ import './layer-height.css';
 const label = (h: number) => h.toFixed(2);
 
 export function AutoInputs() {
-
   const offered = useStore((s) => availableHeights(s).join(','));
   const height = useStore((s) => effectiveLayerHeight(s));
   const heights = offered ? offered.split(',').map(Number) : [];
-
   const custom = height !== null && !heights.some((h) => Math.abs(h - height) < 0.0005);
   const value = height === null ? '' : custom ? 'custom' : label(height);
   const choose = (id: string) => { if (id !== 'custom') setLayerHeight(Number(id)); };

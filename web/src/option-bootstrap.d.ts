@@ -13,5 +13,4 @@ declare module 'virtual:mock-presets' {
   export default url;
 }
 
-
 declare const __BUILD__: string;

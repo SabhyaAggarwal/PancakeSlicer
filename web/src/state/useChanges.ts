@@ -3,8 +3,6 @@ import type { PresetType } from '../api/types';
 import { selectChanges } from './changes';
 import { effectiveConfig, presetEdits, resolvePreset, useStore, type State } from './store';
 
-
-
 export function useChanges(type: PresetType, slot = 0) {
   const select = useMemo(() => {
     let last: State | undefined, snapshot: State, previous: unknown[] = [];

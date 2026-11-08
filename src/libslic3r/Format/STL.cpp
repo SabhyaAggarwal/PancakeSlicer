@@ -21,11 +21,9 @@ bool load_stl(const char *path, Model *model, const char *object_name_in, Import
     std::string design_id;
 
     if (!mesh.ReadSTLFile(path, true, stlFn, custom_header_length)) {
-
         return false;
     }
     if (mesh.empty()) {
-
         return false;
     }
 
@@ -46,7 +44,6 @@ bool store_stl(const char *path, TriangleMesh *mesh, bool binary)
         mesh->write_binary(path);
     else
         mesh->write_ascii(path);
-
     return true;
 }
 

@@ -1,13 +1,8 @@
 import { Check } from './Check';
-
-
-
-
 import { useEffect, useState } from 'react';
 import { loadHead, loadHeadJson, maxSlope, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { toast } from '../state/store';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
-
 
 const decimal = (n: number) => { const r = Math.round(n * 1e6) / 1e6; return String(r === 0 ? 0 : r); };
 function number(text: string) {
@@ -37,7 +32,6 @@ const projection = (b: HeadBox, grow: number, ux: number, uy: number) => {
   return (ux >= 0 ? hx : lx) * ux + (uy >= 0 ? hy : ly) * uy;
 };
 
-
 function fromSlopeStar(base: Head, samples: { azimuth: number; slope: number }[], gap: number, date: string): Head {
   for (const s of samples)
     if (!Number.isFinite(s.slope) || s.slope < 0 || s.slope >= Math.PI / 2) throw new Error('Slope star: clean slopes must be in [0, 90) degrees');
@@ -64,14 +58,12 @@ function fromSlopeStar(base: Head, samples: { azimuth: number; slope: number }[]
       if (limit < best) { best = limit; binding = box; proj = p; }
     }
     if (!binding) throw new Error('Slope star: base head has no finite component toward a reported azimuth');
-
     binding.min[2] = Math.tan(s.slope) * proj - gap + (binding.nozzle ? 0 : out.margin) - 1e-10;
   }
   return { ...out, calibrated: true, provenance: `slope star ${date}, base ${base.id}` };
 }
 
 function SlopePlot({ head, gap }: { head: Head | null; gap: number }) {
-
   const size = 300, c = size / 2, radius = c - 30;
   const slopes = head && gap > 0 ? slopeMap(head, 72, gap) : null;
   const points = slopes?.map((s, i) => {
@@ -101,7 +93,6 @@ const SLOPE_STAR_TEXT = `For a head that reaches further on one side. Most print
 Apply fits the head to these angles; a component shared by several directions can lower the limit in the others. Save it under a new head ID to keep it.`;
 
 export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: string; layerHeight: number; close: () => void; onSaved: (id: string) => void }) {
-
   const [load, setLoad] = useState<{ state: 'loading' | 'missing' } | { state: 'failed'; error: string } | { state: 'ready' | 'saving'; head: Head; json: Record<string, unknown> }>({ state: 'loading' });
   const base = 'head' in load ? { head: load.head, json: load.json } : load.state === 'loading' ? undefined : null;
   const [rows, setRows] = useState<Row[]>([]);
@@ -160,7 +151,6 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       if (!/^[A-Za-z0-9_-]+$/.test(head.id)) throw new Error('Head id must contain only letters, digits, hyphens and underscores.');
       const json: Record<string, unknown> = { ...base!.json, id: head.id, name: head.name, calibrated: head.calibrated, margin: head.margin, lateral_margin: head.lateral_margin, boxes: head.boxes };
       if (head.provenance) json.provenance = head.provenance;
-
       delete json.side_profile; delete json.side_profile_top; delete json.sides;
       await saveUserHead(json);
       onSaved(head.id);

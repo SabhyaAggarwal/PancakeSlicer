@@ -1,7 +1,4 @@
 import { Check } from './Check';
-
-
-
 import { Dropdown } from './Dropdown';
 import { effectiveConfig, getState, markStale, setState, useStore, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
@@ -18,7 +15,6 @@ const COLS: Col[] = [
     ['inner_only', 'Inner brim only'], ['outer_and_inner', 'Outer and inner brim'], ['no_brim', 'No-brim']] },
   { key: 'outer_wall_speed', label: 'Outer wall speed', kind: 'float' },
 ];
-
 
 function editObject(id: number, name: string, f: (o: PlateObject) => PlateObject) {
   undoable(name, () => setState((s) => ({

@@ -1,24 +1,10 @@
 #pragma once
 
-
-
-
-
 #include <cstdint>
 #include <functional>
 #include "TriangleMesh.hpp"
 
 namespace Slic3r {
-
-
-
-
-
-
-
-
-
-
 
 void its_quadric_edge_collapse(
     indexed_triangle_set &    its,

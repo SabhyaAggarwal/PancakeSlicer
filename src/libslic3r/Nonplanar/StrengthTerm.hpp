@@ -1,8 +1,4 @@
 #pragma once
-
-
-
-
 #include "FieldTerm.hpp"
 #include "libslic3r/Point.hpp"
 
@@ -19,9 +15,6 @@ struct ObjectiveGeometry;
 class StrengthTerm : public FieldTerm
 {
 public:
-
-
-
     StrengthTerm(const ObjectiveGeometry &g, const std::string &path);
     double cost(const ObjectiveGeometry &g, const std::vector<Vec3d> &G, std::vector<Vec3d> *dG) const override;
 

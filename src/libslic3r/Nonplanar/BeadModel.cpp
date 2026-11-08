@@ -20,13 +20,11 @@ double charge_length(const Vec3d &a, const Vec3d &b, const Vec3d &tool_axis)
 
 double bead_area(double width, double height)
 {
-
     return height * (width - height * (1. - 0.25 * PI));
 }
 
 double bead_height_for_area(double width, double area)
 {
-
     const double a    = 1. - 0.25 * PI;
     const double disc = width * width - 4. * a * area;
     return (width - std::sqrt(std::max(0., disc))) / (2. * a);
@@ -53,8 +51,6 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nomina
 
 namespace {
 
-
-
 std::vector<double> shallow_junction_caps(const std::vector<Vec3d> &pts, const std::vector<double> &length,
                                           const MotionLimits &limits)
 {
@@ -72,7 +68,6 @@ std::vector<double> shallow_junction_caps(const std::vector<Vec3d> &pts, const s
         double       v        = std::numeric_limits<double>::infinity();
         const double sin_half = std::sqrt(0.5 * (1. - c));
         if (limits.junction_deviation > 0. && limits.max_a_xy > 0.) {
-
             const double s = std::min(std::sqrt(0.5 * (1. + c)), 1. - 1e-9);
             v = std::sqrt(limits.max_a_xy * limits.junction_deviation * s / (1. - s));
         } else {
@@ -82,14 +77,12 @@ std::vector<double> shallow_junction_caps(const std::vector<Vec3d> &pts, const s
             if (limits.max_jerk_z > 0. && dv.z() > 1e-12)
                 v = std::min(v, limits.max_jerk_z / dv.z());
         }
-
         if (limits.max_a_xy > 0. && sin_half > 1e-9)
             v = std::min(v, std::sqrt(limits.max_a_xy * 0.25 * (length[i - 1] + length[i]) / sin_half));
         cap[i] = v;
     }
     return cap;
 }
-
 
 double road_speed(const std::vector<double> &soft, const std::vector<double> &length, size_t begin, size_t end, double fraction)
 {
@@ -122,15 +115,10 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
         return {};
     const size_t n = pts.size() - 1;
     auto glide = [glides](size_t i) { return glides != nullptr && i < glides->size() && (*glides)[i]; };
-
-
     std::vector<double> length(n), slope(n), hard = nominal, soft = nominal;
     for (size_t i = 0; i < n; ++i) {
         const Vec3d d = pts[i + 1] - pts[i];
-
-
         length[i]     = d.norm() < EPSILON ? 0. : d.norm();
-
         slope[i]      = length[i] > 0. ? d.z() / length[i] : 0.;
         if (caps != nullptr && i < caps->size() && !glide(i))
             hard[i] = std::min(hard[i], (*caps)[i]);
@@ -145,8 +133,6 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
         }
     }
 
-
-
     if (limits.max_a_z > 0.)
         for (size_t i = 1; i < n; ++i) {
             const double ds = 0.5 * (length[i - 1] + length[i]);
@@ -160,15 +146,9 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
             hard[i]          = std::min(hard[i], cap);
         }
 
-
     if (limits.segment_rate > 0.)
         for (size_t i = 0; i < n; ++i)
             soft[i] = std::min(soft[i], limits.segment_rate * (move_length != nullptr && length[i] > 0. ? (*move_length)[i] : length[i]));
-
-
-
-
-
     const std::vector<double> junction = shallow_junction_caps(pts, length, limits);
     auto reach = [&limits](double cap, double l) {
         return limits.max_a_xy > 0. && std::isfinite(cap) ? std::sqrt(cap * cap + 0.5 * limits.max_a_xy * l) : cap;
@@ -176,9 +156,6 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
     for (size_t i = 0; i < n; ++i)
         if (!glide(i))
             soft[i] = std::min({ soft[i], reach(junction[i], length[i]), reach(junction[i + 1], length[i]) });
-
-
-
 
     std::vector<double> v(n);
     for (size_t begin = 0; begin < n;) {
@@ -190,7 +167,6 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
             v[i] = std::min(road, hard[i]);
         begin = end;
     }
-
 
     if (quantum > 0. && quantum < 1.) {
         const double step = std::log(1. - quantum);

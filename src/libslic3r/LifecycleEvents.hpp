@@ -1,12 +1,5 @@
 #pragma once
 
-
-
-
-
-
-
-
 #include <functional>
 #include <condition_variable>
 #include <cstddef>
@@ -17,7 +10,6 @@
 namespace Slic3r
 {
     enum class LifecycleEvent {
-
         NewProject,
         ProjectOpened,
         ProjectBeforeSave,
@@ -25,13 +17,11 @@ namespace Slic3r
         ProjectClosed,
         ProjectDirtyChanged,
 
-
         SliceStarted,
         SliceGeometryFinished,
         GCodeExportStarted,
         GCodeExportFinished,
         SlicingJobComplete,
-
 
         ObjectAdded,
         ObjectDeleted,
@@ -43,10 +33,8 @@ namespace Slic3r
         PlateSelected,
         PlateRenamed,
 
-
         PresetSelected,
         PresetSaved,
-
 
         PrintStateChanged,
         DeviceOnline,
@@ -56,56 +44,35 @@ namespace Slic3r
         UploadStarted,
         UploadFinished,
 
-
         PrintJobStarted,
         PrintJobFinished,
         SendJobStarted,
         SendJobFinished,
     };
 
-
-
     enum class LifecycleEvtCode { Ok, Error, Warn };
 
     struct LifecycleEventContext
     {
-
-
-
         std::string name;
-
-
 
         LifecycleEvtCode code = LifecycleEvtCode::Ok;
 
-
-
         std::string msg;
-
 
         std::string id;
 
-
         std::string previous_name;
-
 
         std::string device_id;
 
-
         std::string job_id;
-
-
 
         std::string source;
 
-
         int index = -1;
 
-
         bool dirty = false;
-
-
-
 
         std::function<bool()> cancellation_check;
     };
@@ -165,10 +132,6 @@ namespace Slic3r
         }
     }
 
-
-
-
-
     using LifecycleHookFn = std::function<void(LifecycleEvent, const LifecycleEventContext&)>;
 
     namespace detail {
@@ -209,12 +172,6 @@ namespace Slic3r
     };
 
     }
-
-
-
-
-
-
     inline void set_lifecycle_hook_fn(LifecycleHookFn fn)
     {
         detail::LifecycleHookState& state = detail::lifecycle_hook_state();

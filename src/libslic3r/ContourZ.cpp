@@ -34,7 +34,6 @@ namespace Slic3r {
 
 static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntity *extr);
 
-
 static bool plane_only_role(ExtrusionRole role) { return role == erSolidInfill || role == erGapFill; }
 
 static double follow_slope_down(double angle_rad, double dist)
@@ -44,9 +43,7 @@ static double follow_slope_down(double angle_rad, double dist)
 
 static double slope_from_normal(const Eigen::Vector3d& normal)
 {
-
     Eigen::Vector3d n = normal.normalized();
-
 
     double angle_rad = std::acos(std::abs(n.z()));
 	return angle_rad;
@@ -54,9 +51,6 @@ static double slope_from_normal(const Eigen::Vector3d& normal)
 
 static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionPath &path)
 {
-
-
-
     const PrintRegionConfig &rcfg   = region->region().config();
     const PrintObjectConfig &ocfg   = region->layer()->object()->config();
     const bool zaa_active = rcfg.zaa_enabled || region->layer()->object()->curved_fallback_zaa() || region->layer()->object()->auto_z_contouring();
@@ -68,7 +62,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
     if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter && !plane_only_role(path.role())) {
 		return false;
 	}
-
+	
 	Layer *layer = region->layer();
     std::vector<const ExPolygon *> planar_faces;
     if (banded)
@@ -81,9 +75,6 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
     const auto &config = rcfg.zaa_enabled || region->layer()->object()->curved_fallback_zaa()
         ? region->region().config() : PrintRegionConfig::defaults();
 	coordf_t min_z = config.zaa_min_z;
-
-
-
 	const coordf_t ray_z = zaa_active || !banded ? layer->slice_z : layer->bottom_z() + min_z;
 	coordf_t mesh_slice_z = ray_z + mesh.ground_level();
 
@@ -92,13 +83,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 
 	coordf_t height = layer->height;
 
-
-
 	double minimize_perimeter_height_angle = zaa_active ? config.zaa_minimize_perimeter_height.value : 0.;
-
-
-
-
 	const bool mid_layer = ((rcfg.zaa_enabled && rcfg.zaa_mid_layer_slice) || region->layer()->object()->curved_fallback_zaa()) &&
 	                       !region->layer()->object()->auto_z_contouring();
 	if (mid_layer)
@@ -108,7 +93,6 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 	bool was_contoured = false;
 
     if (points.size() < 2) {
-
         return false;
     }
 
@@ -134,6 +118,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 			sla::IndexedMesh::hit_result hit_up = mesh.query_ray_hit({x, y, mesh_slice_z}, {0.0, 0.0, 1.0});
 
 			double d = hit_up.distance() - (layer->print_z - ray_z);
+			const double surface = d;
 
             const bool on_planar_face = banded && !zaa_active && hit_up.is_hit() &&
                 std::any_of(planar_faces.begin(), planar_faces.end(), [&](const ExPolygon *face) {
@@ -147,18 +132,10 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 				min_down = -(height + 0.1);
 			} else if (banded && !zaa_active && path.role() == erTopSolidInfill && hit_up.is_hit() &&
 			           hit_up.normal().z() > std::cos(M_PI / 18.)) {
-
-
-
-
-
-
 				max_up = 0.5 * height;
 			} else if (mid_layer && path.role() == erTopSolidInfill) {
 				max_up = 0.5 * height;
 			}
-
-
 
             if (on_planar_face)
                 max_up = std::max(max_up, 0.5 * height);
@@ -181,7 +158,6 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
             }
 
             if (d < -height || d > max_up + (on_planar_face ? 0. : 0.03)) {
-
                 d = 0;
             }
 
@@ -195,24 +171,22 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
                 d = 0.;
 
             if (is_perimeter(path.role()) && d > 0 && !on_planar_face) {
-
                 d = 0;
             }
 
             if (std::abs(d) > EPSILON) {
 				was_contoured = true;
 			}
+            if (Layer::ContourGain *gain = Layer::contour_gain_sink();
+                gain != nullptr && path.role() == erTopSolidInfill && hit_up.is_hit() && surface >= -height && surface <= max_up + 0.03) {
+                const double area = length_mm / num_segments * path.width;
+                gain->planar += surface * surface * area;
+                gain->contoured += (surface - d) * (surface - d) * area;
+            }
 
             Vec3d new_point = {p.x(), p.y(), d};
 
             if (contoured_points.size() >= 2 && i != 0) {
-
-
-
-
-
-
-
                 double dist = Linef3::distance_to_infinite_squared(new_point, contoured_points[contoured_points.size() - 2],
                                                                    contoured_points[contoured_points.size() - 1]);
                 if (dist < EPSILON * EPSILON) {
@@ -239,14 +213,14 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 	return true;
 }
 
-static void contour_extrusion_multipath(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionMultiPath &multipath)
+static void contour_extrusion_multipath(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionMultiPath &multipath) 
 {
 	for (ExtrusionPath &path : multipath.paths) {
 		contour_extrusion_path(region, mesh, path);
 	}
 }
 
-static void contour_extrusion_loop(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionLoop &loop)
+static void contour_extrusion_loop(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionLoop &loop) 
 {
 	for (ExtrusionPath &path : loop.paths) {
 		contour_extrusion_path(region, mesh, path);
@@ -262,7 +236,6 @@ static void contour_extrusion_entitiy_collection(LayerRegion *region, const sla:
 
 static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntity *extr)
 {
-
 	if (dynamic_cast<const ExtrusionPathConformal*>(extr) != nullptr)
 		return;
 
@@ -310,7 +283,6 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
                                         const std::vector<ExtrusionRole> &roles, const ExPolygons &shell_area,
                                         const ExPolygons &covered = {})
 {
-
     auto out_of_reach = [&covered](const Polylines &lines) { return !covered.empty() && diff_pl(lines, covered).empty(); };
     ExtrusionEntitiesPtr out;
     out.reserve(collection.entities.size());
@@ -333,8 +305,6 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
             out.push_back(extr);
             continue;
         }
-
-
         const ExtrusionPaths *paths = nullptr;
         ExtrusionPaths single;
         if (auto *loop = dynamic_cast<ExtrusionLoop *>(extr))
@@ -359,7 +329,6 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
                 continue;
             }
             if (plane_only_role(path.role())) {
-
                 ExtrusionEntity *copy = path.clone();
                 contour_extrusion_entity(region, mesh, copy);
                 out.push_back(copy);
@@ -379,25 +348,10 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
     collection.entities = std::move(out);
 }
 
-
-
-
-
-
-
-
-
 namespace {
-
-
-
 constexpr double OrderStep = 0.2, OrderTol = 0.025;
 thread_local double t_reach = 0.65;
-
-
 thread_local bool t_textured = false;
-
-
 constexpr double TextureTol = 0.015;
 thread_local double t_tol = OrderTol;
 
@@ -424,7 +378,6 @@ void densify(Points3 &pts)
     pts = std::move(dense);
 }
 
-
 struct HeightGrid
 {
     coord_t reach = scaled<coord_t>(t_reach);
@@ -447,7 +400,6 @@ struct HeightGrid
         return z;
     }
 };
-
 
 void collect_paths(ExtrusionEntity &e, std::vector<ExtrusionPath *> &out)
 {
@@ -482,8 +434,6 @@ coord_t lowest_top(ExtrusionEntity &e)
                 z = std::min(z, q.z());
     return z;
 }
-
-
 
 void order_lines(ExtrusionEntityCollection &collection)
 {
@@ -536,7 +486,6 @@ void order_lines(ExtrusionEntityCollection &collection)
         for (int j : after[best])
             --pending[j];
         ExtrusionPath &line = *lines[best];
-
         if (best_rev && line.can_reverse())
             line.reverse();
         if (line.polyline.points.front().z() > line.polyline.points.back().z() + tol && line.can_reverse())
@@ -547,8 +496,6 @@ void order_lines(ExtrusionEntityCollection &collection)
     collection.entities = std::move(out);
     collection.no_sort  = true;
 }
-
-
 
 bool order_tops(ExtrusionEntityCollection &collection, bool root)
 {
@@ -572,13 +519,10 @@ bool order_tops(ExtrusionEntityCollection &collection, bool root)
     for (const auto &t : tops)
         out.push_back(t.second);
     collection.entities = std::move(out);
-
     if (!root)
         collection.no_sort = true;
     return true;
 }
-
-
 
 void clamp_tops(ExtrusionEntityCollection &collection, HeightGrid &printed)
 {
@@ -602,8 +546,6 @@ void clamp_tops(ExtrusionEntityCollection &collection, HeightGrid &printed)
             HeightGrid own;
             for (const Point3 &p : line->polyline.points)
                 own.add(p);
-
-
             const bool loop = dynamic_cast<ExtrusionLoop *>(e) != nullptr ||
                 (line->polyline.points.front() - line->polyline.points.back()).cast<double>().head<2>().norm() < scale_(line->width);
             for (size_t i = loop ? 0 : line->polyline.points.size() - 1; i < line->polyline.points.size(); ++i)
@@ -616,8 +558,6 @@ void clamp_tops(ExtrusionEntityCollection &collection, HeightGrid &printed)
         }
     }
 }
-
-
 
 void lift_wall_dips(ExtrusionEntityCollection &perimeters)
 {
@@ -652,9 +592,6 @@ void lift_wall_dips(ExtrusionEntityCollection &perimeters)
 
 namespace Nonplanar {
 
-
-
-
 void order_textured(LayerRegion &region)
 {
     t_reach    = resolve_head_envelope(region.layer()->object()->print()->config()).tip_flat_radius + 0.34;
@@ -679,10 +616,14 @@ void order_textured(LayerRegion &region)
 
 }
 
+Layer::ContourGain *&Layer::contour_gain_sink()
+{
+    static thread_local ContourGain *sink = nullptr;
+    return sink;
+}
+
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
-
-
 	ExPolygons shell_area;
 	const PrintObject &object = *this->object();
     std::vector<ExtrusionRole> fill_roles{ erTopSolidInfill, erMixed };
@@ -696,9 +637,6 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 			this->print_z > patch.z_min + EPSILON &&
 			this->print_z <= object.get_layer(int(patch.host_layer))->print_z + EPSILON)
 			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
-
-
-
 	for (const auto &diag : object.conformal().diagnostics)
 		if (diag.fallback_reason == "contact")
 			append(shell_area, diag.fallback_shape);
@@ -710,14 +648,9 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
         if (!config.zaa_enabled && !object.curved_fallback_zaa() && !object.auto_z_contouring()) {
             if (Nonplanar::zaa_fallback(config, this->object()->config()))
                 handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
-
-
             if (Nonplanar::top_shells_enabled(config, this->object()->config()) &&
                 Nonplanar::effective_fallback(config, this->object()->config()) == NonplanarFallback::None)
             {
-
-
-
                 if (!covered_ready) {
                     covered_ready     = true;
                     const double reach = this->print_z + PrintRegionConfig::defaults().zaa_min_z.value + 0.03;
@@ -726,16 +659,9 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                         above = above->upper_layer;
                     if (above != nullptr)
                         covered = offset_ex(above->lslices, -float(scale_(0.05)));
-
-
                     if (const ExPolygons &clearance = object.conformal().clearance; !clearance.empty())
                         covered = covered.empty() ? clearance : union_ex(covered, clearance);
                 }
-
-
-
-
-
                 if (!shells_checked) {
                     shells_checked = true;
                     const bool shells  = std::any_of(object.conformal().patches.begin(), object.conformal().patches.end(),
@@ -743,11 +669,7 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                     if (!shells && object.print()->config().nonplanar_kinematics.value != RotaryLayout::None)
                         covered = this->lslices;
                 }
-
                 handle_extrusion_collection(region, mesh, region->fills, fill_roles, shell_area, covered);
-
-
-
                 handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {}, covered);
             }
             continue;
@@ -758,7 +680,6 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
         if ((config.zaa_mid_layer_slice || object.curved_fallback_zaa()) && !object.auto_z_contouring()) {
             t_reach = Nonplanar::resolve_head_envelope(object.print()->config()).tip_flat_radius + 0.34;
             lift_wall_dips(region->perimeters);
-
             HeightGrid printed;
             std::vector<ExtrusionPath *> earlier;
             collect_paths(region->perimeters, earlier);

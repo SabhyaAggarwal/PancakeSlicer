@@ -13,24 +13,35 @@ import (
 	"time"
 )
 
+type PrinterMessage struct {
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
+}
+
 type PrinterStatus struct {
-	Printer   string             `json:"printer"`
-	Online    bool               `json:"online"`
-	State     string             `json:"state"`
-	Detail    string             `json:"detail,omitempty"`
-	File      string             `json:"file,omitempty"`
-	Progress  *float64           `json:"progress,omitempty"`
-	Remaining *int               `json:"remaining_s,omitempty"`
-	Layer     *int               `json:"layer,omitempty"`
-	Layers    *int               `json:"layers,omitempty"`
-	Nozzle    *Temp              `json:"nozzle,omitempty"`
-	Bed       *Temp              `json:"bed,omitempty"`
-	Chamber   *Temp              `json:"chamber,omitempty"`
-	Nozzles   []NozzleStatus     `json:"nozzles,omitempty"`
-	Fans      map[string]float64 `json:"fans,omitempty"`
-	Controls  *BambuControls     `json:"controls,omitempty"`
-	Trays     []AMSTray          `json:"trays,omitempty"`
-	At        time.Time          `json:"at"`
+	NozzleTemps []NozzleTemp       `json:"nozzle_temps,omitempty"`
+	Job         *deviceJob         `json:"job,omitempty"`
+	StartedAt   *time.Time         `json:"started_at,omitempty"`
+	SpeedMode   *int               `json:"speed_mode,omitempty"`
+	Light       *bool              `json:"light,omitempty"`
+	Messages    []PrinterMessage   `json:"messages,omitempty"`
+	Printer     string             `json:"printer"`
+	Online      bool               `json:"online"`
+	State       string             `json:"state"`
+	Detail      string             `json:"detail,omitempty"`
+	File        string             `json:"file,omitempty"`
+	Progress    *float64           `json:"progress,omitempty"`
+	Remaining   *int               `json:"remaining_s,omitempty"`
+	Layer       *int               `json:"layer,omitempty"`
+	Layers      *int               `json:"layers,omitempty"`
+	Nozzle      *Temp              `json:"nozzle,omitempty"`
+	Bed         *Temp              `json:"bed,omitempty"`
+	Chamber     *Temp              `json:"chamber,omitempty"`
+	Nozzles     []NozzleStatus     `json:"nozzles,omitempty"`
+	Fans        map[string]float64 `json:"fans,omitempty"`
+	Controls    *BambuControls     `json:"controls,omitempty"`
+	Trays       []AMSTray          `json:"trays,omitempty"`
+	At          time.Time          `json:"at"`
 }
 
 type Temp struct {
@@ -197,7 +208,6 @@ func statusHTTP(ctx context.Context, h *hostSession, base *url.URL) (PrinterStat
 		}
 		code, err := h.call(ctx, "GET", base.JoinPath("/printer/objects/query").String()+"?print_stats&virtual_sdcard&extruder&heater_bed", nil, &q)
 		if code == 503 || code == 400 {
-
 			st.State, st.Detail = "error", strings.TrimPrefix(err.Error(), "the printer answered ")
 			return st, nil
 		}
@@ -218,6 +228,10 @@ func statusHTTP(ctx context.Context, h *hostSession, base *url.URL) (PrinterStat
 			}
 		}
 		st.Layer, st.Layers = s.PrintStats.Info.Current, s.PrintStats.Info.Total
+		if s.PrintStats.Duration > 0 && (st.State == "printing" || st.State == "paused") {
+			started := time.Now().Add(-time.Duration(s.PrintStats.Duration * float64(time.Second))).UTC()
+			st.StartedAt = &started
+		}
 		if s.Extruder != nil {
 			st.Nozzle = &Temp{s.Extruder.Temperature, s.Extruder.Target}
 		}
@@ -265,7 +279,6 @@ func statusHTTP(ctx context.Context, h *hostSession, base *url.URL) (PrinterStat
 				Target *float64 `json:"target"`
 			} `json:"temperature"`
 		}
-
 		if _, err := h.call(ctx, "GET", base.JoinPath("/api/printer").String(), nil, &printer); err == nil {
 			for key, into := range map[string]**Temp{"tool0": &st.Nozzle, "bed": &st.Bed} {
 				if t, ok := printer.Temperature[key]; ok && t.Actual != nil {

@@ -1,41 +1,43 @@
+import { SEP } from '../separator';
 import { preprintMaterialChecks } from '../multinozzle/material-checks';
-import { DeviceControls } from '../multinozzle/DeviceControls';
 import { useSlicedMapping } from '../multinozzle/sliced-mapping';
 import { preprintWarnings } from '../multinozzle/preprint';
-import { autoMap, availableTrays, physicalMapping, trayLabel, type SendFilament } from '../multinozzle/ams';
+import { autoMap, availableTrays, physicalMapping, trayCode, trayFilament, type SendFilament } from '../multinozzle/ams';
 import { assignedExtruder, nozzleAssignments } from '../multinozzle/assignments';
 import { extruderCount, valueAt } from '../multinozzle/config';
-
-
-
-
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { SlotChip } from './SlotChip';
+import { printerModel } from '../printers/capabilities';
 import { Check } from './Check';
 import { confirmDialog } from './Ask';
 import { Dropdown } from './Dropdown';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { download, exportFilename, outputKind } from '../actions';
-import { printerSend, usePrinterSend, type Transfer } from '../flow/transfer';
+import { printerSend, usePrinterSend } from '../flow/transfer';
 import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, resolvePreset, toast, useStore } from '../state/store';
 import { ConnectionEditor } from '../printers/ConnectionEditor';
-import { connectionOf, connectionOutput, controlPrinter, KIND_LABEL, readTrays, statusLine, statusTone, tempLine, type Tray } from '../printers/connections';
+import { slotOf, usePrinterSlots } from '../printers/slots';
+import { connectionOf, connectionOutput, KIND_LABEL, presenceStatus, readTrays, type Tray } from '../printers/connections';
+import { printerCapabilities } from '../printers/capabilities';
+import { noticeSend, openDevice, sendOutcome } from '../printers/sendOutcome';
 import '../printers/printers.css';
 
-const mb = (n: number) => (n / 1e6).toFixed(1);
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const errorText = (e: unknown) => sentence(e instanceof Error ? e.message : String(e));
 const setupName = (key: string) => resolvePreset(getState(), 'machine', key).user?.name ?? key;
 
-function transferText(t: Transfer) {
-  if (t.state === 'uploading') return `Uploading ${Math.floor((100 * t.sent) / Math.max(1, t.total))}% (${mb(t.sent)} of ${mb(t.total)} MB)`;
-  if (t.state === 'starting') return 'Starting the print…';
-  return t.state === 'done' ? t.message ?? 'Sent.' : t.error ?? 'Sending failed.';
+function closeSend(close: () => void) {
+  const { value, context } = printerSend.machine.get();
+  const t = context.transfer && (getState().printerConnections.transfers.find((x) => x.id === context.transfer!.id) ?? context.transfer);
+  if (t && (value === 'sending' || value === 'sent')) noticeSend(t);
+  if (value === 'sent' || value === 'failed') printerSend.reset();
+  close();
 }
 
-export default function SendDialog({ close }: { close: () => void }) {
+export default function SendDialog({ close: dismiss }: { close: () => void }) {
+  const close = () => closeSend(dismiss);
   const plate = useStore((s) => s.printer);
-
   const choices = useStore((s) => {
     const base = resolvePreset(s, 'machine', s.printer).base?.name;
     return [s.printer, ...s.printerConnections.connections.filter((c) => c.printer && c.printer !== s.printer
@@ -48,27 +50,28 @@ export default function SendDialog({ close }: { close: () => void }) {
   const status = useStore((s) => s.printerConnections.status[printer]);
   const [editing, setEditing] = useState(false);
   const title = 'Send to printer';
-
+  const live = useStore((s) => s.printerConnections.live);
+  const presence = connection && presenceStatus(live, connection, status);
   const head = <>
     <div className="send-target">
       {choices.length > 1
         ? <Dropdown className="combo" value={printer} aria-label="Printer" onValueChange={setTarget} options={choices.map((k) => ({ value: k, label: setupName(k) }))} />
         : <span className="send-target-name">{name}</span>}
-      <span className="send-target-state"><span className="status-text" data-tone={statusTone(status)}>{(connection && statusLine(status)) || 'Not connected'}</span>{connection && [KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), tempLine(status)].filter(Boolean).map((x) => ` · ${x}`).join('')}</span>
-      {connection && <button type="button" className="btn-ghost send-target-edit" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
+      <span className="send-target-state status-text" data-tone={presence?.tone ?? 'offline'}>{presence?.label ?? 'Not connected'}</span>
+      {connection && <button type="button" className="btn slant send-action" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
     </div>
     {(!connection || editing) && <ConnectionEditor key={printer} printer={printer} name={name} onSaved={() => setEditing(false)} />}
   </>;
   return (
     <Modal size="m" className="send-dialog" label={title} onClose={close}>
       <ModalTitle title={title} onClose={close} />
-      {connection && !editing ? <SendView close={close} printer={printer} head={head} />
-        : <><ModalBody className="send-body">{head}</ModalBody><ModalFooter><button type="button" className="btn" onClick={close}>Close</button></ModalFooter></>}
+      {connection && !editing ? <SendView key={printer} close={close} printer={printer} head={head} edit={() => setEditing(true)} />
+        : <ModalBody className="send-body">{head}</ModalBody>}
     </Modal>
   );
 }
 
-function SendView({ close, printer, head }: { close: () => void; printer: string; head: ReactNode }) {
+function SendView({ close, printer, head, edit }: { close: () => void; printer: string; head: ReactNode; edit(): void }) {
   const connection = useStore((s) => connectionOf(s.printerConnections, printer))!;
   const status = useStore((s) => s.printerConnections.status[printer]);
   const jobId = useStore((s) => s.job.id);
@@ -79,31 +82,33 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const fits = connectionOutput(kind) === output;
   const single = useStore((s) => s.filamentSlots.length === 1);
   const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
+  const capabilities = printerCapabilities(useStore((s) => printerModel(s, printer)) || connection.model || '');
   const [leveling, setLeveling] = useState(true);
   const [flowCali, setFlowCali] = useState(false);
   const [vibration, setVibration] = useState(true);
   const [timelapse, setTimelapse] = useState(false);
-
   const filamentKey = useStore((s) => JSON.stringify(s.filamentSlots.map((name, i) => {
     const config = effectiveConfig(s, 'filament', i), base = resolvePreset(s, 'filament', name).base;
-    return { type: valueAt(config.filament_type, 0), color: filamentColor(s, i + 1), name: (base?.name ?? name).replace(/\s+@.*$/, ''),
+    return { key: name, type: valueAt(config.filament_type, 0), color: filamentColor(s, i + 1), name: (base?.name ?? name).replace(/\s+@.*$/, ''),
       vendor: valueAt(config.filament_vendor, 0), id: base?.filament_id, requiredHRC: Number(valueAt(config.required_nozzle_HRC, 0, '0')),
       printable: Number(valueAt(config.filament_printable, 0, '3')), compatibility: Number(valueAt(config.filament_extruder_compatibility, 0, '0')),
       ...(extruderCount(effectiveConfig(s, 'machine')) > 1 && String(nozzleAssignments(s).filament_map_mode ?? '').includes('Manual') ? { extruder: assignedExtruder(s, i) } : {}) };
   })));
   const multiNozzle = extruderCount(machineConfig) > 1;
-  const sliced = useSlicedMapping(jobId, bambu && jobReady && multiNozzle);
+  const sliced = useSlicedMapping(jobId, bambu && jobReady);
   const filaments = useMemo(() => (JSON.parse(filamentKey) as SendFilament[]).map((filament, i) => {
     const nozzle = sliced?.mapping?.filament_map[i];
     const material = sliced?.mapping?.materials.find((row) => row.slot === i + 1);
-    return { ...filament, ...material, hasFilamentSwitch: sliced?.mapping?.has_filament_switch, ...(nozzle && nozzle > 0 ? { extruder: nozzle - 1 } : {}) };
-  }), [filamentKey, sliced?.mapping]);
+    return { ...filament, ...material, hasFilamentSwitch: sliced?.mapping?.has_filament_switch, ...(multiNozzle && nozzle && nozzle > 0 ? { extruder: nozzle - 1 } : {}) };
+  }), [filamentKey, sliced?.mapping, multiNozzle]);
   const liveTrays = status?.online ? status.trays : undefined;
   const [readTraysList, setReadTrays] = useState<Tray[] | null>(null);
   const trays = liveTrays ?? readTraysList;
   const [amsError, setAmsError] = useState('');
   const [mapping, setMapping] = useState<number[] | null>(null);
-  const shown = mapping && mapping.length === filaments.length ? mapping : trays ? autoMap(filaments, trays) : [];
+  const slotMatches = usePrinterSlots(bambu ? printer : undefined);
+  const matchOf = (t: Tray) => slotMatches.slots?.slots.find((m) => m.slot === slotOf(t));
+  const shown = mapping && mapping.length === filaments.length ? mapping : trays ? autoMap(filaments, trays, (t) => matchOf(t)?.filament) : [];
   const sendState = usePrinterSend();
   const { transfer, error } = sendState.context;
   const busy = sendState.value === 'connecting' || sendState.value === 'sending';
@@ -113,9 +118,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
     const current = printerSend.machine.get().context;
     if (current.jobId && (current.jobId !== jobId || current.target !== printer) && printerSend.machine.get().value !== 'sending') printerSend.reset();
   }, [jobId, printer]);
-
   useEffect(() => setMapping(null), [printer]);
-
   useEffect(() => {
     setReadTrays(null); setAmsError('');
     if (!bambu || liveTrays) return;
@@ -130,7 +133,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
   const send = async (start: boolean) => {
     if (!jobId) return;
     if (start && warnings.length && !await confirmDialog('Check printer setup', warnings.join('\n'), ['Print anyway', 'Cancel'])) return;
-    const options = !bambu ? {} : { bed_leveling: leveling, flow_cali: flowCali, vibration_cali: vibration, timelapse, ...(trays && shown.length === filaments.length && shown.every((id) => id >= 0) ? { ams_mapping: shown, ams_mapping_2: physicalMapping(shown, trays) } : {}) };
+    const options = !bambu ? {} : { bed_leveling: leveling, flow_cali: flowCali, vibration_cali: vibration, timelapse: capabilities.timelapse && timelapse, ...(trays && shown.length === filaments.length && shown.every((id) => id >= 0) ? { ams_mapping: shown, ams_mapping_2: physicalMapping(shown, trays) } : {}) };
     await printerSend.submit(printer, jobId, { start, filename: exportFilename(), ...options });
   };
   const handOff = async () => {
@@ -139,81 +142,95 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
     try { await window.orcaDesktop!.bambuConnect!(jobId, exportFilename()); toast('Opened in Bambu Connect'); }
     catch (e) { toast(errorText(e)); } finally { setWorking(''); }
   };
-  const control = async (action: 'stop' | 'pause' | 'resume') => {
-    if (action === 'stop' && !await confirmDialog('Stop print', `Stop the print on ${setupName(printer)}? It cannot be resumed.`, ['Stop print', 'Cancel'], true)) return;
-    setWorking(action);
-    try { await controlPrinter(printer, action); } catch (e) { toast(errorText(e)); } finally { setWorking(''); }
-  };
 
   const mine = transfer && transfer.printer === printer && transfer.job === jobId ? transfer : null;
-  const statusText = error || (mine ? transferText(mine) : sendState.value === 'connecting' ? 'Connecting to printer…' : '');
-  const failed = !!error || mine?.state === 'failed' || mine?.state === 'cancelled';
-  const running = status?.online && (status.state === 'printing' || status.state === 'paused');
+  const shownTransfer = useStore((s) => (mine && s.printerConnections.transfers.find((t) => t.id === mine.id)) || mine);
+  const outcome = shownTransfer ? sendOutcome(shownTransfer) : busy ? { tone: 'progress' as const, title: `Sending to ${connection.name}`, detail: 'Connecting to the printer…' } : null;
+  const running = status?.online && (status.state === 'printing' || status.state === 'paused' || status.state === 'busy');
   const blocked = !jobId || !jobReady ? 'Slice the plate first.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
   const needsNozzleMap = bambu && multiNozzle && (!sliced?.mapping || sliced.mapping.filament_map.length !== filaments.length);
-  const needsMap = needsNozzleMap || bambu && (trays ? filaments.some((f, i) => !availableTrays(f, trays).some((t) => t.id === shown[i])) : !single || multiNozzle);
+  const unmapped = bambu && trays ? filaments.flatMap((f, i) => availableTrays(f, trays).some((t) => t.id === shown[i]) ? []
+    : [`Filament ${i + 1} (${f.type}): ${availableTrays(f, trays).some((t) => t.type.toUpperCase() === f.type.toUpperCase()) ? 'choose a tray' : `no ${f.type} loaded${f.extruder !== undefined ? ' on its nozzle' : ''}; load it or choose another tray`}.`]) : [];
+  const needsMap = needsNozzleMap || bambu && (trays ? unmapped.length > 0 : !single || multiNozzle);
+  const [syncing, setSyncing] = useState(false);
+  const syncFromPrinter = () => { setSyncing(true); void import('../plater/amsSync').then((m) => m.syncAms(printer)).finally(() => setSyncing(false)); };
+  const file = <p className="send-file" title={exportFilename()}><span>{exportFilename()}</span><span>Plate {plateIndex}</span></p>;
+
+  if (outcome && (busy || sendState.value === 'sent' || mine?.state === 'failed' || mine?.state === 'cancelled')) {
+    const t = shownTransfer, settled = !busy, failedSend = outcome.tone === 'error';
+    const jobLine = settled && t?.outcome === 'printing' && status?.online ? status.state === 'busy' ? 'Preparing to print…'
+      : status.state === 'printing' || status.state === 'paused' ? [status.state === 'paused' ? 'Paused' : '', status.progress != null ? `${Math.round(status.progress * 100)}%` : '',
+        status.remaining_s ? `${Math.round(status.remaining_s / 60)} min left` : ''].filter(Boolean).join(SEP) : '' : '';
+    const bar = !t ? 0 : t.state === 'uploading' ? t.sent / Math.max(1, t.total) : t.state === 'starting' ? 1
+      : jobLine && status?.progress != null && (status.state === 'printing' || status.state === 'paused') ? status.progress : null;
+    const meter = busy ? outcome.detail : jobLine;
+    return <>
+      <ModalBody className="send-body send-state">
+        <div className="send-state-text" role={failedSend ? 'alert' : 'status'}>
+          <h3 data-tone={outcome.tone}>{outcome.title}</h3>
+          {file}
+          {!busy && outcome.detail && <p>{outcome.detail}</p>}
+          {failedSend && t?.recovery && <p className="send-recovery">{t.recovery}</p>}
+        </div>
+        {(bar != null || meter) && <div className="send-meter">
+          {bar != null && <div className="progress"><div className="progress-fill" style={{ width: `${100 * bar}%` }} /></div>}
+          {meter && <span>{meter}</span>}
+        </div>}
+      </ModalBody>
+      <ModalFooter>
+        {busy && t?.state !== 'starting' ? <button type="button" className="btn" disabled={t?.state !== 'uploading'} onClick={() => printerSend.cancel()}>Cancel upload</button> : busy ? <button type="button" className="btn-primary" onClick={close}>Done</button> : failedSend ? <>
+          {t?.reason === 'credentials' && <button type="button" className="btn" onClick={() => { printerSend.reset(); edit(); }}>Connection settings</button>}
+          <button type="button" className="btn-primary" disabled={!!blocked} onClick={() => void send(!!t?.start)}>Retry</button>
+        </> : <>
+          <button type="button" className="btn" onClick={() => { close(); openDevice(); }}>Open in Device</button>
+          <button type="button" className="btn-primary" onClick={close}>Done</button>
+        </>}
+      </ModalFooter>
+    </>;
+  }
   return <>
     <ModalBody className="send-body">
       {head}
-      <div className="send-meta">Plate {plateIndex} · {exportFilename()}</div>
+      {file}
       {jobReady && needsNozzleMap && <div className={sliced?.error ? 'warning-text' : 'send-meta'} role={sliced?.error ? 'alert' : 'status'}>{sliced?.error ?? 'Reading sliced nozzle assignment…'}</div>}
       {blocked && <div className="warning-text">{blocked}</div>}
+      {bambu && fits && <div className="send-options" role="group" aria-label="Print options">
+        <label className="modal-check"><Check checked={leveling} disabled={busy} onCheckedChange={setLeveling} />Bed leveling</label>
+        <label className="modal-check"><Check checked={flowCali} disabled={busy} onCheckedChange={setFlowCali} />Flow calibration</label>
+        <label className="modal-check"><Check checked={vibration} disabled={busy} onCheckedChange={setVibration} />Vibration calibration</label>
+        {capabilities.timelapse && <label className="modal-check"><Check checked={timelapse} disabled={busy} onCheckedChange={setTimelapse} />Timelapse</label>}
+      </div>}
       {bambu && fits && (
-        <div className="send-options">
-          <label className="prefs-row"><Check checked={leveling} disabled={busy} onCheckedChange={setLeveling} />Bed leveling</label>
-          <label className="prefs-row"><Check checked={vibration} disabled={busy} onCheckedChange={setVibration} />Vibration calibration</label>
-          <label className="prefs-row"><Check checked={flowCali} disabled={busy} onCheckedChange={setFlowCali} />Flow dynamics calibration</label>
-          <label className="prefs-row"><Check checked={timelapse} disabled={busy} onCheckedChange={setTimelapse} />Timelapse</label>
-        </div>
-      )}
-      {bambu && fits && (
-        <div className="ams-map" aria-label="Filament mapping">
-          {trays ? filaments.map((f, i) => {
+        <section className="send-section" aria-label="Filaments"><div className="send-section-head"><h3>Filaments</h3>
+          <button type="button" className="btn slant send-action" disabled={busy || syncing || !trays?.length} onClick={syncFromPrinter}>{syncing ? 'Reading the printer…' : 'Set from printer'}</button></div>
+          {trays ? <div className="ams-map">{filaments.map((f, i) => {
             const t = trays.find((x) => x.id === shown[i]);
             return (
-              <label key={i} className="prefs-row">
-                <span className="ams-swatch" style={{ background: f.color }} />
-                <span>{i + 1} · {f.type || 'filament'}</span>
-                <Dropdown className="combo" value={shown[i] ?? -1} disabled={busy} aria-label={`Filament ${i + 1}`}
-                  onValueChange={(next) => setMapping(shown.map((m, k) => (k === i ? Number(next) : m)))} options={[{ value: -1, label: 'Choose a tray', disabled: true }, ...availableTrays(f, trays).map((x) => ({ value: x.id, label: trayLabel(x) }))]} />
-                {t?.color && <span className="ams-swatch" aria-label={trayLabel(t)} role="img" style={{ background: t.color }} />}
-              </label>
+              <div key={i} className="send-map-row">
+                <span className="send-project-filament"><SlotChip n={i + 1} colour={f.color} /><span title={f.name}>{f.name || f.type}</span></span>
+                <span className="send-tray-select" data-colour={!!t || undefined} data-missing={!t || undefined}>
+                  <Dropdown className="combo" value={shown[i] ?? -1} disabled={busy} aria-label={`Tray for filament ${i + 1}`}
+                    onValueChange={(next) => setMapping(shown.map((m, k) => (k === i ? Number(next) : m)))} options={[{ value: -1, label: 'Choose a tray', disabled: true }, ...availableTrays(f, trays).map((x) => ({ value: x.id, label: <><span className="ams-swatch tray-dot" style={{ background: x.color }} />{trayCode(x, trays)}<span className="sep">{SEP}</span><span className="tray-filament">{matchOf(x)?.name ?? trayFilament(x)}</span></> }))]} />
+                  {t && <span className="ams-swatch" aria-label={`${trayCode(t, trays)} colour ${t.color}`} role="img" style={{ background: t.color }} />}
+                </span>
+              </div>
             );
-          }) : <div className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `AMS not read: ${amsError}` : 'Reading the printer\'s AMS…'}</div>}
-          {needsMap && <div className="warning-text">Choose a tray or external spool connected to the assigned nozzle for every filament.</div>}
-        </div>
+          })}</div> : <p className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `AMS not read: ${amsError}` : 'Reading the printer\'s AMS…'}</p>}
+          {unmapped.map((line) => <p key={line} className="warning-text">{line}</p>)}
+        </section>
       )}
       {materialBlocks.map((row) => <div key={row.message} className="warning-text" role="alert">{row.message}</div>)}
       {warnings.map((warning) => <div key={warning} className="warning-text">{warning}</div>)}
-      {busy && (
-        <div className="progress-row">
-          <div className="progress"><div className="progress-fill" style={{ width: `${(100 * (mine?.sent ?? 0)) / Math.max(1, mine?.total ?? 1)}%` }} /></div>
-          <button type="button" className="btn" disabled={mine?.state !== 'uploading'} onClick={() => printerSend.cancel()}>Cancel upload</button>
-        </div>
-      )}
-      {statusText && <div role={failed ? 'alert' : 'status'} className={failed ? 'warning-text' : 'hint-text'}>{sentence(statusText)}</div>}
-      {bambu && <DeviceControls key={printer} printer={printer} status={status} />}
-      {running && (
-        <div className="send-live" aria-label="Printer status">
-          <div className="send-live-row">
-            <span><span className="status-text" data-tone={statusTone(status)}>{statusLine(status)}</span>{status!.file ? ` · ${status!.file}` : ''}</span>
-            <button type="button" className="btn" disabled={!!working} onClick={() => void control(status!.state === 'paused' ? 'resume' : 'pause')}>{status!.state === 'paused' ? 'Resume' : 'Pause'}</button>
-            <button type="button" className="btn" disabled={!!working} onClick={() => void control('stop')}>Stop</button>
-          </div>
-          {status!.progress != null && <div className="progress"><div className="progress-fill" style={{ width: `${100 * status!.progress}%` }} /></div>}
-          {status?.fans && <div className="send-live-row">{Object.entries(status.fans).map(([name, speed]) => `${name.charAt(0).toUpperCase() + name.slice(1)} fan ${speed}%`).join(' · ')}</div>}
-          {(tempLine(status) || status!.layers) && <div className="send-live-row">{[tempLine(status), status!.layers ? `Layer ${status!.layer ?? 0} of ${status!.layers}` : ''].filter(Boolean).join(' · ')}</div>}
-        </div>
-      )}
+      {running && <p className="send-note" role="status">{connection.name} is {status!.state === 'paused' ? 'paused mid-print' : 'printing'}. Print is available when it finishes; Upload only still works.</p>}
+      {error && <div role="alert" className="warning-text">{sentence(error)}</div>}
     </ModalBody>
     <ModalFooter>
-      <button type="button" className="btn" onClick={close}>Close</button>
-      {sendState.value === 'failed' && mine && <button type="button" className="btn" onClick={() => void printerSend.retry()}>Reconnect</button>}
+      {sendState.value === 'failed' && <button type="button" className="btn" onClick={() => void printerSend.retry()}>Reconnect</button>}
       {kind === 'bambu-connect' ? (window.orcaDesktop?.bambuConnect
         ? <button type="button" className="btn-primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
         : <button type="button" className="btn-primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
         <button type="button" className="btn" disabled={busy || !!blocked} onClick={() => void send(false)}>Upload only</button>
-        <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running || !!materialBlocks.length} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
+        <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running || !!materialBlocks.length} onClick={() => void send(true)}>Print</button>
       </>}
     </ModalFooter>
   </>;

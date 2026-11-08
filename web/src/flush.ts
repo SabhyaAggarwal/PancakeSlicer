@@ -1,7 +1,3 @@
-
-
-
-
 import standard from './flush/flush_data_standard.txt?raw';
 import dualStandard from './flush/flush_data_dual_standard.txt?raw';
 import dualHighflow from './flush/flush_data_dual_highflow.txt?raw';
@@ -11,7 +7,6 @@ const f = Math.fround;
 export const MIN_FLUSH_VOLUME_FROM_SUPPORT = 700;
 export const FLUSH_VOLUME_TO_SUPPORT = 230;
 export const MAX_FLUSH_VOLUME = 20000;
-
 export const MULTIPLIER_RANGE: [number, number] = [0, 3];
 
 type RGB = [number, number, number];
@@ -22,8 +17,6 @@ export function parseColour(hex: string): { rgb: RGB; alpha: number } {
   const n = parseInt(m[1], 16);
   return { rgb: [(n >> 16) & 255, (n >> 8) & 255, n & 255], alpha: m[2] ? parseInt(m[2], 16) : 255 };
 }
-
-
 
 function rgbToLab([r8, g8, b8]: RGB): [number, number, number] {
   const gamma = (x: number) => (x > 0.04045 ? Math.pow((x + 0.055) / 1.055, 2.4) : x / 12.92);
@@ -105,8 +98,6 @@ function predictor(dataset: number): Predictor {
   return (predictors[dataset] ??= new Predictor(text));
 }
 
-
-
 function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
   const cmax = Math.max(r, g, b), cmin = Math.min(r, g, b), delta = f(cmax - cmin);
   let h: number;
@@ -150,7 +141,6 @@ function flushRgb(src: RGB, dst: RGB, dataset: number): number {
   return Math.trunc(Math.max(third, 60));
 }
 
-
 export function calcFlushVol(from: string, to: string, minFlush: number, dataset: number, maxFlush = MAX_FLUSH_VOLUME): number {
   const a = parseColour(from), b = parseColour(to);
   const src: RGB = a.alpha === 0 ? [255, 255, 255] : a.rgb;
@@ -167,15 +157,12 @@ export function calcFlushVol(from: string, to: string, minFlush: number, dataset
   return Math.min(Math.trunc(vol), maxFlush);
 }
 
-
-
 const at = (v: ConfigValue | undefined, i: number): string | undefined => {
   if (v === undefined || v === null) return undefined;
   const arr = Array.isArray(v) ? v : String(v).split(',');
   return arr.length ? String(arr[Math.min(i, arr.length - 1)]) : undefined;
 };
 const num = (v: string | undefined, d = 0) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? d : Number(v));
-
 
 export function minFlushVolumes(printer: Config, filaments: Config[], nozzle = 0): number[] {
   const nozzleVolume = Math.trunc(num(at(printer.nozzle_volume, nozzle)));
@@ -192,7 +179,6 @@ export function minFlushVolumes(printer: Config, filaments: Config[], nozzle = 0
   });
 }
 
-
 export function isSupportFilament(filaments: Config[], i: number): boolean {
   const type = (c: Config) => at(c.filament_type, 0) ?? '';
   const t = type(filaments[i]);
@@ -202,7 +188,6 @@ export function isSupportFilament(filaments: Config[], i: number): boolean {
   const v = at(filaments[i].filament_is_support, 0);
   return v === '1' || v === 'true';
 }
-
 
 export function calcFlushingVolumes(colours: string[], printer: Config, filaments: Config[], nozzle = 0): number[] {
   const n = colours.length;
@@ -225,7 +210,6 @@ export function calcFlushingVolumes(colours: string[], printer: Config, filament
     }
   return out;
 }
-
 
 export function predictorMinFlush(dataset: number): number {
   const p = predictor(dataset);

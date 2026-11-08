@@ -26,7 +26,6 @@ inline double vsize2_with_unscale(const Point pt)
 
 MinimumSpanningTree::MinimumSpanningTree(std::vector<Point> vertices) : adjacency_graph(prim(vertices))
 {
-
 }
 
 auto MinimumSpanningTree::prim(std::vector<Point> vertices) const -> AdjacencyGraph_t
@@ -36,12 +35,8 @@ auto MinimumSpanningTree::prim(std::vector<Point> vertices) const -> AdjacencyGr
     {
         return result;
     }
-
-
     if (vertices.size() == 1)
     {
-
-
         result[*vertices.begin()];
         return result;
     }
@@ -61,13 +56,6 @@ auto MinimumSpanningTree::prim(std::vector<Point> vertices) const -> AdjacencyGr
 
     while (result.size() < vertices_list.size())
     {
-
-
-
-
-
-
-
         using MapValue = std::pair<const Point*, coordf_t>;
         const auto closest = std::min_element(smallest_distance.begin(), smallest_distance.end(),
                                               [](const MapValue& a, const MapValue& b) {
@@ -75,7 +63,6 @@ auto MinimumSpanningTree::prim(std::vector<Point> vertices) const -> AdjacencyGr
                                                       return a.second < b.second;
                                                   return *a.first < *b.first;
                                               });
-
 
         const Point* closest_point = closest->first;
         const Point other_end = *smallest_distance_to[closest_point];
@@ -91,7 +78,6 @@ auto MinimumSpanningTree::prim(std::vector<Point> vertices) const -> AdjacencyGr
         result[other_end].push_back({other_end, *closest_point});
         smallest_distance.erase(closest_point);
         smallest_distance_to.erase(closest_point);
-
 
         for (std::pair<const Point*, coordf_t> point_and_distance : smallest_distance)
         {

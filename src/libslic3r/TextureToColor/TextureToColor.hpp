@@ -31,8 +31,6 @@ struct TextureToColorSettings {
     std::size_t target_colors_num = 4;
 
     double smooth_weight = 0.5;
-
-
     std::size_t oversampling_iters = 0;
     std::size_t oversampling_min_face_count = 10000;
     std::size_t oversampling_max_face_count = 1000000;
@@ -42,60 +40,14 @@ struct TextureToColorSettings {
 
     MeshRepairDecision mesh_repair_decision = MeshRepairDecision::ImportWithoutRepair;
 
-
     bool* mesh_repair_decision_required = nullptr;
 
     MeshRepairCallback mesh_repair_callback;
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 bool TextureToColor(const TriMesh& texture_mesh, const std::vector<std::vector<Vec2f>>& uv_coords, const cv::Mat& texture, TriMesh& color_mesh,
                     std::vector<std::array<std::size_t, 3>>& face_colors, const TextureToColorSettings& settings = TextureToColorSettings(),
                     AlgoProgressCallback progress_callback = nullptr, AlgoCancelCallback cancel_callback = nullptr);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 bool ClusterAndSmooth(const TriMesh& mesh,
                       const std::vector<std::array<std::size_t, 3>>& input_face_colors,

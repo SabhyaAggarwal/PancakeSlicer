@@ -1,0 +1,18 @@
+{
+ "gcode": "trap_planar_control.gcode",
+ "description": "Planar 10 mm cube, walls plus rectilinear layers",
+ "true_head": "trap_head_true.json",
+ "generator_head": null,
+ "control": true,
+ "expected": {
+  "hit_lines": [],
+  "hit_count": 0,
+  "components": {}
+ },
+ "port": {
+  "hit_lines": [],
+  "hit_count": 0,
+  "components": {},
+  "recall": null
+ }
+}

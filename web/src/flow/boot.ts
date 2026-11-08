@@ -1,4 +1,3 @@
-
 import { getState, setState, subscribeStore, toast } from '../state/store';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import { plateSignature } from '../slice-input';
@@ -57,7 +56,6 @@ export async function startFlows() {
       failed: (message) => {
         if (!current()) return;
         if (recovering) setState((s) => ({ job: { ...s.job, state: 'failed', error: message } }));
-
         toast(message, { label: 'Retry', run: () => void retryTrackedJob() }, 15_000);
       },
     });

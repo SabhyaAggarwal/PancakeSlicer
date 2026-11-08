@@ -110,6 +110,6 @@
 	"rotary_firmware_rtcp": "0",
 	"rotary_inverse_time_feed": "1",
 	"nonplanar_max_tilt": "60",
-	"default_print_profile": "0.20mm Non-planar top @Prodcan3",
+	"default_print_profile": "0.20mm Smoothest tops @Prodcan3",
 	"layer_change_gcode": "G92 E0"
 }

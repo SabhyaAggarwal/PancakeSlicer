@@ -1,6 +1,3 @@
-
-
-
 import { createMachine, type StateNode } from './fsm';
 
 export type ProjectsOp = 'deleting' | 'restoring' | 'retrying';
@@ -17,7 +14,6 @@ export const projectsOps = createMachine<'idle' | ProjectsOp, ProjectsOpsEvent, 
     deleting: op('deleting'), restoring: op('restoring'), retrying: op('retrying'),
   },
 });
-
 
 export async function runProjectsOp(op: ProjectsOp, task: () => Promise<void>, id?: string): Promise<boolean> {
   if (!projectsOps.can({ type: 'BEGIN', op, id })) return false;

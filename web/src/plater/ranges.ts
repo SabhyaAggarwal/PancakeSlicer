@@ -1,6 +1,3 @@
-
-
-
 import type { Config, ConfigValue } from '../api/types';
 import { effectiveConfig, getState, markStale, newId, setState, type LayerRange, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
@@ -11,9 +8,7 @@ const mapRanges = (objectId: number, fn: (rs: LayerRange[]) => LayerRange[], nam
     job: markStale(s.job),
   })), merge);
 
-
 const defaultHeight = (o: PlateObject) => Number(o.settings.layer_height ?? effectiveConfig(getState(), 'process').layer_height) || 0.2;
-
 
 export function addHeightRanges(objectId: number) {
   const o = getState().objects.find((x) => x.id === objectId);
@@ -27,7 +22,6 @@ export function addHeightRanges(objectId: number) {
   setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true, range: range.id } });
 }
 
-
 export function addRangeAfter(objectId: number, rangeId: number) {
   const o = getState().objects.find((x) => x.id === objectId), rs = [...(o?.ranges ?? [])].sort((a, b) => a.z[0] - b.z[0]);
   const k = rs.findIndex((r) => r.id === rangeId);
@@ -40,12 +34,10 @@ export function addRangeAfter(objectId: number, rangeId: number) {
   setState((s) => ({ selected: s.selected && { ...s.selected, range: added.id } }));
 }
 
-
 export function canAddAfter(o: PlateObject, rangeId: number) {
   const rs = [...(o.ranges ?? [])].sort((a, b) => a.z[0] - b.z[0]), k = rs.findIndex((r) => r.id === rangeId);
   return k >= 0 && (k === rs.length - 1 || rs[k + 1].z[0] - rs[k].z[1] >= 0.01);
 }
-
 
 export function editRange(objectId: number, rangeId: number, patch: Partial<Pick<LayerRange, 'z' | 'layer_height'>>): boolean {
   const o = getState().objects.find((x) => x.id === objectId), r = o?.ranges?.find((x) => x.id === rangeId);

@@ -1,6 +1,3 @@
-
-
-
 #include "OrderingStrategies.hpp"
 #include "../Geometry.hpp"
 #include "../ShortestPath.hpp"
@@ -21,15 +18,10 @@
 
 namespace Slic3r {
 
-
-
-
-
 bool tsp_2opt_improve(std::vector<size_t>& path, const Points& centers, int max_passes)
 {
     size_t pn = path.size();
     if (pn <= 2) return false;
-
 
     auto recompute_edges = [&]() {
         std::vector<double> el(pn);
@@ -40,7 +32,6 @@ bool tsp_2opt_improve(std::vector<size_t>& path, const Points& centers, int max_
         return el;
     };
     std::vector<double> el = recompute_edges();
-
 
     auto recompute_edges_sq = [&]() {
         std::vector<double> elsq(pn);
@@ -65,14 +56,11 @@ bool tsp_2opt_improve(std::vector<size_t>& path, const Points& centers, int max_
 
             for (size_t j = i + 2; j < pn; ++j) {
                 size_t j_next = (j + 1) % pn;
-
-
                 if (i == 0 && j_next == 0) continue;
 
                 const Vec2d& pj   = centers[path[j]].cast<double>();
                 const Vec2d& p_jn = centers[path[j_next]].cast<double>();
                 double d_j = el[j];
-
 
                 double new_a_sq = (pj - pi).squaredNorm();
                 double new_b_sq = (p_jn - p_in).squaredNorm();
@@ -91,16 +79,13 @@ bool tsp_2opt_improve(std::vector<size_t>& path, const Points& centers, int max_
 
         if (best_i == pn) break;
         improved = true;
-
         std::reverse(path.begin() + best_i + 1, path.begin() + best_j + 1);
-
 
         el = recompute_edges();
         elsq = recompute_edges_sq();
     }
     return improved;
 }
-
 
 static inline bool bboxes_overlap(const Point& a, const Point& b, const Point& c, const Point& d)
 {
@@ -115,10 +100,7 @@ bool tsp_remove_crossings(std::vector<size_t>& path, const Points& centers)
     size_t pn = path.size();
     if (pn <= 3) return false;
 
-
-
     size_t n_edges = pn;
-
 
     auto find_crossing = [&]() -> std::pair<size_t, size_t> {
         for (size_t i = 0; i < n_edges; ++i) {
@@ -126,7 +108,6 @@ bool tsp_remove_crossings(std::vector<size_t>& path, const Points& centers)
             const Point& bi = centers[path[(i + 1) % pn]];
 
             for (size_t j = i + 2; j < n_edges; ++j) {
-
                 if (i == 0 && j == pn - 1) continue;
 
                 const Point& aj = centers[path[j]];
@@ -139,8 +120,6 @@ bool tsp_remove_crossings(std::vector<size_t>& path, const Points& centers)
         }
         return {std::numeric_limits<size_t>::max(), std::numeric_limits<size_t>::max()};
     };
-
-
 
     int max_iters = static_cast<int>(pn * pn);
     bool improved = false;
@@ -166,14 +145,7 @@ void tsp_rotate_minimize_closing(std::vector<size_t>& path, const Points& center
     std::rotate(path.begin(), path.begin() + best_start, path.end());
 }
 
-
-
-
-
 struct SnakeRow { double avg_y; std::vector<size_t> indices; };
-
-
-
 
 static double compute_row_threshold(const std::vector<double>& sorted_ys,
                                     double y_min, double y_max,
@@ -182,8 +154,6 @@ static double compute_row_threshold(const std::vector<double>& sorted_ys,
                                     double min_threshold_um)
 {
     constexpr double MIN_GAP_FILTER = 1.0;
-
-
     std::vector<double> unique_ys;
     unique_ys.reserve(sorted_ys.size());
     unique_ys.push_back(sorted_ys[0]);
@@ -197,7 +167,6 @@ static double compute_row_threshold(const std::vector<double>& sorted_ys,
         return std::max(fallback_threshold, min_threshold_um);
     }
 
-
     std::vector<double> gaps;
     gaps.reserve(unique_ys.size() - 1);
     for (size_t i = 1; i < unique_ys.size(); ++i)
@@ -207,11 +176,9 @@ static double compute_row_threshold(const std::vector<double>& sorted_ys,
         return std::max(fallback_threshold, min_threshold_um);
     }
 
-
     std::sort(gaps.begin(), gaps.end());
     double median_gap = gaps[gaps.size() / 2];
     double min_gap = gaps.front();
-
 
     double threshold = (median_gap < min_gap * 1.5) ? min_gap * 0.5 : median_gap * 0.5;
 
@@ -219,20 +186,16 @@ static double compute_row_threshold(const std::vector<double>& sorted_ys,
     if (unique_ys.size() * 2 <= n) {
         has_row_structure = true;
     } else {
-
         double max_gap = *std::max_element(gaps.begin(), gaps.end());
         has_row_structure = (max_gap < min_gap * 2.0);
     }
 
     if (has_row_structure) {
-
         return threshold;
     }
 
     return std::max(fallback_threshold, min_threshold_um);
 }
-
-
 
 static std::vector<SnakeRow> group_into_rows(const Points& centers, double row_threshold)
 {
@@ -257,8 +220,6 @@ static std::vector<SnakeRow> group_into_rows(const Points& centers, double row_t
 
     return rows;
 }
-
-
 
 static std::vector<size_t> build_serpentine_path(const Points& centers,
                                                   std::vector<SnakeRow>& rows)
@@ -288,7 +249,6 @@ static std::vector<size_t> build_serpentine_path(const Points& centers,
     return path;
 }
 
-
 static std::vector<size_t> row_serpentine_path(const Points& centers,
                                                 double fraction_of_y_range = 0.02,
                                                 double min_threshold_um = 1e4)
@@ -296,7 +256,6 @@ static std::vector<size_t> row_serpentine_path(const Points& centers,
     if (centers.empty()) return {};
 
     size_t n = centers.size();
-
 
     std::vector<double> sorted_ys;
     sorted_ys.reserve(n);
@@ -338,20 +297,14 @@ std::vector<const PrintInstance*> chain_print_object_instances_snake(const Print
     return chain_print_object_instances_snake(print.objects().vector(), nullptr);
 }
 
-
-
-
-
 std::vector<const PrintInstance*> chain_print_object_instances_best_of(const std::vector<const PrintObject*>& print_objects, const Point* start_near)
 {
     if (print_objects.empty())
         return {};
 
-
     std::vector<std::vector<const PrintInstance*>> candidates;
     candidates.push_back(chain_print_object_instances(print_objects, start_near));
     candidates.push_back(chain_print_object_instances_snake(print_objects, start_near));
-
 
     struct Candidate { double total_len; double max_edge; };
     std::vector<Candidate> metrics;
@@ -369,7 +322,6 @@ std::vector<const PrintInstance*> chain_print_object_instances_best_of(const std
         metrics.push_back({total, mx});
     }
 
-
     auto best_it = std::min_element(metrics.begin(), metrics.end(),
         [](const Candidate& a, const Candidate& b) {
             return a.total_len < b.total_len ||
@@ -385,23 +337,17 @@ std::vector<const PrintInstance*> chain_print_object_instances_best_of(const Pri
     return chain_print_object_instances_best_of(print.objects().vector(), nullptr);
 }
 
-
-
-
-
 std::vector<size_t> order_points_with_strategy(const Points& points, PrintOrder print_order, const Point* start_near)
 {
     if (points.empty())
         return {};
 
     if (print_order != PrintOrder::Snake && print_order != PrintOrder::BestOfStrategies)
-
         return chain_points_with_postprocessing(points, start_near);
 
     auto run_snake = [&points, start_near]() {
         std::vector<size_t> path = snake_core(points);
         if (start_near != nullptr && !path.empty()) {
-
             size_t best_start = 0;
             double best_d2 = std::numeric_limits<double>::max();
             for (size_t k = 0; k < points.size(); ++k) {
@@ -419,7 +365,6 @@ std::vector<size_t> order_points_with_strategy(const Points& points, PrintOrder 
 
     if (print_order == PrintOrder::Snake)
         return run_snake();
-
 
     std::vector<std::vector<size_t>> candidates;
     candidates.emplace_back(chain_points_with_postprocessing(points, start_near));

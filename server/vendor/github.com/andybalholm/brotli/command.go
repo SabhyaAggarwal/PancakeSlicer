@@ -147,9 +147,16 @@ func combineLengthCodes(inscode uint16, copycode uint16, use_last_distance bool)
 			return bits64 | 64
 		}
 	} else {
-
+		/* Specification: 5 Encoding of ... (last table) */
+		/* offset = 2 * index, where index is in range [0..8] */
 		var offset uint32 = 2 * ((uint32(copycode) >> 3) + 3*(uint32(inscode)>>3))
 
+		/* All values in specification are K * 64,
+		   where   K = [2, 3, 6, 4, 5, 8, 7, 9, 10],
+		       i + 1 = [1, 2, 3, 4, 5, 6, 7, 8,  9],
+		   K - i - 1 = [1, 1, 3, 0, 0, 2, 0, 1,  2] = D.
+		   All values in D require only 2 bits to encode.
+		   Magic constant is shifted 6 bits left, to avoid final multiplication. */
 		offset = (offset << 5) + 0x40 + ((0x520D40 >> offset) & 0xC0)
 
 		return uint16(offset | uint32(bits64))
@@ -186,12 +193,16 @@ type command struct {
 	dist_prefix_ uint16
 }
 
+/* distance_code is e.g. 0 for same-as-last short code, or 16 for offset 1. */
 func makeCommand(dist *distanceParams, insertlen uint, copylen uint, copylen_code_delta int, distance_code uint) (cmd command) {
-
+	/* Don't rely on signed int representation, use honest casts. */
 	var delta uint32 = uint32(byte(int8(copylen_code_delta)))
 	cmd.insert_len_ = uint32(insertlen)
 	cmd.copy_len_ = uint32(uint32(copylen) | delta<<25)
 
+	/* The distance prefix and extra bits are stored in this Command as if
+	   npostfix and ndirect were 0, they are only recomputed later after the
+	   clustering if needed. */
 	prefixEncodeCopyDistance(distance_code, uint(dist.num_direct_distance_codes), uint(dist.distance_postfix_bits), &cmd.dist_prefix_, &cmd.dist_extra_)
 	getLengthCode(insertlen, uint(int(copylen)+copylen_code_delta), (cmd.dist_prefix_&0x3FF == 0), &cmd.cmd_prefix_)
 

@@ -1,13 +1,9 @@
-
-
-
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Glyph } from './Glyph';
 import { slice } from '../actions';
 import { noticeKind, noticeMs, sliceFailure } from '../notice-text';
-import { getState, setState, useStore } from '../state/store';
-import { Icon } from './Icon';
+import { setState, useStore } from '../state/store';
 import { InTopLayer, useModalCount } from './Modal';
 import './notices.css';
 
@@ -21,16 +17,16 @@ export function Toast() {
   const given = useStore((s) => s.toastKind);
   const msg = toast ?? projectNotice;
   const [held, setHeld] = useState(false);
-
+  const overDialog = useModalCount() > 0;
+  const kind = toast ? given ?? noticeKind(toast) : 'info';
+  const waiting = overDialog && !!toast && kind !== 'error' && action?.label !== 'Undo';
   useEffect(() => {
-    if (!toast || held) return;
+    if (!toast || held || waiting) return;
     const t = setTimeout(() => setState((s) => (s.toast === toast ? { toast: null } : {})), ms ?? noticeMs(toast));
     return () => clearTimeout(t);
-  }, [toast, seq, held, ms]);
+  }, [toast, seq, held, waiting, ms]);
   useEffect(() => setHeld(false), [msg]);
   const lane = useNoticeLane(msg);
-
-  const overDialog = useModalCount() > 0;
   const undoKey = overDialog && action?.label === 'Undo';
   useEffect(() => {
     if (!undoKey || !action) return;
@@ -42,8 +38,7 @@ export function Toast() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [undoKey, action]);
-  if (!msg) return null;
-  const kind = toast ? given ?? noticeKind(msg) : 'info';
+  if (!msg || waiting) return null;
   const reload = /^Presets failed to load/i.test(msg);
   const card = (
       <div className={`toast toast-${kind}`} role={kind === 'error' || kind === 'warning' ? 'alert' : 'status'}
@@ -64,19 +59,16 @@ export function Toast() {
   return lane ? createPortal(card, lane) : <InTopLayer>{card}</InTopLayer>;
 }
 
-
-
-
 function useNoticeLane(msg: ReactNode): Element | null {
   const tab = useStore((s) => s.tab);
   const dialogOpen = useStore((s) => !!(s.dialog || s.appDialog || s.flushDialog || s.calibDialog || s.sessionDialog || s.presetUx));
+  const loading = useStore((s) => !!s.loading);
   const [lane, setLane] = useState<Element | null>(null);
   useEffect(() => {
-    setLane(msg && tab !== 'projects' && !dialogOpen && !getState().loading ? document.querySelector('.canvas-area .notifications') : null);
-  }, [msg, tab, dialogOpen]);
+    setLane(msg && tab !== 'projects' && !dialogOpen && !loading ? document.querySelector('.canvas-area .notifications') : null);
+  }, [msg, tab, dialogOpen, loading]);
   return lane;
 }
-
 
 export function SliceFailed({ error, onClose }: { error: string; onClose(): void }) {
   const { title, step } = sliceFailure(error);
@@ -87,7 +79,7 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
       <button type="button" className="notif-close icon-btn" aria-label="Close" onClick={onClose}>
         <Glyph name="close" size={14} />
       </button>
-      <div className="notif-title"><Icon name="error" size={16} /> {title}</div>
+      <div className="notif-title">{title}</div>
       <div className="notif-body">{step}</div>
       <div className="slice-failed-actions">
         {canRetry && <button type="button" className="btn-primary" onClick={() => void slice()}>Slice again</button>}
@@ -103,9 +95,7 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
   );
 }
 
-
 const LOADING_WORDS: Record<string, string> = { Connecting: 'Starting', 'Loading presets': 'Loading printers' };
-
 
 export function LoadingState({ text }: { text: string }) {
   const m = /^(.*?)\s+(\d+)%$/.exec(text);

@@ -98,14 +98,14 @@
 #ifndef SIPHASH_H
 #define SIPHASH_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <stddef.h> /* size_t */
+#include <stdint.h> /* uint64_t uint32_t uint8_t */
 
-
-
-
-
-
+/*
+ * Workaround to not require a C++11 compiler for using ULL suffix
+ * if this code is included and compiled as C++; related GCC warning is:
+ * warning: use of C++11 long long integer constant [-Wlong-long]
+ */
 #define _SIP_ULL(high, low) ((((uint64_t)high) << 32) | (low))
 
 #define SIP_ROTL(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
@@ -134,13 +134,13 @@ struct siphash {
 
   unsigned char buf[8], *p;
   uint64_t c;
-};
+}; /* struct siphash */
 
 #define SIP_KEYLEN 16
 
 struct sipkey {
   uint64_t k[2];
-};
+}; /* struct sipkey */
 
 #define sip_keyof(k) sip_tokey(&(struct sipkey){{0}}, (k))
 
@@ -149,7 +149,7 @@ sip_tokey(struct sipkey *key, const void *src) {
   key->k[0] = SIP_U8TO64_LE((const unsigned char *)src);
   key->k[1] = SIP_U8TO64_LE((const unsigned char *)src + 8);
   return key;
-}
+} /* sip_tokey() */
 
 #ifdef SIPHASH_TOBIN
 
@@ -159,9 +159,9 @@ static void *
 sip_tobin(void *dst, uint64_t u64) {
   SIP_U64TO8_LE((unsigned char *)dst, u64);
   return dst;
-}
+} /* sip_tobin() */
 
-#endif
+#endif /* SIPHASH_TOBIN */
 
 static void
 sip_round(struct siphash *H, const int rounds) {
@@ -186,7 +186,7 @@ sip_round(struct siphash *H, const int rounds) {
     H->v1 ^= H->v2;
     H->v2 = SIP_ROTL(H->v2, 32);
   }
-}
+} /* sip_round() */
 
 static struct siphash *
 sip24_init(struct siphash *H, const struct sipkey *key) {
@@ -199,7 +199,7 @@ sip24_init(struct siphash *H, const struct sipkey *key) {
   H->c = 0;
 
   return H;
-}
+} /* sip24_init() */
 
 #define sip_endof(a) (&(a)[sizeof(a) / sizeof *(a)])
 
@@ -225,7 +225,7 @@ sip24_update(struct siphash *H, const void *src, size_t len) {
   } while (p < pe);
 
   return H;
-}
+} /* sip24_update() */
 
 static uint64_t
 sip24_final(struct siphash *H) {
@@ -265,25 +265,25 @@ sip24_final(struct siphash *H) {
   sip_round(H, 4);
 
   return H->v0 ^ H->v1 ^ H->v2 ^ H->v3;
-}
+} /* sip24_final() */
 
 static uint64_t
 siphash24(const void *src, size_t len, const struct sipkey *key) {
   struct siphash state = SIPHASH_INITIALIZER;
   return sip24_final(sip24_update(sip24_init(&state, key), src, len));
-}
+} /* siphash24() */
 
-
-
-
-
-
-
-
-
-
-
-
+/*
+ * SipHash-2-4 output with
+ * k = 00 01 02 ...
+ * and
+ * in = (empty string)
+ * in = 00 (1 byte)
+ * in = 00 01 (2 bytes)
+ * in = 00 01 02 (3 bytes)
+ * ...
+ * in = 00 01 02 ... 3e (63 bytes)
+ */
 static int
 sip24_valid(void) {
   /* clang-format off */
@@ -370,7 +370,7 @@ sip24_valid(void) {
   }
 
   return 1;
-}
+} /* sip24_valid() */
 
 #ifdef SIPHASH_MAIN
 
@@ -386,8 +386,8 @@ main(void) {
     puts("FAIL");
 
   return ! ok;
-}
+} /* main() */
 
-#endif
+#endif /* SIPHASH_MAIN */
 
-#endif
+#endif /* SIPHASH_H */

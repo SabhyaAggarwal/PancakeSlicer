@@ -114,7 +114,6 @@ func controlDuet(ctx context.Context, p *PrinterConfig, secret, action string) e
 	case "resume":
 		return duetGcode(ctx, h, base, "M24")
 	}
-
 	if err := duetGcode(ctx, h, base, "M25"); err != nil {
 		return err
 	}

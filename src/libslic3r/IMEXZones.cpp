@@ -25,23 +25,18 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     if (!is_imex_opt || !is_imex_opt->value)
         return out;
 
-
     std::string active_mode = plate_mode;
     if (active_mode == kImexPrimaryMode && !process_mode.empty())
         active_mode = process_mode;
     if (active_mode == kImexPrimaryMode || active_mode.empty())
         return out;
 
-
-
     int n_cols  = std::max(1, imex_cfg_int(printer_cfg, "imex_tools_per_gantry"));
     int n_rows  = std::max(1, imex_cfg_int(printer_cfg, "imex_gantry_count"));
-
 
     const ImexToolLayout layout = imex_cfg_enum<ImexToolLayout>(printer_cfg, "imex_tool_layout");
     bool flip_x = (layout == ImexToolLayout::FrontRight || layout == ImexToolLayout::RearRight);
     bool flip_y = (layout == ImexToolLayout::RearLeft   || layout == ImexToolLayout::RearRight);
-
 
     auto tool_to_phys = [&](int idx) -> std::pair<int,int> {
         int raw_col = idx % n_cols, raw_row = idx / n_cols;
@@ -53,25 +48,7 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
 
     if (n_cols == 1 && n_rows == 1)
         return out;
-
-
-
-
     const std::string active_tools_str = find_imex_mode(printer_cfg, active_mode).active_tools;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     std::map<int, ImexRole> zone_roles;
     {
@@ -81,9 +58,6 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
         for (const auto& [phys_idx, role] : parse_imex_active_tools(active_tools_str)) {
             if (phys_idx < 0 || phys_idx >= n_rows * n_cols) continue;
             if (phys_idx == primary) continue;
-
-
-
             switch (role) {
             case ImexRole::Copy:
             case ImexRole::Mirror:
@@ -96,44 +70,22 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
         }
     }
 
-
-
     if (zone_roles.empty())
         return out;
-
 
     for (const auto& [idx, role] : zone_roles) {
         if (role == ImexRole::Primary) { auto [c, r] = tool_to_phys(idx); pri_col = c; pri_row = r;
             out.primary_head = idx; break; }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     if (out.primary_head < 0)
         return ImexZoneLayout{};
-
-
-
-
-
 
     const ImexGantryGrouping grouping =
         group_imex_active_tools_by_gantry(active_tools_str, n_cols);
     std::map<int, const ImexGantryGroup*> group_by_gantry;
     for (const auto& grp : grouping.groups)
         group_by_gantry[grp.gantry_index] = &grp;
-
 
     std::set<std::pair<int,int>> copy_cells, mirror_cells;
     for (const auto& [idx, role] : zone_roles) {
@@ -144,8 +96,6 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
         const ImexGantryGroup* grp = (git == group_by_gantry.end()) ? nullptr : git->second;
 
         if (grp && grp->aggregate) {
-
-
             if (idx != grp->representative_phys) continue;
             auto [rep_c, r] = tool_to_phys(idx);
             (void)rep_c;
@@ -158,16 +108,12 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
         }
     }
 
-
     std::set<std::pair<int,int>> all_secondary;
     for (auto& p : copy_cells)   all_secondary.insert(p);
     for (auto& p : mirror_cells) all_secondary.insert(p);
 
     double x_min = bed_extents.min(0), x_max = bed_extents.max(0);
     double y_min = bed_extents.min(1), y_max = bed_extents.max(1);
-
-
-
 
     std::vector<int> active_cols_v, active_rows_v;
     {
@@ -189,13 +135,8 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     double zone_w = (x_max - x_min) / n_active_cols;
     double zone_h = (y_max - y_min) / n_active_rows;
 
-
     int pri_col_k = col_to_zone.count(pri_col) ? col_to_zone[pri_col] : 0;
     int pri_row_k = row_to_zone.count(pri_row) ? row_to_zone[pri_row] : 0;
-
-
-
-
 
     for (const auto& [idx, role] : zone_roles) {
         auto [c, r] = tool_to_phys(idx);
@@ -206,16 +147,11 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
             y_min + (rk + 0.5) * zone_h);
     }
 
-
     bool has_row_sep = false, has_col_sep = false;
     for (const auto& [sc, sr] : all_secondary) {
         if (sr != pri_row) has_row_sep = true;
         if (sc != pri_col) has_col_sep = true;
     }
-
-
-
-
 
     auto make_boxes = [&](const std::set<std::pair<int,int>>& cells) -> std::vector<BoundingBoxf> {
         std::vector<BoundingBoxf> boxes;
@@ -247,9 +183,6 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     out.copy_zones   = make_boxes(copy_cells);
     out.mirror_zones = make_boxes(mirror_cells);
 
-
-
-
     auto push_secondary_box = [&](const std::vector<BoundingBoxf>& boxes) {
         for (const auto& b : boxes)
             out.secondary_zone_boxes.emplace_back(Vec3d(b.min.x(), b.min.y(), -1.0),
@@ -258,32 +191,9 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
     push_secondary_box(out.copy_zones);
     push_secondary_box(out.mirror_zones);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     double carriage_w = imex_cfg_float(printer_cfg, "imex_nozzle_clearance_x");
     double carriage_h = imex_cfg_float(printer_cfg, "imex_nozzle_clearance_y");
     double margin     = imex_cfg_float(printer_cfg, "imex_carriage_margin");
-
-
-
-
-
 
     double pz_x0 = has_col_sep ? x_min + pri_col_k       * zone_w : x_min;
     double pz_x1 = has_col_sep ? x_min + (pri_col_k + 1) * zone_w : x_max;
@@ -298,45 +208,17 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
         out.margin_bands.emplace_back(Vec2d(sx0, sy0), Vec2d(sx1, sy1));
     };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     bool has_right_sec = false, has_left_sec  = false;
     bool has_top_sec   = false, has_bottom_sec = false;
     for (const auto& [sc, sr] : mirror_cells) {
         int zc = col_to_zone.count(sc) ? col_to_zone.at(sc) : -1;
         int zr = row_to_zone.count(sr) ? row_to_zone.at(sr) : -1;
         if (zc < 0 || zr < 0) continue;
-
         if (zr == pri_row_k && zc == pri_col_k + 1) has_right_sec = true;
         if (zr == pri_row_k && zc == pri_col_k - 1) has_left_sec  = true;
-
         if (zr == pri_row_k + 1 && sc == pri_col) has_top_sec    = true;
         if (zr == pri_row_k - 1 && sc == pri_col) has_bottom_sec = true;
     }
-
 
     if (carriage_w > 0.0) {
         if (has_right_sec) {
@@ -354,7 +236,6 @@ ImexZoneLayout compute_imex_zone_layout(const DynamicPrintConfig& printer_cfg,
                 add_margin_band(strip_inner, strip_inner + margin, pz_y0, pz_y1);
         }
     }
-
 
     if (carriage_h > 0.0) {
         if (has_top_sec) {

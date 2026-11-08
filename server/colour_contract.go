@@ -15,8 +15,8 @@ import (
 func probeColourChange(c Config) map[string]bool {
 	features := map[string]bool{"BBL": false, "Prusa": false}
 	for _, family := range []struct{ vendor, printer, process, filament, command string }{
-		{"BBL", "Bambu Lab A1 mini 0.4 nozzle", "0.20mm Non-planar top @BBL A1M", "Bambu PLA Basic @BBL A1M", "M400 U1"},
-		{"Prusa", "Prusa MINI 0.4 nozzle", "0.20mm Non-planar top @MINI", "Prusament PLA @MK3S", "M600"},
+		{"BBL", "Bambu Lab A1 mini 0.4 nozzle", "0.20mm Smoothest tops @BBL A1M", "Bambu PLA Basic @BBL A1M", "M400 U1"},
+		{"Prusa", "Prusa MINI 0.4 nozzle", "0.20mm Smoothest tops @MINI", "Prusament PLA @MK3S", "M600"},
 	} {
 		err := func() error {
 			dir, err := os.MkdirTemp("", "orca-colour-*")

@@ -46,4 +46,4 @@
 #include <memory.h>
 #include <string.h>
 
-#endif
+#endif /* ndef EXPATCONFIG_H */

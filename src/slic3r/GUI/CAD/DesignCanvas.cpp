@@ -1,0 +1,1530 @@
+#include "slic3r/GUI/CAD/DesignCanvas.hpp"
+
+#include "slic3r/GUI/CAD/SketchInlineEditor.hpp"
+#include "slic3r/GUI/CAD/DesignInteraction.hpp"
+#include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
+#include "slic3r/GUI/3DBed.hpp"
+#include "slic3r/GUI/Camera.hpp"
+#include "slic3r/GUI/GUI_App.hpp"
+#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/PartPlate.hpp"
+#include "slic3r/GUI/ImGuiWrapper.hpp"
+#include "slic3r/GUI/GLToolbar.hpp"
+#include "slic3r/GUI/Event.hpp"
+#include "libslic3r/Model.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/MeshUtils.hpp"
+#include "libslic3r/Config.hpp"
+#include <boost/algorithm/string/predicate.hpp>
+#include <algorithm>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+
+#include <imgui.h>
+#include <wx/colour.h>
+#include <wx/event.h>
+#include <wx/gdicmn.h>
+#include "libslic3r/CAD/SketchEngine.hpp"
+#include <vector>
+#include <memory>
+#include <string>
+#include <functional>
+#include "libslic3r/Color.hpp"
+#include "slic3r/GUI/CAD/DesignSketchTool.hpp"
+#include "libslic3r/Point.hpp"
+#include <utility>
+#include "libslic3r/CAD/CadDocument.hpp"
+#include "libslic3r/BoundingBox.hpp"
+#include <wx/glcanvas.h>
+#include <wx/panel.h>
+#include <wx/setup.h>
+#include <wx/stopwatch.h>
+#include <wx/sizer.h>
+#include <wx/frame.h>
+#include <wx/stattext.h>
+#include <wx/string.h>
+#include <wx/time.h>
+#include <wx/toplevel.h>
+#include <wx/window.h>
+#include "libslic3r/PrintConfig.hpp"
+
+#if defined(__WXMSW__) && wxUSE_POPUPWIN
+#include <wx/popupwin.h>
+extern wxPopupWindow* wxCurrentPopupWindow;
+#endif
+
+namespace Slic3r {
+namespace GUI {
+
+static void select_iso_view(Camera& camera)
+{
+    const Vec3d target = camera.get_target();
+    camera.look_at(target + camera.get_distance() * Vec3d(1., -1., 1.).normalized(), target, Vec3d::UnitZ());
+    camera.auto_type(Camera::EType::Perspective);
+}
+
+DesignCanvas::DesignCanvas(wxWindow* parent)
+    : wxPanel()
+{
+    if (!Create(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0))
+        return;
+
+    m_canvas_widget = OpenGLManager::create_wxglcanvas(*this);
+    if (m_canvas_widget == nullptr)
+        return;
+
+    m_canvas = new GLCanvas3D(m_canvas_widget, m_bed);
+    m_canvas->set_context(wxGetApp().init_glcontext(*m_canvas_widget));
+    m_canvas->allow_multisample(OpenGLManager::can_multisample());
+    m_canvas->set_config(wxGetApp().plater()->config());
+    m_canvas->set_model(&m_model);
+    m_canvas->set_process(&wxGetApp().plater()->background_process());
+    m_canvas->set_type(GLCanvas3D::ECanvasType::CanvasView3D);
+    m_canvas->set_studio_lighting(true);
+
+    m_canvas->enable_picking(false);
+    m_canvas->enable_moving(false);
+    m_canvas->enable_gizmos(false);
+    m_canvas->enable_selection(false);
+    m_canvas->enable_main_toolbar(false);
+    m_canvas->enable_select_plate_toolbar(false);
+    m_canvas->enable_assemble_view_toolbar(false);
+    m_canvas->enable_separator_toolbar(false);
+    m_canvas->enable_collapse_toolbar(false);
+    m_canvas->enable_plate_chrome(false);
+    m_canvas->enable_labels(false);
+    m_canvas->enable_sinking_contours(false);
+    m_canvas->set_design_canvas(true);
+
+    m_canvas->set_design_sketch_tool(&m_sketch_tool);
+    m_sketch_tool.on_commit = [this](const SketchProfile& prof, const SketchPlane& pl) {
+        if (m_on_sketch_commit) m_on_sketch_commit(prof, pl);
+        if (m_canvas) m_canvas->set_as_dirty();
+        if (m_canvas_widget) m_canvas_widget->Refresh();
+    };
+    m_sketch_tool.on_commit_entities = [this](const std::vector<SketchEntity>& ents,
+                                              const std::vector<SketchEntityConstraintDef>& cons,
+                                              const SketchPlane& pl) {
+        if (m_on_sketch_entities_commit) m_on_sketch_entities_commit(ents, cons, pl);
+        if (m_canvas) m_canvas->set_as_dirty();
+        if (m_canvas_widget) m_canvas_widget->Refresh();
+    };
+
+    m_inline_editor = std::make_unique<SketchInlineEditor>();
+    m_sketch_tool.inline_editor = m_inline_editor.get();
+    if (m_canvas_widget != nullptr && std::getenv("ORCA_CAD_UXTRACE")) {
+        m_canvas_widget->Bind(wxEVT_CHAR, [](wxKeyEvent& e) {
+            fprintf(stderr, "[UX] canvas_char key=%d\n", e.GetKeyCode());
+            fflush(stderr);
+            e.Skip();
+        });
+    }
+    m_inline_editor->request_frame = [this] {
+        if (m_canvas)        m_canvas->set_as_dirty();
+        if (m_canvas_widget) m_canvas_widget->Refresh(false);
+    };
+    m_sketch_tool.on_inline_edit = [this](wxPoint screen_px, double current,
+                                          const std::string& title,
+                                          std::function<void(double)> commit,
+                                          std::function<void()> cancel) {
+        if (!m_inline_editor) { if (cancel) cancel(); return; }
+        m_sketch_tool.set_inline_busy(true);
+        if (m_canvas_widget) m_canvas_widget->SetFocus();
+        m_inline_editor->open(screen_px, current, title,
+            [this, commit](double v) {
+                m_sketch_tool.set_inline_busy(false);
+                if (commit) commit(v);
+                if (m_inline_editor && m_inline_editor->is_open()) m_sketch_tool.set_inline_busy(true);
+                request_repaint();
+            },
+            [this, cancel]() {
+                m_sketch_tool.set_inline_busy(false);
+                if (cancel) cancel();
+                request_repaint();
+            });
+    };
+    m_sketch_tool.on_inline_dismiss = [this]() {
+        if (m_inline_editor) m_inline_editor->cancel();
+    };
+    m_sketch_tool.on_inline_commit = [this]() {
+        if (m_inline_editor) m_inline_editor->commit();
+    };
+
+    m_sketch_tool.on_readout      = [this](const std::string& s) { set_readout(s); };
+    m_sketch_tool.render_overlays = [this] { render_hud(); };
+
+    refresh_bed();
+
+    m_parked_camera = wxGetApp().plater()->get_camera();
+    if (PartPlate* plate = wxGetApp().plater()->get_partplate_list().get_curr_plate())
+        m_parked_camera.translate_world(-plate->get_origin());
+    select_iso_view(m_parked_camera);
+
+    m_canvas->bind_event_handlers();
+
+    m_canvas_widget->Bind(wxEVT_ENTER_WINDOW, [this](wxMouseEvent& e) {
+        bool take_focus = m_canvas_widget && !m_sketch_tool.inline_busy();
+#if defined(__WXMSW__) && wxUSE_POPUPWIN
+        take_focus = take_focus && !wxCurrentPopupWindow;
+#endif
+        if (take_focus) m_canvas_widget->SetFocus();
+        e.Skip();
+    });
+
+
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(m_canvas_widget, 1, wxEXPAND);
+    SetSizer(sizer);
+    SetMinSize(wxSize(300, 300));
+}
+
+void DesignCanvas::unbind_canvas_event_handlers()
+{
+    if (m_canvas) m_canvas->unbind_event_handlers();
+}
+
+void DesignCanvas::reset_canvas_volumes()
+{
+    if (m_canvas) m_canvas->reset_volumes();
+}
+
+DesignCanvas::~DesignCanvas()
+{
+    delete m_canvas;
+    delete m_canvas_widget;
+}
+
+static ColorRGBA body_palette(int body_idx)
+{
+    static const ColorRGBA kPalette[] = {
+        ColorRGBA(0.86f, 0.66f, 0.20f, 1.0f),
+        ColorRGBA(0.84f, 0.42f, 0.66f, 1.0f),
+        ColorRGBA(0.45f, 0.78f, 0.42f, 1.0f),
+        ColorRGBA(0.86f, 0.45f, 0.40f, 1.0f),
+        ColorRGBA(0.70f, 0.52f, 0.86f, 1.0f),
+        ColorRGBA(0.90f, 0.70f, 0.35f, 1.0f),
+    };
+    const int n = int(sizeof(kPalette) / sizeof(kPalette[0]));
+    return kPalette[((body_idx % n) + n) % n];
+}
+
+void DesignCanvas::request_repaint()
+{
+    if (!m_canvas)
+        return;
+    m_canvas->set_as_dirty();
+
+    if (!m_canvas->is_initialized()) {
+        if (m_canvas_widget)
+            m_canvas_widget->Refresh();
+        return;
+    }
+
+    if (m_sw_gl < 0) {
+        const std::string& r = OpenGLManager::get_gl_info().get_renderer();
+        if (!r.empty())
+            m_sw_gl = (boost::icontains(r, "llvmpipe") || boost::icontains(r, "softpipe") ||
+                       boost::icontains(r, "swrast")   || boost::icontains(r, "software")) ? 1 : 0;
+    }
+
+    if (m_sw_gl == 0) {
+        if (m_canvas_widget)
+            m_canvas_widget->Refresh();
+    } else {
+        m_canvas->render();
+    }
+}
+
+void DesignCanvas::enter_viewport()
+{
+    if (!m_camera_swapped) swap_camera();
+    if (m_canvas) { m_canvas->reset_old_size(); m_canvas->set_as_dirty(); }
+}
+
+void DesignCanvas::leave_viewport()
+{
+    if (m_camera_swapped) swap_camera();
+    if (Plater* plater = wxGetApp().plater())
+        if (GLCanvas3D* editor = plater->get_current_canvas3D())
+            editor->reset_old_size();
+}
+
+void DesignCanvas::swap_camera()
+{
+    Plater* plater = wxGetApp().plater();
+    if (plater == nullptr) return;
+    std::swap(plater->get_camera(), m_parked_camera);
+    m_camera_swapped = !m_camera_swapped;
+}
+
+void DesignCanvas::force_repaint()
+{
+    if (m_canvas == nullptr || m_canvas_widget == nullptr)
+        return;
+
+    CallAfter([this]() {
+        if (m_canvas == nullptr || m_canvas_widget == nullptr)
+            return;
+        m_canvas->set_as_dirty();
+        m_canvas_widget->Refresh();
+        m_canvas_widget->Update();
+    });
+}
+
+void DesignCanvas::repaint_now()
+{
+    if (m_canvas == nullptr || m_canvas_widget == nullptr)
+        return;
+    request_repaint();
+    m_canvas_widget->Update();
+}
+
+void DesignCanvas::reload()
+{
+    m_canvas->reset_volumes();
+
+    for (int i = 0; i < (int)m_model.objects.size(); ++i)
+        m_canvas->load_object(m_model, i);
+
+    const ColorRGBA ghost(0.26f, 0.66f, 1.0f, 0.45f);
+
+    const auto& volumes = m_canvas->get_volumes().volumes;
+    for (auto* v : volumes) {
+        int obj_idx = v->object_idx();
+        if (obj_idx == 0) {
+            const int  vi  = v->volume_idx();
+            const int  b   = vi < int(m_volumes.size()) ? m_volumes[vi].body : vi;
+            const bool lit = vi < int(m_volumes.size()) && m_volumes[vi].lit;
+            bool hidden = (b >= 0 && b < int(m_body_visible.size())) && !m_body_visible[b];
+            if (m_body_hidden) hidden = true;
+            v->is_active = !hidden;
+            if (!hidden) {
+                ColorRGBA c = lit ? design_selection_color() : body_color(b);
+                if (b == m_hl_body_target)    c = ColorRGBA(0.30f, 0.90f, 0.70f, 1.0f);
+                else if (b == m_hl_body_tool) c = ColorRGBA(1.00f, 0.55f, 0.15f, 1.0f);
+                if (m_body_translucent) c.a(0.30f);
+                else if (m_xray_focus >= 0 && b != m_xray_focus) c.a(0.25f);
+                v->set_color(c);
+            }
+        } else if (obj_idx == 1) {
+            v->set_color(m_body_hidden ? ColorRGBA(0.40f, 0.82f, 1.0f, 1.0f) : ghost);
+            v->depth_bias = true;
+        }
+    }
+
+    m_canvas->set_as_dirty();
+    if (m_canvas_widget)
+        m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::set_bodies(const std::vector<TriangleMesh>* body_meshes,
+                              const std::vector<bool>& visible)
+{
+    m_body_visible = visible;
+    if (body_meshes == nullptr || body_meshes->empty()) { clear_mesh(); return; }
+
+    m_body_meshes = body_meshes;
+    m_sketch_tool.refresh_body_edges();
+    m_lit_faces   = m_sketch_tool.selected_faces();
+    rebuild_bodies();
+    reload();
+}
+
+void DesignCanvas::clear_mesh()
+{
+    m_body_meshes = nullptr;
+    m_volumes.clear();
+    m_sketch_tool.set_solid_pick(nullptr, nullptr, nullptr, nullptr);
+    if (!m_model.objects.empty()) {
+        m_model.delete_object((size_t)0);
+        reload();
+    }
+}
+
+void DesignCanvas::set_preview_mesh(const TriangleMesh& mesh)
+{
+    if (m_model.objects.size() > 1)
+        m_model.delete_object((size_t)1);
+
+    auto* obj = m_model.add_object();
+    obj->add_volume(mesh);
+    obj->add_instance();
+
+    reload();
+}
+
+void DesignCanvas::clear_preview()
+{
+    if (m_model.objects.size() > 1) {
+        m_model.delete_object((size_t)1);
+        reload();
+    }
+}
+
+void DesignCanvas::fit_view()
+{
+    if (m_canvas && !m_model.objects.empty()) {
+        m_canvas->zoom_to_volumes();
+        m_canvas->set_as_dirty();
+        if (m_canvas_widget)
+            m_canvas_widget->Refresh();
+    }
+}
+
+bool DesignCanvas::zoom_to_box(BoundingBoxf3 box)
+{
+    if (m_canvas == nullptr || !box.defined)
+        return false;
+    DesignSketchTool::pad_box(box);
+    m_canvas->zoom_to_box(box);
+    request_repaint();
+    return true;
+}
+
+void DesignCanvas::set_view(const std::string& view_name)
+{
+    if (m_canvas) {
+        if (view_name == "iso")
+            select_iso_view(wxGetApp().plater()->get_camera());
+        else
+            m_canvas->select_view(view_name);
+        m_canvas->zoom_to_volumes();
+        m_canvas->set_as_dirty();
+        if (m_canvas_widget)
+            m_canvas_widget->Refresh();
+    }
+}
+
+void DesignCanvas::begin_sketch(const SketchPlane& plane, DesignSketchTool::Mode mode)
+{
+    m_sketch_tool.begin(plane, mode);
+    if (m_canvas) m_canvas->set_as_dirty();
+    if (m_canvas_widget) m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::edit_sketch(const std::vector<SketchEntity>& entities,
+                               const std::vector<SketchEntityConstraintDef>& constraints,
+                               const SketchPlane& plane)
+{
+    m_sketch_tool.begin_edit(entities, constraints, plane);
+    if (m_canvas) m_canvas->set_as_dirty();
+    if (m_canvas_widget) m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::set_sketch_tool(DesignSketchTool::Mode mode)
+{
+    m_sketch_tool.set_tool(mode);
+    if (m_canvas) m_canvas->set_as_dirty();
+    if (m_canvas_widget) m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::set_sketch_construction(bool c)
+{
+    m_sketch_tool.set_construction(c);
+}
+
+bool DesignCanvas::edit_sketch_selection_value()
+{
+    const bool ok = m_sketch_tool.open_selection_dimension_editor();
+    if (ok) request_repaint();
+    return ok;
+}
+
+int DesignCanvas::toggle_sketch_construction_selection()
+{
+    const int n = m_sketch_tool.toggle_selection_construction();
+    if (n > 0) request_repaint();
+    return n;
+}
+
+bool DesignCanvas::add_sketch_regions(
+    const std::vector<std::vector<std::vector<Vec2d>>>& regions)
+{
+    const bool ok = m_sketch_tool.add_imported_regions(regions);
+    if (ok) request_repaint();
+    return ok;
+}
+
+void DesignCanvas::set_sketch_polygon_sides(int n)
+{
+    m_sketch_tool.set_polygon_sides(n);
+}
+
+void DesignCanvas::set_sketch_polygon_circumscribed(bool c)
+{
+    m_sketch_tool.set_polygon_circumscribed(c);
+}
+
+void DesignCanvas::finish_sketch()
+{
+    m_sketch_tool.finish();
+    if (m_canvas) m_canvas->set_as_dirty();
+    if (m_canvas_widget) m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::refresh_bed()
+{
+    const DynamicPrintConfig* config = wxGetApp().plater()->config();
+    if (!config) return;
+    const auto* bed_shape_opt = config->opt<ConfigOptionPoints>("printable_area");
+    if (!bed_shape_opt) return;
+    double printable_height = 100.0;
+    const auto* ph_opt = config->opt<ConfigOptionFloat>("printable_height");
+    if (ph_opt) printable_height = ph_opt->value;
+    m_bed.set_shape(bed_shape_opt->values, printable_height, {}, {}, "", false);
+}
+
+void DesignCanvas::set_show_bed(bool b)
+{
+    if (!m_canvas) return;
+    if (m_canvas->get_show_bed() == b) return;
+    m_canvas->set_show_bed(b);
+    request_repaint();
+}
+
+void DesignCanvas::set_sidebar_collapse(std::function<CollapseSide()> side, std::function<void()> toggle)
+{
+    if (!m_canvas || !m_canvas_widget || !setup_collapse_toolbar(m_collapse_toolbar, toggle))
+        return;
+    m_canvas->set_collapse_toolbar(&m_collapse_toolbar, std::move(side));
+    m_canvas->enable_collapse_toolbar(true);
+    m_canvas_widget->Bind(EVT_GLCANVAS_COLLAPSE_SIDEBAR, [toggle](SimpleEvent&) { toggle(); });
+}
+
+void DesignCanvas::set_sidebar_collapse_tooltip(const std::string& tooltip)
+{
+    m_collapse_toolbar.set_tooltip(m_collapse_toolbar.get_item_id("collapse_sidebar"), tooltip);
+}
+
+bool DesignCanvas::is_sketching() const { return m_sketch_tool.is_active(); }
+
+void DesignCanvas::cancel_sketch()
+{
+    m_sketch_tool.cancel();
+    if (m_canvas) m_canvas->set_as_dirty();
+    if (m_canvas_widget) m_canvas_widget->Refresh();
+}
+
+void DesignCanvas::set_on_sketch_commit(std::function<void(const SketchProfile&, const SketchPlane&)> cb)
+{
+    m_on_sketch_commit = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_entities_commit(
+    std::function<void(const std::vector<SketchEntity>&,
+                       const std::vector<SketchEntityConstraintDef>&,
+                       const SketchPlane&)> cb)
+{
+    m_on_sketch_entities_commit = std::move(cb);
+}
+
+void DesignCanvas::set_on_segment_drawn(std::function<void(double, double)> cb)
+{
+    m_sketch_tool.on_segment_drawn = std::move(cb);
+}
+
+void DesignCanvas::set_on_cursor_metrics(std::function<void(double, double, bool)> cb)
+{
+    m_sketch_tool.on_cursor_metrics = std::move(cb);
+}
+
+void DesignCanvas::set_on_solve_state(std::function<void(int, bool, bool)> cb)
+{
+    m_sketch_tool.on_solve_state = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_step(std::function<void(DesignSketchTool::Mode, int, int)> cb)
+{
+    m_sketch_tool.on_step_changed = std::move(cb);
+}
+
+void DesignCanvas::apply_segment_length(double len)
+{
+    m_sketch_tool.apply_segment_length(len);
+    request_repaint();
+}
+
+void DesignCanvas::keep_segment_as_drawn()
+{
+    m_sketch_tool.keep_segment_as_drawn();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_sketch_selection_changed(std::function<void(int)> cb)
+{
+    m_sketch_tool.on_selection_changed = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_face_selected(std::function<void(int)> cb)
+{
+    m_sketch_tool.on_face_selected = std::move(cb);
+}
+
+void DesignCanvas::set_on_display_sketch_selected(std::function<void(int, int, int)> cb)
+{
+    m_sketch_tool.on_display_sketch_selected = std::move(cb);
+}
+
+void DesignCanvas::set_on_display_sketch_activated(std::function<void(int)> cb)
+{
+    m_sketch_tool.on_display_sketch_activated = std::move(cb);
+}
+
+std::vector<SketchEntity> DesignCanvas::selected_loop_entities() const
+{
+    return m_sketch_tool.selected_loop_entities();
+}
+
+std::vector<std::vector<int>> DesignCanvas::region_entity_indices(const std::vector<SketchEntity>& ents) const
+{
+    return m_sketch_tool.region_entity_indices(ents);
+}
+
+std::vector<std::vector<int>> DesignCanvas::region_entity_indices_with_holes(const std::vector<SketchEntity>& ents) const
+{
+    return m_sketch_tool.region_entity_indices_with_holes(ents);
+}
+
+void DesignCanvas::clear_loop_pick()
+{
+    m_sketch_tool.clear_display_pick();
+}
+
+void DesignCanvas::clear_solid_pick()
+{
+    m_sketch_tool.clear_solid_selection();
+    sync_selected_faces();
+}
+
+void DesignCanvas::set_loop_pick(int feature, int region)
+{
+    m_sketch_tool.set_display_pick(feature, region);
+    request_repaint();
+}
+
+int DesignCanvas::loop_pick_feature() const
+{
+    return m_sketch_tool.display_pick();
+}
+
+int DesignCanvas::loop_pick_region() const
+{
+    return m_sketch_tool.display_pick_region();
+}
+
+void DesignCanvas::set_escalate_on_repick(bool on)
+{
+    m_sketch_tool.set_escalate_on_repick(on);
+}
+
+void DesignCanvas::set_solid_pick(const std::vector<CadBody>* bodies, const TriangleMesh* mesh,
+                                  const std::vector<int>* tri_face, const std::vector<int>* tri_body,
+                                  const std::vector<bool>* visible,
+                                  const std::vector<Transform3d>* xform)
+{
+    m_color_bodies = bodies;
+    m_tri_face     = tri_face;
+    m_sketch_tool.set_solid_pick(bodies, mesh, tri_face, tri_body, visible, xform);
+    sync_selected_faces();
+}
+
+ColorRGBA DesignCanvas::body_color(int body) const
+{
+    if (m_color_bodies != nullptr && body >= 0 && body < int(m_color_bodies->size())
+        && (*m_color_bodies)[body].has_color)
+        return (*m_color_bodies)[body].color;
+    return body_palette(body);
+}
+
+void DesignCanvas::begin_move_body(int body, const Vec3d& pivot, const Transform3d& base_xform,
+                                   double body_radius)
+{
+    m_sketch_tool.set_move_gizmo(body, pivot, base_xform, body_radius);
+    request_repaint();
+}
+
+void DesignCanvas::clear_move_gizmo()
+{
+    m_sketch_tool.clear_move_gizmo();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_body_move_changed(std::function<void(int, const Transform3d&)> cb)
+{
+    m_sketch_tool.on_body_move_changed = std::move(cb);
+}
+
+bool DesignCanvas::begin_fillet_gizmo(const Vec3d& body_centroid, double radius)
+{
+    const bool ok = m_sketch_tool.set_fillet_gizmo(body_centroid, radius);
+    request_repaint();
+    return ok;
+}
+
+void DesignCanvas::clear_fillet_gizmo()
+{
+    m_sketch_tool.clear_fillet_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::filleting() const { return m_sketch_tool.filleting(); }
+
+void DesignCanvas::set_on_fillet_radius_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_fillet_radius_changed = std::move(cb);
+}
+
+void DesignCanvas::begin_hole_gizmo(const SketchPlane& plane, double x, double y,
+                                    double diameter, double depth, bool through)
+{
+    m_sketch_tool.set_hole_gizmo(plane, x, y, diameter, depth, through);
+    request_repaint();
+}
+
+void DesignCanvas::set_hole_face_bounds(bool has, double umin, double umax, double vmin, double vmax)
+{
+    m_sketch_tool.set_hole_face_bounds(has, umin, umax, vmin, vmax);
+}
+
+void DesignCanvas::clear_hole_gizmo()
+{
+    m_sketch_tool.clear_hole_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::holing() const { return m_sketch_tool.holing(); }
+
+void DesignCanvas::set_on_hole_changed(std::function<void(double, double, double, double)> cb)
+{
+    m_sketch_tool.on_hole_changed = std::move(cb);
+}
+
+void DesignCanvas::begin_thread_gizmo(const SketchPlane& plane, double x, double y,
+                                      double radius, double height)
+{
+    m_sketch_tool.set_thread_gizmo(plane, x, y, radius, height);
+    request_repaint();
+}
+
+void DesignCanvas::clear_thread_gizmo()
+{
+    m_sketch_tool.clear_thread_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::threading() const { return m_sketch_tool.threading(); }
+
+void DesignCanvas::set_on_thread_changed(std::function<void(double, double, double, double)> cb)
+{
+    m_sketch_tool.on_thread_changed = std::move(cb);
+}
+
+void DesignCanvas::begin_shell_gizmo(const Vec3d& face_centroid, const Vec3d& inward_dir,
+                                     double thickness)
+{
+    m_sketch_tool.set_shell_gizmo(face_centroid, inward_dir, thickness);
+    request_repaint();
+}
+
+void DesignCanvas::clear_shell_gizmo()
+{
+    m_sketch_tool.clear_shell_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::shelling() const { return m_sketch_tool.shelling(); }
+
+void DesignCanvas::set_on_shell_thickness_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_shell_thickness_changed = std::move(cb);
+}
+
+void DesignCanvas::begin_revolve_gizmo(const SketchPlane& plane, const Vec2d& centroid,
+                                       const Vec3d& axis_origin, const Vec3d& axis_dir, double angle, bool flip)
+{
+    m_sketch_tool.set_revolve_gizmo(plane, centroid, axis_origin, axis_dir, angle, flip);
+    request_repaint();
+}
+
+void DesignCanvas::clear_revolve_gizmo()
+{
+    m_sketch_tool.clear_revolve_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::revolving() const { return m_sketch_tool.revolving(); }
+
+void DesignCanvas::set_on_revolve_angle_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_revolve_angle_changed = std::move(cb);
+}
+
+void DesignCanvas::set_draft_gizmo(const Vec3d& face_centroid, const Vec3d& face_normal, double angle)
+{
+    m_sketch_tool.set_draft_gizmo(face_centroid, face_normal, angle);
+    request_repaint();
+}
+
+void DesignCanvas::clear_draft_gizmo()
+{
+    m_sketch_tool.clear_draft_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::drafting() const { return m_sketch_tool.drafting(); }
+
+void DesignCanvas::set_on_draft_angle_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.set_on_draft_angle_changed(std::move(cb));
+}
+
+void DesignCanvas::set_cut_gizmo(const SketchPlane& plane, double offset, const Vec3d& body_center, double half_extent)
+{
+    m_sketch_tool.set_cut_gizmo(plane, offset, body_center, half_extent);
+    request_repaint();
+}
+
+void DesignCanvas::clear_cut_gizmo()
+{
+    m_sketch_tool.clear_cut_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::cutting() const { return m_sketch_tool.cutting(); }
+
+void DesignCanvas::set_on_cut_offset_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.set_on_cut_offset_changed(std::move(cb));
+}
+
+void DesignCanvas::begin_pattern_gizmo(const SketchPlane& plane, const Vec3d& body_centroid,
+                                       bool circular, int count, int dir, double spacing, double angle)
+{
+    m_sketch_tool.set_pattern_gizmo(plane, body_centroid, circular, count, dir, spacing, angle);
+    request_repaint();
+}
+
+void DesignCanvas::clear_pattern_gizmo()
+{
+    m_sketch_tool.clear_pattern_gizmo();
+    request_repaint();
+}
+
+bool DesignCanvas::patterning() const { return m_sketch_tool.patterning(); }
+
+void DesignCanvas::set_on_pattern_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_pattern_changed = std::move(cb);
+}
+
+std::vector<int> DesignCanvas::selected_solid_edges() const
+{
+    return m_sketch_tool.selected_edges();
+}
+
+void DesignCanvas::set_on_solid_selection_changed(std::function<void(int, int, int, int)> cb)
+{
+    m_on_solid_selection_changed = std::move(cb);
+    m_sketch_tool.on_solid_selection_changed = [this](int level, int body, int face, int edge) {
+        sync_selected_faces();
+        if (m_on_solid_selection_changed)
+            m_on_solid_selection_changed(level, body, face, edge);
+    };
+}
+
+void DesignCanvas::set_on_empty_pick(std::function<void()> cb)
+{
+    m_sketch_tool.on_empty_pick = std::move(cb);
+}
+
+void DesignCanvas::select_body(int body)
+{
+    m_sketch_tool.select_body(body);
+    sync_selected_faces();
+    request_repaint();
+}
+
+void DesignCanvas::set_extrude_gizmo(const SketchPlane& plane, const Vec2d& centroid,
+                                     double depth, double depth2, bool two_sided, bool flip)
+{
+    m_sketch_tool.set_extrude_gizmo(plane, centroid, depth, depth2, two_sided, flip);
+    request_repaint();
+}
+
+void DesignCanvas::clear_extrude_gizmo()
+{
+    m_sketch_tool.clear_extrude_gizmo();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_extrude_depth_changed(std::function<void(double, bool)> cb)
+{
+    m_sketch_tool.on_extrude_depth_changed = std::move(cb);
+}
+
+void DesignCanvas::set_datum_gizmo(const SketchPlane& plane, double usize, double vsize,
+                                   const Vec3d& base_origin, const Vec3d& base_normal,
+                                   double offset, bool offset_on)
+{
+    m_sketch_tool.set_datum_gizmo(plane, usize, vsize, base_origin, base_normal, offset, offset_on);
+    request_repaint();
+}
+
+void DesignCanvas::clear_datum_gizmo()
+{
+    m_sketch_tool.clear_datum_gizmo();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_datum_size_changed(std::function<void(double, double)> cb)
+{
+    m_sketch_tool.on_datum_size_changed = std::move(cb);
+}
+
+void DesignCanvas::set_on_datum_offset_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_datum_offset_changed = std::move(cb);
+}
+
+void DesignCanvas::set_helix_gizmo(const SketchPlane& plane, double radius, double pitch,
+                                   double height, double taper, bool left_handed)
+{
+    m_sketch_tool.set_helix_gizmo(plane, radius, pitch, height, taper, left_handed);
+    request_repaint();
+}
+
+void DesignCanvas::clear_helix_gizmo()
+{
+    m_sketch_tool.clear_helix_gizmo();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_helix_changed(std::function<void(double, double, double)> cb)
+{
+    m_sketch_tool.on_helix_changed = std::move(cb);
+}
+
+void DesignCanvas::set_rib_gizmo(const SketchPlane& plane, const Vec2d& p0, const Vec2d& p1,
+                                 double thickness)
+{
+    m_sketch_tool.set_rib_gizmo(plane, p0, p1, thickness);
+    request_repaint();
+}
+
+void DesignCanvas::clear_rib_gizmo()
+{
+    m_sketch_tool.clear_rib_gizmo();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_rib_thickness_changed(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_rib_thickness_changed = std::move(cb);
+}
+
+void DesignCanvas::set_base_pick(std::vector<SketchPlane> planes, std::vector<int> bases,
+                                std::vector<std::string> labels)
+{
+    m_sketch_tool.set_base_pick(std::move(planes), std::move(bases), std::move(labels));
+    request_repaint();
+}
+
+void DesignCanvas::clear_base_pick()
+{
+    m_sketch_tool.clear_base_pick();
+    request_repaint();
+}
+
+void DesignCanvas::set_on_datum_base_picked(std::function<void(int)> cb)
+{
+    m_sketch_tool.on_datum_base_picked = std::move(cb);
+}
+
+void DesignCanvas::set_selected_base(std::function<int()> cb)
+{
+    m_sketch_tool.selected_base = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_exit(std::function<void()> cb)
+{
+    m_sketch_tool.on_exit = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_exit_refused(std::function<void()> cb)
+{
+    m_sketch_tool.on_exit_refused = std::move(cb);
+}
+
+void DesignCanvas::set_on_sketch_notice(std::function<void(const std::string&, bool)> cb)
+{
+    m_sketch_tool.on_notice = std::move(cb);
+}
+
+void DesignCanvas::set_on_context_menu(std::function<void(const wxPoint&)> cb)
+{
+    m_on_context_menu = std::move(cb);
+    if (!m_canvas_widget || m_ctx_bound)
+        return;
+    m_ctx_bound = true;
+    m_canvas_widget->Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent& e) {
+        m_ctx_press     = e.GetPosition();
+        m_ctx_travelled = false;
+        m_sketch_tool.drop_right_click();
+        e.Skip();
+    });
+    m_canvas_widget->Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+        if (e.RightIsDown()) {
+            const wxPoint d = e.GetPosition() - m_ctx_press;
+            if (std::max(std::abs(d.x), std::abs(d.y)) > kCadRightClickDriftPx) m_ctx_travelled = true;
+        }
+        e.Skip();
+    });
+    m_canvas_widget->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent& e) {
+        const wxPoint d  = e.GetPosition() - m_ctx_press;
+        const bool is_click = !m_ctx_travelled && std::max(std::abs(d.x), std::abs(d.y)) <= kCadRightClickDriftPx;
+        const bool terminated = is_click && m_canvas && m_sketch_tool.take_right_click(*m_canvas);
+        if (terminated)
+            m_canvas->set_as_dirty();
+        else if (m_on_context_menu && !inline_busy() && is_click) {
+            if (m_canvas && m_sketch_tool.select_at_screen(*m_canvas, m_ctx_press.x, m_ctx_press.y))
+                request_repaint();
+            m_on_context_menu(m_canvas_widget->ClientToScreen(m_ctx_press));
+            return;
+        }
+        e.Skip();
+    });
+}
+
+void DesignCanvas::set_display_sketches(std::vector<DesignSketchTool::DisplaySketch> ds)
+{
+    m_sketch_tool.set_display_sketches(std::move(ds));
+    request_repaint();
+}
+
+void DesignCanvas::set_datum_planes(std::vector<SketchPlane> planes, std::vector<Vec2d> sizes)
+{
+    m_sketch_tool.set_datum_planes(std::move(planes), std::move(sizes));
+    request_repaint();
+}
+
+void DesignCanvas::set_mate_connectors(std::vector<DesignSketchTool::MateConnectorGlyph> g)
+{
+    m_sketch_tool.set_mate_connectors(std::move(g));
+    request_repaint();
+}
+
+void DesignCanvas::set_mate_links(std::vector<std::pair<Vec3d, Vec3d>> l)
+{
+    m_sketch_tool.set_mate_links(std::move(l));
+    request_repaint();
+}
+
+bool DesignCanvas::toggle_planes()
+{
+    const bool on = m_sketch_tool.toggle_show_planes();
+    request_repaint();
+    return on;
+}
+
+bool DesignCanvas::toggle_axes()
+{
+    const bool on = m_sketch_tool.toggle_show_axes();
+    request_repaint();
+    return on;
+}
+
+void DesignCanvas::set_section_plane(bool on, double z, bool keep_upper)
+{
+    m_section_on = on;
+    if (on) { set_body_translucent(false); set_body_hidden(false); }
+    if (m_canvas) {
+        if (on) {
+            if (keep_upper) {
+                m_canvas->set_clipping_plane(0, ClippingPlane(Vec3d(0.0, 0.0, 1.0), -z));
+                m_canvas->set_clipping_plane(1, ClippingPlane(Vec3d(0.0, 0.0, 1.0), 1.0e5));
+            } else {
+                m_canvas->set_clipping_plane(0, ClippingPlane(Vec3d(0.0, 0.0, 1.0), 1.0e5));
+                m_canvas->set_clipping_plane(1, ClippingPlane(Vec3d(0.0, 0.0, 1.0), z));
+            }
+            m_canvas->set_use_clipping_planes(true);
+        } else {
+            m_canvas->set_use_clipping_planes(false);
+        }
+        m_canvas->set_as_dirty();
+    }
+    request_repaint();
+}
+
+double DesignCanvas::model_mid_z() const
+{
+    const BoundingBoxf3 bb = m_model.bounding_box_exact();
+    return bb.defined ? bb.center().z() : 0.0;
+}
+
+void DesignCanvas::set_readout(const std::string& text)
+{
+    if (text == m_hud_last) return;
+    m_hud_last = text;
+    if (m_canvas) m_canvas->set_as_dirty();
+}
+
+void DesignCanvas::set_status_text(const wxString& text, const wxColour& colour)
+{
+    if (text == m_status_hud_last && colour == m_status_hud_colour) return;
+    m_status_hud_last   = text;
+    m_status_hud_colour = colour;
+    request_repaint();
+}
+
+void DesignCanvas::render_hud()
+{
+    if (m_hud_last.empty() && m_status_hud_last.IsEmpty()) return;
+    ImGuiWrapper& imgui  = *wxGetApp().imgui();
+    const ImVec2  ds     = ImGui::GetIO().DisplaySize;
+    const float   em     = imgui.get_style_scaling();
+    const float   margin = 12.f * em;
+    const int     flags  = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                           ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
+                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav;
+    auto chip = [&](const char* id, const std::string& text, float x, float pivot_x, float wrap,
+                    const ImVec4* colour) {
+        ImGuiWrapper::push_common_window_style(m_canvas->get_scale());
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.f * em, 4.f * em));
+        imgui.set_next_window_pos(x, ds.y - margin, ImGuiCond_Always, pivot_x, 1.f);
+        imgui.begin(std::string(id), flags);
+        if (wrap > 0.f) ImGui::PushTextWrapPos(wrap);
+        if (colour) ImGui::PushStyleColor(ImGuiCol_Text, *colour);
+        ImGui::TextUnformatted(text.c_str());
+        if (colour) ImGui::PopStyleColor();
+        if (wrap > 0.f) ImGui::PopTextWrapPos();
+        imgui.end();
+        ImGui::PopStyleVar();
+        ImGuiWrapper::pop_common_window_style();
+    };
+    if (!m_status_hud_last.IsEmpty()) {
+        const float  left = m_canvas->get_canvas_toolbar_right() + margin;
+        const ImVec4 col  = m_status_hud_colour.IsOk()
+            ? ImVec4(m_status_hud_colour.Red() / 255.f, m_status_hud_colour.Green() / 255.f,
+                     m_status_hud_colour.Blue() / 255.f, 1.f)
+            : ImVec4();
+        chip("##design_status", m_status_hud_last.ToUTF8().data(), left, 0.f,
+             std::max(ds.x * 0.6f - left, 120.f * em), m_status_hud_colour.IsOk() ? &col : nullptr);
+    }
+    if (!m_hud_last.empty())
+        chip("##design_readout", m_hud_last, ds.x - margin, 1.f, 0.f, &ImGuiWrapper::COL_ORCA);
+}
+
+void DesignCanvas::set_highlight_faces(const std::vector<std::pair<int, int>>& faces)
+{
+    m_sketch_tool.set_highlight_faces(faces);
+    sync_selected_faces();
+    request_repaint();
+}
+
+void DesignCanvas::sync_selected_faces()
+{
+    if (m_split_pending)
+        return;
+    m_split_pending = true;
+    CallAfter([this] {
+        m_split_pending = false;
+        std::vector<std::pair<int, int>> want = m_sketch_tool.selected_faces();
+        if (want == m_lit_faces)
+            return;
+        m_lit_faces = std::move(want);
+        if (m_body_meshes == nullptr || m_model.objects.empty())
+            return;
+        rebuild_bodies();
+        reload();
+    });
+}
+
+void DesignCanvas::rebuild_bodies()
+{
+    ModelObject* obj = m_model.objects.empty() ? m_model.add_object() : m_model.objects.front();
+    obj->clear_volumes();
+    m_volumes.clear();
+    const std::vector<TriangleMesh>& meshes = *m_body_meshes;
+    size_t ntri = 0;
+    for (const TriangleMesh& m : meshes)
+        ntri += m.its.indices.size();
+    const bool mapped = m_tri_face != nullptr && m_tri_face->size() == ntri;
+    size_t off = 0;
+    for (int b = 0; b < int(meshes.size()); ++b) {
+        const TriangleMesh& mesh = meshes[b];
+        const auto first = std::lower_bound(m_lit_faces.begin(), m_lit_faces.end(), std::make_pair(b, INT_MIN));
+        const auto last  = std::lower_bound(first, m_lit_faces.end(), std::make_pair(b + 1, INT_MIN));
+        if (!mapped || first == last) {
+            obj->add_volume(mesh);
+            m_volumes.push_back({ b, false });
+        } else {
+            indexed_triangle_set parts[2];
+            for (size_t i = 0; i < mesh.its.indices.size(); ++i) {
+                const int  f   = (*m_tri_face)[off + i];
+                const bool lit = std::binary_search(first, last, std::make_pair(b, f));
+                parts[lit].indices.push_back(mesh.its.indices[i]);
+            }
+            for (int lit = 0; lit < 2; ++lit) {
+                if (parts[lit].indices.empty())
+                    continue;
+                parts[lit].vertices = mesh.its.vertices;
+                its_compactify_vertices(parts[lit]);
+                obj->add_volume(TriangleMesh(std::move(parts[lit])));
+                m_volumes.push_back({ b, lit == 1 });
+            }
+        }
+        off += mesh.its.indices.size();
+    }
+    if (obj->instances.empty())
+        obj->add_instance();
+}
+
+void DesignCanvas::set_operand_bodies(int target_body, int tool_body)
+{
+    if (m_hl_body_target == target_body && m_hl_body_tool == tool_body) return;
+    m_hl_body_target = target_body;
+    m_hl_body_tool   = tool_body;
+    reload();
+}
+
+void DesignCanvas::set_highlight_sketches(std::vector<std::pair<int, ColorRGBA>> hl)
+{
+    m_sketch_tool.set_highlight_sketches(std::move(hl));
+    request_repaint();
+}
+
+void DesignCanvas::set_body_translucent(bool on)
+{
+    if (m_body_translucent == on) return;
+    m_body_translucent = on;
+    reload();
+}
+
+void DesignCanvas::set_xray_focus(int body)
+{
+    if (m_xray_focus == body) return;
+    m_xray_focus = body;
+    m_sketch_tool.set_pick_only_body(body);
+    reload();
+}
+
+void DesignCanvas::set_body_hidden(bool on)
+{
+    if (m_body_hidden == on) return;
+    m_body_hidden = on;
+    m_sketch_tool.set_body_edges_hidden(on);
+    reload();
+}
+
+bool DesignCanvas::delete_selected_sketch_entities()
+{
+    if (m_sketch_tool.selection().empty()) return false;
+    m_sketch_tool.delete_selected();
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::inline_busy() const
+{
+    return m_sketch_tool.inline_busy()
+           || (m_inline_editor && m_inline_editor->is_open());
+}
+
+bool DesignCanvas::inline_has_focus() const
+{
+    return m_inline_editor && m_inline_editor->has_focus();
+}
+
+void DesignCanvas::inline_commit()
+{
+    if (m_inline_editor) m_inline_editor->commit();
+}
+
+void DesignCanvas::inline_cancel()
+{
+    if (m_inline_editor) m_inline_editor->cancel();
+}
+
+void DesignCanvas::request_sketch_exit()
+{
+    m_sketch_tool.request_exit();
+    request_repaint();
+}
+
+bool DesignCanvas::live_sketch_has_work() const
+{
+    return m_sketch_tool.live_sketch_has_work();
+}
+
+bool DesignCanvas::redo_last_sketch_entity()
+{
+    const bool did = m_sketch_tool.redo_last_entity();
+    if (did) request_repaint();
+    return did;
+}
+
+bool DesignCanvas::undo_last_sketch_entity()
+{
+    const bool did = m_sketch_tool.undo_last_entity();
+    if (did) request_repaint();
+    return did;
+}
+
+void DesignCanvas::clear_sketch_selection()
+{
+    m_sketch_tool.clear_selection();
+    request_repaint();
+}
+
+DesignSketchTool::DimType DesignCanvas::sketch_dimension_kind() const
+{
+    return m_sketch_tool.dimension_kind();
+}
+
+double DesignCanvas::sketch_dimension_current() const
+{
+    return m_sketch_tool.dimension_current();
+}
+
+void DesignCanvas::apply_sketch_dimension(double v)
+{
+    m_sketch_tool.apply_dimension(v);
+    request_repaint();
+}
+
+void DesignCanvas::open_inline_value(double current, std::function<void(double)> commit,
+                                     std::function<void()> cancel)
+{
+    if (!m_inline_editor || !m_canvas_widget) { if (cancel) cancel(); return; }
+    const wxSize  cs = m_canvas_widget->GetClientSize();
+    const double  sf = m_canvas_widget->GetContentScaleFactor();
+    wxPoint anchor(int(cs.GetWidth() * sf) / 2, int(cs.GetHeight() * sf) / 2);
+    m_sketch_tool.constrain_value_anchor(anchor);
+    m_sketch_tool.set_inline_busy(true);
+    m_canvas_widget->SetFocus();
+
+    m_inline_editor->open(anchor, current, "",
+        [this, commit](double v) {
+            m_sketch_tool.set_inline_busy(false);
+            if (commit) commit(v);
+            if (m_inline_editor && m_inline_editor->is_open()) m_sketch_tool.set_inline_busy(true);
+            request_repaint();
+        },
+        [this, cancel]() {
+            m_sketch_tool.set_inline_busy(false);
+            if (cancel) cancel();
+            request_repaint();
+        });
+}
+
+void DesignCanvas::set_on_dimension_pick_complete(std::function<void(double)> cb)
+{
+    m_sketch_tool.on_dimension_pick_complete = std::move(cb);
+}
+
+DesignSketchTool::DimType DesignCanvas::pending_dimension_type() const
+{
+    return m_sketch_tool.pending_dimension_type();
+}
+
+void DesignCanvas::set_sketch_dimension_value(double v)
+{
+    m_sketch_tool.set_dimension_value(v);
+    request_repaint();
+}
+
+void DesignCanvas::cancel_sketch_dimension()
+{
+    m_sketch_tool.cancel_dimension_value();
+    request_repaint();
+}
+
+void DesignCanvas::begin_constrain(const SketchProfile& prof, const SketchPlane& plane)
+{
+    m_sketch_tool.begin_constrain(prof, plane);
+    request_repaint();
+}
+
+void DesignCanvas::begin_imported_transform(
+        int feat, const std::vector<std::vector<std::vector<Vec2d>>>& base_regions,
+        const SketchPlane& plane, const Vec2d& offset, double scale_x, double scale_y)
+{
+    m_sketch_tool.begin_imported_transform(feat, base_regions, plane, offset, scale_x, scale_y);
+    request_repaint();
+}
+
+void DesignCanvas::set_on_imported_transform(std::function<void(int, Vec2d, double, double)> cb)
+{
+    m_sketch_tool.on_imported_transform = std::move(cb);
+}
+
+void DesignCanvas::end_constrain()
+{
+    m_sketch_tool.cancel();
+    request_repaint();
+}
+
+bool DesignCanvas::is_constraining() const { return m_sketch_tool.is_constraining(); }
+
+bool DesignCanvas::selected_segment(int& a, int& b) const
+{
+    return m_sketch_tool.selected_segment(a, b);
+}
+
+void DesignCanvas::update_constrain_profile(const std::vector<Vec2d>& pts)
+{
+    m_sketch_tool.set_profile_points(pts);
+    request_repaint();
+}
+
+void DesignCanvas::begin_constrain_entities(const std::vector<SketchEntity>& ents,
+                                            const SketchPlane& plane)
+{
+    m_sketch_tool.begin_constrain_entities(ents, plane);
+    request_repaint();
+}
+
+bool DesignCanvas::is_constraining_entities() const
+{
+    return m_sketch_tool.is_constraining_entities();
+}
+
+int DesignCanvas::sketch_selection_count() const
+{
+    return int(m_sketch_tool.selection().size());
+}
+
+bool DesignCanvas::view_normal_to_sketch()
+{
+    if (m_canvas == nullptr) return false;
+    const SketchPlane& pl = m_sketch_tool.plane();
+    Camera& cam = wxGetApp().plater()->get_camera();
+    const double dist = cam.get_distance();
+    cam.look_at(pl.origin + pl.normal * dist, pl.origin, pl.y_axis);
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::sketch_abort_gesture()
+{
+    if (!m_sketch_tool.abort_gesture()) return false;
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::sketch_confirm_pending()
+{
+    if (!m_sketch_tool.confirm_pending()) return false;
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::sketch_disarm_tool()
+{
+    if (!m_sketch_tool.disarm_tool()) return false;
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::drawing_in_progress() const
+{
+    return m_sketch_tool.gesture_pending();
+}
+
+bool DesignCanvas::has_any_selection() const
+{
+    return m_sketch_tool.has_solid_selection() || m_sketch_tool.sketch_has_selection()
+        || m_sketch_tool.display_pick() >= 0;
+}
+
+bool DesignCanvas::clear_any_selection()
+{
+    if (!has_any_selection()) return false;
+    m_sketch_tool.clear_selection();
+    m_sketch_tool.clear_solid_selection();
+    m_sketch_tool.clear_display_pick();
+    if (m_sketch_tool.on_solid_selection_changed)
+        m_sketch_tool.on_solid_selection_changed(0, -1, -1, -1);
+    request_repaint();
+    return true;
+}
+
+bool DesignCanvas::sketch_first_selected_type(SketchEntity::Type& out) const
+{
+    return m_sketch_tool.first_selected_type(out);
+}
+
+const std::vector<int>& DesignCanvas::sketch_selection() const
+{
+    return m_sketch_tool.selection();
+}
+
+const std::vector<SketchEntity>& DesignCanvas::sketch_entities() const
+{
+    return m_sketch_tool.entities();
+}
+
+int DesignCanvas::sketch_constraint_count() const
+{
+    return int(m_sketch_tool.constraints().size());
+}
+
+const std::vector<SketchEntityConstraintDef>& DesignCanvas::sketch_constraints() const
+{
+    return m_sketch_tool.constraints();
+}
+
+bool DesignCanvas::remove_sketch_constraint(int idx)
+{
+    const bool removed = m_sketch_tool.remove_constraint(idx);
+    if (removed) request_repaint();
+    return removed;
+}
+
+void DesignCanvas::set_on_sketch_constraints_changed(std::function<void()> cb)
+{
+    m_sketch_tool.on_constraints_changed = std::move(cb);
+}
+
+bool DesignCanvas::try_add_sketch_constraints(const std::vector<SketchEntityConstraintDef>& defs)
+{
+    return m_sketch_tool.try_add_constraints(defs);
+}
+
+bool DesignCanvas::selected_constrain_entities(int& e0, int& e1) const
+{
+    return m_sketch_tool.selected_constrain_entities(e0, e1);
+}
+
+int DesignCanvas::selected_constrain_axis() const
+{
+    return m_sketch_tool.pick2();
+}
+
+bool DesignCanvas::pick0_point(Vec2d& out) const
+{
+    return m_sketch_tool.pick0_point(out);
+}
+
+void DesignCanvas::update_constrain_entities(const std::vector<SketchEntity>& ents)
+{
+    m_sketch_tool.set_constrain_entities(ents);
+    request_repaint();
+}
+
+void DesignCanvas::set_constraint_highlight(std::vector<int> entities)
+{
+    m_sketch_tool.set_constraint_highlight(std::move(entities));
+    request_repaint();
+}
+
+void DesignCanvas::set_constraint_glyphs(std::vector<SketchEntityConstraintDef> cons)
+{
+    m_sketch_tool.set_constraint_glyphs(std::move(cons));
+    request_repaint();
+}
+
+}}

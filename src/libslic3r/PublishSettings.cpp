@@ -23,9 +23,6 @@ std::string publish_base_key(const std::string &key)
     return pos == std::string::npos ? key : key.substr(0, pos);
 }
 
-
-
-
 static int publish_variant_index(const std::string &key, const std::string &base_key)
 {
     if (key.size() <= base_key.size() || key.compare(0, base_key.size(), base_key) != 0 || key[base_key.size()] != '#')
@@ -50,8 +47,6 @@ std::string normalize_filament_type(const std::string& type)
         return type;
     if (MaterialType::find(type) != nullptr)
         return type;
-
-
     const size_t sep = type.find(' ');
     if (sep != std::string::npos) {
         const std::string base = type.substr(0, sep);
@@ -63,10 +58,6 @@ std::string normalize_filament_type(const std::string& type)
 
 void make_publish_universal(DynamicPrintConfig &config)
 {
-
-
-
-
     if (auto *opt = config.opt<ConfigOptionStrings>("compatible_printers", false))
         opt->values.clear();
     if (auto *opt = config.opt<ConfigOptionStrings>("compatible_prints", false))
@@ -89,9 +80,6 @@ std::string publish_material_base_name(const std::string &preset_name)
 
 const std::set<std::string>& publish_structural_keys()
 {
-
-
-
     static const std::set<std::string> structural_keys = {
         "printer_settings_id", "filament_settings_id", "print_settings_id",
         "sla_print_settings_id", "sla_material_settings_id",
@@ -110,9 +98,6 @@ const std::set<std::string>& publish_structural_keys()
 
 const std::set<std::string>& publish_mixed_keys()
 {
-
-
-
     static const std::set<std::string> mixed_keys = {
         "filament_is_mixed",
         "filament_mixed_components",
@@ -124,9 +109,6 @@ const std::set<std::string>& publish_mixed_keys()
     };
     return mixed_keys;
 }
-
-
-
 
 const std::vector<PublishablePrinterOption>& publishable_printer_retraction_options()
 {
@@ -145,8 +127,6 @@ const std::vector<PublishablePrinterOption>& publishable_printer_retraction_opti
     return options;
 }
 
-
-
 const std::vector<PublishablePrinterOption>& publishable_printer_z_hop_options()
 {
     static const std::vector<PublishablePrinterOption> options = {
@@ -162,8 +142,6 @@ const std::vector<PublishablePrinterOption>& publishable_printer_z_hop_options()
 
 const std::set<std::string>& publishable_printer_keys()
 {
-
-
     static const std::set<std::string> printer_keys = [] {
         std::set<std::string> keys;
         for (const PublishablePrinterOption &opt : publishable_printer_retraction_options())
@@ -178,8 +156,6 @@ const std::set<std::string>& publishable_printer_keys()
 std::vector<std::string> collect_dirty_settings_keys(const PresetBundle& bundle)
 {
     std::set<std::string> keys;
-
-
 
     for (const std::string& key : bundle.prints.current_dirty_options(true))
         keys.insert(key);
@@ -199,15 +175,8 @@ DynamicPrintConfig filter_published_config(
     DynamicPrintConfig filtered;
 
     std::set<std::string> base_keys_to_include;
-
-
     std::set<std::string>         mask_exempt_keys;
-
-
-
     std::map<std::string, std::set<int>> slot_mask_map;
-
-
 
     static const std::vector<std::string> s_material_identity_keys = {
         "filament_colour",
@@ -223,7 +192,6 @@ DynamicPrintConfig filter_published_config(
         mask_exempt_keys.insert(key);
     }
 
-
     static const std::vector<std::string> s_plate_geometry_keys = {
         "wipe_tower_x",
         "wipe_tower_y",
@@ -233,9 +201,6 @@ DynamicPrintConfig filter_published_config(
         base_keys_to_include.insert(key);
         mask_exempt_keys.insert(key);
     }
-
-
-
 
     const std::set<std::string> &printer_keys = publishable_printer_keys();
     for (const std::string &key : published_keys) {
@@ -253,9 +218,6 @@ DynamicPrintConfig filter_published_config(
             mask_exempt_keys.insert(base_key);
         }
     }
-
-
-
 
     for (const PublishedMaterialEntry &entry : material_keys) {
         for (const std::string &key : entry.keys) {
@@ -276,11 +238,6 @@ DynamicPrintConfig filter_published_config(
         }
     }
 
-
-
-
-
-
     auto can_mask_slots = [](const ConfigOption &opt, const ConfigOptionDef *def) -> bool {
         if (def == nullptr || !def->default_value || def->default_value->type() != opt.type())
             return false;
@@ -294,7 +251,6 @@ DynamicPrintConfig filter_published_config(
             if (keep_slots.count(static_cast<int>(idx)) == 0)
                 vec->set_at(def->default_value.get(), idx, 0);
     };
-
 
     for (const std::string &key : base_keys_to_include) {
         const ConfigOption *opt = full_config.option(key);

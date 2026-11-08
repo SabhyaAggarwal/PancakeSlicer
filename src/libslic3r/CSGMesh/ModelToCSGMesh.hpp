@@ -13,8 +13,6 @@
 
 namespace Slic3r { namespace csg {
 
-
-
 enum ModelParts {
     mpartsPositive = 1,
     mpartsNegative = 2,
@@ -26,7 +24,6 @@ template<class OutIt>
 bool model_to_csgmesh(const ModelObject &mo,
                       const Transform3d &trafo,
                       OutIt              out,
-
                       int                parts_to_include = mpartsPositive
                       )
 {
@@ -74,19 +71,6 @@ bool model_to_csgmesh(const ModelObject &mo,
             }
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     return has_splitable_volume;
 }

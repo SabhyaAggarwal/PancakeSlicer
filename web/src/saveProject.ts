@@ -8,7 +8,6 @@ import { waitForJob } from './flow/job';
 import { stampProjectProfiles } from './profiles/project';
 
 
-
 export async function projectBlob(s: State, task?: OperationTicket): Promise<Blob> {
   const request = await jobRequest(s, true);
   task?.signal.throwIfAborted();
@@ -24,12 +23,10 @@ export async function projectBlob(s: State, task?: OperationTicket): Promise<Blo
   return stampProjectProfiles(await response.blob(), s);
 }
 
-
 export async function saveProject(as = false) {
   const s = getState();
   if (!s.api || !s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return;
   if (s.api.mock) { toast('Saving a project requires the slicing service'); return; }
-
   const first = s.objects[0] ?? s.projectPlates.flatMap((p) => p.objects)[0];
   let name = s.projectName ?? (first.name.replace(/\.(stl|obj|3mf)$/i, '') + '.3mf');
   if (as) {
@@ -47,7 +44,6 @@ export async function saveProject(as = false) {
     a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(href), 60000);
     setState({ projectName: name });
-
     markSaved(snapshot(s));
     task.done();
     toast('Project download started');

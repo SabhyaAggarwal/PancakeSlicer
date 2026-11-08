@@ -24,8 +24,11 @@ const minQualityForHqContextModeling = 7
 
 const minQualityForHqBlockSplitting = 10
 
+/* For quality below MIN_QUALITY_FOR_BLOCK_SPLIT there is no block splitting,
+   so we buffer at most this much literals and commands. */
 const maxNumDelayedSymbols = 0x2FFF
 
+/* Returns hash-table size for quality levels 0 and 1. */
 func maxHashTableSize(quality int) uint {
 	if quality == fastOnePassCompressionQuality {
 		return 1 << 15
@@ -34,10 +37,12 @@ func maxHashTableSize(quality int) uint {
 	}
 }
 
+/* The maximum length for which the zopflification uses distinct distances. */
 const maxZopfliLenQuality10 = 150
 
 const maxZopfliLenQuality11 = 325
 
+/* Do not thoroughly search when a long copy is found. */
 const longCopyQuickStep = 16384
 
 func maxZopfliLen(params *encoderParams) uint {
@@ -48,6 +53,7 @@ func maxZopfliLen(params *encoderParams) uint {
 	}
 }
 
+/* Number of best candidates to evaluate to expand Zopfli chain. */
 func maxZopfliCandidates(params *encoderParams) uint {
 	if params.quality <= 10 {
 		return 1
@@ -77,6 +83,7 @@ func sanitizeParams(params *encoderParams) {
 	}
 }
 
+/* Returns optimized lg_block value. */
 func computeLgBlock(params *encoderParams) int {
 	var lgblock int = params.lgblock
 	if params.quality == fastOnePassCompressionQuality || params.quality == fastTwoPassCompressionQuality {
@@ -95,6 +102,11 @@ func computeLgBlock(params *encoderParams) int {
 	return lgblock
 }
 
+/* Returns log2 of the size of main ring buffer area.
+   Allocate at least lgwin + 1 bits for the ring buffer so that the newly
+   added block fits there completely and we still get lgwin bits and at least
+   read_block_size_bits + 1 bits because the copy tail length needs to be
+   smaller than ring-buffer size. */
 func computeRbBits(params *encoderParams) int {
 	return 1 + brotli_max_int(int(params.lgwin), params.lgblock)
 }
@@ -104,6 +116,12 @@ func maxMetablockSize(params *encoderParams) uint {
 	return uint(1) << uint(bits)
 }
 
+/* When searching for backward references and have not seen matches for a long
+   time, we can skip some match lookups. Unsuccessful match lookups are very
+   expensive and this kind of a heuristic speeds up compression quite a lot.
+   At first 8 byte strides are taken and every second byte is put to hasher.
+   After 4x more literals stride by 16 bytes, every put 4-th byte to hasher.
+   Applied only to qualities 2 to 9. */
 func literalSpreeLengthForSparseSearch(params *encoderParams) uint {
 	if params.quality < 9 {
 		return 64
@@ -157,7 +175,12 @@ func chooseHasher(params *encoderParams, hparams *hasherParams) {
 	}
 
 	if params.lgwin > 24 {
-
+		/* Different hashers for large window brotli: not for qualities <= 2,
+		   these are too fast for large window. Not for qualities >= 10: their
+		   hasher already works well with large window. So the changes are:
+		   H3 --> H35: for quality 3.
+		   H54 --> H55: for quality 4 with size hint > 1MB
+		   H6 --> H65: for qualities 5, 6, 7, 8, 9. */
 		if hparams.type_ == 3 {
 			hparams.type_ = 35
 		}

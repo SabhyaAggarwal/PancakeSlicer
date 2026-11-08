@@ -14,7 +14,6 @@ export interface DefaultProcess {
 
 const number = (v: Config[string] | undefined) => parseFloat(text(v));
 
-
 export function defaultProcesses(s: State): DefaultProcess[] {
   const machine = resolvePreset(s, 'machine', s.printer);
   const list = compatible(s, 'process', machine.base?.name ?? s.printer);

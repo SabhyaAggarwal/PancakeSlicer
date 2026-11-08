@@ -1,14 +1,13 @@
-
-
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { SystemPreset } from '../api/types';
 import { requestPreset } from '../components/PresetCombo';
 import { Glyph } from '../components/Glyph';
-import { getState, setState, toast, useStore } from '../state/store';
+import { getState, printerPreset, setState, toast, useStore } from '../state/store';
 import { savePreferences } from '../saved-preferences';
 import { catalogKey } from '../profiles/model';
 import { createProfileFromBase } from '../profiles/catalog';
-import { addCatalogFamily, useCatalog, type CatalogFamily } from '../profiles/catalog-add';
+import { addCatalogFamilies, useCatalog } from '../profiles/catalog-add';
+import { FIRST_SCREEN, loadedCatalog, PRINTER_CATALOG, printerCatalog, type CatalogFamily, type CatalogVendor } from '../profiles/catalog-reads';
 import { archiveProfiles } from '../profiles/transactions';
 import { profileKey } from '../profiles/identity';
 import { nozzleOf } from '../profiles/machines';
@@ -18,27 +17,18 @@ import { FacetGroup, FacetsHead } from '../components/Facets';
 import { Check } from '../components/Check';
 import { materialRank } from '../profiles/Pickers';
 import './setup.css';
+import { Sep } from '../separator';
 
 const send = setup.send;
 const VENDOR_NAMES: Record<string, string> = { BBL: 'Bambu Lab' };
 const vendorName = (id: string, name = id) => VENDOR_NAMES[id] ?? name;
 
-
 interface PrinterModel { id: string; vendor: string; vendorName: string; model: string; cover?: string; nozzles: number[]; machines: Record<string, string>; presets: SystemPreset[] }
 interface Choices { model: PrinterModel | null; nozzles: number[]; profiles: Set<string> | null; connection: ConnectionEdit | null; filaments: Set<string> | null; families: CatalogFamily[] }
 let choices: Choices = { model: null, nozzles: [], profiles: null, connection: null, filaments: null, families: [] };
 
-
-interface CatalogBody { vendors: { id: string; name: string; models: { id: string; name: string; cover?: string; nozzles: string[]; machines?: Record<string, string> }[] }[] }
-let catalogRead: Promise<PrinterModel[]> | null = null;
-function printerCatalog(): Promise<PrinterModel[]> {
-  return catalogRead ??= fetch('/api/printer-catalog').then((r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.json() as Promise<CatalogBody>; })
-    .then((b) => b.vendors.flatMap((v) => v.models.map((m) => ({ id: `${v.id}|${m.id}`, vendor: v.id, vendorName: vendorName(v.id, v.name), model: m.name, cover: m.cover,
-      nozzles: m.nozzles.map(Number).filter((n) => n > 0), machines: m.machines ?? {}, presets: [] }))))
-    .catch((e) => { catalogRead = null; throw e; });
-}
-
-
+const toModels = (vendors: CatalogVendor[]): PrinterModel[] => vendors.flatMap((v) => v.models.map((m) => ({ id: `${v.id}|${m.id}`, vendor: v.id,
+  vendorName: vendorName(v.id, v.name), model: m.name, cover: m.cover, nozzles: m.nozzles.map(Number).filter((n) => n > 0), machines: m.machines ?? {}, presets: [] })));
 async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPreset[]> {
   const mine = () => getState().machines.filter((p) => p.vendor === m.vendor && (p.model ? p.model === m.model : /^(.*?)\s+[\d.]+\s*nozzle$/i.exec(p.name)?.[1] === m.model));
   if (!nozzles.every((n) => mine().some((p) => Math.abs(nozzleOf(p) - n) < 1e-6))) {
@@ -53,20 +43,20 @@ async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPres
   return mine();
 }
 
-
 const STEPS = ['printer', 'profiles', 'connect', 'filaments'] as const;
-function Frame({ step, children, foot }: { step: string; children: ReactNode; foot: ReactNode }) {
+function Frame({ step, children, foot, title }: { step: string; children: ReactNode; foot?: ReactNode; title?: string }) {
   const at = STEPS.indexOf(step as (typeof STEPS)[number]);
   return (
     <div className="setup" role="dialog" aria-modal="true" aria-label="Setup">
-      <div className="setup-panel">
+      <div className={`setup-panel${step === 'welcome' ? ' setup-panel-welcome' : ''}`}>
         <header className="setup-head">
           <img src="/logo-48.png" width={24} height={24} alt="" />
+          {title && <h1 className="setup-title">{title}</h1>}
           {at >= 0 && <div className="setup-dots" aria-label={`Step ${at + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <span key={s} className={i <= at ? 'on' : ''} />)}</div>}
           <button type="button" className="icon-btn setup-close" aria-label="Close setup" onClick={() => send({ type: 'CLOSE' })}><Glyph name="close" /></button>
         </header>
         <div className="setup-body">{children}</div>
-        <footer className="setup-foot">{foot}</footer>
+        {foot && <footer className="setup-foot">{foot}</footer>}
       </div>
     </div>
   );
@@ -75,14 +65,20 @@ const Back = () => <button type="button" className="btn-ghost" onClick={() => se
 const Next = ({ disabled, label = 'Next', onClick }: { disabled?: boolean; label?: string; onClick?(): void }) =>
   <button type="button" className="btn-primary" disabled={disabled} onClick={onClick ?? (() => send({ type: 'NEXT' }))}>{label}</button>;
 
-
 function Welcome() {
-  return <Frame step="welcome" foot={<><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip to setup</button><span className="setup-grow" /><Next label="Take the tour" /></>}>
-    <div className="setup-hero"><img src="/logo-256.png" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
-  </Frame>;
+  const ready = useStore((s) => !!printerPreset(s));
+  return ready
+    ? <Frame step="welcome" title="Take a 1-minute tour?">
+      <div className="setup-welcome">
+        <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'CLOSE' })}>Not now</button><Next label="Start tour" /></div>
+      </div>
+    </Frame>
+    : <Frame step="welcome" title="Welcome to PancakeSlicer">
+      <div className="setup-welcome">
+        <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'NEXT' })}>Show me around</button><Next label="Set up printer" onClick={() => send({ type: 'SKIP' })} /></div>
+      </div>
+    </Frame>;
 }
-
-
 function Shot({ src, caption }: { src: string; caption: string }) {
   const [ratio, setRatio] = useState<number>();
   return <figure className="setup-shot">
@@ -95,7 +91,7 @@ const TOUR: { title: string; points: string[]; art: ReactNode }[] = [
   { title: 'One profile for every setup', points: [],
     art: <Shot src="/tour/dynamic.webp" caption="Everyday: formulas worked out for the nozzle and layer height" /> },
   { title: 'Curved tops', points: [],
-    art: <><Shot src="/tour/roof-flat.webp" caption="Flat layers · 0.20 mm" /><Shot src="/tour/roof-curved.webp" caption="Curved tops · 0.20 mm" /></> },
+    art: <><Shot src="/tour/roof-flat.webp" caption="Flat layers | 0.20 mm" /><Shot src="/tour/roof-curved.webp" caption="Curved tops | 0.20 mm" /></> },
   { title: 'Your workflow', points: [],
     art: <Shot src="/tour/workflow.webp" caption="Projects, on any device" /> },
 ];
@@ -110,11 +106,10 @@ function Tour({ page }: { page: number }) {
   </Frame>;
 }
 
-
 function Printer() {
-  const [models, setModels] = useState<PrinterModel[] | null>(null);
+  const [models, setModels] = useState<PrinterModel[] | null>(() => { const c = loadedCatalog<{ vendors: CatalogVendor[] }>(PRINTER_CATALOG); return c ? toModels(c.vendors) : null; });
   const [failed, setFailed] = useState<string | null>(null);
-  useEffect(() => { void printerCatalog().then(setModels, (e) => setFailed(e instanceof Error ? e.message : String(e))); }, []);
+  useEffect(() => { if (!models) void printerCatalog().then((v) => setModels(toModels(v)), (e) => setFailed(e instanceof Error ? e.message : String(e))); }, []);
   const vendors = useMemo(() => [...new Map((models ?? []).map((m) => [m.vendor, m.vendorName])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [models]);
   const [vendor, setVendor] = useState<string | null>(choices.model?.vendor ?? 'BBL');
   const [search, setSearch] = useState('');
@@ -133,15 +128,15 @@ function Printer() {
     finally { setBusy(false); }
   };
   return <Frame step="printer" foot={<><Back /><span className="setup-grow" />{failed && <span className="setup-test bad">{failed}</span>}
-    {model && <span className="setup-count">{model.model} · {nozzles.join(', ')} mm</span>}<Next label={busy ? 'Loading…' : 'Next'} disabled={!model || !nozzles.length || busy} onClick={() => void next()} /></>}>
+    {model && <span className="setup-count">{model.model}<Sep/>{nozzles.join(', ')} mm</span>}<Next label={busy ? 'Loading…' : 'Next'} disabled={!model || !nozzles.length || busy} onClick={() => void next()} /></>}>
     <h2>Your printer</h2>
     <input className="text setup-search" type="search" placeholder="Search printers" aria-label="Search printers" value={search} onChange={(e) => setSearch(e.target.value)} />
     <div className="setup-printer">
       {!q && <div className="setup-brands" role="tablist" aria-label="Brand">{vendors.map(([id, name]) =>
         <button key={id} type="button" role="tab" aria-selected={id === vendor} className="setup-brand" onClick={() => setVendor(id)}>{name}</button>)}</div>}
-      <div className="setup-models">{!models && !failed && <span className="setup-count">Loading printers…</span>}{shown.map((m) => (
+      <div className="setup-models">{!models && !failed && <span className="setup-count">Loading printers…</span>}{shown.map((m, i) => (
         <button key={m.id} type="button" className="setup-model" aria-pressed={model?.id === m.id} onClick={() => pick(m)}>
-          {m.cover ? <img src={m.cover} alt="" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} /> : <span className="setup-model-blank" />}
+          {m.cover ? <img src={m.cover} alt="" loading={i < FIRST_SCREEN ? 'eager' : 'lazy'} onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} /> : <span className="setup-model-blank" />}
           <span>{q ? `${m.vendorName} ` : ''}{m.model}</span>
         </button>
       ))}</div>
@@ -150,7 +145,6 @@ function Printer() {
       <button key={n} type="button" className="setup-chip" aria-pressed={nozzles.includes(n)} onClick={() => toggle(n)}>{n} mm</button>)}</div></div>}
   </Frame>;
 }
-
 
 function Profiles() {
   const users = useStore((s) => s.userPresets);
@@ -164,7 +158,6 @@ function Profiles() {
       <label key={k} className="setup-check"><input type="checkbox" checked={on.has(k)} onChange={() => flip(k)} /><span>{p.name}</span></label>); })}</div>
   </Frame>;
 }
-
 
 const KINDS: [ConnectionKind, string][] = [['bambu-lan', 'Bambu LAN'], ['moonraker', 'Moonraker'], ['octoprint', 'OctoPrint']];
 function Connect() {
@@ -200,17 +193,13 @@ function Connect() {
     </div>
     <div className="setup-row">
       <button type="button" className="btn" disabled={!filled || test === 'testing'} onClick={() => void runTest()}>{test === 'testing' ? 'Testing…' : 'Test'}</button>
-      {test && test !== 'testing' && <span className={`setup-test ${test.ok ? 'ok' : 'bad'}`} role="status">{test.ok ? `Connected${test.model ? ` · ${test.model}` : ''}` : test.message}</span>}
+      {test && test !== 'testing' && <span className={`setup-test ${test.ok ? 'ok' : 'bad'}`} role="status">{test.ok ? <>Connected{test.model && <><Sep/>{test.model}</>}</> : test.message}</span>}
     </div>
   </Frame>;
 }
 
-
 interface FilamentRow { key: string; name: string; brand: string; material: string; tuned: boolean; family: CatalogFamily }
-
 const baseMaterial = (m: string) => { const b = m.toUpperCase().split(/[-+ ]/)[0].replace(/\d+$/, ''); return b || m; };
-
-
 function Filaments({ error }: { error: string | null }) {
   const model = choices.model;
   const machine = model ? (model.machines[String(choices.nozzles[0])] ?? Object.entries(model.machines).find(([k]) => Number(k) === choices.nozzles[0])?.[1] ?? '') : '';
@@ -227,8 +216,6 @@ function Filaments({ error }: { error: string | null }) {
   const [materials, setMaterials] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
-
-
   const [on, setOn] = useState<Set<string> | null>(choices.filaments);
   useEffect(() => {
     if (!rows.length || on) return;
@@ -246,7 +233,6 @@ function Filaments({ error }: { error: string | null }) {
   const picked = shown.filter((r) => chosen.has(r.key)).length;
   const setMany = (keys: string[], value: boolean) => setOn((s) => { const n = new Set(s); keys.forEach((k) => value ? n.add(k) : n.delete(k)); return n; });
   const apply = () => { choices = { ...choices, filaments: chosen, families: rows.filter((r) => chosen.has(r.key))
-
     .sort((a, b) => materialRank(baseMaterial(a.material)) - materialRank(baseMaterial(b.material))).map((r) => r.family) }; send({ type: 'APPLY' }); void applyChoices(); };
   const active = brands.length + materials.length;
   const item = (r: FilamentRow) => <label key={r.key} className="setup-check"><Check checked={chosen.has(r.key)} onCheckedChange={(v) => setMany([r.key], v)} /><span>{r.name}</span><span className="setup-n">{r.material}</span></label>;
@@ -254,7 +240,6 @@ function Filaments({ error }: { error: string | null }) {
   return <Frame step="filaments" foot={<><Back /><span className="setup-grow" />{(error ?? readError) && <span className="setup-test bad">{error ?? readError}</span>}<span className="setup-count">{chosen.size} selected</span><Next label="Done" disabled={!chosen.size} onClick={apply} /></>}>
     <h2>Your filaments</h2>
     <div className={`setup-filaments${filtersOpen ? ' filters-open' : ''}`}>
-      {                                                                                              }
       <aside className="facets setup-facets" aria-label="Filters">
         <FacetsHead active={active} onClear={() => { setBrands([]); setMaterials([]); }} />
         <FacetGroup label="Brand" options={brandOptions} value={brands} onChange={setBrands} />
@@ -263,10 +248,9 @@ function Filaments({ error }: { error: string | null }) {
       </aside>
       <section className="setup-results" aria-label="Filaments">
         <div className="setup-results-tools">
-          <button type="button" className="btn setup-filters-btn" onClick={() => setFiltersOpen(true)}><Glyph name="filter" />{active ? `Filters · ${active}` : 'Filters'}</button>
+          <button type="button" className="btn setup-filters-btn" onClick={() => setFiltersOpen(true)}><Glyph name="filter" />{active ? `Filters (${active})` : 'Filters'}</button>
           <input className="text setup-search" type="search" placeholder="Search filaments" aria-label="Search filaments" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        {                                                                      }
         <label className="setup-check setup-all"><Check checked={picked === 0 ? false : picked === shown.length ? true : 'indeterminate'} disabled={!shown.length}
           onCheckedChange={() => setMany(shown.map((r) => r.key), picked < shown.length)} /><span>Select all shown</span><span className="setup-n">{shown.length}</span></label>
         <div className="setup-grid">{shown.filter((r) => r.tuned).map(item)}
@@ -276,7 +260,6 @@ function Filaments({ error }: { error: string | null }) {
     </div>
   </Frame>;
 }
-
 
 async function applyChoices() {
   try {
@@ -294,15 +277,13 @@ async function applyChoices() {
       const drop = profiles ? live.filter((p) => !profiles.has(profileKey(p))).map((p) => profileKey(p)) : [];
       const keep = (profiles && [...profiles][0]) ?? live.map((p) => profileKey(p))[0];
       const current = s.userPresets.find((p) => p.type === 'process' && (p.name === s.process || profileKey(p) === s.process));
-
       if (keep && (!current || drop.includes(profileKey(current)))) requestPreset('process', 0, keep);
       if (drop.length) await archiveProfiles('process', drop);
     }
     if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Connection not saved: ${e instanceof Error ? e.message : e}`));
-
-    let firstFilament: string | null = null;
-    for (const family of choices.families) firstFilament ??= await addCatalogFamily(family);
-    if (firstFilament) requestPreset('filament', 0, firstFilament);
+    const added = choices.families.length ? await addCatalogFamilies(choices.families.map((family) => ({ family }))) : undefined;
+    const first = added?.chosen[0];
+    if (first) requestPreset('filament', 0, first);
     send({ type: 'APPLIED' });
   } catch (e) { send({ type: 'FAILED', error: e instanceof Error ? e.message : String(e) }); }
 }
@@ -316,8 +297,6 @@ function Done() {
 
 export default function Setup() {
   const { value, context } = useSetup();
-
-
   useEffect(() => {
     if (value === 'closed') return;
     const before = document.activeElement as HTMLElement | null;
@@ -337,14 +316,12 @@ export default function Setup() {
     document.addEventListener('keydown', trap, true);
     return () => { document.removeEventListener('keydown', trap, true); behind.forEach((el) => { el.inert = false; }); before?.focus?.(); };
   }, [value === 'closed']);
-
   useEffect(() => {
     if (value === 'closed') return;
     const root = document.querySelector<HTMLElement>('.setup');
     const visible = (el: HTMLElement) => el.offsetParent !== null;
     ([...(root?.querySelectorAll<HTMLElement>('.setup-body input, .setup-body button') ?? [])].find(visible) ?? root?.querySelector<HTMLElement>('.setup-foot .btn-primary'))?.focus();
   }, [value, context.page]);
-
   useEffect(() => {
     if (value === 'closed') return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && value !== 'applying') send({ type: 'CLOSE' }); };

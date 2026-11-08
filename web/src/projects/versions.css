@@ -15,7 +15,7 @@
 :where(.orca-parity) .vh-item { position: relative; }
 :where(.orca-parity) .vh-row { width: 100%; height: 36px; display: flex; align-items: center; gap: var(--s-3); padding: 0 40px 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2); text-align: left; font: var(--t-body); font-variant-numeric: tabular-nums; cursor: pointer; }
 :where(.orca-parity) .vh-item:hover .vh-row { background: var(--surface); }
-:where(.orca-parity) .vh-row[aria-selected=true] { background: var(--accent-tint); }
+:where(.orca-parity) .vh-row[aria-selected=true] { background: var(--selection-fill); }
 :where(.orca-parity) .vh-row:is([aria-selected=true], [data-current]) { color: var(--ink); }
 :where(.orca-parity) .vh-row[aria-busy=true] { opacity: .7; cursor: progress; }
 :where(.orca-parity) .vh-time { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

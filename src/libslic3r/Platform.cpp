@@ -37,24 +37,19 @@ void detect_platform()
             if (type == CPU_TYPE_X86) {
                 int proc_translated = 0;
                 size                = sizeof(proc_translated);
-
                 if (sysctlbyname("sysctl.proc_translated", &proc_translated, &size, NULL, 0) == -1) {
                     if (errno == ENOENT) {
-
                         s_platform_flavor = PlatformFlavor::OSXOnX86;
                         BOOST_LOG_TRIVIAL(info) << "Platform flavor: OSXOnX86";
                     }
                 } else if (proc_translated == 1) {
-
                     s_platform_flavor = PlatformFlavor::OSXOnArm;
                     BOOST_LOG_TRIVIAL(info) << "Platform flavor: OSXOnArm";
                 } else {
-
                     s_platform_flavor = PlatformFlavor::OSXOnX86;
                     BOOST_LOG_TRIVIAL(info) << "Platform flavor: OSXOnX86";
                 }
             } else if (type == CPU_TYPE_ARM) {
-
                 s_platform_flavor = PlatformFlavor::OSXOnArm;
                 BOOST_LOG_TRIVIAL(info) << "Platform flavor: OSXOnArm";
             }
@@ -64,12 +59,10 @@ void detect_platform()
     BOOST_LOG_TRIVIAL(info) << "Platform: Linux";
 	s_platform 		  = Platform::Linux;
 	s_platform_flavor = PlatformFlavor::GenericLinux;
-
 	{
 		FILE *f = ::fopen("/proc/version", "rt");
 		if (f) {
 			char buf[4096];
-
 			if (::fgets(buf, 4096, f)) {
 				if (strstr(buf, "Chromium OS") != nullptr) {
 					s_platform_flavor = PlatformFlavor::LinuxOnChromium;
@@ -92,7 +85,6 @@ void detect_platform()
 	s_platform 		  = Platform::BSDUnix;
 	s_platform_flavor = PlatformFlavor::OpenBSD;
 #else
-
     BOOST_LOG_TRIVIAL(info) << "Platform: Unknown";
 	static_assert(false, "Unknown platform detected");
 	s_platform 		  = Platform::Unknown;

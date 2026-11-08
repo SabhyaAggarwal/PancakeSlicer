@@ -124,7 +124,6 @@ func (p *PrinterConfig) validate(resources string) error {
 			}
 		}
 	case "bambu-connect":
-
 		if p.URL != "" || p.Host != "" || p.TLS != "" {
 			return errors.New("Bambu Connect takes no address")
 		}
@@ -232,7 +231,6 @@ func (p *PrinterConfig) tlsConfig(serverName string) *tls.Config {
 			return nil
 		}
 	case "tofu":
-
 		c.InsecureSkipVerify = true
 		c.VerifyConnection = func(cs tls.ConnectionState) error {
 			if len(cs.PeerCertificates) == 0 {
@@ -291,6 +289,10 @@ type Transfer struct {
 	Total    int64         `json:"total"`
 	Message  string        `json:"message,omitempty"`
 	Error    string        `json:"error,omitempty"`
+	Outcome  string        `json:"outcome,omitempty"`
+	Reason   string        `json:"reason,omitempty"`
+	Recovery string        `json:"recovery,omitempty"`
+	JobEnd   string        `json:"job_end,omitempty"`
 	Started  time.Time     `json:"started"`
 	Finished *time.Time    `json:"finished,omitempty"`
 
@@ -328,14 +330,14 @@ func (t *Transfer) to(next TransferState) bool {
 func (t *Transfer) active() bool { return t.State == TransferUploading || t.State == TransferStarting }
 
 type SendManager struct {
-	store *printerStore
-	mu    sync.Mutex
-	conns []*PrinterConfig
-	busy  map[string]bool
-	live  map[string]*Job
-	cards map[string]string
-
+	store   *printerStore
+	mu      sync.Mutex
+	conns   []*PrinterConfig
+	busy    map[string]bool
+	live    map[string]*Job
+	cards   map[string]string
 	buckets map[string]tokenBucket
+	cameras *cameraHub
 	hub     *statusHub
 	history *sendHistory
 }
@@ -346,6 +348,7 @@ const sendRate = 0.1
 func NewSendManager(store *printerStore) *SendManager {
 	m := &SendManager{store: store, busy: map[string]bool{}, live: map[string]*Job{}, cards: map[string]string{}, buckets: map[string]tokenBucket{}}
 	m.hub = newStatusHub(m)
+	m.cameras = &cameraHub{feeds: map[string]*cameraFeed{}}
 	if store != nil {
 		m.conns = store.printers
 		for _, p := range m.conns {
@@ -461,17 +464,16 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Printer       string `json:"printer"`
-		Start         *bool  `json:"start"`
-		Filename      string `json:"filename"`
-		BedLeveling   *bool  `json:"bed_leveling"`
-		FlowCali      bool   `json:"flow_cali"`
-		Timelapse     bool   `json:"timelapse"`
-		VibrationCali *bool  `json:"vibration_cali"`
-		UseAMS        bool   `json:"use_ams"`
-
-		AMSMapping  []int              `json:"ams_mapping"`
-		AMSMapping2 []bambuTrayAddress `json:"ams_mapping_2"`
+		Printer       string             `json:"printer"`
+		Start         *bool              `json:"start"`
+		Filename      string             `json:"filename"`
+		BedLeveling   *bool              `json:"bed_leveling"`
+		FlowCali      bool               `json:"flow_cali"`
+		Timelapse     bool               `json:"timelapse"`
+		VibrationCali *bool              `json:"vibration_cali"`
+		UseAMS        bool               `json:"use_ams"`
+		AMSMapping    []int              `json:"ams_mapping"`
+		AMSMapping2   []bambuTrayAddress `json:"ams_mapping_2"`
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil {
@@ -555,11 +557,9 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this job is already being sent")
 		return
 	}
-
 	card := p.Printer + "\x00" + filename
 	resend := m.cards[card] == j.ID
 	delete(m.cards, card)
-
 	base, stopTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
 	ctx, cancel := context.WithCancelCause(base)
 	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: TransferUploading,
@@ -574,7 +574,6 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	m.hub.changed()
 	audit(map[string]any{"event": "send_accepted", "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": start, "bytes": st.Size()})
 	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, flowCali: body.FlowCali, timelapse: body.Timelapse, vibrationCali: body.VibrationCali == nil || *body.VibrationCali, useAMS: body.UseAMS, amsMapping: body.AMSMapping, amsMapping2: body.AMSMapping2}
-
 	if body.AMSMapping != nil {
 		options.useAMS = false
 		for _, t := range body.AMSMapping {
@@ -596,18 +595,18 @@ const sendTimeout = 30 * time.Minute
 const sendStall = 30 * time.Second
 
 type upload struct {
-	printer  *PrinterConfig
-	secret   string
-	filename string
-	file     *os.File
-	size     int64
-	start    bool
-	progress *atomic.Int64
-	starting func()
-	stored   func()
-	options  bambuOptions
-
+	printer        *PrinterConfig
+	secret         string
+	filename       string
+	file           *os.File
+	size           int64
+	start          bool
+	progress       *atomic.Int64
+	starting       func()
+	stored         func()
+	options        bambuOptions
 	resend, onCard bool
+	outcome        string
 }
 
 func (u *upload) placed() string {
@@ -641,6 +640,11 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	secret, err := p.secret()
 	u.secret = secret
 	if err == nil {
+		if status, ok := m.hub.current(p.Printer); t.Start && ok && status.Online && (status.State == "printing" || status.State == "paused" || status.State == "busy") {
+			err = &connError{"busy", "the printer is " + status.State + "; wait for its current job to finish"}
+		}
+	}
+	if err == nil {
 		switch p.Kind {
 		case "bambu-lan":
 			message, err = sendBambu(ctx, u)
@@ -665,13 +669,22 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	t.Finished = &finished
 	switch {
 	case cancelled:
+		t.Outcome = "failed"
 		t.Error = map[bool]string{true: "Cancelled after the file reached the printer; check the printer before printing it", false: "Cancelled; the file did not reach the printer"}[t.State == TransferStarting]
 		t.to(TransferCancelled)
 	case err != nil:
 		t.Error = redact(err.Error(), u.secret)
+		t.Outcome = "failed"
+		t.Reason, t.Recovery = sendFailure(err)
 		t.to(TransferFailed)
 	default:
 		t.Message = redact(message, u.secret)
+		t.Outcome = u.outcome
+		if !t.Start {
+			t.Outcome = "uploaded"
+		} else if t.Outcome == "" {
+			t.Outcome = "printing"
+		}
 		t.to(TransferDone)
 	}
 	view := *t
@@ -682,8 +695,34 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	delete(m.live, p.Printer)
 	m.mu.Unlock()
 	m.history.record(view)
+	if current, ok := m.hub.current(p.Printer); ok {
+		m.history.confirmStarted(current)
+	}
 	m.hub.changed()
 	audit(map[string]any{"event": "send_" + string(view.State), "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": t.Start, "bytes": view.Sent, "on_card": u.onCard, "duration_ms": time.Since(began).Milliseconds(), "error": view.Error})
+}
+
+func sendFailure(err error) (string, string) {
+	var conn *connError
+	stage := ""
+	if errors.As(err, &conn) {
+		stage = conn.stage
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case stage == "access_code" || strings.Contains(text, "access code") || strings.Contains(text, "api key") || strings.Contains(text, "password") || strings.Contains(text, "401") || strings.Contains(text, "403"):
+		return "credentials", "Check the access code or API key in Connection settings, then retry."
+	case strings.Contains(text, "developer mode"):
+		return "developer_mode", "Turn on LAN-only mode and Developer Mode on the printer's screen, then retry."
+	case stage == "busy" || strings.Contains(text, "busy") || strings.Contains(text, "in use") || strings.Contains(text, "409"):
+		return "busy", "Wait for the current print to finish, or upload only and start it later."
+	case strings.Contains(text, "sd card") || strings.Contains(text, "storage") || strings.Contains(text, "no space") || strings.Contains(text, " 452") || strings.Contains(text, " 552"):
+		return "storage", "Insert or free space on the printer's SD card, then retry."
+	case strings.Contains(text, "in time") || strings.Contains(text, "timed out") || strings.Contains(text, "stopped accepting data"):
+		return "timeout", "Check that the printer is on and on the same network, then retry."
+	default:
+		return "connection", "Check the printer and its Connection settings, then retry."
+	}
 }
 
 func (m *SendManager) activeTransfers() []Transfer {

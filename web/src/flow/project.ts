@@ -1,5 +1,3 @@
-
-
 import { openingBusy } from '../state/busy';
 import { useSyncExternalStore } from 'react';
 import { clearPlate } from '../actions';
@@ -7,7 +5,7 @@ import { clearPlateJobs } from '../plater/plates';
 import { newKey, projectStore, projectStorageError, type ProjectMeta, type ProjectStore } from '../persist/backend';
 import type { ProjectDraftMeta } from '../persist/drafts';
 import type { DraftCheckpoint, DraftDurability, ProjectFailure } from './project-recovery';
-import { documentGeneration, leaveDocument, newDocument, onLeaveDocument, snapshot, subscribeHistory, type Doc } from '../state/history';
+import { documentGeneration, leaveDocument, newDocument, onLeaveDocument, sameContents, snapshot, subscribeHistory, type Doc } from '../state/history';
 import { getState, setState, subscribeStore, toast } from '../state/store';
 import { assertNever, createMachine, useMachine, type Machine, type Snapshot } from './fsm';
 import { currentRoute, writeRoute } from './routes';
@@ -15,13 +13,12 @@ import type { createDraftJournal } from './project-journal';
 import { importing } from './import';
 import { writesDiscarded } from '../api/access';
 import { versionShown, versionView, versionWanted } from './version-view';
-import { followProjectLease, leaseRefused, leaseSettled, leaseWritable } from './project-lease';
+import { acquireLease, followProjectLease, leaseRefused, leaseSettled, leaseWritable } from './project-lease';
 
 export type { ProjectMeta } from '../persist/backend';
 export { newProject } from '../actions';
 export type ProjectStateName = 'blank' | 'opening' | 'editing' | 'saving' | 'saved' | 'failed' | 'conflict' | 'deleted' | 'missing';
 export interface ProjectContext {
-
   id: string;
   name: string;
   savedAt: number;
@@ -32,16 +29,17 @@ export interface ProjectContext {
   origin: 'new' | 'loaded' | 'saved';
   failure: ProjectFailure | null;
   draft: DraftDurability;
+  loaded: { revision: number; objects: number } | null;
+  allowEmpty: boolean;
 }
 export type ProjectEvent =
   | { type: 'EDIT' } | { type: 'FLUSH' } | { type: 'RETRY' } | { type: 'BLANK' } | { type: 'OPEN' }
-  | { type: 'SAVED'; id: string; name: string; savedAt: number; revision: number; checkpoint?: DraftCheckpoint }
+  | { type: 'SAVED'; id: string; name: string; savedAt: number; revision: number; objects?: number; checkpoint?: DraftCheckpoint }
   | { type: 'ERROR'; error: string; failure?: ProjectFailure }
   | { type: 'DRAFT'; id: string; durability: Exclude<DraftDurability, { state: 'none' }> }
-  | { type: 'RECOVERED'; meta: ProjectMeta; draft: ProjectDraftMeta; failure: ProjectFailure }
+  | { type: 'RECOVERED'; meta: ProjectMeta; draft: ProjectDraftMeta; failure: ProjectFailure; baseObjects: number }
   | { type: 'OPENED'; meta: ProjectMeta } | { type: 'MISSING'; id: string } | { type: 'DELETED' }
-  | { type: 'REBASE'; revision: number } | { type: 'REMOTE' };
-
+  | { type: 'REBASE'; revision: number } | { type: 'REMOTE' } | { type: 'EMPTIED' };
 let recoveryCore: typeof import('./project-recovery');
 const projectFailure = (...args: Parameters<typeof recoveryCore.projectFailure>) => recoveryCore.projectFailure(...args);
 const conflictFailure = (...args: Parameters<typeof recoveryCore.conflictFailure>) => recoveryCore.conflictFailure(...args);
@@ -60,18 +58,24 @@ let opening = 0;
 let adopting = false;
 let routing = false;
 let previous: string | null = null;
-
-
-
 let leaving = false;
 const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)[]).every((k) => k === 'selected' || a[k] === b[k]);
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
-const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' } });
+const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' },
+  loaded: { revision: 0, objects: 0 }, allowEmpty: false });
+const objectCount = (d: Doc) => d.objects.length + d.projectPlates.filter((p) => p.index !== d.plateIndex).reduce((n, p) => n + p.objects.length, 0);
 const activeWrite = (id: string, gen: number, version: number) =>
   id === project.get().context.id && gen === documentGeneration() && version === epoch;
 
 const draftStorage = async () => (await import('../persist/drafts')).projectDraftStore();
 const session = { owner: newKey(), previousOwners: [] as readonly string[] };
+let leaseFor: string | null = null;
+async function leaseForSave(): Promise<boolean> {
+  const { id, revision } = project.get().context;
+  if (revision <= 0 || !id) return true;
+  leaseFor = id;
+  return acquireLease(id);
+}
 const journalTools = () => import('./project-journal');
 let draftActivity: typeof import('../persist/drafts') | null = null;
 let journal: ReturnType<typeof createDraftJournal<Doc>>;
@@ -89,8 +93,6 @@ async function readProjectDrafts(): Promise<ProjectDraftInventory> {
   if (mine === draftListToken) draftListeners.forEach((listener) => listener());
   return draftInventory;
 }
-
-
 let draftRead: Promise<ProjectDraftInventory> | null = null, draftReadNext: Promise<ProjectDraftInventory> | null = null;
 export function refreshProjectDrafts(): Promise<ProjectDraftInventory> {
   if (!draftRead) {
@@ -99,7 +101,6 @@ export function refreshProjectDrafts(): Promise<ProjectDraftInventory> {
   }
   return draftReadNext ??= draftRead.catch(() => {}).then(() => { draftReadNext = null; return refreshProjectDrafts(); });
 }
-
 function checkpointProject(document = snapshot(), id = project.get().context.id, revision = project.get().context.revision,
   failure = project.get().context.failure) {
   if (project.get().context.draft.state !== 'failed' && captured?.id === id && captured.revision === revision && captured.failure === failure && sameDoc(captured.document, document)) return captured.receipt;
@@ -107,7 +108,6 @@ function checkpointProject(document = snapshot(), id = project.get().context.id,
   captured = { id, document, revision, failure, receipt };
   project.send({ type: 'DRAFT', id, durability: { state: 'pending', checkpoint: receipt.checkpoint } });
   void receipt.durable.then((draft) => {
-
     if (activeWrite(id, gen, version) && project.get().value !== 'saved') project.send({ type: 'DRAFT', id, durability: { state: 'durable', checkpoint: receipt.checkpoint, updatedAt: draft.updatedAt } });
     void refreshProjectDrafts();
   }, (error: unknown) => {
@@ -115,8 +115,6 @@ function checkpointProject(document = snapshot(), id = project.get().context.id,
   });
   return receipt;
 }
-
-
 const UNSAVED = 'unsavedProject';
 export function writeProjectRoute(replace = false) {
   const { id, savedAt } = project.get().context;
@@ -124,8 +122,6 @@ export function writeProjectRoute(replace = false) {
   writeRoute('/', replace);
   if (hasUnsavedProject()) history.replaceState({ ...history.state, [UNSAVED]: id }, '');
 }
-
-
 let retryDelay = 1000, retries = 0, retryTimer: ReturnType<typeof setTimeout> | undefined;
 function retryUnavailable() {
   const { value, context } = project.get();
@@ -139,7 +135,6 @@ function retryUnavailable() {
   retryTimer = setTimeout(again, retryDelay); window.addEventListener('online', again);
   retryDelay = Math.min(retryDelay * 2, 10_000);
 }
-
 function routeSavedProject() {
   const c = project.get().context;
   if (c.savedAt && !routing && getState().tab !== 'projects' && currentRoute().kind === 'blank') writeRoute(`/p/${c.id}`, true);
@@ -155,13 +150,22 @@ async function preserveProjectSnapshot() {
   await refreshProjectDrafts();
 }
 
+function writeRefusal(c: ProjectContext, doc: Doc): ProjectFailure | null {
+  if (!c.loaded || c.loaded.revision !== c.revision) return { kind: 'interrupted', name: 'ProjectNotLoadedError', projectId: c.id, expectedRevision: c.revision,
+    message: "This project didn't finish loading, so nothing was saved over it. Retry to load it again." };
+  if (objectCount(doc) > 0 || c.loaded.objects === 0 || c.allowEmpty) return null;
+  const saved = c.loaded.objects > 0 ? `the saved project has ${c.loaded.objects} object${c.loaded.objects === 1 ? '' : 's'}` : "the saved project couldn't be read";
+  return { kind: 'conflict', name: 'ProjectEmptyError', projectId: c.id, expectedRevision: c.revision,
+    message: `This copy has no objects; ${saved}. Reload latest keeps the saved project, Keep mine saves it empty.` };
+}
 function save(id: string, m: Machine<ProjectStateName, ProjectEvent, ProjectContext>) {
   const doc = snapshot(), gen = documentGeneration(), version = epoch, revision = m.get().context.revision;
+  const refusal = writeRefusal(m.get().context, doc);
+  if (refusal) { queue = queue.then(() => { if (activeWrite(id, gen, version)) m.send({ type: 'ERROR', error: refusal.message, failure: refusal }); }); return; }
   const storage = store, receipt = checkpointProject(doc, id, revision);
   queue = queue.then(async () => {
     await (await recoveryActions()).saveProjectSnapshot(recoveryRuntime, { id, document: doc, gen, version, revision, storage, receipt });
   }).catch((error: unknown) => {
-
     if (leaseRefused(error, id)) { if (activeWrite(id, gen, version)) m.send({ type: 'EDIT' }); return; }
     const failure = projectFailure(error, id, revision);
     if (activeWrite(id, gen, version)) {
@@ -173,7 +177,6 @@ function save(id: string, m: Machine<ProjectStateName, ProjectEvent, ProjectCont
 
 const failureOf = (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => e.failure ?? projectFailure(e.error, c.id, c.revision);
 const failedWith = (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => { const failure = failureOf(c, e); return { error: failure.message, failure, dirty: true }; };
-
 const failed = [
   { target: 'conflict', guard: (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => failureOf(c, e).kind === 'conflict', action: failedWith },
   { target: 'failed', action: failedWith },
@@ -183,19 +186,21 @@ const draftUpdate = { guard: (c: ProjectContext, e: Extract<ProjectEvent, { type
   action: (_: ProjectContext, e: Extract<ProjectEvent, { type: 'DRAFT' }>) => ({ draft: e.durability }) };
 const recoveredWith = (_: ProjectContext, e: Extract<ProjectEvent, { type: 'RECOVERED' }>): Partial<ProjectContext> => ({
   ...e.meta, revision: e.draft.baseRevision, origin: 'loaded', error: e.failure.message, failure: e.failure, dirty: true, loadError: false,
+  loaded: { revision: e.draft.baseRevision, objects: e.baseObjects }, allowEmpty: false,
   draft: { state: 'durable', checkpoint: { id: e.draft.id, sequence: e.draft.sequence }, updatedAt: e.draft.updatedAt },
 });
 const recovered = [
   { target: 'conflict', guard: (_: ProjectContext, e: Extract<ProjectEvent, { type: 'RECOVERED' }>) => e.failure.kind === 'conflict', action: recoveredWith },
   { target: 'failed', action: recoveredWith },
 ] as const;
-const leave = { ERROR: failed, DRAFT: draftUpdate, RECOVERED: recovered, BLANK: 'blank', OPEN: 'opening', DELETED: 'deleted',
-  MISSING: { target: 'missing', action: (_: ProjectContext, e: { id: string }) => ({ id: e.id, dirty: false }) } } as const;
+const leave = { ERROR: failed, DRAFT: draftUpdate, RECOVERED: recovered, BLANK: 'blank', OPEN: { target: 'opening', action: () => ({ loaded: null }) }, DELETED: 'deleted',
+  MISSING: { target: 'missing', action: (_: ProjectContext, e: { id: string }) => ({ id: e.id, dirty: false, loaded: null }) },
+  EMPTIED: { action: () => ({ allowEmpty: true }) } } as const;
 const writable = (c: ProjectContext) => !blocksAutosave(c.failure) && leaseWritable();
-
 const notices = (unsaved: boolean) => ({ REMOTE: { target: 'conflict', action: (c: ProjectContext) => ({ failure: conflictFailure(c.id, c.revision), dirty: unsaved || c.dirty }) } }) as const;
 const savedPatch = (c: ProjectContext, e: Extract<ProjectEvent, { type: 'SAVED' }>): Partial<ProjectContext> => ({
   name: e.name, savedAt: e.savedAt, revision: e.revision, origin: 'saved', dirty: false, error: null, failure: null,
+  loaded: { revision: e.revision, objects: e.objects ?? -1 }, allowEmpty: false,
   ...(e.checkpoint && c.draft.state !== 'none' && c.draft.checkpoint.sequence <= e.checkpoint.sequence ? { draft: { state: 'none' } } : {}),
 });
 
@@ -205,7 +210,8 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
     blank: { entry: blank,
       on: { ...leave, EDIT: 'saving' } },
     opening: { on: { ...leave,
-      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, origin: 'loaded', error: null, failure: null, draft: { state: 'none' }, dirty: false, loadError: false }) },
+      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, origin: 'loaded', error: null, failure: null, draft: { state: 'none' }, dirty: false, loadError: false,
+        loaded: { revision: e.meta.revision ?? 0, objects: e.meta.objects ?? -1 }, allowEmpty: false }) },
       ERROR: { target: 'failed', action: (c, e) => ({ error: e.error, failure: e.failure ?? projectFailure(e.error, c.id, c.revision, true), loadError: true }) },
     } },
     editing: {
@@ -223,7 +229,6 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
     failed: {
       on: { ...leave, ...notices(true), EDIT: { action: () => ({ dirty: true }) },
         RETRY: { target: 'saving', guard: (c) => c.failure?.kind !== 'deleted', action: () => ({ failure: null, error: null }) } } },
-
     conflict: {
       on: { ...leave, REMOTE: {}, EDIT: { action: () => ({ dirty: true }) },
         ERROR: { action: (c, e) => { const failure = c.failure ?? failureOf(c, e); return { error: failure.message, failure, dirty: true }; } },
@@ -231,7 +236,7 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
           const failure = c.failure ?? conflictFailure(c.id, e.revision);
           return { ...savedPatch(c, e), dirty: true, failure, error: failure.message };
         } },
-        REBASE: { target: 'editing', action: (_, e) => ({ revision: e.revision, error: null, failure: null }) } } },
+        REBASE: { target: 'editing', action: (c, e) => ({ revision: e.revision, error: null, failure: null, loaded: c.loaded && { ...c.loaded, revision: e.revision }, allowEmpty: true }) } } },
     deleted: { entry: blank, on: { ...leave, EDIT: 'editing' } },
     missing: { on: leave },
   },
@@ -260,7 +265,6 @@ function adopt(f: () => void) {
   generation = documentGeneration();
   observed = snapshot();
 }
-
 
 const sender = newKey();
 let channel: BroadcastChannel | null = null;
@@ -311,22 +315,17 @@ let started: Promise<void> | null = null;
 export function startProjects(ready: Promise<unknown> = Promise.resolve()): Promise<void> {
   if (started) return started;
   started = start(ready);
-
   window.orcaDesktop?.onBeforeClose?.(async () => { await started; await flushProject(); await (await import('../saved-preferences')).flushSavedPreferences(); });
   return started;
 }
 async function start(ready: Promise<unknown>) {
-
-
   const modules = Promise.all([import('./project-recovery'), import('../persist/drafts'), journalTools()]);
   const listed = projectStore();
-
   const lineage = modules.then(([, , tools]) => tools.draftSession(session.owner));
   lineage.catch(() => {});
   await ready.catch(() => {});
   const [recovery, drafts, { createDraftJournal }] = await modules;
   recoveryCore = recovery; draftActivity = drafts;
-
   store = await listed ?? await projectStore(true);
   try { if (store) Object.assign(session, await lineage.catch(() => journalTools().then((tools) => tools.draftSession(session.owner)))); }
   catch (error) { toast(errorText(error)); }
@@ -334,17 +333,15 @@ async function start(ready: Promise<unknown>) {
   observed = snapshot();
   subscribeStore(() => {
     if (adopting || versionShown() || leaving) return;
-    if (project.get().value === 'opening' || project.get().value === 'missing' || project.get().context.loadError) {
+    if (project.get().value === 'opening' || project.get().value === 'missing' || project.get().context.loadError || !project.get().context.loaded) {
       if (getState().tab === 'projects' && !routing) showProjects();
       return;
     }
     const doc = snapshot();
     const before = observed; observed = doc;
     const empty = !doc.project && !doc.projectName && !doc.objects.length && !doc.projectPlates.some((p) => p.objects.length);
-
-
     const uneditedBlank = empty && (project.get().value === 'blank' || project.get().value === 'deleted');
-    if (!sameDoc(before, doc) && !uneditedBlank) {
+    if (!sameDoc(before, doc) && !(before && sameContents(before, doc)) && !uneditedBlank) {
       checkpointProject(doc);
       project.send({ type: 'EDIT' });
       if (getState().tab !== 'projects' && !routing) writeProjectRoute(!project.get().context.savedAt);
@@ -362,15 +359,16 @@ async function start(ready: Promise<unknown>) {
     if (hasUnsavedProject()) checkpointProject();
     project.send({ type: 'FLUSH' });
     leaving = true;
-
     queueMicrotask(() => { if (importing.machine.get().value !== 'running') leaving = false; });
   });
-
   importing.machine.subscribe((s) => { if (s.value !== 'running') leaving = false; });
+  subscribeHistory(() => {
+    const c = project.get().context;
+    if (!adopting && !versionShown() && c.loaded && c.loaded.objects !== 0 && !c.allowEmpty && documentGeneration() === generation && objectCount(snapshot()) === 0) project.send({ type: 'EMPTIED' });
+  });
   subscribeHistory(() => {
     leaving = false;
     if (adopting || documentGeneration() === generation) return;
-
     versionView.send({ type: 'LATEST' });
     if (hasUnsavedProject() && observed) checkpointProject(observed);
     generation = documentGeneration(); epoch++; opening++;
@@ -398,9 +396,13 @@ async function start(ready: Promise<unknown>) {
   if (typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel('orca.projects'); channel.onmessage = (e) => remote(e.data);
   }
-
-
-  followProjectLease(() => project.get().context.revision > 0 ? project.get().context.id || null : null, (f) => project.subscribe(f),
+  const leased = () => {
+    const { value, context } = project.get();
+    if (context.revision <= 0 || !context.id) return null;
+    if (value === 'editing' || value === 'saving') leaseFor = context.id;
+    return leaseFor === context.id ? context.id : null;
+  };
+  followProjectLease(leased, (f) => project.subscribe(f),
     (from, id) => from === 'viewing' && !hasUnsavedProject() ? void openProject(id, { reload: true }) : project.send({ type: 'FLUSH' }));
   refreshList(); void refreshProjectDrafts();
   const unsaved: unknown = currentRoute().kind === 'blank' ? history.state?.[UNSAVED] : null;
@@ -414,13 +416,11 @@ async function start(ready: Promise<unknown>) {
 
 export const storing = () => !!store;
 export const previousProject = () => previous;
-
 export async function flushProjectDraft(): Promise<void> {
   const id = project.get().context.id;
   if (hasUnsavedProject()) await checkpointProject().durable;
   await journal.flush(id);
 }
-
 export async function flushProject(): Promise<void> {
   const initial = project.get();
   if (initial.value === 'conflict' || initial.value === 'failed') {
@@ -429,8 +429,6 @@ export async function flushProject(): Promise<void> {
   }
   const id = project.get().context.id;
   do {
-
-
     await leaseSettled();
     if (!leaseWritable()) throw failureError(projectFailure('This project is open in another tab or device. Take control to save.', id, project.get().context.revision));
     project.send({ type: 'FLUSH' });
@@ -444,9 +442,11 @@ export async function retryProject() {
     if (!store) store = await projectStore(true);
     if (!store) throw new Error(projectStorageError());
     const r = currentRoute();
-    if (project.get().context.loadError && r.kind === 'project') {
+    if ((project.get().context.loadError || project.get().context.failure?.name === 'ProjectNotLoadedError') && r.kind === 'project') {
       await openProject(r.id, { reload: true }); void (await import('./boot')).startFlows(); return;
     }
+    await (await recoveryActions()).dropDuplicateDrafts(recoveryRuntime);
+    if (!await leaseForSave()) return;
     known.clear(); project.send({ type: 'RETRY' }); await flushProject();
     void (await import('./boot')).startFlows();
   } catch (e) {
@@ -456,12 +456,10 @@ export async function retryProject() {
 }
 export function showProjects() { writeRoute('/projects'); void route(); }
 export const openProject = async (id: string, options: { history?: boolean; reload?: boolean } = {}) => {
-
   if (versionShown()) options = { ...options, reload: true };
   versionView.send({ type: 'LATEST' });
   return (await recoveryActions()).openProject(recoveryRuntime, id, options);
 };
-
 export const viewProjectVersion = async (id: string, record: { meta: ProjectMeta; doc: import('../persist/backend').StoredDocBase }, request: number) =>
   (await recoveryActions()).viewProjectVersion(recoveryRuntime, id, record, () => {
     if (!versionWanted(request)) return false;
@@ -472,7 +470,6 @@ async function resumeUnsaved(id: string) {
   routing = true;
   try {
     const resumed = await (await recoveryActions()).resumeUnsavedProject(recoveryRuntime, id);
-
     if (!resumed) history.replaceState({ ...history.state, [UNSAVED]: undefined }, '');
     return resumed;
   }
@@ -480,7 +477,6 @@ async function resumeUnsaved(id: string) {
   finally { routing = false; routeSavedProject(); }
 }
 export const leaveProjectVersion = (id: string) => openProject(id, { reload: true });
-
 export async function restoreProjectVersion() {
   if (!versionShown()) return;
   versionView.send({ type: 'RESTORE' });
@@ -491,7 +487,6 @@ export async function restoreProjectVersion() {
 }
 
 const recoveryActions = () => import('./project-recovery-actions');
-
 const recoveryRuntime: import('./project-recovery-actions').RecoveryRuntime = {
   ensureCatalogs: async (doc,current) => (await import('../profiles/catalog-startup')).ensureProjectCatalogs(doc,current),
   storage: () => store, removed, checkpoint: () => checkpointProject(), preserveSnapshot: preserveProjectSnapshot,
@@ -501,7 +496,7 @@ const recoveryRuntime: import('./project-recovery-actions').RecoveryRuntime = {
   resetCaptured: () => { captured = null; }, checkpointRecovered: (id, revision, failure) => checkpointProject(snapshot(), id, revision, failure),
   drafts: draftStorage, refreshDrafts: refreshProjectDrafts, known, session, publish, refreshList, activeWrite,
 };
-export const keepProjectVersion = async () => (await recoveryActions()).keepProjectVersion(recoveryRuntime);
+export const keepProjectVersion = async () => { if (await leaseForSave()) await (await recoveryActions()).keepProjectVersion(recoveryRuntime); };
 export const reloadProject = async () => (await recoveryActions()).reloadProject(recoveryRuntime);
 export const recoverProjectDraft = async (id: string, options: { asCopy?: boolean } = {}) => (await recoveryActions()).recoverProjectDraft(recoveryRuntime, id, options);
 export const discardProjectDraft = async (id: string) => (await recoveryActions()).discardProjectDraft(recoveryRuntime, id);
@@ -519,7 +514,6 @@ export function useProject<T>(sel?: (s: ProjectSnapshot) => T) { return useMachi
 export const projectList = () => list;
 export const useProjects = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => list);
 (window as unknown as { __project: unknown }).__project = { machine: project, list: () => list };
-
 
 export type ProjectLifecycle = { value: 'new' | 'loading' | 'ready' | 'dirty' | 'saving' | 'saved'; id: string }
   | { value: 'conflict'; id: string; dirty: boolean; failure: ProjectFailure }

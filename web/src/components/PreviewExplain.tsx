@@ -1,10 +1,6 @@
-
-
-
-
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
+import { forgetCompare, setStandardData, showPrevious, startCompare, stopCompare, useCompare, useStandardData, type CompareSource } from '../compare';
 import { computeRanges, drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
 import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
 import { area, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
@@ -12,13 +8,10 @@ import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
 import { getState, printerPreset } from '../state/store';
-import { Icon } from './Icon';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
 import { Switch } from './fields';
 
-
 const TWO_SCENE_VERTICES = 8e6;
-
 const NOT_PART = new Set([12, 17, 18]);
 
 function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
@@ -33,14 +26,12 @@ function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
   return min.x <= max.x ? [min, max] : null;
 }
 
-
 function curvedShare(s: RecordSummary): number | null {
   const total = s.topCurved + s.topFlat;
   return total > 0 ? Math.min(s.topFlat > 0 ? 99 : 100, Math.max(s.topCurved > 0 ? 1 : 0, Math.round((100 * s.topCurved) / total))) : null;
 }
 
 const time = (s: number | null) => (s == null ? '–' : shortTime(s));
-
 
 export function ExplainLegend(props: {
   data: PreviewData;
@@ -66,7 +57,6 @@ export function ExplainLegend(props: {
   const closest = v?.closest != null && Number.isFinite(v.closest) && v.closest > 0 ? `Closest pass ${v.closest.toFixed(2)} mm` : undefined;
   const pending = !compare ? null : cmp.state === 'running' ? (cmp.queued ? 'waiting' : `${Math.round(cmp.pct)}%`) : cmp.state === 'failed' ? (cmp.busy ? 'busy' : 'failed') : null;
 
-
   type Row = [string, string, string, boolean?, string?];
   const rows: Row[] = [];
   if (s.wholePart) rows.push(['Curved layers', '', 'whole part', false, s.wholePart.source]);
@@ -81,12 +71,11 @@ export function ExplainLegend(props: {
   if (s.grams != null) rows.push(['Filament', std ? grams(std.grams) : '', grams(s.grams)]);
   rows.push(['Support', std ? supportText(supportGrams(stdData, std.grams)) : '', supportText(supportGrams(data, s.grams))]);
   if (v) rows.push(['Head hits', '', String(v.hits), false, closest]);
-
-  if (std?.curved) rows.push(['Result', 'not flat', '', false, 'The Standard slice still printed curved passes']);
+  if (std?.curved) rows.push(['Result', 'not flat', '', false, 'Standard mode still used curved passes here']);
   else if (std && !better(std.topErrorMm, s.topErrorMm)) {
     const faster = timeDelta != null && timeDelta > 0.01;
     rows.push(['Result', '', faster ? 'Standard faster' : 'same', false,
-      faster ? 'Standard is faster here and its top is as good' : 'On this part both print the same']);
+      faster ? 'Standard flat layers are faster here and look just as smooth' : 'Prints identically in both modes on this part']);
   }
 
   (window as unknown as { __compare: unknown }).__compare = { state: cmp, summary: s, standard: std, stdData, rows };
@@ -121,8 +110,6 @@ export function ExplainLegend(props: {
           ))}
         </>
       ) : <>
-      {
-                        }
       {!compare && (
         <div className="np-stats">
           {rows.filter(([label]) => !['Time', 'Filament', 'Curved top'].includes(label)).map(([label, , b]) => (
@@ -157,11 +144,11 @@ export function ExplainLegend(props: {
       )}
       {compare && cmp.state === 'failed' && (
         <button className="lg-mode" onClick={() => void startCompare()}>
-          {cmp.busy ? 'Service busy · Retry' : 'Standard failed · Retry'}
+          {cmp.busy ? 'Service busy, retry' : 'Standard failed, retry'}
         </button>
       )}
       {compare && v?.uncalibrated && (
-        <div className="lg-row np-warn"><Icon name="warning" size={12} />Head model uncalibrated</div>
+        <div className="lg-row np-warn">Head model uncalibrated</div>
       )}
       {compare && s.flat.length > 0 && (
         <>
@@ -179,21 +166,21 @@ export function ExplainLegend(props: {
   );
 }
 
-
-export function StandardView(props: {
+export function CompareView(props: {
+  source: CompareSource;
   data: PreviewData;
   record: Record<string, unknown>;
   scene: PreviewScene | null;
   ui: PreviewUi;
-
   zRange: [number, number];
 }) {
-  const { data, record, scene, ui } = props;
+  const { source, data, record, scene, ui } = props;
   const cmp = useCompare();
   const style = useMemo(() => readRecord(record)?.style ?? '', [record]);
   useEffect(() => {
-    void startCompare();
-  }, [record]);
+    if (source === 'previous') showPrevious();
+    else void startCompare();
+  }, [record, source]);
   useEffect(() => () => stopCompare(), []);
   useEffect(() => {
     if (!scene || !data.done) return;
@@ -203,12 +190,11 @@ export function StandardView(props: {
   return (
     <>
       <StandardPane main={scene} cmp={cmp} ui={ui} vis={ui.vis} zRange={props.zRange} mainVertices={data.n} />
-      <div className="cmp-label cmp-left label-caps">Standard</div>
-      <div className="cmp-label cmp-right label-caps">{style}</div>
+      <div className="cmp-label cmp-left label-caps">{source === 'previous' ? 'Before' : 'Standard'}</div>
+      <div className="cmp-label cmp-right label-caps">{source === 'previous' ? 'After' : style}</div>
     </>
   );
 }
-
 
 function StandardPane(props: {
   main: PreviewScene | null;
@@ -223,13 +209,12 @@ function StandardPane(props: {
   const [scene, setScene] = useState<PreviewScene | null>(null);
   const [data, setData] = useState<PreviewData | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
+  const [gone, setGone] = useState(false);
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   const grid = useSurfaceGrid(cmp.state === 'done' ? cmp.status : undefined, ui.surface);
   useEffect(() => scene?.setSurface(grid), [scene, grid]);
-
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const id = cmp.state === 'done' ? cmp.id : null;
-
 
   useEffect(() => {
     if (!main) return;
@@ -256,7 +241,6 @@ function StandardPane(props: {
     };
   }, [main]);
 
-
   useEffect(() => {
     if (!scene || !id || cmp.state !== 'done') return;
     const api = getState().api!;
@@ -279,6 +263,7 @@ function StandardPane(props: {
       },
       error: (d) => {
         if (/^404 /.test(d.error ?? '')) {
+          if (cmp.source === 'previous') return setGone(true);
           forgetCompare(cmp.key);
           void startCompare();
         }
@@ -295,7 +280,6 @@ function StandardPane(props: {
     if (scene && data?.done) scene.setColors(colorContext(data, ui, computeRanges(data, vis)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.view, ui.nonplanar, vis]);
-
 
   useEffect(() => {
     if (!scene || !data?.layers.length) return;
@@ -315,6 +299,7 @@ function StandardPane(props: {
       setTip(cell < 0 ? null : { text: `Top error ${Math.round(grid.rms[cell] * 1000)} µm`, x, y });
     }}>
       {tooLarge && <div className="preview-status">Too large to draw twice</div>}
+      {gone && <div className="preview-status">The earlier slice is no longer kept</div>}
       {tip && <div className="preview-tip" style={{ left: tip.x + 16, top: tip.y + 16 }}><b>{tip.text}</b></div>}
     </div>
   );

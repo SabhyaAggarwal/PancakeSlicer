@@ -32,8 +32,7 @@ inline void insert_edges(Triangulation::HalfEdges &edges, uint32_t &offset, cons
     uint32_t prev_index = changes[last_index];
     for (uint32_t i = 0; i < size; ++i) {
         uint32_t index = changes[offset + i];
-
-        if (prev_index == index) continue;
+        if (prev_index == index) continue; 
         edges.push_back({prev_index, index});
         prev_index = index;
     }
@@ -64,7 +63,7 @@ inline bool has_bidirectional_constrained(
     return false;
 }
 
-inline bool is_unique(const Points &points) {
+inline bool is_unique(const Points &points) { 
     Points pts = points;
     std::sort(pts.begin(), pts.end());
     auto it = std::adjacent_find(pts.begin(), pts.end());
@@ -83,15 +82,12 @@ inline bool has_self_intersection(
 }
 
 }
-
-
 #ifdef VISUALIZE_TRIANGULATION
 #include "admesh/stl.h"
 static void visualize(const Points                 &points,
                const Triangulation::Indices &indices,
                const char                   *filename)
 {
-
     indexed_triangle_set its;
     its.vertices.reserve(points.size());
     for (const Point &p : points) its.vertices.emplace_back(p.x(), p.y(), 0.);
@@ -105,23 +101,17 @@ Triangulation::Indices Triangulation::triangulate(const Points    &points,
 {
     assert(!points.empty());
     assert(!constrained_half_edges.empty());
-
     assert(std::is_sorted(constrained_half_edges.begin(),
                           constrained_half_edges.end()));
-
     assert(std::adjacent_find(constrained_half_edges.begin(), constrained_half_edges.end()) == constrained_half_edges.end());
-
     assert(!priv::has_bidirectional_constrained(constrained_half_edges));
-
     assert(priv::is_unique(points));
     assert(!priv::has_self_intersection(points, constrained_half_edges));
-
     using K   = CGAL::Exact_predicates_inexact_constructions_kernel;
     using Vb  = CGAL::Triangulation_vertex_base_with_info_2<uint32_t, K>;
     using Fb  = CGAL::Constrained_triangulation_face_base_2<K>;
     using Tds = CGAL::Triangulation_data_structure_2<Vb, Fb>;
     using CDT = CGAL::Constrained_Delaunay_triangulation_2<K, Tds, CGAL::Exact_predicates_tag>;
-
 
     CDT cdt;
     {
@@ -135,7 +125,7 @@ Triangulation::Indices Triangulation::triangulate(const Points    &points,
         size_t ord = 0;
         for (const auto &p : points)
             cdt_points.emplace_back(std::make_pair(CDT::Point{p.x(), p.y()}, ord++));
-
+        
         SearchTrait st;
         CGAL::spatial_sort(cdt_points.begin(), cdt_points.end(), st);
         CDT::Face_handle f;
@@ -146,13 +136,11 @@ Triangulation::Indices Triangulation::triangulate(const Points    &points,
             f = handle->face();
         }
 
-
         for (const HalfEdge &edge : constrained_half_edges)
             cdt.insert_constraint(vertices_handle[edge.first], vertices_handle[edge.second]);
     }
 
     auto faces = cdt.finite_face_handles();
-
 
     size_t num_faces = 0;
     for (CDT::Face_handle fh : faces) {
@@ -161,20 +149,19 @@ Triangulation::Indices Triangulation::triangulate(const Points    &points,
             auto key = std::make_pair(fh->vertex((i + 2) % 3)->info(), fh->vertex((i + 1) % 3)->info());
             auto it = std::lower_bound(constrained_half_edges.begin(), constrained_half_edges.end(), key);
             if (it == constrained_half_edges.end() || *it != key) continue;
-
             for (int j = 0; j < 3; ++ j)
                 fh->set_constraint(j, false);
             --num_faces;
-            break;
+            break;            
         }
         ++num_faces;
     }
 
-    auto inside = [](CDT::Face_handle &fh) {
-        return fh->neighbor(0) != fh &&
+    auto inside = [](CDT::Face_handle &fh) { 
+        return fh->neighbor(0) != fh && 
                (fh->is_constrained(0) ||
                 fh->is_constrained(1) ||
-                fh->is_constrained(2));
+                fh->is_constrained(2)); 
     };
 
 #ifdef VISUALIZE_TRIANGULATION
@@ -184,24 +171,19 @@ Triangulation::Indices Triangulation::triangulate(const Points    &points,
         if (inside(fh)) indices2.emplace_back(fh->vertex(0)->info(), fh->vertex(1)->info(), fh->vertex(2)->info());
     visualize(points, indices2, "C:/data/temp/triangulation_without_floodfill.obj");
 #endif
-
-
     std::vector<CDT::Face_handle> queue;
     queue.reserve(num_faces);
     for (CDT::Face_handle seed : faces){
-        if (!inside(seed)) continue;
-
+        if (!inside(seed)) continue;    
         queue.emplace_back(seed);
         while (! queue.empty()) {
             CDT::Face_handle fh = queue.back();
             queue.pop_back();
             for (int i = 0; i < 3; ++i) {
                 if (fh->is_constrained(i)) continue;
-
                 fh->set_constraint(i, true);
                 CDT::Face_handle nh = fh->neighbor(i);
                 bool was_inside = inside(nh);
-
                 nh->set_constraint(nh->index(fh), true);
                 if (! was_inside)
                     queue.push_back(nh);
@@ -253,7 +235,7 @@ Triangulation::Indices Triangulation::triangulate(const Polygons &polygons)
 }
 
 Triangulation::Indices Triangulation::triangulate(const ExPolygon &expolygon){
-    ExPolygons expolys({expolygon});
+    ExPolygons expolys({expolygon}); 
     return triangulate(expolys);
 }
 
@@ -264,22 +246,19 @@ Triangulation::Indices Triangulation::triangulate(const ExPolygons &expolygons){
 
     Changes changes = create_changes(pts, d_pts);
     Indices indices = triangulate(expolygons, pts, changes);
-
     Changes changes2(changes.size(), std::numeric_limits<uint32_t>::max());
     for (size_t i = 0; i < changes.size(); ++i)
         changes2[changes[i]] = i;
 
-
-    for (Vec3i32 &t : indices)
+    for (Vec3i32 &t : indices) 
         for (size_t ti = 0; ti < 3; ti++) t[ti] = changes2[t[ti]];
-
+    
     return indices;
 }
 
 Triangulation::Indices Triangulation::triangulate(const ExPolygons &expolygons, const Points &points)
 {
     assert(count_points(expolygons) == points.size());
-
     assert(collect_duplicates(points).empty());
 
     HalfEdges edges;
@@ -299,11 +278,10 @@ Triangulation::Indices Triangulation::triangulate(const ExPolygons &expolygons, 
     assert(!points.empty());
     assert(count_points(expolygons) == points.size());
     assert(changes.size() == points.size());
-
     uint32_t count_points = *std::max_element(changes.begin(), changes.end())+1;
     Points pts(count_points);
     for (size_t i = 0; i < changes.size(); i++)
-        pts[changes[i]] = points[i];
+        pts[changes[i]] = points[i];    
 
     HalfEdges edges;
     edges.reserve(points.size());
@@ -323,12 +301,12 @@ Triangulation::Changes Triangulation::create_changes(const Points &points, const
     assert(!duplicits.empty());
     assert(duplicits.size() < points.size()/2);
     std::vector<uint32_t> duplicit_indices(duplicits.size(), std::numeric_limits<uint32_t>::max());
-    Changes changes;
+    Changes changes; 
     changes.reserve(points.size());
     uint32_t index = 0;
     for (const Point &p: points) {
         auto it = std::lower_bound(duplicits.begin(), duplicits.end(), p);
-        if (it == duplicits.end() || *it != p) {
+        if (it == duplicits.end() || *it != p) { 
             changes.push_back(index);
             ++index;
             continue;

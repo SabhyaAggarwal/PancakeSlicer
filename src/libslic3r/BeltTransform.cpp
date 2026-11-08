@@ -14,8 +14,6 @@
 
 namespace Slic3r {
 
-
-
 Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config, bool *has_rot_out)
 {
     BeltRotationAxis axis = config.belt_slice_rotation.value;
@@ -37,20 +35,12 @@ Matrix3d BeltTransformPipeline::build_rotation_matrix(const PrintConfig &config,
 
 Transform3d BeltTransformPipeline::build_forward_transform(const PrintConfig &config)
 {
-
-
     Transform3d combined = Transform3d::Identity();
     combined.linear() = build_rotation_matrix(config);
     return combined;
 }
 
-
-
 namespace {
-
-
-
-
 
 void belt_floor_shear(BeltRotationAxis rot_axis, double angle_rad, BeltTransformPipeline::BeltFloorParams &out)
 {
@@ -72,7 +62,6 @@ void belt_floor_shear(BeltRotationAxis rot_axis, double angle_rad, BeltTransform
     }
 }
 
-
 inline double belt_floor_z(const BeltTransformPipeline::BeltFloorParams &fp, const Vec3d &pt)
 {
     return fp.shear_factor * (fp.from_axis == 0 ? pt.x() : pt.y());
@@ -85,15 +74,12 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
     BeltTransformPipeline::BeltHeightResult result;
     result.object_height = original_height;
 
-
     const BeltRotationAxis rot_axis  = config.belt_slice_rotation.value;
     const double           rot_angle = config.belt_slice_rotation_angle.value;
 
     bool has_rotation = rot_axis != BeltRotationAxis::None && std::abs(rot_angle) > EPSILON;
     if (!has_rotation)
         return result;
-
-
 
     double angle_rad = Geometry::deg2rad(rot_angle);
     Vec3d unit_axis;
@@ -105,12 +91,6 @@ BeltTransformPipeline::BeltHeightResult compute_belt_height_and_floor_impl(
     }
     Matrix3d R = Eigen::AngleAxisd(angle_rad, unit_axis).toRotationMatrix();
     belt_floor_shear(rot_axis, angle_rad, result.floor_params);
-
-
-
-
-
-
     double min_rz = std::numeric_limits<double>::max();
     double max_rz = std::numeric_limits<double>::lowest();
     for (int i = 0; i < 8; ++i) {

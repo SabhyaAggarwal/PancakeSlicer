@@ -1,6 +1,4 @@
-
-
-import { bakeStl, centre, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
+import { bakeStl, centre, creaseSplit, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
 import { buildBvh, type Bvh } from './bvh';
 import { split } from './split';
 import { computeMeshStats, type MeshStats } from './meshStatsCore';
@@ -11,14 +9,12 @@ import type { ShellsOut, ShellsIn } from './shells.worker';
 
 export interface MeshData {
   display?: DisplayMesh;
-  motion?: DisplayMesh;
   stats: MeshStats;
   contentSignature: string;
   simplification?: SimplificationInfo;
   positions: Float32Array;
   index: Uint32Array;
   normals: Float32Array;
-
   centre: [number, number, number];
   min: [number, number, number];
   max: [number, number, number];
@@ -30,7 +26,8 @@ export type MeshIn =
   | { type: 'split'; id: number; file: Blob }
   | { type: 'mesh'; id: number; file: File; simplify?: boolean }
   | { type: 'project'; id: number; file: File; partsOnly?: boolean }
-  | { type: 'bake'; id: number; positions: Float32Array; index: Uint32Array | Uint16Array | null; matrix: number[] };
+  | { type: 'bake'; id: number; positions: Float32Array; index: Uint32Array | Uint16Array | null; matrix: number[] }
+  | { type: 'display'; id: number; positions: Float32Array; index: Uint32Array | null };
 
 export type MeshOut =
   | { type: 'stats'; id: number; stats: MeshStats }
@@ -43,6 +40,8 @@ export type MeshOut =
   | { type: 'items'; id: number; items: Awaited<ReturnType<typeof readProject>>['items']; materials: Awaited<ReturnType<typeof readProject>>['materials'] }
   | { type: 'missing'; id: number; item: number }
   | { type: 'blob'; id: number; blob: Blob }
+  | { type: 'display'; id: number; display: DisplayMesh }
+  | { type: 'motion'; id: number; item?: number; motion: DisplayMesh }
   | { type: 'done'; id: number }
   | { type: 'error'; id: number; message: string };
 
@@ -51,7 +50,6 @@ let shellsWorker: Worker | null = null;
 let shellId = 0;
 const shellRequests = new Map<number, { id: number; item?: number }>();
 function checkShells(id: number, positions: Float32Array, index: Uint32Array, item?: number) {
-
   if (!shellsWorker) {
     shellsWorker = new Worker(new URL('./shells.worker.ts', import.meta.url), { type: 'module' });
     const fail = () => {
@@ -73,7 +71,6 @@ function checkShells(id: number, positions: Float32Array, index: Uint32Array, it
   shellsWorker.postMessage({ id: request, positions, index } satisfies ShellsIn);
 }
 
-
 async function contentHash(array: Float32Array | Uint32Array): Promise<string> {
   if (globalThis.crypto?.subtle) {
     const digest = await crypto.subtle.digest('SHA-256', array.buffer as ArrayBuffer);
@@ -90,8 +87,13 @@ async function contentHash(array: Float32Array | Uint32Array): Promise<string> {
   return [words.length, a >>> 0, b >>> 0, c >>> 0, d >>> 0].map((n) => n.toString(16)).join('-');
 }
 
+function crisp(positions: Float32Array, index: Uint32Array, edges: boolean): DisplayMesh {
+  const split = creaseSplit(positions, index);
+  return { positions: split.positions, normals: split.normals, index: split.index, ...(edges ? { edges: split.edges } : {}) };
+}
+const buffers = (m: DisplayMesh) => [m.positions.buffer, m.normals.buffer, m.index.buffer, ...(m.edges ? [m.edges.buffer] : [])];
 
-async function finish(id: number, soup: Float32Array, item?: number, progress?: (pct: number) => void, simplify = false): Promise<() => void> {
+async function finish(id: number, soup: Float32Array, item?: number, progress?: (pct: number) => void, simplify = false): Promise<() => Promise<void>> {
   let { positions, index } = weld(soup);
   let simplification: SimplificationInfo | undefined;
   if (simplify) {
@@ -107,22 +109,24 @@ async function finish(id: number, soup: Float32Array, item?: number, progress?: 
   for (let i = 0; i < positions.length; i += 3)
     r2 = Math.max(r2, (positions[i] - cx) ** 2 + (positions[i + 1] - cy) ** 2 + (positions[i + 2] - cz) ** 2);
   const contentSignature = (await Promise.all([contentHash(positions), contentHash(index)])).join(':');
-
   const displayResult = await simplifyMesh(positions, index, { minTriangles: 100_000, target: 50_000 }).catch(() => null);
-  const display = displayResult ? { positions: displayResult.positions, index: displayResult.index, normals: vertexNormals(displayResult.positions, displayResult.index) }
+  const display = displayResult ? { positions: displayResult.positions, index: displayResult.index }
     : displayLod(positions, index, normals, box.min, box.max);
-  const motionResult = await simplifyMesh(display?.positions ?? positions, display?.index ?? index,
-    { minTriangles: 50_000, target: 12_500, maxErrorMm: 0.15 }).catch(() => null);
-  const motion = motionResult ? { positions: motionResult.positions, index: motionResult.index, normals: vertexNormals(motionResult.positions, motionResult.index) } : undefined;
+  const drawn = display ?? { positions, index };
+  const shown = crisp(drawn.positions, drawn.index, true);
   checkShells(id, positions, index, item);
   const keep = positions.slice(), keepIndex = index.slice();
-
-
-
   const hullSource = keep.length <= 150_000 ? keep
     : display && display.positions.length <= 150_000 ? display.positions.slice() : null;
-  post({ type: 'mesh', id, item, stats, positions, index, normals, display, motion, contentSignature, simplification, ...box, radius: Math.sqrt(r2) }, [positions.buffer, index.buffer, normals.buffer, ...(display ? [display.positions.buffer, display.index.buffer, display.normals.buffer] : []), ...(motion ? [motion.positions.buffer, motion.index.buffer, motion.normals.buffer] : [])]);
-  return () => {
+  const motionSource = drawn.index.length >= 3 * 50_000 ? { positions: drawn.positions.slice(), index: drawn.index.slice() } : null;
+  post({ type: 'mesh', id, item, stats, positions, index, normals, display: shown, contentSignature, simplification, ...box, radius: Math.sqrt(r2) }, [positions.buffer, index.buffer, normals.buffer, ...buffers(shown)]);
+  return async () => {
+    const motionResult = motionSource && await simplifyMesh(motionSource.positions, motionSource.index,
+      { minTriangles: 50_000, target: 12_500, maxErrorMm: 0.15 }).catch(() => null);
+    if (motionResult) {
+      const motion = crisp(motionResult.positions, motionResult.index, false);
+      post({ type: 'motion', id, item, motion }, buffers(motion));
+    }
     const t0 = performance.now();
     const bvh = buildBvh(keep, keepIndex);
     post({ type: 'bvh', id, item, bvh, ms: performance.now() - t0 }, [bvh.bounds.buffer, bvh.nodes.buffer, bvh.tris.buffer]);
@@ -146,17 +150,21 @@ self.onmessage = async (e: MessageEvent<MeshIn>) => {
       if (ext !== 'stl' && ext !== 'obj') throw new Error(`${m.file.name}: STL, OBJ and 3MF are supported`);
       const soup = ext === 'stl' ? parseStl(await m.file.arrayBuffer()) : parseObj(await m.file.text());
       progress?.(35);
-      (await finish(m.id, soup, undefined, progress, m.simplify !== false))();
+      await (await finish(m.id, soup, undefined, progress, m.simplify !== false))();
     } else if (m.type === 'project') {
       const project = await readProject(m.file, m.partsOnly);
       post({ type: 'items', id: m.id, items: project.items, materials: project.materials });
-      const hulls: (() => void)[] = [];
+      const hulls: (() => Promise<void>)[] = [];
       for (let i = 0; i < project.items.length; i++) {
         const soup = project.mesh(i);
         if (soup) hulls.push(await finish(m.id, soup, i));
         else post({ type: 'missing', id: m.id, item: i });
       }
-      for (const h of hulls) h();
+      for (const h of hulls) await h();
+    } else if (m.type === 'display') {
+      const mesh = m.index ? { positions: m.positions, index: m.index } : weld(m.positions);
+      const display = crisp(mesh.positions, mesh.index, true);
+      post({ type: 'display', id: m.id, display }, buffers(display));
     } else if (m.type === 'bake') {
       post({ type: 'blob', id: m.id, blob: bakeStl(m.positions, m.index, m.matrix) });
     }

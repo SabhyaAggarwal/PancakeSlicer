@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @MK4 MMU3 HF0.4",
+	"renamed_from": "0.20mm Non-planar top @MK4 MMU3 HF0.4;0.20mm Non-planar top MK4 MMU3 HF0.4",
+	"inherits": "0.20mm SPEED @MK4 MMU3 HF0.4",
+	"from": "system",
+	"setting_id": "H1qmcHA021VhCoPH",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Prusa MK4 MMU3 HF0.4 nozzle"
+	]
+}

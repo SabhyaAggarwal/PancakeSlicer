@@ -1,26 +1,31 @@
 import { Check } from './Check';
 import { ColorPicker } from './ColorPicker';
-
-
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
-import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
+import { effectiveConfig, getState, resetOption, setOption, toast, useStore } from '../state/store';
+import { fieldIssue, fieldNumber, fieldRange } from './field-validation';
 import { Glyph } from './Glyph';
+import { MODE_HELP } from '../nonplanar-mode';
 import { LabelTip, SourceGlyph } from './InfoTip';
-import { Switch } from './fields';
 import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
 import { ScopeMark } from '../profiles/Scope';
 import type { ChangeTarget } from '../state/changes';
 
-
 const LabelId = createContext<string | undefined>(undefined);
 const useLabel = () => ({ 'aria-labelledby': useContext(LabelId) });
 
 const NUMERIC = new Set(['float', 'floats', 'int', 'ints', 'percent', 'percents', 'float_or_percent', 'floats_or_percents']);
+
+function rejectField(text: string, previous: string, def: OptionDef, label: string): boolean {
+  const issue = fieldIssue(text, def);
+  if (!issue) return false;
+  toast(`${label}: ${fieldNumber(text, def)} ${issue.detail}. Not applied; keeping ${fieldNumber(previous, def)}.`, null, undefined, 'warning');
+  return true;
+}
 
 function elementOf(v: ConfigValue | undefined, idx: number, vector: boolean): ConfigValue | undefined {
   if (!vector) return v;
@@ -37,23 +42,18 @@ function withElement(v: ConfigValue | undefined, idx: number, el: ConfigValue): 
 
 const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map(asText).join(', ') : typeof v === 'object' && 'value' in v ? `${v.value}${'percent' in v && v.percent ? '%' : ''}` : String(v);
 
-
 const CHOICE_HINTS: Record<string, Record<string, string>> = {
   nonplanar_mode: {
-    off: 'Standard: flat layers, like any slicer.',
-    curved_tops: 'Curved tops: the top layers follow the surface; the rest stays flat.',
+    ...MODE_HELP,
     multiplanar: 'Tilted chunks: the bed tilts so each chunk prints its overhangs upright.',
     field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
   },
 };
 
-
 const PROMPTED = new Set(['spiral_mode', 'wall_loops', 'top_shell_layers', 'sparse_infill_density', 'enable_support', 'enforce_support_layers', 'detect_thin_wall',
   'overhang_reverse', 'timelapse_type', 'enable_wrapping_detection', 'layer_height', 'nozzle_temperature', 'nozzle_temperature_initial_layer',
   'nozzle_temperature_range_low', 'nozzle_temperature_range_high', 'alternate_extra_wall', 'ensure_vertical_shell_thickness', 'seam_slope_type',
   'seam_slope_start_height', 'filament_max_volumetric_speed']);
-
-
 
 const sameValue = (a: unknown, b: unknown) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]));
 const sameFieldProps = (a: Record<string, unknown>, b: Record<string, unknown>) => {
@@ -74,25 +74,17 @@ export const Field = memo(function Field(props: {
   definition?: Partial<OptionDef>;
   inheritedValue?: ConfigValue;
   overrideDisabled?: boolean;
-
   onSet?: (key: string, value: ConfigValue) => void;
   onReset?: (key: string) => void;
   resetTitle?: string;
-
   extra?: React.ReactNode;
-
   scope?: { target?: ChangeTarget };
-
   widget?: React.ReactNode;
-
-
   source?: 'auto' | 'set' | 'printer';
-
   sourceText?: string;
-
   onResetToBase?: (key: string) => void;
-
   mixed?: string;
+  mode?: string;
 }) {
   useTooltips();
   const [unmixed, setUnmixed] = useState(false);
@@ -102,13 +94,11 @@ export const Field = memo(function Field(props: {
   const labelId = useId();
   const baseDef = OPTIONS[key];
   if (!baseDef) return null;
-  const def: OptionDef = { ...baseDef, ...props.definition };
+  const def: OptionDef = { ...baseDef, ...props.definition, min: baseDef.min, max: (props.mode ? baseDef.max_by_mode?.[props.mode] : undefined) ?? baseDef.max };
   const vector = def.type.endsWith('s') && (props.optKey.includes('#') || !['points', 'points_groups', 'ints_groups'].includes(def.type));
   const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
   const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
-
   const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
-
   const prompt = (k: string) => { if (PROMPTED.has(k)) void import('../configPrompts').then((m) => m.checkSetting(props.type, k, props.slot)); };
   const set = props.onSet ?? ((k: string, v: ConfigValue) => { setOption(props.type, k, v, props.slot); prompt(k); });
   const reset = props.onReset ?? ((k: string) => { resetOption(props.type, k, props.slot); prompt(k); });
@@ -120,8 +110,6 @@ export const Field = memo(function Field(props: {
   const fullLabel = props.label ?? (def.label || def.full_label || key);
   const label = props.label === undefined ? displayLabel(key, fullLabel) : fullLabel;
   const modified = props.dirty || props.source === 'set';
-
-
   const sourced = props.source === 'auto' || props.source === 'printer', glyph = <SourceGlyph text={props.sourceText}/>;
   const glyphInUnit = sourced && !props.widget && NUMERIC.has(def.type) && !def.multiline && !(props.mixed && !unmixed);
   const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
@@ -136,7 +124,6 @@ export const Field = memo(function Field(props: {
 
   return (
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''} ${isSwitch ? 'is-switch' : ''}`} data-opt={key} data-source={props.source} onClick={isSwitch && !locked ? (e) => {
-
       if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
     } : undefined}>
       <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
@@ -144,7 +131,8 @@ export const Field = memo(function Field(props: {
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
         {props.hideLabel ? <span className="opt-label-text">{label}</span> : <LabelTip label={label} full={fullLabel}>
           <strong>{fullLabel}</strong>{hint && <p>{hint}</p>}{help && <p>{help}</p>}
-          {(def.default !== undefined || def.min !== undefined || def.max !== undefined) && <p className="info-meta">{[def.default !== undefined && asText(def.default) !== '' ? `Default ${asText(def.default)}${def.sidetext && !asText(def.default).endsWith('%') ? ` ${def.sidetext}` : ''}` : '', def.min !== undefined || def.max !== undefined ? `Range ${def.min ?? '…'} to ${def.max ?? '…'}` : ''].filter(Boolean).join(' · ')}</p>}
+          {def.default !== undefined && asText(def.default) !== '' && <p className="info-meta">Default {fieldNumber(asText(def.default), def)}</p>}
+          {fieldRange(def) && <p className="info-meta">{fieldRange(def)}</p>}
           <code>{key}</code></LabelTip>}
       </span>
       <fieldset ref={fieldRef} className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>
@@ -153,7 +141,7 @@ export const Field = memo(function Field(props: {
             ? <button type="button" className="field-mixed" aria-label={`${label}: mixed values ${props.mixed}; set one value`}
               onClick={() => { setUnmixed(true); requestAnimationFrame(() => fieldRef.current?.querySelector<HTMLElement>('input, button, [role=combobox]')?.focus()); }}>
               <span>Mixed</span><span className="field-mixed-values">{props.mixed}</span></button>
-            : <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} glyph={glyphInUnit ? glyph : undefined} />)}
+            : <Widget def={def} label={label} value={def.nullable && !checked ? fallback : value} onCommit={commit} glyph={glyphInUnit ? glyph : undefined} />)}
         </LabelId.Provider>
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
@@ -171,10 +159,8 @@ export const Field = memo(function Field(props: {
   );
 }, sameFieldProps);
 
-
 const FILAMENT_SLOT_KEYS = new Set(['support_filament', 'support_interface_filament', 'wipe_tower_filament', 'outer_wall_filament_id',
   'inner_wall_filament_id', 'sparse_infill_filament_id', 'internal_solid_filament_id', 'top_surface_filament_id', 'bottom_surface_filament_id']);
-
 
 function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigValue) => void }) {
   const slots = useStore((s) => s.filamentSlots);
@@ -186,17 +172,18 @@ function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigVa
   );
 }
 
-function Widget({ def, value, onCommit, glyph }: { def: OptionDef; value: ConfigValue | undefined; onCommit: (v: ConfigValue) => void; glyph?: React.ReactNode }) {
+function Widget({ def, label, value, onCommit, glyph }: { def: OptionDef; label: string; value: ConfigValue | undefined; onCommit: (v: ConfigValue) => void; glyph?: React.ReactNode }) {
   const named = useLabel();
   const base = def.type.replace(/s$/, '');
   if (FILAMENT_SLOT_KEYS.has(def.key)) return <SlotChoice value={asText(value) || '0'} onCommit={onCommit} />;
   if (base === 'bool') {
     const on = value === true || value === 'true' || value === '1' || value === 1;
     return (
-      <Switch {...named} checked={on} disabled={def.readonly} onChange={(v) => onCommit(v ? '1' : '0')} />
+      <Check {...named} checked={on} disabled={def.readonly} onCheckedChange={(v) => onCommit(v ? '1' : '0')} />
     );
   }
   if (def.enum_values?.length && /^(select_open|[if]_enum_open)$/.test(def.gui_type ?? '')) {
+    if (NUMERIC.has(def.type)) return <OpenNumber def={def} label={label} value={asText(value)} onCommit={onCommit} />;
     return <EditableDropdown {...named} value={asText(value)} readOnly={def.readonly} onValueChange={onCommit} className="text" options={def.enum_values.map((v,i) => ({value: v, label: def.enum_labels?.[i] ?? v}))} />;
   }
   if ((base === 'enum' || def.enum_values) && def.enum_values?.length) {
@@ -218,62 +205,70 @@ function Widget({ def, value, onCommit, glyph }: { def: OptionDef; value: Config
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
     return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
   }
-
-  return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} />;
+  return <TextBox value={asText(value)} label={label} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} />;
 }
 
-
+function OpenNumber({ def, label, value, onCommit }: { def: OptionDef; label: string; value: string; onCommit: (v: ConfigValue) => void }) {
+  const named = useLabel(), errorId = useId();
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const issue = fieldIssue(draft, def);
+  return <span className="control-stack">
+    <EditableDropdown {...named} value={value} readOnly={def.readonly} className="text" aria-invalid={!!issue || undefined} aria-describedby={issue ? errorId : undefined}
+      onInputValueChange={setDraft} onValueChange={(next) => { setDraft(next); if (next !== value && !def.readonly && !rejectField(next, value, def, label)) onCommit(next); }}
+      options={def.enum_values!.map((v, i) => ({ value: v, label: def.enum_labels?.[i] ?? v }))} />
+    {issue && <span className="control-error" id={errorId} role="status">{issue.inline}</span>}
+  </span>;
+}
 
 const segmented = (labels: string[]) => labels.length >= 2 && labels.length <= 4 && labels.every((l) => l.trim())
   && labels.reduce((w, l) => w + l.length * 7 + 16, 0) <= 150;
 
-
 const floatStep = (n: number) => (n ? 10 ** (Math.floor(Math.log10(Math.abs(n))) - 1) : 0.1);
-
-
-
 
 let pendingCommit: (() => void) | null = null;
 const flushCommit = () => { const run = pendingCommit; pendingCommit = null; run?.(); };
 if (typeof window !== 'undefined') for (const type of ['pointerdown', 'keydown', 'pagehide'] as const) window.addEventListener(type, flushCommit, true);
 const afterPaint = (run: () => void) => { flushCommit(); pendingCommit = run; requestAnimationFrame(() => setTimeout(flushCommit, 0)); };
 
+export function NumberBox({ labelledBy, label, value, min, max, unit, readOnly, onCommit }: { labelledBy: string; label: string; value: number; min: number; max: number; unit: string; readOnly?: boolean; onCommit(value: number): void }) {
+  const def = { key: '', type: 'int', label, min, max, sidetext: unit, mode: 'simple' } as unknown as OptionDef;
+  return <LabelId.Provider value={labelledBy}><span className="opt-field number-box"><TextBox numeric spin value={String(Math.round(value))} label={label} def={def} readOnly={readOnly} onCommit={(v) => onCommit(Number(v))} /></span></LabelId.Provider>;
+}
 
-function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; onCommit: (v: ConfigValue) => void }) {
+function TextBox(props: { value: string; label?: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
-
+  const errorId = useId();
+  const label = props.label ?? props.def?.label ?? 'Value';
   const percentOnly = !!props.numeric && /^percents?$/.test(props.def?.type ?? '') && props.def?.sidetext?.trim() === '%';
   const shown = (v: string) => percentOnly ? v.replace(/\s*%\s*$/, '') : v;
   const [text, setText] = useState(shown(props.value));
-  const [bad, setBad] = useState(false);
-
+  const issue = props.numeric && props.def ? fieldIssue(text, props.def) : undefined;
   const latest = useRef(text), byKey = useRef(false);
   latest.current = text;
   useEffect(() => setText(shown(props.value)), [props.value]);
   const commit = () => {
     const keyed = byKey.current; byKey.current = false;
     const text = percentOnly && latest.current.trim() && !latest.current.trim().endsWith('%') ? `${latest.current.trim()}%` : latest.current;
-    if (text === props.value) return;
-    if (props.numeric && props.def) {
-      const pct = text.trim().endsWith('%');
-      const n = Number(text.replace('%', '').trim());
-      const ok = Number.isFinite(n) && (props.def.min === undefined || n >= props.def.min) && (props.def.max === undefined || n <= props.def.max) &&
-        (!pct || props.def.type.includes('percent')) && (!props.def.type.startsWith('int') || Number.isInteger(n));
-      setBad(!ok);
-      if (!ok) return;
-    }
+    if (props.readOnly || text === props.value) return;
+    if (props.numeric && props.def && rejectField(text, props.value, props.def, label)) return;
     if (keyed) { const commitText = props.onCommit; afterPaint(() => commitText(text)); }
     else props.onCommit(text);
   };
-
   const stepNumber = (direction: number, big = false, keyboard = false) => {
     if (props.readOnly || !props.def) return;
     const raw = latest.current.trim(), pct = percentOnly || raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
     const step = (props.spin || props.def.type.startsWith('int') ? 1 : floatStep(n)) * (big ? 10 : 1);
     const places = Math.max(0, -Math.floor(Math.log10(step)));
-    const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, Number((n + direction * step).toFixed(places))));
+    const requested = Number((n + direction * step).toFixed(places));
+    const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, requested));
+    if (next !== requested) {
+      const issue = fieldIssue(`${requested}${pct ? '%' : ''}`, props.def);
+      toast(`${label}: ${fieldNumber(`${requested}${pct ? '%' : ''}`, props.def)} ${issue?.detail}. Using ${fieldNumber(`${next}${pct ? '%' : ''}`, props.def)}.`, null, undefined, 'warning');
+    }
     const value = `${next}${pct ? '%' : ''}`;
-    latest.current = shown(value); setText(shown(value)); setBad(false);
+    if (rejectField(value, props.value, props.def, label)) return;
+    latest.current = shown(value); setText(shown(value));
     if (keyboard) { const commitText = props.onCommit; afterPaint(() => commitText(value)); } else props.onCommit(value);
   };
   const input = useRef<HTMLInputElement>(null), stepRef = useRef(stepNumber);
@@ -281,7 +276,6 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   useEffect(() => {
     const el = input.current;
     if (!el || !props.numeric) return;
-
     const wheel = (e: WheelEvent) => { if (document.activeElement !== el || !e.deltaY) return; e.preventDefault(); stepRef.current(e.deltaY < 0 ? 1 : -1, e.shiftKey); };
     el.addEventListener('wheel', wheel, { passive: false });
     return () => el.removeEventListener('wheel', wheel);
@@ -291,12 +285,10 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   if (!props.numeric) return (
     <span className="control-text">
       <input {...named} className="text" value={text} readOnly={props.readOnly} list={props.list}
-        onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
+        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
     </span>
   );
-
-
-  const side = props.def?.sidetext?.trim(), either = side?.match(/^(.+?) or %$/)?.[1], pct = text.trim().endsWith('%');
+  const side = props.def?.sidetext?.trim().replace(/^money(?=\/)/, ''), either = side?.match(/^(.+?) or %$/)?.[1], pct = text.trim().endsWith('%');
   const unit = !side ? undefined : pct ? (side === '%' || either ? undefined : side) : either ?? side;
   return (
     <span className="control-number">
@@ -305,10 +297,12 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
         ref={input}
         aria-description={props.def?.sidetext}
         inputMode={props.def?.min !== undefined && props.def.min >= 0 ? 'decimal' : undefined}
-        className={`text num ${unit ? 'has-unit' : ''} ${bad ? 'bad' : ''}`}
+        aria-invalid={!!issue || undefined}
+        aria-describedby={issue ? errorId : undefined}
+        className={`text num ${unit ? 'has-unit' : ''}`}
         value={text}
         readOnly={props.readOnly}
-        onChange={(e) => { setText(e.target.value); setBad(false); }}
+        onChange={(e) => { latest.current = e.target.value; setText(e.target.value); }}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); }
@@ -317,6 +311,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
       />
       {(unit || props.glyph) && <span className="control-unit"><span aria-hidden>{unit}</span>{props.glyph}</span>}
       <span className="number-steps"><button type="button" tabIndex={-1} aria-label="Increase value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(1, e.shiftKey)}>+</button><button type="button" tabIndex={-1} aria-label="Decrease value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(-1, e.shiftKey)}>−</button></span>
+      {issue && <span className="control-error" id={errorId} role="status">{issue.inline}</span>}
     </span>
   );
 }

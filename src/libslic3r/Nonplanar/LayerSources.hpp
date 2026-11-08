@@ -1,10 +1,4 @@
 #pragma once
-
-
-
-
-
-
 #include "HeightField.hpp"
 #include "LayerField.hpp"
 #include "libslic3r/Point.hpp"
@@ -15,10 +9,6 @@
 namespace Slic3r { class PrintObject; }
 
 namespace Slic3r::Nonplanar {
-
-
-
-
 
 class OffsetLayerField : public LayerField
 {
@@ -39,8 +29,8 @@ private:
     double      m_z0, m_ramp;
 };
 
-
-
 std::unique_ptr<LayerField> build_layer_source(const PrintObject &object, std::string *why = nullptr);
+
+std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object);
 
 }

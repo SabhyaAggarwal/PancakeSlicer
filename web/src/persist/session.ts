@@ -1,6 +1,3 @@
-
-
-
 import type * as THREE from 'three';
 import { loadMesh, loadProject, placeholderGeometry, volumeGeometry } from '../plater/geometry';
 import type { ProjectPlate } from '../plater/threemf';
@@ -18,12 +15,8 @@ export type StoredDoc = Omit<Doc, 'objects' | 'projectPlates' | 'project'> & Sto
   project: string | null;
 };
 
-
 const blobKeys = new WeakMap<Blob, string>();
 const keyOf = (b: Blob) => blobKeys.get(b) ?? (blobKeys.set(b, newKey()), blobKeys.get(b)!);
-
-
-
 export function assignBlobKey(blob: Blob, key: string) {
   if (!blobKeys.has(blob)) blobKeys.set(blob, key);
 }
@@ -35,13 +28,11 @@ export const nameOf = (doc: Doc) => (doc.projectName ?? doc.project?.name ?? doc
 export function encode(doc: Doc): { stored: StoredDoc; blobs: Map<string, Blob> } {
   const blobs = new Map<string, Blob>();
   const keep = (b: Blob) => { const k = keyOf(b); blobs.set(k, b); return k; };
-
   const volume = ({ geometry: g, ...rest }: Volume): StoredVolume => ({ ...rest, geometry: {
     position: g.attributes.position.array as Float32Array, normal: g.attributes.normal?.array as Float32Array | undefined,
     index: (g.index?.array as Uint32Array | undefined) ?? null } });
   const object = ({ geometry: _, source, volumes, native, ...rest }: PlateObject): StoredObject =>
     ({ ...rest, source: keep(source), ...(volumes ? { volumes: volumes.map(volume) } : {}),
-
       ...(native ? { native: { ...native, files: Object.fromEntries(Object.entries(native.files).map(([k, b]) => [k, keep(b)])) } } : {}) });
   const stored = {
     ...doc,
@@ -52,9 +43,7 @@ export function encode(doc: Doc): { stored: StoredDoc; blobs: Map<string, Blob> 
   return { stored: { ...stored, files: Object.fromEntries([...blobs].map(([k, b]) => [k, b instanceof File ? b.name : k])) }, blobs };
 }
 
-
 export { projectThumbnail as thumbnail } from '../projects/thumbnail';
-
 
 export async function decode(doc: StoredDoc, get: (key: string) => Promise<Blob | null>): Promise<Partial<State>> {
   const blobs = new Map(await Promise.all(Object.entries(doc.files ?? {}).map(async ([k, name]) => {
@@ -75,7 +64,6 @@ export async function decode(doc: StoredDoc, get: (key: string) => Promise<Blob 
     });
   }
   const all = [...doc.objects, ...doc.projectPlates.flatMap((p) => p.objects)];
-
   const explode = all.some((o) => o.native) ? await import('../plater/explode') : null;
   const natives = new Map<StoredObject, NativeObject>();
   for (const o of all) {
@@ -85,11 +73,9 @@ export async function decode(doc: StoredDoc, get: (key: string) => Promise<Blob 
     const main = String((native.entry.volumes as { file: string }[])[native.main].file);
     if (o.source === o.native.files[main] && !meshes.has(o.source)) meshes.set(o.source, await explode!.nativeGeometry(native));
   }
-
   const simplify = (o: StoredObject) => !o.native && o.simplification?.kept !== 'original' &&
     (!!o.simplification || !Object.values(o.paint ?? {}).some(Boolean) && !o.volumes?.some((v) => Object.values(v.paint ?? {}).some(Boolean)));
   const meshKey = (o: StoredObject) => o.native ? o.source : `${o.source}/${simplify(o) ? 'simplified' : 'original'}`;
-
   const loadStoredMesh: (file: File, progress?: (pct: number) => void, simplify?: boolean) => Promise<THREE.BufferGeometry> = loadMesh;
   for (const o of all)
     if (!o.project && !meshes.has(meshKey(o)))
@@ -101,14 +87,12 @@ export async function decode(doc: StoredDoc, get: (key: string) => Promise<Blob 
     if (!o.project) return { ...o, native, source, geometry: meshes.get(meshKey(stored))!,
       simplification: meshes.get(meshKey(stored))!.userData.simplification ?? o.simplification,
       ...(volumes ? { volumes: volumes.map((v) => {
-
         const geometry = v.native !== undefined && explode ? explode.markPristine(explode.rawArrays(v.geometry.position, v.geometry.index))
           : volumeGeometry(v.geometry.position, v.geometry.index, v.geometry.normal);
         return { ...v, geometry };
       }) } : {}) };
     const item = o.project.buildIndex === undefined ? undefined : items.get(o.project.buildIndex);
     if (!item) return { ...o, source, geometry: placeholderGeometry() };
-
     if (!o.project.placeholder) return { ...o, source, geometry: item.geometry };
     const { x, y, z } = item.centre;
     return { ...o, source, geometry: item.geometry, project: { ...o.project, placeholder: false, origin: [x, y, z] },

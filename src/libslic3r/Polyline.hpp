@@ -12,7 +12,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
 #include "ArcFitter.hpp"
 
 namespace Slic3r {
@@ -27,7 +26,7 @@ public:
     Polyline() {};
     Polyline(const Polyline& other) : MultiPoint(other.points), fitting_result(other.fitting_result) {}
     Polyline(Polyline &&other) noexcept : MultiPoint(std::move(other.points)), fitting_result(std::move(other.fitting_result))  {}
-    Polyline(std::initializer_list<Point> list) : MultiPoint(list) {
+    Polyline(std::initializer_list<Point> list) : MultiPoint(list) { 
         fitting_result.clear();
     }
     explicit Polyline(const Point &p1, const Point &p2) {
@@ -57,13 +56,11 @@ public:
 		pl.points.reserve(points.size());
 		for (const Vec2d &pt : points)
 			pl.points.emplace_back(Point::new_scale(pt(0), pt(1)));
-
         pl.fitting_result.clear();
 		return pl;
     }
-
+    
     void append(const Point &point) {
-
         if (!this->empty() && this->last_point() == point)
             return;
         MultiPoint::append(point);
@@ -71,7 +68,6 @@ public:
     }
 
     void append_before(const Point& point) {
-
         if (!this->empty() && this->first_point() == point)
             return;
         if (this->size() == 1) {
@@ -86,14 +82,12 @@ public:
     }
 
     void append(const Points &src) {
-
         if (!this->empty() && !src.empty() && this->last_point() == src[0])
             this->append(src.begin() + 1, src.end());
         else
             this->append(src.begin(), src.end());
     }
     void append(const Points::const_iterator &begin, const Points::const_iterator &end) {
-
         if (!this->empty() && begin != end && this->last_point() == *begin)
             MultiPoint::append(begin + 1, end);
         else
@@ -107,10 +101,10 @@ public:
     }
     void append(const Polyline& src);
     void append(Polyline&& src);
-
+  
     Point& operator[](Points::size_type idx) { return this->points[idx]; }
     const Point& operator[](Points::size_type idx) const { return this->points[idx]; }
-
+  
     const Point& last_point() const override { return this->points.back(); }
     const Point& leftmost_point() const;
     Lines lines() const override;
@@ -123,7 +117,6 @@ public:
     void extend_start(double distance);
     Points equally_spaced_points(double distance) const;
     void simplify(double tolerance);
-
     void split_at(Point &point, Polyline* p1, Polyline* p2) const;
     bool split_at_index(const size_t index, Polyline* p1, Polyline* p2) const;
     bool split_at_length(const double length, Polyline* p1, Polyline* p2) const;
@@ -131,12 +124,9 @@ public:
     bool is_straight() const;
     bool is_closed() const { return this->points.front() == this->points.back(); }
 
-
     std::vector<PathFittingData> fitting_result;
-
     void simplify_by_fitting_arc(double tolerance);
     void reset_to_linear_move();
-
     Polylines equally_spaced_lines(double distance) const;
 
 private:
@@ -149,7 +139,6 @@ private:
 inline bool operator==(const Polyline &lhs, const Polyline &rhs) { return lhs.points == rhs.points; }
 inline bool operator!=(const Polyline &lhs, const Polyline &rhs) { return lhs.points != rhs.points; }
 
-
 #ifdef PERL_UCHAR_MIN
 class PolylineCollection
 {
@@ -161,7 +150,6 @@ public:
 extern BoundingBox get_extents(const Polyline &polyline);
 extern BoundingBox get_extents(const Polylines &polylines);
 
-
 bool remove_same_neighbor(Polyline &polyline);
 bool remove_same_neighbor(Polylines &polylines);
 
@@ -172,7 +160,7 @@ inline double total_length(const Polylines &polylines) {
     return total;
 }
 
-inline Lines to_lines(const Polyline &poly)
+inline Lines to_lines(const Polyline &poly) 
 {
     Lines lines;
     if (poly.points.size() >= 2) {
@@ -183,7 +171,7 @@ inline Lines to_lines(const Polyline &poly)
     return lines;
 }
 
-inline Lines to_lines(const Polylines &polys)
+inline Lines to_lines(const Polylines &polys) 
 {
     size_t n_lines = 0;
     for (size_t i = 0; i < polys.size(); ++ i)
@@ -217,12 +205,12 @@ inline Polylines to_polylines(std::vector<Points> &&paths)
     return out;
 }
 
-inline void polylines_append(Polylines &dst, const Polylines &src)
-{
+inline void polylines_append(Polylines &dst, const Polylines &src) 
+{ 
     dst.insert(dst.end(), src.begin(), src.end());
 }
 
-inline void polylines_append(Polylines &dst, Polylines &&src)
+inline void polylines_append(Polylines &dst, Polylines &&src) 
 {
     if (dst.empty()) {
         dst = std::move(src);
@@ -231,11 +219,6 @@ inline void polylines_append(Polylines &dst, Polylines &&src)
         src.clear();
     }
 }
-
-
-
-
-
 
 template<typename PointsType>
 inline void polylines_merge(PointsType &dst, bool dst_first, PointsType &&src, bool src_first)
@@ -247,14 +230,12 @@ inline void polylines_merge(PointsType &dst, bool dst_first, PointsType &&src, b
             std::swap(dst, src);
     } else if (! src_first)
         std::reverse(src.begin(), src.end());
-
     append(dst, std::move(src));
 }
 
 const Point& leftmost_point(const Polylines &polylines);
 
 bool remove_degenerate(Polylines &polylines);
-
 
 std::pair<int, Point> foot_pt(const Points &polyline, const Point &pt);
 std::pair<int, Point3> foot_pt(const Points3 &polyline, const Point3 &pt);
@@ -272,9 +253,6 @@ public:
         Polyline::clear();
         width.clear();
     }
-
-
-
 
     void start_at_index(int index);
 
@@ -308,44 +286,29 @@ public:
 
     virtual Lines3 lines() const;
 
-
     Polyline to_polyline() const;
-
 
     void clip_end(double distance);
 
-
     void simplify(double tolerance);
-
 
     void simplify_by_fitting_arc(double tolerance);
 
-
     void reverse();
-
 
     bool split_at_index(const size_t index, Polyline3 *p1, Polyline3 *p2) const;
 
-
     void split_at(Point &point, Polyline3* p1, Polyline3* p2) const;
-
 
     void split_at(Point3 &point, Polyline3* p1, Polyline3* p2) const;
 
-
     bool split_at_length(const double length, Polyline3 *p1, Polyline3 *p2) const;
-
 
     void append(const Point3& point);
 
-
     void append(const Polyline3& src);
 
-
     void append_before(const Point3& point);
-
-
-
 
     std::vector<PathFittingData> fitting_result;
 

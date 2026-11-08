@@ -1,16 +1,11 @@
 import { timeInteraction } from '../interaction-metrics';
-
-
-
 import { MoveType, ROLE_COUNT, readStatistics, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 import { updateCachedRanges } from './colors';
 import type { WorkerIn, WorkerOut } from './loader.worker';
 
-
 export const TEX_WIDTH = 4096;
 
 export class PreviewData {
-
   sourceUrl?: string;
   header: Header | null = null;
   states: States | null = null;
@@ -24,12 +19,9 @@ export class PreviewData {
   layerTableMatches = true;
   meta: StreamMeta = {};
   layers: LayerRec[] = [];
-
   layerEnd: number[] = [];
   layerTimes: number[] = [];
-
   colorPrintOptionLayers = new Set<number>();
-
 
   pos = new Float32Array(0);
   type = new Uint8Array(0);
@@ -37,7 +29,6 @@ export class PreviewData {
   extruder = new Uint8Array(0);
   cp = new Uint8Array(0);
   de = new Float32Array(0);
-
   orientation = new Float32Array(0);
   inverseTime = new Float32Array(0);
   actual = new Float32Array(0);
@@ -47,19 +38,15 @@ export class PreviewData {
   height = new Float32Array(0);
   mm3 = new Float32Array(0);
   time = new Float32Array(0);
-
   cumTime = new Float64Array(0);
   state = new Uint32Array(0);
   gcode = new Uint32Array(0);
   layer = new Uint32Array(0);
-
   slope: Float32Array | null = null;
-
 
   lod: Uint32Array[] = [];
   lodBlocks: number[] = [];
   lodCount = 0;
-
 
   roleTime = new Float64Array(ROLE_COUNT);
   roleFilament = new Float64Array(ROLE_COUNT);
@@ -68,7 +55,6 @@ export class PreviewData {
   filamentMm: number[] = [];
   bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   optionIds: number[] = [];
-
 
   statistics(record?: Record<string, unknown>) {
     return readStatistics(record?.statistics) ?? this.meta.statistics;
@@ -132,7 +118,6 @@ export class PreviewData {
     this.lod.push(lod);
     this.lodCount += lod.length / 2;
     this.setLayers(layers);
-
     for (let i = Math.max(1, s); i < this.loaded; ++i) {
       this.cumTime[i] = this.cumTime[i - 1] + this.time[i];
       const t = this.type[i] & 0x7f;
@@ -140,8 +125,6 @@ export class PreviewData {
       this.layerTimes[lt] = (this.layerTimes[lt] ?? 0) + this.time[i];
       if (t === MoveType.Extrude) {
         this.roleTime[this.role[i]] += this.time[i];
-
-
         if (!(this.type[i] & 0x80)) {
           this.roleFilament[this.role[i]] += this.de[i];
           const e = this.extruder[i];
@@ -169,12 +152,10 @@ export class PreviewData {
     this.layerEnd = layers.map((_, i) => (i + 1 < layers.length ? layers[i + 1].first : this.loaded));
   }
 
-
   layerSpan(lo: number, hi: number): [number, number] {
     if (!this.layers.length) return [1, 1];
     return [this.layers[lo].first, this.layerEnd[hi]];
   }
-
 
   totalTime(mode = 0): number {
     const t = this.meta.estimated_times?.[mode]?.time;
@@ -183,11 +164,6 @@ export class PreviewData {
     for (const v of this.layerTimes) sum += v ?? 0;
     return sum;
   }
-
-
-
-
-
 
   computeSlope() {
     if (this.slope) return;
@@ -244,7 +220,6 @@ export interface LoadHandlers {
   error(d: PreviewData, message: string): void;
 }
 
-
 export function supportGrams(d: PreviewData | null, total: number | null): number | null {
   if (!d?.done) return null;
   const mm = d.roleFilament[14] + d.roleFilament[15] + d.roleFilament[16];
@@ -253,20 +228,13 @@ export function supportGrams(d: PreviewData | null, total: number | null): numbe
 }
 
 const spawnLoader = () => new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
-
 let spare: Worker | null = null;
 export function prewarmMovesLoader() {
-  try { spare ??= spawnLoader(); } catch {                            }
+  try { spare ??= spawnLoader(); } catch {  }
 }
-
-
-
-
-
 
 export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
-
   d.sourceUrl = src.url?.split('?')[0];
   let worker: Worker;
   try {
@@ -274,7 +242,6 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
     spare = null;
   } catch (err) {
     d.error = String(err instanceof Error ? err.message : err);
-
     queueMicrotask(() => on.error(d, d.error!));
     return { data: d, cancel() {} };
   }
@@ -284,10 +251,8 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
     worker.terminate();
     on.error(d, message);
   };
-
   worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Preview worker stopped'); };
   worker.onmessageerror = () => fail('Preview data could not be transferred');
-
   let frameWork = 0, frameWatched = false;
   worker.onmessage = (e: MessageEvent<WorkerOut>) => {
     try {
@@ -305,8 +270,6 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
           frameWatched = true;
           requestAnimationFrame(() => { frameWatched = false; frameWork = 0; });
         }
-
-
         let ready = false;
         const ack = () => { if (!ready) { ready = true; worker.postMessage({ kind: 'ready' }); } };
         if (frameWork < 8) setTimeout(ack, 0);

@@ -11,7 +11,6 @@
 
 namespace Slic3r {
 
-
 unsigned int PrintRegion::extruder(FlowRole role) const
 {
     size_t extruder = 0;
@@ -34,8 +33,6 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 {
     const PrintConfig          &print_config = object.print()->config();
     ConfigOptionFloatOrPercent config_width;
-
-
     if (first_layer && print_config.initial_layer_line_width.value > 0) {
         config_width = print_config.initial_layer_line_width;
     } else if (role == frExternalPerimeter) {
@@ -54,9 +51,7 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 
     if (config_width.value == 0)
         config_width = object.config().line_width;
-
-
-
+    
     auto nozzle_diameter = float(nozzle_diameter_for_filament(print_config, this->extruder(role), object.print()->is_BBL_printer()));
     return Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
 }
@@ -78,35 +73,29 @@ coordf_t PrintRegion::bridging_height_avg(const PrintConfig &print_config) const
 
 void PrintRegion::collect_object_printing_extruders(const PrintConfig &print_config, const PrintRegionConfig &region_config, const bool has_brim, std::vector<unsigned int> &object_extruders)
 {
-
-
     auto num_extruders = (int)print_config.filament_diameter.size();
     auto emplace_extruder = [num_extruders, &object_extruders](int extruder_id) {
-        int i = std::max(0, extruder_id - 1);
+    	int i = std::max(0, extruder_id - 1);
         object_extruders.emplace_back((i >= num_extruders) ? 0 : i);
     };
     if (region_config.wall_loops.value > 0 || has_brim) {
-        emplace_extruder(region_config.outer_wall_filament_id);
+    	emplace_extruder(region_config.outer_wall_filament_id);
                 if (region_config.wall_loops.value > 1)
 			emplace_extruder(region_config.inner_wall_filament_id);
     }
     if (region_config.sparse_infill_density.value > 0)
-        emplace_extruder(region_config.sparse_infill_filament_id);
+    	emplace_extruder(region_config.sparse_infill_filament_id);
     if (region_config.sparse_infill_density.value > 0 || region_config.top_shell_layers.value > 0 || region_config.bottom_shell_layers.value > 0)
-        emplace_extruder(region_config.internal_solid_filament_id);
-
+    	emplace_extruder(region_config.internal_solid_filament_id);
     if (region_config.top_shell_layers.value > 0 || region_config.nonplanar_top_shells.value != 0)
-        emplace_extruder(region_config.top_surface_filament_id);
+    	emplace_extruder(region_config.top_surface_filament_id);
     if (region_config.bottom_shell_layers.value > 0 || region_config.nonplanar_bottom_shells.value != 0)
-        emplace_extruder(region_config.bottom_surface_filament_id);
+    	emplace_extruder(region_config.bottom_surface_filament_id);
 }
 
 void PrintRegion::collect_object_printing_extruders(const Print &print, std::vector<unsigned int> &object_extruders) const
 {
-
-
 #ifndef NDEBUG
-
     auto num_extruders = int(print.config().filament_diameter.size());
     assert(this->config().outer_wall_filament_id    <= num_extruders);
     assert(this->config().inner_wall_filament_id    <= num_extruders);

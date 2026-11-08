@@ -17,7 +17,6 @@
 #include "OpenVDBUtils.hpp"
 
 #ifdef _MSC_VER
-
 #pragma warning(push)
 #pragma warning(disable : 4146)
 #endif
@@ -30,8 +29,6 @@
 #include <openvdb/tools/Composite.h>
 #include <openvdb/tools/LevelSetRebuild.h>
 
-
-
 namespace Slic3r {
 
 class TriangleMeshDataAdapter {
@@ -43,9 +40,6 @@ public:
     size_t pointCount() const   { return its.vertices.size(); }
     size_t vertexCount(size_t) const { return 3; }
 
-
-
-
     void getIndexSpacePoint(size_t n, size_t v, openvdb::Vec3d& pos) const
     {
         auto vidx = size_t(its.indices[n](Eigen::Index(v)));
@@ -56,9 +50,6 @@ public:
     TriangleMeshDataAdapter(const indexed_triangle_set &m, float voxel_sc = 1.f)
         : its{m}, voxel_scale{voxel_sc} {};
 };
-
-
-
 
 openvdb::FloatGrid::Ptr mesh_to_grid(const indexed_triangle_set &    mesh,
                                      const openvdb::math::Transform &tr,
@@ -90,7 +81,6 @@ openvdb::FloatGrid::Ptr mesh_to_grid(const indexed_triangle_set &    mesh,
         grid = openvdb::tools::levelSetRebuild(*grid, 0., exteriorBandWidth,
                                                interiorBandWidth);
     } else if(meshparts.empty()) {
-
         grid = openvdb::tools::meshToVolume<openvdb::FloatGrid>(
             TriangleMeshDataAdapter{mesh}, tr, exteriorBandWidth,
             interiorBandWidth, flags);
@@ -141,7 +131,6 @@ openvdb::FloatGrid::Ptr redistance_grid(const openvdb::FloatGrid &grid,
 {
     auto new_grid = openvdb::tools::levelSetRebuild(grid, float(iso),
                                                     float(er), float(ir));
-
 
     new_grid->insertMeta(*grid.deepCopyMeta());
 

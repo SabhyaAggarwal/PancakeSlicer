@@ -2,8 +2,7 @@ import { useEffect, useRef, type ReactNode, type PointerEvent } from 'react';
 import { setSettingsSheet, setSettingsSnap, useOverlayRail, usePhoneSheet, useSettingsSnap, type SettingsSnap } from '../workspace-sheet';
 import { Glyph } from './Glyph';
 
-const snaps: SettingsSnap[] = ['peek', 'half', 'full'];
-
+const snaps: SettingsSnap[] = ['peek', 'full'];
 
 export default function WorkspaceRail({ children }: { children: ReactNode }) {
   const overlay = useOverlayRail(), phone = usePhoneSheet(), snap = useSettingsSnap();
@@ -25,7 +24,7 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
   };
   const heights = () => {
     const available = panel.current?.parentElement?.clientHeight ?? window.innerHeight;
-    return [56, Math.max(56, available * 0.52), available - 8];
+    return [56, available - 8];
   };
   const start = (event: PointerEvent<HTMLButtonElement>) => {
     if (!phone || event.button !== 0) return;
@@ -40,7 +39,7 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
     if (Math.abs(delta) > 4) current.moved = true;
     if (!current.moved) return;
     const stops = heights();
-    const height = Math.max(stops[0], Math.min(stops[2], current.height + delta));
+    const height = Math.max(stops[0], Math.min(stops[stops.length - 1], current.height + delta));
     panel.current!.style.setProperty('--sheet-height', `${height}px`);
     panel.current!.dataset.dragging = 'true';
   };
@@ -54,9 +53,7 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
       const nearest = stops.reduce((best, value, i) => Math.abs(value - height) < Math.abs(stops[best] - height) ? i : best, 0);
       setSettingsSnap(snaps[nearest]);
       suppressClick.current = true;
-
     } else if (event.type === 'pointerup' && event.pointerType === 'touch') {
-
       setSettingsSnap(snaps[(snaps.indexOf(snap) + 1) % snaps.length]);
       suppressClick.current = true;
     }
@@ -89,8 +86,8 @@ export default function WorkspaceRail({ children }: { children: ReactNode }) {
           }}
           onKeyDown={event => {
             const direction = ['ArrowUp', 'ArrowRight'].includes(event.key) ? 1 : ['ArrowDown', 'ArrowLeft'].includes(event.key) ? -1 : 0;
-            if (phone && direction) { event.preventDefault(); setSettingsSnap(snaps[Math.max(0, Math.min(2, snaps.indexOf(snap) + direction))]); }
-          }}><span className="workspace-sheet-grip" /><Glyph name="rail" /><strong>Settings</strong><span className="workspace-sheet-caret" /></button>
+            if (phone && direction) { event.preventDefault(); setSettingsSnap(snaps[Math.max(0, Math.min(snaps.length - 1, snaps.indexOf(snap) + direction))]); }
+          }}><span className="workspace-sheet-grip" /><strong>Settings</strong><span className="workspace-sheet-caret" /></button>
         {open && <button type="button" className="btn workspace-sheet-done" onClick={close}>Done</button>}
       </header>}
       <div id="workspace-settings-body" className="workspace-settings-body" inert={overlay && !open} aria-hidden={overlay && !open || undefined}>{children}</div>

@@ -21,7 +21,6 @@ Extruder::Extruder(unsigned int id, GCodeConfig *config, bool share_extruder) :
     reset();
 
     m_config_index = int(m_id);
-
     m_e_per_mm3 = this->filament_flow_ratio();
     m_e_per_mm3 /= this->filament_crossection();
 }
@@ -29,7 +28,6 @@ Extruder::Extruder(unsigned int id, GCodeConfig *config, bool share_extruder) :
 void Extruder::set_config_index(int idx)
 {
     m_config_index = idx < 0 ? int(m_id) : idx;
-
     m_e_per_mm3 = this->filament_flow_ratio();
     m_e_per_mm3 /= this->filament_crossection();
 }
@@ -45,7 +43,6 @@ unsigned int Extruder::extruder_id() const
 
 double Extruder::extrude(double dE)
 {
-
     if (m_share_extruder) {
         if (m_config->use_relative_e_distances)
             m_share_E[extruder_id()] = 0.;
@@ -54,7 +51,6 @@ double Extruder::extrude(double dE)
         if (dE < 0.)
             m_share_retracted[extruder_id()] -= dE;
     } else {
-
         if (m_config->use_relative_e_distances)
             m_E = 0.;
         m_E          += dE;
@@ -65,16 +61,8 @@ double Extruder::extrude(double dE)
     return dE;
 }
 
-
-
-
-
-
-
-
 double Extruder::retract(double length, double restart_extra)
 {
-
     if (m_share_extruder) {
         if (m_config->use_relative_e_distances)
             m_share_E[extruder_id()] = 0.;
@@ -87,7 +75,6 @@ double Extruder::retract(double length, double restart_extra)
         }
         return to_retract;
     } else {
-
         if (m_config->use_relative_e_distances)
             m_E = 0.;
         double to_retract = std::max(0., length - m_retracted);
@@ -103,7 +90,6 @@ double Extruder::retract(double length, double restart_extra)
 
 double Extruder::unretract()
 {
-
     if (m_share_extruder) {
         double dE = m_share_retracted[extruder_id()] + m_restart_extra;
         this->extrude(dE);
@@ -118,8 +104,6 @@ double Extruder::unretract()
         return dE;
     }
 }
-
-
 
 void Extruder::set_retracted(double retracted, double restart_extra)
 {
@@ -148,28 +132,21 @@ double Extruder::take_retraction()
 
 void Extruder::give_back_retraction(double prime)
 {
-
     (m_share_extruder ? m_share_retracted[extruder_id()] : m_retracted) += prime;
 }
 
-
 double Extruder::extruded_volume() const
 {
-
     if (m_share_extruder) {
-
         return this->used_filament() * this->filament_crossection();
     } else {
         return this->used_filament() * this->filament_crossection();
     }
 }
 
-
 double Extruder::used_filament() const
 {
-
     if (m_share_extruder) {
-
         return m_absolute_E;
     } else {
         return m_absolute_E + m_retracted;
@@ -196,13 +173,10 @@ double Extruder::filament_flow_ratio() const
     return m_config->filament_flow_ratio.get_at(m_config_index);
 }
 
-
 double Extruder::retract_before_wipe() const
 {
     return std::clamp(m_config->retract_before_wipe.get_at(m_config_index) * 0.01, 0., 1.);
 }
-
-
 
 double Extruder::retract_after_wipe() const
 {
@@ -252,8 +226,6 @@ double Extruder::retract_restart_extra_toolchange() const
 
 double Extruder::travel_slope() const
 {
-
-
     return m_config->travel_slope.get_at(extruder_id()) * PI / 180;
 }
 

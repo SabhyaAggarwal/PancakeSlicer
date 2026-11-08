@@ -36,7 +36,6 @@ namespace {
 inline const Vec3f DOWN = {0.f, 0.f, -1.f};
 constexpr double POINTS_PER_UNIT_AREA = 1.f;
 
-
 std::array<Vec3f, 3> get_triangle_vertices(const TriangleMesh &mesh,
                                            size_t              faceidx)
 {
@@ -72,7 +71,6 @@ T sum_score(AccessFn &&accessfn, size_t facecount, size_t Nthreads)
     return execution::reduce(ex_tbb, from, to, initv, mergefn, accessfn, grainsize);
 }
 
-
 struct Facestats {
     Vec3f  normal;
     double area;
@@ -87,7 +85,6 @@ struct Facestats {
     }
 };
 
-
 double get_misalginment_score(const TriangleMesh &mesh, const Transform3f &tr)
 {
     if (mesh.its.vertices.empty()) return std::nan("");
@@ -100,7 +97,6 @@ double get_misalginment_score(const TriangleMesh &mesh, const Transform3f &tr)
                          + std::abs(fc.normal.dot(Vec3f::UnitY()))
                          + std::abs(fc.normal.dot(Vec3f::UnitZ())));
 
-
         return scaled<int_fast64_t>(score);
     };
 
@@ -111,23 +107,15 @@ double get_misalginment_score(const TriangleMesh &mesh, const Transform3f &tr)
     return S / facecount;
 }
 
-
 inline double get_supportedness_score(const Facestats &fc)
 {
-
-
     float cosphi = fc.normal.dot(DOWN);
     float phi = 1.f - std::acos(cosphi) / float(PI);
 
-
     phi = phi * phi * phi;
-
-
-
 
     return std::sqrt(fc.area) * POINTS_PER_UNIT_AREA * phi;
 }
-
 
 double get_supportedness_score(const TriangleMesh &mesh, const Transform3f &tr)
 {
@@ -144,7 +132,6 @@ double get_supportedness_score(const TriangleMesh &mesh, const Transform3f &tr)
 
     return S / facecount;
 }
-
 
 float find_ground_level(const TriangleMesh &mesh,
                          const Transform3f & tr,
@@ -191,7 +178,6 @@ float get_supportedness_onfloor_score(const TriangleMesh &mesh,
 
 using XYRotation = std::array<double, 2>;
 
-
 Transform3f to_transform3f(const XYRotation &rot)
 {
     Transform3f rt = Transform3f::Identity();
@@ -214,7 +200,6 @@ inline bool is_on_floor(const SLAPrintObjectConfig &cfg)
 
     return opt_elevation < EPSILON || opt_padaround;
 }
-
 
 std::vector<XYRotation> get_chull_rotations(const TriangleMesh &mesh, size_t max_count)
 {
@@ -266,7 +251,6 @@ std::vector<XYRotation> get_chull_rotations(const TriangleMesh &mesh, size_t max
     return ret;
 }
 
-
 template<size_t N, class Fn, class It, class StopCond>
 std::array<double, N> find_min_score(Fn &&fn, It from, It to, StopCond &&stopfn)
 {
@@ -307,8 +291,6 @@ struct RotfinderBoilerplate {
     unsigned max_tries;
     const RotOptimizeParams &params;
 
-
-
     static TriangleMesh get_mesh_to_rotate(const ModelObject &mo)
     {
         TriangleMesh mesh = mo.raw_mesh();
@@ -343,16 +325,12 @@ Vec2d find_best_misalignment_rotation(const ModelObject &      mo,
 {
     RotfinderBoilerplate<1000> bp{mo, params};
 
-
     size_t gridsize = std::sqrt(bp.max_tries);
     opt::Optimizer<opt::AlgBruteForce> solver(
         opt::StopCriteria{}.max_iterations(bp.max_tries)
                            .stop_condition([&bp] { return bp.stopcond(); }),
         gridsize
     );
-
-
-
 
     auto bounds = opt::bounds({ {-PI, PI}, {-PI, PI} });
 
@@ -379,14 +357,10 @@ Vec2d find_least_supports_rotation(const ModelObject &      mo,
 
     XYRotation rot;
 
-
     if (is_on_floor(pocfg)) {
 
         std::vector<XYRotation> inputs = get_chull_rotations(bp.mesh, bp.max_tries);
         bp.max_tries = inputs.size();
-
-
-
 
         auto objfn = [&bp](const XYRotation &rot) {
             bp.statusfn();
@@ -399,16 +373,12 @@ Vec2d find_least_supports_rotation(const ModelObject &      mo,
         });
 
     } else {
-
         size_t gridsize = std::sqrt(bp.max_tries);
         opt::Optimizer<opt::AlgBruteForce> solver(
             opt::StopCriteria{}.max_iterations(bp.max_tries)
                                .stop_condition([&bp] { return bp.stopcond(); }),
             gridsize
         );
-
-
-
 
         auto bounds = opt::bounds({ {-PI, PI}, {-PI, PI} });
 
@@ -418,7 +388,6 @@ Vec2d find_least_supports_rotation(const ModelObject &      mo,
                 bp.statusfn();
                 return get_supportedness_score(bp.mesh, to_transform3f(rot));
             }, opt::initvals({0., 0.}), bounds);
-
 
         rot = result.optimum;
     }

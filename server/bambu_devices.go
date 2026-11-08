@@ -18,7 +18,20 @@ type NozzleStatus struct {
 	Legacy   bool    `json:"legacy,omitempty"`
 }
 
+type NozzleTemp struct {
+	ID     int     `json:"id"`
+	Actual float64 `json:"actual"`
+	Target float64 `json:"target"`
+}
+
 type bambuDevice struct {
+	Extruder *struct {
+		Info []struct {
+			ID   int     `json:"id"`
+			Temp uint32  `json:"temp"`
+			Snow *uint32 `json:"snow"`
+		} `json:"info"`
+	} `json:"extruder"`
 	Airduct *struct {
 		ModeCur  int `json:"modeCur"`
 		ModeList []struct {
@@ -133,4 +146,30 @@ func (b *bambuReport) fans() map[string]float64 {
 		return nil
 	}
 	return out
+}
+
+func (b *bambuReport) activeTray(ams, slot int, external bool) bool {
+	if b.Device != nil && b.Device.Extruder != nil {
+		for _, extruder := range b.Device.Extruder.Info {
+			if extruder.Snow != nil {
+				value := *extruder.Snow
+				unit, tray := int(value>>8&255), int(value&255)
+				if external && unit == 255 && tray != 255 || !external && unit == ams && tray == slot {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if b.AMS == nil {
+		return false
+	}
+	now := bambuNumber(b.AMS.TrayNow)
+	if now == nil {
+		return false
+	}
+	if external {
+		return int(*now) == 254
+	}
+	return int(*now) == ams*4+slot
 }

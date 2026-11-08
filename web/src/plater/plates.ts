@@ -1,38 +1,27 @@
-
-
-
-
 import { getState, markStale, newId, setState, subscribeStore, toast, type JobView, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { bedArea, canExport, exportFilename, slice } from '../actions';
 import { arrange, nextFreeSpot } from './geometry';
 import { promptDialog } from '../components/Ask';
 
-
 export const OBJECT_DRAG = 'application/x-orca-object';
 
 const IDLE: JobView = { state: 'idle', pct: 0, stage: '' };
-
 
 const plateJobs = new Map<number, JobView>();
 
 const busy = (s: State) => s.job.state === 'running' || s.job.state === 'submitting';
 
-
 export const canAddPlate = (s: State) => !s.project && !!s.features.mesh_plates;
-
 
 export function currentPlates(s: State) {
   return s.projectPlates.map((p) => (p.index === s.plateIndex ? { ...p, objects: s.objects, events: s.events } : p));
 }
 
-
 export const listedPlates = (s: State) =>
   s.projectPlates.length ? currentPlates(s) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: s.objects, events: s.events }];
 
-
 export const plateLocked = (s: State, index = s.plateIndex) => !!s.projectPlates.find((p) => p.index === index)?.locked;
-
 
 function showPlate(s: State, index: number): Partial<State> {
   const plates = currentPlates(s);
@@ -49,7 +38,6 @@ export function selectPlate(index: number) {
   undoable('Select plate', () => setState((st) => showPlate(st, index)));
 }
 
-
 export function addPlate() {
   const s = getState();
   if (!canAddPlate(s) || busy(s)) return;
@@ -59,8 +47,6 @@ export function addPlate() {
     return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects: [], events: [] }] }, index);
   }));
 }
-
-
 
 export function duplicatePlate() {
   const s = getState();
@@ -72,7 +58,6 @@ export function duplicatePlate() {
     return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects, events: [] }] }, index);
   }));
 }
-
 
 export function deletePlate(index = getState().plateIndex) {
   const s = getState();
@@ -95,11 +80,7 @@ export function deletePlate(index = getState().plateIndex) {
   }));
 }
 
-
-
 export const PLATE_KEYS = ['curr_bed_type', 'print_sequence', 'spiral_mode', 'first_layer_print_sequence', 'other_layers_print_sequence', 'other_layers_print_sequence_nums'] as const;
-
-
 
 export function setPlateSettings(name: string, settings: Record<string, string>) {
   undoable('Plate Settings', () => setState((st) => {
@@ -111,14 +92,11 @@ export function setPlateSettings(name: string, settings: Record<string, string>)
   }));
 }
 
-
 export function toggleLock(index: number) {
   undoable(plateLocked(getState(), index) ? 'Unlock Plate' : 'Lock Plate', () => setState((st) => ({
     projectPlates: listedPlates(st).map((p) => (p.index === index ? { ...p, locked: !p.locked } : p)),
   })));
 }
-
-
 
 export function movePlateToFront(index: number) {
   const s = getState();
@@ -145,7 +123,6 @@ export function renamePlate(index: number, name: string) {
   undoable('Edit Plate Name', () => setState((st) => ({ projectPlates: listedPlates(st).map((p) => (p.index === index ? { ...p, name } : p)) })));
 }
 
-
 export async function editPlateName() {
   const s = getState();
   const plate = listedPlates(s).find((p) => p.index === s.plateIndex);
@@ -153,8 +130,6 @@ export async function editPlateName() {
   const name = await promptDialog('Edit Plate Name', plate.name);
   if (name !== null) renamePlate(plate.index, name);
 }
-
-
 
 export function moveToPlate(ids: number[], index: number, shift?: [number, number]) {
   const s = getState();
@@ -177,12 +152,10 @@ export function moveToPlate(ids: number[], index: number, shift?: [number, numbe
   }));
 }
 
-
 function shiftTo(o: PlateObject, x: number, y: number): PlateObject {
   const dx = x - o.instances[0].x, dy = y - o.instances[0].y;
   return { ...o, instances: o.instances.map((i) => ({ ...i, x: i.x + dx, y: i.y + dy })) };
 }
-
 
 export const plateJob = (s: State, index: number) => (index === s.plateIndex ? s.job : plateJobs.get(index) ?? IDLE);
 
@@ -191,23 +164,18 @@ export function setPlateJob(index: number, job: JobView) {
   else plateJobs.set(index, job);
 }
 
-
 export const clearPlateJobs = () => plateJobs.clear();
-
 
 function asPlate(s: State, index: number): State {
   const plate = currentPlates(s).find((p) => p.index === index)!;
   return { ...s, projectPlates: currentPlates(s), objects: plate.objects, events: plate.events ?? [], plateIndex: index, job: plateJob(s, index) };
 }
 
-
 const settled = () => new Promise<void>((resolve) => {
   const check = () => { if (!busy(getState())) { stop(); resolve(); } };
   const stop = subscribeStore(check);
   check();
 });
-
-
 
 export async function sliceAll() {
   const start = getState();
@@ -223,10 +191,7 @@ export async function sliceAll() {
   if (getState().plateIndex !== start.plateIndex) setState(showPlate(getState(), start.plateIndex));
 }
 
-
 export const exportablePlates = (s: State) => s.projectPlates.filter((p) => canExport(asPlate(s, p.index)));
-
-
 
 export async function exportAll() {
   const s = getState();

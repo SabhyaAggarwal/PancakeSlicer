@@ -8,23 +8,9 @@
 
 namespace Slic3r {
 
-
-
-
-
-
-
-
-
-
-
 class BeltSliceStrategy
 {
 public:
-
-
-
-
     static void apply_preslice_transforms(Transform3d           &trafo,
                                           const PrintConfig     &config,
                                           const ModelVolumePtrs &model_volumes,

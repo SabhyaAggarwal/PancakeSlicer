@@ -23,24 +23,18 @@ static bool obj_parseline(const char *line, ObjData &data)
 	if (*line == 0)
 		return true;
     assert(Slic3r::is_decimal_separator_point());
-
-
 	EATWS();
 
 	char c1 = *line ++;
 	switch (c1) {
 	case '#':
-
 		break;
 	case 'v':
 	{
-
 		char c2 = *line ++;
 		switch (c2) {
 		case 't':
 		{
-
-
 			char c2 = *line ++;
 			if (c2 != ' ' && c2 != '\t')
 				return false;
@@ -59,7 +53,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 				line = endptr;
 				EATWS();
 			}
-
 			if (*line != 0) {
 				strtod(line, &endptr);
 				if (endptr == 0 || (*endptr != ' ' && *endptr != '\t' && *endptr != 0))
@@ -75,8 +68,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 		}
 		case 'n':
 		{
-
-
 			char c2 = *line ++;
 			if (c2 != ' ' && c2 != '\t')
 				return false;
@@ -106,7 +97,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 		}
 		case 'p':
 		{
-
 			char c2 = *line ++;
 			if (c2 != ' ' && c2 != '\t')
 				return false;
@@ -139,7 +129,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 		}
 		default:
 		{
-
 			if (c2 != ' ' && c2 != '\t')
 				return false;
 			EATWS();
@@ -187,11 +176,6 @@ static bool obj_parseline(const char *line, ObjData &data)
                     EATWS();
                 }
 			}
-
-
-
-
-
             data.coordinates.push_back((float)x);
 			data.coordinates.push_back((float)y);
 			data.coordinates.push_back((float)z);
@@ -206,36 +190,29 @@ static bool obj_parseline(const char *line, ObjData &data)
 	}
 	case 'f':
 	{
-
 		EATWS();
 		if (*line == 0)
 			return false;
 
-
 		ObjVertex vertex;
 		char *endptr = 0;
 		while (*line != 0) {
-
 			vertex.coordIdx			= 0;
 			vertex.normalIdx		= 0;
 			vertex.textureCoordIdx	= 0;
 			vertex.coordIdx = strtol(line, &endptr, 10);
-
 			if (endptr == 0 || (*endptr != ' ' && *endptr != '\t' && *endptr != '/' && *endptr != 0))
 				return false;
 			line = endptr;
 			if (*line == '/') {
 				++ line;
-
 				if (*line != '/') {
-
 					vertex.textureCoordIdx = strtol(line, &endptr, 10);
 					if (endptr == 0 || (*endptr != ' ' && *endptr != '\t' && *endptr != '/' && *endptr != 0))
 						return false;
 					line = endptr;
 				}
 				if (*line == '/') {
-
 					++ line;
 					vertex.normalIdx = strtol(line, &endptr, 10);
 					if (endptr == 0 || (*endptr != ' ' && *endptr != '\t' && *endptr != 0))
@@ -287,8 +264,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 			*(line ++) != 'i' ||
 			*(line ++) != 'b')
 			return false;
-
-
 		EATWS();
 		data.mtllibs.push_back(std::string(line));
 		break;
@@ -301,8 +276,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 			*(line ++) != 't' ||
 			*(line ++) != 'l')
 			return false;
-
-
 		EATWS();
         if (data.usemtls.size()>0) {
 			data.usemtls.back().vertexIdxEnd = (int) data.vertices.size();
@@ -325,11 +298,9 @@ static bool obj_parseline(const char *line, ObjData &data)
 	}
 	case 'o':
 	{
-
 		EATWS();
 		while (*line != ' ' && *line != '\t' && *line != 0)
 			++ line;
-
 		EATWS();
 		if (*line != 0)
 			return false;
@@ -341,8 +312,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 	}
 	case 'g':
 	{
-
-
 		ObjGroup group;
         group.vertexIdxFirst = (int)data.vertices.size();
         group.name = line;
@@ -351,7 +320,6 @@ static bool obj_parseline(const char *line, ObjData &data)
 	}
 	case 's':
 	{
-
 		char c2 = *line ++;
 		if (c2 != ' ' && c2 != '\t')
 			return false;
@@ -371,7 +339,7 @@ static bool obj_parseline(const char *line, ObjData &data)
 		break;
 	}
 	default:
-        BOOST_LOG_TRIVIAL(error) << "ObjParser: Unknown command: " << c1;
+    	BOOST_LOG_TRIVIAL(error) << "ObjParser: Unknown command: " << c1;
 		break;
 	}
 
@@ -483,8 +451,6 @@ static bool        mtl_parseline(const char *line, MtlData &data)
 {
     if (*line == 0) return true;
     assert(Slic3r::is_decimal_separator_point());
-
-
     EATWS();
 
     char c1 = *line++;
@@ -692,14 +658,12 @@ bool objparse(const char *path, ObjData &data)
 					char *c = buf + lastLine;
 					while (*c == ' ' || *c == '\t')
 						++ c;
-
-
 					obj_parseline(c, data);
 					lastLine = i + 1;
 				}
 			lenPrev = len - lastLine;
 			if (lenPrev > 65536) {
-                BOOST_LOG_TRIVIAL(error) << "ObjParser: Excessive line length";
+		    	BOOST_LOG_TRIVIAL(error) << "ObjParser: Excessive line length";
 				::fclose(pFile);
 				return false;
 			}
@@ -707,7 +671,7 @@ bool objparse(const char *path, ObjData &data)
 		}
     }
     catch (std::bad_alloc&) {
-        BOOST_LOG_TRIVIAL(error) << "ObjParser: Out of memory";
+    	BOOST_LOG_TRIVIAL(error) << "ObjParser: Out of memory";
 	}
 	::fclose(pFile);
 	return true;
@@ -732,8 +696,6 @@ bool mtlparse(const char *path, MtlData &data)
                     buf[i]  = 0;
                     char *c = buf + lastLine;
                     while (*c == ' ' || *c == '\t') ++c;
-
-
                     mtl_parseline(c, data);
                     lastLine = i + 1;
                 }
@@ -777,19 +739,18 @@ bool objparse(std::istream &stream, ObjData &data)
         }
     }
     catch (std::bad_alloc&) {
-        BOOST_LOG_TRIVIAL(error) << "ObjParser: Out of memory";
-        return false;
+    	BOOST_LOG_TRIVIAL(error) << "ObjParser: Out of memory";
+    	return false;
     }
-
+    
     return true;
 }
 
-template<typename T>
+template<typename T> 
 bool savevector(FILE *pFile, const std::vector<T> &v)
 {
 	size_t cnt = v.size();
 	::fwrite(&cnt, 1, sizeof(cnt), pFile);
-
 	if (! v.empty())
 		::fwrite(&v.front(), 1, sizeof(T) * cnt, pFile);
 	return true;
@@ -821,14 +782,13 @@ bool savevectornameidx(FILE *pFile, const std::vector<T> &v)
 	return true;
 }
 
-template<typename T>
+template<typename T> 
 bool loadvector(FILE *pFile, std::vector<T> &v)
 {
 	v.clear();
 	size_t cnt = 0;
 	if (::fread(&cnt, sizeof(cnt), 1, pFile) != 1)
 		return false;
-
 	if (cnt != 0) {
 		v.assign(cnt, T());
 		if (::fread(&v.front(), sizeof(T), cnt, pFile) != cnt)
@@ -954,9 +914,7 @@ bool vectorequal(const std::vector<std::string> &v1, const std::vector<std::stri
 extern bool objequal(const ObjData &data1, const ObjData &data2)
 {
 
-
-
-	return
+	return 
 		vectorequal(data1.coordinates,			data2.coordinates)			&&
 		vectorequal(data1.textureCoordinates,	data2.textureCoordinates)	&&
 		vectorequal(data1.normals,				data2.normals)				&&

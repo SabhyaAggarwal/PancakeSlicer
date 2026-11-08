@@ -15,8 +15,8 @@ class BlacklistedLibraryCheck
 public:
     static BlacklistedLibraryCheck& get_instance()
     {
-        static BlacklistedLibraryCheck instance;
-
+        static BlacklistedLibraryCheck instance; 
+                              
         return instance;
     }
 private:
@@ -26,12 +26,9 @@ private:
 public:
     BlacklistedLibraryCheck(BlacklistedLibraryCheck const&) = delete;
     void operator=(BlacklistedLibraryCheck const&) = delete;
-
     bool get_blacklisted(std::vector<std::wstring>& names);
     std::wstring get_blacklisted_string();
-
     bool perform_check();
-
 
     static bool is_blacklisted(const std::string &dllpath);
     static bool is_blacklisted(const std::wstring &dllpath);

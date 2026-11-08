@@ -1,9 +1,5 @@
-
-
-
 import { Vector3 } from 'three';
 import { ConvexHull } from 'three/examples/jsm/math/ConvexHull.js';
-
 
 export function parseStl(buf: ArrayBuffer): Float32Array {
   const dv = new DataView(buf);
@@ -23,7 +19,6 @@ export function parseStl(buf: ArrayBuffer): Float32Array {
   if (!out.length) throw new Error('no triangles in the STL');
   return new Float32Array(out);
 }
-
 
 export function parseObj(text: string): Float32Array {
   const v: number[] = [];
@@ -45,11 +40,6 @@ export function parseObj(text: string): Float32Array {
   if (!out.length) throw new Error('no mesh in the OBJ');
   return new Float32Array(out);
 }
-
-
-
-
-
 
 export function weld(soup: Float32Array): { positions: Float32Array; index: Uint32Array } {
   const n = soup.length / 3;
@@ -84,7 +74,6 @@ export function weld(soup: Float32Array): { positions: Float32Array; index: Uint
   return { positions: positions.slice(0, unique * 3), index };
 }
 
-
 export function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array {
   const nrm = new Float32Array(p.length);
   for (let t = 0; t < index.length; t += 3) {
@@ -101,6 +90,102 @@ export function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array
   return nrm;
 }
 
+export function creaseSplit(p: Float32Array, index: Uint32Array, creaseDeg = 30, lineDeg = 40): { positions: Float32Array; normals: Float32Array; index: Uint32Array; edges: Float32Array } {
+  const nt = index.length / 3, nv = p.length / 3;
+  const limit = Math.cos(creaseDeg * Math.PI / 180), lineLimit = Math.cos(lineDeg * Math.PI / 180);
+  const fn = new Float32Array(nt * 3), angle = new Float32Array(nt * 3);
+  for (let t = 0; t < nt; t++) {
+    const a = 3 * index[3 * t], b = 3 * index[3 * t + 1], c = 3 * index[3 * t + 2];
+    const cbx = p[c] - p[b], cby = p[c + 1] - p[b + 1], cbz = p[c + 2] - p[b + 2];
+    const abx = p[a] - p[b], aby = p[a + 1] - p[b + 1], abz = p[a + 2] - p[b + 2];
+    const nx = cby * abz - cbz * aby, ny = cbz * abx - cbx * abz, nz = cbx * aby - cby * abx;
+    const l = Math.hypot(nx, ny, nz);
+    if (l > 0) fn[3 * t] = nx / l, fn[3 * t + 1] = ny / l, fn[3 * t + 2] = nz / l;
+    for (let k = 0; k < 3; k++) {
+      const o = 3 * index[3 * t + k], u = 3 * index[3 * t + (k + 1) % 3], w = 3 * index[3 * t + (k + 2) % 3];
+      const ux = p[u] - p[o], uy = p[u + 1] - p[o + 1], uz = p[u + 2] - p[o + 2];
+      const wx = p[w] - p[o], wy = p[w + 1] - p[o + 1], wz = p[w + 2] - p[o + 2];
+      const d = Math.hypot(ux, uy, uz) * Math.hypot(wx, wy, wz);
+      angle[3 * t + k] = d > 0 ? Math.acos(Math.max(-1, Math.min(1, (ux * wx + uy * wy + uz * wz) / d))) : 0;
+    }
+  }
+  const start = new Uint32Array(nv + 1);
+  for (let i = 0; i < index.length; i++) start[index[i] + 1]++;
+  for (let v = 0; v < nv; v++) start[v + 1] += start[v];
+  const fill = start.slice(0, nv), corners = new Uint32Array(index.length);
+  for (let i = 0; i < index.length; i++) corners[fill[index[i]]++] = i;
+  const positions = new Float32Array(index.length * 3), normals = new Float32Array(index.length * 3), out = new Uint32Array(index.length);
+  let count = 0;
+  for (let v = 0; v < nv; v++) {
+    const first = count;
+    for (let i = start[v]; i < start[v + 1]; i++) {
+      const corner = corners[i], f = 3 * Math.floor(corner / 3);
+      let x = 0, y = 0, z = 0;
+      for (let j = start[v]; j < start[v + 1]; j++) {
+        const g = corners[j], h = 3 * Math.floor(g / 3);
+        if (fn[f] * fn[h] + fn[f + 1] * fn[h + 1] + fn[f + 2] * fn[h + 2] < limit) continue;
+        x += angle[g] * fn[h], y += angle[g] * fn[h + 1], z += angle[g] * fn[h + 2];
+      }
+      const l = Math.hypot(x, y, z);
+      if (l > 0) x /= l, y /= l, z /= l;
+      else z = 1;
+      let found = -1;
+      for (let o = first; o < count && found < 0; o++)
+        if (normals[3 * o] * x + normals[3 * o + 1] * y + normals[3 * o + 2] * z > 0.9999) found = o;
+      if (found < 0) {
+        found = count++;
+        positions[3 * found] = p[3 * v], positions[3 * found + 1] = p[3 * v + 1], positions[3 * found + 2] = p[3 * v + 2];
+        normals[3 * found] = x, normals[3 * found + 1] = y, normals[3 * found + 2] = z;
+      }
+      out[corner] = found;
+    }
+  }
+  const ends: number[] = [];
+  for (let v = 0; v < nv; v++)
+    for (let i = start[v]; i < start[v + 1]; i++) {
+      const corner = corners[i], t = Math.floor(corner / 3), w = index[3 * t + (corner % 3 + 1) % 3];
+      let other = -1, shared = 0;
+      for (let j = start[w]; j < start[w + 1]; j++) {
+        const g = corners[j], u = Math.floor(g / 3);
+        if (u !== t && index[3 * u + (g % 3 + 1) % 3] === v) other = u, shared++;
+      }
+      if (shared === 1 && v > w) continue;
+      const open = shared !== 1;
+      const f = 3 * t, h = 3 * other;
+      const sliver = !(fn[f] || fn[f + 1] || fn[f + 2]) || !open && !(fn[h] || fn[h + 1] || fn[h + 2]);
+      if (sliver || !open && fn[f] * fn[h] + fn[f + 1] * fn[h + 1] + fn[f + 2] * fn[h + 2] >= lineLimit) continue;
+      ends.push(v, w);
+    }
+  return { positions: positions.slice(0, count * 3), normals: normals.slice(0, count * 3), index: out, edges: featureLines(p, ends) };
+}
+
+function featureLines(p: Float32Array, ends: number[]): Float32Array {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], p[i + k]); max[k] = Math.max(max[k], p[i + k]); }
+  const shortest = 0.03 * Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
+  const parent = new Map<number, number>();
+  const root = (v: number): number => {
+    let r = v;
+    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r)!;
+    for (let x = v; x !== r;) { const next = parent.get(x)!; parent.set(x, r); x = next; }
+    return r;
+  };
+  for (let i = 0; i < ends.length; i += 2) {
+    for (const v of [ends[i], ends[i + 1]]) if (!parent.has(v)) parent.set(v, v);
+    const a = root(ends[i]), b = root(ends[i + 1]);
+    if (a !== b) parent.set(a, b);
+  }
+  const length = (i: number) => Math.hypot(p[3 * ends[i]] - p[3 * ends[i + 1]], p[3 * ends[i] + 1] - p[3 * ends[i + 1] + 1], p[3 * ends[i] + 2] - p[3 * ends[i + 1] + 2]);
+  const total = new Map<number, number>();
+  for (let i = 0; i < ends.length; i += 2) { const r = root(ends[i]); total.set(r, (total.get(r) ?? 0) + length(i)); }
+  const segments: number[] = [];
+  for (let i = 0; i < ends.length; i += 2) {
+    if ((total.get(root(ends[i])) ?? 0) < shortest) continue;
+    const v = ends[i], w = ends[i + 1];
+    segments.push(p[3 * v], p[3 * v + 1], p[3 * v + 2], p[3 * w], p[3 * w + 1], p[3 * w + 2]);
+  }
+  return new Float32Array(segments);
+}
 
 export function centre(p: Float32Array): { centre: [number, number, number]; min: [number, number, number]; max: [number, number, number] } {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -114,12 +199,6 @@ export function centre(p: Float32Array): { centre: [number, number, number]; min
   for (let i = 0; i < p.length; i += 3) p[i] -= c[0], p[i + 1] -= c[1], p[i + 2] -= c[2];
   return { centre: c, min: [min[0] - c[0], min[1] - c[1], 0], max: [max[0] - c[0], max[1] - c[1], max[2] - c[2]] };
 }
-
-
-
-
-
-
 
 export function hullPoints(p: Float32Array): Float32Array {
   const n = p.length / 3;
@@ -161,12 +240,6 @@ export function hullPoints(p: Float32Array): Float32Array {
   return out;
 }
 
-
-
-
-
-
-
 export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null, m: ArrayLike<number>): Blob {
   const tp = new Float64Array(p.length);
   for (let i = 0; i < p.length; i += 3) {
@@ -176,7 +249,6 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
     tp[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
   }
   const tris = (index ? index.length : p.length / 3) / 3;
-
   const flip = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]) < 0;
   const head = new ArrayBuffer(84);
   new TextEncoder().encodeInto('PancakeSlicer web plate object', new Uint8Array(head, 0, 80));
@@ -192,7 +264,6 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
       const a = 3 * (index ? index[3 * t] : 3 * t);
       let b = 3 * (index ? index[3 * t + 1] : 3 * t + 1), c = 3 * (index ? index[3 * t + 2] : 3 * t + 2);
       if (flip) [b, c] = [c, b];
-
       const cbx = tp[c] - tp[b], cby = tp[c + 1] - tp[b + 1], cbz = tp[c + 2] - tp[b + 2];
       const abx = tp[a] - tp[b], aby = tp[a + 1] - tp[b + 1], abz = tp[a + 2] - tp[b + 2];
       const nx = cby * abz - cbz * aby, ny = cbz * abx - cbx * abz, nz = cbx * aby - cby * abx;

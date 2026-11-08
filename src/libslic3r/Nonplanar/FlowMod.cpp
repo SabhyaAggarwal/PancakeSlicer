@@ -40,7 +40,6 @@ float ShellDeficit::sample(const Vec2d &p) const
 
 namespace {
 
-
 void deposit_deficit(ShellDeficit &field, const Vec2d &a, const Vec2d &b, double da, double db, double half_width)
 {
     const HeightField &g     = field.value;
@@ -62,7 +61,6 @@ void deposit_deficit(ShellDeficit &field, const Vec2d &a, const Vec2d &b, double
             }
         }
 }
-
 
 void mark_simplified(const Points3 &pts, const std::vector<float> &heights, const std::vector<float> &widths,
                      size_t first, size_t last, double tolerance, std::vector<char> &keep)
@@ -100,10 +98,8 @@ void mark_simplified(const Points3 &pts, const std::vector<float> &heights, cons
 void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, const ShellDeficit *below, ShellDeficit *deficit,
                    const FlowModParams &params, FlowModStats &stats)
 {
-
     if (path.polyline.points.size() < 2 || !path.tool_axis.empty())
         return;
-
 
     Points3            pts;
     std::vector<float> h, widths;
@@ -156,7 +152,6 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
             continue;
         }
 
-
         for (size_t i = b; i <= e; ++i) {
             s[i]    = i == b ? 0. : s[i - 1] + (xy[i] - xy[i - 1]).norm();
             Vec2d t = xy[std::min(i + 1, e)] - xy[i > b ? i - 1 : b];
@@ -165,19 +160,12 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
             if (std::isnan(g.x()) || std::isnan(g.y()))
                 g = Vec2d::Zero();
             nz[i]  = 1. / std::sqrt(1. + g.squaredNorm());
-
             gap[i] = std::max(0., double(h[i]) + (below != nullptr ? below->sample(xy[i]) : 0.));
-
-
-
-
             stats.dragged += params.land_radius * std::max(0., -g.dot(t)) > 0.01;
             stats.contact += gap[i] < 0.5 * width * std::abs(g.dot(Vec2d(-t.y(), t.x())));
             stats.min_gap = std::min(stats.min_gap, gap[i] * nz[i]);
             stats.max_gap = std::max(stats.max_gap, gap[i] * nz[i]);
         }
-
-
 
         std::vector<double> smooth(e - b + 1);
         const double        half = 0.5 * params.smoothing;
@@ -199,8 +187,6 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
         }
         for (size_t i = b; i <= e; ++i) {
             double v = smooth[i - b];
-
-
             if (v * nz[i] < params.min_normal) {
                 v = params.min_normal / nz[i];
                 ++stats.min_clamped;

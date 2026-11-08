@@ -34,8 +34,13 @@ struct CurvedTopsStats {
     double footprint_mm2 = 0., extrusion_mm = 0., upward_area_mm2 = 0., area_fraction = 0.;
     double max_z = 0.;
     std::string planar_fallback_reason;
+    std::string planar_limit;
+    double max_angle_deg = 0.;
+    double reachable_slope_deg = 0.;
 };
 CurvedTopsStats curved_tops_stats(const PrintObject &object);
+struct CurvedSurfaceRejections { size_t height = 0, area = 0, collision = 0; };
+void note_curved_surface_rejections(const PrintObject &object, const CurvedSurfaceRejections &rejections);
 
 class NonplanarSurface;
 
@@ -66,15 +71,8 @@ class NonplanarSurface
 
 };
 
-
-
-
-
 std::string nonplanar_location(double z, size_t layer_id);
-
 double      nonplanar_suggested_angle(double angle);
-
 [[noreturn]] void throw_nonplanar_too_steep(double z, size_t layer_id, double angle, size_t object_id, const std::string &detail);
-
 [[noreturn]] void throw_nonplanar_internal(const std::string &where, const std::string &detail, size_t object_id);
 };

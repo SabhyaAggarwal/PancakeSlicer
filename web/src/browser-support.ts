@@ -4,17 +4,23 @@ export function unsupportedBrowserMessage(detail: string): string {
   return `Use ${SUPPORTED_BROWSERS}. ${detail}`;
 }
 
-
 export type GraphicsCapability = { webgl2: true } | { webgl2: false; reason: string };
 let graphics: GraphicsCapability | undefined;
+let probed: HTMLCanvasElement | undefined;
 export function graphicsCapability(): GraphicsCapability {
   if (graphics) return graphics;
-  const gl = document.createElement('canvas').getContext('webgl2');
-  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', { alpha: true, depth: true, stencil: false, antialias: true, premultipliedAlpha: true,
+    preserveDrawingBuffer: true, powerPreference: 'default', failIfMajorPerformanceCaveat: false });
+  if (gl) probed = canvas;
   return graphics = gl ? { webgl2: true }
     : { webgl2: false, reason: 'The 3D view needs WebGL2. Enable hardware acceleration or update your graphics driver.' };
 }
-
+export function takeProbedCanvas(): HTMLCanvasElement | undefined {
+  const canvas = probed;
+  probed = undefined;
+  return canvas;
+}
 
 export function showBrowserNotice(root: HTMLElement, detail: string, title = 'Unsupported browser'): void {
   const doc = root.ownerDocument;
@@ -36,9 +42,6 @@ export async function checkBrowserSupport(): Promise<void> {
       typeof DecompressionStream === 'undefined' || typeof ResizeObserver === 'undefined' ||
       typeof Blob === 'undefined' || typeof Blob.prototype.stream !== 'function')
     throw new Error('Required worker, streaming or resize features are unavailable.');
-  graphicsCapability();
-
-
 
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('./browser-support.worker.ts', import.meta.url), { type: 'module' });

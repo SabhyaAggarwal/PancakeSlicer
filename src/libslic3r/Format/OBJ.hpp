@@ -15,7 +15,6 @@ namespace Slic3r {
 class TriangleMesh;
 class Model;
 class ModelObject;
-
 struct ObjInfo {
     std::vector<RGBA> vertex_colors;
     std::vector<RGBA> face_colors;
@@ -33,8 +32,6 @@ extern bool load_obj(const char *path, TriangleMesh *mesh, ObjInfo &vertex_color
 extern bool load_obj(const char *path, Model *model, ObjInfo &vertex_colors, std::string &message, const char *object_name = nullptr, ObjParser::MtlData *out_mtl = nullptr);
 
 struct TexturedMesh;
-
-
 extern bool obj_to_textured_mesh(
     const ObjInfo& obj_info,
     const indexed_triangle_set& its,

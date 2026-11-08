@@ -60,12 +60,8 @@ constexpr double OutlierMm   = 1.;
 constexpr double MaxVeerDeg  = 45.;
 constexpr double LeanChord   = 1.5;
 constexpr double TableGap    = 0.5;
-
-
-
 std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, double phi, double inset)
 {
-
     Matrix3d m;
     m << std::cos(phi), std::sin(phi), 0., 0., 0., 1., std::sin(phi), -std::cos(phi), 0.;
     MeshSlicingParamsEx params;
@@ -73,7 +69,6 @@ std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, dou
     const std::vector<ExPolygons> cut = slice_mesh_ex(mesh, { 0.f }, params);
     if (cut.empty())
         return std::nullopt;
-
     const Polygon *best = nullptr;
     size_t         start = 0;
     double         zmin  = std::numeric_limits<double>::infinity();
@@ -93,13 +88,11 @@ std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, dou
         }
     if (best == nullptr)
         return std::nullopt;
-
     std::vector<Vec2d> out { unscale(best->points[start]) };
     const size_t       n = best->points.size();
     for (size_t k = 1; k < n; ++k) {
         const Vec2d p = unscale(best->points[(start + k) % n]);
         const Vec2d d = p - out.back();
-
         if (d.norm() < 0.1)
             continue;
         if (d.y() < -0.05 || (d.x() < 0. && d.y() < 0.2 * -d.x()) || p.x() < inset)
@@ -108,8 +101,6 @@ std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, dou
     }
     if (out.size() < 2)
         return std::nullopt;
-
-
     {
         double tail = 0.;
         size_t cut  = out.size();
@@ -121,7 +112,6 @@ std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, dou
         }
         out.resize(std::max<size_t>(cut, 2));
     }
-
     std::vector<Vec2d> line(out.size());
     for (size_t i = 0; i < out.size(); ++i) {
         const Vec2d a = out[i > 0 ? i - 1 : 0], b = out[std::min(i + 1, out.size() - 1)];
@@ -132,7 +122,6 @@ std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, dou
     }
     return line;
 }
-
 
 struct Profile
 {
@@ -148,8 +137,6 @@ Profile profile(std::vector<Vec2d> rz, double z_bottom, double h, double max_til
     p.lean.resize(n);
     p.tilt.resize(n);
     p.count.assign(n, 0.);
-
-
     std::vector<double> arc(n, 0.);
     for (size_t i = 1; i < n; ++i)
         arc[i] = arc[i - 1] + (p.rz[i] - p.rz[i - 1]).norm();
@@ -164,7 +151,6 @@ Profile profile(std::vector<Vec2d> rz, double z_bottom, double h, double max_til
         p.tilt[i]     = std::abs(p.lean[i]) < Geometry::deg2rad(MinLeanDeg) ? 0. :
                         p.lean[i] > 0. ? std::min(p.lean[i], max_tilt) : std::max(p.lean[i], -Geometry::deg2rad(InwardDeg));
     }
-
     for (size_t i = 1; i < n; ++i) {
         const Vec2d  a = p.rz[i - 1], b = p.rz[i];
         const double ds = (b - a).norm();
@@ -178,7 +164,6 @@ Profile profile(std::vector<Vec2d> rz, double z_bottom, double h, double max_til
     }
     return p;
 }
-
 
 Vec3d at_count(const Profile &p, double k)
 {
@@ -194,14 +179,9 @@ Vec3d lean_axis(double tilt, double phi)
     return { std::sin(tilt) * std::cos(phi), std::sin(tilt) * std::sin(phi), std::cos(tilt) };
 }
 
-
-
 std::vector<Profile> trace_wall(const PrintObject &object, double w, double h, double z_bottom, std::string &why)
 {
     const double max_tilt = Geometry::deg2rad(std::max(0., object.print()->config().nonplanar_max_tilt.value - TiltMargin));
-
-
-
     const int    support_angle = object.config().support_threshold_angle.value > 0 ? object.config().support_threshold_angle.value : 30;
     const double threshold     = Geometry::deg2rad(90. - support_angle);
 
@@ -213,8 +193,6 @@ std::vector<Profile> trace_wall(const PrintObject &object, double w, double h, d
     std::vector<Profile> meridians(Azimuths);
     double               lean_max = 0.;
     for (int j = 0; j < Azimuths; ++j) {
-
-
         std::optional<std::vector<Vec2d>> rz;
         for (double off : { 0., MeridianOffset, -MeridianOffset, 3. * MeridianOffset }) {
             rz = meridian(its, 2. * M_PI * j / Azimuths + off, 0.5 * w);
@@ -225,8 +203,6 @@ std::vector<Profile> trace_wall(const PrintObject &object, double w, double h, d
             why = "a meridian of the wall could not be traced from the bottom to the rim";
             return {};
         }
-
-
         if (rz->back().y() < top - std::max(0.5, 2. * h)) {
             why = "the wall turns down or closes below the top (an undercut, a texture, a handle or a closed top): at azimuth " +
                   std::to_string(j) + " deg the outline ends at z " + std::to_string(rz->back().y()) + " of " + std::to_string(top);
@@ -234,10 +210,6 @@ std::vector<Profile> trace_wall(const PrintObject &object, double w, double h, d
         }
         meridians[j] = profile(std::move(*rz), z_bottom, h, max_tilt);
     }
-
-
-
-
     double local_max = 0.;
     for (const Profile &p : meridians)
         local_max = std::max(local_max, *std::max_element(p.lean.begin(), p.lean.end()));
@@ -320,7 +292,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         add(to, axis, false, 0.);
     };
 
-
     const double spacing = flow.spacing();
     for (size_t l = 0; l < bottom; ++l) {
         const Layer *layer = object.layers()[l];
@@ -333,7 +304,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
                     Points pts = poly->points;
                     if (pts.size() < 3)
                         continue;
-
                     size_t s = 0;
                     if (!plan.points.empty()) {
                         double best = std::numeric_limits<double>::infinity();
@@ -358,18 +328,10 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         }
     }
 
-
-
-
-
-
-
     const int K          = int(std::floor(rings));
     const int K_top      = int(std::floor(rings_max));
     const double min_tilt = Geometry::deg2rad(MinTiltDeg);
     const double max_tilt = Geometry::deg2rad(std::max(0., object.print()->config().nonplanar_max_tilt.value - TiltMargin));
-
-
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
     auto drop = [&head](double t) {
         double lowest = 0.;
@@ -387,10 +349,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         table_cap[i] = std::max(t, 0.);
     }
     auto cap_at = [&table_cap, max_tilt](double z) { const double i = z / 0.1; return i >= double(table_cap.size() - 1) ? max_tilt : table_cap[size_t(std::max(0., i))]; };
-
-
-
-
     int narrow_rings = 0;
     for (int k = K + 1; k <= K_top; ++k) {
         int  run = 0;
@@ -424,8 +382,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         std::vector<Vec3d> ring(Azimuths);
         for (int j = 0; j < Azimuths; ++j)
             ring[j] = at_count(meridians[j], double(k));
-
-
         {
             const std::vector<Vec3d> raw = ring;
             for (int j = 0; j < Azimuths; ++j) {
@@ -447,11 +403,7 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
             }
         const bool lean    = tilt_max > 0.;
         const int  sign    = tilt_signed < 0. ? -1 : 1;
-
-
         if (lean) {
-
-
             std::vector<double> t(Azimuths);
             for (int j = 0; j < Azimuths; ++j) {
                 const int    jp = (j + 1) % Azimuths, jm = (j + Azimuths - 1) % Azimuths;
@@ -467,12 +419,8 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
                 ring[j].z() = sign * sum / (2 * TiltSmooth + 1);
             }
         }
-
-
-
         std::vector<double> veer(Azimuths, 0.);
         if (lean) {
-
             auto at = [](double r, double z, int j) {
                 const double phi = 2. * M_PI * j / Azimuths;
                 return Vec3d(r * std::cos(phi), r * std::sin(phi), z);
@@ -501,7 +449,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         bool       restart = k == 1 || wanted != seam;
         if (lean) {
             if (!wound) {
-
                 const double top = plan.points.empty() ? 0. : plan.points.back().tip.z();
                 const Vec3d  centre(0., 0., std::max(top, ring[wanted].y()) + WindLift);
                 const double t = Geometry::deg2rad(WindTiltDeg);
@@ -517,9 +464,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         }
         seam = wanted;
         if (k > K) {
-
-
-
             const double base = 2. * M_PI * seam / Azimuths;
             const double lo = std::min(base, base + dir * 2. * M_PI), hi = std::max(base, base + dir * 2. * M_PI);
             bool in_arc = false, started = false;
@@ -559,9 +503,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         }
         if (restart)
             offset = 0.;
-
-
-
         const double base    = 2. * M_PI * seam / Azimuths;
         const double o_min   = ScarfLength / std::max(ring[seam].x(), 1.);
         const double band    = Geometry::deg2rad(SeamScatter);
@@ -599,7 +540,6 @@ AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why)
         if (!lean)
             dir = -dir;
     }
-
     const double first_z = object.layers().front()->print_z;
     for (AtomPoint &p : plan.points)
         p.tip.z() = std::max(p.tip.z() + z_base, first_z);
@@ -612,9 +552,6 @@ bool lean_vase_in_time(const PrintObject &object, const AtomToolpath &plan, std:
 {
     if (!auto_rotary_requested(object))
         return true;
-
-
-
     const auto  kinematics = make_tool_kinematics(object.print()->config());
     const auto &axes       = kinematics->rotary_axes();
     const double wall = object.printing_region(0).config().outer_wall_speed.get_at(0), travel = object.print()->config().travel_speed.get_at(0);
@@ -639,7 +576,6 @@ bool lean_vase_in_time(const PrintObject &object, const AtomToolpath &plan, std:
         }
     }
     const double planar = planar_support_time(object);
-
     if (!std::isfinite(planar) || planar <= 0. || time <= RotaryMaxTimeRatio * planar)
         return true;
     std::ostringstream out;

@@ -38,10 +38,8 @@ namespace Slic3r {
 
 CacheDictionary::CacheDictionary()
 {
-
     m_enum_values.emplace_back();
 }
-
 
 static std::vector<int> enum_ints(const ConfigOptionDef& def, const ConfigOption* opt)
 {
@@ -49,9 +47,6 @@ static std::vector<int> enum_ints(const ConfigOptionDef& def, const ConfigOption
         return { opt->getInt() };
     return static_cast<const ConfigOptionInts*>(opt)->values;
 }
-
-
-
 
 static std::string enum_name_of(const ConfigOptionDef& def, int value)
 {
@@ -100,8 +95,6 @@ uint16_t CacheDictionary::enum_index(const std::string& name) const
 
 void CacheDictionary::save(cereal::BinaryOutputArchive& ar) const
 {
-
-
     if (m_keys.size() > MAX_ENTRIES || m_enum_values.size() > MAX_ENTRIES)
         throw std::runtime_error("preset cache: the option dictionary outgrew the uint16 it is indexed with");
     ar(m_keys, m_types, m_enum_values);
@@ -116,15 +109,12 @@ void CacheDictionary::load(cereal::BinaryInputArchive& ar)
         throw std::runtime_error("preset cache: dictionary is larger than the uint16 it is indexed with");
     if (m_enum_values.empty() || ! m_enum_values.front().empty())
         throw std::runtime_error("preset cache: dictionary is missing its unnamed-enum slot");
-
     m_defs.resize(m_keys.size());
     for (size_t i = 0; i < m_keys.size(); ++ i) {
         const ConfigOptionDef* def = print_config_def.get(m_keys[i]);
         m_defs[i] = (def != nullptr && uint16_t(def->type) == m_types[i]) ? def : nullptr;
     }
 }
-
-
 
 static void save_enum_option(cereal::BinaryOutputArchive& ar, const ConfigOptionDef& def,
                              const ConfigOption* opt, const CacheDictionary& dict)
@@ -139,7 +129,6 @@ static void save_enum_option(cereal::BinaryOutputArchive& ar, const ConfigOption
     }
 }
 
-
 static void load_enum_option(cereal::BinaryInputArchive& ar, ConfigOptionType type,
                              const ConfigOptionDef* def, DynamicPrintConfig* config,
                              const CacheDictionary& dict)
@@ -148,8 +137,6 @@ static void load_enum_option(cereal::BinaryInputArchive& ar, ConfigOptionType ty
     ar(cnt);
     if (type == coEnum && cnt != 1)
         throw std::runtime_error("preset cache: a scalar enum carrying more than one value");
-
-
     bool usable = def != nullptr && config != nullptr;
     std::vector<int> values;
     values.reserve(cnt);
@@ -159,8 +146,6 @@ static void load_enum_option(cereal::BinaryInputArchive& ar, ConfigOptionType ty
         if (! dict.valid_enum_index(idx))
             throw std::runtime_error("preset cache: enum value index past the end of the dictionary");
         if (idx == CacheDictionary::ENUM_UNNAMED) {
-
-
             int32_t raw = 0;
             ar(raw);
             values.push_back(int(raw));
@@ -210,15 +195,12 @@ void save_config(cereal::BinaryOutputArchive& ar, const DynamicPrintConfig& conf
     }
 }
 
-
 static void read_config(cereal::BinaryInputArchive& ar, DynamicPrintConfig* config, const CacheDictionary& dict)
 {
     uint32_t cnt = 0;
     ar(cnt);
     if (config != nullptr)
         config->clear();
-
-
     ConfigOptionDef scratch;
     for (uint32_t i = 0; i < cnt; ++ i) {
         uint16_t idx = 0;
@@ -232,8 +214,6 @@ static void read_config(cereal::BinaryInputArchive& ar, DynamicPrintConfig* conf
         } else if (def != nullptr && config != nullptr) {
             config->set_key_value(def->opt_key, def->load_option_from_archive(ar));
         } else {
-
-
             scratch.type = type;
             std::unique_ptr<ConfigOption> discard(scratch.load_option_from_archive(ar));
         }
@@ -250,8 +230,6 @@ void skip_config(cereal::BinaryInputArchive& ar, const CacheDictionary& dict)
     read_config(ar, nullptr, dict);
 }
 
-
-
 namespace {
 
 #pragma pack(push, 1)
@@ -265,22 +243,7 @@ struct CacheFileHeader {
 static_assert(sizeof(CacheFileHeader) == 20, "CacheFileHeader must be 20 bytes");
 
 constexpr uint32_t CACHE_MAGIC   = 0x4F52435A;
-
-
-
-
-
-
-
-
 constexpr uint32_t CACHE_VERSION = 3;
-
-
-
-
-
-
-
 
 std::string read_bounded_string(cereal::BinaryInputArchive& ar)
 {
@@ -294,14 +257,8 @@ std::string read_bounded_string(cereal::BinaryInputArchive& ar)
     return s;
 }
 
-
-
-
 std::string read_cache_stamps(cereal::BinaryInputArchive& ar, const std::string& expected_vendor_name, uint32_t* version = nullptr)
 {
-
-
-
     uint32_t cache_version = 0;
     ar(cache_version);
     if (cache_version < 2 || cache_version > CACHE_VERSION)
@@ -314,8 +271,6 @@ std::string read_cache_stamps(cereal::BinaryInputArchive& ar, const std::string&
         return {};
     return vendor_version;
 }
-
-
 
 using ModelBedDefaults = std::map<std::string, std::map<std::string, std::string>>;
 
@@ -338,15 +293,6 @@ void load_cached_vendors(cereal::BinaryInputArchive& ar, VendorMap& vendors, uin
     }
 }
 
-
-
-
-
-
-
-
-
-
 bool cache_covers_version(const std::string& cached, const Semver& on_disk)
 {
     if (on_disk == Semver::inf())
@@ -357,13 +303,6 @@ bool cache_covers_version(const std::string& cached, const Semver& on_disk)
     return cached_ver && *cached_ver >= on_disk;
 }
 
-
-
-
-
-
-
-
 template<class Archive, class Entry, class ConfigFn>
 void visit_entry(Archive& ar, Entry& e, ConfigFn&& config)
 {
@@ -371,8 +310,6 @@ void visit_entry(Archive& ar, Entry& e, ConfigFn&& config)
     config();
     ar(e.inherits, e.includes, e.description, e.instantiation, e.setting_id, e.filament_id, e.renamed_from);
 }
-
-
 
 constexpr uint32_t MAX_RESERVED_ENTRIES = 4096;
 
@@ -400,7 +337,6 @@ void load_entries(cereal::BinaryInputArchive& ar,
     }
 }
 
-
 bool read_cache_blob(const std::string& path, std::string& out_blob)
 {
     try {
@@ -412,9 +348,6 @@ bool read_cache_blob(const std::string& path, std::string& out_blob)
             return false;
         if (fhdr.magic != CACHE_MAGIC)
             return false;
-
-
-
         ifs.seekg(0, std::ios::end);
         const std::streamoff file_size = ifs.tellg();
         if (file_size < std::streamoff(sizeof(fhdr)) ||
@@ -438,15 +371,10 @@ bool read_cache_blob(const std::string& path, std::string& out_blob)
     }
 }
 
-
-
 bool write_cache_blob(const std::string& path, const std::string& blob)
 {
     boost::crc_32_type crc;
     crc.process_bytes(blob.data(), blob.size());
-
-
-
     try {
         boost::filesystem::create_directories(boost::filesystem::path(path).parent_path());
         CacheFileHeader fhdr;
@@ -455,7 +383,7 @@ bool write_cache_blob(const std::string& path, const std::string& blob)
         fhdr.data_size = static_cast<uint64_t>(blob.size());
         fhdr.crc32     = crc.checksum();
         const std::string_view header(reinterpret_cast<const char*>(&fhdr), sizeof(fhdr));
-        if (const std::error_code ec = write_file_atomically(path, { header, std::string_view(blob) },  true)) {
+        if (const std::error_code ec = write_file_atomically(path, { header, std::string_view(blob) }, true)) {
             BOOST_LOG_TRIVIAL(warning) << "VendorCacheFile: write failed (" << path << "): " << ec.message();
             return false;
         }
@@ -467,14 +395,10 @@ bool write_cache_blob(const std::string& path, const std::string& blob)
 }
 
 }
-
-
 bool VendorCacheFile::save(const std::string& path, const std::string& vendor_name,
                            const std::string& vendor_version, const VendorCacheData& data)
 {
     try {
-
-
         CacheDictionary dict;
         for (const std::vector<CachedPreset>* entries : { &data.process_entries, &data.filament_entries, &data.machine_entries })
             for (const CachedPreset& e : *entries)
@@ -505,8 +429,6 @@ bool VendorCacheFile::save(const std::string& path, const std::string& vendor_na
     }
 }
 
-
-
 template<class ReadRest>
 static bool read_cache_up_to_presets(const std::string& path, const std::string& expected_vendor_name,
                                      const Semver& expected_vendor_version, VendorMap& vendors, ReadRest&& read_rest)
@@ -515,8 +437,6 @@ static bool read_cache_up_to_presets(const std::string& path, const std::string&
     if (! read_cache_blob(path, blob))
         return false;
     try {
-
-
         boost::iostreams::stream<boost::iostreams::array_source> body(blob.data(), blob.size());
         cereal::BinaryInputArchive ar(body);
         uint32_t cache_version = 0;
@@ -536,7 +456,6 @@ static bool read_cache_up_to_presets(const std::string& path, const std::string&
     }
 }
 
-
 bool VendorCacheFile::load(const std::string& path, const std::string& expected_vendor_name,
                            const Semver& expected_vendor_version, VendorCacheData& data)
 {
@@ -550,7 +469,6 @@ bool VendorCacheFile::load(const std::string& path, const std::string& expected_
         });
 }
 
-
 bool VendorCacheFile::load_vendor_profile(const std::string& path, const std::string& expected_vendor_name,
                                           const Semver& expected_vendor_version, VendorProfile& vendor)
 {
@@ -562,7 +480,6 @@ bool VendorCacheFile::load_vendor_profile(const std::string& path, const std::st
     return true;
 }
 
-
 std::string VendorCacheFile::peek_version(const std::string& path, const std::string& expected_vendor_name)
 {
     try {
@@ -570,10 +487,6 @@ std::string VendorCacheFile::peek_version(const std::string& path, const std::st
         CacheFileHeader fhdr;
         if (! ifs.read(reinterpret_cast<char*>(&fhdr), sizeof(fhdr)) || fhdr.magic != CACHE_MAGIC)
             return {};
-
-
-
-
         std::string head(static_cast<size_t>(std::min<uint64_t>(fhdr.data_size, 1024)), '\0');
         if (! ifs.read(&head[0], static_cast<std::streamsize>(head.size())))
             return {};
@@ -584,7 +497,6 @@ std::string VendorCacheFile::peek_version(const std::string& path, const std::st
         return {};
     }
 }
-
 
 Semver VendorCacheFile::usable_version(const std::string& path, const std::string& expected_vendor_name)
 {
@@ -600,7 +512,6 @@ Semver VendorCacheFile::usable_version(const std::string& path, const std::strin
         return Semver::invalid();
     }
 }
-
 
 bool VendorCacheFile::carries_preset(const std::string& path, const std::string& vendor_name,
                                      Preset::Type type, const std::string& preset_name)
@@ -618,10 +529,7 @@ bool VendorCacheFile::carries_preset(const std::string& path, const std::string&
         dict.load(ar);
         VendorMap vendors;
         load_cached_vendors(ar, vendors, cache_version);
-
         CachedPreset entry;
-
-
         for (Preset::Type kind : { Preset::TYPE_PRINT, Preset::TYPE_FILAMENT, Preset::TYPE_PRINTER }) {
             uint32_t cnt = 0;
             ar(cnt);

@@ -10,6 +10,9 @@ import (
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Algorithms for distributing the literals and commands of a metablock between
+   block types and contexts. */
+
 type metaBlockSplit struct {
 	literal_split             blockSplit
 	command_split             blockSplit
@@ -68,6 +71,9 @@ func initDistanceParams(params *encoderParams, npostfix uint32, ndirect uint32) 
 		var postfix uint32 = 1 << npostfix
 		alphabet_size = uint32(distanceAlphabetSize(uint(npostfix), uint(ndirect), largeMaxDistanceBits))
 
+		/* The maximum distance is set so that no distance symbol used can encode
+		   a distance larger than BROTLI_MAX_ALLOWED_DISTANCE with all
+		   its extra bits set. */
 		if ndirect < bound[npostfix] {
 			max_distance = maxAllowedDistance - (bound[npostfix] - ndirect)
 		} else if ndirect >= bound[npostfix]+postfix {
@@ -144,6 +150,7 @@ func buildMetaBlock(ringbuffer []byte, pos uint, mask uint, params *encoderParam
 	var check_orig bool = true
 	var best_dist_cost float64 = 1e99
 	var orig_params encoderParams = *params
+	/* Histogram ids need to fit in one byte. */
 
 	var new_params encoderParams = *params
 
@@ -176,7 +183,8 @@ func buildMetaBlock(ringbuffer []byte, pos uint, mask uint, params *encoderParam
 		var dist_cost float64
 		computeDistanceCost(cmds, &orig_params.dist, &orig_params.dist, &dist_cost)
 		if dist_cost < best_dist_cost {
-
+			/* NB: currently unused; uncomment when more param tuning is added. */
+			/* best_dist_cost = dist_cost; */
 			params.dist = orig_params.dist
 		}
 	}
@@ -230,7 +238,7 @@ func buildMetaBlock(ringbuffer []byte, pos uint, mask uint, params *encoderParam
 	literal_histograms = nil
 
 	if params.disable_literal_context_modeling {
-
+		/* Distribute assignment to all contexts. */
 		for i = mb.literal_split.num_types; i != 0; {
 			var j uint = 0
 			i--
@@ -260,6 +268,8 @@ func buildMetaBlock(ringbuffer []byte, pos uint, mask uint, params *encoderParam
 
 const maxStaticContexts = 13
 
+/* Greedy block splitter for one block category (literal, command or distance).
+   Gathers histograms for all context buckets. */
 type contextBlockSplitter struct {
 	alphabet_size_     uint
 	num_contexts_      uint
@@ -296,6 +306,8 @@ func initContextBlockSplitter(self *contextBlockSplitter, alphabet_size uint, nu
 	self.curr_histogram_ix_ = 0
 	self.merge_last_count_ = 0
 
+	/* We have to allocate one more histogram than the maximum number of block
+	   types for the current histogram when the meta-block is too big. */
 	max_num_types = brotli_min_size_t(max_num_blocks, self.max_block_types_+1)
 
 	brotli_ensure_capacity_uint8_t(&split.types, &split.types_alloc_size, max_num_blocks)
@@ -309,12 +321,17 @@ func initContextBlockSplitter(self *contextBlockSplitter, alphabet_size uint, nu
 	}
 	self.histograms_ = *histograms
 
+	/* Clear only current histogram. */
 	clearHistogramsLiteral(self.histograms_[0:], num_contexts)
 
 	self.last_histogram_ix_[1] = 0
 	self.last_histogram_ix_[0] = self.last_histogram_ix_[1]
 }
 
+/* Does either of three things:
+   (1) emits the current block with a new block type;
+   (2) emits the current block with the type of the second last block;
+   (3) merges the current block with the last block. */
 func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) {
 	var split *blockSplit = self.split_
 	var num_contexts uint = self.num_contexts_
@@ -328,6 +345,7 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 	if self.num_blocks_ == 0 {
 		var i uint
 
+		/* Create first block. */
 		split.lengths[0] = uint32(self.block_size_)
 
 		split.types[0] = 0
@@ -350,6 +368,10 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 		var combined_histo []histogramLiteral = make([]histogramLiteral, (2 * num_contexts))
 		var combined_entropy [2 * maxStaticContexts]float64
 		var diff = [2]float64{0.0}
+		/* Try merging the set of histograms for the current block type with the
+		   respective set of histograms for the last and second last block types.
+		   Decide over the split based on the total reduction of entropy across
+		   all contexts. */
 
 		var i uint
 		for i = 0; i < num_contexts; i++ {
@@ -367,7 +389,7 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 		}
 
 		if split.num_types < self.max_block_types_ && diff[0] > self.split_threshold_ && diff[1] > self.split_threshold_ {
-
+			/* Create new block. */
 			split.lengths[self.num_blocks_] = uint32(self.block_size_)
 
 			split.types[self.num_blocks_] = byte(split.num_types)
@@ -391,6 +413,7 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 		} else if diff[1] < diff[0]-20.0 {
 			split.lengths[self.num_blocks_] = uint32(self.block_size_)
 			split.types[self.num_blocks_] = split.types[self.num_blocks_-2]
+			/* Combine this block with second last block. */
 
 			var tmp uint = self.last_histogram_ix_[0]
 			self.last_histogram_ix_[0] = self.last_histogram_ix_[1]
@@ -407,7 +430,7 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 			self.merge_last_count_ = 0
 			self.target_block_size_ = self.min_block_size_
 		} else {
-
+			/* Combine this block with last block. */
 			split.lengths[self.num_blocks_-1] += uint32(self.block_size_)
 
 			for i = 0; i < num_contexts; i++ {
@@ -436,11 +459,13 @@ func contextBlockSplitterFinishBlock(self *contextBlockSplitter, is_final bool) 
 	}
 }
 
+/* Adds the next symbol to the current block type and context. When the
+   current block reaches the target size, decides on merging the block. */
 func contextBlockSplitterAddSymbol(self *contextBlockSplitter, symbol uint, context uint) {
 	histogramAddLiteral(&self.histograms_[self.curr_histogram_ix_+context], symbol)
 	self.block_size_++
 	if self.block_size_ == self.target_block_size_ {
-		contextBlockSplitterFinishBlock(self, false)
+		contextBlockSplitterFinishBlock(self, false) /* is_final = */
 	}
 }
 
@@ -511,13 +536,13 @@ func buildMetaBlockGreedyInternal(ringbuffer []byte, pos uint, mask uint, prev_b
 	}
 
 	if num_contexts == 1 {
-		blockSplitterFinishBlockLiteral(&lit_blocks.plain, true)
+		blockSplitterFinishBlockLiteral(&lit_blocks.plain, true) /* is_final = */
 	} else {
-		contextBlockSplitterFinishBlock(&lit_blocks.ctx, true)
+		contextBlockSplitterFinishBlock(&lit_blocks.ctx, true) /* is_final = */
 	}
 
-	blockSplitterFinishBlockCommand(&cmd_blocks, true)
-	blockSplitterFinishBlockDistance(&dist_blocks, true)
+	blockSplitterFinishBlockCommand(&cmd_blocks, true)   /* is_final = */
+	blockSplitterFinishBlockDistance(&dist_blocks, true) /* is_final = */
 
 	if num_contexts > 1 {
 		mapStaticContexts(num_contexts, static_context_map, mb)

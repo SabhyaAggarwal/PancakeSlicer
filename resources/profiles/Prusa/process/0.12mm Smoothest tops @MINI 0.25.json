@@ -1,0 +1,22 @@
+{
+	"type": "process",
+	"name": "0.12mm Smoothest tops @MINI 0.25",
+	"renamed_from": "0.12mm Non-planar top @MINI 0.25;0.12mm Non-planar top MINI 0.25",
+	"inherits": "0.20mm Standard @MINI 0.25",
+	"from": "system",
+	"setting_id": "Tdq0xGabz0TB3fgm",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"layer_height": "0.12",
+	"nonplanar_shell_layer_height": "0",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
+	"nonplanar_top_speed_factor": "150%",
+	"top_surface_acceleration": "1250",
+	"nonplanar_raised_top_acceleration": "1250",
+	"nonplanar_fallback_top_acceleration": "1000",
+	"compatible_printers": [
+		"Prusa MINI 0.25 nozzle"
+	],
+	"description": "0.12mm layers for the MINI and MINI+ with a 0.25 mm nozzle (half the nozzle, as 0.20mm on 0.4), with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the MINI head. Curved tops print at 150% of the top surface speed."
+}

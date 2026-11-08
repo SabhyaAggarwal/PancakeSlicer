@@ -8,6 +8,10 @@ import (
 	"github.com/andybalholm/brotli/flate"
 )
 
+// HTTPCompressor chooses a compression method (brotli, gzip, or none) based on
+// the Accept-Encoding header, sets the Content-Encoding header, and returns a
+// WriteCloser that implements that compression. The Close method must be called
+// before the current HTTP handler returns.
 func HTTPCompressor(w http.ResponseWriter, r *http.Request) io.WriteCloser {
 	return HTTPCompressorWithLevel(w, r, 4)
 }
@@ -29,6 +33,10 @@ func HTTPCompressorWithLevel(w http.ResponseWriter, r *http.Request, level int) 
 	return nopCloser{w}
 }
 
+// negotiateContentEncoding returns the best offered content encoding for the
+// request's Accept-Encoding header. If two offers match with equal weight and
+// then the offer earlier in the list is preferred. If no offers are
+// acceptable, then "" is returned.
 func negotiateContentEncoding(r *http.Request, offers []string) string {
 	bestOffer := "identity"
 	bestQ := -1.0
@@ -48,11 +56,13 @@ func negotiateContentEncoding(r *http.Request, offers []string) string {
 	return bestOffer
 }
 
+// acceptSpec describes an Accept* header.
 type acceptSpec struct {
 	Value string
 	Q     float64
 }
 
+// parseAccept parses Accept* headers.
 func parseAccept(header http.Header, key string) (specs []acceptSpec) {
 loop:
 	for _, s := range header[key] {
@@ -136,6 +146,7 @@ func expectQuality(s string) (q float64, rest string) {
 	return q + float64(n)/float64(d), s[i:]
 }
 
+// Octet types from RFC 2616.
 var octetTypes [256]octetType
 
 type octetType byte
@@ -146,6 +157,21 @@ const (
 )
 
 func init() {
+	// OCTET      = <any 8-bit sequence of data>
+	// CHAR       = <any US-ASCII character (octets 0 - 127)>
+	// CTL        = <any US-ASCII control character (octets 0 - 31) and DEL (127)>
+	// CR         = <US-ASCII CR, carriage return (13)>
+	// LF         = <US-ASCII LF, linefeed (10)>
+	// SP         = <US-ASCII SP, space (32)>
+	// HT         = <US-ASCII HT, horizontal-tab (9)>
+	// <">        = <US-ASCII double-quote mark (34)>
+	// CRLF       = CR LF
+	// LWS        = [CRLF] 1*( SP | HT )
+	// TEXT       = <any OCTET except CTLs, but including LWS>
+	// separators = "(" | ")" | "<" | ">" | "@" | "," | ";" | ":" | "\" | <">
+	//              | "/" | "[" | "]" | "?" | "=" | "{" | "}" | SP | HT
+	// token      = 1*<any CHAR except CTLs or separators>
+	// qdtext     = <any TEXT except <">>
 
 	for c := 0; c < 256; c++ {
 		var t octetType

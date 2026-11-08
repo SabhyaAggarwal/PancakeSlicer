@@ -1,72 +1,70 @@
+import { openUrlImport } from './url-import';
+import { UrlImportHost } from './components/UrlImport';
 import { Modal, ModalTitle } from './components/Modal';
 import { openPalette } from './commands/registry';
-
-import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
+import { Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
-import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
+import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
 import { setCut, toggleCut } from './plater/cut';
 import { CanvasToolbar, CutPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { LoadingState } from './components/Notices';
+import { PreviewLoading } from './components/PreviewLoading';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
-
 import WorkspaceRail from './components/WorkspaceRail';
 import { AskHost } from './components/Ask';
 import { TopBar } from './components/TopBar';
 import { graphicsCapability } from './browser-support';
-const ControlHints = lazy(() => import('./components/ControlHints').then(m => ({default: m.ControlHints})));
-const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
-const TransformPanel = lazy(() => import('./components/Transform').then(m => ({ default: m.TransformPanel })));
-const ObjectsPanel = lazy(() => import('./components/ObjectsPanel'));
-const ObjectInfo = lazy(() => import('./components/ObjectInfo'));
-const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
-const TextPanel = lazy(() => import('./components/TextPanel'));
-const SvgPanel = lazy(() => import('./components/SvgPanel'));
-const AssemblyBar = lazy(() => import('./components/AssemblyBar'));
-const CanvasTools = lazy(() => import('./components/CanvasTools'));
-const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
-const PlateChoice = lazy(() => import('./components/PlateChoice'));
-const EmptyPlate = lazy(() => import('./components/FirstRun'));
-const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
-const LeaseBar = lazy(() => import('./components/LeaseBar'));
-const Setup = lazy(() => import('./onboarding/Setup'));
-const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
-
-const Plater3D = lazy(() => Promise.all([import('./plater/Plater3D'), threeReady]).then(([m]) => m));
+const ControlHints = preloadable(() => import('./components/ControlHints').then(m => ({default: m.ControlHints})));
+const BrimEarsPanel = preloadable(() => import('./components/BrimEarsPanel'));
+const TransformPanel = preloadable(() => import('./components/Transform').then(m => ({ default: m.TransformPanel })));
+const ObjectsPanel = preloadable(() => import('./components/ObjectsPanel'));
+const ObjectInfo = preloadable(() => import('./components/ObjectInfo'));
+const BooleanPanel = preloadable(() => import('./components/BooleanPanel'));
+const TextPanel = preloadable(() => import('./components/TextPanel'));
+const SvgPanel = preloadable(() => import('./components/SvgPanel'));
+const AssemblyBar = preloadable(() => import('./components/AssemblyBar'));
+const CanvasTools = preloadable(() => import('./components/CanvasTools'));
+const Navigator = preloadable(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
+const PlateChoice = preloadable(() => import('./components/PlateChoice'));
+const EmptyPlate = preloadable(() => import('./components/FirstRun'));
+const SavedPreferencesNotice = preloadable(() => import('./components/SavedPreferencesNotice'));
+const LeaseBar = preloadable(() => import('./components/LeaseBar'));
+const Setup = preloadable(() => import('./onboarding/Setup'));
+const ProjectStatus = preloadable(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
+const ProjectBanner = preloadable(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectBanner })));
+const Plater3D = preloadable(() => Promise.all([import('./plater/Plater3D'), threeReady])
+  .then(([m]) => graphicsCapability().webgl2 ? m : { default: NoGraphics }));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
 import { copySelection, cutSelection, pasteClipboard, selectAll, startRename } from './edit';
-const ContextMenu = lazy(() => import('./components/ContextMenu'));
-const MeasurePanel = lazy(() => import('./components/MeasurePanel'));
+const ContextMenu = preloadable(() => import('./components/ContextMenu'));
+const MeasurePanel = preloadable(() => import('./components/MeasurePanel'));
 import { dropLastFeature, setMeasure } from './plater/measureState';
 import { redo, undo, undoable } from './state/history';
 import { assembly, setAssembly, useAssembly } from './plater/assembly';
 import { toggleSidebar, useSidebarHidden } from './sidebar';
 import { loadedPreviewView, loadPreviewView } from './components/preview-loader';
 
-const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
+const PresetDialog = preloadable(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
 const PresetUx = preloadable(() => import('./components/PresetUx'));
-const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
-const PreviewView = lazy(() => loadPreviewView().then((viewer) => ({ default: viewer })));
-
+const FlushDialog = preloadable(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
+const DeviceView = preloadable(() => import('./printers/DeviceView').then((m) => ({ default: m.DeviceView })));
+const PreviewView = preloadable(() => loadPreviewView().then((viewer) => ({ default: viewer })));
 const ProjectsView = preloadable(() => import('./projects/ProjectsView'));
-const Palette = lazy(() => import('./commands/Palette'));
+const Palette = preloadable(() => import('./commands/Palette'));
 
 import { useSyncExternalStore } from 'react';
 import { paletteQuery, subscribePalette } from './commands/registry';
-import { preloadable, whenIdle } from './preloadable';
+import { preloadable } from './preloadable';
 import { useMachine } from './flow/fsm';
 import { setup as setupFlow } from './onboarding/setup-flow';
 const useSetup = <T,>(sel: (s: ReturnType<typeof setupFlow.get>) => T) => useMachine(setupFlow, sel);
 import { threeReady } from './three-runtime';
-const AppDialog = lazy(() => import('./components/AppDialogs'));
-const CalibDialog = lazy(() => import('./components/CalibDialog'));
-const NonplanarCalibDialog = lazy(() => import('./components/NonplanarCalibDialog'));
-
-
-
-
+const AppDialog = preloadable(() => import('./components/AppDialogs'));
+const CalibDialog = preloadable(() => import('./components/CalibDialog'));
+const NonplanarCalibDialog = preloadable(() => import('./components/NonplanarCalibDialog'));
 
 function nudge(key: string, fine: boolean) {
   const s = getState();
@@ -83,17 +81,12 @@ function nudge(key: string, fine: boolean) {
   return true;
 }
 
-
-
-const graphics = graphicsCapability();
-const NoGraphics = () => graphics.webgl2 ? null : <div className="canvas-unavailable" role="alert">{graphics.reason}</div>;
-
+function NoGraphics() {
+  const graphics = graphicsCapability();
+  return graphics.webgl2 ? null : <div className="canvas-unavailable" role="alert">{graphics.reason}</div>;
+}
 
 const visibleCanvas = () => [...document.querySelectorAll<HTMLCanvasElement>('.canvas-area canvas')].find((c) => c.offsetParent !== null && c.clientWidth > 0);
-
-
-
-
 
 function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
   const idle = () => !document.activeElement || document.activeElement === document.body || document.activeElement instanceof HTMLCanvasElement && document.activeElement.offsetParent === null;
@@ -102,10 +95,8 @@ function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
     const el = find();
     if (el) {
       if (el instanceof HTMLCanvasElement && !el.hasAttribute('tabindex')) el.tabIndex = -1;
-
       const ring = !(el instanceof HTMLCanvasElement);
       el.focus({ preventScroll: true, focusVisible: ring } as FocusOptions);
-
       if (ring) { el.dataset.focusRing = ''; el.addEventListener('blur', () => delete el.dataset.focusRing, { once: true }); }
     } else if (left > 0) requestAnimationFrame(() => step(left - 1));
   };
@@ -127,22 +118,18 @@ export default function App() {
   const tab = useStore((s) => s.tab);
   const gizmo = useStore((s) => s.gizmo);
   const loading = useStore((s) => s.loading);
+  const [platerLoaded, setPlaterLoaded] = useState(false);
+  useEffect(() => { if (!loading && !platerLoaded) void Plater3D.preload().then(() => setPlaterLoaded(true), () => setPlaterLoaded(true)); }, [loading, platerLoaded]);
   const jobDone = useStore((s) => s.job.state === 'done');
-
-
   const empty = useStore((s) => !s.objects.length && !s.project && s.projectPlates.length < 2);
   const assemblyOn = useAssembly().on;
   const sidebarHidden = useSidebarHidden();
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
-
   const previewViewer = useRef<ComponentType>(undefined);
   if (previewOpened.current) previewViewer.current ??= loadedPreviewView() ?? PreviewView;
   const Viewer = previewViewer.current ?? PreviewView;
-
-  useEffect(() => whenIdle(() => void ProjectsView.preload().catch(() => {})), []);
-  useEffect(() => whenIdle(() => void PresetUx.preload().catch(() => {})), []);
 
 
   useEffect(() => {
@@ -161,12 +148,10 @@ export default function App() {
       if (ownsKeys(e) || getState().dialog || getState().flushDialog || getState().appDialog || getState().calibDialog || getState().sessionDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const prepare = getState().tab === 'prepare';
-
       if (ctrl && e.key.toLowerCase() === 'z') e.shiftKey ? redo() : undo();
       else if (ctrl && e.key.toLowerCase() === 'y') redo();
       else if (ctrl && e.key.toLowerCase() === 'p') setState({ appDialog: 'preferences' });
       else if (e.key === '?') setState({ appDialog: 'shortcuts' });
-      else if (ctrl && e.key.toLowerCase() === 'r') { if (getState().objects.length && getState().job.state !== 'running') void slice(); }
       else if (ctrl && e.key.toLowerCase() === 'd') deleteAll();
       else if (ctrl && e.key.toLowerCase() === 'i') openFileDialog();
       else if (ctrl && e.key.toLowerCase() === 'o') openProjectDialog();
@@ -183,19 +168,14 @@ export default function App() {
       else if (ctrl && e.key === '\\') toggleSidebar();
       else if (ctrl && e.key.toLowerCase() === 'k') { const s = getState(); if (s.selected && !s.project) setState({ appDialog: 'clone' }); }
       else if (ctrl) return;
-
-
       else if (e.key === 'Tab' && !e.shiftKey && !e.altKey && document.activeElement instanceof HTMLCanvasElement) {
         e.preventDefault();
         setState((s) => ({ tab: s.tab === 'prepare' ? 'preview' : 'prepare' }));
-
         focusSoon(visibleCanvas);
       }
-
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
-
       else if (isPaint(getState().gizmo) && !e.altKey && paintKeyTool(getState().gizmo as PaintKind, e.key)) setPaintTool({ tool: paintKeyTool(getState().gizmo as PaintKind, e.key)! });
       else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
       else if (e.key === 'a' || e.key === 'A') arrangeAll(e.key === 'a');
@@ -211,7 +191,6 @@ export default function App() {
       else if (e.key.toLowerCase() === 'p') togglePaint('seam');
       else if (e.key.toLowerCase() === 'h') togglePaint('fuzzy');
       else if (e.key.toLowerCase() === 'n') togglePaint('color');
-
       else if (e.key.toLowerCase() === 'e' && getState().tab === 'prepare') {
         const s = getState(), o = s.objects.find((x) => x.id === s.selected?.object);
         if (!s.features.brim_ears) toggleViewOption('labels');
@@ -219,14 +198,12 @@ export default function App() {
       }
       else if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey) toggleBoolean();
       else if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey) toggleText();
-
       else if (getState().gizmo === 'color' && /^[1-9]$/.test(e.key)) { if (Number(e.key) <= getState().filamentSlots.length) setPaintTool({ filament: Number(e.key) }); }
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
-      else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {               }
+      else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
       else if (e.key === 'Escape') {
         const s = getState();
-
         if (!s.selected && s.gizmo === 'none' && !assembly().on && document.activeElement instanceof HTMLCanvasElement) document.activeElement.blur();
         if (assembly().on) setAssembly({ on: false });
         if (s.gizmo === 'move' || s.gizmo === 'rotate' || s.gizmo === 'scale') setState({gizmo: 'none'});
@@ -239,9 +216,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-
-
-
   useEffect(() => {
     const down = (e: PointerEvent) => {
       if (!(e.target instanceof HTMLCanvasElement)) return;
@@ -252,8 +226,6 @@ export default function App() {
     window.addEventListener('pointerdown', down, true);
     return () => window.removeEventListener('pointerdown', down, true);
   }, []);
-
-
 
   useEffect(() => {
     let prev = getState();
@@ -271,27 +243,25 @@ export default function App() {
     return () => { off(); };
   }, []);
 
-
-
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const s = getState();
-      if (e.target instanceof Element && e.target.closest('input,select,textarea,[contenteditable="true"],dialog')) return;
+      if (e.target instanceof Element && e.target.closest('input,select,textarea,[contenteditable="true"],[role="dialog"],dialog')) return;
       if (s.dialog || s.flushDialog || s.appDialog || s.calibDialog || s.sessionDialog) return;
       const files = [...(e.clipboardData?.files ?? [])].filter((f) => /\.(stl|obj|3mf|step|stp)$/i.test(f.name));
       e.preventDefault();
       if (files.length) void importFiles(files);
-      else pasteClipboard();
+      else {
+        const url = e.clipboardData?.getData('text/plain').trim();
+        if (url && /^https?:\/\/\S+$/i.test(url)) openUrlImport(url, !s.objects.length);
+        else pasteClipboard();
+      }
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
   }, []);
 
-
-
   useEffect(() => {
-
-
     let depth = 0;
     const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
     const accepts = (e: DragEvent) => isFiles(e) && !document.querySelector('dialog[open]');
@@ -315,20 +285,19 @@ export default function App() {
       <TopBar />
       <Suspense fallback={null}><SavedPreferencesNotice /></Suspense>
       <Suspense fallback={null}><LeaseBar /></Suspense>
+      {!projects && <Suspense fallback={null}><ProjectBanner /></Suspense>}
       {setupOpen && <Suspense fallback={null}><Setup /></Suspense>}
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
-      <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
+      {tab === 'device' && <Suspense fallback={<div role="status">Loading devices…</div>}><DeviceView /></Suspense>}
+      <div style={{ display: projects || tab === 'device' ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>
         <div className="canvas-area" data-viewport={tab}>
-          {                                                                                                              }
           {!empty && tab === 'prepare' && <Suspense fallback={null}><ObjectsPanel/></Suspense>}
-          {                                                                                        }
           {sidebarHidden && (
             <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
-            {                                                            }
-            {graphics.webgl2 ? <Suspense fallback={null}><Plater3D /></Suspense> : <NoGraphics />}
+            {platerLoaded && <Suspense fallback={null}><Plater3D /></Suspense>}
             <CanvasToolbar />
             {!projects && tab === 'prepare' && (gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale') && <Suspense fallback={null}><TransformPanel /></Suspense>}
             <CutPanel />
@@ -345,21 +314,18 @@ export default function App() {
             {assemblyOn && <Suspense fallback={null}><AssemblyBar /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
-          {                                                                                                  }
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
-              {graphics.webgl2 ? <Suspense fallback={<div role="status">Loading preview…</div>}>
+              {graphicsCapability().webgl2 ? <Suspense fallback={<div role="status">Loading preview…</div>}>
                 <Viewer />
               </Suspense> : <NoGraphics />}
             </div>
           )}
-          {                                                                                                   }
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
-          {                                                                                                         }
           <Suspense fallback={null}><Navigator /></Suspense>
           <Suspense fallback={null}><ProjectStatus /></Suspense>
           <SliceNotification />
-          {loading && <LoadingState text={loading} />}
+          {loading ? <LoadingState text={loading} /> : <PreviewLoading />}
         </div>
       </div>
       <Suspense fallback={<div role="status">Loading dialog…</div>}>
@@ -369,6 +335,7 @@ export default function App() {
         {appDialog && <AppDialog which={appDialog} />}
         {calibDialog === 'nonplanar' ? <NonplanarCalibDialog /> : calibDialog && <CalibDialog which={calibDialog} />}
         {contextMenu && <ContextMenu />}
+        <UrlImportHost />
         {sessionDialog && <Modal size="window" label="Projects" onClose={() => setState({ sessionDialog: null })}><ModalTitle title="Projects" onClose={() => setState({ sessionDialog: null })} /><ProjectsView /></Modal>}
         {palette !== null && <Palette />}
       </Suspense>

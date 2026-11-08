@@ -1,11 +1,7 @@
-
 export interface MeshStats { volume: number; triangles: number; openEdges: number }
-
 
 export function computeMeshStats(p: Float32Array, index: Uint32Array | Uint16Array | null): MeshStats {
   const triangles = index ? index.length / 3 : p.length / 9;
-
-
   let size = 1;
   if (index) while (size < triangles * 2) size *= 2;
   let low = new Uint32Array(size), high = new Uint32Array(size), counts = new Uint8Array(size);

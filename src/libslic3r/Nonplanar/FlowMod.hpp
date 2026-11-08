@@ -1,8 +1,4 @@
 #pragma once
-
-
-
-
 #include "HeightField.hpp"
 #include "libslic3r/Point.hpp"
 
@@ -16,12 +12,8 @@ class ExtrusionPathConformal;
 
 namespace Slic3r::Nonplanar {
 
-
 constexpr double FlowModMaxThickness = 0.75;
-
-
 constexpr double FlowModMinThickness = 0.05;
-
 constexpr double FlowModSmoothing = 2.5;
 
 struct FlowModParams
@@ -39,17 +31,12 @@ struct FlowModStats
     size_t max_clamped     = 0;
     size_t min_clamped     = 0;
     size_t dragged         = 0;
-
-
     size_t contact         = 0;
-
     double min_gap = std::numeric_limits<double>::infinity(), max_gap = 0.;
     double min_laid = std::numeric_limits<double>::infinity(), max_laid = 0.;
 
     void merge(const FlowModStats &rhs);
 };
-
-
 
 struct ShellDeficit
 {
@@ -59,12 +46,6 @@ struct ShellDeficit
     explicit ShellDeficit(const HeightField &like);
     float sample(const Vec2d &p) const;
 };
-
-
-
-
-
-
 
 void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, const ShellDeficit *below, ShellDeficit *deficit,
                    const FlowModParams &params, FlowModStats &stats);

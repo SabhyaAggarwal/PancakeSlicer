@@ -46,87 +46,26 @@ WallToolPathsParams make_paths_params(const int layer_id, const PrintObjectConfi
 class WallToolPaths
 {
 public:
-
-
-
-
-
-
-
-
     WallToolPaths(const Polygons& outline, coord_t bead_width_0, coord_t bead_width_x, size_t inset_count, coord_t wall_0_inset, coordf_t layer_height, const WallToolPathsParams &params);
-
-
-
-
 
     const std::vector<VariableWidthLines> &generate();
 
-
-
-
-
     const std::vector<VariableWidthLines> &getToolPaths();
-
-
-
-
-
 
     void separateOutInnerContour();
 
-
-
-
-
-
-
-
-
-
-
-
-
     const Polygons& getInnerContour();
-
-
-
-
-
 
     static bool removeEmptyToolPaths(std::vector<VariableWidthLines> &toolpaths);
 
     using ExtrusionLineSet = ankerl::unordered_dense::set<std::pair<const ExtrusionLine *, const ExtrusionLine *>, boost::hash<std::pair<const ExtrusionLine *, const ExtrusionLine *>>>;
 
-
-
-
-
-
-
-
-
     static ExtrusionLineSet getRegionOrder(const std::vector<ExtrusionLine *> &input, bool outer_to_inner);
 
 protected:
-
-
-
-
-
     static void stitchToolPaths(std::vector<VariableWidthLines> &toolpaths, coord_t bead_width_x);
 
-
-
-
     void removeSmallLines(std::vector<VariableWidthLines> &toolpaths);
-
-
-
-
-
-
-
 
     static void simplifyToolPaths(std::vector<VariableWidthLines>& toolpaths, const WallToolPathsParams& params);
 

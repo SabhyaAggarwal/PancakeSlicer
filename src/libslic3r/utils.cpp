@@ -56,8 +56,6 @@
 #include "format.hpp"
 #include "Platform.hpp"
 #include "libslic3r.h"
-
-
 #include "Preset.hpp"
 #include "PresetCacheFormat.hpp"
 #include "libslic3r_version.h"
@@ -122,8 +120,6 @@
 #include <boost/nowide/convert.hpp>
 #include <boost/nowide/cstdio.hpp>
 
-
-
 #include <tbb/tbb.h>
 #include <string.h>
 
@@ -158,17 +154,11 @@ static boost::log::trivial::severity_level logSeverity = boost::log::trivial::er
 static boost::log::trivial::severity_level level_to_boost(unsigned level)
 {
     switch (level) {
-
     case 0: return boost::log::trivial::fatal;
-
     case 1: return boost::log::trivial::error;
-
     case 2: return boost::log::trivial::warning;
-
     case 3: return boost::log::trivial::info;
-
     case 4: return boost::log::trivial::debug;
-
     default: return boost::log::trivial::trace;
     }
 }
@@ -176,8 +166,6 @@ static boost::log::trivial::severity_level level_to_boost(unsigned level)
 void set_logging_level(unsigned int level)
 {
     logSeverity = level_to_boost(level);
-
-
 
     const std::string version = SoftFever_VERSION;
     if (level < (unsigned int) boost::log::trivial::info &&
@@ -239,9 +227,6 @@ unsigned get_logging_level()
 boost::shared_ptr<boost::log::sinks::synchronous_sink<boost::log::sinks::text_file_backend>> g_log_sink;
 boost::shared_ptr<boost::log::sinks::asynchronous_sink<boost::log::sinks::text_ostream_backend>> g_console_log_sink;
 
-
-
-
 static struct RunOnInit {
     RunOnInit() {
         set_logging_level(2);
@@ -259,7 +244,6 @@ void trace(unsigned int level, const char *message)
 
 void disable_multi_threading()
 {
-
 #ifdef TBB_HAS_GLOBAL_CONTROL
     tbb::global_control(tbb::global_control::max_allowed_parallelism, 1);
 #else
@@ -302,7 +286,6 @@ const std::string& resources_dir()
 {
     return g_resources_dir;
 }
-
 
 static std::string g_temporary_dir;
 void set_temporary_dir(const std::string &dir)
@@ -351,7 +334,6 @@ const std::string& custom_gcodes_dir()
     return g_custom_gcodes_dir;
 }
 
-
 Slic3r::I18N::translate_fn_type Slic3r::I18N::translate_fn = nullptr;
 static std::string g_data_dir;
 
@@ -386,7 +368,6 @@ static std::atomic<bool> debug_out_path_called(false);
 
 std::string debug_out_path(const char *name, ...)
 {
-
 	auto svg_folder = boost::filesystem::path(g_data_dir) / "SVG/";
     if (! debug_out_path_called.exchange(true)) {
 		if (!boost::filesystem::exists(svg_folder)) {
@@ -429,13 +410,10 @@ void shutdown_console_logging()
 void set_log_path_and_level(const std::string& file, unsigned int level)
 {
 #ifdef __APPLE__
-
-
 	if (!is_macos_support_boost_add_file_log()) {
 		return;
 	}
 #endif
-
 
 	auto log_folder = boost::filesystem::path(g_data_dir) / "log";
 	if (!boost::filesystem::exists(log_folder)) {
@@ -490,7 +468,6 @@ void flush_logs()
 	return;
 }
 
-
 boost::filesystem::path get_log_file_name()
 {
     if (g_log_sink)
@@ -499,7 +476,6 @@ boost::filesystem::path get_log_file_name()
 }
 
 #ifdef _WIN32
-
 namespace WindowsSupport
 {
 	template <typename HandleTraits>
@@ -510,29 +486,28 @@ namespace WindowsSupport
 		void operator=(const ScopedHandle &other) = delete;
 	public:
 		ScopedHandle() : Handle(HandleTraits::GetInvalid()) {}
-        explicit ScopedHandle(handle_type h) : Handle(h) {}
-        ~ScopedHandle() { if (HandleTraits::IsValid(Handle)) HandleTraits::Close(Handle); }
-        handle_type take() {
-            handle_type t = Handle;
-            Handle = HandleTraits::GetInvalid();
-            return t;
-        }
-        ScopedHandle &operator=(handle_type h) {
-            if (HandleTraits::IsValid(Handle))
-                HandleTraits::Close(Handle);
-            Handle = h;
-            return *this;
-        }
-
-        explicit operator bool() const { return HandleTraits::IsValid(Handle) ? true : false; }
-        operator handle_type() const { return Handle; }
+	  	explicit ScopedHandle(handle_type h) : Handle(h) {}
+	  	~ScopedHandle() { if (HandleTraits::IsValid(Handle)) HandleTraits::Close(Handle); }
+	  	handle_type take() {
+	    	handle_type t = Handle;
+	    	Handle = HandleTraits::GetInvalid();
+	    	return t;
+	  	}
+	  	ScopedHandle &operator=(handle_type h) {
+	    	if (HandleTraits::IsValid(Handle))
+	      		HandleTraits::Close(Handle);
+	    	Handle = h;
+	    	return *this;
+	  	}
+	  	explicit operator bool() const { return HandleTraits::IsValid(Handle) ? true : false; }
+	  	operator handle_type() const { return Handle; }
 	};
 
 	struct CommonHandleTraits {
-        typedef HANDLE handle_type;
-        static handle_type GetInvalid() { return INVALID_HANDLE_VALUE; }
-        static void Close(handle_type h) { ::CloseHandle(h); }
-        static bool IsValid(handle_type h) { return h != GetInvalid(); }
+	  	typedef HANDLE handle_type;
+	  	static handle_type GetInvalid() { return INVALID_HANDLE_VALUE; }
+	  	static void Close(handle_type h) { ::CloseHandle(h); }
+	  	static bool IsValid(handle_type h) { return h != GetInvalid(); }
 	};
 
 	typedef ScopedHandle<CommonHandleTraits> ScopedFileHandle;
@@ -609,7 +584,7 @@ namespace WindowsSupport
 		if (! ::SetFileInformationByHandle(from_handle, FileRenameInfo, &rename_info, (DWORD)rename_info_buf.size())) {
 			unsigned Error = GetLastError();
 			if (Error == ERROR_SUCCESS)
-                Error = ERROR_CALL_NOT_IMPLEMENTED;
+		  		Error = ERROR_CALL_NOT_IMPLEMENTED;
 			return map_windows_error(Error);
 		}
 
@@ -620,33 +595,29 @@ namespace WindowsSupport
 	{
 		buffer.resize(MAX_PATH + 1);
 		DWORD CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
-        if (CountChars > buffer.size()) {
-
-            buffer.resize((size_t)CountChars);
-            CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
-        }
-        if (CountChars == 0)
-            return map_windows_error(GetLastError());
-        buffer.resize(CountChars);
-        return std::error_code();
+	  	if (CountChars > buffer.size()) {
+	    	buffer.resize((size_t)CountChars);
+	    	CountChars = ::GetFinalPathNameByHandleW(H, (LPWSTR)buffer.data(), (DWORD)buffer.size() - 1, FILE_NAME_NORMALIZED);
+	  	}
+	  	if (CountChars == 0)
+	    	return map_windows_error(GetLastError());
+	  	buffer.resize(CountChars);
+	  	return std::error_code();
 	}
 
 	std::error_code rename(const std::string &from, const std::string &to)
 	{
-
 		std::wstring wide_from = boost::nowide::widen(from);
 		std::wstring wide_to   = boost::nowide::widen(to);
 
 		ScopedFileHandle from_handle;
-
 		for (unsigned retry = 0; retry != 200; ++ retry) {
 			if (retry != 0)
-                ::Sleep(10);
+		  		::Sleep(10);
 			from_handle = ::CreateFileW((LPWSTR)wide_from.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (from_handle)
-                break;
+		  		break;
 		}
-
 		if (! from_handle)
 		{
 			auto err_code = map_windows_error(GetLastError());
@@ -654,42 +625,26 @@ namespace WindowsSupport
 			return err_code;
 		}
 
-
-
-
 		for (unsigned retry = 0; retry != 200; ++ retry) {
 			auto errcode = rename_internal(from_handle, wide_to, true);
 
 			if (errcode == std::error_code(ERROR_CALL_NOT_IMPLEMENTED, std::system_category())) {
-
-
-                if (std::error_code errcode2 = real_path_from_handle(from_handle, wide_from))
-                    return errcode2;
-                if (::MoveFileExW((LPCWSTR)wide_from.data(), (LPCWSTR)wide_to.data(), MOVEFILE_REPLACE_EXISTING))
-                    return std::error_code();
-                return map_windows_error(GetLastError());
+		  		if (std::error_code errcode2 = real_path_from_handle(from_handle, wide_from))
+		    		return errcode2;
+		  		if (::MoveFileExW((LPCWSTR)wide_from.data(), (LPCWSTR)wide_to.data(), MOVEFILE_REPLACE_EXISTING))
+		    		return std::error_code();
+		  		return map_windows_error(GetLastError());
 			}
 
 			if (! errcode || errcode != std::errc::permission_denied)
-                return errcode;
-
+		  		return errcode;
 
 			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(",first rename file from %1% to %2% failed, reason: %3%") % from.c_str() % to.c_str() % errcode.message();
-
-
-
-
-
-
 			ScopedFileHandle to_handle(::CreateFileW((LPCWSTR)wide_to.data(), GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, NULL));
 			if (! to_handle) {
 				auto errcode = map_windows_error(GetLastError());
-
-
-
 				if (errcode == std::errc::no_such_file_or_directory)
 					continue;
-
 
 				BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(",open dest file %1% failed, reason: %2%") % to.c_str() % errcode.message();
 				return errcode;
@@ -697,24 +652,18 @@ namespace WindowsSupport
 
 			BY_HANDLE_FILE_INFORMATION FI;
 			if (! ::GetFileInformationByHandle(to_handle, &FI))
-                return map_windows_error(GetLastError());
-
+		  		return map_windows_error(GetLastError());
 
 			for (unsigned unique_id = 0; unique_id != 200; ++ unique_id) {
 				std::wstring tmp_filename = wide_to + L".tmp" + std::to_wstring(unique_id);
 				std::error_code errcode = rename_internal(to_handle, tmp_filename, false);
 				if (errcode) {
 					if (errcode == std::make_error_code(std::errc::file_exists) || errcode == std::make_error_code(std::errc::permission_denied)) {
-
-
-
-
 						ScopedFileHandle to_handle2(::CreateFileW((LPCWSTR)wide_to.data(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL));
 						if (! to_handle2) {
 							auto errcode = map_windows_error(GetLastError());
 							if (errcode == std::errc::no_such_file_or_directory)
-                                break;
-
+						  		break;
 							BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(", line %1%, error: %2%") % __LINE__ % errcode.message();
 							return errcode;
 						}
@@ -725,44 +674,27 @@ namespace WindowsSupport
 							break;
 						continue;
 					}
-
 					BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(", line %1%, error: %2%") % __LINE__ % errcode.message();
 					return errcode;
 				}
 				break;
 			}
 
-
-
-
-
 		}
-
-
 
 		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(", line %1%, error in the end, permission_denied") % __LINE__;
 		return std::make_error_code(std::errc::permission_denied);
 	}
 }
 #endif
-
-
 std::error_code rename_file(const std::string &from, const std::string &to)
 {
 #ifdef _WIN32
-
 	return WindowsSupport::rename(from, to);
 #else
-
-
 	if (boost::nowide::rename(from.c_str(), to.c_str()) == 0)
 		return {};
 	const int err = errno;
-
-
-
-
-
 	const bool worth_retrying = err != ENOENT && err != EXDEV && err != ENOTDIR && err != EISDIR;
 	if (worth_retrying && boost::nowide::remove(to.c_str()) == 0 && boost::nowide::rename(from.c_str(), to.c_str()) == 0)
 		return {};
@@ -787,10 +719,6 @@ static std::error_code write_whole_file(const std::string &path, std::initialize
 	return std::make_error_code(err != 0 ? static_cast<std::errc>(err) : std::errc::io_error);
 }
 
-
-
-
-
 static std::error_code write_in_place(const std::string &path, std::initializer_list<std::string_view> chunks, bool binary)
 {
 	static auto *mutex = new std::mutex();
@@ -804,8 +732,6 @@ std::error_code write_file_atomically(const std::string &path, std::initializer_
 	const boost::filesystem::file_status target = boost::filesystem::symlink_status(path, bec);
 	const bool target_exists = ! bec && boost::filesystem::exists(target);
 	if (target_exists && boost::filesystem::is_symlink(target)) {
-
-
 		const boost::filesystem::path resolved = boost::filesystem::canonical(path, bec);
 		if (! bec && boost::filesystem::is_regular_file(resolved, bec))
 			return write_file_atomically(resolved.string(), chunks, binary);
@@ -813,30 +739,21 @@ std::error_code write_file_atomically(const std::string &path, std::initializer_
 	if (target_exists && ! boost::filesystem::is_regular_file(target))
 		return write_in_place(path, chunks, binary);
 
-
-
 	static std::atomic<unsigned> counter{0};
 	const std::string tmp_path = path + "." + std::to_string(get_current_pid()) + "." + std::to_string(counter++) + ".tmp";
 	if (const std::error_code ec = write_whole_file(tmp_path, chunks, binary)) {
 		boost::nowide::remove(tmp_path.c_str());
 		if (! target_exists)
 			return ec;
-
-
 		BOOST_LOG_TRIVIAL(warning) << "Cannot create a temporary beside " << path << " (" << ec.message() << "); writing in place";
 		return write_in_place(path, chunks, binary);
 	}
 #ifndef _WIN32
-
 	if (target_exists)
 		boost::filesystem::permissions(tmp_path, target.permissions(), bec);
 #endif
 	if (const std::error_code ec = rename_file(tmp_path, path)) {
 		boost::nowide::remove(tmp_path.c_str());
-
-
-
-
 		BOOST_LOG_TRIVIAL(warning) << "Cannot replace " << path << " (" << ec.message() << "); writing in place";
 		return write_in_place(path, chunks, binary);
 	}
@@ -844,26 +761,16 @@ std::error_code write_file_atomically(const std::string &path, std::initializer_
 }
 
 #ifdef __linux__
-
-
 int copy_file_linux_read_write(int infile, int outfile, uintmax_t file_size)
 {
     std::vector<char> buf(
-
-
-        std::clamp<size_t>(file_size + (file_size < ~static_cast<uintmax_t >(0u)),
-
-
-
-                           8u * 1024u, 256u * 1024u),
-        0);
+    	std::clamp<size_t>(file_size + (file_size < ~static_cast<uintmax_t >(0u)),
+    			   		   8u * 1024u, 256u * 1024u),
+    	0);
 
 #if defined(POSIX_FADV_SEQUENTIAL)
     ::posix_fadvise(infile, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
-
-
-
 
     while (true) {
         ssize_t sz_read = ::read(infile, buf.data(), buf.size());
@@ -875,8 +782,6 @@ int copy_file_linux_read_write(int infile, int outfile, uintmax_t file_size)
                 continue;
             return err;
         }
-
-
         for (ssize_t sz_wrote = 0; sz_wrote < sz_read;) {
             ssize_t sz = ::write(outfile, buf.data() + sz_wrote, static_cast<std::size_t>(sz_read - sz_wrote));
             if (sz < 0) {
@@ -891,10 +796,6 @@ int copy_file_linux_read_write(int infile, int outfile, uintmax_t file_size)
     return 0;
 }
 
-
-
-
-
 bool copy_file_linux(const boost::filesystem::path &from, const boost::filesystem::path &to, boost::system::error_code &ec)
 {
 
@@ -907,23 +808,22 @@ bool copy_file_linux(const boost::filesystem::path &from, const boost::filesyste
 	};
 
 	ec.clear();
-    int err = 0;
+  	int err = 0;
 
+  	fd_wrapper infile, outfile;
 
-    fd_wrapper infile, outfile;
-
-    while (true) {
-        infile.fd = ::open(from.c_str(), O_RDONLY | O_CLOEXEC);
-        if (infile.fd < 0) {
-            err = errno;
-            if (err == EINTR)
-                continue;
+  	while (true) {
+    	infile.fd = ::open(from.c_str(), O_RDONLY | O_CLOEXEC);
+    	if (infile.fd < 0) {
+      		err = errno;
+      		if (err == EINTR)
+        		continue;
 		fail:
 			ec.assign(err, boost::system::system_category());
-            return false;
-        }
-        break;
-    }
+  			return false;
+    	}
+    	break;
+  	}
 
 	struct ::stat from_stat;
 	if (::fstat(infile.fd, &from_stat) != 0) {
@@ -932,26 +832,24 @@ bool copy_file_linux(const boost::filesystem::path &from, const boost::filesyste
 		goto fail;
 	}
 
-    const mode_t from_mode = from_stat.st_mode;
-    if (!S_ISREG(from_mode)) {
-        err = ENOSYS;
-        goto fail;
-    }
+  	const mode_t from_mode = from_stat.st_mode;
+  	if (!S_ISREG(from_mode)) {
+    	err = ENOSYS;
+    	goto fail;
+  	}
 
-
-
-    mode_t to_mode = from_mode | S_IWUSR;
-    int oflag = O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC;
+  	mode_t to_mode = from_mode | S_IWUSR;
+  	int oflag = O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC;
 
 	while (true) {
-        outfile.fd = ::open(to.c_str(), oflag, to_mode);
-        if (outfile.fd < 0) {
-            err = errno;
-            if (err == EINTR)
-                continue;
-            goto fail;
-        }
-        break;
+	  	outfile.fd = ::open(to.c_str(), oflag, to_mode);
+	  	if (outfile.fd < 0) {
+	    	err = errno;
+	    	if (err == EINTR)
+	      		continue;
+	    	goto fail;
+	  	}
+	  	break;
 	}
 
 	struct ::stat to_stat;
@@ -969,13 +867,7 @@ bool copy_file_linux(const boost::filesystem::path &from, const boost::filesyste
 		goto fail;
 	}
 
-
-
-
-
-
 	{
-
 		constexpr std::size_t max_send_size = 0x7ffff000u;
 		uintmax_t offset = 0u;
 		while (off_t(offset) < from_stat.st_size) {
@@ -987,16 +879,11 @@ bool copy_file_linux(const boost::filesystem::path &from, const boost::filesyste
 			if (sz < 0) {
 				err = errno;
 	            if (offset == 0u) {
-
-
-
-
 	                if (err == EINVAL || err == EOPNOTSUPP) {
 						err = copy_file_linux_read_write(infile.fd, outfile.fd, from_stat.st_size);
 						if (err < 0)
 							goto fail;
-
-                        break;
+	                	break;
 	                }
 	            }
 				if (err == EINTR)
@@ -1009,24 +896,14 @@ bool copy_file_linux(const boost::filesystem::path &from, const boost::filesyste
 		}
 	}
 
-
-
 	if (to_mode != from_mode && ::fchmod(outfile.fd, from_mode) != 0) {
 		if (platform_flavor() == PlatformFlavor::LinuxOnChromium) {
-
 			BOOST_LOG_TRIVIAL(info) << "copy_file_linux() failed to fchmod() the output file \"" << to.string() << "\" to " << from_mode << ": " << ec.message() <<
 				" This may be expected when writing to a 9p filesystem.";
 		} else {
-
 			BOOST_LOG_TRIVIAL(error) << "copy_file_linux() failed to fchmod() the output file \"" << to.string() << "\" to " << from_mode << ": " << ec.message();
 		}
 	}
-
-
-
-
-
-
 
 	err = ::fdatasync(outfile.fd);
 	if (err != 0)
@@ -1041,21 +918,12 @@ CopyFileResult copy_file_inner(const std::string& from, const std::string& to, s
 	const boost::filesystem::path source(from);
 	const boost::filesystem::path target(to);
 	static const auto perms = boost::filesystem::owner_read | boost::filesystem::owner_write | boost::filesystem::group_read | boost::filesystem::others_read;
-
-
-
-
-
-
-
 	boost::system::error_code ec;
 	boost::filesystem::permissions(target, perms, ec);
 	if (ec)
 		BOOST_LOG_TRIVIAL(debug) << "boost::filesystem::permisions before copy error message (this could be irrelevant message based on file system): " << ec.message();
 	ec.clear();
 #ifdef __linux__
-
-
 	copy_file_linux(source, target, ec);
 #else
 	boost::filesystem::copy_file(source, target, boost::filesystem::copy_option::overwrite_if_exists, ec);
@@ -1076,8 +944,6 @@ CopyFileResult copy_file_inner(const std::string& from, const std::string& to, s
 CopyFileResult copy_file(const std::string &from, const std::string &to, std::string& error_message, const bool with_check)
 {
 #ifdef WIN32
-
-
     const char* src_str = from.c_str();
     const char* dest_str = to.c_str();
     int src_wlen = ::MultiByteToWideChar(CP_UTF8, NULL, src_str, strlen(src_str), NULL, 0);
@@ -1166,7 +1032,6 @@ CopyFileResult check_copy(const std::string &origin, const std::string &copy)
 	f1.seekg(0, std::ifstream::beg);
 	f2.seekg(0, std::ifstream::beg);
 
-
 	size_t 			  buffer_size = 8 * 1024 * 1024;
 	std::vector<char> buffer_origin(buffer_size, 0);
 	std::vector<char> buffer_copy(buffer_size, 0);
@@ -1177,15 +1042,12 @@ CopyFileResult check_copy(const std::string &origin, const std::string &copy)
 		std::streampos copy_cnt   = f2.gcount();
 		if (origin_cnt != copy_cnt ||
 			(origin_cnt > 0 && std::memcmp(buffer_origin.data(), buffer_copy.data(), origin_cnt) != 0))
-
 			return FAIL_FILES_DIFFERENT;
 		fsize -= origin_cnt;
     } while (f1.good() && f2.good());
 
-
     return (f1.eof() && f2.eof() && fsize == 0) ? SUCCESS : FAIL_FILES_DIFFERENT;
 }
-
 
 bool is_plain_file(const boost::filesystem::directory_entry &dir_entry)
 {
@@ -1209,12 +1071,10 @@ bool is_idx_file(const boost::filesystem::directory_entry &dir_entry)
 	return is_plain_file(dir_entry) && strcasecmp(dir_entry.path().extension().string().c_str(), ".idx") == 0;
 }
 
-
 bool is_gcode_file(const std::string &path)
 {
 	return boost::iends_with(path, ".gcode");
 }
-
 
 bool is_json_file(const std::string& path)
 {
@@ -1226,7 +1086,6 @@ bool is_path_within_root(const std::string &rel_path, const boost::filesystem::p
     auto is_separator = [](char c) { return c == '/' || c == '\\'; };
     if (rel_path.empty() || is_separator(rel_path.front()) || (rel_path.size() > 1 && rel_path[1] == ':'))
         return false;
-
     if (rel_path.find('\0') != std::string::npos)
         return false;
     for (size_t start = 0; start <= rel_path.size();) {
@@ -1237,10 +1096,8 @@ bool is_path_within_root(const std::string &rel_path, const boost::filesystem::p
             return false;
         start = end + 1;
     }
-
     try {
         std::string root_str = boost::filesystem::weakly_canonical(root).string();
-
         while (!root_str.empty() && (root_str.back() == '/' || root_str.back() == boost::filesystem::path::preferred_separator))
             root_str.pop_back();
         const std::string full_str = boost::filesystem::weakly_canonical(root / rel_path).string();
@@ -1255,7 +1112,6 @@ bool is_symlink_target_within_root(const std::string &link_rel_path, const std::
 {
     if (target.empty() || target.front() == '/' || target.front() == '\\' || (target.size() > 1 && target[1] == ':'))
         return false;
-
     const size_t sep = link_rel_path.find_last_of("/\\");
     return is_path_within_root((sep == std::string::npos ? std::string() : link_rel_path.substr(0, sep + 1)) + target, root);
 }
@@ -1268,13 +1124,11 @@ bool is_absolute_path_within_root(const boost::filesystem::path &path, const boo
 
 bool is_safe_to_open_file_name(const std::string &file_name)
 {
-
     static const std::vector<std::string> safe_extensions = {
         "jpg", "jpeg", "jfif", "pjpeg", "pjp", "png", "gif", "bmp", "webp", "tif", "tiff",
         "pdf", "txt", "md", "csv", "docx", "xlsx", "pptx",
         "stl", "obj", "3mf", "amf", "ply", "step", "stp", "iges", "igs", "dxf",
         "mp4", "mov", "webm"};
-
     const size_t dot = file_name.find_last_of('.');
     if (dot == std::string::npos || file_name.find_first_of("/\\:") != std::string::npos)
         return false;
@@ -1324,11 +1178,8 @@ size_t get_utf8_sequence_length(const char *seq, size_t size)
 	size_t length = 0;
 	unsigned char c = seq[0];
 	if (c < 0x80) {
-
 		length++;
 	}
-
-
 	else if (c < 0xC0) {
 		length++;
 		while (length < size) {
@@ -1339,59 +1190,48 @@ size_t get_utf8_sequence_length(const char *seq, size_t size)
 			length++;
 		}
 	}
-
-
 	else if (c < 0xE0) {
-
 		if (2 > size) {
 			return size;
 		}
 		length += 2;
 	}
 	else if (c < 0xF0) {
-
 		if (3 > size) {
 			return size;
 		}
 		length += 3;
 	}
 	else if (c < 0xF8) {
-
 		if (4 > size) {
 			return size;
 		}
 		length += 4;
 	}
 	else if (c < 0xFC) {
-
 		if (5 > size) {
 			return size;
 		}
 		length += 5;
 	}
 	else if (c < 0xFE) {
-
 		if (6 > size) {
 			return size;
 		}
 		length += 6;
 	}
 	else {
-
 		length++;
 	}
 	return length;
 }
 
-
 std::string encode_path(const char *src)
 {
 #ifdef WIN32
-
     std::wstring wstr_src = boost::nowide::widen(src);
     if (wstr_src.length() == 0)
         return std::string();
-
     int size_needed = ::WideCharToMultiByte(0, 0, wstr_src.data(), (int)wstr_src.size(), nullptr, 0, nullptr, nullptr);
     std::string str_dst(size_needed, 0);
     ::WideCharToMultiByte(0, 0, wstr_src.data(), (int)wstr_src.size(), str_dst.data(), size_needed, nullptr, nullptr);
@@ -1401,19 +1241,15 @@ std::string encode_path(const char *src)
 #endif
 }
 
-
-
 std::string decode_path(const char *src)
 {
 #ifdef WIN32
     int len = int(strlen(src));
     if (len == 0)
         return std::string();
-
     int size_needed = ::MultiByteToWideChar(0, 0, src, len, nullptr, 0);
     std::wstring wstr_dst(size_needed, 0);
     ::MultiByteToWideChar(0, 0, src, len, wstr_dst.data(), size_needed);
-
     return boost::nowide::narrow(wstr_dst.c_str());
 #else
     return src;
@@ -1439,13 +1275,9 @@ std::vector<std::string> split_string(const std::string &str, char delimiter)
 }
 
 namespace PerlUtils {
-
     std::string path_to_filename(const char *src)       { return boost::filesystem::path(src).filename().string(); }
-
     std::string path_to_stem(const char *src)           { return boost::filesystem::path(src).stem().string(); }
-
     std::string path_to_extension(const char *src)      { return boost::filesystem::path(src).extension().string(); }
-
     std::string path_to_parent_path(const char *src)    { return boost::filesystem::path(src).parent_path().string(); }
 };
 
@@ -1499,7 +1331,6 @@ boost::filesystem::path download_marker_path(const boost::filesystem::path &dest
 bool find_unused_filename(const boost::filesystem::path &dest_folder, const std::string &filename,
                           const boost::filesystem::path &ignored_marker, std::string &result)
 {
-
     const std::string sanitized = sanitize_filename(filename);
     const std::string extension = boost::filesystem::path(sanitized).extension().string();
     const std::string stem      = sanitized.substr(0, sanitized.size() - extension.size());
@@ -1529,8 +1360,6 @@ std::string per_user_temp_dir(const std::string &base, const std::string &user_i
 {
     if (user_id.empty())
         return base;
-
-
     return base + "/orcaslicer_" + user_id;
 }
 
@@ -1546,7 +1375,6 @@ std::string resolve_cli_input_path(const std::string &path)
         return path;
     return resolved.lexically_normal().make_preferred().string();
 }
-
 
 std::string get_process_name(int pid)
 {
@@ -1587,7 +1415,6 @@ std::string get_process_name(int pid)
 #endif
 }
 
-
 std::string xml_escape(std::string text, bool is_marked )
 {
     std::string::size_type pos = 0;
@@ -1614,9 +1441,6 @@ std::string xml_escape(std::string text, bool is_marked )
 
     return text;
 }
-
-
-
 
 std::string xml_escape_double_quotes_attribute_value(std::string text)
 {
@@ -1684,7 +1508,6 @@ std::string format_memsize_MB(size_t n)
     std::string out;
     size_t n2 = 0;
     size_t scale = 1;
-
     n +=  500000;
     n /= 1000000;
     while (n >= 1000) {
@@ -1752,7 +1575,6 @@ std::string format_diameter_to_str(double diameter, int precision)
 
 void trim_free_memory()
 {
-
     scalable_allocation_command(TBBMALLOC_CLEAN_ALL_BUFFERS, nullptr);
 #if defined(__GLIBC__)
     malloc_trim(0);
@@ -1763,16 +1585,12 @@ void trim_free_memory()
 #endif
 }
 
-
-
-
 std::string log_memory_info(bool ignore_loglevel)
 {
     std::string out;
     if (ignore_loglevel || logSeverity <= boost::log::trivial::info) {
 #ifdef WIN32
     #ifndef PROCESS_MEMORY_COUNTERS_EX
-
         typedef struct _PROCESS_MEMORY_COUNTERS_EX {
           DWORD  cb;
           DWORD  PageFaultCount;
@@ -1794,7 +1612,6 @@ std::string log_memory_info(bool ignore_loglevel)
         else
             out += " Used memory: N/A";
 #elif defined(__linux__) or defined(__APPLE__)
-
     #ifdef __APPLE__
         struct mach_task_basic_info info;
         mach_msg_type_number_t infoCount = MACH_TASK_BASIC_INFO_COUNT;
@@ -1816,7 +1633,6 @@ std::string log_memory_info(bool ignore_loglevel)
         else
             out += " Used memory: N/A";
     #endif
-
         out += "; Peak memory usage: ";
         rusage memory_info;
         if (getrusage(RUSAGE_SELF, &memory_info) == 0)
@@ -1850,27 +1666,19 @@ double process_cpu_seconds()
 #endif
 }
 
-
-
 size_t total_physical_memory()
 {
 #if defined(_WIN32) && (defined(__CYGWIN__) || defined(__CYGWIN32__))
-
-
 	MEMORYSTATUS status;
 	status.dwLength = sizeof(status);
 	GlobalMemoryStatus( &status );
 	return (size_t)status.dwTotalPhys;
 #elif defined(_WIN32)
-
-
 	MEMORYSTATUSEX status;
 	status.dwLength = sizeof(status);
 	GlobalMemoryStatusEx( &status );
 	return (size_t)status.ullTotalPhys;
 #elif defined(__unix__) || defined(__unix) || defined(unix) || (defined(__APPLE__) && defined(__MACH__))
-
-
 
 #if defined(CTL_HW) && (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))
 	int mib[2];
@@ -1887,21 +1695,17 @@ size_t total_physical_memory()
 	return 0L;
 
 #elif defined(_SC_AIX_REALMEM)
-
 	return (size_t)sysconf( _SC_AIX_REALMEM ) * (size_t)1024L;
 
 #elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
-
 	return (size_t)sysconf( _SC_PHYS_PAGES ) *
 		(size_t)sysconf( _SC_PAGESIZE );
 
 #elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGE_SIZE)
-
 	return (size_t)sysconf( _SC_PHYS_PAGES ) *
 		(size_t)sysconf( _SC_PAGE_SIZE );
 
 #elif defined(CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_REALMEM))
-
 	int mib[2];
 	mib[0] = CTL_HW;
 #if defined(HW_REALMEM)
@@ -1922,7 +1726,6 @@ size_t total_physical_memory()
 }
 
 bool makedir(const std::string path) {
-
 #ifdef WIN32
 	if (_access(path.c_str(), 0) != 0)
 		return _mkdir(path.c_str()) == 0;
@@ -1946,9 +1749,6 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
         ifs.read(buf.data(), buf.size());
         md5.process_bytes(buf.data(), size_t(ifs.gcount()));
     }
-
-
-
     boost::uuids::detail::md5::digest_type digest;
     md5.get_digest(digest);
     static_assert(sizeof(digest) == 16, "an MD5 digest is 16 bytes");
@@ -1959,7 +1759,6 @@ bool bbl_calc_md5(std::string &filename, std::string &md5_out)
     md5_out = std::string(md5_str);
     return true;
 }
-
 
 void copy_directory_recursively(const boost::filesystem::path& source,
                                 const boost::filesystem::path& target,
@@ -1997,14 +1796,6 @@ void copy_directory_recursively(const boost::filesystem::path& source,
     return;
 }
 
-
-
-
-
-
-
-
-
 static bool cache_covers(const Semver& cache_ver, const Semver& profile_ver)
 {
     return cache_ver.valid() && (! profile_ver.valid() || cache_ver >= profile_ver);
@@ -2013,9 +1804,6 @@ static bool cache_covers(const Semver& cache_ver, const Semver& profile_ver)
 bool is_vendor_installed(const std::string& vendor)
 {
     const boost::filesystem::path dir = boost::filesystem::path(data_dir()) / PRESET_SYSTEM_DIR;
-
-
-
     return boost::filesystem::exists(dir / (vendor + ".json"))
         || VendorCacheFile::usable_version((dir / (vendor + ".opc")).string(), vendor).valid();
 }
@@ -2024,12 +1812,8 @@ Semver installed_vendor_version(const std::string& vendor)
 {
     const boost::filesystem::path dir  = boost::filesystem::path(data_dir()) / PRESET_SYSTEM_DIR;
     const boost::filesystem::path json = dir / (vendor + ".json");
-
-
-
     const Semver from_json  = boost::filesystem::exists(json) ? get_version_from_json(json.string()) : Semver();
     const Semver from_cache = VendorCacheFile::usable_version((dir / (vendor + ".opc")).string(), vendor);
-
     return cache_covers(from_cache, from_json) ? from_cache : from_json;
 }
 
@@ -2052,13 +1836,6 @@ std::set<std::string> vendor_names_in(const boost::filesystem::path& dir)
     }
     return names;
 }
-
-
-
-
-
-
-
 
 static Semver installable_cache_version(const boost::filesystem::path& dir, const std::string& vendor)
 {
@@ -2088,9 +1865,6 @@ bool install_vendor_bundles_from_resources(
 
     BOOST_LOG_TRIVIAL(info) << "Installing " << bundle_names.size() << " bundles from resources...";
 
-
-
-
     bool all_installed = true;
 
     for (const auto &bundle : bundle_names) {
@@ -2101,19 +1875,16 @@ bool install_vendor_bundles_from_resources(
                 continue;
             }
 
-
             auto path_in_rsrc = (rsrc_path / bundle).replace_extension(".json");
             auto path_in_vendors = (vendor_path / bundle).replace_extension(".json");
             auto cache_in_rsrc = (rsrc_path / bundle).replace_extension(".opc");
             auto cache_in_vendors = (vendor_path / bundle).replace_extension(".opc");
-
 
             if (!fs::exists(path_in_rsrc) && !fs::exists(cache_in_rsrc)) {
                 BOOST_LOG_TRIVIAL(warning) << "Bundle not found in resources: " << bundle;
                 all_installed = false;
                 continue;
             }
-
 
             if (!fs::exists(vendor_path))
                 fs::create_directories(vendor_path);
@@ -2125,9 +1896,6 @@ bool install_vendor_bundles_from_resources(
                 if (! installed_cache) {
                     BOOST_LOG_TRIVIAL(warning) << "Failed to copy " << bundle << ".opc: " << error_message;
                 } else if (! VendorCacheFile::usable_version(cache_in_vendors.string(), bundle).valid()) {
-
-
-
                     BOOST_LOG_TRIVIAL(warning) << "Installed cache for " << bundle << " cannot be read; installing its profile instead";
                     boost::system::error_code ec;
                     fs::remove(cache_in_vendors, ec);
@@ -2142,31 +1910,23 @@ bool install_vendor_bundles_from_resources(
                     all_installed = false;
                     continue;
                 }
-
-
                 boost::system::error_code ec;
                 fs::remove(cache_in_vendors, ec);
             } else {
-
                 boost::system::error_code ec;
                 fs::remove(path_in_vendors, ec);
                 if (ec)
                     BOOST_LOG_TRIVIAL(warning) << "Could not remove the superseded profile " << path_in_vendors.string() << ": " << ec.message();
             }
 
-
             auto dir_in_rsrc = rsrc_path / bundle;
             auto dir_in_vendors = vendor_path / bundle;
-
-
 
             if (fs::exists(dir_in_vendors))
                 fs::remove_all(dir_in_vendors);
 
             if (! installed_cache && fs::exists(dir_in_rsrc) && fs::is_directory(dir_in_rsrc)) {
                 fs::create_directories(dir_in_vendors);
-
-
 
                 auto file_filter = [](const std::string name) -> bool {
                     return boost::iends_with(name, ".stl") ||
@@ -2209,16 +1969,11 @@ void load_string_file(const boost::filesystem::path& p, std::string& str)
     file.read(&str[0], sz);
 }
 
-
-
-
 bool check_layer_id_pattern(const std::string& pattern, int layer_id){
     if (pattern.empty() || layer_id < 0)
         return false;
 
-
 	layer_id++;
-
 
     std::string p; p.reserve(pattern.size());
     for (char c : pattern) {
@@ -2232,7 +1987,6 @@ bool check_layer_id_pattern(const std::string& pattern, int layer_id){
         p.pop_back();
     if (p.empty())
         return false;
-
 
     if (p.find(',') != std::string::npos) {
         size_t start = 0;
@@ -2258,7 +2012,6 @@ bool check_layer_id_pattern(const std::string& pattern, int layer_id){
                         }
                     }
                 } catch (...) {
-
                 }
             }
             if (end == std::string::npos)
@@ -2267,7 +2020,6 @@ bool check_layer_id_pattern(const std::string& pattern, int layer_id){
         }
         return false;
     }
-
 
     int interval = 0;
     int count    = 1;
@@ -2287,7 +2039,6 @@ bool check_layer_id_pattern(const std::string& pattern, int layer_id){
 
     if (interval <= 0 || count <= 0)
         return false;
-
 
     if (layer_id < interval)
         return false;

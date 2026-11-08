@@ -51,16 +51,11 @@ bool GCodeWriter::full_gcode_comment = true;
 namespace {
 double capped_xy_travel_speed(double speed, const Vec3d &limits)
 {
-
     for (int axis = 0; axis < 2; ++axis)
         if (limits[axis] > 0.) speed = std::min(speed, limits[axis]);
     return speed;
 }
 }
-
-
-
-
 
 bool GCodeWriter::must_skip_lift_now() const
 {
@@ -92,12 +87,9 @@ void GCodeWriter::set_kinematics(std::unique_ptr<MachineKinematics> kinematics)
 {
     assert(kinematics);
     m_kinematics = std::move(kinematics);
-
-
     m_kinematics->set_axis_remap(m_remap_x, m_remap_y, m_remap_z);
     m_kinematics->set_build_volume_max(m_build_vol_max);
 }
-
 
 bool GCodeWriter::has_axis_remap() const
 {
@@ -118,15 +110,11 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
 {
     this->config.apply(print_config, true);
 
-
-
-
     auto get_machine_limits = [](const std::string key, const ConfigOptionFloats& opt) -> std::vector<double> {
         unsigned int stride = 1;
         unsigned int offset = 0;
         if (printer_options_with_variant_2.count(key) > 0) {
             stride = 2;
-
         }
 
         std::vector<double> results;
@@ -154,9 +142,6 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     bool use_mach_limits = print_config.gcode_flavor.value == gcfMarlinLegacy || print_config.gcode_flavor.value == gcfMarlinFirmware ||
                            print_config.gcode_flavor.value == gcfKlipper || print_config.gcode_flavor.value == gcfRepRapFirmware;
     if (use_mach_limits) {
-
-
-
         auto extruding_limit = LIMITS_UINT(machine_max_acceleration_extruding);
         if (print_config.gcode_flavor.value == gcfKlipper) {
             auto x_limit = LIMITS_UINT(machine_max_acceleration_x);
@@ -188,7 +173,6 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     m_max_jerk_z = LIMITS(machine_max_jerk_z);
     m_max_jerk_e = LIMITS(machine_max_jerk_e);
     m_resolution = print_config.resolution.value;
-
     for (int i = 0; i < 3; ++i) {
         const std::vector<double> &v = i == 0 ? print_config.machine_max_speed_x.values :
                                          i == 1 ? print_config.machine_max_speed_y.values : print_config.machine_max_speed_z.values;
@@ -196,11 +180,6 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     }
 #undef LIMITS
 #undef LIMITS_UINT
-
-
-
-
-
     auto to_scaled_polygon = [](const Pointfs &pts) {
         Polygon poly;
         poly.points.reserve(pts.size());
@@ -221,7 +200,6 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
         m_extruder_printable_areas.resize(extruder_areas.size());
         for (size_t i = 0; i < extruder_areas.size(); ++i) {
             if (extruder_areas[i].size() < 3) {
-
                 m_extruder_printable_areas[i] = m_bed_printable_area;
                 continue;
             }
@@ -230,8 +208,6 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
                 m_extruder_printable_areas[i] = std::move(extruder_poly);
                 continue;
             }
-
-
             Polygons clipped = intersection(extruder_poly, m_bed_printable_area);
             const Polygon *largest = nullptr;
             double          best_area = 0.;
@@ -266,8 +242,6 @@ bool GCodeWriter::spiral_lift_fits_printable_area(const Vec2d &center, double ra
     const double r_scaled = scale_(radius);
     const double r2       = r_scaled * r_scaled;
 
-
-
     if (!area->contains(c))
         return false;
     const Points &pts = area->points;
@@ -281,17 +255,12 @@ void GCodeWriter::set_extruders(std::vector<unsigned int> extruder_ids)
 {
     std::sort(extruder_ids.begin(), extruder_ids.end());
     m_filament_extruders.clear();
-
     m_curr_extruder_id = -1;
     m_cached_extruder_idx = 0;
     std::fill(m_curr_filament_extruder.begin(), m_curr_filament_extruder.end(), nullptr);
     m_filament_extruders.reserve(extruder_ids.size());
     for (unsigned int extruder_id : extruder_ids)
         m_filament_extruders.emplace_back(Extruder(extruder_id, &this->config, config.single_extruder_multi_material.value));
-
-
-
-
 
     this->multiple_extruders = !extruder_ids.empty() && (*std::max_element(extruder_ids.begin(), extruder_ids.end())) > 0;
 }
@@ -376,20 +345,13 @@ std::string GCodeWriter::set_temperature(unsigned int temperature, GCodeFlavor f
 
 std::string GCodeWriter::set_temperature(unsigned int temperature, bool wait, int tool) const
 {
-
     if (!this->multiple_extruders || m_single_extruder_multi_material) {
         tool = -1;
     } else {
-
-
-
-
-
         tool = imex_physical_heater_for(this->config.is_imex.value, this->config.physical_extruder_map, tool);
     }
     return set_temperature(temperature, this->config.gcode_flavor, wait, tool);
 }
-
 
 std::string GCodeWriter::set_bed_temperature(int temperature, bool wait)
 {
@@ -422,7 +384,6 @@ std::string GCodeWriter::set_chamber_temperature(int temperature, bool wait)
 
     if (wait)
     {
-
         if (config.auxiliary_fan)
             gcode << "M106 P2 S255 \n";
         gcode << "M191 S" << std::to_string(temperature) << " ;"
@@ -442,15 +403,12 @@ std::string GCodeWriter::set_chamber_temperature(int temperature, bool wait)
     (filament() ? ((OPT).size() <= filament()->extruder_id() ? 0 : (OPT)[filament()->extruder_id()]) : \
                   ((OPT).empty() ? 0 : *std::max_element((OPT).cbegin(), (OPT).cend())))
 
-
 std::string GCodeWriter::set_acceleration_internal(Acceleration type, unsigned int acceleration)
 {
-
     if (type == Acceleration::Print && EXTRUDER_LIMIT(m_max_acceleration) > 0 && acceleration > EXTRUDER_LIMIT(m_max_acceleration))
         acceleration = EXTRUDER_LIMIT(m_max_acceleration);
     if (type == Acceleration::Travel && EXTRUDER_LIMIT(m_max_travel_acceleration) > 0 && acceleration > EXTRUDER_LIMIT(m_max_travel_acceleration))
         acceleration = EXTRUDER_LIMIT(m_max_travel_acceleration);
-
 
     bool separate_travel = (type == Acceleration::Travel && supports_separate_travel_acceleration(this->config.gcode_flavor));
 
@@ -495,45 +453,38 @@ std::string GCodeWriter::set_jerk_xy(double jerk)
 {
     if (jerk < 0.01 || is_approx(jerk, m_last_jerk))
         return std::string();
-
+    
     m_last_jerk = jerk;
 
     std::ostringstream gcode;
     if (FLAVOR_IS(gcfKlipper)) {
-
         if (EXTRUDER_LIMIT(m_max_jerk_x) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_x))
             jerk = EXTRUDER_LIMIT(m_max_jerk_x);
         if (EXTRUDER_LIMIT(m_max_jerk_y) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_y))
             jerk = EXTRUDER_LIMIT(m_max_jerk_y);
-
+        
         gcode << "SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=" << jerk;
-
+        
     } else if (FLAVOR_IS(gcfRepetier)) {
-
         double jerk_xy = jerk;
-
-
+        
         if (EXTRUDER_LIMIT(m_max_jerk_x) > 0 && jerk_xy > EXTRUDER_LIMIT(m_max_jerk_x))
             jerk_xy = EXTRUDER_LIMIT(m_max_jerk_x);
-
-
+            
         if (EXTRUDER_LIMIT(m_max_jerk_y) > 0 && jerk_xy > EXTRUDER_LIMIT(m_max_jerk_y))
             jerk_xy = EXTRUDER_LIMIT(m_max_jerk_y);
-
-
+            
         gcode << "M207 X" << jerk_xy;
     } else {
         double jerk_x = jerk;
         double jerk_y = jerk;
-
         if (EXTRUDER_LIMIT(m_max_jerk_x) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_x))
             jerk_x = EXTRUDER_LIMIT(m_max_jerk_x);
         if (EXTRUDER_LIMIT(m_max_jerk_y) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_y))
             jerk_y = EXTRUDER_LIMIT(m_max_jerk_y);
-
+        
         gcode << "M205 X" << jerk_x << " Y" << jerk_y;
     }
-
     if (m_is_bbl_printers)
         gcode << std::setprecision(2) << " Z" << EXTRUDER_LIMIT(m_max_jerk_z) << " E" << EXTRUDER_LIMIT(m_max_jerk_e);
 
@@ -546,15 +497,12 @@ std::string GCodeWriter::set_jerk_xy(double jerk)
 
 std::string GCodeWriter::set_accel_and_jerk(unsigned int acceleration, double jerk)
 {
-
     if(FLAVOR_IS_NOT(gcfKlipper))
         throw std::runtime_error(_u8L("set_accel_and_jerk() is only supported by Klipper"));
 
-
     if (EXTRUDER_LIMIT(m_max_acceleration) > 0 && acceleration > EXTRUDER_LIMIT(m_max_acceleration))
         acceleration = EXTRUDER_LIMIT(m_max_acceleration);
-
-
+    
     if (EXTRUDER_LIMIT(m_max_jerk_x) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_x))
         jerk = EXTRUDER_LIMIT(m_max_jerk_x);
     if (EXTRUDER_LIMIT(m_max_jerk_y) > 0 && jerk > EXTRUDER_LIMIT(m_max_jerk_y))
@@ -594,7 +542,6 @@ std::string GCodeWriter::set_accel_and_jerk(unsigned int acceleration, double je
 std::string GCodeWriter::set_junction_deviation(double junction_deviation){
     std::ostringstream gcode;
     if (FLAVOR_IS(gcfMarlinFirmware) && EXTRUDER_LIMIT(m_max_junction_deviation) > 0 && junction_deviation > 0) {
-
         gcode << "M205 J";
         if (junction_deviation <= EXTRUDER_LIMIT(m_max_junction_deviation)) {
             gcode << std::fixed << std::setprecision(3) << junction_deviation;
@@ -615,11 +562,8 @@ std::string GCodeWriter::set_pressure_advance(double pa, int tool) const
     if (pa < 0)
         return gcode.str();
     if (m_is_bbl_printers) {
-
         gcode << "M900 K" << std::setprecision(4) << pa << " L1000 M10 ; Override pressure advance value\n";
     } else if (FLAVOR_IS(gcfKlipper)) {
-
-
         gcode << "SET_PRESSURE_ADVANCE ADVANCE=" << std::setprecision(4) << pa;
         if (tool > 0)
             gcode << " EXTRUDER=extruder" << tool;
@@ -627,29 +571,20 @@ std::string GCodeWriter::set_pressure_advance(double pa, int tool) const
             gcode << " EXTRUDER=extruder";
         gcode << "; Override pressure advance value\n";
     } else if (FLAVOR_IS(gcfRepRapFirmware)) {
-
-
-
-
         gcode << "M572 D" << (tool >= 0 ? tool : 0)
               << " S" << std::setprecision(4) << pa << "; Override pressure advance value\n";
     } else if (FLAVOR_IS(gcfRepetier)) {
-
-
         gcode << "M233 X" << std::setprecision(4) << pa << " Y" << std::setprecision(4) << pa << " ; Override pressure advance value\n";
     } else if (FLAVOR_IS(gcfMarlinFirmware)) {
-
         gcode << "M900 K" << std::setprecision(4) << pa;
         if (tool >= 0)
             gcode << " T" << tool;
         gcode << "; Override pressure advance value\n";
     } else {
-
         gcode << "M900 K" << std::setprecision(4) << pa << "; Override pressure advance value\n";
     }
     return gcode.str();
 }
-
 
 std::string GCodeWriter::set_input_shaping(char axis, float damp, float freq, std::string type) const
 {
@@ -752,7 +687,6 @@ std::string GCodeWriter::reset_e(bool force)
     if (! this->config.use_relative_e_distances) {
         std::ostringstream gcode;
         gcode << "G92 E0";
-
         if (GCodeWriter::full_gcode_comment) gcode << " ; reset extrusion distance";
         gcode << "\n";
         return gcode.str();
@@ -797,7 +731,6 @@ std::string GCodeWriter::update_progress(unsigned int num, unsigned int tot, boo
 
     std::ostringstream gcode;
     gcode << "M73 P" << percent;
-
     if (GCodeWriter::full_gcode_comment) gcode << " ; update progress";
     gcode << "\n";
     return gcode.str();
@@ -805,8 +738,6 @@ std::string GCodeWriter::update_progress(unsigned int num, unsigned int tot, boo
 
 std::string GCodeWriter::toolchange_prefix() const
 {
-
-
     if (config.manual_filament_change)
         return ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Manual_Tool_Change) + "T";
     return FLAVOR_IS(gcfMakerWare) ? "M135 T" :
@@ -815,22 +746,14 @@ std::string GCodeWriter::toolchange_prefix() const
 
 std::string GCodeWriter::toolchange(unsigned int filament_id, int nozzle_id)
 {
-
     auto filament_extruder_iter = Slic3r::lower_bound_by_predicate(m_filament_extruders.begin(), m_filament_extruders.end(), [filament_id](const Extruder &e) { return e.id() < filament_id; });
     assert(filament_extruder_iter != m_filament_extruders.end() && filament_extruder_iter->id() == filament_id);
     m_curr_extruder_id = filament_extruder_iter->extruder_id();
     m_curr_filament_extruder[m_curr_extruder_id] = &*filament_extruder_iter;
     m_cached_extruder_idx = get_extruder_index(this->config, filament_id);
 
-
-
     std::ostringstream gcode;
-
     if (this->multiple_extruders || (this->config.filament_diameter.values.size() > 1 && !is_bbl_printers())) {
-
-
-
-
         if (m_is_bbl_printers && !config.manual_filament_change)
             gcode << "M1020 S" << filament_id << " H" << nozzle_id;
         else
@@ -842,9 +765,6 @@ std::string GCodeWriter::toolchange(unsigned int filament_id, int nozzle_id)
     }
     return gcode.str();
 }
-
-
-
 
 double GCodeWriter::get_extruder_retracted_length(const int filament_id)
 {
@@ -873,11 +793,10 @@ void GCodeWriter::set_speed(std::string &out, double F, const std::string &comme
 {
     assert(F > 0.);
     assert(F < 100000.);
-
+    
     m_current_speed = F;
     GCodeG1Formatter w;
     w.emit_f(F);
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.emit_string(cooling_marker);
     w.append_to(out);
@@ -889,12 +808,10 @@ std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &com
     m_pos(1) = point(1);
 
     this->set_current_position_clear(true);
-
     Vec2d point_on_plate = { point(0) - m_x_offset, point(1) - m_y_offset };
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {
-
         Vec3d machine = apply_axis_remap(Vec3d(point_on_plate.x(), point_on_plate.y(), m_pos.z()));
         w.emit_xyz(machine);
     } else {
@@ -905,22 +822,16 @@ std::string GCodeWriter::travel_to_xy(const Vec2d &point, const std::string &com
     if (m_z_travel_cap > 0.)
         speed = capped_xy_travel_speed(speed, m_max_joint_speed);
     w.emit_f(speed * 60.0);
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     return w.string();
 }
-
-
-
 
 std::string GCodeWriter::lazy_lift(LiftType lift_type, bool spiral_vase)
 {
     if (m_force_normal_lift)
         lift_type = LiftType::NormalLift;
-
     double target_lift = 0;
     {
-
         int extruder_id = filament()->extruder_id();
         int filament_id = filament()->id();
         double above = this->config.retract_lift_above.get_at(extruder_id);
@@ -928,12 +839,9 @@ std::string GCodeWriter::lazy_lift(LiftType lift_type, bool spiral_vase)
         if (m_pos.z() >= above && (m_pos.z() <= below || below == 0.))
             target_lift = this->config.z_hop.get_at(filament_id);
     }
-
     if (m_lifted == 0 && m_to_lift == 0 && target_lift > 0) {
         if (spiral_vase) {
             if (this->must_skip_lift_now())
-
-
                 return "";
             m_lifted = target_lift;
             return this->_travel_to_z(m_pos(2) + target_lift, "lift Z");
@@ -946,14 +854,11 @@ std::string GCodeWriter::lazy_lift(LiftType lift_type, bool spiral_vase)
     return "";
 }
 
-
-
 std::string GCodeWriter::eager_lift(const LiftType type) {
     const LiftType effective_type = m_force_normal_lift ? LiftType::NormalLift : type;
     std::string lift_move;
     double target_lift = 0;
     {
-
         int extruder_id = filament()->extruder_id();
         int filament_id = filament()->id();
         double above = this->config.retract_lift_above.get_at(extruder_id);
@@ -962,15 +867,9 @@ std::string GCodeWriter::eager_lift(const LiftType type) {
             target_lift = this->config.z_hop.get_at(filament_id);
     }
 
-
     if (effective_type == LiftType::SpiralLift && this->is_current_position_clear()) {
         double radius = target_lift / (2 * PI * atan(filament()->travel_slope()));
-
-
         Vec2d ij_offset = { radius, 0 };
-
-
-
         const Vec2d spiral_center = { m_pos.x() - m_x_offset + ij_offset.x(), m_pos.y() - m_y_offset + ij_offset.y() };
         if (target_lift > 0 && this->spiral_lift_fits_printable_area(spiral_center, radius)) {
             lift_move = this->_spiral_travel_to_z(m_pos(2) + target_lift, ij_offset, "spiral lift Z");
@@ -978,11 +877,8 @@ std::string GCodeWriter::eager_lift(const LiftType type) {
             lift_move = _travel_to_z(m_pos(2) + target_lift, "normal lift Z");
         }
     }
-
     else if (target_lift > 0) {
         if (this->must_skip_lift_now())
-
-
             target_lift = 0.;
         else
             lift_move = _travel_to_z(m_pos(2) + target_lift, "normal lift Z");
@@ -1002,23 +898,13 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         if (event_speed_z > 0.)
             max_speed_z = max_speed_z > 0. ? std::min(max_speed_z, event_speed_z) : event_speed_z;
     }
-
-
-
     const auto event_travel_speed = [event_speed_z](double speed) {
         return event_speed_z > 0. ? std::min(speed, event_speed_z) : speed;
     };
 
-
-
-
-
-
     Vec3d dest_point = point;
     auto travel_speed =
         this->point_on_first_layer(Vec3d(point.x() - m_x_offset, point.y() - m_y_offset, point.z())) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
-
-
     double final_travel_speed = this->uses_pointwise_travel_speed()
         ? travel_speed
         : this->config.travel_speed.get_at(m_cached_extruder_idx);
@@ -1033,12 +919,8 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
     if (const Vec3d delta = point - m_pos; m_z_travel_cap > 0. && std::abs(delta.z()) > EPSILON)
         final_travel_speed = std::min(final_travel_speed, m_z_travel_cap * delta.norm() / std::abs(delta.z()));
     final_travel_speed = event_travel_speed(final_travel_speed);
-
     if (std::abs(m_to_lift) > EPSILON) {
         assert(std::abs(m_lifted) < EPSILON);
-
-
-
         if ((!this->is_current_position_clear() || m_pos != dest_point) &&
             m_to_lift + m_pos(2) > point(2)) {
             m_lifted = m_to_lift + m_pos(2) - point(2);
@@ -1047,57 +929,33 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         m_to_lift = 0.;
 
         std::string slop_move;
-
         Vec3d source = { m_pos(0) - m_x_offset, m_pos(1) - m_y_offset, m_pos(2) };
         Vec3d target = { dest_point(0) - m_x_offset, dest_point(1) - m_y_offset, dest_point(2) };
         Vec3d delta = target - source;
         Vec2d delta_no_z = { delta(0), delta(1) };
-
-
         if (delta(2) > 0 && delta_no_z.norm() != 0.0f)    {
-
             if (m_to_lift_type == LiftType::SpiralLift && this->is_current_position_clear()) {
-
                 double radius = delta(2) / (2 * PI * atan(this->filament()->travel_slope()));
                 Vec2d ij_offset = radius * delta_no_z.normalized();
                 ij_offset = { -ij_offset(1), ij_offset(0) };
-
-
-
-
                 const Vec2d spiral_center = { source.x() + ij_offset.x(), source.y() + ij_offset.y() };
                 if (this->spiral_lift_fits_printable_area(spiral_center, radius))
                     slop_move = this->_spiral_travel_to_z(target(2), ij_offset, "spiral lift Z");
                 else
                     slop_move = _travel_to_z(target.z(), "normal lift Z");
             }
-
             else if (m_to_lift_type == LiftType::SlopeLift &&
                 this->is_current_position_clear() &&
                 atan2(delta(2), delta_no_z.norm()) < this->filament()->travel_slope()) {
-
-
-
                 Vec2d temp = delta_no_z.normalized() * delta(2) / tan(this->filament()->travel_slope());
                 Vec3d slope_top_point = Vec3d(temp(0), temp(1), delta(2)) + source;
                 GCodeG1Formatter w0;
-
-
-
                 w0.emit_xyz(has_axis_remap() ? apply_axis_remap(slope_top_point) : slope_top_point);
                 w0.emit_f(event_travel_speed(travel_speed) * 60.0);
-
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
                 slop_move = w0.string();
             }
             else if (m_to_lift_type == LiftType::NormalLift && ! this->must_skip_lift_now()) {
-
-
-
-
-
-
-
                 slop_move = _travel_to_z(target.z(), "normal lift Z");
             }
         }
@@ -1106,7 +964,6 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         {
             GCodeG1Formatter w0;
             if (has_axis_remap()) {
-
                 w0.emit_xyz(apply_axis_remap(target));
                 w0.emit_f(event_travel_speed(travel_speed) * 60.0);
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
@@ -1132,33 +989,25 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
     else if (!force_z && !this->will_move_z(point(2))) {
         double nominal_z = m_pos(2) - m_lifted;
         m_lifted -= (point(2) - nominal_z);
-
-
         if (std::abs(m_lifted) < EPSILON)
             m_lifted = 0.;
-
         this->set_current_position_clear(true);
         return this->travel_to_xy(to_2d(point));
     }
     else {
-
-
         m_lifted = 0;
     }
-
 
     Vec3d point_on_plate = { dest_point(0) - m_x_offset, dest_point(1) - m_y_offset, dest_point(2) };
     std::string out_string;
     GCodeG1Formatter w;
     if (has_axis_remap()) {
-
         w.emit_xyz(apply_axis_remap(point_on_plate));
         w.emit_f(final_travel_speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
         out_string = w.string();
     } else if (!this->is_current_position_clear())
     {
-
         w.emit_xy(Vec2d(point_on_plate.x(), point_on_plate.y()));
         w.emit_f(final_travel_speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
@@ -1178,9 +1027,6 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
 
 std::string GCodeWriter::travel_to_z(double z, const std::string &comment, bool force, double max_speed)
 {
-
-
-
     if (!force && !this->will_move_z(z)) {
         double nominal_z = m_pos(2) - m_lifted;
         m_lifted -= (z - nominal_z);
@@ -1188,8 +1034,6 @@ std::string GCodeWriter::travel_to_z(double z, const std::string &comment, bool 
             m_lifted = 0.;
         return "";
     }
-
-
 
     m_lifted = 0;
     return this->_travel_to_z(z, comment, max_speed);
@@ -1211,31 +1055,23 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment, doub
         speed = std::min(speed, m_z_travel_cap);
     if (m_limit_next_travel_z && this->max_speed_z() > 0.)
         speed = std::min(speed, this->max_speed_z());
-
     if (this->tool_kinematics().rotary_count() > 0 && m_max_joint_speed[2] > 0.)
         speed = std::min(speed, m_max_joint_speed[2]);
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {
-
         Vec3d machine = apply_axis_remap(Vec3d(m_pos.x() - m_x_offset, m_pos.y() - m_y_offset, z));
         w.emit_xyz(machine);
     } else {
         w.emit_z(z);
     }
     w.emit_f(speed * 60.0);
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     return w.string();
 }
 
 std::string GCodeWriter::_spiral_travel_to_z(double z, const Vec2d &ij_offset, const std::string &comment)
 {
-
-
-
-
-
     if (has_axis_remap())
         return _travel_to_z(z, comment);
 
@@ -1257,10 +1093,6 @@ std::string GCodeWriter::_spiral_travel_to_z(double z, const Vec2d &ij_offset, c
         const double cx = px + ij_offset(0);
         const double cy = py + ij_offset(1);
         const double radius = ij_offset.norm();
-
-
-
-
         constexpr size_t min_segments = 8;
         constexpr size_t max_segments = 128;
         const int segments = int(m_resolution > 0. ?
@@ -1281,7 +1113,6 @@ std::string GCodeWriter::_spiral_travel_to_z(double z, const Vec2d &ij_offset, c
         w.emit_f(speed * 60.0);
         w.emit_comment(GCodeWriter::full_gcode_comment, comment);
         output += w.string();
-
 
         for (int i = 1; i < segments; ++i) {
             const double t = double(i) / segments;
@@ -1311,15 +1142,11 @@ std::string GCodeWriter::_spiral_travel_to_z(double z, const Vec2d &ij_offset, c
 
 bool GCodeWriter::will_move_z(double z) const
 {
-
-
     if (m_lifted > 0) {
         double nominal_z = m_pos(2) - m_lifted;
         if (z >= nominal_z && z <= m_pos(2))
             return false;
     }
-
-
     else if (std::abs(m_pos(2) - z) < EPSILON) {
         return false;
     }
@@ -1343,7 +1170,6 @@ void GCodeWriter::extrude_to_xy(std::string &out, const Vec2d &point, double dE,
     if (!force_no_extrusion)
         filament()->extrude(dE);
 
-
     Vec2d point_on_plate = { point(0) - m_x_offset, point(1) - m_y_offset };
 
     GCodeG1Formatter w;
@@ -1355,14 +1181,9 @@ void GCodeWriter::extrude_to_xy(std::string &out, const Vec2d &point, double dE,
     }
     if (!force_no_extrusion)
         w.emit_e(filament()->E());
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
 }
-
-
-
-
 
 void GCodeWriter::extrude_arc_as_polyline(std::string &out, const Vec2d &point, const Vec2d &center_offset,
                                           double dE, const bool is_ccw,
@@ -1372,7 +1193,6 @@ void GCodeWriter::extrude_arc_as_polyline(std::string &out, const Vec2d &point, 
     const Vec2d centre = start + center_offset;
     const double r     = (start - centre).norm();
     if (r < EPSILON) {
-
         this->extrude_to_xy(out, point, dE, comment, force_no_extrusion);
         return;
     }
@@ -1382,7 +1202,6 @@ void GCodeWriter::extrude_arc_as_polyline(std::string &out, const Vec2d &point, 
     double sweep = a1 - a0;
     if (is_ccw) { while (sweep <= 0.) sweep += 2. * PI; }
     else        { while (sweep >= 0.) sweep -= 2. * PI; }
-
 
     const double tol  = 0.005;
     const double dmax = (tol >= r) ? PI : 2. * std::acos(1. - tol / r);
@@ -1396,9 +1215,6 @@ void GCodeWriter::extrude_arc_as_polyline(std::string &out, const Vec2d &point, 
     }
 }
 
-
-
-
 std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& center_offset, double dE, const bool is_ccw, const std::string& comment, bool force_no_extrusion)
 {
     std::string gcode;
@@ -1408,18 +1224,6 @@ std::string GCodeWriter::extrude_arc_to_xy(const Vec2d& point, const Vec2d& cent
 
 void GCodeWriter::extrude_arc_to_xy(std::string &out, const Vec2d& point, const Vec2d& center_offset, double dE, const bool is_ccw, const std::string& comment, bool force_no_extrusion)
 {
-
-
-
-
-
-
-
-
-
-
-
-
     if (! m_kinematics->supports_arc_moves()) {
         this->extrude_arc_as_polyline(out, point, center_offset, dE, is_ccw, comment, force_no_extrusion);
         return;
@@ -1437,7 +1241,6 @@ void GCodeWriter::extrude_arc_to_xy(std::string &out, const Vec2d& point, const 
     w.emit_ij(center_offset);
     if (!force_no_extrusion)
         w.emit_e(filament()->E());
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
 }
@@ -1452,9 +1255,6 @@ std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std
 void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion,
                                  bool keep_tiny_e)
 {
-
-
-
     bool z_changed = (GCodeG1Formatter::quantize_xyzf(point(2)) != GCodeG1Formatter::quantize_xyzf(m_pos(2)));
 
     m_pos = point;
@@ -1462,15 +1262,10 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
     if (!force_no_extrusion)
         filament()->extrude(dE);
 
-
     Vec3d point_on_plate = { point(0) - m_x_offset, point(1) - m_y_offset, point(2) };
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {
-
-
-
-
         point_on_plate = apply_axis_remap(point_on_plate);
         w.emit_xyz(point_on_plate);
     } else if (z_changed) {
@@ -1479,15 +1274,12 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
         w.emit_xy(Vec2d(point_on_plate.x(), point_on_plate.y()));
     }
     if (!force_no_extrusion) {
-
-
         const double e = filament()->E();
         if (keep_tiny_e && dE > 0. && e > 0. && GCodeFormatter::quantize_e(e) == 0.)
             w.emit_axis('E', e, 7);
         else
             w.emit_e(e);
     }
-
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
 }
@@ -1509,7 +1301,6 @@ void GCodeWriter::extrude_helix_to_xyz(std::string &out, const Vec3d &point, con
     if (z_changed)
         w.emit_z(point.z());
     w.emit_ij(c - a);
-
     if (dE != 0.) {
         filament()->extrude(dE);
         w.emit_e(filament()->E());
@@ -1536,12 +1327,9 @@ void GCodeWriter::set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics
 
 JointPose GCodeWriter::get_joints() const
 {
-
     const ToolPose pose { m_pos - Vec3d(m_x_offset, m_y_offset, 0.), m_tool_axis };
     if (m_joints_valid && (this->tool_kinematics().forward(m_joints).tip - pose.tip).norm() < EPSILON)
         return m_joints;
-
-
     if (m_joints_valid && this->tool_kinematics().rotary_count() > 0) {
         JointPose joints = m_joints;
         joints.xyz       = this->apply_axis_remap(pose.tip);
@@ -1572,8 +1360,6 @@ std::string GCodeWriter::end_inverse_time()
         m_inverse_time = false;
         out += "G94\n";
     }
-
-
     if (m_joint_feed_written) {
         m_joint_feed_written = false;
         GCodeG1Formatter w;
@@ -1602,15 +1388,10 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
         assert(pose.axis.z() > 1. - 1e-6);
         double feed = travel ? (speed > 0. ? speed : this->config.travel_speed.get_at(m_cached_extruder_idx)) : m_current_speed / 60.;
         if (travel || dE == 0.) {
-
-
-
             if (m_is_bbl_printers)
                 for (int i = 0; i < 2; ++i)
                     if (m_max_joint_speed[i] > 0.)
                         feed = std::min(feed, m_max_joint_speed[i]);
-
-
             Vec3d delta;
             for (int i = 0; i < 3; ++i)
                 delta[i] = GCodeG1Formatter::quantize_xyzf(pose.tip[i]) - GCodeG1Formatter::quantize_xyzf(m_pos[i]);
@@ -1639,7 +1420,6 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
     const Vec3d    offset(m_x_offset, m_y_offset, 0.);
     m_joints       = this->get_joints();
     m_joints_valid = true;
-
     ToolPose       from { m_pos - offset, m_tool_axis };
     if (const ToolPose held = kin.forward(m_joints); (held.tip - from.tip).norm() >= EPSILON)
         from = held;
@@ -1651,7 +1431,6 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
     const double total     = (to.tip - from.tip).norm();
     Vec3d        prev_tip  = from.tip;
     for (const JointPose &j : joints) {
-
         const Vec3d  tip = &j == &joints.back() ? to.tip : kin.forward(j).tip;
         const double len = (tip - prev_tip).norm();
         const double part = total > 0. ? dE * len / total : dE / double(joints.size());
@@ -1686,8 +1465,6 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
 {
     const ToolKinematics            &kin  = this->tool_kinematics();
     const std::array<RotaryAxis, 2> &axes = kin.rotary_axes();
-
-
     JointPose printed_from = m_joints, printed_to = joints;
     for (int axis = 0; axis < 3; ++axis) {
         printed_from.xyz[axis] = GCodeG1Formatter::quantize_xyzf(m_joints.xyz[axis]);
@@ -1706,7 +1483,6 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
             previous = tip;
         }
     }
-
     double       t      = tip_speed > 0. ? tip_length / tip_speed : 0.;
     const Vec3d  dq     = printed_to.xyz - printed_from.xyz;
     for (int i = 0; i < 3; ++i)
@@ -1719,7 +1495,6 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
         if (axes[i].max_speed_deg_s > 0.)
             t = std::max(t, d / axes[i].max_speed_deg_s);
     }
-
     if (t <= 0. && dE != 0. && m_current_speed > 0.)
         t = std::abs(dE) / (m_current_speed / 60.);
     if (t > 0.)
@@ -1727,7 +1502,6 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
     if (t <= 0.) {
         if (rotary_travel > 0.)
             throw RuntimeError("Non-planar: an angular-only move needs a positive rotary axis speed limit.");
-
         m_joints = joints;
         return;
     }
@@ -1747,9 +1521,6 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
         this->filament()->extrude(dE);
         w.emit_e(this->filament()->E());
     }
-
-
-
     double F;
     if (kin.inverse_time_feed())
         F = 60. / std::max(t, 1e-4);
@@ -1791,12 +1562,8 @@ std::string GCodeWriter::retract_for_toolchange(bool before_wipe, double retract
 
 std::string GCodeWriter::_retract(double length, double restart_extra, const std::string &comment)
 {
-
-
-
     if (this->config.use_firmware_retraction)
         length = 1;
-
 
     std::string gcode = (m_inverse_time_retractions || this->tool_kinematics().rotary_count() > 0) ?
                             this->end_inverse_time() : std::string();
@@ -1805,11 +1572,9 @@ std::string GCodeWriter::_retract(double length, double restart_extra, const std
             gcode += FLAVOR_IS(gcfMachinekit) ? "G22 ; retract\n" : "G10 ; retract\n";
         }
         else {
-
             GCodeG1Formatter w;
             w.emit_e(filament()->E());
             w.emit_f(filament()->retract_speed() * 60.);
-
             w.emit_comment(GCodeWriter::full_gcode_comment, comment);
             gcode += w.string();
         }
@@ -1835,14 +1600,9 @@ std::string GCodeWriter::unretract(float extra_retract)
             gcode += this->reset_e();
         }
         else {
-
-
             GCodeG1Formatter w;
-
-
             w.emit_e(filament()->E() + extra_retract);
             w.emit_f(filament()->deretract_speed() * 60.);
-
             w.emit_comment(GCodeWriter::full_gcode_comment, " ; unretract");
             gcode += w.string();
         }
@@ -1866,8 +1626,6 @@ std::string GCodeWriter::unlift()
 std::string GCodeWriter::set_fan(const GCodeFlavor gcode_flavor, unsigned int speed, unsigned int part_cooling_fan_min_pwm)
 {
     std::ostringstream gcode;
-
-
     if (speed > 0 && part_cooling_fan_min_pwm > 0 && speed < part_cooling_fan_min_pwm)
         speed = part_cooling_fan_min_pwm;
     if (speed == 0) {
@@ -1903,12 +1661,9 @@ std::string GCodeWriter::set_fan(const GCodeFlavor gcode_flavor, unsigned int sp
 
 std::string GCodeWriter::set_fan(unsigned int speed) const
 {
-
-
     return GCodeWriter::set_fan(this->config.gcode_flavor, speed,
                                 static_cast<unsigned int>(std::max(0, this->config.part_cooling_fan_min_pwm.value)));
 }
-
 
 std::string GCodeWriter::set_additional_fan(unsigned int speed)
 {
@@ -1955,8 +1710,6 @@ void GCodeWriter::add_object_end_labels(std::string& gcode)
         gcode += m_gcode_label_objects_end;
         m_gcode_label_objects_end = "";
 
-
-
         if (!this->config.use_relative_e_distances)
             gcode += reset_e(true);
     }
@@ -1973,8 +1726,6 @@ std::string GCodeWriter::set_extruder(unsigned int filament_id)
     auto filament_ext_it = Slic3r::lower_bound_by_predicate(m_filament_extruders.begin(), m_filament_extruders.end(), [filament_id](const Extruder &e) { return e.id() < filament_id; });
     unsigned int extruder_id = filament_ext_it->extruder_id();
     assert(filament_ext_it != m_filament_extruders.end() && filament_ext_it->id() == filament_id);
-
-
     return this->need_toolchange(filament_id) ? this->toolchange(filament_id, (int) extruder_id) : "";
 }
 
@@ -2001,26 +1752,20 @@ void GCodeFormatter::emit_axis(const char axis, const double v, size_t digits) {
 
     char *base_ptr = this->ptr_err.ptr;
     auto  v_int    = int64_t(std::round(v * pow_10[digits]));
-
-
 #ifdef __APPLE__
     boost::spirit::karma::generate(this->ptr_err.ptr, boost::spirit::karma::int_generator<int64_t>(), v_int);
 #else
-
     this->ptr_err = std::to_chars(this->ptr_err.ptr, this->buf_end - 1, v_int);
 #endif
     size_t writen_digits = (this->ptr_err.ptr - base_ptr) - (v_int < 0 ? 1 : 0);
     if (writen_digits < digits) {
-
         size_t remaining_digits = digits - writen_digits;
-
         for (char *from_ptr = this->ptr_err.ptr - 1, *to_ptr = from_ptr + remaining_digits; from_ptr >= this->ptr_err.ptr - writen_digits; --to_ptr, --from_ptr)
             *to_ptr = *from_ptr;
 
         memset(this->ptr_err.ptr - writen_digits, '0', remaining_digits);
         this->ptr_err.ptr += remaining_digits;
     }
-
 
     for (char *to_ptr = this->ptr_err.ptr, *from_ptr = to_ptr - 1; from_ptr >= this->ptr_err.ptr - digits; --to_ptr, --from_ptr)
         *to_ptr = *from_ptr;
@@ -2039,14 +1784,10 @@ void GCodeFormatter::emit_axis(const char axis, const double v, size_t digits) {
 
 #if 0
     {
-
         double v1 = atof(std::string(base_ptr, this->ptr_err.ptr).c_str());
         char buf[2048];
         sprintf(buf, "%.*lf", int(digits), v);
         double v2 = atof(buf);
-
-
-
         assert(std::abs(v1 - v) * pow_10[digits] < 0.50001);
         assert(std::abs(v2 - v) * pow_10[digits] < 0.50001);
     }

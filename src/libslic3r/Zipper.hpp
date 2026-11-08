@@ -9,10 +9,8 @@
 
 namespace Slic3r {
 
-
 class Zipper {
 public:
-
     enum e_compression {
         NO_COMPRESSION,
         FAST_COMPRESSION,
@@ -28,42 +26,25 @@ private:
 
 public:
 
-
     explicit Zipper(const std::string& zipfname,
                     e_compression level = FAST_COMPRESSION);
     ~Zipper();
 
-
     Zipper(const Zipper&) = delete;
     Zipper& operator=(const Zipper&) = delete;
-
-
-
-
 
     Zipper(Zipper &&m);
     Zipper& operator=(Zipper &&m);
 
-
-
-
     void add_entry(const std::string& name);
 
-
-
     void add_entry(const std::string& name, const void* data, size_t bytes);
-
-
-
-
 
     template<class T> inline
     typename std::enable_if<std::is_arithmetic<T>::value, Zipper&>::type
     operator<<(T &&val) {
         return this->operator<<(std::to_string(std::forward<T>(val)));
     }
-
-
 
     template<class T> inline
     typename std::enable_if<!std::is_arithmetic<T>::value, Zipper&>::type
@@ -72,15 +53,6 @@ public:
         else m_data.append(val);
         return *this;
     }
-
-
-
-
-
-
-
-
-
 
     void finish_entry();
 

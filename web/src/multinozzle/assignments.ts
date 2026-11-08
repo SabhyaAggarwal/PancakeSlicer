@@ -5,7 +5,6 @@ import { listedPlates } from '../plater/plates';
 import { extruderCount, valueAt, valuesOf } from './config';
 
 export const NOZZLE_MAP_KEYS = ['filament_map_mode', 'filament_map', 'filament_volume_map', 'filament_nozzle_map'] as const;
-
 export const VOLUME_TYPES: Record<string, number> = { Standard: 0, 'High Flow': 1, Hybrid: 2, 'TPU High Flow': 3, 'E3D High Flow': 5, 'Extra High Flow': 6 };
 
 export function nozzleAssignments(s: State): Config {
@@ -39,7 +38,6 @@ export function updateAssignments(config: Config) {
     job: markStale(s.job),
   })));
 }
-
 
 export function remapNozzleAssignments(config: Config, map: number[], kept?: number[]): Config {
   const out = { ...config };

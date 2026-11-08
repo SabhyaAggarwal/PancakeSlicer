@@ -9,6 +9,8 @@ const (
 	zmLongTableSize = 1 << zmLongTableBits
 )
 
+// ZM is a MatchFinder that combines the cache tables of ZDFast with the
+// overlap-based parsing of M4.
 type ZM struct {
 	MaxDistance int
 	history     []byte
@@ -65,18 +67,21 @@ func (z *ZM) FindMatches(dst []Match, src []byte) []Match {
 	z.history = append(z.history, src...)
 	src = z.history
 
+	// matches stores the matches that have been found but not emitted,
+	// in reverse order. (matches[0] is the most recent one.)
 	var matches [3]absoluteMatch
 
 	sLimit := int32(len(src)) - 10
 
 mainLoop:
 	for {
-
+		// Search for a match, starting after the last match emitted.
 		s := int32(e.NextEmit)
 		if s > sLimit {
 			break mainLoop
 		}
 
+		// t will contain the match offset when we find one.
 		var t int32
 
 		cv := binary.LittleEndian.Uint64(src[s:])
@@ -91,12 +96,13 @@ mainLoop:
 			z.longTable[nextHashL] = entry
 			z.table[nextHashS] = entry
 
+			// Look for a repeat match one byte after the current position.
 			if len(e.Dst) > 0 {
 				prevDistance := int32(e.Dst[len(e.Dst)-1].Distance)
 				if prevDistance != 0 {
 					repIndex := s - prevDistance + 1
 					if repIndex >= 0 && binary.LittleEndian.Uint32(src[repIndex:]) == uint32(cv>>8) {
-
+						// There is a repeated match at s+2.
 						s++
 						t = repIndex
 						break
@@ -106,13 +112,14 @@ mainLoop:
 
 			if candidateL.offset < s && s-candidateL.offset < int32(z.MaxDistance) && uint32(cv) == candidateL.val &&
 				binary.LittleEndian.Uint32(src[candidateL.offset:]) == uint32(cv) {
-
+				// There is a long match at s.
 				t = candidateL.offset
 				break
 			}
 			if candidateS.offset < s && s-candidateS.offset < int32(z.MaxDistance) && uint32(cv) == candidateS.val &&
 				binary.LittleEndian.Uint32(src[candidateS.offset:]) == uint32(cv) {
-
+				// There is a regular match at s.
+				// See if we can find a long match at s+1.
 				cv := binary.LittleEndian.Uint64(src[s+1:])
 				nextHashL = z.hashLong(cv)
 				candidateL = z.longTable[nextHashL]
@@ -120,7 +127,8 @@ mainLoop:
 				z.longTable[nextHashL] = tableEntry{offset: s + 1, val: uint32(cv)}
 				if candidateL.offset < s+1 && coffsetL < int32(z.MaxDistance) && uint32(cv) == candidateL.val &&
 					binary.LittleEndian.Uint32(src[candidateL.offset:]) == uint32(cv) {
-
+					// We found a long match at s+1, so we'll use that instead
+					// of the regular match at s.
 					t = candidateL.offset
 					s++
 					break
@@ -140,6 +148,7 @@ mainLoop:
 		currentMatch := extendMatch2(src, int(s), int(t), e.NextEmit)
 		matches[0] = currentMatch
 
+		// Store some table entries after s.
 		index0 := s + 1
 		cv0 := binary.LittleEndian.Uint64(src[index0:])
 		te0 := tableEntry{offset: index0, val: uint32(cv0)}
@@ -148,6 +157,9 @@ mainLoop:
 		te0.offset++
 		te0.val = uint32(cv0)
 		z.table[z.hashShort(cv0)] = te0
+
+		// We have a match in matches[0].
+		// Now look for overlapping matches.
 
 		for {
 			if matches[0].End > int(sLimit) {
@@ -168,13 +180,13 @@ mainLoop:
 			t = -1
 			if candidateL.offset < s && s-candidateL.offset < int32(z.MaxDistance) && uint32(cv) == candidateL.val &&
 				binary.LittleEndian.Uint32(src[candidateL.offset:]) == uint32(cv) {
-
+				// There is a long match at s.
 				t = candidateL.offset
 			} else if candidateS.offset < s && s-candidateS.offset < int32(z.MaxDistance) && uint32(cv) == candidateS.val &&
 				binary.LittleEndian.Uint32(src[candidateS.offset:]) == uint32(cv) {
-
+				// There is a regular match at s.
 				t = candidateS.offset
-
+				// See if we can find a long match at s+1.
 				cv := binary.LittleEndian.Uint64(src[s+1:])
 				nextHashL = z.hashLong(cv)
 				candidateL = z.longTable[nextHashL]
@@ -182,21 +194,23 @@ mainLoop:
 				z.longTable[nextHashL] = tableEntry{offset: s + 1, val: uint32(cv)}
 				if candidateL.offset < s+1 && coffsetL < int32(z.MaxDistance) && uint32(cv) == candidateL.val &&
 					binary.LittleEndian.Uint32(src[candidateL.offset:]) == uint32(cv) {
-
+					// We found a long match at s+1, so we'll use that instead
+					// of the regular match at s.
 					t = candidateL.offset
 					s++
 				}
 			}
 
 			if t == -1 {
-
+				// No overlapping match was found.
 				break
 			}
 
 			newMatch := extendMatch2(src, int(s), int(t), e.NextEmit)
 
 			if newMatch.End-newMatch.Start <= matches[0].End-matches[0].Start {
-
+				// The new match isn't longer than the old one, so we break out of the loop
+				// of looking for overlapping matches.
 				break
 			}
 
@@ -210,9 +224,10 @@ mainLoop:
 				continue
 			}
 
+			// We have three matches, so it's time to emit one and/or eliminate one.
 			switch {
 			case matches[0].Start < matches[2].End:
-
+				// The first and third matches overlap; discard the one in between.
 				matches = [3]absoluteMatch{
 					matches[0],
 					matches[2],
@@ -220,7 +235,8 @@ mainLoop:
 				}
 
 			case matches[0].Start < matches[2].End+4:
-
+				// The first and third matches don't overlap, but there's no room for
+				// another match between them. Emit the first match and discard the second.
 				e.emit(matches[2])
 				matches = [3]absoluteMatch{
 					matches[0],
@@ -229,7 +245,7 @@ mainLoop:
 				}
 
 			default:
-
+				// Emit the first match, shortening it if necessary to avoid overlap with the second.
 				if matches[2].End > matches[1].Start {
 					matches[2].End = matches[1].Start
 				}
@@ -240,6 +256,7 @@ mainLoop:
 			}
 		}
 
+		// Store some table entries at the end of the last match.
 		index1 := int32(matches[0].End - 2)
 		if index1 < sLimit {
 			cv1 := binary.LittleEndian.Uint64(src[index1:])
@@ -250,6 +267,8 @@ mainLoop:
 			te1.val = uint32(cv1)
 			z.table[z.hashShort(cv1)] = te1
 		}
+
+		// We're done looking for overlapping matches; emit the ones we have.
 
 		if matches[1] != (absoluteMatch{}) {
 			if matches[1].End > matches[0].Start {

@@ -125,7 +125,7 @@ void SVG::draw(const Lines &lines, std::string stroke, coordf_t stroke_width)
 void SVG::draw(const ExPolygon &expolygon, std::string fill, const float fill_opacity)
 {
     this->fill = fill;
-
+    
     std::string d;
     for (const Polygon &p : to_polygons(expolygon))
         d += this->get_path_d(p, true) + " ";
@@ -195,7 +195,6 @@ void SVG::draw(const Polygon &polygon, std::string fill)
 void SVG::draw(const Polygons &polygons, std::string fill)
 {
     for (Polygons::const_iterator it = polygons.begin(); it != polygons.end(); ++it) {
-
         if (it->is_counter_clockwise())
             this->draw(*it, fill);
         else
@@ -240,7 +239,7 @@ void SVG::draw(const Point &point, std::string fill, coord_t iradius)
     svg << "   <circle cx=\"" << to_svg_x(point(0) - origin(0)) << "\" cy=\"" << to_svg_y(point(1) - origin(1))
         << "\" r=\"" << radius << "\" "
         << "style=\"stroke: none; fill: " << fill << "\" />";
-
+    
     fprintf(this->f, "%s\n", svg.str().c_str());
 }
 
@@ -286,7 +285,7 @@ void SVG::path(const std::string &d, bool fill, coordf_t stroke_width, const flo
         d.c_str(),
         fill ? this->fill.c_str() : "none",
         this->stroke.c_str(),
-        lineWidth,
+        lineWidth, 
         (this->arrows && !fill) ? " marker-end=\"url(#endArrow)\"" : "",
         fill_opacity
     );
@@ -316,7 +315,6 @@ std::string SVG::get_path_d(const Points &path, double scale, bool closed) const
     return d.str();
 }
 
-
 void SVG::draw_text(const Point &pt, const char *text, const char *color, int font_size)
 {
     fprintf(this->f,
@@ -340,10 +338,8 @@ void SVG::draw_legend(const Point &pt, const char *text, const char *color)
         "black", text);
 }
 
-
 void SVG::draw_grid(const BoundingBox& bbox, const std::string& stroke, coordf_t stroke_width, coordf_t step)
 {
-
     Point bbox_size = bbox.size();
     if (bbox_size(0) < step || bbox_size(1) < step)
         return;
@@ -375,7 +371,6 @@ void SVG::Close()
     fprintf(this->f, "</svg>\n");
     fclose(this->f);
     this->f = NULL;
-
 }
 
 void SVG::export_expolygons(const char *path, const BoundingBox &bbox, const Slic3r::ExPolygons &expolygons, std::string stroke_outer, std::string stroke_holes, coordf_t stroke_width)
@@ -386,29 +381,19 @@ void SVG::export_expolygons(const char *path, const BoundingBox &bbox, const Sli
     svg.Close();
 }
 
-
-
-
-
-
-
-
 void SVG::export_expolygons(const char *path, const std::vector<std::pair<Slic3r::ExPolygons, ExPolygonAttributes>> &expolygons_with_attributes)
 {
     if (expolygons_with_attributes.empty())
         return;
 
     size_t num_legend = std::count_if(expolygons_with_attributes.begin(), expolygons_with_attributes.end(), [](const auto &v){ return ! v.second.legend.empty(); });
-
     size_t num_columns = 3;
-
     coord_t step_x = scale_(20.);
     Point legend_size(scale_(1.) + num_columns * step_x, scale_(0.4 + 1.3 * (num_legend + num_columns - 1) / num_columns));
 
     BoundingBox bbox = get_extents(expolygons_with_attributes.front().first);
     for (size_t i = 0; i < expolygons_with_attributes.size(); ++ i)
         bbox.merge(get_extents(expolygons_with_attributes[i].first));
-
     coord_t pos_y  = bbox.max.y() + scale_(1.5);
     bbox.merge(Point(std::max(bbox.min.x() + legend_size.x(), bbox.max.x()), bbox.max.y() + legend_size.y()));
 
@@ -427,11 +412,9 @@ void SVG::export_expolygons(const char *path, const std::vector<std::pair<Slic3r
         }
     }
     for (const auto &exp_with_attr : expolygons_with_attributes)
-        if (exp_with_attr.second.radius_points > 0)
+    	if (exp_with_attr.second.radius_points > 0)
 			for (const ExPolygon &expoly : exp_with_attr.first)
-                svg.draw(to_points(expoly), exp_with_attr.second.color_points, exp_with_attr.second.radius_points);
-
-
+    			svg.draw(to_points(expoly), exp_with_attr.second.color_points, exp_with_attr.second.radius_points);
 
     coord_t pos_x0 = bbox.min.x() + scale_(1.);
     coord_t pos_x  = pos_x0;

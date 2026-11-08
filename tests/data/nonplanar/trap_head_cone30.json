@@ -1,0 +1,166 @@
+{
+ "schema": "orca.head_envelope.v1",
+ "id": "trap-cone30",
+ "name": "Trap fixture: 30 degree cone",
+ "provenance": "synthetic 30 degree stepped cone",
+ "calibrated": false,
+ "nozzle": {
+  "tip_flat_radius": 0.5,
+  "allowance_radius": 0.75,
+  "allowance_height": 0.1
+ },
+ "margin": 0.05,
+ "lateral_margin": 0.0,
+ "side_profile": [
+  {
+   "height": 0.0,
+   "xpos": 0.5,
+   "xneg": 0.5,
+   "ypos": 0.5,
+   "yneg": 0.5
+  },
+  {
+   "height": 0.5,
+   "xpos": 0.866,
+   "xneg": 0.866,
+   "ypos": 0.866,
+   "yneg": 0.866
+  },
+  {
+   "height": 1.0,
+   "xpos": 1.7321,
+   "xneg": 1.7321,
+   "ypos": 1.7321,
+   "yneg": 1.7321
+  },
+  {
+   "height": 1.5,
+   "xpos": 2.5981,
+   "xneg": 2.5981,
+   "ypos": 2.5981,
+   "yneg": 2.5981
+  },
+  {
+   "height": 2.0,
+   "xpos": 3.4641,
+   "xneg": 3.4641,
+   "ypos": 3.4641,
+   "yneg": 3.4641
+  },
+  {
+   "height": 2.5,
+   "xpos": 4.3301,
+   "xneg": 4.3301,
+   "ypos": 4.3301,
+   "yneg": 4.3301
+  },
+  {
+   "height": 3.0,
+   "xpos": 5.1962,
+   "xneg": 5.1962,
+   "ypos": 5.1962,
+   "yneg": 5.1962
+  },
+  {
+   "height": 3.5,
+   "xpos": 6.0622,
+   "xneg": 6.0622,
+   "ypos": 6.0622,
+   "yneg": 6.0622
+  },
+  {
+   "height": 4.0,
+   "xpos": 6.9282,
+   "xneg": 6.9282,
+   "ypos": 6.9282,
+   "yneg": 6.9282
+  },
+  {
+   "height": 4.5,
+   "xpos": 7.7942,
+   "xneg": 7.7942,
+   "ypos": 7.7942,
+   "yneg": 7.7942
+  },
+  {
+   "height": 5.0,
+   "xpos": 8.6603,
+   "xneg": 8.6603,
+   "ypos": 8.6603,
+   "yneg": 8.6603
+  },
+  {
+   "height": 5.5,
+   "xpos": 9.5263,
+   "xneg": 9.5263,
+   "ypos": 9.5263,
+   "yneg": 9.5263
+  },
+  {
+   "height": 6.0,
+   "xpos": 10.3923,
+   "xneg": 10.3923,
+   "ypos": 10.3923,
+   "yneg": 10.3923
+  },
+  {
+   "height": 6.5,
+   "xpos": 11.2583,
+   "xneg": 11.2583,
+   "ypos": 11.2583,
+   "yneg": 11.2583
+  },
+  {
+   "height": 7.0,
+   "xpos": 12.1244,
+   "xneg": 12.1244,
+   "ypos": 12.1244,
+   "yneg": 12.1244
+  },
+  {
+   "height": 7.5,
+   "xpos": 12.9904,
+   "xneg": 12.9904,
+   "ypos": 12.9904,
+   "yneg": 12.9904
+  },
+  {
+   "height": 8.0,
+   "xpos": 13.8564,
+   "xneg": 13.8564,
+   "ypos": 13.8564,
+   "yneg": 13.8564
+  },
+  {
+   "height": 8.5,
+   "xpos": 14.7224,
+   "xneg": 14.7224,
+   "ypos": 14.7224,
+   "yneg": 14.7224
+  },
+  {
+   "height": 9.0,
+   "xpos": 15.5885,
+   "xneg": 15.5885,
+   "ypos": 15.5885,
+   "yneg": 15.5885
+  },
+  {
+   "height": 9.5,
+   "xpos": 16.4545,
+   "xneg": 16.4545,
+   "ypos": 16.4545,
+   "yneg": 16.4545
+  },
+  {
+   "height": 10.0,
+   "xpos": 17.3205,
+   "xneg": 17.3205,
+   "ypos": 17.3205,
+   "yneg": 17.3205
+  }
+ ],
+ "side_profile_top": 10.0,
+ "boxes": [],
+ "sides": 0
+}

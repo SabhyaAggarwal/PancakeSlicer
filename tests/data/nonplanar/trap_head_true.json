@@ -1,0 +1,55 @@
+{
+ "schema": "orca.head_envelope.v1",
+ "id": "trap-true",
+ "name": "Trap fixture: true head",
+ "provenance": "synthetic test head, workstream G trap fixtures",
+ "calibrated": false,
+ "nozzle": {
+  "tip_flat_radius": 0.5,
+  "allowance_radius": 0.75,
+  "allowance_height": 0.1
+ },
+ "margin": 0.3,
+ "lateral_margin": 0.3,
+ "side_profile": [
+  {
+   "height": 0.0,
+   "xpos": 0.5,
+   "xneg": 0.5,
+   "ypos": 0.5,
+   "yneg": 0.5
+  },
+  {
+   "height": 2.5,
+   "xpos": 4.0,
+   "xneg": 4.0,
+   "ypos": 4.0,
+   "yneg": 4.0
+  },
+  {
+   "height": 6.0,
+   "xpos": 15.0,
+   "xneg": 15.0,
+   "ypos": 15.0,
+   "yneg": 15.0
+  }
+ ],
+ "side_profile_top": 60.0,
+ "boxes": [
+  {
+   "name": "x_gantry",
+   "min": [
+    0,
+    -10.0,
+    25.0
+   ],
+   "max": [
+    0,
+    30.0,
+    60.0
+   ],
+   "infinite_x": true
+  }
+ ],
+ "sides": 0
+}

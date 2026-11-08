@@ -1,21 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #include "Print.hpp"
 #include "PrintConfig.hpp"
 #include "Exception.hpp"
@@ -43,12 +25,8 @@
 
 namespace Slic3r {
 
-
-
 bool Print::has_belt_purge_tower() const
 {
-
-
     if (!(m_config.belt_printer.value
           && m_config.enable_belt_purge_tower.value
           && !m_config.spiral_mode.value
@@ -59,28 +37,6 @@ bool Print::has_belt_purge_tower() const
         return object->config().belt_purge_tower_object.value;
     });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void Print::_align_belt_purge_layers()
 {
@@ -97,16 +53,12 @@ void Print::_align_belt_purge_layers()
     if (h <= EPSILON)
         return;
 
-
-
     auto grid_offset = [h](const PrintObject *po) -> double {
         if (po->layers().empty())
             return 0.;
         const double z = po->layers().front()->print_z;
         return z - std::floor(z / h) * h;
     };
-
-
 
     const PrintObject *ref     = nullptr;
     double             ref_top = -std::numeric_limits<double>::max();
@@ -124,7 +76,6 @@ void Print::_align_belt_purge_layers()
 
     const double ref_offset = grid_offset(ref);
 
-
     for (PrintObject *po : m_objects) {
         if (po->layers().empty())
             continue;
@@ -137,39 +88,23 @@ void Print::_align_belt_purge_layers()
     }
 }
 
-
-
-
-
-
-
 void Print::_plan_belt_purge()
 {
     m_wipe_tower_data.clear();
-
-
-
 
     for (PrintObject *po : m_objects)
         if (po->config().belt_purge_tower_object.value)
             po->belt_undo_purge_plan();
 
-
-
-
     this->_align_belt_purge_layers();
 
     const unsigned int number_of_extruders = (unsigned int) m_config.filament_colour.values.size();
-
 
     m_wipe_tower_data.tool_ordering = ToolOrdering(*this, (unsigned int) -1, false);
     m_wipe_tower_data.tool_ordering.sort_and_build_data(*this, (unsigned int) -1, false);
 
     if (m_wipe_tower_data.tool_ordering.empty() || m_wipe_tower_data.tool_ordering.last_extruder() == unsigned(-1))
         throw Slic3r::SlicingError("The print is empty. The model is not printable with current print settings.");
-
-
-
 
     {
         bool         any_change = false;
@@ -183,9 +118,6 @@ void Print::_plan_belt_purge()
 
     this->throw_if_canceled();
 
-
-
-
     std::vector<float> flush_matrix(cast<float>(
         get_flush_volumes_matrix(m_config.flush_volumes_matrix.values, 0, m_config.nozzle_diameter.values.size())));
     std::vector<std::vector<float>> wipe_volumes;
@@ -195,27 +127,7 @@ void Print::_plan_belt_purge()
     const bool  use_flush_matrix = m_config.purge_in_prime_tower && m_config.single_extruder_multi_material;
     const float flush_multiplier = (float) m_config.flush_multiplier.get_at(0);
 
-
-
-
-
-
-
-
     {
-
-
-
-
-
-
-
-
-
-
-
-
-
         double obj_top_z = -1.;
         for (const PrintObject *po : m_objects) {
             if (po->config().belt_purge_tower_object.value)
@@ -229,18 +141,11 @@ void Print::_plan_belt_purge()
         double       last_tc_z   = -1.;
         unsigned int cur_ext     = m_wipe_tower_data.tool_ordering.first_extruder();
         for (const auto &lt : m_wipe_tower_data.tool_ordering.layer_tools()) {
-
             if (obj_top_z >= 0. && lt.print_z > obj_top_z + EPSILON)
                 break;
             for (const unsigned int e : lt.extruders)
                 if (e != cur_ext) { last_tc_z = lt.print_z; cur_ext = e; }
         }
-
-
-
-
-
-
         if (last_tc_z >= 0.)
             for (PrintObject *po : m_objects)
                 if (po->config().belt_purge_tower_object.value && !po->layers().empty()) {
@@ -248,8 +153,6 @@ void Print::_plan_belt_purge()
                     break;
                 }
     }
-
-
 
     PrintObject *prism_po = nullptr;
     for (PrintObject *po : m_objects)
@@ -273,18 +176,6 @@ void Print::_plan_belt_purge()
             layer_leftover += leftover;
             current_extruder_id = extruder_id;
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
         if (prism_po != nullptr) {
             const auto &we = layer_tools.wiping_extrusions();
@@ -315,12 +206,6 @@ void Print::_plan_belt_purge()
     }
 }
 
-
-
-
-
-
-
 void PrintObject::belt_shift_layer_grid(double delta)
 {
     if (std::abs(delta) < EPSILON)
@@ -329,30 +214,16 @@ void PrintObject::belt_shift_layer_grid(double delta)
         layer->print_z += delta;
     for (SupportLayer *layer : m_support_layers)
         layer->print_z += delta;
-
     for (BeltBrimBand &band : m_belt_brim_prologue)
         band.print_z += delta;
     m_slicing_params.belt_floor_z_shift += delta;
-
-
-
-
-
-
     if (m_belt_floor_z_shift_cache_valid)
         m_belt_floor_z_shift_cached += delta;
     m_belt_global_z_offset += delta;
 }
 
-
-
-
-
-
-
 size_t PrintObject::belt_truncate_layers_above(coordf_t z)
 {
-
     assert(m_belt_truncated_layers.empty());
     size_t keep = m_layers.size();
     while (keep > 0 && m_layers[keep - 1]->print_z > z + EPSILON)
@@ -366,12 +237,6 @@ size_t PrintObject::belt_truncate_layers_above(coordf_t z)
         m_layers.back()->upper_layer = nullptr;
     return removed;
 }
-
-
-
-
-
-
 
 size_t PrintObject::belt_drop_unclaimed_fills(Layer *layer, const std::function<bool(const ExtrusionEntity*)> &claimed)
 {
@@ -387,7 +252,6 @@ size_t PrintObject::belt_drop_unclaimed_fills(Layer *layer, const std::function<
             if (claimed(ents[i])) {
                 keep.emplace_back(ents[i]);
             } else {
-
                 m_belt_dropped_fills.push_back(BeltDroppedFill{ layer, ri, i, ents[i] });
                 ++dropped;
             }
@@ -401,9 +265,6 @@ void PrintObject::belt_restore_dropped_fills()
 {
     if (m_belt_dropped_fills.empty())
         return;
-
-
-
     std::stable_sort(m_belt_dropped_fills.begin(), m_belt_dropped_fills.end(),
                      [](const BeltDroppedFill &a, const BeltDroppedFill &b) {
                          if (a.layer != b.layer)           return a.layer < b.layer;

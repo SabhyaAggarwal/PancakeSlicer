@@ -1,6 +1,3 @@
-
-
-
 import { createMachine, type StateNode } from './fsm';
 
 export type ProfileSaveState = 'idle' | 'saving' | 'failed' | 'naming' | 'renaming';
@@ -12,12 +9,10 @@ type ProfileSaveEvent = { type: 'SAVE' } | { type: 'REJECT'; error: string } | {
 type Node = StateNode<ProfileSaveState, ProfileSaveEvent, ProfileSaveContext>;
 
 const mine = (c: ProfileSaveContext, e: { request: number }) => e.request === c.request;
-
 const late = {} as const;
 const save = { target: 'saving', action: (c: ProfileSaveContext) => ({ request: c.request + 1, error: null }) } as const;
 const rename = { target: 'naming', action: (_: ProfileSaveContext, e: Extract<ProfileSaveEvent, { type: 'RENAME' }>) => ({ name: e.name, nameError: null }) } as const;
 const reject = { target: 'failed', action: (_: ProfileSaveContext, e: Extract<ProfileSaveEvent, { type: 'REJECT' }>) => ({ error: e.error }) } as const;
-
 const results = { SAVED: late, FAIL: late, RENAMED: late, RENAME_FAIL: late, DISMISS: late } as const;
 const ready: Node = { on: { ...results, SAVE: save, REJECT: reject, RENAME: rename, DISMISS: { target: 'idle', action: () => ({ error: null }) } } };
 

@@ -4,7 +4,6 @@
 
 #include "SlicesToTriangleMesh.hpp"
 
-
 #include "Polygon.hpp"
 #include "Point.hpp"
 #include "TriangleMesh.hpp"
@@ -25,34 +24,28 @@ inline indexed_triangle_set wall_strip(const Polygon &poly,
                                        double         upper_z_mm)
 {
     indexed_triangle_set ret;
-
+    
     size_t startidx = ret.vertices.size();
     size_t offs     = poly.points.size();
-
+    
     ret.vertices.reserve(ret.vertices.size() + 2 *offs);
-
-
-
-
-
-
+    
     for (const Point &p : poly.points)
         ret.vertices.emplace_back(to_3d(unscaled(p).cast<float>().eval(), float(lower_z_mm)));
-
+    
     for (const Point &p : poly.points)
         ret.vertices.emplace_back(to_3d(unscaled(p).cast<float>().eval(), float(upper_z_mm)));
-
+    
     for (size_t i = startidx + 1; i < startidx + offs; ++i) {
         ret.indices.emplace_back(i - 1, i, i + offs - 1);
         ret.indices.emplace_back(i, i + offs, i + offs - 1);
     }
-
+    
     ret.indices.emplace_back(startidx + offs - 1, startidx, startidx + 2 * offs - 1);
     ret.indices.emplace_back(startidx, startidx + offs, startidx + 2 * offs - 1);
-
+    
     return ret;
 }
-
 
 indexed_triangle_set inline straight_walls(const Polygon &plate,
                                      double         lo_z,
@@ -98,9 +91,6 @@ indexed_triangle_set slices_to_mesh(
         const ExPolygons &upper = slices[i + 1];
         const ExPolygons &lower = slices[i];
 
-
-
-
         ExPolygons free_top = diff_ex(lower, upper);
         ExPolygons overhang = diff_ex(upper, lower);
         its_merge(layers[i], triangulate_expolygons_3d(free_top, grid[i], NORMALS_UP));
@@ -118,9 +108,6 @@ indexed_triangle_set slices_to_mesh(
     its_merge(ret, triangulate_expolygons_3d(slices.front(), zmin, NORMALS_DOWN));
     its_merge(ret, straight_walls(slices.front(), zmin, grid.front()));
     its_merge(ret, triangulate_expolygons_3d(slices.back(), grid.back(), NORMALS_UP));
-
-
-
 
     its_merge_vertices(ret);
     its_remove_degenerate_faces(ret);

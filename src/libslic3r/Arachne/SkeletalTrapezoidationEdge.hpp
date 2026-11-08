@@ -21,9 +21,6 @@ private:
     enum class Central { UNKNOWN = -1, NO, YES };
 
 public:
-
-
-
     struct TransitionMiddle
     {
         coord_t pos;
@@ -34,9 +31,6 @@ public:
             , feature_radius(feature_radius)
         {}
     };
-
-
-
 
     struct TransitionEnd
     {

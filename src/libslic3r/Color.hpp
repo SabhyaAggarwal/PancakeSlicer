@@ -179,8 +179,6 @@ ColorRGBA to_rgba(const ColorRGB& other_rgb, float alpha);
 
 ColorRGBA picking_decode(unsigned int id);
 unsigned int picking_encode(unsigned char r, unsigned char g, unsigned char b);
-
-
 unsigned char picking_checksum_alpha_channel(unsigned char red, unsigned char green, unsigned char blue);
 
 }

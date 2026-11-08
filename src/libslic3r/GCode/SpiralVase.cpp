@@ -13,8 +13,6 @@
 namespace Slic3r {
 
 namespace SpiralVaseHelpers {
-
-
 float distance(SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b) { return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2)); }
 
 SpiralVase::SpiralPoint subtract(SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b)
@@ -26,9 +24,7 @@ SpiralVase::SpiralPoint add(SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b
 
 SpiralVase::SpiralPoint scale(SpiralVase::SpiralPoint a, float factor) { return SpiralVase::SpiralPoint(a.x * factor, a.y * factor); }
 
-
 float dot(SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b) { return a.x * b.x + a.y * b.y; }
-
 
 SpiralVase::SpiralPoint nearest_point_on_line(SpiralVase::SpiralPoint c, SpiralVase::SpiralPoint a, SpiralVase::SpiralPoint b, float& dist)
 {
@@ -41,8 +37,6 @@ SpiralVase::SpiralPoint nearest_point_on_line(SpiralVase::SpiralPoint c, SpiralV
     dist                            = distance(c, closest);
     return closest;
 }
-
-
 
 SpiralVase::SpiralPoint nearest_point_on_lines(SpiralVase::SpiralPoint               p,
                                                std::vector<SpiralVase::SpiralPoint>* points,
@@ -71,28 +65,13 @@ SpiralVase::SpiralPoint nearest_point_on_lines(SpiralVase::SpiralPoint          
 
 std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
 {
-
-
-
-
-
-
-
-
-
-
     if (! m_enabled) {
         m_reader.parse_buffer(gcode);
         return gcode;
     }
 
-
-
     if (size_t lid = gcode.find(";_NONPLANAR_BEGIN"); lid != std::string::npos) {
-
-
         while (lid > 0) {
-
             const size_t line_end   = gcode[lid - 1] == '\n' ? lid - 1 : lid;
             const size_t newline    = line_end == 0 ? std::string::npos : gcode.rfind('\n', line_end - 1);
             const size_t line_start = newline == std::string::npos ? 0 : newline + 1;
@@ -106,14 +85,12 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
         m_reader.parse_buffer(tail);
         return out + tail;
     }
-
-
+    
     float total_layer_length = 0;
     float layer_height = 0;
     float z = 0.f;
-
+    
     {
-
         GCodeReader r = m_reader;
         bool set_z = false;
         r.parse_buffer(gcode, [&total_layer_length, &layer_height, &z, &set_z]
@@ -132,7 +109,6 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
         });
     }
 
-
     z -= layer_height;
 
     std::vector<SpiralVase::SpiralPoint>* current_layer = new std::vector<SpiralVase::SpiralPoint>();
@@ -142,10 +118,6 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     std::string new_gcode;
     std::string transition_gcode;
     float max_xy_dist_for_smoothing = m_max_xy_smoothing;
-
-
-
-
     bool  transition_in = m_transition_layer && m_config.use_relative_e_distances.value;
     bool  transition_out = last_layer && m_config.use_relative_e_distances.value;
 
@@ -158,11 +130,8 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
     m_reader.parse_buffer(gcode, [&new_gcode, &z, total_layer_length, layer_height, transition_in, &len, &current_layer, &previous_layer, &transition_gcode, transition_out, smooth_spiral, &max_xy_dist_for_smoothing, &last_point, starting_flowrate, finishing_flowrate, min_segment_length]
         (GCodeReader &reader, GCodeReader::GCodeLine line) {
         if (line.cmd_is("G1")) {
-
             if (line.retracting(reader) || (line.extruding(reader) && line.dist_XY(reader) < min_segment_length)) return;
             if (line.has_z() && !(line.has_x() || line.has_y())) {
-
-
                 line.set(Z, z);
                 new_gcode += line.raw() + '\n';
                 return;
@@ -173,23 +142,16 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                         len += dist_XY;
                         float factor = len / total_layer_length;
                         if (transition_in){
-
                             float starting_e_factor = starting_flowrate + (factor * (1.f - starting_flowrate));
-                            line.set(E, line.e() * starting_e_factor, 5  );
+                            line.set(E, line.e() * starting_e_factor, 5 );
                         } else if (transition_out) {
-
-
-
-
                             GCodeReader::GCodeLine transitionLine(line);
                             float finishing_e_factor = finishing_flowrate + ((1.f -factor) * (1.f - finishing_flowrate));
-                            transitionLine.set(E, line.e() * finishing_e_factor, 5  );
+                            transitionLine.set(E, line.e() * finishing_e_factor, 5 );
                             transition_gcode += transitionLine.raw() + '\n';
                         }
-
                         line.set(Z, z + factor * layer_height);
                         if (smooth_spiral) {
-
                             SpiralVase::SpiralPoint p(line.x(), line.y());
                             current_layer->push_back(p);
                             if (previous_layer != NULL) {
@@ -197,10 +159,7 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                                 float       dist     = 0;
                                 SpiralVase::SpiralPoint nearestp = SpiralVaseHelpers::nearest_point_on_lines(p, previous_layer, found, dist);
                                 if (found && dist < max_xy_dist_for_smoothing) {
-
                                     SpiralVase::SpiralPoint target = SpiralVaseHelpers::add(SpiralVaseHelpers::scale(nearestp, 1 - factor), SpiralVaseHelpers::scale(p, factor));
-
-
 
                                     float modified_dist_XY = SpiralVaseHelpers::distance(last_point, target);
                                     if (modified_dist_XY < min_segment_length)
@@ -208,8 +167,7 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                                     else {
                                         line.set(X, target.x);
                                         line.set(Y, target.y);
-
-                                        line.set(E, line.e() * modified_dist_XY / dist_XY, 5  );
+                                        line.set(E, line.e() * modified_dist_XY / dist_XY, 5 );
                                         last_point = target;
                                     }
                                 } else {
@@ -220,13 +178,6 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
                         new_gcode += line.raw() + '\n';
                     }
                     return;
-
-
-
-
-
-
-
                 }
             }
         }
@@ -238,7 +189,7 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
 
     delete m_previous_layer;
     m_previous_layer = current_layer;
-
+    
     return new_gcode + transition_gcode;
 }
 

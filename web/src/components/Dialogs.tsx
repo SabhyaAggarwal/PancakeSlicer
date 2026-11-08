@@ -1,4 +1,3 @@
-
 import { setState, useStore } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
 import { SettingsTab } from './SettingsTab';

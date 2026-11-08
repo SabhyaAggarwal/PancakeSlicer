@@ -25,26 +25,23 @@
 namespace Slic3r {
 
 void FillConcentric::_fill_surface_single(
-    const FillParams                &params,
+    const FillParams                &params, 
     unsigned int                     thickness_layers,
-    const std::pair<float, Point>   &direction,
+    const std::pair<float, Point>   &direction, 
     ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
-
     BoundingBox bounding_box = expolygon.contour.bounding_box();
-
+    
     coord_t min_spacing = scale_(this->spacing) * params.multiline;
     coord_t distance = coord_t(min_spacing / params.density);
-
     if (min_spacing <= 0 || distance <= 0)
         return;
-
+    
     if (params.density > 0.9999f && !params.dont_adjust) {
         distance = this->_adjust_solid_spacing(bounding_box.size()(0), distance);
         this->spacing = unscale<double>(distance);
     }
-
 
     ExPolygons contracted = offset_ex(expolygon, -float(scale_(0.5 * (params.multiline - 1) * this->spacing )));
 
@@ -56,14 +53,7 @@ void FillConcentric::_fill_surface_single(
         append(loops, to_polygons(last));
     }
 
-
-
-
-
-
-
     auto corner_stays_inside = [&contracted](const Vec2d &from, const Vec2d &to) {
-
         for (const double t : { 0.25, 0.5, 0.75 }) {
             const Vec2d  sample = from + t * (to - from);
             const Point  point(coord_t(sample.x()), coord_t(sample.y()));
@@ -76,15 +66,11 @@ void FillConcentric::_fill_surface_single(
     smooth_polygons_corners(loops, params.smooth_factor, scaled<double>(params.resolution), 0.5 * distance,
                             corner_stays_inside);
 
-
-
     loops = union_pt_chained_outside_in(loops);
-
 
     if (params.fill_order == SurfaceFillOrder::Outward)
         std::reverse(loops.begin(), loops.end());
-
-
+    
     size_t iPathFirst = polylines_out.size();
     Point last_pos(0, 0);
     for (const Polygon &loop : loops) {
@@ -92,10 +78,7 @@ void FillConcentric::_fill_surface_single(
         last_pos = polylines_out.back().last_point();
     }
 
-
     multiline_fill(polylines_out, params, spacing);
-
-
 
     size_t j = iPathFirst;
     for (size_t i = iPathFirst; i < polylines_out.size(); ++ i) {
@@ -108,9 +91,6 @@ void FillConcentric::_fill_surface_single(
     }
     if (j < polylines_out.size())
         polylines_out.erase(polylines_out.begin() + j, polylines_out.end());
-
-
-
 }
 
 void FillConcentric::_fill_surface_single(const FillParams& params,
@@ -121,7 +101,6 @@ void FillConcentric::_fill_surface_single(const FillParams& params,
 {
     assert(params.use_arachne);
     assert(this->print_config != nullptr && this->print_object_config != nullptr);
-
 
     Point   bbox_size = expolygon.contour.bounding_box().size();
     coord_t min_spacing = scaled<coord_t>(this->spacing);
@@ -152,8 +131,6 @@ void FillConcentric::_fill_surface_single(const FillParams& params,
                 all_extrusions.emplace_back(&wall);
         }
 
-
-
         const bool forced_fill_order = params.fill_order != SurfaceFillOrder::Default;
         if (forced_fill_order) {
             const bool outward = params.fill_order == SurfaceFillOrder::Outward;
@@ -162,7 +139,6 @@ void FillConcentric::_fill_surface_single(const FillParams& params,
                                  return outward ? a->inset_idx > b->inset_idx : a->inset_idx < b->inset_idx;
                              });
         }
-
 
         size_t firts_poly_idx = thick_polylines_out.size();
         Point  last_pos(0, 0);
@@ -176,8 +152,6 @@ void FillConcentric::_fill_surface_single(const FillParams& params,
             thick_polylines_out.emplace_back(std::move(thick_polyline));
             last_pos = thick_polylines_out.back().last_point();
         }
-
-
 
         size_t j = firts_poly_idx;
         for (size_t i = firts_poly_idx; i < thick_polylines_out.size(); ++i) {

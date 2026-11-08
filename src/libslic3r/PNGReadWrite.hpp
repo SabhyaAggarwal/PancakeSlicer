@@ -10,14 +10,11 @@
 
 namespace Slic3r { namespace png {
 
-
 struct IStream {
     virtual ~IStream() = default;
     virtual size_t read(std::uint8_t *outp, size_t amount) = 0;
     virtual bool is_ok() const = 0;
 };
-
-
 
 template<class PxT> struct Image {
     std::vector<PxT> buf;
@@ -32,19 +29,9 @@ struct ImageColorscale:Image<unsigned char>
 };
 
 
-
-
 bool decode_png(IStream &stream, ImageGreyscale &out_img);
 
-
 bool decode_colored_png(IStream &in_buf, ImageColorscale &out_img);
-
-
-
-
-
-
-
 
 struct ReadBuf { const void *buf = nullptr; const size_t sz = 0; };
 
@@ -80,25 +67,16 @@ template<class Img> bool decode_png(const ReadBuf &in_buf, Img &out_img)
 bool decode_colored_png(const ReadBuf &in_buf, ImageColorscale &out_img);
 
 
-
-
-
-
-
 bool write_rgb_to_file(const char *file_name_utf8, size_t width, size_t height, const uint8_t *data_rgb);
 bool write_rgb_to_file(const std::string &file_name_utf8, size_t width, size_t height, const uint8_t *data_rgb);
 bool write_rgb_to_file(const std::string &file_name_utf8, size_t width, size_t height, const std::vector<uint8_t> &data_rgb);
-
 bool write_gray_to_file(const char *file_name_utf8, size_t width, size_t height, const uint8_t *data_gray);
 bool write_gray_to_file(const std::string &file_name_utf8, size_t width, size_t height, const uint8_t *data_gray);
 bool write_gray_to_file(const std::string &file_name_utf8, size_t width, size_t height, const std::vector<uint8_t> &data_gray);
 
-
-
 bool write_rgb_to_file_scaled(const char *file_name_utf8, size_t width, size_t height, const uint8_t *data_rgb, size_t scale);
 bool write_rgb_to_file_scaled(const std::string &file_name_utf8, size_t width, size_t height, const uint8_t *data_rgb, size_t scale);
 bool write_rgb_to_file_scaled(const std::string &file_name_utf8, size_t width, size_t height, const std::vector<uint8_t> &data_rgb, size_t scale);
-
 bool write_gray_to_file_scaled(const char *file_name_utf8, size_t width, size_t height, const uint8_t *data_gray, size_t scale);
 bool write_gray_to_file_scaled(const std::string &file_name_utf8, size_t width, size_t height, const uint8_t *data_gray, size_t scale);
 bool write_gray_to_file_scaled(const std::string &file_name_utf8, size_t width, size_t height, const std::vector<uint8_t> &data_gray, size_t scale);

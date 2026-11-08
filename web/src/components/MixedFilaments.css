@@ -13,3 +13,4 @@
 :where(.orca-parity) .mixed-recs { display: flex; flex-wrap: wrap; gap: 4px; max-height: 96px; overflow-y: auto; }
 :where(.orca-parity) .mixed-rec { width: 24px; height: 24px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.2); cursor: pointer; padding: 0; }
 :where(.orca-parity) .mixed-rec:hover { outline: 2px solid var(--accent); }
+:where(.orca-parity) .mixed-more.broken { color: var(--danger); }

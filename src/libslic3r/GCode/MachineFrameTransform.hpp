@@ -7,39 +7,18 @@
 
 namespace Slic3r {
 
-
-
-
-
-
-
-
-
-
-
-
 class MachineFrameTransform
 {
 public:
     MachineFrameTransform() = default;
 
-
-
-
     bool init_from_config(const PrintConfig &config);
 
-
     Vec3d apply(const Vec3d &pos) const;
-
-
-
 
     Vec3d apply_inverse(const Vec3d &pos) const;
 
     bool is_active() const { return m_active; }
-
-
-
 
     const Transform3d& transform() const { return m_transform; }
 

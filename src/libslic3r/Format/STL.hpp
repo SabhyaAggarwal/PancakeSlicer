@@ -9,7 +9,6 @@ class Model;
 class TriangleMesh;
 class ModelObject;
 
-
 extern bool load_stl(const char *path, Model *model, const char *object_name = nullptr, ImportstlProgressFn stlFn = nullptr, int custom_header_length = 80);
 
 extern bool store_stl(const char *path, TriangleMesh *mesh, bool binary);

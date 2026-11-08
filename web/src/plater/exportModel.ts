@@ -1,6 +1,3 @@
-
-
-
 import { getState, toast } from '../state/store';
 import { projectBlob } from '../saveProject';
 import { toolJob } from './meshOps';

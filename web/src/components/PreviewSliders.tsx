@@ -1,10 +1,7 @@
-
-
-
 import { useRef, useState } from 'react';
 import type { LayerRec } from '../preview/format';
 import { Glyph } from './Glyph';
-
+import { Sep } from '../separator';
 
 export interface SliderTick {
   layer: number;
@@ -18,13 +15,10 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   hi: number;
   onChange(lo: number, hi: number): void;
   ticks?: SliderTick[];
-
   onPlus?(anchor: DOMRect): void;
-
   oneLayer?: boolean;
 }) {
   const track = useRef<HTMLDivElement>(null);
-
   const [active, setActive] = useState<'lo' | 'hi'>('hi');
   const n = layers.length;
   const frac = (i: number) => (n > 1 ? i / (n - 1) : 0);
@@ -33,7 +27,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
     const f = 1 - (clientY - r.top) / r.height;
     return Math.round(Math.max(0, Math.min(1, f)) * (n - 1));
   };
-
   const follow = (which: 'lo' | 'hi', e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -55,7 +48,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
     el.addEventListener('pointercancel', up);
   };
   const drag = (which: 'lo' | 'hi') => (e: React.PointerEvent) => follow(which, e);
-
   const keys = (which: 'lo' | 'hi') => (e: React.KeyboardEvent) => {
     const step = e.shiftKey ? 5 : 1;
     const cur = which === 'lo' ? lo : hi;
@@ -78,11 +70,10 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
     'aria-valuetext': `Layer ${(which === 'hi' ? hi : lo) + 1}, ${layers[which === 'hi' ? hi : lo]?.z.toFixed(2)} mm`,
     onKeyDown: keys(which),
   });
-
   const label = (i: number) => (
     <>
       <b>{i + 1}</b>
-      <span>· {layers[i]?.z.toFixed(2)} mm</span>
+      <span><Sep/>{layers[i]?.z.toFixed(2)} mm</span>
     </>
   );
   return (
@@ -93,7 +84,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         onChange(lo, Math.max(lo, Math.min(n - 1, hi + d)));
       }}
     >
-        {                                                                                                                  }
       {onPlus && (
           <button
             type="button"

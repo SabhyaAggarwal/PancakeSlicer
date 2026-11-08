@@ -37,8 +37,8 @@
 #define XmlRole_INCLUDED 1
 
 #ifdef __VMS
-
-
+/*      0        1         2         3      0        1         2         3
+        1234567890123456789012345678901     1234567890123456789012345678901 */
 #  define XmlPrologStateInitExternalEntity XmlPrologStateInitExternalEnt
 #endif
 
@@ -111,7 +111,7 @@ enum {
   XML_ROLE_TEXT_DECL,
   XML_ROLE_IGNORE_SECT,
   XML_ROLE_INNER_PARAM_ENTITY_REF,
-#endif
+#endif /* XML_DTD */
   XML_ROLE_PARAM_ENTITY_REF
 };
 
@@ -124,13 +124,13 @@ typedef struct prolog_state {
   unsigned includeLevel;
   int documentEntity;
   int inEntityValue;
-#endif
+#endif /* XML_DTD */
 } PROLOG_STATE;
 
 void XmlPrologStateInit(PROLOG_STATE *);
 #ifdef XML_DTD
 void XmlPrologStateInitExternalEntity(PROLOG_STATE *);
-#endif
+#endif /* XML_DTD */
 
 #define XmlTokenRole(state, tok, ptr, end, enc)                                \
   (((state)->handler)(state, tok, ptr, end, enc))
@@ -139,4 +139,4 @@ void XmlPrologStateInitExternalEntity(PROLOG_STATE *);
 }
 #endif
 
-#endif
+#endif /* not XmlRole_INCLUDED */

@@ -1,12 +1,9 @@
-
-
 import type * as THREE from 'three';
 
 type V = THREE.Vector3;
 export type Edge = [V, V];
 
 export type Feature =
-
   | { type: 'point'; p: V; label: string }
   | { type: 'edge'; a: V; b: V }
   | { type: 'circle'; c: V; r: number; normal: V }
@@ -24,14 +21,11 @@ export function sameFeature(a: Feature | undefined, b: Feature | undefined): boo
   return a.id === (b as typeof a).id;
 }
 
-
 export function centreOf(f: Feature | undefined): Feature | undefined {
   if (f?.type === 'circle') return { type: 'point', p: f.c.clone(), label: 'Center of circle' };
   if (f?.type === 'edge') return { type: 'point', p: f.a.clone().add(f.b).multiplyScalar(0.5), label: 'Center of edge' };
   return undefined;
 }
-
-
 
 export interface MeasureState { hover?: Feature; first?: Feature; second?: Feature }
 let state: MeasureState = {};
@@ -46,13 +40,8 @@ export function subscribeMeasure(l: () => void) {
   return () => listeners.delete(l);
 }
 
-
-
-
-
 export function selectFeature(f: Feature) {
   const { first, second } = state;
-
   const swaps = (sel: Feature | undefined) => !!sel && (sameFeature(f, centreOf(sel)) || sameFeature(centreOf(f), sel));
   if (!sameFeature(f, first) && swaps(first)) setMeasure({ ...state, first: f });
   else if (!sameFeature(f, second) && swaps(second)) setMeasure({ ...state, second: f });
@@ -61,7 +50,6 @@ export function selectFeature(f: Feature) {
   else if (!first) setMeasure({ ...state, first: f });
   else setMeasure({ ...state, second: f });
 }
-
 
 export function dropLastFeature(): boolean {
   if (state.second) setMeasure({ ...state, second: undefined });

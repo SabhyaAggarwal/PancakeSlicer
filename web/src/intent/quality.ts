@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import type { SystemPreset } from '../api/types';
 import { switchPreset } from '../actions';
 import { beginStep } from '../state/history';
@@ -15,19 +9,16 @@ export const QUALITY_IDS: QualityId[] = ['draft', 'standard', 'fine'];
 const first = (v: unknown) => (Array.isArray(v) ? v[0] : v);
 const num = (v: unknown) => parseFloat(String(first(v) ?? '')) || 0;
 
-
 function nearest(list: SystemPreset[], lo: number, hi: number, target: number, prefer: RegExp) {
   return list.filter((p) => { const h = num(p.config.layer_height); return h > lo + 1e-6 && h <= hi + 1e-6; })
     .sort((a, b) => Number(prefer.test(b.name)) - Number(prefer.test(a.name))
       || Math.abs(num(a.config.layer_height) - target) - Math.abs(num(b.config.layer_height) - target))[0];
 }
 
-
 export interface Quality { preset: string; layer: number; edit?: string }
 
 const cache = new WeakMap<SystemPreset[], Map<string, Record<QualityId, Quality | undefined>>>();
 const r2 = (x: number) => Math.round(x * 100) / 100;
-
 
 export function qualityPresets(s: State): Record<QualityId, Quality | undefined> {
   let byPrinter = cache.get(s.processes);
@@ -51,7 +42,6 @@ export function qualityPresets(s: State): Record<QualityId, Quality | undefined>
   return out;
 }
 
-
 export function currentQuality(s: State): QualityId | null {
   const q = qualityPresets(s);
   const base = resolvePreset(s, 'process', s.process).base?.name ?? s.process;
@@ -59,13 +49,10 @@ export function currentQuality(s: State): QualityId | null {
   return QUALITY_IDS.find((id) => q[id]?.preset === base && Math.abs(q[id]!.layer - lh) < 1e-6) ?? null;
 }
 
-
 export function chooseQuality(id: QualityId) {
   const s = getState();
   const q = qualityPresets(s)[id];
   if (!q || currentQuality(s) === id) return;
-
-
   const surface = Object.fromEntries(Object.entries(effectiveConfig(s, 'process'))
     .filter(([key]) => /^(nonplanar_|zaa_)/.test(key)));
   const end = beginStep(`Quality: ${id}`);

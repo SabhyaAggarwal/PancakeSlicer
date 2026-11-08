@@ -1,11 +1,7 @@
-
-
-
 import { DropdownMenu as Menu } from 'radix-ui';
 import { filamentColor } from '../plater/filamentColor';
 import { getState, resolvePreset, useStore, type State } from '../state/store';
 import './menu.css';
-
 
 export const inkOn = (hex: string) => {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})/i.exec(hex);
@@ -16,7 +12,6 @@ export function SlotChip({ n, colour }: { n: number; colour: string }) {
   return <span className="slot-chip" aria-hidden data-ink={inkOn(colour)} style={{ backgroundColor: colour }}>{n}</span>;
 }
 
-
 export const slotsOf = (s: State) => s.filamentSlots.map((name, i) => ({ n: i + 1, colour: filamentColor(s, i + 1), name: resolvePreset(s, 'filament', name).name ?? name }));
 export function useSlots() {
   useStore((s) => s.filamentSlots);
@@ -26,12 +21,10 @@ export function useSlots() {
 }
 
 export function SlotPicker({ value, onChange, label, disabled = false, inherit }: {
-
   value: number;
   onChange(slot: number): void;
   label: string;
   disabled?: boolean;
-
   inherit?: number;
 }) {
   const slots = useSlots();

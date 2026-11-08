@@ -1,7 +1,5 @@
-
 export type ProfileKey = string;
 interface SelectionContext {
-
   readonly scope: string;
   readonly order: readonly ProfileKey[];
   readonly anchor: ProfileKey | null;
@@ -16,13 +14,13 @@ export type SelectionEvent =
   | { type: 'SYNC'; scope: string; visible: readonly ProfileKey[]; remap?: ReadonlyMap<ProfileKey, ProfileKey> }
   | { type: 'CLICK'; key: ProfileKey; toggle?: boolean; shift?: boolean }
   | { type: 'SELECT_ALL' }
+  | { type: 'SET'; keys: readonly ProfileKey[]; on: boolean }
   | { type: 'ARROW'; direction: 'previous' | 'next' | 'first' | 'last'; shift?: boolean; focusOnly?: boolean }
   | { type: 'ESCAPE' } | { type: 'CLEAR' };
 
-
 export const selectionTransitions = {
-  empty: { SYNC: 'derive', CLICK: 'derive', SELECT_ALL: 'derive', ARROW: 'derive', ESCAPE: 'empty', CLEAR: 'empty' },
-  selected: { SYNC: 'derive', CLICK: 'derive', SELECT_ALL: 'derive', ARROW: 'derive', ESCAPE: 'empty', CLEAR: 'empty' },
+  empty: { SYNC: 'derive', CLICK: 'derive', SELECT_ALL: 'derive', SET: 'derive', ARROW: 'derive', ESCAPE: 'empty', CLEAR: 'empty' },
+  selected: { SYNC: 'derive', CLICK: 'derive', SELECT_ALL: 'derive', SET: 'derive', ARROW: 'derive', ESCAPE: 'empty', CLEAR: 'empty' },
 } as const satisfies Record<ProfileSelection['value'], Record<SelectionEvent['type'], ProfileSelection['value'] | 'derive'>>;
 
 const unique = (keys: readonly ProfileKey[]) => [...new Set(keys)];
@@ -36,7 +34,6 @@ export function createSelection(scope: string, visible: readonly ProfileKey[] = 
   const order = unique(visible);
   return selection({ scope, order, anchor: null, focus: order[0] ?? null, range: null }, []);
 }
-
 export function selectedVisible(state: ProfileSelection): ProfileKey[] {
   const selected = new Set(state.selected);
   return unique(state.order).filter((key) => selected.has(key));
@@ -55,7 +52,6 @@ function pick(state: ProfileSelection, key: ProfileKey, shift = false, toggle = 
   const selected = toggle ? current.includes(key) ? current.filter((id) => id !== key) : [...current, key] : [key];
   return selection({ ...state, anchor: key, focus: key, range: null }, selected);
 }
-
 export function reduceSelection(state: ProfileSelection, event: SelectionEvent): ProfileSelection {
   switch (event.type) {
     case 'SYNC': {
@@ -71,6 +67,10 @@ export function reduceSelection(state: ProfileSelection, event: SelectionEvent):
       return selection({ scope: event.scope, order, focus, anchor, range: null }, selected);
     }
     case 'CLICK': return pick(state, event.key, event.shift, event.toggle);
+    case 'SET': {
+      const keys = new Set(event.keys), current = selectedVisible(state);
+      return selection({ ...state, range: null, focus: event.keys[0] ?? state.focus }, event.on ? [...current, ...event.keys] : current.filter((key) => !keys.has(key)));
+    }
     case 'SELECT_ALL': return selection({ ...state, anchor: state.order[0] ?? null, focus: state.focus ?? state.order[0] ?? null, range: null }, state.order);
     case 'ARROW': {
       if (!state.order.length) return state;

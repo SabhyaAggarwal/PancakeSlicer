@@ -13,12 +13,10 @@
 namespace Slic3r {
 
 void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_count) {
-
     std::vector<size_t> vertices_index_mapping(mesh.vertices.size());
     for (size_t idx = 0; idx < vertices_index_mapping.size(); ++idx) {
         vertices_index_mapping[idx] = idx;
     }
-
     std::vector<size_t> flatten_queue;
     auto get_final_index = [&vertices_index_mapping, &flatten_queue](const size_t &orig_index) {
         flatten_queue.clear();
@@ -34,15 +32,9 @@ void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_
 
     };
 
-
     std::vector<bool> face_removal_flags(mesh.indices.size(), false);
 
     std::vector<Vec3i32> triangles_neighbors = its_face_neighbors_par(mesh);
-
-
-
-
-
 
     std::vector<float> min_vertex_dot_product(mesh.vertices.size(), 1);
     {
@@ -57,7 +49,6 @@ void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_
             min_vertex_dot_product[t[2]] = std::min(min_vertex_dot_product[t[2]], n.dot(vertex_normals[t[2]]));
         }
     }
-
 
     auto remove_face = [&triangles_neighbors, &face_removal_flags](int face_idx, int other_face_idx) {
         if (face_idx < 0) {
@@ -88,62 +79,50 @@ void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_
     for (size_t idx = 0; idx < face_indices.size(); ++idx) {
         face_indices[idx] = idx;
     }
-
     std::vector<size_t> tmp_face_indices(mesh.indices.size());
 
     float decimation_ratio = 1.0f;
     float edge_len = 0.2f;
 
     while (face_indices.size() > target_triangle_count) {
-
         edge_len = edge_len * (1.0f + 1.0 - decimation_ratio);
         float max_edge_len_squared = edge_len * edge_len;
 
-
         std::shuffle(face_indices.begin(), face_indices.end(), generator);
-
+        
         int allowed_face_removals = int(face_indices.size()) - int(target_triangle_count);
         for (const size_t &face_idx : face_indices) {
             if (face_removal_flags[face_idx]) {
-
                 continue;
             }
-
 
             for (size_t edge_idx = 0; edge_idx < 3; ++edge_idx) {
                 size_t vertex_index_keep = get_final_index(mesh.indices[face_idx][edge_idx]);
                 size_t vertex_index_remove = get_final_index(mesh.indices[face_idx][(edge_idx + 1) % 3]);
-
                 if ((mesh.vertices[vertex_index_keep] - mesh.vertices[vertex_index_remove]).squaredNorm()
                         > max_edge_len_squared) {
                     continue;
                 }
-
                 if (min_vertex_dot_product[vertex_index_remove] < min_vertex_dot_product[vertex_index_keep]) {
                     size_t tmp = vertex_index_keep;
                     vertex_index_keep = vertex_index_remove;
                     vertex_index_remove = tmp;
                 }
 
-
                 {
-
                     vertices_index_mapping[vertex_index_remove] = vertices_index_mapping[vertex_index_keep];
                 }
 
                 int neighbor_to_remove_face_idx = triangles_neighbors[face_idx][edge_idx];
-
                 remove_face(face_idx, neighbor_to_remove_face_idx);
                 remove_face(neighbor_to_remove_face_idx, face_idx);
                 allowed_face_removals-=2;
-
 
                 break;
             }
 
             if (allowed_face_removals <= 0) { break; }
         }
-
 
         size_t prev_size = face_indices.size();
         tmp_face_indices.clear();
@@ -155,9 +134,7 @@ void its_short_edge_collpase(indexed_triangle_set &mesh, size_t target_triangle_
         face_indices.swap(tmp_face_indices);
 
         decimation_ratio = float(prev_size - face_indices.size()) / float(prev_size);
-
     }
-
 
     std::unordered_map<size_t, size_t> final_vertices_mapping;
     std::vector<Vec3f> final_vertices;

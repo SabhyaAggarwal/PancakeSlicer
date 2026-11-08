@@ -115,7 +115,6 @@ bool MultiPoint::remove_duplicate_points()
     size_t j = 0;
     for (size_t i = 1; i < points.size(); ++i) {
         if (points[j] == points[i]) {
-
         } else {
             ++ j;
             if (j < i)
@@ -191,7 +190,6 @@ Points MultiPoint::_douglas_peucker(const Points &pts, const double tolerance)
             for (;;) {
                 double max_dist_sq  = 0.0;
                 size_t furthest_idx = anchor_idx;
-
                 for (size_t i = anchor_idx + 1; i < floater_idx; ++ i) {
                     double dist_sq = Line::distance_to_squared(pts[i], *anchor, *floater);
                     if (dist_sq > max_dist_sq) {
@@ -199,7 +197,6 @@ Points MultiPoint::_douglas_peucker(const Points &pts, const double tolerance)
                         furthest_idx = i;
                     }
                 }
-
                 if (max_dist_sq <= tolerance_sq) {
                     result_pts.emplace_back(*floater);
                     anchor_idx = floater_idx;
@@ -240,89 +237,49 @@ Points MultiPoint::_douglas_peucker(const Points &pts, const double tolerance)
     return result_pts;
 }
 
-
-
-
-
-
-
-
-
-
-
-
 struct vis_node{
     vis_node(const size_t& idx, const size_t& _prev_idx, const size_t& _next_idx, const double& _area) : pt_idx(idx), prev_idx(_prev_idx), next_idx(_next_idx), area(_area) {}
-
     size_t pt_idx, prev_idx, next_idx;
-
     double area;
-
-
-
     bool operator<(const vis_node& other) { return (this->area < other.area); }
 };
 Points MultiPoint::visivalingam(const Points& pts, const double tolerance)
 {
-
     assert(pts.size() >= 2);
-
     Points results;
-
-
     auto effective_area = [pts](const size_t& curr_pt_idx, const size_t& prev_pt_idx, const size_t& next_pt_idx)->coordf_t {
         const Point& curr = pts[curr_pt_idx];
         const Point& prev = pts[prev_pt_idx];
         const Point& next = pts[next_pt_idx];
-
 		const Vec2d curr_to_next = (next - curr).cast<double>();
 		const Vec2d prev_to_next = (prev - curr).cast<double>();
-
 		return 0.50 * abs(cross2(curr_to_next, prev_to_next));
     };
-
     std::vector<coordf_t> areas;
     areas.reserve(pts.size());
-
-
     std::vector<vis_node*> node_list;
     node_list.resize(pts.size());
     std::vector<vis_node*> heap;
     heap.reserve(pts.size());
     for (size_t i = 1; i < pts.size() - 1; ++ i) {
-
         coordf_t area = effective_area(i, i - 1, i + 1);
-
         node_list[i] = new vis_node(i, i - 1, i + 1, area);
         heap.push_back(node_list[i]);
     }
-
-
     std::make_heap(heap.begin(), heap.end());
-
     double min_area = -std::numeric_limits<double>::max();
     while (!heap.empty()) {
-
         vis_node* curr = heap.front();
-
-
         std::pop_heap(heap.begin(), heap.end());
         heap.pop_back();
-
         assert(curr == node_list[curr->pt_idx]);
-
-
-
         min_area = std::max(min_area, curr->area);
-
         vis_node* prev = node_list[curr->prev_idx];
         if(prev != nullptr){
             prev->next_idx = curr->next_idx;
             prev->area = effective_area(prev->pt_idx, prev->prev_idx, prev->next_idx);
-
             std::make_heap(heap.begin(), heap.end());
         }
-
         vis_node* next = node_list[curr->next_idx];
         if(next != nullptr){
             next->prev_idx = curr->prev_idx;
@@ -333,33 +290,25 @@ Points MultiPoint::visivalingam(const Points& pts, const double tolerance)
         node_list[curr->pt_idx] = nullptr;
         delete curr;
     }
-
     node_list.clear();
     node_list.shrink_to_fit();
-
     auto use_point = [areas, tolerance](const size_t& idx)->bool {
         assert(idx < areas.size());
-
         if(idx == 0 || idx == areas.size() - 1){
             return true;
         }
-
         else{
             return areas[idx] > tolerance;
         }
     };
-
     for (size_t i = 0; i < pts.size(); ++i) {
         if (use_point(i)){
             results.push_back(pts[i]);
         }
     }
-
     assert(results.size() >= 2);
-
     return results;
 }
-
 
 Points MultiPoint::concave_hull_2d(const Points& pts, const double tolerence)
 {
@@ -381,39 +330,16 @@ Points MultiPoint::concave_hull_2d(const Points& pts, const double tolerence)
 }
 
 
-
-
-
-
-
-
-
-
-
  double MultiPoint::squaredDistanceToLineSegment(const Point& p, const Point& v, const Point& w) {
-
     double l2 = (v - w).squaredNorm();
-
     if (l2 == 0.0) return (p - v).squaredNorm();
-
     double t = std::max(0.0, std::min(1.0, ((p - v).dot(w - v)) / l2));
-
     Point projection{v.x() + t * (w.x() - v.x()), v.y() + t * (w.y() - v.y())};
-
     return (p - projection).squaredNorm();
 }
 
-
-
-
-
-
-
-
-
  double MultiPoint::minimumDistanceBetweenLinesDefinedByPoints(const Points& A, const Points& B) {
     double min_distance = std::numeric_limits<double>::infinity();
-
 
     for (size_t i = 0; i < A.size() - 1; ++i) {
         for (const auto& b : B) {
@@ -421,7 +347,6 @@ Points MultiPoint::concave_hull_2d(const Points& pts, const double tolerence)
             min_distance = std::min(min_distance, std::sqrt(distance));
         }
     }
-
 
     for (size_t i = 0; i < B.size() - 1; ++i) {
         for (const auto& a : A) {
@@ -456,7 +381,6 @@ bool MultiPoint3::remove_duplicate_points()
     size_t j = 0;
     for (size_t i = 1; i < points.size(); ++i) {
         if (points[j] == points[i]) {
-
         } else {
             ++ j;
             if (j < i)
@@ -472,7 +396,6 @@ bool MultiPoint3::remove_duplicate_points()
 
     return false;
 }
-
 
 Points3 MultiPoint3::_douglas_peucker(const Points3& pts, double tolerance)
 {
@@ -493,7 +416,6 @@ Points3 MultiPoint3::_douglas_peucker(const Points3& pts, double tolerance)
             for (;;) {
                 double max_dist_sq  = 0.0;
                 size_t furthest_idx = anchor_idx;
-
                 for (size_t i = anchor_idx + 1; i < floater_idx; ++i) {
                     double dist_sq = Line3::distance_to_squared(pts[i], *anchor, *floater);
                     if (dist_sq > max_dist_sq) {
@@ -501,7 +423,6 @@ Points3 MultiPoint3::_douglas_peucker(const Points3& pts, double tolerance)
                         furthest_idx = i;
                     }
                 }
-
                 if (max_dist_sq <= tolerance_sq) {
                     result_pts.emplace_back(*floater);
                     anchor_idx = floater_idx;
@@ -543,12 +464,12 @@ Points3 MultiPoint3::_douglas_peucker(const Points3& pts, double tolerance)
 }
 
 BoundingBox get_extents(const MultiPoint &mp)
-{
+{ 
     return BoundingBox(mp.points);
 }
 
 BoundingBox get_extents_rotated(const Points &points, double angle)
-{
+{ 
     BoundingBox bbox;
     if (! points.empty()) {
         double s = sin(angle);
@@ -585,7 +506,6 @@ void MultiPoint::symmetric_y(const coord_t &x_axis)
     }
 }
 
-
 void MultiPoint3::rotate(double cos_angle, double sin_angle)
 {
     for (Point3 &pt : this->points) {
@@ -593,7 +513,6 @@ void MultiPoint3::rotate(double cos_angle, double sin_angle)
         double cur_y = double(pt(1));
         pt(0) = coord_t(round(cos_angle * cur_x - sin_angle * cur_y));
         pt(1) = coord_t(round(cos_angle * cur_y + sin_angle * cur_x));
-
     }
 }
 
@@ -605,7 +524,6 @@ void MultiPoint3::rotate(double angle, const Point3 &center)
         Vec3crd v(pt - center);
         pt(0) = (coord_t)round(double(center(0)) + c * v[0] - s * v[1]);
         pt(1) = (coord_t)round(double(center(1)) + c * v[1] + s * v[0]);
-
     }
 }
 

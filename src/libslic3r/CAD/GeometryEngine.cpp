@@ -66,7 +66,6 @@ namespace Slic3r {
 
 using ShapeIndexMap = NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>;
 
-
 std::vector<TopoDS_Shape> GeometryEngine::read_step_solids(const std::string& path, std::string& err)
 {
     err.clear();
@@ -80,7 +79,6 @@ std::vector<TopoDS_Shape> GeometryEngine::read_step_solids(const std::string& pa
         reader.TransferRoots();
         const TopoDS_Shape shape = reader.OneShape();
         if (shape.IsNull()) { err = _u8L("STEP file has no geometry"); return out; }
-
         for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next())
             out.push_back(ex.Current());
         if (out.empty())
@@ -91,20 +89,6 @@ std::vector<TopoDS_Shape> GeometryEngine::read_step_solids(const std::string& pa
     }
     return out;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
                                           double tolerance,
@@ -117,8 +101,6 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
         throw std::runtime_error("mesh_to_brep: tolerance must be > 0");
     if (its.indices.empty())
         throw std::runtime_error(_u8L("mesh_to_brep: mesh has no triangles"));
-
-
 
     std::map<std::array<long long, 3>, int> cell_to_new;
     std::vector<int>   old_to_new(its.vertices.size(), -1);
@@ -134,7 +116,6 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
             verts.push_back(p);
         old_to_new[i] = ins.first->second;
     }
-
 
     std::vector<Vec3i32> tris;
     tris.reserve(its.indices.size());
@@ -153,7 +134,6 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
     if (tris.empty())
         throw std::runtime_error(_u8L("mesh_to_brep: every triangle was rejected as degenerate "
                                       "(try a smaller tolerance)"));
-
 
     std::vector<TopoDS_Vertex> vertex_cache(verts.size());
     std::vector<bool>          vertex_made(verts.size(), false);
@@ -195,7 +175,6 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
         }
     }
 
-
     for (const auto& kv : edge_usage) {
         if (kv.second == 1)      ++stats.boundary_edges;
         else if (kv.second >= 3) ++stats.nonmanifold_edges;
@@ -223,10 +202,6 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
         }
     }
 
-
-
-
-
     if (merge_angle_deg > 0.0) {
         try {
             ShapeUpgrade_UnifySameDomain unifier(shape, true, true, true);
@@ -237,21 +212,17 @@ TopoDS_Shape GeometryEngine::mesh_to_brep(const indexed_triangle_set& its,
             if (!merged.IsNull())
                 shape = merged;
         } catch (const Standard_Failure&) {
-
         }
     }
     stats.faces_final = face_count(shape);
     return shape;
 }
 
-
-
-FaceGroup GeometryEngine::classify_face(const TopoDS_Face& face, const TopoDS_Shape&  )
+FaceGroup GeometryEngine::classify_face(const TopoDS_Face& face, const TopoDS_Shape& )
 {
     try {
         BRepAdaptor_Surface surf(face);
         if (surf.GetType() == GeomAbs_Plane) {
-
             double u = (surf.FirstUParameter() + surf.LastUParameter()) / 2.0;
             double v = (surf.FirstVParameter() + surf.LastVParameter()) / 2.0;
             gp_Pnt pt; gp_Vec du, dv;
@@ -267,13 +238,8 @@ FaceGroup GeometryEngine::classify_face(const TopoDS_Face& face, const TopoDS_Sh
     return FaceGroup::Lateral;
 }
 
-
-
 std::vector<TopoDS_Edge> GeometryEngine::collect_edges(const TopoDS_Shape& solid, FaceGroup target)
 {
-
-
-
     std::vector<TopoDS_Edge> result;
     NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaceMap;
     TopExp::MapShapesAndAncestors(solid, TopAbs_EDGE, TopAbs_FACE, edgeFaceMap);
@@ -319,10 +285,6 @@ std::vector<TopoDS_Edge> GeometryEngine::collect_edges(const TopoDS_Shape& solid
     return result;
 }
 
-
-
-
-
 TopoDS_Shape GeometryEngine::apply_fillet(const TopoDS_Shape& solid, double radius, FaceGroup faces)
 {
     if (radius <= 0.001) throw std::runtime_error("the fillet radius must be greater than 0");
@@ -334,9 +296,6 @@ TopoDS_Shape GeometryEngine::apply_fillet(const TopoDS_Shape& solid, double radi
     for (const auto& edge : edges)
         fillet.Add(radius, edge);
     fillet.Build();
-
-
-
 
     if (!fillet.IsDone()) throw std::runtime_error(_u8L("fillet radius too large for this geometry"));
     return fillet.Shape();
@@ -401,8 +360,6 @@ TopoDS_Shape GeometryEngine::apply_chamfer(const TopoDS_Shape& solid, double dis
     if (!mk.IsDone()) throw std::runtime_error(_u8L("apply_chamfer: OCCT chamfer failed"));
     return mk.Shape();
 }
-
-
 
 TriangleMesh GeometryEngine::tessellate(const TopoDS_Shape& shape,
                                         double linear_deflection,
@@ -484,13 +441,6 @@ GeometryEngine::MassProps GeometryEngine::mass_properties(const TopoDS_Shape& sh
     MassProps p;
     if (shape.IsNull()) return p;
     try {
-
-
-
-
-
-
-
         p.is_solid = TopExp_Explorer(shape, TopAbs_SOLID).More();
         if (!p.is_solid) {
             GProp_GProps sonly;
@@ -516,12 +466,9 @@ GeometryEngine::MassProps GeometryEngine::mass_properties(const TopoDS_Shape& sh
         p.surface_area = sprops.Mass();
         p.valid = true;
     } catch (const Standard_Failure&) {
-
     }
     return p;
 }
-
-
 
 int GeometryEngine::face_count(const TopoDS_Shape& shape)
 {
@@ -649,8 +596,6 @@ GeometryEngine::CylinderFace GeometryEngine::cylinder_of_face(const TopoDS_Face&
     const Vec3d apt (ax.Location().X(),  ax.Location().Y(),  ax.Location().Z());
     cf.radius = cyl.Radius();
 
-
-
     const double umid = 0.5 * (surf.FirstUParameter() + surf.LastUParameter());
     const gp_Pnt e0 = surf.Value(umid, surf.FirstVParameter());
     const gp_Pnt e1 = surf.Value(umid, surf.LastVParameter());
@@ -660,8 +605,6 @@ GeometryEngine::CylinderFace GeometryEngine::cylinder_of_face(const TopoDS_Face&
     cf.base   = apt + axis * t0;
     cf.axis   = axis;
     cf.height = t1 - t0;
-
-
 
     const gp_Pnt sp = surf.Value(umid, 0.5 * (surf.FirstVParameter() + surf.LastVParameter()));
     const Vec3d  S(sp.X(), sp.Y(), sp.Z());

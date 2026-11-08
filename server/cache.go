@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,8 +30,7 @@ var optionData []byte
 type cachedResponse struct {
 	plain, zipped []byte
 	etag          string
-
-	brotli atomic.Pointer[[]byte]
+	brotli        atomic.Pointer[[]byte]
 }
 
 var brotliSlot = make(chan struct{}, 1)
@@ -44,7 +44,6 @@ func cacheResponse(b []byte) *cachedResponse {
 	go func() {
 		brotliSlot <- struct{}{}
 		defer func() { <-brotliSlot }()
-
 		level := brotli.BestCompression
 		if len(b) > 1<<20 {
 			level = 5
@@ -109,7 +108,6 @@ func (c *cachedResponse) serve(w http.ResponseWriter, r *http.Request, name, con
 		etag = strings.TrimSuffix(etag, `"`) + `-gzip"`
 		w.Header().Set("Content-Encoding", "gzip")
 	}
-
 	base := strings.TrimSuffix(c.etag, `"`)
 	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
 		tag = strings.TrimPrefix(strings.TrimSpace(tag), "W/")
@@ -168,7 +166,6 @@ func serveGzipped(w http.ResponseWriter, r *http.Request, path string, st os.Fil
 		streamed, err := writeGzipped(w, r, path, cached, encode)
 		if streamed {
 			if err != nil {
-
 				panic(http.ErrAbortHandler)
 			}
 			return
@@ -259,7 +256,6 @@ func writeGzipped(w http.ResponseWriter, r *http.Request, path, cached string, e
 	if err == nil {
 		err = os.Rename(tmp.Name(), cached)
 	}
-
 	return streamed, err
 }
 
@@ -267,6 +263,7 @@ type staticEntry struct {
 	modified time.Time
 	size     int64
 	response *cachedResponse
+	build    string
 }
 type staticCache struct {
 	mu    sync.Mutex
@@ -301,18 +298,42 @@ func (c *staticCache) serve(w http.ResponseWriter, r *http.Request, path string,
 		serveStream(w, r, f, st, policy)
 		return
 	}
-	c.mu.Lock()
-	entry, ok := c.files[path]
-	if !ok || entry.size != st.Size() || !entry.modified.Equal(st.ModTime()) {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			c.mu.Unlock()
-			http.NotFound(w, r)
-			return
-		}
-		entry = staticEntry{st.ModTime(), st.Size(), cacheResponse(b)}
-		c.files[path] = entry
+	entry, ok := c.entry(path, st)
+	if !ok {
+		http.NotFound(w, r)
+		return
 	}
-	c.mu.Unlock()
 	entry.response.serve(w, r, st.Name(), contentType, policy, st.ModTime())
+}
+
+func (c *staticCache) entry(path string, st os.FileInfo) (staticEntry, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.files[path]
+	if ok && entry.size == st.Size() && entry.modified.Equal(st.ModTime()) {
+		return entry, true
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return staticEntry{}, false
+	}
+	entry = staticEntry{modified: st.ModTime(), size: st.Size()}
+	if filepath.Base(path) == "index.html" {
+		sum := sha256.Sum256(b)
+		entry.build = hex.EncodeToString(sum[:6])
+		b = bytes.Replace(b, []byte("</head>"), []byte(`<meta name="orca-build" content="`+entry.build+`"></head>`), 1)
+	}
+	entry.response = cacheResponse(b)
+	c.files[path] = entry
+	return entry, true
+}
+
+func (c *staticCache) build(dir string) string {
+	index := filepath.Join(dir, "index.html")
+	st, err := os.Stat(index)
+	if err != nil || !st.Mode().IsRegular() {
+		return ""
+	}
+	entry, _ := c.entry(index, st)
+	return entry.build
 }

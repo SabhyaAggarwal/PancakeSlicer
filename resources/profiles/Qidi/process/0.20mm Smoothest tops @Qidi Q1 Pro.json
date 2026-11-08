@@ -1,0 +1,20 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @Qidi Q1 Pro",
+	"renamed_from": "0.20mm Non-planar top @Qidi Q1 Pro;0.20mm Non-planar top Qidi Q1 Pro",
+	"inherits": "0.20mm Standard @Qidi Q1 Pro",
+	"from": "system",
+	"setting_id": "7e3gLyzMBEqCy1hT",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_ironing": "1",
+	"nonplanar_flow_mod": "1",
+	"nonplanar_surface_spacing": "1",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Qidi Q1 Pro 0.4 nozzle"
+	],
+	"description": "0.20mm Standard with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the printer's head."
+}

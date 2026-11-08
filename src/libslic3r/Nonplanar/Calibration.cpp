@@ -35,25 +35,14 @@ namespace {
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
 
-
 constexpr double PadHeight = 1.0;
-
 constexpr double PadFlange = 1.0;
-
-
 constexpr double ConeApexRadius = 1.5;
-
-
 constexpr double PatchLength = 5., PatchWidth = 7., PatchCrown = 0.25;
-
 constexpr double DomeRadius = 5., DomeHeight = 3., SaddleHalf = 5., SaddleAmplitude = 1.;
-
 constexpr double FitMargin = 0.2;
-
 constexpr double TouchMargin = 0.05;
-
 constexpr double LayoutGap = 3., BedMargin = 5.;
-
 
 indexed_triangle_set grid_solid(double x0, double x1, double y0, double y1, int nx, int ny, const std::function<double(double, double)> &z)
 {
@@ -76,7 +65,6 @@ indexed_triangle_set grid_solid(double x0, double x1, double y0, double y1, int 
             its.indices.emplace_back(bottom(i, j), bottom(i + 1, j + 1), bottom(i + 1, j));
             its.indices.emplace_back(bottom(i, j), bottom(i, j + 1), bottom(i + 1, j + 1));
         }
-
     std::vector<std::pair<int, int>> ring;
     for (int i = 0; i < nx; ++i) ring.emplace_back(i, 0);
     for (int j = 0; j < ny; ++j) ring.emplace_back(nx, j);
@@ -90,7 +78,6 @@ indexed_triangle_set grid_solid(double x0, double x1, double y0, double y1, int 
     }
     return its;
 }
-
 
 indexed_triangle_set disk_solid(double radius, int rings, int sectors, const std::function<double(double)> &z)
 {
@@ -129,13 +116,11 @@ void translate(indexed_triangle_set &its, const Vec3f &d)
         v += d;
 }
 
-
 struct Footprint
 {
     Vec2d  size;
     double relief;
 };
-
 
 struct LowBox
 {
@@ -159,8 +144,6 @@ std::vector<LowBox> low_boxes(const HeadEnvelope &head, double gap, double max_r
     }
     return out;
 }
-
-
 
 bool conflicts(const std::vector<LowBox> &boxes, const BoundingBoxf &a, double relief_a, const BoundingBoxf &b, double relief_b)
 {
@@ -186,8 +169,6 @@ BoundingBoxf bed_box(const DynamicPrintConfig &config)
         throw RuntimeError(_u8L("Non-planar calibration: the printer has no printable area."));
     return bed;
 }
-
-
 
 std::vector<Vec2d> grid_layout(const std::vector<Footprint> &shapes, int cols, const HeadEnvelope &head, double gap, const BoundingBoxf &bed)
 {
@@ -234,7 +215,6 @@ std::vector<Vec2d> grid_layout(const std::vector<Footprint> &shapes, int cols, c
     return out;
 }
 
-
 std::vector<Vec2d> best_layout(const std::vector<Footprint> &shapes, std::initializer_list<int> cols, const HeadEnvelope &head, double gap,
                                const BoundingBoxf &bed)
 {
@@ -259,9 +239,7 @@ std::vector<Vec2d> best_layout(const std::vector<Footprint> &shapes, std::initia
     return best;
 }
 
-
 double cone_foot_radius(const ClearanceStep &step) { return step.relief / std::tan(Geometry::deg2rad(step.slope_deg)) + 0.5 * ConeApexRadius; }
-
 
 double cone_height(const ClearanceStep &step, double r)
 {
@@ -306,8 +284,6 @@ std::optional<Test> parse_test(const std::string &id)
 
 const std::vector<ClearanceStep> &clearance_steps()
 {
-
-
     static const std::vector<ClearanceStep> steps{ { 12., 0.8 }, { 15., 1.2 }, { 18., 1.8 }, { 21., 2.6 },
                                                    { 24., 3.6 }, { 27., 4.6 }, { 30., 5.8 }, { 32., 7.2 } };
     return steps;
@@ -318,7 +294,6 @@ double step_clearance(const HeadEnvelope &head, const ClearanceStep &step, doubl
     const double foot = cone_foot_radius(step);
     auto cone = [&](double r) { return cone_height(step, r); };
     double worst = Inf;
-
     for (int ring = 0; ring <= 8; ++ring) {
         const double rho = foot * ring / 8., tip = cone(rho);
         for (int k = 0; k < 72; ++k) {
@@ -328,11 +303,9 @@ double step_clearance(const HeadEnvelope &head, const ClearanceStep &step, doubl
                 const double grow = box.nozzle ? 0. : head.lateral_margin;
                 const Vec2d  lo(box.infinite_x ? -Inf : box.min.x() - grow, box.infinite_y ? -Inf : box.min.y() - grow);
                 const Vec2d  hi(box.infinite_x ? Inf : box.max.x() + grow, box.infinite_y ? Inf : box.max.y() + grow);
-
                 const Vec2d  nearest(std::clamp(axis.x(), lo.x(), hi.x()), std::clamp(axis.y(), lo.y(), hi.y()));
                 double       z = box.min.z();
                 if (box.nozzle) {
-
                     const double half_x = std::max(std::abs(box.min.x()), std::abs(box.max.x()));
                     const double half_y = std::max(std::abs(box.min.y()), std::abs(box.max.y()));
                     if (std::hypot(half_x, half_y) <= head.tip_allowance.radius)
@@ -379,7 +352,6 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
     const std::vector<ClearanceStep> &steps = clearance_steps();
     if (last_clean < 0 || last_clean > int(steps.size()))
         throw RuntimeError((boost::format(_u8L("The last clean cone must be between 0 and %1%.")) % steps.size()).str());
-
     HeadEnvelope shroud = base;
     shroud.boxes.erase(std::remove_if(shroud.boxes.begin(), shroud.boxes.end(),
                                       [](const HeadBox &b) { return b.nozzle || b.infinite_x || b.infinite_y; }),
@@ -392,20 +364,15 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
     auto needed = [&](int step) { return -step_clearance(shroud, steps[size_t(step - 1)], gap); };
     double shift;
     if (last_clean == 0)
-
         shift = needed(1) - std::max(gap, 0.1);
     else {
         shift = -Inf;
         for (int k = 1; k <= last_clean; ++k)
             shift = std::max(shift, needed(k));
     }
-
-
     shift += FitMargin;
-
     if (last_clean < int(steps.size()))
         shift = std::min(shift, needed(last_clean + 1) - TouchMargin);
-
     shift = std::max(shift, -lowest);
 
     ClearanceFit out;
@@ -415,7 +382,6 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
             box.min.z() += shift;
             box.max.z() += shift;
         }
-
     if (last_clean > 0) {
         const double floor = steps[size_t(last_clean - 1)].relief + out.head.margin - gap;
         for (HeadBox &box : out.head.boxes)
@@ -436,7 +402,6 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
     out.slope_cap_deg = Inf;
     for (double slope : out.head.slope_map(72, gap))
         out.slope_cap_deg = std::min(out.slope_cap_deg, Geometry::rad2deg(slope));
-
     const double steep = steps.back().slope_deg;
     double lo = 0., hi = 100.;
     if (step_clearance(out.head, { steep, hi }, gap) >= 0.)
@@ -447,7 +412,6 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
     }
     out.band_height  = lo;
     out.gantry_floor = out.head.gantry_clearance();
-
     out.head = load_head_envelope(save_head_envelope(out.head));
     return out;
 }
@@ -495,9 +459,7 @@ std::vector<double> tilt_flow_result(const std::vector<double> &current, const s
     for (size_t i = 0; i < slopes.size(); ++i) {
         if (picks[i] < 0 || picks[i] >= int(tilt_multipliers().size()))
             throw RuntimeError(_u8L("Pick one of the printed patches for every slope."));
-
         const double base = current.size() == slopes.size() ? current[i] : 1.;
-
         out[i] = std::round(std::clamp(base * tilt_multipliers()[size_t(picks[i])], 0.5, 1.5) * 1000.) / 1000.;
     }
     return out;
@@ -536,8 +498,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
     switch (test) {
     case Test::Clearance:
     case Test::Verifier: {
-
-
         plate.config.set_key_value("nonplanar_head", new ConfigOptionString(ProbeHeadId));
         for (size_t k = 0; k < clearance_steps().size(); ++k) {
             const ClearanceStep &step = clearance_steps()[k];
@@ -562,7 +522,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
                 const double x0 = -0.5 * PatchWidth - PadFlange, x1 = -x0, y0 = -0.5 * PatchLength - PadFlange, y1 = -y0;
                 PlateObject  object;
                 object.name = (boost::format(_u8L("Tilt %1% deg, flow %2%")) % slope % format_number(m, 2)).str();
-
                 object.mesh = TriangleMesh(grid_solid(x0, x1, y0, y1, int(std::ceil((x1 - x0) / 0.25)), int(std::ceil((y1 - y0) / 0.25)),
                     [&](double x, double y) {
                         if (std::abs(x) > 0.5 * PatchWidth || std::abs(y) > 0.5 * PatchLength)
@@ -581,8 +540,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
         break;
     }
     case Test::CurvedTop: {
-
-
         for (size_t fi = 0; fi < top_fan_boosts().size(); ++fi)
             for (size_t si = 0; si < top_speed_factors().size(); ++si) {
                 const double fan = top_fan_boosts()[fi], speed = top_speed_factors()[si];
@@ -591,11 +548,9 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
                 if (fi != 0 && si + 1 != top_speed_factors().size())
                     continue;
                 cells.push_back(int(shapes.size()) - 1);
-
                 indexed_triangle_set dome = disk_solid(DomeRadius + PadFlange, 48, 128, [](double r) {
                     if (r >= DomeRadius)
                         return PadHeight;
-
                     const double R = (DomeRadius * DomeRadius + DomeHeight * DomeHeight) / (2. * DomeHeight);
                     return PadHeight + std::sqrt(R * R - r * r) - (R - DomeHeight);
                 });
@@ -605,7 +560,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
                         if (std::abs(x) > SaddleHalf || std::abs(y) > SaddleHalf)
                             return PadHeight;
                         const double u = x / SaddleHalf, v = y / SaddleHalf;
-
                         const double fade = std::min({ 1., 4. * (1. - std::abs(u)), 4. * (1. - std::abs(v)) });
                         return PadHeight + fade * (SaddleAmplitude + SaddleAmplitude * (u * u - v * v));
                     });
@@ -618,7 +572,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
                 object.config.set_key_value("nonplanar_top_fan_boost", new ConfigOptionPercent(fan));
                 plate.objects.emplace_back(std::move(object));
             }
-
         plate.config.set_key_value("nonplanar_road_cooling", new ConfigOptionBool(true));
         cols = { int(top_speed_factors().size()) };
         break;
@@ -630,9 +583,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
     } catch (const RuntimeError &) {
         if (test != Test::TiltFlow)
             throw;
-
-
-
         const size_t           m = tilt_multipliers().size(), n = tilt_slopes().size();
         static const int       column_of[] = { 1, 3, 0, 2, 4 };
         std::vector<Footprint> transposed(shapes.size());
@@ -647,13 +597,10 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
     }
     for (size_t i = 0; i < plate.objects.size(); ++i) {
         PlateObject &object = plate.objects[i];
-
         const BoundingBoxf3 box = object.mesh.bounding_box();
         object.mesh.translate(-float(box.center().x()), -float(box.center().y()), -float(box.min.z()));
         object.center = at[cells.empty() ? i : size_t(cells[i])];
-
         object.config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Auto));
-
         object.config.set_key_value("ironing_type", new ConfigOptionEnum<IroningType>(IroningType::NoIroning));
         object.config.set_key_value("nonplanar_ironing", new ConfigOptionBool(false));
     }

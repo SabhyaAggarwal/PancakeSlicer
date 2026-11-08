@@ -10,7 +10,6 @@ export interface CompactCatalog {
   values: ConfigValue[];
 }
 
-
 export function compactCatalog(catalog: PresetCatalog): CompactCatalog {
   const result = { bases: [], keys: [], values: [] } as unknown as CompactCatalog;
   const keys = new Map<string, number>();
@@ -58,7 +57,6 @@ export function compactCatalog(catalog: PresetCatalog): CompactCatalog {
   }
   return result;
 }
-
 
 export function expandCatalog(raw: CompactCatalog, normalize: (config: Config) => Config = (config) => config): PresetCatalog {
   const catalog = {} as PresetCatalog;

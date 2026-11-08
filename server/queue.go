@@ -49,7 +49,6 @@ func (m *JobManager) dispatchLocked() {
 			defer m.wg.Done()
 			defer q.cancel()
 			m.run(q.ctx, j)
-
 			j.mu.Lock()
 			if !j.state.Finished() {
 				j.setStateLocked(StateCancelled, "worker cancelled")

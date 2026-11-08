@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @BBL P1P",
+	"renamed_from": "0.20mm Non-planar top @BBL P1P;0.20mm Non-planar top BBL P1P",
+	"inherits": "0.20mm Standard @BBL P1P",
+	"from": "system",
+	"setting_id": "2i0RrJp7maSlFyii",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Bambu Lab P1P 0.4 nozzle"
+	]
+}

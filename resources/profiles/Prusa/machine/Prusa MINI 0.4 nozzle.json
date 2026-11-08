@@ -7,7 +7,7 @@
 	"instantiation": "true",
 	"printer_model": "Prusa MINI",
 	"printer_variant": "0.4",
-	"default_print_profile": "0.20mm Non-planar top @MINI",
+	"default_print_profile": "0.20mm Smoothest tops @MINI",
 	"nozzle_diameter": [
 		"0.4"
 	]

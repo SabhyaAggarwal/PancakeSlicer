@@ -1,8 +1,3 @@
-
-
-
-
-
 #ifndef ADAPTIVEPAINTERPOLATOR_HPP
 #define ADAPTIVEPAINTERPOLATOR_HPP
 
@@ -11,36 +6,14 @@
 #include <map>
 #include "PchipInterpolatorHelper.hpp"
 
-
-
-
-
 class AdaptivePAInterpolator {
 public:
-
-
-
     AdaptivePAInterpolator() : m_isInitialised(false) {}
-
-
-
-
-
 
     int parseAndSetData(const std::string& data);
 
-
-
-
-
-
-
     double operator()(double flow_rate, double acceleration);
-
-
-
-
-
+    
     bool isInitialised() const {
         return m_isInitialised;
     }

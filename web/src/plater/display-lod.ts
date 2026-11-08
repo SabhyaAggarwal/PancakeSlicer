@@ -1,15 +1,13 @@
-
-
 export interface DisplayMesh {
   positions: Float32Array;
   normals: Float32Array;
   index: Uint32Array;
+  edges?: Float32Array;
 }
 
 export function displayLod(positions: Float32Array, index: Uint32Array, normals: Float32Array, min: number[], max: number[]): DisplayMesh | undefined {
   if (index.length < 300_000 * 3) return;
   const diagonal = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
-
   const cell = Math.max(0.05, diagonal / 400);
   const n = positions.length / 3;
   let size = 1;

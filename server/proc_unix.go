@@ -14,7 +14,6 @@ func configureKill(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	configureParentDeath(cmd)
 	cmd.Cancel = func() error {
-
 		if filepath.Base(cmd.Path) == "script" {
 			if output, err := exec.Command("ps", "-eo", "pid=,ppid=").Output(); err == nil {
 				children := map[int][]int{}

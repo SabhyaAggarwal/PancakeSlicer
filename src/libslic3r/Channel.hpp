@@ -80,7 +80,6 @@ public:
         }
     }
 
-
     size_t size_hint() const noexcept { return m_queue.size(); }
 
     LockedConstPtr lock_read() const

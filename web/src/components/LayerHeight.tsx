@@ -1,14 +1,12 @@
 import { Check } from './Check';
 import { Range } from './Range';
-
-
+import { More } from './kit';
 import { useRef, useState } from 'react';
 import { effectiveConfig, getState, setState, useStore, type PlateObject, type State } from '../state/store';
 import { beginStep, undoable } from '../state/history';
 import { instanceMatrix, objectHeight } from '../plater/geometry';
 import { adaptiveProfile, adjustProfile, baseProfile, fitProfile, heightAt, slicingParams, smoothProfile, type EditAction, type SlicingParams } from '../plater/layerProfile';
 import { firstLayer } from '../slice-input';
-
 
 export const canEditLayers = (s: State) => !!s.features.layer_profile && !!s.selected && !s.selected.all && !s.project &&
   !!s.objects.find((o) => o.id === s.selected!.object && !o.project);
@@ -28,7 +26,6 @@ export const layerProfileOf = (s: State, o: PlateObject, p = layerParams(s, o)) 
 function setProfile(id: number, layerProfile: number[] | undefined) {
   setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, layerProfile } : o)) }));
 }
-
 
 let cursor: { z: number; band: number } | null = null;
 const cursorListeners = new Set<() => void>();
@@ -60,18 +57,24 @@ export function LayerHeightPanel() {
     <div className="manip-panel">
       <div className="manip-title">Variable layer height</div>
       <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
-        <button className="btn" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={adaptive}>Adaptive</button>
         <span>Quality / Speed</span>
         <Range min={0} max={1} step={0.05} value={quality} onValueChange={(next) => setQuality(next)} />
         <span>{quality.toFixed(2)}</span>
-        <button className="btn" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={smooth}>Smooth</button>
-        <span>Radius</span>
-        <Range min={1} max={10} step={1} value={radius} onValueChange={(next) => setRadius(next)} />
-        <span>{radius}</span>
-        <span>Keep min</span>
-        <Check checked={keepMin} onCheckedChange={(next) => setKeepMin(next)} style={{ justifySelf: 'start' }} />
-        <span />
       </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn" onClick={adaptive}>Adaptive</button>
+        <button className="btn" onClick={smooth}>Smooth</button>
+      </div>
+      <More id="layer-height">
+        <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
+          <span>Radius</span>
+          <Range min={1} max={10} step={1} value={radius} onValueChange={(next) => setRadius(next)} />
+          <span>{radius}</span>
+          <span>Keep min</span>
+          <Check checked={keepMin} onCheckedChange={(next) => setKeepMin(next)} style={{ justifySelf: 'start' }} />
+          <span />
+        </div>
+      </More>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button className="btn" disabled={!o.layerProfile} onClick={() => undoable('Variable layer height - Reset', () => setProfile(o.id, undefined))}>Reset</button>
         <button className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button>
@@ -79,7 +82,6 @@ export function LayerHeightPanel() {
     </div>
   );
 }
-
 
 export function LayerHeightBar() {
   const o = useLayerObject();

@@ -237,7 +237,7 @@ void Stripe::smoothDirection(uint32_t id, const MeshHierarchy<VertexData>::Neigh
         vertexData[id].direction[1 - (iteration % 2)] = vertexData[id].direction[iteration % 2];
         return;
     }
-
+    
     Vec3 dir(0.0f, 0.0f, 0.0f);
     for (auto &e : neighborhood) {
         Vec3 d_j = e.weight * vertexData[e.id].direction[iteration % 2];
@@ -301,7 +301,7 @@ void Stripe::restrictNearest(uint32_t id, const MeshHierarchy<VertexData>::Links
     vertexDataCoarse[id].direction[0] = Vec3(0, 0, 0);
     vertexDataCoarse[id].phase[0] = std::numeric_limits<float>::infinity();
 
-    for (auto j : links) {
+    for (auto j : links) { 
         float d_ij = (vertexDataCoarse[id].position - vertexData[j].position).length();
         if (d_ij + vertexData[j].phase[0] < vertexDataCoarse[id].phase[0]) {
             vertexDataCoarse[id].phase[0] = d_ij + vertexData[j].phase[0];

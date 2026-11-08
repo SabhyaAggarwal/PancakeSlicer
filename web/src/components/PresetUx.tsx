@@ -1,14 +1,10 @@
-
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { useStore } from '../state/store';
-import { preloadable, whenIdle } from '../preloadable';
-
-
+import { preloadable } from '../preloadable';
 
 const PresetsWindow = preloadable(() => import('../profiles/PresetsWindow'));
-whenIdle(() => void PresetsWindow.preload().catch(() => {}), 1000);
-const ImportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ImportDialog })));
-const ExportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ExportDialog })));
+const ImportDialog = preloadable(() => import('./PresetIO').then((m) => ({ default: m.ImportDialog })));
+const ExportDialog = preloadable(() => import('./PresetIO').then((m) => ({ default: m.ExportDialog })));
 
 export default function PresetUx() {
   const ux = useStore((s) => s.presetUx);

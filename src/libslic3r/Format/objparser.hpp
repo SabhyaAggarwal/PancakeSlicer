@@ -63,8 +63,8 @@ struct ObjObject
 
 inline bool operator==(const ObjObject &v1, const ObjObject &v2)
 {
-	return
-		v1.vertexIdxFirst	== v2.vertexIdxFirst	&&
+	return 
+		v1.vertexIdxFirst	== v2.vertexIdxFirst	&& 
 		v1.name.compare(v2.name) == 0;
 }
 
@@ -96,17 +96,12 @@ inline bool operator==(const ObjSmoothingGroup &v1, const ObjSmoothingGroup &v2)
 #define OBJ_TEXCOORD_LENGTH 2
 #define ONE_FACE_SIZE 4
 struct ObjData {
-
 	int								version;
-
 
 	std::vector<float>				coordinates;
     bool                            has_vertex_color{false};
-
 	std::vector<float>				textureCoordinates;
-
 	std::vector<float>				normals;
-
 	std::vector<float>				parameters;
 
 	std::vector<std::string>		mtllibs;
@@ -115,17 +110,13 @@ struct ObjData {
 	std::vector<ObjGroup>			groups;
 	std::vector<ObjSmoothingGroup>	smoothingGroups;
 
-
 	std::vector<ObjVertex>			vertices;
 };
 
 struct MtlData
 {
-
     int version;
     std::unordered_map<std::string, std::shared_ptr<ObjNewMtl>> new_mtl_unmap;
-
-
     std::vector<std::string>                                    mtl_orders;
 };
 extern bool objparse(const char *path, ObjData &data);

@@ -1,4 +1,3 @@
-
 import type * as THREE from 'three';
 import { request } from './geometry';
 
@@ -10,7 +9,6 @@ const listeners = new Set<() => void>();
 let version = 0;
 export const meshStatsVersion = () => version;
 export const subscribeMeshStats = (f: () => void) => (listeners.add(f), () => { listeners.delete(f); });
-
 
 export function meshStats(g: THREE.BufferGeometry): MeshStats {
   const ready = g.userData.meshStats as MeshStats | undefined;

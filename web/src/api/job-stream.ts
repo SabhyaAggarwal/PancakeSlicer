@@ -1,5 +1,3 @@
-
-
 import { responseError } from './access';
 
 export interface JobStreamEvent { type: string; data: string; seq: number }
@@ -45,8 +43,6 @@ async function read(id: string, stream: Stream, after: number) {
   if (streams.get(id) === stream) streams.delete(id);
   for (const f of [...stream.followers]) f.end(stream.ctl.signal.aborted ? undefined : error);
 }
-
-
 
 export function followJobStream(id: string, after: number, event: (e: JobStreamEvent) => void, end: (error?: unknown) => void): () => void {
   let stream = streams.get(id);

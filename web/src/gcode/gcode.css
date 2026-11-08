@@ -26,9 +26,9 @@
 :where(.orca-parity) .gcode-editor .cm-gutters { background: var(--panel); color: var(--ink-3); border-right: 1px solid var(--line); }
 :where(.orca-parity) .gcode-editor .cm-activeLine { background: color-mix(in srgb, var(--hover) 45%, transparent); }
 :where(.orca-parity) .gcode-editor .cm-activeLineGutter { background: var(--hover); color: var(--text); }
-:where(.orca-parity) .gcode-editor .cm-selectionBackground, :where(.orca-parity) .gcode-editor .cm-focused .cm-selectionBackground { background: var(--accent-tint) !important; }
-:where(.orca-parity) .gcode-editor .cm-selectionMatch { background: color-mix(in srgb, var(--accent-tint) 50%, transparent); }
-:where(.orca-parity) .gcode-editor .cm-matchingBracket { background: var(--accent-tint); color: inherit; }
+:where(.orca-parity) .gcode-editor .cm-selectionBackground, :where(.orca-parity) .gcode-editor .cm-focused .cm-selectionBackground { background: var(--selection-fill) !important; }
+:where(.orca-parity) .gcode-editor .cm-selectionMatch { background: color-mix(in srgb, var(--selection-fill) 50%, transparent); }
+:where(.orca-parity) .gcode-editor .cm-matchingBracket { background: var(--selection-fill); color: inherit; }
 :where(.orca-parity) .gcode-editor .cm-panels { background: var(--panel); color: var(--text); border-color: var(--line); }
 :where(.orca-parity) .gcode-editor .cm-panels input, :where(.orca-parity) .gcode-editor .cm-panels button { font: var(--t-small); color: var(--text); }
 :where(.orca-parity) .gcode-editor .cm-textfield { background: var(--selector-bg); border: 1px solid var(--border-control); border-radius: var(--r-1); }
@@ -51,6 +51,7 @@
   :where(.orca-parity) .gcode-back { display: inline-flex; }
 }
 @media (pointer: coarse) { :where(.orca-parity) .gcode-hook { min-height: 44px; } }
+
 :where(.orca-parity) .gcode-group { --gc-command: var(--accent-text); --gc-param: #8fc6f0; --gc-number: #e6c07b; --gc-comment: var(--ink-3); --gc-placeholder: #7fd6a8; --gc-unknown: var(--danger); --gc-control: #f0a3d0; --gc-operator: var(--ink-2); --gc-string: #e6c07b; }
 :where(.orca-parity) .gcode-hook-row { display: flex; flex-direction: column; gap: var(--s-2); padding: 1px var(--space-section, var(--s-5)) 1px var(--row-inset, var(--space-section, var(--s-5))); }
 :where(.orca-parity) .gcode-hook-row[data-modified] .opt-label-text { color: var(--changed); }

@@ -21,7 +21,6 @@ using PolygonsSegmentIndexConstIt = std::vector<Arachne::PolygonsSegmentIndex>::
 using LinesIt                     = Lines::iterator;
 using ColoredLinesConstIt         = ColoredLines::const_iterator;
 
-
 template void VoronoiDiagram::construct_voronoi(LinesIt, LinesIt, bool);
 template void VoronoiDiagram::construct_voronoi(ColoredLinesConstIt, ColoredLinesConstIt, bool);
 template void VoronoiDiagram::construct_voronoi(PolygonsSegmentIndexConstIt, PolygonsSegmentIndexConstIt, bool);
@@ -98,13 +97,11 @@ void VoronoiDiagram::copy_to_local(voronoi_diagram_type &voronoi_diagram) {
     m_cells.clear();
     m_vertices.clear();
 
-
     m_edges.reserve(voronoi_diagram.num_edges());
     for (const edge_type &edge : voronoi_diagram.edges()) {
         m_edges.emplace_back(edge.is_linear(), edge.is_primary());
         m_edges.back().color(edge.color());
     }
-
 
     m_cells.reserve(voronoi_diagram.num_cells());
     for (const cell_type &cell : voronoi_diagram.cells()) {
@@ -117,7 +114,6 @@ void VoronoiDiagram::copy_to_local(voronoi_diagram_type &voronoi_diagram) {
         }
     }
 
-
     m_vertices.reserve(voronoi_diagram.num_vertices());
     for (const vertex_type &vertex : voronoi_diagram.vertices()) {
         m_vertices.emplace_back(vertex.x(), vertex.y());
@@ -128,7 +124,6 @@ void VoronoiDiagram::copy_to_local(voronoi_diagram_type &voronoi_diagram) {
             m_vertices.back().incident_edge(&m_edges[incident_edge_idx]);
         }
     }
-
 
     for (const edge_type &old_edge : voronoi_diagram.edges()) {
         size_t     edge_idx = &old_edge - voronoi_diagram.edges().data();
@@ -176,7 +171,6 @@ VoronoiDiagram::detect_known_issues(const VoronoiDiagram &voronoi_diagram, Segme
     } else if (const IssueType cell_issue_type = detect_known_voronoi_cell_issues(voronoi_diagram, segment_begin, segment_end); cell_issue_type != IssueType::NO_ISSUE_DETECTED) {
         return cell_issue_type;
     } else if (!VoronoiUtilsCgal::is_voronoi_diagram_planar_angle(voronoi_diagram, segment_begin, segment_end)) {
-
         return IssueType::NON_PLANAR_VORONOI_DIAGRAM;
     }
 
@@ -202,27 +196,19 @@ VoronoiDiagram::detect_known_voronoi_cell_issues(const VoronoiDiagram &voronoi_d
 
         if (const SegmentCellRange cell_range = VoronoiUtils::compute_segment_cell_range(cell, segment_begin, segment_end); cell_range.is_valid()) {
 
-
-
             const Segment &source_segment      = Geometry::VoronoiUtils::get_source_segment(cell, segment_begin, segment_end);
             const Vec2d    source_segment_from = boost::polygon::segment_traits<Segment>::get(source_segment, boost::polygon::LOW).template cast<double>();
             const Vec2d    source_segment_to   = boost::polygon::segment_traits<Segment>::get(source_segment, boost::polygon::HIGH).template cast<double>();
             const Vec2d    source_segment_vec  = source_segment_to - source_segment_from;
 
-
             for (const VD::edge_type *edge = cell_range.edge_begin; edge != cell_range.edge_end; edge = edge->next()) {
                 if (edge->is_infinite()) {
-
-
                     return IssueType::MISSING_VORONOI_VERTEX;
                 } else if (const Vec2d edge_v1(edge->vertex1()->x(), edge->vertex1()->y()); Slic3r::cross2(source_segment_vec, edge_v1 - source_segment_from) < 0) {
                     return IssueType::VORONOI_EDGE_INTERSECTING_INPUT_SEGMENT;
                 }
             }
         } else {
-
-
-
             return IssueType::MISSING_VORONOI_VERTEX;
         }
     }
@@ -300,7 +286,6 @@ VoronoiDiagram::try_to_repair_degenerated_voronoi_diagram_by_rotation(const Segm
     using SegmentType = typename std::iterator_traits<SegmentIterator>::value_type;
     using PointType   = typename boost::polygon::segment_traits<SegmentType>::point_type;
 
-
     std::vector<VoronoiDiagram::Segment> segments_rotated;
     segments_rotated.reserve(std::distance(segment_begin, segment_end));
     for (auto segment_it = segment_begin; segment_it != segment_end; ++segment_it) {
@@ -315,9 +300,6 @@ VoronoiDiagram::try_to_repair_degenerated_voronoi_diagram_by_rotation(const Segm
     this->copy_to_local(voronoi_diagram_rotated);
     const IssueType issue_type = detect_known_issues(*this, segments_rotated.begin(), segments_rotated.end());
 
-
-
-
     for (cell_type cell : m_cells) {
         if (cell.is_degenerate())
             continue;
@@ -325,33 +307,25 @@ VoronoiDiagram::try_to_repair_degenerated_voronoi_diagram_by_rotation(const Segm
         if (cell.contains_segment()) {
             if (const SegmentCellRange cell_range = VoronoiUtils::compute_segment_cell_range(cell, segments_rotated.begin(), segments_rotated.end()); cell_range.is_valid()) {
                 if (cell_range.edge_end->vertex1()->color() == 0) {
-
                     VD::vertex_type::color_type color = encode_input_segment_endpoint(cell.source_index(), boost::polygon::LOW);
                     cell_range.edge_end->vertex1()->color(color);
                 }
 
                 if (cell_range.edge_begin->vertex0()->color() == 0) {
-
                     VD::vertex_type::color_type color = encode_input_segment_endpoint(cell.source_index(), boost::polygon::HIGH);
                     cell_range.edge_begin->vertex0()->color(color);
                 }
             } else {
-
                 assert(cell_range.is_valid());
             }
         }
 
-
     }
-
-
 
     for (vertex_type &vertex : m_vertices) {
         if (vertex.color() == 0) {
-
             vertex = VoronoiUtils::make_rotated_vertex(vertex, -fix_angle);
         } else {
-
             PointType   endpoint = decode_input_segment_endpoint(vertex.color(), segment_begin, segment_end);
             vertex_type endpoint_vertex{double(endpoint.x()), double(endpoint.y())};
             endpoint_vertex.incident_edge(vertex.incident_edge());
@@ -359,7 +333,6 @@ VoronoiDiagram::try_to_repair_degenerated_voronoi_diagram_by_rotation(const Segm
             vertex = endpoint_vertex;
         }
     }
-
 
     for (vertex_type &vertex : m_vertices)
         vertex.color(0);

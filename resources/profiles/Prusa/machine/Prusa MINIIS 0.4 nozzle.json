@@ -10,7 +10,7 @@
 	"default_filament_profile": [
 		"Generic PLA @Prusa MINIIS"
 	],
-	"default_print_profile": "0.20mm Non-planar top @MINIIS",
+	"default_print_profile": "0.20mm Smoothest tops @MINIIS",
 	"nozzle_diameter": [
 		"0.4"
 	],

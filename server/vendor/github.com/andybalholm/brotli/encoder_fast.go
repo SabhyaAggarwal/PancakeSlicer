@@ -10,6 +10,9 @@ func gaussianProbability(x, mean, stdDev float64) float64 {
 	return math.Exp(-(x-mean)*(x-mean)/(2*stdDev*stdDev)) / math.Sqrt(2*math.Pi*stdDev*stdDev)
 }
 
+// A FastEncoder implements the matchfinder.Encoder interface, writing in Brotli
+// format. It uses a simplified encoding (like level 0 in the reference
+// implementation) to save time.
 type FastEncoder struct {
 	wroteHeader   bool
 	bw            bitWriter
@@ -28,15 +31,24 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 		e.bw.writeBits(4, 15)
 		e.wroteHeader = true
 
+		// Fill the histograms with default statistics.
+
+		// For the command codes we're using for insert lengths (insert + 2-byte copy),
+		// fill the histogram with a Zipf-squared distribution.
 		for i := range 24 {
 			e.commandHisto[combineLengthCodes(uint16(i), 0, false)] = uint32(2000 / (i + 1) / (i + 1))
 		}
 
+		// For the command codes we're using for copy lengths (0 insert + copy
+		// (length - 2), with repeat distance),
+		// fill the histogram with Zipf distribution starting at code 1 (match length 5),
+		// but a smaller frequency for code 0.
 		e.commandHisto[combineLengthCodes(0, 0, true)] = 50
 		for i := 1; i < 24; i++ {
 			e.commandHisto[combineLengthCodes(0, uint16(i), i < 16)] = uint32(800 / i)
 		}
 
+		// Fill in the combined codes for short insert and copy lengths.
 		for insertCode := range 6 {
 			copyCode := 2
 			e.commandHisto[128+insertCode<<3+copyCode] = uint32(100 / (insertCode + 1) / (insertCode + 1) / copyCode)
@@ -45,6 +57,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 			}
 		}
 
+		// Fill e.distanceHisto with a normal distribution.
 		e.distanceHisto[0] = 100
 		for i := 16; i < 64; i++ {
 			e.distanceHisto[i] = max(uint32(gaussianProbability(float64(i), 32, 8)*10000), 1)
@@ -53,7 +66,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 
 	if len(src) == 0 {
 		if lastBlock {
-			e.bw.writeBits(2, 3)
+			e.bw.writeBits(2, 3) // islast + isempty
 			e.bw.jumpToByteBoundary()
 			return e.bw.dst
 		}
@@ -88,6 +101,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 	}
 	buildAndStoreHuffmanTreeFastBW(e.distanceHisto[:], uint(distanceCount), 6, distanceDepths[:], distanceBits[:], &e.bw)
 
+	// Reset the statistics, starting with a count of 1 for each symbol we might use.
 	for i := range 24 {
 		e.commandHisto[combineLengthCodes(uint16(i), 0, false)] = 1
 	}
@@ -107,11 +121,11 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 	pos := 0
 	for i, m := range matches {
 		lengthFinished := false
-
+		// Write a command with the appropriate insert length, and a copy length of 2.
 		if m.Unmatched < 6 {
 			var command int
 			if m.Length < 10 && m.Length != 0 {
-
+				// We can use a combined insert/copy code with no extra bits.
 				command = m.Unmatched<<3 + m.Length - 2 + 128
 				lengthFinished = true
 			} else {
@@ -127,6 +141,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 			e.commandHisto[command]++
 		}
 
+		// Write the literals, if any.
 		if m.Unmatched > 0 {
 			for _, c := range src[pos : pos+m.Unmatched] {
 				e.bw.writeBits(uint(literalDepths[c]), uint64(literalBits[c]))
@@ -134,7 +149,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 		}
 
 		if m.Length != 0 {
-
+			// Write the distance code.
 			var distCode distanceCode
 			if i == 0 || m.Distance != matches[i-1].Distance {
 				distCode = getDistanceCode(m.Distance)
@@ -145,9 +160,11 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 			}
 			e.distanceHisto[distCode.code]++
 
+			// Write a command for the remainder of the match (after the first two bytes
+			// from before), using the previous distance.
 			switch {
 			case lengthFinished:
-
+				// We don't need to finish the length.
 			case m.Length < 12:
 				command := m.Length - 4
 				e.bw.writeBits(uint(commandDepths[command]), uint64(commandBits[command]))
@@ -173,7 +190,7 @@ func (e *FastEncoder) Encode(dst []byte, src []byte, matches []matchfinder.Match
 	}
 
 	if lastBlock {
-		e.bw.writeBits(2, 3)
+		e.bw.writeBits(2, 3) // islast + isempty
 		e.bw.jumpToByteBoundary()
 	}
 	return e.bw.dst

@@ -16,8 +16,6 @@ class Print;
 class ExtrusionEntityCollection;
 class PrintTryCancel;
 
-
-
 void make_brim(Print& print, PrintTryCancel try_cancel,
     Polygons& islands_area, std::map<ObjectID, ExtrusionEntityCollection>& brimMap,
     std::map<ObjectInstanceID, ExtrusionEntityCollection>& brimMapByInstance,
@@ -27,7 +25,6 @@ void make_brim(Print& print, PrintTryCancel try_cancel,
 
 ExtrusionEntityCollection makeBrimInfill(const ExPolygons& singleBrimArea, const Print& print, const Polygons& islands_area);
 ExtrusionEntityCollection makeBrimInfillFromPlateCoordinates(const ExPolygons& singleBrimArea, const Print& print, const Polygons& islands_area);
-
 
 ExtrusionEntityCollection make_brim_auto(const Print &print, PrintTryCancel try_cancel, Polygons &islands_area);
 

@@ -22,7 +22,6 @@ namespace TextureBake {
 
 namespace {
 
-
 struct Quadric
 {
     std::array<double, 10> q{};
@@ -52,7 +51,6 @@ double eval_sum(const std::vector<Quadric> &qs, int v1, int v2, const Vec3d &p)
     return qs[size_t(v1)].eval(p.x(), p.y(), p.z()) + qs[size_t(v2)].eval(p.x(), p.y(), p.z());
 }
 
-
 bool solve_q(const std::vector<Quadric> &qs, int v1, int v2, Vec3d &out)
 {
     const auto &A = qs[size_t(v1)].q;
@@ -65,7 +63,6 @@ bool solve_q(const std::vector<Quadric> &qs, int v1, int v2, Vec3d &out)
                        a02 * (a01 * a12 - a11 * a02);
     const double max_el = std::max({ std::abs(a00), std::abs(a01), std::abs(a02), std::abs(a11),
                                      std::abs(a12), std::abs(a22) });
-
     const double threshold = max_el * max_el * max_el * 1e-10;
     if (std::abs(det) < std::max(threshold, 1e-30))
         return false;
@@ -83,14 +80,6 @@ Vec3d face_normal_unit(const std::vector<Vec3d> &pos, int a, int b, int c)
     const double len = n.norm();
     return (len > 0.0) ? Vec3d(n / len) : Vec3d::Zero();
 }
-
-
-
-
-
-
-
-
 
 struct HeapEntry
 {
@@ -113,8 +102,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         return result;
     }
 
-
-
     QuantizedPointMap  vert_map(WELD_GRID_DECIMATION, std::min(n, size_t(1) << 22));
     std::vector<Vec3d> pos;
     std::vector<int>   remap(n);
@@ -135,7 +122,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         return result;
     }
 
-
     std::vector<uint8_t> locked_vert;
     size_t               locked_face_count = 0;
     if (!locked_faces.empty()) {
@@ -148,8 +134,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                 locked_vert[size_t(faces[f * 3 + size_t(k)])] = 1;
         }
     }
-
-
     const bool locked_over_budget =
         !locked_vert.empty() && face_count > target_triangles && locked_face_count >= target_triangles;
     result.locked_over_budget = locked_over_budget;
@@ -160,8 +144,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
 
     std::vector<Quadric> quadrics(vert_count);
     {
-
-
         std::vector<Vec4d> planes(face_count, Vec4d::Zero());
         tbb::parallel_for(tbb::blocked_range<size_t>(0, face_count),
                           [&](const tbb::blocked_range<size_t> &range) {
@@ -184,8 +166,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
     }
 
-
-
     {
         struct EdgeRec { int va, vb, f0, f1; uint8_t count; };
         std::vector<EdgeRec> edges;
@@ -204,7 +184,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                     edges[size_t(ei)].f1    = int(f);
                     edges[size_t(ei)].count = 2;
                 } else
-
                     edges[size_t(ei)].count = 3;
             }
         }
@@ -234,14 +213,12 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                     continue;
                 pn /= plen;
                 const double d = -pn.dot(pos[size_t(er.va)]);
-
                 for (const int v : { er.va, er.vb })
                     quadrics[size_t(v)].add_plane(pn.x() * sqrt_w, pn.y() * sqrt_w, pn.z() * sqrt_w,
                                                   d * sqrt_w);
             }
         }
     }
-
 
     const size_t     S = face_count * 3;
     std::vector<int> vf_head(vert_count, -1), vf_count(vert_count, 0), slot_face(S), slot_vert(S),
@@ -284,9 +261,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     uint32_t              epoch = 1, lk_epoch = 1;
     size_t                active_faces = face_count;
 
-
-
-
     std::vector<HeapEntry> heap;
     heap.reserve(std::min<size_t>(face_count * 3, size_t(1) << 24));
     const auto heap_push = [&](HeapEntry e) {
@@ -301,19 +275,10 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     };
     size_t pops = 0, stale_pops = 0, compactions = 0;
 
-
     const auto is_stale = [&](const HeapEntry &e) {
         return !active[size_t(e.v1)] || !active[size_t(e.v2)] || version[size_t(e.v1)] != e.ver1 ||
                version[size_t(e.v2)] != e.ver2;
     };
-
-
-
-
-
-
-
-
     const auto maybe_compact = [&]() {
         if (heap.size() < std::max<size_t>(size_t(1) << 16, active_faces * 3))
             return;
@@ -321,7 +286,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         std::make_heap(heap.begin(), heap.end(), std::greater<HeapEntry>());
         ++compactions;
     };
-
 
     const auto collapse_target = [&](int v1, int v2) -> Vec3d {
         Vec3d p;
@@ -332,8 +296,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             const double em  = eval_sum(quadrics, v1, v2, mid);
             const double emin = std::min({ e1, e2, em });
             const double etol = emin * 1e-2 + 1e-12;
-
-
             if (em <= emin + etol)      p = mid;
             else if (e1 <= e2)          p = pos[size_t(v1)];
             else                        p = pos[size_t(v2)];
@@ -342,9 +304,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     };
     const auto push_edge = [&](int v1, int v2) {
         const Vec3d p = collapse_target(v1, v2);
-
-
-
         const double len2 = (pos[size_t(v2)] - pos[size_t(v1)]).squaredNorm();
         heap_push({ eval_sum(quadrics, v1, v2, p) + len2 * 1e-8, v1, v2, version[size_t(v1)],
                     version[size_t(v2)] });
@@ -367,7 +326,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
     }
 
-
     const auto shared_face_count = [&](int v1, int v2) {
         int count = 0;
         for (int s = vf_head[size_t(v1)]; s >= 0; s = slot_next[size_t(s)]) {
@@ -383,8 +341,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
         return count;
     };
-
-
 
     const auto has_link_violation = [&](int v1, int v2, uint32_t ep) {
         for (int s = vf_head[size_t(v1)]; s >= 0; s = slot_next[size_t(s)]) {
@@ -421,8 +377,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         }
         return false;
     };
-
-
 
     const auto check_flipped = [&](int vc, int vo, const Vec3d &np) {
         for (int s = vf_head[size_t(vc)]; s >= 0; s = slot_next[size_t(s)]) {
@@ -464,8 +418,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
         const HeapEntry top = heap_pop();
         ++pops;
         if (on_progress) {
-
-
             const double p = std::min(1.0, double(init_faces - active_faces) / double(to_remove));
             if (p - last_progress > 0.005 || (pops & 0x3fff) == 0) {
                 last_progress = p;
@@ -473,7 +425,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                     break;
             }
         }
-
         if (reached_target && top.cost > harvest_ceil)
             break;
 
@@ -482,8 +433,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             ++stale_pops;
             continue;
         }
-
-
         if (vf_count[size_t(v1)] + vf_count[size_t(v2)] - 4 > DECIMATE_MAX_VALENCE)
             continue;
         if (shared_face_count(v1, v2) < 2)
@@ -496,7 +445,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
             continue;
         if (!reached_target && top.cost > harvest_ceil)
             result.target_cost_detail = true;
-
 
         pos[size_t(v1)] = target;
         quadrics[size_t(v1)] += quadrics[size_t(v2)];
@@ -537,7 +485,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
                 if (nb == v1 || nb_stamp[size_t(nb)] == epoch)
                     continue;
                 nb_stamp[size_t(nb)] = epoch;
-
                 if (active[size_t(nb)] && (locked_vert.empty() || !locked_vert[size_t(nb)]))
                     push_edge(v1, nb);
             }
@@ -548,7 +495,6 @@ DecimateResult decimate(const TriSoup &geometry, size_t target_triangles, bool h
     BOOST_LOG_TRIVIAL(info) << "TextureBake decimate: pops=" << pops << " stale=" << stale_pops
                             << " compactions=" << compactions << " heap_peak=" << heap.capacity()
                             << " faces=" << active_faces;
-
 
     TriSoup &out = result.geometry;
     if (!face_color.empty())

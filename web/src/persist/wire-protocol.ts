@@ -1,4 +1,3 @@
-
 export type WireRequest =
   | { type: 'capture'; id: number; value: unknown }
   | { type: 'project'; id: number; capture: number; body: { operationId: string; expectedRevision: number; record: Record<string, unknown> } }

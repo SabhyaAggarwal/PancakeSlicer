@@ -68,9 +68,10 @@ func (b *bambuReport) controls() *BambuControls {
 }
 
 type bambuControlRequest struct {
-	Control string `json:"control"`
-	Fan     string `json:"fan,omitempty"`
-	Value   *int   `json:"value"`
+	Control  string `json:"control"`
+	Fan      string `json:"fan,omitempty"`
+	Extruder *int   `json:"extruder,omitempty"`
+	Value    *int   `json:"value"`
 }
 
 func (c *BambuControls) command(in bambuControlRequest) (map[string]any, error) {
@@ -97,10 +98,10 @@ func (c *BambuControls) command(in bambuControlRequest) (map[string]any, error) 
 	return nil, errors.New("unknown device control")
 }
 
-func (s *Server) bambuDeviceControl(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deviceControl(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
-	if p == nil || p.Kind != "bambu-lan" {
-		fail(w, 404, "this printer has no Bambu LAN connection")
+	if p == nil || p.Kind == "bambu-connect" {
+		fail(w, 404, "this printer has no controllable connection")
 		return
 	}
 	var in bambuControlRequest
@@ -114,6 +115,42 @@ func (s *Server) bambuDeviceControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	command, err := status.Controls.command(in)
+	scope := "print"
+	if in.Value != nil {
+		value := *in.Value
+		switch in.Control {
+		case "nozzle", "bed":
+			maxTemp, gcode := 120, "M140"
+			if in.Control == "nozzle" {
+				maxTemp, gcode = 300, "M104"
+			}
+			if in.Control == "nozzle" && len(status.NozzleTemps) > 0 {
+				err = errors.New("select a reported extruder and a target between 0 and 350 °C")
+				for _, extruder := range status.NozzleTemps {
+					if in.Extruder != nil && extruder.ID == *in.Extruder && value >= 0 && value <= 350 {
+						command, err = map[string]any{"command": "set_nozzle_temp", "extruder_index": extruder.ID, "target_temp": value}, nil
+					}
+				}
+			} else if value >= 0 && value <= maxTemp {
+				command, err = map[string]any{"command": "gcode_line", "param": fmt.Sprintf("%s S%d\n", gcode, value)}, nil
+			} else {
+				err = errors.New("temperature target is outside the supported range")
+			}
+		case "speed":
+			if value >= 1 && value <= 4 {
+				command, err = map[string]any{"command": "print_speed", "param": fmt.Sprint(value)}, nil
+			} else {
+				err = errors.New("speed mode must be 1 through 4")
+			}
+		case "light":
+			if value == 0 || value == 1 {
+				scope = "system"
+				command, err = map[string]any{"command": "ledctrl", "led_node": "chamber_light", "led_mode": map[bool]string{true: "on", false: "off"}[value == 1], "led_on_time": 500, "led_off_time": 500, "loop_times": 0, "interval_time": 0}, nil
+			} else {
+				err = errors.New("light value must be 0 or 1")
+			}
+		}
+	}
 	if err != nil {
 		fail(w, 422, err.Error())
 		return
@@ -130,7 +167,11 @@ func (s *Server) bambuDeviceControl(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	err = bambuCommand(ctx, p, secret, command)
+	if p.Kind == "bambu-lan" {
+		err = bambuScopedCommand(ctx, p, secret, scope, command)
+	} else {
+		err = controlHostDevice(ctx, p, secret, in)
+	}
 	audit(map[string]any{"event": "printer_device_control", "printer": p.Printer, "control": in.Control, "fan": in.Fan, "value": *in.Value, "client": s.clientIP(r), "error": fmt.Sprint(err)})
 	if err != nil {
 		fail(w, 502, redact(err.Error(), secret))

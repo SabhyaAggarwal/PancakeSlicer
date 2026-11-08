@@ -2,7 +2,6 @@
 	#include <windows.h>
 	#include <boost/nowide/convert.hpp>
 #else
-
 	#include <pthread.h>
 #endif
 
@@ -28,8 +27,6 @@ namespace Slic3r {
 
 #ifdef _WIN32
 
-
-
 typedef HRESULT(__stdcall* SetThreadDescriptionType)(HANDLE, PCWSTR);
 typedef HRESULT(__stdcall* GetThreadDescriptionType)(HANDLE, PWSTR*);
 
@@ -38,7 +35,6 @@ static HMODULE					s_hKernel32 = nullptr;
 static SetThreadDescriptionType s_fnSetThreadDescription = nullptr;
 static GetThreadDescriptionType	s_fnGetThreadDescription = nullptr;
 
-
 template<typename Fn> static Fn load_proc(HMODULE module, const char* name) {
 	return reinterpret_cast<Fn>(reinterpret_cast<void(*)()>(::GetProcAddress(module, name)));
 }
@@ -46,8 +42,6 @@ template<typename Fn> static Fn load_proc(HMODULE module, const char* name) {
 static bool WindowsGetSetThreadNameAPIInitialize()
 {
 	if (! s_SetGetThreadDescriptionInitialized) {
-
-
 		s_hKernel32 = LoadLibraryW(L"Kernel32.dll");
 		if (s_hKernel32) {
 			s_fnSetThreadDescription = load_proc<SetThreadDescriptionType>(s_hKernel32, "SetThreadDescription");
@@ -59,7 +53,6 @@ static bool WindowsGetSetThreadNameAPIInitialize()
 }
 
 #ifndef NDEBUG
-
 	static constexpr DWORD MSVC_SEH_EXCEPTION_NAME_THREAD = 0x406D1388;
 
 #pragma pack(push,8)
@@ -92,8 +85,6 @@ static bool WindowsSetThreadName(HANDLE hThread, const char *thread_name)
 #ifdef NDEBUG
 		return false;
 #else
-
-
 		WindowsSetThreadNameSEH(hThread, thread_name);
 		return true;
 #endif
@@ -101,11 +92,9 @@ static bool WindowsSetThreadName(HANDLE hThread, const char *thread_name)
 
 	size_t len = strlen(thread_name);
 	if (len < 1024) {
-
 		wchar_t buf[1024];
 		s_fnSetThreadDescription(hThread, boost::nowide::widen(buf, 1024, thread_name));
 	} else {
-
 		s_fnSetThreadDescription(hThread, boost::nowide::widen(thread_name).c_str());
 	}
 	return true;
@@ -113,12 +102,12 @@ static bool WindowsSetThreadName(HANDLE hThread, const char *thread_name)
 
 bool set_thread_name(std::thread &thread, const char *thread_name)
 {
-    return WindowsSetThreadName(static_cast<HANDLE>(thread.native_handle()), thread_name);
+   	return WindowsSetThreadName(static_cast<HANDLE>(thread.native_handle()), thread_name);
 }
 
 bool set_thread_name(boost::thread &thread, const char *thread_name)
 {
-    return WindowsSetThreadName(static_cast<HANDLE>(thread.native_handle()), thread_name);
+   	return WindowsSetThreadName(static_cast<HANDLE>(thread.native_handle()), thread_name);
 }
 
 bool set_current_thread_name(const char *thread_name)
@@ -140,18 +129,13 @@ std::optional<std::string> get_current_thread_name()
 
 #ifdef __APPLE__
 
-
 bool set_thread_name(std::thread &thread, const char *thread_name)
 {
-
-
 	return false;
 }
 
 bool set_thread_name(boost::thread &thread, const char *thread_name)
 {
-
-
 	return false;
 }
 
@@ -163,24 +147,20 @@ bool set_current_thread_name(const char *thread_name)
 
 std::optional<std::string> get_current_thread_name()
 {
-
-
-
 	return std::nullopt;
 }
 
 #else
 
-
 bool set_thread_name(std::thread &thread, const char *thread_name)
 {
-    pthread_setname_np(thread.native_handle(), thread_name);
+   	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
 }
 
 bool set_thread_name(boost::thread &thread, const char *thread_name)
 {
-    pthread_setname_np(thread.native_handle(), thread_name);
+   	pthread_setname_np(thread.native_handle(), thread_name);
 	return true;
 }
 
@@ -199,8 +179,6 @@ std::optional<std::string> get_current_thread_name()
 #endif
 
 #endif
-
-
 static boost::thread::id g_main_thread_id;
 
 void save_main_thread_id()
@@ -208,19 +186,15 @@ void save_main_thread_id()
 	g_main_thread_id = boost::this_thread::get_id();
 }
 
-
 boost::thread::id get_main_thread_id()
 {
 	return g_main_thread_id;
 }
 
-
 bool is_main_thread_active()
 {
 	return get_main_thread_id() == boost::this_thread::get_id();
 }
-
-
 
 void name_tbb_thread_pool_threads_set_locale()
 {
@@ -229,14 +203,10 @@ void name_tbb_thread_pool_threads_set_locale()
 		return;
 	initialized = true;
 
-
-
-
 	const size_t nthreads_hw = tbb::this_task_arena::max_concurrency();
 	size_t       nthreads    = nthreads_hw;
 
 #ifdef SLIC3R_PROFILE
-
 	disable_multi_threading();
 	nthreads = 1;
 #endif
@@ -248,32 +218,25 @@ void name_tbb_thread_pool_threads_set_locale()
     tbb::parallel_for(
         tbb::blocked_range<size_t>(0, nthreads, 1),
         [&nthreads_running, nthreads, &master_thread_id, &cv, &cv_m](const tbb::blocked_range<size_t> &range) {
-            assert(range.begin() + 1 == range.end());
+        	assert(range.begin() + 1 == range.end());
 			if (std::unique_lock<std::mutex> lk(cv_m);  ++nthreads_running == nthreads) {
 				lk.unlock();
-
-
-                cv.notify_all();
-            } else {
-
+    			cv.notify_all();
+        	} else {
 			    cv.wait(lk, [&nthreads_running, nthreads]{return nthreads_running == nthreads;});
-            }
-            auto thread_id = std::this_thread::get_id();
+        	}
+        	auto thread_id = std::this_thread::get_id();
 			if (thread_id == master_thread_id) {
-
 				assert(range.begin() == 0);
 			} else {
 				assert(range.begin() > 0);
 				std::ostringstream name;
 		        name << "slic3r_tbb_" << range.begin();
 		        set_current_thread_name(name.str().c_str());
-
 #ifdef _WIN32
 			    _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
 			    std::setlocale(LC_ALL, "C");
 #else
-
-
 				uselocale(newlocale(
 #ifdef __APPLE__
 					LC_ALL_MASK
@@ -282,7 +245,7 @@ void name_tbb_thread_pool_threads_set_locale()
 #endif
 					, "C", nullptr));
 #endif
-            }
+    		}
         });
 }
 

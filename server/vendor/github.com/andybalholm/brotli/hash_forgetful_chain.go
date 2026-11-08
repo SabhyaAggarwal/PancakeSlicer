@@ -16,9 +16,12 @@ func (*hashForgetfulChain) StoreLookahead() uint {
 	return 4
 }
 
+/* HashBytes is the function that chooses the bucket to place the address in.*/
 func (h *hashForgetfulChain) HashBytes(data []byte) uint {
 	var hash uint32 = binary.LittleEndian.Uint32(data) * kHashMul32
 
+	/* The higher bits contain more mixture from the multiplication,
+	   so we take our results from there. */
 	return uint(hash >> (32 - h.bucketBits))
 }
 
@@ -27,6 +30,12 @@ type slot struct {
 	next  uint16
 }
 
+/* A (forgetful) hash table to the data seen by the compressor, to
+   help create backward references to previous data.
+
+   Hashes are stored in chains which are bucketed to groups. Group of chains
+   share a storage "bank". When more than "bank size" chain nodes are added,
+   oldest nodes are replaced; this way several chains may share a tail. */
 type hashForgetfulChain struct {
 	hasherCommon
 
@@ -66,18 +75,21 @@ func (h *hashForgetfulChain) Initialize(params *encoderParams) {
 
 func (h *hashForgetfulChain) Prepare(one_shot bool, input_size uint, data []byte) {
 	var partial_prepare_threshold uint = (1 << h.bucketBits) >> 6
-
+	/* Partial preparation is 100 times slower (per socket). */
 	if one_shot && input_size <= partial_prepare_threshold {
 		var i uint
 		for i = 0; i < input_size; i++ {
 			var bucket uint = h.HashBytes(data[i:])
 
+			/* See InitEmpty comment. */
 			h.addr[bucket] = 0xCCCCCCCC
 
 			h.head[bucket] = 0xCCCC
 		}
 	} else {
-
+		/* Fill |addr| array with 0xCCCCCCCC value. Because of wrapping, position
+		   processed by hasher never reaches 3GB + 64M; this makes all new chains
+		   to be terminated after the first node. */
 		for i := range h.addr {
 			h.addr[i] = 0xCCCCCCCC
 		}
@@ -93,6 +105,8 @@ func (h *hashForgetfulChain) Prepare(one_shot bool, input_size uint, data []byte
 	}
 }
 
+/* Look at 4 bytes at &data[ix & mask]. Compute a hash from these, and prepend
+   node to corresponding chain; also update tiny_hash for current position. */
 func (h *hashForgetfulChain) Store(data []byte, mask uint, ix uint) {
 	var key uint = h.HashBytes(data[ix&mask:])
 	var bank uint = key & (h.numBanks - 1)
@@ -118,7 +132,9 @@ func (h *hashForgetfulChain) StoreRange(data []byte, mask uint, ix_start uint, i
 
 func (h *hashForgetfulChain) StitchToPreviousBlock(num_bytes uint, position uint, ringbuffer []byte, ring_buffer_mask uint) {
 	if num_bytes >= h.HashTypeLength()-1 && position >= 3 {
-
+		/* Prepare the hashes for three last bytes of the last write.
+		   These could not be calculated before, since they require knowledge
+		   of both the previous and the current block. */
 		h.Store(ringbuffer, ring_buffer_mask, position-3)
 		h.Store(ringbuffer, ring_buffer_mask, position-2)
 		h.Store(ringbuffer, ring_buffer_mask, position-1)
@@ -129,6 +145,17 @@ func (h *hashForgetfulChain) PrepareDistanceCache(distance_cache []int) {
 	prepareDistanceCache(distance_cache, h.numLastDistancesToCheck)
 }
 
+/* Find a longest backward match of &data[cur_ix] up to the length of
+   max_length and stores the position cur_ix in the hash table.
+
+   REQUIRES: PrepareDistanceCachehashForgetfulChain must be invoked for current distance cache
+             values; if this method is invoked repeatedly with the same distance
+             cache values, it is enough to invoke PrepareDistanceCachehashForgetfulChain once.
+
+   Does not look for matches longer than max_length.
+   Does not look for matches further away than max_backward.
+   Writes the best match into |out|.
+   |out|->score is updated only if a better match is found. */
 func (h *hashForgetfulChain) FindLongestMatch(dictionary *encoderDictionary, data []byte, ring_buffer_mask uint, distance_cache []int, cur_ix uint, max_length uint, max_backward uint, gap uint, max_distance uint, out *hasherSearchResult) {
 	var cur_ix_masked uint = cur_ix & ring_buffer_mask
 	var min_score uint = out.score
@@ -136,15 +163,17 @@ func (h *hashForgetfulChain) FindLongestMatch(dictionary *encoderDictionary, dat
 	var best_len uint = out.len
 	var key uint = h.HashBytes(data[cur_ix_masked:])
 	var tiny_hash byte = byte(key)
-
+	/* Don't accept a short copy from far away. */
 	out.len = 0
 
 	out.len_code_delta = 0
 
+	/* Try last distance first. */
 	for i := 0; i < h.numLastDistancesToCheck; i++ {
 		var backward uint = uint(distance_cache[i])
 		var prev_ix uint = (cur_ix - backward)
 
+		/* For distance code 0 we want to consider 2-byte matches. */
 		if i > 0 && h.tiny_hash[uint16(prev_ix)] != tiny_hash {
 			continue
 		}
@@ -199,7 +228,9 @@ func (h *hashForgetfulChain) FindLongestMatch(dictionary *encoderDictionary, dat
 			{
 				var len uint = findMatchLengthWithLimit(data[prev_ix:], data[cur_ix_masked:], max_length)
 				if len >= 4 {
-
+					/* Comparing for >= 3 does not change the semantics, but just saves
+					   for a few unnecessary binary logarithms in backward reference
+					   score, since we are not interested in such short matches. */
 					var score uint = backwardReferenceScore(uint(len), backward)
 					if best_score < score {
 						best_score = score

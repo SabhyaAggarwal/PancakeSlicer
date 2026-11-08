@@ -8,11 +8,9 @@ import { orcaAssets } from './orca-assets.ts';
 import { licenceNotices } from './licence-notices.ts';
 import { bambuChecks } from './bambu-checks.ts';
 import { devCompression } from './dev-compression.ts';
-import { buildStartup, devStartup } from './dev-startup.ts';
+import { buildStartup, devStartup, startupGroups } from './dev-startup.ts';
 import { devBuildSwitch } from './dev-build-switch.ts';
 import { fileURLToPath } from 'node:url';
-
-
 
 export default defineConfig(({ mode }) => ({
   plugins: [...(mode === 'demo' ? [demoBuild()] : []), devCompression(), devBuildSwitch(), devStartup(), buildStartup(), react(), orcaAssets(), optionAssets(), bambuChecks(), mockAssets(), bundleReport(), licenceNotices()],
@@ -29,20 +27,15 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     outDir: mode === 'demo' ? 'dist-demo' : 'dist',
-
     target: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
     cssTarget: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
-    chunkSizeWarningLimit: 700,
+    chunkSizeWarningLimit: 1000,
     rolldownOptions: {
       output: {
         codeSplitting: {
           groups: [
-
-
-
             { name: 'three', test: /node_modules[\\/]three[\\/]build[\\/]three\.core\.js/ },
-            { name: 'three-renderer', test: /node_modules[\\/]three[\\/]build[\\/]three\.module\.js/ },
-            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            ...startupGroups,
           ],
         },
       },

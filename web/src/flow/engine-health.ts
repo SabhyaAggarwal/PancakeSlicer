@@ -19,27 +19,23 @@ export function classifyEngine(health: EngineHealth): Exclude<EngineState, 'unkn
   const matches = Object.entries(manifest.features ?? {}).every(([key, value]) => value !== true || tools[key] === true)
     && ['curved_tops', 'nonplanar_wave'].every((key) => tools[key] !== true || manifest.features?.[key] === true);
   const hashes = /^[a-f0-9]{64}$/i.test(manifest.binary_sha256 ?? '') && /^[a-f0-9]{64}$/i.test(manifest.resources_sha256 ?? '');
-
   return matches && hashes && manifest.print_qualified === true ? 'qualified' : 'unqualified';
 }
 const healthTransitions = (['healthy', 'degraded', 'qualified', 'unqualified'] as const).map((target) => ({
   target, guard: (_: HealthContext, e: Extract<HealthEvent, { type: 'HEALTH' }>) => classifyEngine(e.health) === target,
   action: (_: HealthContext, e: Extract<HealthEvent, { type: 'HEALTH' }>) => ({ health: e.health }),
 }));
-
 const on = { HEALTH: healthTransitions, FAIL: 'degraded' } as const;
 export const engineHealth = createMachine<EngineState, HealthEvent, HealthContext>({
   id: 'engine-health', initial: 'unknown', strict: true, context: { health: null },
   states: { unknown: { on }, healthy: { on }, degraded: { on }, qualified: { on }, unqualified: { on } },
 });
 let probe: Promise<void> | null = null, retry: ReturnType<typeof setTimeout> | undefined, watching = false;
-
 function adopt(health: EngineHealth) {
   applyHealth(health as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest });
-  if (health.tool_features && !getState().api?.mock) setState({ features: { ...health.tool_features } });
+  if (health.tool_features && !getState().api?.mock && JSON.stringify(health.tool_features) !== JSON.stringify(getState().features))
+    setState({ features: { ...health.tool_features } });
 }
-
-
 function watch() {
   if (watching) return;
   watching = true;

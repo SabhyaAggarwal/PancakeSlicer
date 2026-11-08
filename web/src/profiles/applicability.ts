@@ -1,6 +1,3 @@
-
-
-
 import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ResolvedProfile } from './model';
 import { effectiveProfileValues, profileChain, type ProfileContextState } from './context';
@@ -9,21 +6,13 @@ import { matchesFilament, matchesPrint, matchesPrinter, validWorksWith, type Fil
 export type ProfileApplicability = WorksWithRule;
 
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '').split(/[;,]/)[0];
-
 export function printerFacts(s: ProfileContextState, key: string, nozzle?: string | number): PrinterFacts {
   const resolved = resolveProfile(s, 'machine', key), config = key === s.printer ? effectiveProfileValues(s, 'machine', key) : resolved.config;
   return { id: resolved.key, name: resolved.name, printerModel: first(config.printer_model), nozzle: Number(nozzle ?? first(config.nozzle_diameter)) };
 }
 const filamentFacts = (resolved: ResolvedProfile): FilamentFacts => ({ id: resolved.key, type: first(resolved.config.filament_type) });
-
 const ruleOf = (s: ProfileContextState, type: PresetType, resolved: ResolvedProfile) => chainApplicability(profileChain(s, type, resolved)) as WorksWithRule | undefined;
-
 export const hasWorksWithRule = (s: ProfileContextState, type: PresetType, key: string) => ruleOf(s, type, resolveProfile(s, type, key)) !== undefined;
-
-
-
-
-
 
 export function worksWithReason(s: ProfileContextState, type: PresetType, key: string, printerKey = s.printer, nozzle?: string | number): string {
   const resolved = resolveProfile(s, type, key), rule = ruleOf(s, type, resolved);

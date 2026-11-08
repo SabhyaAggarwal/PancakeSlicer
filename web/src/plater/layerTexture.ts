@@ -1,10 +1,5 @@
-
-
-
-
 import * as THREE from 'three';
 import type { SlicingParams } from './layerProfile';
-
 
 export function objectLayers(p: SlicingParams, profile: number[]): number[] {
   const out = [0, p.first];
@@ -27,10 +22,8 @@ export function objectLayers(p: SlicingParams, profile: number[]): number[] {
   return out;
 }
 
-
 const PALETTE = [[0x1a, 0x98, 0x50], [0x66, 0xbd, 0x63], [0xa6, 0xd9, 0x6a], [0xd9, 0xf1, 0xeb], [0xfe, 0xe6, 0xeb], [0xfd, 0xae, 0x61], [0xf4, 0x6d, 0x43], [0xd7, 0x30, 0x27]];
 const COLS = 1024;
-
 
 function zTexture(p: SlicingParams, layers: number[]) {
   const ncells = Math.max(2, Math.min(COLS * 1024, Math.ceil(16 * p.height / p.min)));
@@ -56,8 +49,7 @@ function zTexture(p: SlicingParams, layers: number[]) {
   return { tex, zToCell };
 }
 
-
-const VERTEX =            `
+const VERTEX =  `
 const vec3 TOP = vec3(-0.4574957, 0.4574957, 0.7624929);
 const vec3 FRONT = vec3(0.6985074, 0.1397015, 0.6985074);
 out vec2 intensity;
@@ -70,7 +62,7 @@ void main() {
   objectZ = (modelMatrix * vec4(position, 1.0)).z;
   gl_Position = projectionMatrix * view;
 }`;
-const FRAGMENT =            `
+const FRAGMENT =  `
 uniform sampler2D zTexture;
 uniform float zToCell;
 uniform float zCursor;
@@ -91,7 +83,6 @@ void main() {
 }`;
 
 const cache = new Map<string, { material: THREE.ShaderMaterial; tex: THREE.DataTexture }>();
-
 
 export function layerMaterial(p: SlicingParams, profile: number[], cursor: { z: number; band: number } | null) {
   const key = JSON.stringify([p, profile]);

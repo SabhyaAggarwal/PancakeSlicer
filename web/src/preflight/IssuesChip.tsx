@@ -1,5 +1,3 @@
-
-
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Glyph } from '../components/Glyph';
 import { currentResult } from '../flow/slice';
@@ -7,6 +5,7 @@ import { speculate } from '../flow/speculate';
 import { getState, setState } from '../state/store';
 import { dismissIssue, hoverIssue, issuesVersion, plateIssues, subscribeIssues, type Issue } from './issues';
 import './preflight.css';
+import { SEP } from '../separator';
 
 const TITLE: Record<Issue['kind'], string> = {
   bed: 'Off the bed',
@@ -32,7 +31,7 @@ function cost(base: ReturnType<typeof currentResult>, next: Awaited<ReturnType<t
     const g = Math.round((next.grams - a.grams) * 10) / 10;
     parts.push(`${g > 0 ? '+' : '−'}${Math.abs(g)} g`);
   }
-  return parts.length ? parts.join(' · ') : '±0';
+  return parts.length ? parts.join(SEP) : '±0';
 }
 
 export default function IssuesChip() {
@@ -48,7 +47,6 @@ export default function IssuesChip() {
     window.addEventListener('pointerdown', away);
     return () => window.removeEventListener('pointerdown', away);
   }, [open]);
-
   const keys = issues.map((i) => i.key).join();
   useEffect(() => {
     if (!open) return;

@@ -1,0 +1,13 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @MK4S HF0.4",
+	"renamed_from": "0.20mm Non-planar top @MK4S HF0.4;0.20mm Non-planar top MK4S HF0.4",
+	"inherits": "0.20mm SPEED @MK4S HF0.4",
+	"from": "system",
+	"setting_id": "dXfPnc1KN7lNz0i9",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers_condition": "printer_notes=~/.*MK4S.*/ and nozzle_diameter[0]==0.4 and printer_notes=~/.*HF_NOZZLE.*/"
+}

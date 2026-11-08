@@ -12,7 +12,6 @@ export interface MaterialContext {
 }
 const lower = (s: string) => s.toLowerCase();
 
-
 function matches(rule: MaterialRule, context: MaterialContext): boolean {
   const name = lower(context.name), type = lower(context.type), vendor = lower(context.vendor);
   if (rule.model_id?.length && !rule.model_id.includes(modelIds[context.model] ?? context.model)) return false;

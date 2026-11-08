@@ -39,7 +39,16 @@ struct Control {
     std::map<int, double> planar_times;
     double seconds = 0., object_seconds = 0., outside_seconds = 0.;
     CurvedTopBudgetReport report;
-    double air = -1.;
+    double air(const PrintObject &object)
+    {
+        if (planar) {
+            air_mm = floating_road(*planar, object).air;
+            planar.reset();
+        }
+        return air_mm;
+    }
+    std::unique_ptr<GCodeProcessorResult> planar;
+    double air_mm = -1.;
     bool attempted = false, valid = false;
     bool walls_attempted = false, walls_valid = false;
     double walls_normal_rms = Inf;
@@ -65,8 +74,6 @@ std::map<int, double> patch_times(const FirmwareTime &time, const Control &contr
                 const Vec2d p = mid.head<2>() - unscale(instance.shift) + first_shift;
                 const int k = cell_at(*control.grid, p);
                 if (k < 0 || control.region[size_t(k)] < 0) continue;
-
-
                 if (mid.z() < control.grid->mesh[size_t(k)] - 1. || mid.z() > control.grid->mesh[size_t(k)] + 1.) continue;
                 id = control.region[size_t(k)]; break;
             }
@@ -85,10 +92,10 @@ void build_control(Control &control, Print &print, const PrintObject &object)
         boost::filesystem::path path;
         ~Remove() { boost::system::error_code ec; boost::filesystem::remove(path, ec); }
     } remove{file};
-    GCodeProcessorResult planar;
+    auto planar_result = std::make_unique<GCodeProcessorResult>();
+    GCodeProcessorResult &planar = *planar_result;
     const double measured = measured_planar_export(object, planar, file.string());
     if (!(std::isfinite(measured) && measured > 0.)) { control.report.reason = "planar control could not be measured"; return; }
-    control.air = floating_road(planar, object).air;
     const FirmwareTime fw = firmware_time(file.string(), print.config(), print.is_BBL_printer(), [&print] {
         if (print.canceled()) throw CanceledException();
     });
@@ -100,7 +107,6 @@ void build_control(Control &control, Print &print, const PrintObject &object)
     control.flat_bead = std::move(control.grid->bead);
     control.region.assign(control.grid->mesh.size(), -1);
     const Vec2d shift = unscale(object.instances().front().shift);
-
     std::map<int, ExPolygons> footprints;
     std::map<int, std::pair<double, double>> heights;
     for (const auto &surface : object.nonplanar_surfaces()) {
@@ -120,6 +126,7 @@ void build_control(Control &control, Print &print, const PrintObject &object)
     control.seconds = fw.seconds;
     for (const auto &m : fw.moves) (m.object == 0 ? control.object_seconds : control.outside_seconds) += m.seconds;
     control.planar_times = patch_times(fw, control, 0, object, true);
+    control.planar = std::move(planar_result);
     control.valid = true;
 }
 }
@@ -135,15 +142,12 @@ CurvedTopBudgetReport CurvedTopsBudget::report(const PrintObject &object) const
 std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print, const GCodeProcessorResult &result)
 {
     std::vector<std::pair<PrintObject *, int>> rejected;
-
-
     if (!firmware_time_supported(print.config(), print.is_BBL_printer())) return rejected;
-
     const auto priced = [](const PrintObject &o) {
         return curved_tops_stats(o).kept > 0 || (o.sublayer_walls_active() && !o.sublayer_walls_off()) || o.curved_fallback_zaa();
     };
     if (std::none_of(print.objects().begin(), print.objects().end(), [&priced](const PrintObject *o) {
-        return o->config().nonplanar_mode.value == NonplanarMode::CurvedTops && priced(*o);
+        return curved_tops_mode(o->config().nonplanar_mode.value) && priced(*o);
     }) && m_impl->controls.empty()) return rejected;
     const FirmwareTime fw = firmware_time(result.filename, print.config(), print.is_BBL_printer(), [&print] {
         if (print.canceled()) throw CanceledException();
@@ -158,8 +162,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
     }
     for (size_t oi = 0; oi < print.objects().size(); ++oi) {
         PrintObject &object = *print.get_object(oi);
-        if (object.config().nonplanar_mode.value != NonplanarMode::CurvedTops || object.instances().empty()) continue;
-
+        if (!curved_tops_mode(object.config().nonplanar_mode.value) || object.instances().empty()) continue;
         auto old = m_impl->controls.find(&object);
         if (old == m_impl->controls.end() && !priced(object)) continue;
         Control &c = m_impl->controls[&object];
@@ -167,6 +170,8 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         auto &report = c.report;
         const bool measured = fw.valid && c.valid;
         report.measured = measured;
+        if (!measured && object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop)
+            continue;
         report.planar_s = c.seconds;
         report.candidate_s = fw.seconds;
         if (print.objects().size() > 1 || object.instances().size() > 1) {
@@ -176,7 +181,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         }
         report.time_budget_percent = object.config().nonplanar_time_budget.value;
         report.limit_s = (1. + .01 * report.time_budget_percent) * report.planar_s;
-        report.within_budget = measured && report.candidate_s <= report.limit_s;
+        report.within_budget = measured && (report.candidate_s <= report.limit_s || object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop);
         std::set<int> active;
         std::map<int, std::pair<double, double>> heights;
         for (const auto &m : fw.moves) {
@@ -187,17 +192,13 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         }
         for (const auto &[id, height] : heights)
             if (height.second - height.first >= .03 - .001) active.insert(id);
-
-
         if (!fw.valid) for (const auto &surface : object.nonplanar_surfaces()) active.insert(surface.stable_id);
-
-
         if (object.curved_fallback_zaa()) {
             std::string why;
             if (!measured || !c.grid)
                 why = "mid-layer ZAA could not be measured against the planar control";
-            else if (c.air >= 0. && print.objects().size() == 1 && object.instances().size() == 1 &&
-                floating_road(result, object).air > c.air + 0.05)
+            else if (print.objects().size() == 1 && object.instances().size() == 1 && c.air(object) >= 0. &&
+                floating_road(result, object).air > c.air(object) + 0.05)
                 why = "mid-layer ZAA adds road over air";
             else if (!report.within_budget)
                 why = "mid-layer ZAA exceeds the firmware time budget";
@@ -208,13 +209,18 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 std::fill(grid.ironed.begin(), grid.ironed.end(), 0);
                 grid.deposit(result);
                 double flat = 0., zaa = 0.;
+                size_t cells = 0;
                 for (size_t k = 0; k < grid.mesh.size(); ++k)
                     if (grid.eligible[k] && std::isfinite(c.flat_bead[k]) && std::isfinite(grid.bead[k])) {
                         flat += (c.flat_bead[k] - grid.mesh[k]) * (c.flat_bead[k] - grid.mesh[k]);
                         zaa += (grid.bead[k] - grid.mesh[k]) * (grid.bead[k] - grid.mesh[k]);
+                        ++ cells;
                     }
+                const bool own = object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop && object.curved_surface_candidates() == 0;
                 if (zaa > flat)
                     why = "mid-layer ZAA top RMS exceeds the planar control";
+                else if (own && (cells == 0 || std::sqrt(zaa / cells) > std::sqrt(flat / cells) - 0.0005))
+                    why = "mid-layer ZAA top RMS is no smoother than the planar control";
             }
             if (!why.empty()) {
                 rejected.emplace_back(&object, Fallback);
@@ -225,22 +231,17 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 continue;
             }
         }
-
-
-
-        if (object.sublayer_walls_active() && !object.sublayer_walls_off() && c.air >= 0. && print.objects().size() == 1 &&
-            object.instances().size() == 1) {
+        if (object.sublayer_walls_active() && !object.sublayer_walls_off() && print.objects().size() == 1 &&
+            object.instances().size() == 1 && c.air(object) >= 0.) {
             const double air = floating_road(result, object).air;
-            if (air > c.air + 0.05) {
+            if (air > c.air(object) + 0.05) {
                 rejected.emplace_back(&object, Walls);
                 report.reason = "half-height walls add road over air";
                 BOOST_LOG_TRIVIAL(warning) << std::setprecision(12) << "Curved top budget: " << object.model_object()->name
-                    << " road over air " << air << " mm, planar " << c.air << " mm: half-height walls off";
+                    << " road over air " << air << " mm, planar " << c.air(object) << " mm: half-height walls off";
                 continue;
             }
         }
-
-
         if (measured && !report.within_budget && object.sublayer_walls_active() && !object.sublayer_walls_off()) {
             rejected.emplace_back(&object, Walls);
             report.reason = "half-height walls exceed the firmware time budget";
@@ -252,6 +253,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         if (active.empty()) continue;
         std::map<int, CurvedTopBudgetPatch> patches;
         for (int id : active) { auto &p = patches[id]; p.id = id; }
+        bool rougher = false;
         if (measured) {
             const auto times = patch_times(fw, c, int(oi), object, false);
             auto &grid = *c.grid;
@@ -269,6 +271,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                 auto &e = errors[c.region[k]];
                 e.flat += flat * flat; e.curve += curve * curve; ++e.count;
             }
+            rougher = whole.count > 0 && whole.curve > whole.flat;
             for (auto &[id, p] : patches) {
                 const auto t = times.find(id); p.curved_s = t == times.end() ? 0. : t->second;
                 const auto pt = c.planar_times.find(id); p.planar_s = pt == c.planar_times.end() ? 0. : pt->second;
@@ -278,16 +281,18 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                     p.samples = e->second.count;
                     p.planar_rms_mm = std::sqrt(e->second.flat / p.samples);
                     p.curved_rms_mm = std::sqrt(e->second.curve / p.samples);
-
-
                     p.rms_gain_mm = std::sqrt(std::max(0., whole.curve + e->second.flat - e->second.curve) / whole.count) -
                                     std::sqrt(whole.curve / whole.count);
                 }
             }
         }
-
-
-
+        if (rougher && object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop) {
+            for (int id : active) rejected.emplace_back(&object, id);
+            report.reason = "curved top RMS exceeds the planar control";
+            BOOST_LOG_TRIVIAL(warning) << "Curved top budget: " << object.model_object()->name << ": the whole curved top is rougher than planar, "
+                                       << active.size() << " curved tops print planar";
+            continue;
+        }
         const double coverage = curved_tops_stats(object).area_fraction;
         bool walls_win = false;
         if (measured && !active.empty() && coverage < .5 && print.objects().size() == 1 &&
@@ -305,7 +310,7 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
                     });
                     c.walls_normal_rms = export_normal_rms(object, walls, true);
                     c.walls_valid = fw_walls.valid && fw_walls.seconds <= report.limit_s &&
-                        floating_road(walls, object).air <= c.air + .05 && std::isfinite(c.walls_normal_rms);
+                        floating_road(walls, object).air <= c.air(object) + .05 && std::isfinite(c.walls_normal_rms);
                 }
             }
             if (c.walls_valid) {
@@ -323,9 +328,6 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
             BOOST_LOG_TRIVIAL(info) << std::setprecision(12) << "Curved top budget patch: " << object.model_object()->name
                 << " id " << id << " cost_s " << p.cost_s << " rms_gain_mm " << p.rms_gain_mm << " score " << score;
             if (score > worst_score) { worst = id; worst_score = score; }
-
-
-
             const double quality_loss = p.samples * (p.curved_rms_mm * p.curved_rms_mm -
                                                      p.planar_rms_mm * p.planar_rms_mm);
             if (measured && p.samples > 0 && p.curved_rms_mm > p.planar_rms_mm + 1e-9 &&
@@ -335,9 +337,6 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
             }
         }
         const auto *hints = object.nonplanar_repair();
-
-
-
         const bool native_offer = measured && !report.within_budget && !walls_win && worst_quality < 0 &&
             (hints == nullptr || hints->curved_finish != RepairHints::CurvedFinish::NativeMesh) &&
             std::any_of(patches.begin(), patches.end(), [](const auto &p) { return p.second.samples > 0 && p.second.rms_gain_mm > 0.; });
@@ -355,8 +354,6 @@ std::vector<std::pair<PrintObject *, int>> CurvedTopsBudget::reject(Print &print
         }
         if (drop == -1 && hints != nullptr && hints->curved_finish != RepairHints::CurvedFinish::Blended)
             report.reason = "native curved roads retained within the firmware time and top RMS budgets";
-
-
         std::map<int, CurvedTopBudgetPatch> records;
         for (const auto &p : report.patches) if (p.dropped) records[p.id] = p;
         for (const auto &[id, p] : patches) records[id] = p;

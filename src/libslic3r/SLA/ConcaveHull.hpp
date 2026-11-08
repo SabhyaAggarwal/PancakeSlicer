@@ -20,10 +20,6 @@ inline Polygons get_contours(const ExPolygons &poly)
 
 using ThrowOnCancel = std::function<void()>;
 
-
-
-
-
 class ConcaveHull {
     Polygons m_polys;
 

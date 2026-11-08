@@ -36,17 +36,12 @@ struct Item
                (rhs.extra     == this->extra      );
     }
     bool operator!=(const Item& rhs) const { return ! (*this == rhs); }
-
+    
     double      print_z;
     Type        type;
     int         extruder;
-
-
     std::string color;
-
     std::string extra;
-
-
     void from_json(const nlohmann::json& j) {
         std::string type_str;
         j.at("type").get_to(type_str);
@@ -72,11 +67,8 @@ enum Mode
     Undef,
     SingleExtruder,
     MultiAsSingle,
-
-
     MultiExtruder
 };
-
 
 static constexpr char SingleExtruderMode[] = "SingleExtruder";
 static constexpr char MultiAsSingleMode [] = "MultiAsSingle";
@@ -113,17 +105,7 @@ struct Info
     }
 };
 
-
-
-
-
-
-
-
-
 extern void check_mode_for_custom_gcode_per_print_z(Info& info);
-
-
 
 std::vector<std::pair<double, unsigned int>> custom_tool_changes(const Info& custom_gcode_per_print_z, size_t num_extruders);
 

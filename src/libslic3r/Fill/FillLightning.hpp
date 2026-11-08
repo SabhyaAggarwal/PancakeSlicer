@@ -17,7 +17,6 @@ class PrintObject;
 namespace FillLightning {
 
 class Generator;
-
 struct GeneratorDeleter { void operator()(Generator *p); };
 using  GeneratorPtr = std::unique_ptr<Generator, GeneratorDeleter>;
 
@@ -38,7 +37,6 @@ protected:
                               const std::pair<float, Point> &direction,
                               ExPolygon                      expolygon,
                               Polylines &polylines_out) override;
-
 
 	bool no_sort() const override { return false; }
 };

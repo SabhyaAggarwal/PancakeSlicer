@@ -1,4 +1,3 @@
-
 import type { Config, PresetType } from '../api/types';
 import type { ProjectProfileReferences, ProjectProfileSnapshot } from './ownership';
 const configObject=(value:unknown):value is Config=>!!value && typeof value==='object' && !Array.isArray(value) && Object.values(value).every(v=>['string','number','boolean'].includes(typeof v)||Array.isArray(v)&&v.every(x=>typeof x==='string'||typeof x==='number'));

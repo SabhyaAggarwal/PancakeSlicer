@@ -1,4 +1,3 @@
-
 import type { Config, ConfigValue, PresetType, ProfileOverlay, SystemPreset, UserPreset } from '../api/types';
 import { normalizeConfig } from '../config-values';
 import { sameValue } from '../state/value-equality';
@@ -11,12 +10,10 @@ export interface ProfileCatalog { machines: SystemPreset[]; processes: SystemPre
 export interface ProfileConflict { key: string; mine: ConfigValue; theirs: ConfigValue | undefined }
 export const profilesFor = (s: ProfileCatalog, type: PresetType) => type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
 
-
 const catalogIdentity = (p: SystemPreset) => [p.type, p.vendor, p.name, p.setting_id ?? null, p.base_id ?? null, p.engine_base ?? p.name];
 export const catalogKey = (base: SystemPreset): string => `catalog:v1:${JSON.stringify(catalogIdentity(base))}`;
 const isCatalogKey = (key: string) => key.startsWith('catalog:');
 const catalogTokens = new WeakMap<SystemPreset[], Map<string, SystemPreset | null>>();
-
 
 const contentVersions = new WeakMap<Config, string>();
 export function baseVersion(p: SystemPreset): string {
@@ -38,7 +35,6 @@ export const changedKeys = (values: Config, below: Config): Config => Object.fro
   Object.entries(values).filter(([key, value]) => !PRESET_META.test(key) && !sameValue(key, value, below[key] ?? OPTIONS[key]?.default as ConfigValue | undefined)),
 );
 
-
 export function normalizeUserPreset(p: UserPreset | ProfileOverlay): UserPreset {
   const legacy = p as UserPreset;
   return { ...withProfileIdentity(p as UserPreset), revision: p.revision ?? 0, kind: p.kind ?? 'profile', inherits: p.base?.name ?? legacy.inherits ?? '',
@@ -49,7 +45,6 @@ export function normalizeUserPreset(p: UserPreset | ProfileOverlay): UserPreset 
 export interface ProfileResolutionIssue { code: ProfileRecoveryReason; key: string; message: string }
 export interface ResolvedProfile {
   base?: SystemPreset;
-
   user?: UserPreset;
   source?: UserPreset;
   key?: string;
@@ -68,10 +63,8 @@ const unavailable = (code: ProfileRecoveryReason, key: string, message: string, 
   key, name: source?.name, source, user: source, config: source?.snapshot?.config ?? {},
   status: source?.snapshot ? 'snapshot' : code, issue: { code, key, message }, error: message,
 });
-
 export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: string | ProfileBaseAnchor): { base?: SystemPreset; ambiguous: boolean } {
   if (typeof anchor === 'string' && isCatalogKey(anchor)) {
-
     const catalog = profilesFor(s,type);
     let index = catalogTokens.get(catalog);
     if (!index) {
@@ -90,7 +83,6 @@ export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: str
     && (!ref.id || p.setting_id === ref.id || p.base_id === ref.id));
   const exact = catalog.filter(p => p.name === ref.name);
   if (exact.length) return { base: exact.length === 1 ? exact[0] : undefined, ambiguous: exact.length > 1 };
-
   const renamed = catalog.filter(p => {
     const field = p.config.renamed_from;
     const aliases = Array.isArray(field) ? field.map(String) : field === undefined ? [p.name.replace('@', '')] : String(field).split(';').map(n => n.replace(/^ +/, ''));
@@ -99,10 +91,6 @@ export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: str
   return { base: renamed.length === 1 ? renamed[0] : undefined, ambiguous: renamed.length > 1 };
 }
 const resolvedProfiles = new WeakMap<SystemPreset[], Map<string, Map<string, ResolvedProfile>>>();
-
-
-
-
 const objectIds = new WeakMap<object, number>();
 let objectSerial = 0;
 const signatures = new WeakMap<UserPreset[], Map<PresetType, string>>();
@@ -117,9 +105,7 @@ function librarySignature(list: UserPreset[], type: PresetType): string {
   return signature;
 }
 
-
 export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string, seen?: Set<string>): ResolvedProfile {
-
   if (seen) return resolveAncestors(s, type, name, seen);
   const catalog = profilesFor(s, type);
   let libraries = resolvedProfiles.get(catalog);
@@ -131,15 +117,12 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
     libraries.set(signature, (values = new Map()));
     if (libraries.size > 8) libraries.delete(libraries.keys().next().value!);
   }
-
   const key = type === 'process' ? `${type}:${name}@${(s as { printer?: string }).printer ?? ''}` : `${type}:${name}`, cached = values.get(key);
   if (cached) return cached;
   const resolved = resolveAncestors(s, type, name, new Set());
-
   if (resolved.base || resolved.user) values.set(key, resolved);
   return resolved;
 }
-
 
 const autoBases = new WeakMap<SystemPreset[], SystemPreset | undefined>();
 function autoBase(s: ProfileCatalog): SystemPreset | undefined {
@@ -150,16 +133,12 @@ function autoBase(s: ProfileCatalog): SystemPreset | undefined {
   }
   return base;
 }
-
-
-
 export function autoEnginePreset(s: ProfileCatalog, printerConfig: Config, printerBaseName: string): SystemPreset | undefined {
   const standard = (s.machines.find((m) => m.name === printerBaseName) as { standard_process?: string } | undefined)?.standard_process;
   const wanted = String(Array.isArray(printerConfig.default_print_profile) ? printerConfig.default_print_profile[0] : printerConfig.default_print_profile ?? '');
   return s.processes.find((p) => standard && p.name === standard) ?? s.processes.find((p) => wanted && p.name === wanted)
     ?? s.processes.find((p) => /^0\.20mm Standard/.test(p.name) && p.compatible_printers?.includes(printerBaseName)) ?? autoBase(s);
 }
-
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
   const lookup = isCatalogKey(name) ? {profile: undefined, ambiguous: false} : lookupProfile(s, type, name), user = lookup.profile;
   const identity = user ? profileKey(user) : name;
@@ -176,8 +155,6 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   if (parent?.issue && parent.status !== 'archived' || parentName && !parent?.source)
     return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
-
-
   const auto = type === 'process' && (!!(user as { auto?: unknown }).auto || user.base?.name === 'Auto');
   const printer = auto && (s as { printer?: string }).printer ? resolveProfile(s, 'machine', (s as { printer?: string }).printer!).base : undefined;
   const found = auto ? { base: (printer && autoEnginePreset(s, printer.config, printer.name)) || autoBase(s), ambiguous: false } : findCatalogBase(s, type, user.base ?? user.inherits);
@@ -199,9 +176,7 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   }
   const constraints = Object.fromEntries(Object.entries(user.metadata ?? {}).filter(([key]) => /^compatible_(printers|prints)(_condition)?$/.test(key)));
   const owned = { ...master?.user?.overrides, ...parent?.user?.overrides, ...constraints, ...(user.overlay ?? user.overrides) };
-
   const pinned = type === 'filament' && user.printerId && user.snapshot && user.base?.version !== baseVersion(base);
-
   const root = auto ? { ...base.config, nonplanar_mode: 'off', nonplanar_wave: 'off' } : base.config;
   const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...root, ...owned };
   if (user.archived) {
@@ -213,7 +188,6 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   return { base, source: user, user: parentName || master ? { ...user, overrides: owned } : user, key: identity, name: user.name,
     engineName: base.engine_base ?? base.name, config, status: 'ready' };
 }
-
 
 export function prepareProfile(s: ProfileCatalog, input: UserPreset): UserPreset {
   const p = normalizeUserPreset(input);
@@ -241,7 +215,6 @@ export function profileConflicts(s: ProfileCatalog, type: PresetType, name: stri
       ? [{ key, mine, theirs: base.config[key] }] : []);
 }
 
-
 export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, current: string, values: Config): UserPreset {
   const resolved = resolveProfile(s, type, current);
   if (resolved.issue) throw new ProfileResolutionError(resolved.issue);
@@ -250,7 +223,6 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
   const label = same ? prior!.name : name;
   let parentId = same ? prior?.parentId : prior ? profileKey(prior) : undefined;
   let parent = same ? prior?.parent : prior?.name;
-
   const destination = findProfile(s, type, label), ancestors = new Set<string>();
   for (let key = parentId ?? parent; key && !ancestors.has(key);) {
     const ancestor = findProfile(s, type, key);
@@ -271,7 +243,6 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
 
 }
 
-
 export function decideConflict(s: ProfileCatalog, type: PresetType, name: string, key: string, choice: 'mine' | 'theirs'): UserPreset | undefined {
   const { base, user } = resolveProfile(s, type, name);
   if (!base || !user?.overlay) return undefined;
@@ -290,7 +261,6 @@ export function storedProfile(p: UserPreset): ProfileOverlay {
     name: p.name, type: p.type, base: p.base ?? { name: inherits, version: '' },
     overlay: p.overlay ?? overrides, baseline: p.baseline, metadata: p.metadata };
 }
-
 
 export function preserveProfileParents(previous: ProfileCatalog, next: ProfileCatalog): UserPreset[] {
   const removed = previous.userPresets.filter((p) => !next.userPresets.some((n) => n.type === p.type && n.name === p.name));

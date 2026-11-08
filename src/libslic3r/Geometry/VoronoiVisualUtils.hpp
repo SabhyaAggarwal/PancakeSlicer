@@ -34,23 +34,23 @@ namespace boost { namespace polygon {
 template <typename CT>
 class voronoi_visual_utils {
  public:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  // Discretize parabolic Voronoi edge.
+  // Parabolic Voronoi edges are always formed by one point and one segment
+  // from the initial input set.
+  //
+  // Args:
+  //   point: input point.
+  //   segment: input segment.
+  //   max_dist: maximum discretization distance.
+  //   discretization: point discretization of the given Voronoi edge.
+  //
+  // Template arguments:
+  //   InCT: coordinate type of the input geometries (usually integer).
+  //   Point: point type, should model point concept.
+  //   Segment: segment type, should model segment concept.
+  //
+  // Important:
+  //   discretization should contain both edge endpoints initially.
   template <class InCT1, class InCT2,
             template<class> class Point,
             template<class> class Segment>
@@ -74,61 +74,61 @@ class voronoi_visual_utils {
       const Segment<InCT2>& segment,
       const CT max_dist,
       std::vector< Point<CT> >* discretization) {
-
-
-
+    // Apply the linear transformation to move start point of the segment to
+    // the point with coordinates (0, 0) and the direction of the segment to
+    // coincide the positive direction of the x-axis.
     CT segm_vec_x = cast(x(high(segment))) - cast(x(low(segment)));
     CT segm_vec_y = cast(y(high(segment))) - cast(y(low(segment)));
     CT sqr_segment_length = segm_vec_x * segm_vec_x + segm_vec_y * segm_vec_y;
 
-
-
+    // Compute x-coordinates of the endpoints of the edge
+    // in the transformed space.
     CT projection_start = sqr_segment_length *
         get_point_projection((*discretization)[0], segment);
     CT projection_end = sqr_segment_length *
         get_point_projection((*discretization)[1], segment);
     assert(projection_start != projection_end);
 
-
-
-
+    // Compute parabola parameters in the transformed space.
+    // Parabola has next representation:
+    // f(x) = ((x-rot_x)^2 + rot_y^2) / (2.0*rot_y).
     CT point_vec_x = cast(x(point)) - cast(x(low(segment)));
     CT point_vec_y = cast(y(point)) - cast(y(low(segment)));
     CT rot_x = segm_vec_x * point_vec_x + segm_vec_y * point_vec_y;
     CT rot_y = segm_vec_x * point_vec_y - segm_vec_y * point_vec_x;
 
-
+    // Save the last point.
     Point<CT> last_point = (*discretization)[1];
     discretization->pop_back();
 
-
+    // Use stack to avoid recursion.
     std::stack<CT> point_stack;
     point_stack.push(projection_end);
     CT cur_x = projection_start;
     CT cur_y = parabola_y(cur_x, rot_x, rot_y);
 
-
+    // Adjust max_dist parameter in the transformed space.
     const CT max_dist_transformed = max_dist * max_dist * sqr_segment_length;
     while (!point_stack.empty()) {
       CT new_x = point_stack.top();
       CT new_y = parabola_y(new_x, rot_x, rot_y);
 
-
-
+      // Compute coordinates of the point of the parabola that is
+      // furthest from the current line segment.
       CT mid_x = (new_y - cur_y) / (new_x - cur_x) * rot_y + rot_x;
       CT mid_y = parabola_y(mid_x, rot_x, rot_y);
       assert(mid_x != cur_x || mid_y != cur_y);
       assert(mid_x != new_x || mid_y != new_y);
 
-
-
+      // Compute maximum distance between the given parabolic arc
+      // and line segment that discretize it.
       CT dist = (new_y - cur_y) * (mid_x - cur_x) -
           (new_x - cur_x) * (mid_y - cur_y);
       CT div = (new_y - cur_y) * (new_y - cur_y) + (new_x - cur_x) * (new_x - cur_x);
       assert(div != 0);
       dist = dist * dist / div;
       if (dist <= max_dist_transformed) {
-
+        // Distance between parabola and line segment is less than max_dist.
         point_stack.pop();
         CT inter_x = (segm_vec_x * new_x - segm_vec_y * new_y) /
             sqr_segment_length + cast(x(low(segment)));
@@ -142,23 +142,23 @@ class voronoi_visual_utils {
       }
     }
 
-
+    // Update last point.
     discretization->back() = last_point;
   }
 
  private:
-
+  // Compute y(x) = ((x - a) * (x - a) + b * b) / (2 * b).
   static CT parabola_y(CT x, CT a, CT b) {
     return ((x - a) * (x - a) + b * b) / (b + b);
   }
 
-
-
-
-
-
-
-
+  // Get normalized length of the distance between:
+  //   1) point projection onto the segment
+  //   2) start point of the segment
+  // Return this length divided by the segment length. This is made to avoid
+  // sqrt computation during transformation from the initial space to the
+  // transformed one and vice versa. The assumption is made that projection of
+  // the point lies between the start-point and endpoint of the segment.
   template <class InCT,
             template<class> class Point,
             template<class> class Segment>
@@ -195,7 +195,7 @@ class voronoi_visual_utils {
   }
 };
 
-} }
+} } // namespace boost::polygon
 
 
 namespace Slic3r
@@ -262,7 +262,7 @@ namespace Voronoi { namespace Internal {
 
         const cell_type& cell1 = *edge.cell();
         const cell_type& cell2 = *edge.twin()->cell();
-
+        // Infinite edges could not be created by two segment sites.
         assert(cell1.contains_point() || cell2.contains_point());
         if (! cell1.contains_point() && ! cell2.contains_point()) {
             printf("Error! clip_infinite_edge - infinite edge separates two segment cells\n");
@@ -304,7 +304,7 @@ namespace Voronoi { namespace Internal {
         ::boost::polygon::voronoi_visual_utils<coordinate_type>::discretize(point, segment, max_dist, &sampled_edge);
     }
 
-}   }
+} /* namespace Internal */ } // namespace Voronoi
 
 BoundingBox get_extents(const Lines &lines);
 
@@ -332,7 +332,7 @@ static inline void dump_voronoi_to_svg(
 
     if (scale == 0)
         scale =
-
+//                0.1
                 0.01
                 * std::min(bbox.size().x(), bbox.size().y());
     else
@@ -362,37 +362,37 @@ static inline void dump_voronoi_to_svg(
 
     ::Slic3r::SVG svg(path, bbox);
 
-
-
+    // For clipping of half-lines to some reasonable value.
+    // The line will then be clipped by the SVG viewer anyway.
     const double bbox_dim_max = double(std::max(bbox.size().x(), bbox.size().y()));
-
+    // For the discretization of the Voronoi parabolic segments.
     const double discretization_step = 0.0002 * bbox_dim_max;
 
-
+    // Make a copy of the input segments with the double type.
     std::vector<Voronoi::Internal::segment_type> segments;
     for (Lines::const_iterator it = lines.begin(); it != lines.end(); ++ it)
         segments.push_back(Voronoi::Internal::segment_type(
             Voronoi::Internal::point_type(double(it->a(0)), double(it->a(1))),
             Voronoi::Internal::point_type(double(it->b(0)), double(it->b(1)))));
 
-
+    // Color exterior edges.
     if (internalEdgesOnly) {
         for (boost::polygon::voronoi_diagram<double>::const_edge_iterator it = vd.edges().begin(); it != vd.edges().end(); ++it)
             if (!it->is_finite())
                 Voronoi::Internal::color_exterior(&(*it));
     }
 
-
+    // Draw the end points of the input polygon.
     for (Lines::const_iterator it = lines.begin(); it != lines.end(); ++it) {
         svg.draw(it->a, inputSegmentPointColor, inputSegmentPointRadius);
         svg.draw(it->b, inputSegmentPointColor, inputSegmentPointRadius);
     }
-
+    // Draw the input polygon.
     for (Lines::const_iterator it = lines.begin(); it != lines.end(); ++it)
         svg.draw(Line(Point(coord_t(it->a(0)), coord_t(it->a(1))), Point(coord_t(it->b(0)), coord_t(it->b(1)))), inputSegmentColor, inputSegmentLineWidth);
 
 #if 1
-
+    // Draw voronoi vertices.
     for (boost::polygon::voronoi_diagram<double>::const_vertex_iterator it = vd.vertices().begin(); it != vd.vertices().end(); ++it)
         if (! internalEdgesOnly || it->color() != Voronoi::Internal::EXTERNAL_COLOR) {
             const std::string *color = nullptr;
@@ -400,11 +400,11 @@ static inline void dump_voronoi_to_svg(
             case Voronoi::VertexCategory::OnContour:    color = &voronoiPointColor;         break;
             case Voronoi::VertexCategory::Outside:      color = &voronoiPointColorOutside;  break;
             case Voronoi::VertexCategory::Inside:       color = &voronoiPointColorInside;   break;
-            default: color = &voronoiPointColor;
+            default: color = &voronoiPointColor; // assert(false);
             }
             Point pt(coord_t(it->x()), coord_t(it->y()));
             if (it->x() * pt.x() >= 0. && it->y() * pt.y() >= 0.)
-
+                // Conversion to coord_t is valid.
                 svg.draw(Point(coord_t(it->x()), coord_t(it->y())), *color, voronoiPointRadius);
         }
 
@@ -420,8 +420,8 @@ static inline void dump_voronoi_to_svg(
             if (! it->is_primary())
                 color = voronoiLineColorSecondary;
         } else {
-
-
+            // Store both points of the segment into samples. sample_curved_edge will split the initial line
+            // until the discretization_step is reached.
             samples.push_back(Voronoi::Internal::point_type(it->vertex0()->x(), it->vertex0()->y()));
             samples.push_back(Voronoi::Internal::point_type(it->vertex1()->x(), it->vertex1()->y()));
             if (it->is_curved()) {
@@ -433,18 +433,18 @@ static inline void dump_voronoi_to_svg(
         for (std::size_t i = 0; i + 1 < samples.size(); ++ i) {
             Vec2d a(samples[i].x(), samples[i].y());
             Vec2d b(samples[i+1].x(), samples[i+1].y());
-
+            // Convert to coord_t.
             Point ia = a.cast<coord_t>();
             Point ib = b.cast<coord_t>();
-
+            // Is the conversion possible? Do the resulting points fit into int32_t?
             auto  in_range = [](const Point &ip, const Vec2d &p) { return p.x() * ip.x() >= 0. && p.y() * ip.y() >= 0.; };
             bool  a_in_range = in_range(ia, a);
             bool  b_in_range = in_range(ib, b);
             if (! a_in_range || ! b_in_range) {
                 if (! a_in_range && ! b_in_range)
-
+                    // None fits, ignore.
                     continue;
-
+                // One fit, the other does not. Try to clip.
                 Vec2d v = b - a;
                 v.normalize();
                 v *= bbox.size().cast<double>().norm();
@@ -465,6 +465,6 @@ static inline void dump_voronoi_to_svg(
     svg.Close();
 }
 
-}
+} // namespace Slic3r
 
-#endif
+#endif // slic3r_VoronoiVisualUtils_hpp_

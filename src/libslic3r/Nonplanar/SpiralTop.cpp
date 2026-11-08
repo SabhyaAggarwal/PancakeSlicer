@@ -34,11 +34,8 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
-
 constexpr double MaxHelixAspect = 1.5;
-
 constexpr double MinHelixSlope = 12.;
-
 
 struct Ring
 {
@@ -57,7 +54,6 @@ struct Ring
     }
 };
 
-
 Vec2d foot(const Vec2d &p, const Vec2d &a, const Vec2d &b, double &t)
 {
     const Vec2d  d  = b - a;
@@ -65,8 +61,6 @@ Vec2d foot(const Vec2d &p, const Vec2d &a, const Vec2d &b, double &t)
     t               = dd > 0. ? std::clamp((p - a).dot(d) / dd, 0., 1.) : 0.;
     return a + t * d;
 }
-
-
 
 Ring open_ring(const Polygon &loop, const Vec2d &near, double step)
 {
@@ -112,9 +106,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0 || area.empty())
         return {};
-
-
-
     {
         double a = 0., mx = 0., my = 0., mxx = 0., myy = 0., mxy = 0.;
         for (const ExPolygon &ex : area)
@@ -136,10 +127,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
         if (mid - rad <= 0. || (mid + rad) / (mid - rad) > sqr(MaxHelixAspect))
             return {};
     }
-
-
-
-
     const double speck = PI * sqr(scale_(spacing));
     auto         ring_of = [speck](const ExPolygons &level, Polygon &ring) {
         int found = 0;
@@ -158,8 +145,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
     Polygon    ring;
     while (!level.empty()) {
         if (!ring_of(level, ring)) {
-
-
             double left = 0.;
             for (const ExPolygon &ex : level)
                 left += ex.area();
@@ -172,10 +157,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
     }
     if (rings.size() < min_rings)
         return {};
-
-
-
-
     for (;;) {
         const Polygon &last = rings.back();
         const Point    c    = last.centroid();
@@ -189,8 +170,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
                                                   [](const ExPolygon &l, const ExPolygon &r) { return l.area() < r.area(); });
         if (piece == inner.end() || piece->contour.points.size() < 3)
             break;
-
-
         if (std::count_if(inner.begin(), inner.end(), [speck](const ExPolygon &ex) { return ex.area() > speck; }) > 1)
             break;
         rings.emplace_back(piece->contour);
@@ -198,7 +177,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
     for (Polygon &ring : rings)
         if (ring.is_counter_clockwise() == clockwise)
             ring.reverse();
-
 
     const double sample = std::max(0.05, 0.5 * spacing);
     Polyline     out;
@@ -208,8 +186,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
             out.points.emplace_back(q);
     };
     Ring a = open_ring(rings.front(), unscale(start), sample);
-
-
     for (const Vec2d &p : a.pts)
         emit(p);
     const double ring_end = unscale<double>(out.length());
@@ -218,7 +194,6 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
             *ramp = { ring_end, unscale<double>(out.length()) };
         const double la = a.length();
         if (i + 1 == rings.size()) {
-
             const Vec2d c = unscale(rings[i].centroid());
             for (size_t k = 0; k < a.pts.size(); ++k)
                 emit(a.pts[k] + (c - a.pts[k]) * (la > 0. ? a.s[k] / la : 1.));
@@ -227,12 +202,8 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
                 *ramp = { ring_end, unscale<double>(out.length()) };
             break;
         }
-
         Ring         b  = open_ring(rings[i + 1], a.pts.front(), sample);
         const double lb = b.length();
-
-
-
         double u  = 0.;
         size_t bi = 0;
         for (size_t k = 0; k < a.pts.size(); ++k) {
@@ -276,8 +247,6 @@ bool helix_worthwhile(const HeightField &surface, const ExPolygons &area)
             }
     if (slopes.empty())
         return false;
-
-
     std::nth_element(slopes.begin(), slopes.begin() + slopes.size() / 2, slopes.end());
     return slopes[slopes.size() / 2] >= Geometry::deg2rad(MinHelixSlope);
 }
@@ -292,15 +261,12 @@ void ramp_helix_flow(ExtrusionPathConformal &path, const HelixRamp &ramp, bool r
         const size_t i = reversed ? pts.size() - 1 - n : n;
         if (n > 0)
             s += unscale(Point(pts[i].to_point() - pts[reversed ? i + 1 : i - 1].to_point())).norm();
-
         if (s > ramp.begin && s < ramp.end)
             path.bead_height[i] *= float(std::max(0.02, (s - ramp.begin) / (ramp.end - ramp.begin)));
     }
 }
 
 namespace {
-
-
 
 std::optional<ExtrusionLoop> vase_loop(const Layer &layer, int &region_id)
 {
@@ -316,7 +282,6 @@ std::optional<ExtrusionLoop> vase_loop(const Layer &layer, int &region_id)
     }
     return found;
 }
-
 
 std::vector<Vec2d> resampled_from(const Polygon &loop, size_t start, double step)
 {
@@ -342,7 +307,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
     }
     if (!object.print()->config().spiral_mode.value || layers.size() < 2)
         return;
-
     bool wanted = false;
     for (size_t r = 0; r < object.num_printing_regions(); ++r) {
         const PrintRegionConfig &cfg = object.printing_region(r).config();
@@ -354,7 +318,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
         return;
     const double h     = object.config().layer_height.value;
     const double pitch = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-
     auto skip = [&object](const char *why) {
         BOOST_LOG_TRIVIAL(warning) << "Non-planar: no vase lid on " << object.model_object()->name << ": " << why;
     };
@@ -369,12 +332,8 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
         S = sample_top_surface(imesh, mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid,
                                [&object]() { throw_if_canceled(object); }, material_below(object));
         smooth_scan_noise(S, [&object]() { throw_if_canceled(object); });
-
-
         pad_lowest(S, 2);
     }
-
-
 
     size_t                       host      = layers.size();
     std::optional<ExtrusionLoop> wall;
@@ -411,7 +370,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
     const ExtrusionPath &bead    = wall->paths.front();
     const double         width   = bead.width;
     const double         spacing = width - h * (1. - 0.25 * PI);
-
     size_t start = 0;
     for (size_t k = 1; k < loop.points.size(); ++k)
         if (loop.points[k].y() > loop.points[start].y())
@@ -421,8 +379,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
     inside.make_counter_clockwise();
     const ExPolygon  lid(inside);
     const ExPolygons area = offset_ex(lid, 0.5f * float(scale_(spacing)));
-
-
 
     double            apex = -std::numeric_limits<double>::max();
     const BoundingBox bb   = get_extents(lid);
@@ -439,8 +395,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
 
     const ExtrusionPath proto(erExternalPerimeter, bead.mm3_per_mm, float(width), float(h));
     auto rel = [host_z](const Vec2d &p, double z) { return Point3(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z - host_z))); };
-
-
 
     const std::vector<Vec2d> ring = resampled_from(loop, start, pitch);
     std::vector<double>      ring_s{ 0. };
@@ -462,8 +416,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
             wall_beads.emplace_back(t < 0.05 * h ? 0.f : float(t));
         }
     const double z_start = turns > 0 ? unscale<double>(wall_pts.back().z()) + host_z : host_z;
-
-
 
     HelixRamp ramp;
     Polyline  helix = fill_helix(area, spacing, C, clockwise, &ramp);
@@ -516,7 +468,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
     shell.no_sort = true;
     patch.shell_paths.emplace_back(std::move(shell));
 
-
     result.planar_exclusion.assign(layers.size(), ExPolygons());
     for (LayerRegion *layerm : layers[host]->regions()) {
         layerm->fills.clear();
@@ -542,7 +493,6 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
 
 bool lid_start(const PrintObject &object, Point &start)
 {
-
     const std::vector<ConformalPatch> &patches = object.conformal().patches;
     if (patches.size() != 1 || patches.front().shell_paths.empty() || patches.front().shell_paths.front().entities.empty())
         return false;

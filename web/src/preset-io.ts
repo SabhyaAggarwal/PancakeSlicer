@@ -1,8 +1,3 @@
-
-
-
-
-
 import { strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import type { Config, ConfigValue, PresetType, SystemPreset, UserPreset } from './api/types';
 import { normalizeConfigValue, unescapeConfigString } from './config-values';
@@ -12,14 +7,11 @@ import { findProfile, profileKey } from './profiles/identity';
 import { validWorksWith } from './profiles/works-with';
 import { baseVersion, normalizeUserPreset, saveProfile, storedProfile } from './profiles/model';
 
-
 export const PRESET_VERSION = '02.08.01.55';
 const SETTINGS_ID: Record<PresetType, string> = { machine: 'printer_settings_id', process: 'print_settings_id', filament: 'filament_settings_id' };
 const DIR: Record<PresetType, string> = { machine: 'printer', process: 'process', filament: 'filament' };
 
-
 const MAX_FILE = 64 << 20, MAX_ENTRY = 2 << 20, MAX_ENTRIES = 2000, MAX_TOTAL = 64 << 20;
-
 
 function orcaValue(key: string, value: ConfigValue): string | string[] {
   const v = normalizeConfigValue(key, value);
@@ -27,7 +19,6 @@ function orcaValue(key: string, value: ConfigValue): string | string[] {
   if (typeof v === 'boolean') return v ? '1' : '0';
   return String(v);
 }
-
 
 export function toOrcaJson(p: UserPreset, s: State = getState()): Record<string, string | string[]> {
   const withProfile = { ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || profileKey(u) !== profileKey(p)), p] };
@@ -41,9 +32,7 @@ export function toOrcaJson(p: UserPreset, s: State = getState()): Record<string,
   if (out.compatible_printers === undefined && base?.compatible_printers) out.compatible_printers = base.compatible_printers;
   Object.assign(out, { from: 'User', inherits: p.parent ?? (p.metadata?.inherits === '' ? '' : p.base?.name ?? p.inherits), name: p.name,
     version: String(p.metadata?.version ?? PRESET_VERSION) });
-
   out[SETTINGS_ID[p.type]] = p.type === 'filament' ? [p.name] : p.name;
-
   out.orca_web_profile = JSON.stringify({schema:1,profile:{...storedProfile(p),snapshot:p.base ? {base:p.base,config} : p.snapshot}});
   return out;
 }
@@ -56,20 +45,16 @@ export interface ParsedPreset {
   type?: PresetType;
   inherits: string;
   overrides: Config;
-
   dropped: string[];
   error?: string;
   from?: string;
-
   printers: string[];
   metadata?: Config;
   appProfile?: UserPreset;
-
   physical?: { printers: string[]; config: Config };
 }
 
 function typeOf(raw: Record<string, unknown>): PresetType | undefined {
-
   if ('printer_settings_id' in raw) return 'machine';
   if ('print_settings_id' in raw) return 'process';
   if ('filament_settings_id' in raw) return 'filament';
@@ -126,7 +111,6 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
   return parsed;
 }
 
-
 export async function readPresetFile(file: File): Promise<ParsedPreset[]> {
   if (file.size > MAX_FILE) return [{ ...emptyParsed(file.name), error: `larger than ${MAX_FILE >> 20} MB` }];
   if (/\.json$/i.test(file.name)) return [parsePresetJson(await file.text(), file.name)];
@@ -135,7 +119,6 @@ export async function readPresetFile(file: File): Promise<ParsedPreset[]> {
   let count = 0, total = 0, tooLarge = '';
   try {
     entries = unzipSync(new Uint8Array(await file.arrayBuffer()), {
-
       filter: (f) => {
         if (!/\.json$/i.test(f.name) || /(^|\/)bundle_structure\.json$/i.test(f.name) || /(^|\/)__MACOSX\//.test(f.name)) return false;
         if (++count > MAX_ENTRIES || f.originalSize > MAX_ENTRY || (total += f.originalSize) > MAX_TOTAL) { tooLarge ||= f.name; return false; }
@@ -156,12 +139,10 @@ const emptyParsed = (file: string): ParsedPreset => ({ file, name: file.replace(
 export interface ImportPlan {
   parsed: ParsedPreset;
   preset?: UserPreset;
-
   base?: SystemPreset;
   status: 'new' | 'replace' | 'skip';
   note?: string;
 }
-
 
 export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
   const working = { ...s, userPresets: [...s.userPresets] };
@@ -180,7 +161,6 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
     const type = p.type;
     if (p.appProfile) {
       const profile = p.appProfile;
-
       const same = working.userPresets.find(u => u.type === type && profileKey(u) === profileKey(profile));
       const plan: ImportPlan = {parsed:p,preset:profile,status:same ? 'replace' : 'new'};
       working.userPresets = [...working.userPresets.filter(u => u.type !== type || profileKey(u) !== profileKey(profile)),profile];
@@ -251,15 +231,12 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
   return parsed.map(build);
 }
 
-
 export async function applyImportPlans(plans: ImportPlan[]): Promise<{ profiles: number; bases: number; connections: number; problems: string[] }> {
   const accepted = plans.filter(p => p.status !== 'skip'), bases = accepted.flatMap(p => p.base ? [p.base] : []), profiles = accepted.flatMap(p => p.preset ? [p.preset] : []);
-
   if(profiles.length || bases.length){const {commitProfileRecords}=await import('./profiles/transactions');await commitProfileRecords(profiles,{bases,operationId:`import:${crypto.randomUUID()}`});}
   const migrated = await migrateHosts(accepted);
   return {profiles:profiles.length,bases:bases.length,...migrated};
 }
-
 
 async function migrateHosts(plans: ImportPlan[]): Promise<{ connections: number; problems: string[] }> {
   const hosts: { printer: string; config: Config }[] = [];
@@ -268,7 +245,7 @@ async function migrateHosts(plans: ImportPlan[]): Promise<{ connections: number;
     for (const printer of plan.parsed.physical?.printers ?? []) hosts.push({ printer, config: plan.parsed.physical!.config });
   }
   if (!hosts.length) return { connections: 0, problems: [] };
-  if (!getState().printerConnections.enabled) return { connections: 0, problems: ['Printer connections are off on this service; the print host settings were not migrated.'] };
+  if (getState().printerConnections.enabled === false) return { connections: 0, problems: ['Printer connections are off on this service; the print host settings were not migrated.'] };
   const { migrateLegacyHost } = await import('./printers/connections');
   let connections = 0;
   const problems: string[] = [];
@@ -294,11 +271,9 @@ const fileName = (name: string) => name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_
 
 export const exportPresetJson = (p: UserPreset, s: State = getState()) => download(`${fileName(p.name)}.json`, presetJsonText(p, s), 'application/json');
 
-
 export type ExportKind = 'printer_bundle' | 'filament_bundle' | 'machine' | 'filament' | 'process';
 
 const stamp = () => new Date().toISOString().replace(/\D/g, '').slice(0, 14);
-
 
 export function printerBundle(s: State, printer: UserPreset): { name: string; data: Uint8Array } {
   const files: Zippable = {};
@@ -313,7 +288,6 @@ export function printerBundle(s: State, printer: UserPreset): { name: string; da
   files['bundle_structure.json'] = strToU8(JSON.stringify(structure));
   return { name: `${fileName(printer.name)}.orca_printer`, data: zipSync(files) };
 }
-
 
 export function filamentBundle(s: State, filament: string, presets: UserPreset[]): { name: string; data: Uint8Array } {
   const files: Zippable = {};
@@ -331,13 +305,11 @@ export function filamentBundle(s: State, filament: string, presets: UserPreset[]
   return { name: `${fileName(filament)}.orca_filament`, data: zipSync(files) };
 }
 
-
 export function presetZip(presets: UserPreset[], type: PresetType, s: State = getState()): { name: string; data: Uint8Array } {
   const files: Zippable = {};
   for (const p of presets) files[`${fileName(p.name)}.json`] = strToU8(presetJsonText(p, s));
   return { name: `${type === 'machine' ? 'Printer' : type === 'filament' ? 'Filament' : 'Process'} presets.zip`, data: zipSync(files) };
 }
-
 
 export function configBundle(s: State, presets: UserPreset[]): { name: string; data: Uint8Array } {
   const files: Zippable = {};
@@ -346,6 +318,5 @@ export function configBundle(s: State, presets: UserPreset[]): { name: string; d
 }
 
 export const downloadArchive = ({ name, data }: { name: string; data: Uint8Array }) => download(name, data, 'application/zip');
-
 
 export const filamentAlias = (name: string) => name.replace(/\s*@.*$/, '');

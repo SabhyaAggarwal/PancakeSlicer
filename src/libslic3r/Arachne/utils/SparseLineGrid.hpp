@@ -18,36 +18,17 @@
 
 namespace Slic3r::Arachne {
 
-
-
-
-
-
-
-
 template<class ElemT, class Locator> class SparseLineGrid : public SparseGrid<ElemT>
 {
 public:
     using Elem = ElemT;
 
-
-
-
-
-
-
-
     SparseLineGrid(coord_t cell_size, size_t elem_reserve = 0U, float max_load_factor = 1.0f);
-
-
-
-
 
     void insert(const Elem &elem);
 
 protected:
     using GridPoint = typename SparseGrid<ElemT>::GridPoint;
-
 
     Locator m_locator;
 };
@@ -60,8 +41,6 @@ template<class ElemT, class Locator> void SparseLineGrid<ElemT, Locator>::insert
 {
     const std::pair<Point, Point> line = m_locator(elem);
     using GridMap                      = std::unordered_multimap<GridPoint, Elem, PointHash>;
-
-
     std::function<bool(GridMap *, const GridPoint)> process_cell_func_ = [&elem](GridMap *m_grid, const GridPoint grid_loc) {
         m_grid->emplace(grid_loc, elem);
         return true;

@@ -79,7 +79,6 @@ var thumbnails = struct {
 }{m: map[string]thumbnailEntry{}}
 
 func serveThumbnail(w http.ResponseWriter, r *http.Request, version string, e thumbnailEntry) {
-
 	if r.URL.Query().Get("v") == version {
 		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 	} else {
@@ -91,7 +90,6 @@ func serveThumbnail(w http.ResponseWriter, r *http.Request, version string, e th
 }
 
 func (st *workspaceStore) thumbnailRoutes(mux *http.ServeMux) {
-
 	mux.HandleFunc("GET /api/project-thumbnails/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if v := r.URL.Query().Get("v"); v != "" {
 			thumbnails.Lock()

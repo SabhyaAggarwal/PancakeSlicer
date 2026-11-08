@@ -1,0 +1,258 @@
+#include "2DBed.hpp"
+#include "GUI_App.hpp"
+
+#include "3DBed.hpp"
+#include "PartPlate.hpp"
+#include "I18N.hpp"
+
+#include <vector>
+#include "libslic3r/Polyline.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/libslic3r.h"
+#include <wx/colour.h>
+#include <wx/brush.h>
+#include <algorithm>
+#include "libslic3r/Color.hpp"
+#include <string>
+#include <cstddef>
+#include "slic3r/GUI/Widgets/StateColor.hpp"
+#include <wx/dcbuffer.h>
+#include <wx/event.h>
+#include <wx/panel.h>
+#include <wx/wx.h>
+#include <wx/gdicmn.h>
+#include <wx/peninfobase.h>
+#include <wx/font.h>
+
+#include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Geometry.hpp"
+#include "libslic3r/ClipperUtils.hpp"
+
+class wxWindow;
+
+namespace Slic3r {
+namespace GUI {
+
+
+Bed_2D::Bed_2D(wxWindow* parent) : 
+wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(32 * wxGetApp().em_unit(), -1), wxTAB_TRAVERSAL)
+{
+#ifdef __APPLE__
+    m_user_drawn_background = false;
+#else
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+#endif
+}
+
+int Bed_2D::calculate_grid_step(const BoundingBox& bb, const double& scale)
+{
+    int min_edge = (bb.size() * (1 / scale)).minCoeff();
+    return   min_edge >= 6000 ? 100
+           : min_edge >= 1200 ? 50
+           : min_edge >= 600  ? 20
+           : 10;
+}
+
+std::vector<Polylines> Bed_2D::generate_grid(const ExPolygon& poly, const BoundingBox& bb, const Vec2d& origin, const double& step, const double& scale)
+{
+    Polylines lines_thin, lines_bold;
+    int   count = 0;
+
+    for (coord_t x = origin.x(); x >= bb.min(0); x -= step) {
+        (count % 5 ? lines_thin : lines_bold).push_back(Polyline(
+            Point(x, bb.min(1)),
+            Point(x, bb.max(1))
+        ));
+        count ++;
+    }
+    count = 0;
+    for (coord_t x = origin.x(); x <= bb.max(0); x += step) {
+        (count % 5 ? lines_thin : lines_bold).push_back(Polyline(
+            Point(x, bb.min(1)),
+            Point(x, bb.max(1))
+        ));
+        count ++;
+    }
+    count = 0;
+    for (coord_t y = origin.y(); y >= bb.min(1); y -= step) {
+        (count % 5 ? lines_thin : lines_bold).push_back(Polyline(
+            Point(bb.min(0), y),
+            Point(bb.max(0), y)
+        ));
+        count ++;
+    }
+    count = 0;
+    for (coord_t y = origin.y(); y <= bb.max(1); y += step) {
+        (count % 5 ? lines_thin : lines_bold).push_back(Polyline(
+            Point(bb.min(0), y),
+            Point(bb.max(0), y)
+        ));
+        count ++;
+    }
+
+    std::vector<Polylines> grid;
+    auto scaled_poly = offset(poly, scale);
+    grid.push_back(intersection_pl(lines_thin, scaled_poly));
+    grid.push_back(intersection_pl(lines_bold, scaled_poly));
+    return grid;
+}
+
+void Bed_2D::repaint(const std::vector<Vec2d>& shape)
+{
+	wxAutoBufferedPaintDC dc(this);
+	auto cw = GetSize().GetWidth();
+	auto ch = GetSize().GetHeight();
+	if (cw == 0) return ; 
+    bool is_dark = wxGetApp().dark_mode();
+
+	if (m_user_drawn_background) {
+		wxColour color;
+		if (is_dark) {
+			color = wxColour(45, 45, 49);
+		}
+		else {
+			color = *wxWHITE;
+		}
+		dc.SetPen(*new wxPen(color, 1, wxPENSTYLE_SOLID));
+		dc.SetBrush(*new wxBrush(color, wxBRUSHSTYLE_SOLID));
+		auto rect = GetUpdateRegion().GetBox();
+		dc.DrawRectangle(rect.GetLeft(), rect.GetTop(), rect.GetWidth(), rect.GetHeight());
+	}
+
+    if (shape.empty())
+        return;
+
+    cw -= (2 * Border);
+    ch -= (2 * Border);
+
+	auto cbb = BoundingBoxf(Vec2d(0, 0),Vec2d(cw, ch));
+	auto ccenter = cbb.center();
+
+    auto bb = BoundingBoxf(shape);
+    bb.merge(Vec2d(0, 0));
+	auto bw = bb.size()(0);
+	auto bh = bb.size()(1);
+	auto bcenter = bb.center();
+
+	auto sfactor = std::min(cw/bw, ch/bh);
+	auto shift = Vec2d(
+		ccenter(0) - bcenter(0) * sfactor,
+		ccenter(1) - bcenter(1) * sfactor
+		);
+
+	m_scale_factor = sfactor;
+    m_shift = Vec2d(shift(0) + cbb.min(0), shift(1) - (cbb.max(1) - ch));
+
+    ColorRGBA   bed_rgba   = is_dark ? Bed3D::DEFAULT_MODEL_COLOR_DARK    : Bed3D::DEFAULT_MODEL_COLOR;
+    std::string bed_color  = encode_color(ColorRGBA(bed_rgba[0] * 0.8f, bed_rgba[1] * 0.8f,bed_rgba[2] * 0.8f, bed_rgba[3]));
+    ColorRGBA   grid_color = is_dark ? PartPlate::LINE_TOP_SEL_DARK_COLOR : PartPlate::LINE_TOP_SEL_COLOR;
+    std::string lines_bold_color = encode_color(grid_color);
+    std::string lines_thin_color = encode_color(grid_color * 0.85);
+    wxColour    text_color = wxColour(lines_bold_color);
+
+	dc.SetBrush(wxBrush(wxColour(bed_color), wxBRUSHSTYLE_SOLID));
+	wxPointList pt_list;
+    for (auto pt : shape)
+    {
+        Point pt_pix = to_pixels(pt, ch);
+        pt_list.push_back(new wxPoint(pt_pix(0), pt_pix(1)));
+	}
+	dc.DrawPolygon(&pt_list, 0, 0);
+
+    ExPolygon bed_poly;
+    for (const Vec2d& p : shape)
+        bed_poly.contour.append({p(0), p(1)});
+    auto bed_bb     = bed_poly.contour.bounding_box();
+    int  step       = calculate_grid_step(bed_bb, 1.00);
+    auto grid_lines = generate_grid(bed_poly, bed_bb, m_pos, step, 1.00);
+
+    dc.SetPen(wxPen(wxColour(lines_thin_color), 1, wxPENSTYLE_SOLID));
+	for (auto pl : grid_lines[0]) {
+		for (size_t i = 0; i < pl.points.size() - 1; i++) {
+            Point pt1 = to_pixels(pl.points[i  ], ch);
+            Point pt2 = to_pixels(pl.points[i+1], ch);
+            dc.DrawLine(pt1(0), pt1(1), pt2(0), pt2(1));
+		}
+	}
+    dc.SetPen(wxPen(wxColour(lines_bold_color), 1, wxPENSTYLE_SOLID));
+	for (auto pl : grid_lines[1]) {
+		for (size_t i = 0; i < pl.points.size() - 1; i++) {
+            Point pt1 = to_pixels(pl.points[i  ], ch);
+            Point pt2 = to_pixels(pl.points[i+1], ch);
+            dc.DrawLine(pt1(0), pt1(1), pt2(0), pt2(1));
+		}
+	}
+
+    dc.SetPen(  wxPen(  wxColour(lines_bold_color), 1, wxPENSTYLE_SOLID));
+	dc.SetBrush(wxBrush(wxColour(lines_bold_color), wxBRUSHSTYLE_TRANSPARENT));
+	dc.DrawPolygon(&pt_list, 0, 0);
+
+    auto origin_px = to_pixels(Vec2d(0, 0), ch);
+
+	auto axes_len = 5 * wxGetApp().em_unit();
+	auto arrow_len = 6;
+	auto arrow_angle = Geometry::deg2rad(45.0);
+    dc.SetPen(wxPen(wxColour(encode_color(ColorRGB::X())), 2, wxPENSTYLE_SOLID));
+	auto x_end = Vec2d(origin_px(0) + axes_len, origin_px(1));
+	dc.DrawLine(wxPoint(origin_px(0), origin_px(1)), wxPoint(x_end(0), x_end(1)));
+
+    dc.SetPen(wxPen(wxColour(encode_color(ColorRGB::Y())), 2, wxPENSTYLE_SOLID));
+	auto y_end = Vec2d(origin_px(0), origin_px(1) - axes_len);
+	dc.DrawLine(wxPoint(origin_px(0), origin_px(1)), wxPoint(y_end(0), y_end(1)));
+    dc.SetPen(wxPen(wxColour(encode_color(ColorRGB::Z())), 1, wxPENSTYLE_SOLID));
+    dc.SetBrush(wxBrush(wxColour(encode_color(ColorRGB::Z())), wxBRUSHSTYLE_SOLID));
+	dc.DrawCircle(origin_px(0), origin_px(1), 3);
+
+	static const auto origin_label = wxString("(0,0)");
+	dc.SetTextForeground(wxColour("#FFFFFF"));
+    dc.SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+	auto extent = dc.GetTextExtent(origin_label);
+	const auto origin_label_x = origin_px(0) + 2;
+	const auto origin_label_y = origin_px(1) - extent.GetHeight() - 2;
+    dc.SetPen(  wxPen(  wxColour(wxColour(bed_color)), 1, wxPENSTYLE_SOLID));
+    dc.SetBrush(wxBrush(wxColour(wxColour(bed_color)), wxBRUSHSTYLE_SOLID));
+    dc.DrawRectangle(wxPoint(origin_label_x, origin_label_y), extent);
+	dc.DrawText(origin_label, origin_label_x, origin_label_y);
+
+    auto grid_label = wxString::Format(_L("1x1 Grid: %d mm"), step);
+    Point draw_bb = to_pixels(Vec2d(
+        std::min(m_pos(0),bb.min(0)),
+        std::min(m_pos(1),bb.min(1))
+    ),ch);
+    dc.SetTextForeground(wxColour(StateColor::darkModeColorFor("#262E30")));
+    dc.SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    dc.DrawText(grid_label, draw_bb(0), draw_bb(1) + 5);
+
+	if (m_pos!= Vec2d(0, 0)) {
+        auto pos_px = to_pixels(m_pos, ch);
+        dc.SetPen(wxPen(wxColour(200, 0, 0), 2, wxPENSTYLE_SOLID));
+        dc.SetBrush(wxBrush(wxColour(200, 0, 0), wxBRUSHSTYLE_TRANSPARENT));
+		dc.DrawCircle(pos_px(0), pos_px(1), 5);
+
+		dc.DrawLine(pos_px(0) - 15, pos_px(1), pos_px(0) + 15, pos_px(1));
+		dc.DrawLine(pos_px(0), pos_px(1) - 15, pos_px(0), pos_px(1) + 15);
+	}
+}
+
+
+Point Bed_2D::to_pixels(const Vec2d& point, int height)
+{
+    Vec2d p = point * m_scale_factor + m_shift;
+    return Point(p(0) + Border, height - p(1) + Border);
+}
+
+Point Bed_2D::to_pixels(const Point& point, int height)
+{
+    Point p = point * m_scale_factor + Point(m_shift);
+    return Point(p(0) + Border, height - p(1) + Border);
+}
+
+void Bed_2D::set_pos(const Vec2d& pos)
+{
+	m_pos = pos;
+	Refresh();
+}
+
+}
+}

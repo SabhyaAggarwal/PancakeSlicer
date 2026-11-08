@@ -8,7 +8,6 @@
 
 namespace Slic3r {
 
-
 enum class EMovePathType : unsigned char
 {
     Noop_move,
@@ -18,13 +17,10 @@ enum class EMovePathType : unsigned char
     Count
 };
 
-
 struct PathFittingData{
     size_t start_point_index;
     size_t end_point_index;
     EMovePathType path_type;
-
-
     ArcSegment arc_data;
 
     bool is_linear_move() {
@@ -43,10 +39,7 @@ struct PathFittingData{
 
 class ArcFitter {
 public:
-
     static void do_arc_fitting(const Points& points, std::vector<PathFittingData> &result, double tolerance);
-
-
     static void do_arc_fitting_and_simplify(Points& points, std::vector<PathFittingData>& result, double tolerance);
 };
 

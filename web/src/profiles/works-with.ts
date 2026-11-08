@@ -1,16 +1,11 @@
-
-
 import type { PresetType } from '../api/types';
 
 export interface WorksWithRule {
   schema: 2;
   printers?: { models: string[] } | { printerIds: string[] };
   nozzle?: { sizes: number[] } | { min: number; max: number };
-
   filaments?: { types: string[] } | { profileIds: string[] };
-
   prints?: { profileIds: string[] };
-
   exclude?: string[];
 }
 export interface PrinterFacts { id?: string; name?: string; printerModel: string; nozzle: number }
@@ -18,7 +13,6 @@ export interface FilamentFacts { id?: string; type: string }
 
 const strings = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string' && x !== '');
 const sizes = (v: unknown): v is number[] => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'number' && x > 0);
-
 export function validWorksWith(value: unknown, type: PresetType): value is WorksWithRule {
   if (!value || typeof value !== 'object') return false;
   const r = value as Record<string, unknown>, one = (c: unknown, ...shapes: ((o: Record<string, unknown>) => boolean)[]) =>
@@ -32,7 +26,6 @@ export function validWorksWith(value: unknown, type: PresetType): value is Works
     && (type === 'filament' ? r.filaments === undefined : one(r.filaments, (o) => keys(o, 'types') && strings(o.types), (o) => keys(o, 'profileIds') && strings(o.profileIds)))
     && (type === 'filament' ? one(r.prints, (o) => keys(o, 'profileIds') && strings(o.profileIds)) : r.prints === undefined)
     && (r.exclude === undefined || strings(r.exclude))
-
     && (type !== 'machine' || r.printers === undefined && r.nozzle === undefined && r.exclude === undefined);
 }
 
@@ -53,17 +46,12 @@ export function matchesFilament(rule: WorksWithRule, f: FilamentFacts): boolean 
 }
 export const matchesPrint = (rule: WorksWithRule, printId: string | undefined) => !rule.prints || !!printId && rule.prints.profileIds.includes(printId);
 
-
 export function fromApplicability1(value: { mode: 'inherit' } | { mode: 'only'; printerIds: string[] }): WorksWithRule | undefined {
   return value.mode === 'only' ? { schema: 2, printers: { printerIds: value.printerIds } } : undefined;
 }
 
 const quote = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 const mm = (n: number) => String(Math.round(n * 10000) / 10000);
-
-
-
-
 export function orcaCompatibility(rule: WorksWithRule, printers: PrinterFacts[], printNames: Record<string, string> = {}) {
   const out: { compatible_printers: string[]; compatible_printers_condition: string; compatible_prints?: string[] } =
     { compatible_printers: [], compatible_printers_condition: '' };

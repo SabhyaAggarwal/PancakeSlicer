@@ -25,10 +25,7 @@ namespace Slic3r { namespace opt {
 
 namespace detail {
 
-
 template<nlopt_algorithm alg> struct NLoptAlg {};
-
-
 
 template<nlopt_algorithm gl_alg, nlopt_algorithm lc_alg = NLOPT_LN_NELDERMEAD>
 struct NLoptAlgComb {};
@@ -69,7 +66,6 @@ struct NLopt {
 };
 
 template<class Method> class NLoptOpt {};
-
 
 template<nlopt_algorithm alg> class NLoptOpt<NLoptAlg<alg>> {
 protected:
@@ -197,8 +193,6 @@ public:
 };
 
 }
-
-
 template<class M> class Optimizer<M, detail::NLoptOnly<M>> {
     detail::NLoptOpt<M> m_opt;
 
@@ -226,7 +220,6 @@ public:
 
     void seed(long s) { m_opt.seed(s); }
 };
-
 
 using AlgNLoptGenetic = detail::NLoptAlgComb<NLOPT_GN_ESCH>;
 using AlgNLoptSubplex = detail::NLoptAlg<NLOPT_LN_SBPLX>;

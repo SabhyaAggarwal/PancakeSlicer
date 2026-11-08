@@ -68,22 +68,15 @@ export interface RuntimeOptions {
   options: Record<string, OptionDef>;
   etag: string | null;
   native: boolean;
-
   tooltips: string | null;
 }
-
-
-
-
 
 export async function loadRuntimeOptions(url: string, engine: EngineCapabilities | null, cached?: RuntimeOptions): Promise<RuntimeOptions> {
   const native = engine?.options === true;
   nativePresets = engine?.presets === true;
-
   let etag: string | null = null, tooltips: string | null = null;
   let selected: Record<string, Metadata> | null;
   if (native) {
-
     const response = await fetch('/api/options', {
       cache: 'no-cache',
       headers: cached?.native && cached.etag ? { 'If-None-Match': cached.etag } : {},

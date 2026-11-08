@@ -1,7 +1,6 @@
 import { loadCatalog } from '../actions';
 import { useStore } from '../state/store';
 
-
 export function ProfileLibraryNotice() {
   const load = useStore(s => s.profileLibraryLoad);
   if (load.state !== 'failed') return null;

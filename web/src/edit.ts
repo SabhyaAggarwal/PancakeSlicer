@@ -1,5 +1,3 @@
-
-
 import type * as THREE from 'three';
 import { T3 } from './three-runtime';
 import { bedArea } from './actions';
@@ -7,7 +5,6 @@ import { bedBounds, instanceBox, nearestFreeSpot } from './plater/geometry';
 import { undoable } from './state/history';
 import { canEditProject } from './api/client';
 import { getState, isSelected, markStale, newId, removeSelected, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
-
 
 export function selectionTargets(s: State = getState()): { o: PlateObject; inst: Instance }[] {
   const sel = s.selected;
@@ -22,7 +19,6 @@ function selectionBox(s: State = getState()): THREE.Box3 {
   return box;
 }
 
-
 function shiftSelection(name: string, dx: number, dy: number, dz: number) {
   const ids = new Set(selectionTargets().map((t) => t.inst.id));
   if (!ids.size) return;
@@ -33,12 +29,10 @@ function shiftSelection(name: string, dx: number, dy: number, dz: number) {
   })));
 }
 
-
 export function selectAll() {
   const first = getState().objects[0];
   if (first) setState({ selected: { object: first.id, instance: first.instances[0].id, all: true } });
 }
-
 
 export function centreSelection() {
   const box = selectionBox();
@@ -47,21 +41,14 @@ export function centreSelection() {
   shiftSelection('Center', center.x - (box.min.x + box.max.x) / 2, center.y - (box.min.y + box.max.y) / 2, 0);
 }
 
-
 export function canDrop(s: State = getState()): boolean {
   const box = selectionBox(s);
   return !box.isEmpty() && Math.abs(box.min.z) > 1e-3;
 }
 
-
 export function dropSelection() {
   if (canDrop()) shiftSelection('Drop to bed', 0, 0, -selectionBox().min.z);
 }
-
-
-
-
-
 
 export async function mirrorSelection(axis: 0 | 1 | 2) {
   const { mirror } = await import('./plater/transforms');
@@ -82,10 +69,7 @@ export async function mirrorSelection(axis: 0 | 1 | 2) {
   })));
 }
 
-
-
 export const canPaste = (s: State = getState()) => s.clipboard.length > 0 && (!s.project || canEditProject());
-
 
 export function copySelection() {
   const targets = selectionTargets();
@@ -96,22 +80,16 @@ export function copySelection() {
   setState({ clipboard: [...byObject].map(([o, instances]) => ({ ...o, settings: { ...o.settings }, scale: [...o.scale], instances: instances.map((i) => ({ ...i })) })) });
 }
 
-
 export function cutSelection() {
   const before = getState().clipboard;
   copySelection();
-
   if (getState().clipboard !== before) removeSelected();
 }
-
-
-
-
 
 export function pasteClipboard() {
   const s = getState();
   if (!canPaste(s)) {
-    if (s.clipboard.length) toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
+    if (s.clipboard.length) toast('Can\'t paste into an opened 3MF project: delete all to start a new plate.');
     return;
   }
   const box = new T3.Box3();
@@ -119,7 +97,6 @@ export function pasteClipboard() {
   const size = box.getSize(new T3.Vector3());
   const from = new T3.Vector2((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2);
   const spot = nearestFreeSpot(s.objects, new T3.Vector2(size.x, size.y), from, bedArea());
-
   const dx = spot ? spot.x - from.x : size.x + 6, dy = spot ? spot.y - from.y : 0;
   const pasted = s.clipboard.map((o) => ({
     ...o, id: newId(), settings: { ...o.settings },
@@ -133,13 +110,10 @@ export function pasteClipboard() {
   })));
 }
 
-
-
-
 export function startRename(id = getState().selected?.object) {
   const o = getState().objects.find((ob) => ob.id === id);
   if (!o) return;
-  if (o.project) return toast('Objects of an opened 3MF project are named in the project');
+  if (o.project) return toast('Part names are locked by the opened 3MF project');
   setState({ renaming: o.id, contextMenu: null });
 }
 
@@ -149,10 +123,6 @@ export function renameObject(id: number, name: string) {
   setState({ renaming: null });
   if (trimmed && trimmed !== getState().objects.find((o) => o.id === id)?.name) updateObject(id, { name: trimmed }, 'Rename');
 }
-
-
-
-
 
 export function setFilament(id: number, extruder: number) {
   const s = getState();

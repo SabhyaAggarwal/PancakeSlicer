@@ -14,8 +14,6 @@
 #include <libslic3r/SLAPrintSteps.hpp>
 #include <libslic3r/TriangleMeshSlicer.hpp>
 
-
-
 #include <libslic3r/SLA/Concurrency.hpp>
 #include <libslic3r/SLA/Pad.hpp>
 #include <libslic3r/SLA/SupportPointGenerator.hpp>
@@ -49,8 +47,6 @@
 #include "SLA/IndexedMesh.hpp"
 
 namespace Slic3r::sla { struct Interior; }
-
-
 
 #define L(s) Slic3r::I18N::translate(s)
 
@@ -174,13 +170,9 @@ void SLAPrint::Steps::hollow_model(SLAPrintObject &po)
 
 struct FaceHash {
 
-
     static constexpr size_t MAX_NUM_CHARS = 16;
 
-
-
     std::unordered_set<std::string> facehash;
-
 
     static std::array<char, MAX_NUM_CHARS + 1> to_chars(int64_t val)
     {
@@ -214,19 +206,14 @@ struct FaceHash {
 
     static std::string facekey(const Vec3i32 &face, const std::vector<Vec3f> &vertices)
     {
-
         std::array<Vec<3, int64_t>, 3> pts = {
             scaled<int64_t>(vertices[face(0)]),
             scaled<int64_t>(vertices[face(1)]),
             scaled<int64_t>(vertices[face(2)])
         };
 
-
-
-
         Vec<3, int64_t> a = pts[0] - pts[2], b = pts[1] - pts[2];
         Vec<3, int64_t> c = a.cross(b) + (pts[0] + pts[1] + pts[2]) / 3;
-
 
         return hash(c);
     }
@@ -243,11 +230,6 @@ struct FaceHash {
         return it != facehash.end();
     }
 };
-
-
-
-
-
 
 static std::vector<bool> create_exclude_mask(
         const indexed_triangle_set &its,
@@ -282,17 +264,11 @@ static std::vector<bool> create_exclude_mask(
             continue;
         }
 
-
-
-
-
         Vec3d tr_center = (
             its.vertices[face(0)] +
             its.vertices[face(1)] +
             its.vertices[face(2)]
         ).cast<double>() / 3.;
-
-
 
         if (sla::get_distance(tr_center, interior) < -0.5)
             continue;
@@ -313,10 +289,6 @@ static std::vector<bool> create_exclude_mask(
             double D_hole_center = line_alg::distance_to(holeaxis, tr_center);
             double D_hole        = std::abs(D_hole_center - dh.radius);
             float dot            = dh.normal.dot(face_normal);
-
-
-
-
 
             double D_tol = dh.radius / sla::DrainHole::steps;
             float normal_angle_tol = 1.f / sla::DrainHole::steps;
@@ -361,156 +333,13 @@ remove_unconnected_vertices(const indexed_triangle_set &its)
     return M;
 }
 
-
 void SLAPrint::Steps::drill_holes(SLAPrintObject &po)
 {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 }
-
-
-
-
-
-
-
-
 
 void SLAPrint::Steps::slice_model(SLAPrintObject &po)
 {
     const TriangleMesh &mesh = po.get_mesh_to_slice();
-
-
 
     double  lhd  = m_print->m_objects.front()->m_config.layer_height.getFloat();
     float   lh   = float(lhd);
@@ -532,12 +361,11 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
     for(coord_t h = minZs + ilhs + lhs; h <= maxZs; h += lhs)
         po.m_slice_index.emplace_back(h, unscaled<float>(h) - lh / 2.f, lh);
 
-
     auto slindex_it =
         po.closest_slice_record(po.m_slice_index, float(bb3d.min(Z)));
 
     if(slindex_it == po.m_slice_index.end())
-
+        //TRN To be shown at the status bar on SLA slicing error.
         throw Slic3r::RuntimeError(
             L("Slicing had to be stopped due to an internal error: "
               "Inconsistent slice index."));
@@ -550,12 +378,6 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
     po.m_model_slices.clear();
     MeshSlicingParamsEx params;
     params.closing_radius = float(po.config().slice_closing_radius.value);
-
-
-
-
-
-
     params.mode = MeshSlicingParams::SlicingMode::Regular;
     auto  thr        = [this]() { m_print->throw_if_canceled(); };
     auto &slice_grid = po.m_model_height_levels;
@@ -587,7 +409,6 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
         mit->set_model_slice_idx(po, id); ++mit;
     }
 
-
     apply_printer_corrections(po, soModel);
 
     if(po.m_config.supports_enable.getBool() || po.m_config.pad_enable.getBool())
@@ -596,11 +417,8 @@ void SLAPrint::Steps::slice_model(SLAPrintObject &po)
     }
 }
 
-
-
 void SLAPrint::Steps::support_points(SLAPrintObject &po)
 {
-
     if(!po.m_config.supports_enable.getBool()) return;
 
     if (!po.m_supportdata)
@@ -611,28 +429,17 @@ void SLAPrint::Steps::support_points(SLAPrintObject &po)
     BOOST_LOG_TRIVIAL(debug) << "Support point count "
                              << mo.sla_support_points.size();
 
-
-
-
     if (mo.sla_points_status != sla::PointsStatus::UserModified) {
 
-
         const std::vector<float>& heights = po.m_model_height_levels;
-
-
-
-
-
 
         throw_if_canceled();
         sla::SupportPointGenerator::Config config;
         const SLAPrintObjectConfig& cfg = po.config();
 
-
         config.density_relative = float(cfg.support_points_density_relative / 100.f);
         config.minimal_distance = float(cfg.support_points_minimal_distance);
         config.head_diameter    = float(cfg.support_head_front_diameter);
-
 
         double d = objectstep_scale * OBJ_STEP_LEVELS[slaposSupportPoints] / 100.0;
         double init = current_status();
@@ -644,12 +451,10 @@ void SLAPrint::Steps::support_points(SLAPrintObject &po)
                 report_status(current, OBJ_STEP_LABELS(slaposSupportPoints));
         };
 
-
         throw_if_canceled();
         sla::SupportPointGenerator auto_supports(
             po.m_supportdata->emesh, po.get_model_slices(), heights, config,
             [this]() { throw_if_canceled(); }, statuscb);
-
 
         const std::vector<sla::SupportPoint>& points = auto_supports.output();
         throw_if_canceled();
@@ -658,13 +463,9 @@ void SLAPrint::Steps::support_points(SLAPrintObject &po)
         BOOST_LOG_TRIVIAL(debug) << "Automatic support points: "
                                  << po.m_supportdata->pts.size();
 
-
-
         report_status(-1, L("Generating support points"),
                       SlicingStatus::RELOAD_SLA_SUPPORT_POINTS);
     } else {
-
-
         po.m_supportdata->pts = po.transformed_support_points();
     }
 }
@@ -678,17 +479,12 @@ void SLAPrint::Steps::support_tree(SLAPrintObject &po)
     if (pcfg.embed_object)
         po.m_supportdata->emesh.ground_level_offset(pcfg.wall_thickness_mm);
 
-
-
     if (is_zero_elevation(po.config())) {
         remove_bottom_points(po.m_supportdata->pts,
                              float(po.m_supportdata->emesh.ground_level() + EPSILON));
     }
 
     po.m_supportdata->cfg = make_support_cfg(po.m_config);
-
-
-
     double d = objectstep_scale * OBJ_STEP_LEVELS[slaposSupportTree] / 100.0;
     double init = current_status();
     sla::JobController ctl;
@@ -708,15 +504,12 @@ void SLAPrint::Steps::support_tree(SLAPrintObject &po)
 
     throw_if_canceled();
 
-
     auto rc = SlicingStatus::RELOAD_SCENE;
-
 
     report_status(-1, L("Visualizing supports"));
 
     BOOST_LOG_TRIVIAL(debug) << "Processed support point count "
                              << po.m_supportdata->pts.size();
-
 
     if(po.support_mesh().empty())
         BOOST_LOG_TRIVIAL(warning) << "Support mesh is empty";
@@ -726,11 +519,7 @@ void SLAPrint::Steps::support_tree(SLAPrintObject &po)
 
 void SLAPrint::Steps::generate_pad(SLAPrintObject &po) {
 
-
-
-
     if(po.m_config.pad_enable.getBool()) {
-
         sla::PadConfig pcfg = make_pad_cfg(po.m_config);
 
         ExPolygons bp;
@@ -738,10 +527,6 @@ void SLAPrint::Steps::generate_pad(SLAPrintObject &po) {
         const TriangleMesh &trmesh = po.transformed_mesh();
 
         if (!po.m_config.supports_enable.getBool() || pcfg.embed_object) {
-
-
-
-
             sla::pad_blueprint(trmesh.its, bp, float(pad_h),
                                float(po.m_config.layer_height.getFloat()),
                                [this](){ throw_if_canceled(); });
@@ -762,14 +547,10 @@ void SLAPrint::Steps::generate_pad(SLAPrintObject &po) {
     report_status(-1, L("Visualizing supports"), SlicingStatus::RELOAD_SCENE);
 }
 
-
-
-
 void SLAPrint::Steps::slice_supports(SLAPrintObject &po) {
     auto& sd = po.m_supportdata;
 
     if(sd) sd->support_slices.clear();
-
 
     if (!po.m_config.supports_enable.getBool() && !po.m_config.pad_enable.getBool())
         return;
@@ -788,11 +569,8 @@ void SLAPrint::Steps::slice_supports(SLAPrintObject &po) {
 
     apply_printer_corrections(po, soSupport);
 
-
-
     report_status(-2, "", SlicingStatus::RELOAD_SLA_PREVIEW);
 }
-
 
 static ExPolygons get_all_polygons(const SliceRecord& record, SliceOrigin o)
 {
@@ -811,9 +589,7 @@ static ExPolygons get_all_polygons(const SliceRecord& record, SliceOrigin o)
         {
             ExPolygon poly;
 
-
             bool needreverse = is_lefthanded;
-
 
             poly.contour.points.reserve(polygon.contour.size() + 1);
 
@@ -857,7 +633,6 @@ void SLAPrint::Steps::initialize_printer_input()
 {
     auto &printer_input = m_print->m_printer_input;
 
-
     printer_input.clear();
 
     size_t mx = 0;
@@ -881,7 +656,6 @@ void SLAPrint::Steps::initialize_printer_input()
 
             coord_t lvlid = slicerecord.print_level() - gndlvl;
 
-
             lvlid = eps * (lvlid / eps);
 
             auto it = std::lower_bound(printer_input.begin(),
@@ -896,8 +670,6 @@ void SLAPrint::Steps::initialize_printer_input()
         }
     }
 }
-
-
 
 void SLAPrint::Steps::merge_slices_and_eval_stats() {
 
@@ -939,26 +711,19 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
     sla::ccr::SpinningMutex mutex;
     using Lock = std::lock_guard<sla::ccr::SpinningMutex>;
 
-
     auto printlayerfn = [this,
-
             area_fill, display_area, exp_time, init_exp_time, fast_tilt, slow_tilt, delta_fade_time,
-
 
             &mutex, &models_volume, &supports_volume, &estim_time, &slow_layers,
             &fast_layers, &fade_layer_time, &layers_times](size_t sliced_layer_cnt)
     {
         PrintLayer &layer = m_print->m_printer_input[sliced_layer_cnt];
 
-
         auto& slicerecord_references = layer.slices();
 
         if(slicerecord_references.empty()) return;
 
-
         const auto l_height = double(slicerecord_references.front().get().layer_height());
-
-
 
         ExPolygons model_polygons;
         ExPolygons supports_polygons;
@@ -1003,7 +768,6 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
         if(!supports_polygons.empty()) {
             if(model_polygons.empty()) supports_polygons = union_ex(supports_polygons);
             else supports_polygons = diff_ex(supports_polygons, model_polygons);
-
         }
 
         double layer_support_area = 0;
@@ -1014,15 +778,12 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
             Lock lck(mutex); supports_volume += layer_support_area * l_height;
         }
 
-
         ExPolygons trslices;
         trslices.reserve(model_polygons.size() + supports_polygons.size());
         for(ExPolygon& poly : model_polygons) trslices.emplace_back(std::move(poly));
         for(ExPolygon& poly : supports_polygons) trslices.emplace_back(std::move(poly));
 
         layer.transformed_slices(union_ex(trslices));
-
-
 
         const bool is_fast_layer = (layer_model_area + layer_support_area) <= display_area*area_fill;
         const double tilt_time = is_fast_layer ? fast_tilt : slow_tilt;
@@ -1032,8 +793,6 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
                 fast_layers++;
             else
                 slow_layers++;
-
-
 
             double layer_times = 0.0;
             if (sliced_layer_cnt < 3)
@@ -1051,15 +810,11 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
         }
     };
 
-
-
     sla::ccr::for_each(size_t(0), printer_input.size(), printlayerfn);
 
     auto SCALING2 = SCALING_FACTOR * SCALING_FACTOR;
     print_statistics.support_used_material = supports_volume * SCALING2;
     print_statistics.objects_used_material = models_volume  * SCALING2;
-
-
 
     if (printer_input.size() == 0)
         print_statistics.estimated_print_time = std::nan("");
@@ -1074,18 +829,13 @@ void SLAPrint::Steps::merge_slices_and_eval_stats() {
     report_status(-2, "", SlicingStatus::RELOAD_SLA_PREVIEW);
 }
 
-
 void SLAPrint::Steps::rasterize()
 {
     if(canceled() || !m_print->m_printer) return;
 
-
-
     double sd = (100 - max_objstatus) / 100.0;
 
-
     unsigned slot = PRINT_STEP_LEVELS[slapsRasterize];
-
 
     double pst = current_status();
 
@@ -1094,7 +844,6 @@ void SLAPrint::Steps::rasterize()
 
     sla::ccr::SpinningMutex slck;
     using Lock = std::lock_guard<sla::ccr::SpinningMutex>;
-
 
     auto lvlfn =
         [this, &slck, increment, &dstatus, &pst]
@@ -1105,7 +854,6 @@ void SLAPrint::Steps::rasterize()
 
         for (const ExPolygon& poly : printlayer.transformed_slices())
             raster.draw(poly);
-
 
         {
             Lock lck(slck);
@@ -1118,9 +866,7 @@ void SLAPrint::Steps::rasterize()
         }
     };
 
-
     if(canceled()) return;
-
 
     m_print->m_printer->draw_layers(m_print->m_printer_input.size(), lvlfn,
                                     [this]() { return canceled(); }, ex_tbb);

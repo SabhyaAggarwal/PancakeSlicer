@@ -6,10 +6,8 @@
 #include <vector>
 
 namespace Slic3r {
-
 bool continuous_curved_top_clear(const ExtrusionPath &path, const NonplanarClearanceModel &head);
 bool continuous_curved_top_clear(const std::vector<ExtrusionPath> &paths, const NonplanarClearanceModel &head);
-
 
 std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPath> &paths,
                                                 const NonplanarClearanceModel &head, const Point &start);

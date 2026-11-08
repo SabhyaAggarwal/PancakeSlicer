@@ -42,7 +42,6 @@ Matrix3d field_head_frame(const ToolKinematics *kinematics, const Vec3d &tip, co
         if (kinematics->inverse(ToolPose{ tip, axis }, nullptr, joints))
             return kinematics->head_frame(joints);
     }
-
     return Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), axis).toRotationMatrix().transpose();
 }
 
@@ -58,8 +57,6 @@ std::vector<Vec3d> head_samples(const HeadEnvelope &head, double step)
         const Vec3d   lo(box.min.x() - grow, box.min.y() - grow,
                          box.nozzle ? std::max(box.min.z(), head.tip_allowance.height) : box.min.z() - head.margin);
         const Vec3d   hi(box.max.x() + grow, box.max.y() + grow, box.max.z());
-
-
         const double  pitch = box.nozzle ? step : step * (box.min.z() < 15. ? 2. : 4.);
         const Vec3i32 cnt = ((hi - lo) / pitch).array().ceil().cast<int32_t>().cwiseMax(1);
         for (int c = 0; c <= cnt.z(); ++c)
@@ -95,7 +92,6 @@ struct Piece
     int              before = 0;
 };
 
-
 ExtrusionPathConformal *sub_path(const ExtrusionPathConformal &src, size_t i0, size_t i1)
 {
     Polyline3 polyline;
@@ -128,9 +124,7 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
         if (throw_if_canceled)
             throw_if_canceled();
     };
-
     const size_t field_roads = roads.size();
-
 
     Vec2d lo = Vec2d::Constant(std::numeric_limits<double>::max()), hi = -lo;
     auto extend = [&](const FieldRoad &r) {
@@ -139,7 +133,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             hi = hi.cwiseMax(q.head<2>());
         }
     };
-
     for (const FieldRoad &r : roads) {
         extend(r);
         for (const Vec3d &t : r.tip) {
@@ -152,8 +145,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     const double cell = std::max(1., params.cell);
     const int    ncx = std::max(1, int(std::ceil((hi.x() - lo.x()) / cell))), ncy = std::max(1, int(std::ceil((hi.y() - lo.y()) / cell)));
     const int    nrx = std::max(1, int(std::ceil((hi.x() - lo.x()) / Raster))), nry = std::max(1, int(std::ceil((hi.y() - lo.y()) / Raster)));
-
-
     constexpr int        MaxSplit = 1;
     constexpr int        SubIds   = 1 + (1 << MaxSplit) * (1 << MaxSplit);
     std::vector<uint8_t> refine(size_t(ncx) * size_t(ncy), 0);
@@ -179,8 +170,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     };
     const int64_t ncell = int64_t(ncx) * ncy * SubIds;
 
-
-
     auto point_layer = [&](const FieldRoad &road, size_t i) {
         if (road.layer >= layers)
             return road.layer;
@@ -193,14 +182,9 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     std::vector<Fragment>            fragments;
     std::unordered_map<int64_t, int> piece_of;
     std::vector<std::vector<int>>    raster;
-
-
-
     std::vector<std::vector<int>>    volume;
     std::vector<std::vector<int>>    reaches;
     std::vector<int>                 order;
-
-
     size_t lean_points = 0, lean_blocked = 0;
     for (int pass = 0;; ++pass) {
     out = FieldOrder();
@@ -215,18 +199,12 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     reaches.clear();
     order.clear();
     std::vector<int> cycle_list;
-
-
     auto fragment = [&](size_t from, int grow) {
         for (size_t r = from; r < roads.size(); ++r) {
             const std::vector<Vec3d> &q = roads[r].deformed;
             const size_t              n = q.size();
-
             if (n < 2 || (roads[r].shell && roads[r].layer < layers))
                 continue;
-
-
-
             const bool          by_layer = (roads[r].shell || roads[r].by_height) && roads[r].layer < layers;
             std::vector<int>    c(n);
             std::vector<size_t> pl(n, roads[r].layer);
@@ -246,7 +224,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                     runs.emplace_back(s, e);
                 s = e;
             }
-
             if (runs.size() > 1 && runs[0].second - runs[0].first < 3) {
                 runs[1].first = 0;
                 runs.erase(runs.begin());
@@ -293,11 +270,8 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     fragment(0, 0);
     const size_t field_pieces = pieces.size();
 
-
-
     std::vector<std::vector<int>>   supports(pieces.size());
     std::vector<std::vector<Vec3d>> floating(pieces.size());
-
     auto any_in = [&](const std::vector<int> &ras, int x, int y, double radius, std::vector<int> *found) {
         bool      any = false;
         const int r   = int(std::ceil(radius / Raster));
@@ -324,10 +298,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                 const double     reach = 0.5 * road.path->width + road.path->height;
                 const ExtrusionRole role = road.path->role();
                 const bool          checked = is_perimeter(role) || role == erBottomSurface || role == erTopSolidInfill || role == erGapFill;
-
-
-
-
                 std::vector<int> found;
                 for (size_t i = f.i0 + (f.i0 > 0); i <= f.i1; ++i) {
                     const size_t k = point_layer(road, i);
@@ -351,10 +321,8 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
         }
     });
     for (size_t p = 0; p < field_pieces; ++p) {
-
         out.stats.floating_mm += 0.5 * double(floating[p].size());
         out.floating_points.insert(out.floating_points.end(), floating[p].begin(), floating[p].end());
-
         for (int sup : supports[p])
             if (pieces[size_t(sup)].layer < pieces[p].layer) {
                 pieces[size_t(sup)].after.push_back(int(p));
@@ -362,7 +330,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             }
     }
     cancel();
-
 
     FieldSupport support;
     if (support_of && !out.floating_points.empty())
@@ -375,13 +342,11 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             r.layer += layers;
             roads.push_back(std::move(r));
         }
-
         fragment(field_roads, int(std::ceil(1. / Raster)));
         supports.resize(pieces.size());
         for (size_t p = field_pieces; p < pieces.size(); ++p) {
             Piece          &piece = pieces[p];
             const Fragment &f     = fragments[piece.fragments.front()];
-
             const double phi = field.forward(roads[f.road].tip[(f.i0 + f.i1) / 2]).z();
             piece.level      = size_t(std::lower_bound(params.layer_top.begin(), params.layer_top.end(), phi) - params.layer_top.begin());
             if (piece.layer > layers)
@@ -400,8 +365,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             }
         }
         out.stats.support_pieces = pieces.size() - field_pieces;
-
-
         for (size_t p = field_pieces; p < pieces.size(); ++p) {
             std::vector<int> above;
             for (int fi : pieces[p].fragments) {
@@ -425,11 +388,9 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                     ++out.stats.support_edges;
                 }
         }
-
         for (size_t p = 0; p < field_pieces; ++p) {
             std::vector<int> under;
             for (const Vec3d &q : floating[p]) {
-
                 const auto it = std::upper_bound(support.top.begin(), support.top.end(), q.z() - 0.5 * params.layer_height.front());
                 int        x, y;
                 pixel(q, x, y);
@@ -446,7 +407,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     }
     cancel();
 
-
     const std::vector<Vec3d> head = head_samples(params.head, 0.75);
     auto layer_of = [&](double phi) -> int {
         const auto it = std::lower_bound(params.layer_top.begin(), params.layer_top.end(), phi - 1e-9);
@@ -455,8 +415,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
         const size_t k = size_t(it - params.layer_top.begin());
         return phi > params.layer_top[k] - params.layer_height[k] - 1e-9 ? int(k) : -1;
     };
-
-
 
     const int                         reach_px = int(std::ceil(0.75 / Raster));
     std::vector<std::vector<uint8_t>> near(layers);
@@ -480,13 +438,8 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
         }
     });
 
-
-
-
-
     if (pass == 0 && params.lean_max > 0.) {
         const double lean_rate = Geometry::deg2rad(5.);
-
         auto backward = [&](const Vec3d &tip, const Vec3d &axis, size_t k, int limit) {
             const Matrix3d h = field_head_frame(params.kinematics, tip, axis).transpose();
             int            n = 0;
@@ -519,24 +472,17 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                 if (axes.size() != road.tip.size())
                     continue;
                 const size_t n = axes.size();
-
                 std::vector<Vec3d> turn(n, Vec3d::Zero());
                 bool               any = false;
                 for (size_t i = 0; i < n; ++i) {
-
-
                     const size_t k  = road.shell ? layers : point_layer(road, i);
                     const Vec3d  a0 = axes[i].cast<double>().normalized();
                     if (k == 0 || backward(road.tip[i], a0, k, 1) == 0)
                         continue;
-
-
                     const Vec3d  g      = road.shell ? a0 : Vec3d(field.gradient(road.tip[i]).normalized());
                     const double bead_h = i < road.path->bead_height.size() ? road.path->bead_height[i] : road.path->height;
                     const double dip    = std::asin(std::clamp(0.5 * bead_h / std::max(params.head.tip_flat_radius, 1e-3), 0., 1.));
                     const double cap    = std::max(std::min(params.lean_max, dip), std::acos(std::clamp(a0.dot(g), -1., 1.)));
-
-
                     const Vec3d e1 = (std::abs(a0.z()) < 0.9 ? Vec3d::UnitZ() : Vec3d::UnitX()).cross(a0).normalized();
                     const Vec3d e2 = a0.cross(e1);
                     Vec3d       best_turn = Vec3d::Zero();
@@ -569,7 +515,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                 }
                 if (!any)
                     continue;
-
                 std::vector<double> s(n, 0.);
                 for (size_t i = 1; i < n; ++i)
                     s[i] = s[i - 1] + (road.tip[i] - road.tip[i - 1]).norm();
@@ -584,7 +529,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                             ramp[i] = turn[j] * (left / m);
                     }
                 }
-
                 const double cos_max = std::cos(params.max_tilt);
                 for (size_t i = 0; i < n; ++i)
                     if (const double m = ramp[i].norm(); m > 0.) {
@@ -603,8 +547,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
 
     reaches.assign(pieces.size(), {});
     std::vector<std::vector<Vec3d>> table(pieces.size());
-
-
     std::vector<Vec2d> block(pieces.size(), Vec2d::Zero());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, pieces.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t p = range.begin(); p < range.end(); ++p) {
@@ -616,7 +558,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             for (int fi : pieces[p].fragments) {
                 const Fragment  &f    = fragments[fi];
                 const FieldRoad &road = roads[f.road];
-
                 for (size_t i = f.i0; i <= f.i1; i = (i + 2 <= f.i1 || i == f.i1) ? i + 2 : f.i1) {
                     const Vec3d    tip  = road.tip[i];
                     const Vec3d    axis = road.path->tool_axis.empty() ? Vec3d(Vec3d::UnitZ()) : Vec3d(road.path->tool_axis[i].cast<double>());
@@ -627,7 +568,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                             table[p].push_back(tip);
                             break;
                         }
-
                         if (support_layers > 0) {
                             const auto it = std::lower_bound(support.top.begin(), support.top.end(), q.z());
                             if (it != support.top.end()) {
@@ -640,7 +580,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                                 }
                             }
                         }
-
                         const Vec3d d = field.forward(q);
                         const int   k = layer_of(d.z());
                         if (k < 0)
@@ -655,7 +594,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                         for (int b = std::max(0, y - r); b <= std::min(nry - 1, y + r); ++b)
                             for (int a = std::max(0, x - r); a <= std::min(nrx - 1, x + r); ++a)
                                 if (const int m = ras[size_t(b) * nrx + a]; m >= 0)
-
                                     if (!(s.z() < NozzleContact && p < field_pieces && pieces[m].layer <= pieces[p].layer)) {
                                         meet(m);
                                         lower |= p < field_pieces && size_t(m) < field_pieces && pieces[m].layer < pieces[p].layer;
@@ -685,7 +623,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     out.stats.pieces = pieces.size();
     cancel();
 
-
     std::map<size_t, std::vector<int>> ready;
     std::vector<int>                   left(pieces.size());
     for (size_t p = 0; p < pieces.size(); ++p) {
@@ -711,7 +648,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             for (size_t p = 0; p < pieces.size(); ++p)
                 if (!done[p])
                     rest.push_back(int(p));
-
             std::vector<int>  index(pieces.size(), -1), low(pieces.size(), 0), stack;
             std::vector<char> on(pieces.size(), 0);
             int               counter = 0;
@@ -747,10 +683,7 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                             on[w] = 0;
                             scc.push_back(w);
                         } while (w != v);
-
-
                         if (scc.size() > 1 && ++logged_sccs <= 40) {
-
                             std::string line = "field order cycle of " + std::to_string(scc.size()) + ":";
                             for (size_t m = 0; m < std::min<size_t>(scc.size(), 6); ++m) {
                                 const int       c = scc[m];
@@ -769,7 +702,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                                 line += buf;
                             }
                             BOOST_LOG_TRIVIAL(info) << line;
-
                             if (logged_sccs <= 6) {
                                 std::unordered_map<int, int> prev;
                                 std::vector<int>             frontier { scc.front() };
@@ -828,7 +760,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                         low[call.back().first] = std::min(low[call.back().first], low[v]);
                 }
             }
-
             std::stable_sort(rest.begin(), rest.end(), [&](int a, int b) { return pieces[a].level < pieces[b].level; });
             for (int p : rest)
                 emit(p);
@@ -867,8 +798,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
     if (!split)
         break;
     }
-
-
 
     std::vector<int> group_of(pieces.size(), -1);
     for (size_t s = 0; s < order.size();) {
@@ -909,11 +838,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
             out.groups.push_back(std::move(shell));
         s = e;
     }
-
-
-
-
-
     {
         std::map<size_t, ExtrusionEntityCollection> tops;
         for (size_t r = 0; r < field_roads; ++r)
@@ -924,7 +848,6 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
         for (auto &[layer, group] : tops)
             out.groups.push_back(std::move(group));
     }
-
     for (FieldRoad &r : roads)
         r.path.reset();
     out.stats.groups         = out.groups.size();
@@ -938,17 +861,11 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
     FieldOrder   out;
     const size_t layers = params.layer_top.size();
     out.groups.resize(layers);
-
     auto point_layer = [&](const FieldRoad &road, size_t i) {
         const size_t k = size_t(std::lower_bound(params.layer_top.begin(), params.layer_top.end(), road.deformed[i].z() - 1e-6) -
                                 params.layer_top.begin());
         return std::min(k, layers - 1);
     };
-
-
-
-
-
     static const bool support_first = std::getenv("NP_NATIVE_SUPPORT_FIRST") != nullptr;
     std::vector<size_t> moved(roads.size(), std::numeric_limits<size_t>::max());
     std::vector<ExtrusionEntitiesPtr> early(layers);
@@ -956,15 +873,11 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
         constexpr double Cell = 0.5, Reach = 4., Lift = 0.3;
         auto key = [](double x, double y) { return (int64_t(std::floor(x / Cell)) << 32) ^ (int64_t(std::floor(y / Cell)) & 0xffffffff); };
         auto is_support = [](const FieldRoad &r) { return r.path && (r.path->role() == erSupportMaterial || r.path->role() == erSupportMaterialInterface); };
-
-
-
         std::unordered_map<int64_t, std::vector<std::pair<double, size_t>>> part;
         for (const FieldRoad &r : roads)
             if (r.path)
                 for (size_t i = 0; i < r.tip.size(); ++i)
                     part[key(r.tip[i].x(), r.tip[i].y())].emplace_back(r.tip[i].z(), point_layer(r, i));
-
         std::vector<size_t> order;
         for (size_t i = 0; i < roads.size(); ++i)
             if (is_support(roads[i]) && roads[i].tip.size() >= 2)
@@ -1010,13 +923,10 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
             early[moved[ri]].push_back(road.path.release());
             continue;
         }
-
-
         if (params.planar_support && (road.path->role() == erSupportMaterial || road.path->role() == erSupportMaterialInterface)) {
             early[std::min(road.layer, layers - 1)].push_back(road.path.release());
             continue;
         }
-
         std::vector<std::pair<size_t, size_t>> runs;
         for (size_t s = 0; s < n;) {
             size_t e = s + 1;
@@ -1047,12 +957,6 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
             out.group_layers.push_back(k);
     out.groups.erase(std::remove_if(out.groups.begin(), out.groups.end(), [](const ExtrusionEntityCollection &g) { return g.entities.empty(); }),
                      out.groups.end());
-
-
-
-
-
-
     Point pos;
     Vec3d pos_axis = Vec3d::UnitZ();
     bool  placed = false;
@@ -1061,8 +965,6 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
         chained.reserve(g.entities.size());
         for (size_t s = 0; s < g.entities.size();) {
             const ExtrusionRole role = g.entities[s]->role();
-
-
             auto z_of = [](const ExtrusionEntity *p) { return static_cast<const ExtrusionPathConformal *>(p)->polyline.points.front().z(); };
             const bool by_z = params.planar_support && (role == erSupportMaterial || role == erSupportMaterialInterface);
             size_t e = s + 1;
@@ -1077,13 +979,8 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
                     coord_t lo = std::numeric_limits<coord_t>::max(), hi = std::numeric_limits<coord_t>::lowest();
                     for (const Point3 &p : static_cast<const ExtrusionPathConformal *>(left[i])->polyline.points)
                         lo = std::min(lo, p.z()), hi = std::max(hi, p.z());
-
-
                     level[i] = unscale<double>(hi - lo) < 0.1 && role != erTopSolidInfill && role != erIroning;
                 }
-
-
-
                 static const double order_axis = [] { const char *v = std::getenv("NP_NATIVE_ORDER_AXIS"); return v ? std::max(0., std::atof(v)) : 0.; }();
                 const auto axis_at = [](const ExtrusionEntity *ee, bool last) {
                     const auto &a = static_cast<const ExtrusionPathConformal *>(ee)->tool_axis;
@@ -1123,9 +1020,6 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
             placed = true;
             s      = e;
         }
-
-
-
         const double axis_blend = params.axis_blend;
         if (axis_blend > 0.)
             for (size_t i = 1; i < chained.size(); ++i) {

@@ -17,12 +17,11 @@ type resolveRequest struct {
 	Project     map[string]json.RawMessage `json:"project,omitempty"`
 }
 type sliceConfig struct {
-	Config  map[string]json.RawMessage `json:"config"`
-	Sources map[string]string          `json:"sources"`
-
+	Config          map[string]json.RawMessage `json:"config"`
+	Sources         map[string]string          `json:"sources"`
+	Speeds          map[string]resolvedSpeed   `json:"speeds,omitempty"`
 	engineOverrides map[string]bool
-
-	Engine struct {
+	Engine          struct {
 		Vendor    string   `json:"vendor"`
 		Printer   string   `json:"printer"`
 		Process   string   `json:"process"`
@@ -54,6 +53,19 @@ func standardProcess(v *VendorPresets, machine *Preset) *Preset {
 		height, _ := strconv.ParseFloat(firstConfigText(p.Config["layer_height"]), 64)
 		if gap := math.Abs(height - nozzle/2); gap < bestGap || gap == bestGap && best != nil && p.Name < best.Name {
 			best, bestGap = p, gap
+		}
+	}
+	if best == nil {
+		for j := range v.Processes {
+			p := &v.Processes[j]
+			if !compatibleWith(p, machine.Name) {
+				continue
+			}
+			height, _ := strconv.ParseFloat(firstConfigText(p.Config["layer_height"]), 64)
+			gap := math.Abs(height - nozzle/2)
+			if gap < bestGap || gap == bestGap && best != nil && p.Name < best.Name {
+				best, bestGap = p, gap
+			}
 		}
 	}
 	return best
@@ -114,7 +126,6 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		return m
 	}
 	set(machine.Config, "catalog")
-
 	if v, ok := machine.Config["default_nozzle_volume_type"]; ok {
 		if _, set := machine.Config["nozzle_volume_type"]; !set {
 			out.Config["nozzle_volume_type"], out.Sources["nozzle_volume_type"] = v, "catalog"
@@ -123,7 +134,11 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	}
 	set(printer.Machine, "printer")
 	set(process.Config, "catalog")
-	set(print.Intent, "print")
+	for _, k := range []string{"nonplanar_mode", "nonplanar_wave"} {
+		out.Config[k], out.Sources[k] = json.RawMessage(`"off"`), "catalog"
+		out.engineOverrides[k] = true
+	}
+	set(print.Values, "print")
 	height := in.LayerHeight
 	if !(height > 0) && print.PreferredHeight != nil {
 		height = *print.PreferredHeight
@@ -180,13 +195,56 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		}
 	}
 	set(in.Project, "project")
-
-	switch firstConfigText(out.Config["nonplanar_mode"]) {
-	case "auto", "manual", "oneshot", "":
+	if len(print.Scales) > 0 || print.SpeedModel != nil {
+		model := print.SpeedModel
+		if model == nil {
+			return nil, errors.New("Dynamic profile has no speed multipliers. Reload profiles.")
+		}
+		base := dynamicSpeedBase(printer.Vendor, printer.Model, process.Config)
+		if base == nil {
+			return nil, errors.New("Dynamic speeds have no reference for " + printer.Model + ". Choose a regular print profile.")
+		}
+		for _, f := range profileRules.SpeedFeatures {
+			if v, ok := printer.PrintOverrides[f.Key]; ok {
+				base[f.Key] = v
+			}
+			if _, own := print.Values[f.Acceleration]; !own {
+				if _, project := in.Project[f.Acceleration]; !project {
+					if v, printerOwn := printer.PrintOverrides[f.Acceleration]; printerOwn {
+						out.Config[f.Acceleration] = v
+					} else if v, ok := base[f.Acceleration]; ok {
+						out.Config[f.Acceleration] = v
+					}
+				}
+			}
+		}
+		overrides, sources := map[string]json.RawMessage{}, map[string]string{}
+		for _, f := range profileRules.SpeedFeatures {
+			for _, row := range print.Scales {
+				if row.Key == f.Key {
+					raw, _ := json.Marshal(scaleValues([]autoScale{row}, printer.Nozzle, height)[f.Key])
+					overrides[f.Key], sources[f.Key] = raw, "legacy formula override"
+				}
+			}
+			if v, ok := print.Values[f.Key]; ok {
+				overrides[f.Key], sources[f.Key] = v, "profile"
+			}
+			if v, ok := in.Project[f.Key]; ok {
+				overrides[f.Key], sources[f.Key] = v, "project"
+			}
+		}
+		values, details := resolveDynamicSpeeds(model, base, out.Config, overrides, sources, printer.Nozzle, speedNumber(out.Config, "layer_height", height))
+		set(values, "dynamic speed")
+		out.Speeds = details
+		for k := range values {
+			out.engineOverrides[k] = true
+		}
+	}
+	if mode := firstConfigText(out.Config["nonplanar_mode"]); canonicalNonplanarMode(mode) != mode {
 		if out.Sources["nonplanar_mode"] == "catalog" || out.Sources["nonplanar_mode"] == "" {
 			out.Sources["nonplanar_mode"] = "print"
 		}
-		out.Config["nonplanar_mode"] = json.RawMessage(`"curved_tops"`)
+		out.Config["nonplanar_mode"] = json.RawMessage(`"` + canonicalNonplanarMode(mode) + `"`)
 	}
 	return out, nil
 }
@@ -206,7 +264,6 @@ func (s *Server) postResolve(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 422, "resolve_failed", err.Error(), "choose_profiles", 0)
 		return
 	}
-
 	dictionary := optionData
 	if s.cfg.Options != nil {
 		dictionary = s.cfg.Options.plain
@@ -245,4 +302,12 @@ func vectorOptions(dictionary []byte) map[string]bool {
 		}
 	}
 	return out
+}
+
+func canonicalNonplanarMode(mode string) string {
+	switch mode {
+	case "auto", "manual", "oneshot", "":
+		return "nonplanar_top"
+	}
+	return mode
 }

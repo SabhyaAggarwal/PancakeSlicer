@@ -9,7 +9,6 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("options", type=Path, help="web/src/options.generated.json")
 args = parser.parse_args()
 options = json.loads(args.options.read_text(encoding="utf-8"))
-
 hidden = re.compile(r"print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides")
 kinds = {"string": "string", "strings": "strings", "pointsgroups": "groups"}
 groups = {kind: sorted(key for key, definition in options.items()
@@ -18,7 +17,6 @@ groups = {kind: sorted(key for key, definition in options.items()
 groups["comma"] = sorted(key for key, definition in options.items()
                          if definition["type"].removeprefix("co").lower() not in kinds and not hidden.search(key))
 Path(__file__).with_name("config_types.json").write_text(json.dumps(groups, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
 
 Path(__file__).with_name("options.json").write_text(json.dumps(
     {key: definition for key, definition in options.items() if not hidden.search(key)},

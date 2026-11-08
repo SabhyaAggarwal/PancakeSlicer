@@ -65,7 +65,7 @@
 	"rotary_firmware_rtcp": "0",
 	"rotary_inverse_time_feed": "1",
 	"nonplanar_max_tilt": "60",
-	"default_print_profile": "0.20mm Non-planar top @Tripod",
+	"default_print_profile": "0.20mm Smoothest tops @Tripod",
 	"printer_model": "Tripod 5-axis CoreXY",
 	"printer_variant": "0.4",
 	"default_filament_profile": [

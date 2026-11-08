@@ -11,17 +11,15 @@
 #include <math.h>
 #include "PrintConfig.hpp"
 
-
 #define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
 
-FlowErrorNegativeSpacing::FlowErrorNegativeSpacing() :
+FlowErrorNegativeSpacing::FlowErrorNegativeSpacing() : 
 	FlowError("Flow::spacing() produced negative spacing. Did you set some extrusion width too small?") {}
 
 FlowErrorNegativeFlow::FlowErrorNegativeFlow() :
     FlowError("Flow::mm3_per_mm() produced negative flow. Did you set some extrusion width too small?") {}
-
 
 float Flow::auto_extrusion_width(FlowRole role, float nozzle_diameter)
 {
@@ -40,13 +38,10 @@ float Flow::auto_extrusion_width(FlowRole role, float nozzle_diameter)
     }
 }
 
-
-
 static inline FlowRole opt_key_to_flow_role(const std::string &opt_key)
 {
-    if (opt_key == "inner_wall_line_width" ||
-
-        opt_key == "line_width" || opt_key == "initial_layer_line_width")
+ 	if (opt_key == "inner_wall_line_width" || 
+ 		opt_key == "line_width" || opt_key == "initial_layer_line_width")
         return frPerimeter;
     else if (opt_key == "outer_wall_line_width")
         return frExternalPerimeter;
@@ -59,16 +54,15 @@ static inline FlowRole opt_key_to_flow_role(const std::string &opt_key)
 	else if (opt_key == "top_surface_line_width")
 		return frTopSolidInfill;
 	else if (opt_key == "support_line_width")
-        return frSupportMaterial;
-    else
-        throw Slic3r::RuntimeError("opt_key_to_flow_role: invalid argument");
+    	return frSupportMaterial;
+    else 
+    	throw Slic3r::RuntimeError("opt_key_to_flow_role: invalid argument");
 };
 
-static inline void throw_on_missing_variable(const std::string &opt_key, const char *dependent_opt_key)
+static inline void throw_on_missing_variable(const std::string &opt_key, const char *dependent_opt_key) 
 {
 	throw FlowErrorMissingVariable((boost::format("Failed to calculate line width of %1%. Cannot get value of \u201c%2%\u201d.") % opt_key % dependent_opt_key).str());
 }
-
 
 double Flow::extrusion_width(const std::string& opt_key, const ConfigOptionFloatOrPercent* opt, const ConfigOptionResolver& config, const unsigned int first_printing_extruder)
 {
@@ -95,20 +89,17 @@ double Flow::extrusion_width(const std::string& opt_key, const ConfigOptionFloat
     }
 
 #if 0
-
 	if (opt->value == 0. && first_layer) {
-
 		opt = config.option<ConfigOptionFloatOrPercent>("inner_wall_line_width");
 		if (opt == nullptr)
-            throw_on_missing_variable(opt_key, "inner_wall_line_width");
+    		throw_on_missing_variable(opt_key, "inner_wall_line_width");
 	}
 #endif
 
 	if (opt->value == 0.) {
-
 		opt = config.option<ConfigOptionFloatOrPercent>("line_width");
 		if (opt == nullptr)
-            throw_on_missing_variable(opt_key, "line_width");
+    		throw_on_missing_variable(opt_key, "line_width");
 	}
 
     if (opt->percent) {
@@ -116,20 +107,16 @@ double Flow::extrusion_width(const std::string& opt_key, const ConfigOptionFloat
 	}
 
 	if (opt->value == 0.) {
-
         return auto_extrusion_width(opt_key_to_flow_role(opt_key), nozzle_diameter);
     }
 
 	return opt->value;
 }
 
-
 double Flow::extrusion_width(const std::string& opt_key, const ConfigOptionResolver &config, const unsigned int first_printing_extruder)
 {
     return extrusion_width(opt_key, config.option<ConfigOptionFloatOrPercent>(opt_key), config, first_printing_extruder);
 }
-
-
 
 Flow Flow::new_from_config_width(FlowRole role, const ConfigOptionFloatOrPercent &width, float nozzle_diameter, float height)
 {
@@ -138,22 +125,18 @@ Flow Flow::new_from_config_width(FlowRole role, const ConfigOptionFloatOrPercent
 
     float w;
     if (!width.percent  && width.value <= 0.) {
-
         w = auto_extrusion_width(role, nozzle_diameter);
     } else {
-
       w = float(width.get_abs_value(nozzle_diameter));
     }
-
+    
     return Flow(w, height, rounded_rectangle_extrusion_spacing(w, height), nozzle_diameter, false);
 }
-
 
 Flow Flow::with_spacing(float new_spacing) const
 {
     Flow out = *this;
     if (m_bridge) {
-
         assert(m_width == m_height);
         float gap          = m_spacing - m_width;
         auto  new_diameter = new_spacing - gap;
@@ -168,33 +151,26 @@ Flow Flow::with_spacing(float new_spacing) const
     return out;
 }
 
-
 Flow Flow::with_cross_section(float area_new) const
 {
     assert(! m_bridge);
     assert(m_width >= m_height);
 
-
     float area = this->mm3_per_mm();
     if (area_new > area + EPSILON) {
-
         float new_full_spacing = area_new / m_height;
         if (new_full_spacing > m_spacing) {
-
             float height = area_new / m_spacing;
             return Flow(rounded_rectangle_extrusion_width_from_spacing(m_spacing, height), height, m_spacing, m_nozzle_diameter, false);
         } else {
             return this->with_width(rounded_rectangle_extrusion_width_from_spacing(area / m_height, m_height));
         }
     } else if (area_new < area - EPSILON) {
-
         float width_new = m_width - (area - area_new) / m_height;
         assert(width_new > 0);
         if (width_new > m_height) {
-
             return this->with_width(width_new);
         } else {
-
             auto dmr = float(sqrt(area_new / M_PI));
             return Flow(dmr, dmr, m_spacing, m_nozzle_diameter, false);
         }
@@ -220,15 +196,11 @@ float Flow::bridge_extrusion_spacing(float dmr)
     return dmr + BRIDGE_EXTRA_SPACING;
 }
 
-
 double Flow::mm3_per_mm() const
 {
     float res = m_bridge ?
-
         float((m_width * m_width) * 0.25 * PI) :
-
         float(m_height * (m_width - m_height * (1. - 0.25 * PI)));
-
 	if (res <= 0.)
 		throw FlowErrorNegativeFlow();
     return res;
@@ -238,16 +210,12 @@ Flow support_material_flow(const PrintObject *object, float layer_height)
 {
     return Flow::new_from_config_width(
         frSupportMaterial,
-
         (object->config().support_line_width.value > 0) ? object->config().support_line_width : object->config().line_width,
-
         float(nozzle_diameter_for_filament(object->print()->config(), object->config().support_filament, object->print()->is_BBL_printer())),
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }
-
 Flow support_transition_flow(const PrintObject* object)
 {
-
     float dmr = float(nozzle_diameter_for_filament(object->print()->config(), object->config().support_filament, object->print()->is_BBL_printer()));
     return Flow::bridging_flow(dmr, dmr);
 }
@@ -258,7 +226,6 @@ Flow support_material_1st_layer_flow(const PrintObject *object, float layer_heig
     const auto &width = (print_config.initial_layer_line_width.value > 0) ? print_config.initial_layer_line_width : object->config().support_line_width;
     return Flow::new_from_config_width(
         frSupportMaterial,
-
         (width.value > 0) ? width : object->config().line_width,
         float(nozzle_diameter_for_filament(print_config, object->config().support_filament, object->print()->is_BBL_printer())),
         (layer_height > 0.f) ? layer_height : float(print_config.initial_layer_print_height.value));
@@ -268,9 +235,7 @@ Flow support_material_interface_flow(const PrintObject *object, float layer_heig
 {
     return Flow::new_from_config_width(
         frSupportMaterialInterface,
-
         (object->config().support_line_width > 0) ? object->config().support_line_width : object->config().line_width,
-
         float(nozzle_diameter_for_filament(object->print()->config(), object->config().support_interface_filament, object->print()->is_BBL_printer())),
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }

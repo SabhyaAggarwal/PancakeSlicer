@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 import { takeControl, useProjectLease } from '../flow/project-lease';
-
-
-
+import { Sep } from '../separator';
 const EDIT_KEYS = /^(Delete|Backspace)$/;
 const EDIT_CHORDS = /^[xvzydai]$/i;
 
@@ -28,7 +26,7 @@ export default function LeaseBar() {
   if (!show) return null;
   return (
     <div className="lease-bar" role="status">
-      <span>Open in another tab or device{context.holder ? ` · ${context.holder.label}` : ''}</span>
+      <span>Open in another tab or device{context.holder && <><Sep/>{context.holder.label}</>}</span>
       <button type="button" className="btn-primary" disabled={busy} aria-busy={busy} onClick={takeControl}>{busy ? 'Taking control…' : 'Take control'}</button>
     </div>
   );

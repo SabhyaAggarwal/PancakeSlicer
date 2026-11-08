@@ -7,44 +7,27 @@ import { useRowFill } from '../tab-rows';
 import '../menu.css';
 import './picker.css';
 import { Caret } from '../Caret';
-import { Glyph } from '../Glyph';
 import { edgeOf, type Edge } from '../anchor';
 import { SlotChip } from '../SlotChip';
-
-
-
+import { joinParts } from '../../separator';
 export interface PickerItem { id: string; label: string; child?: boolean; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
   image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'paused' | 'offline' | 'error' }; slots?: { n: number; colour: string }[] }
-
-
-
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean; allOnly?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
-
-
-
-
-
 interface Props { label: string; value?: string; groups(): PickerGroup[]; sections?: boolean; onPick(id: string): void; facetHeads?: boolean; memory?: string; footer?: PickerAction[]; className?: string; triggerProps?: ComponentPropsWithRef<'button'> & { 'data-autofocus'?: boolean | string }; children: ReactNode }
 const read = (key: string): string[] => { const v = preferenceJson<unknown>(key, []); return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; };
 const write = (key: string, value: string[]) => savePreferences({[key]:value});
-
 const splitTail = (label: string): [string, string] => {
   for (const re of [/\s\S+\s\S+$/, /\s\S+$/]) { const m = re.exec(label); if (m && m[0].length <= 15 && m.index >= 4) return [label.slice(0, m.index), m[0]]; }
   return [label, ''];
 };
 interface RailTab { id: string; title: string; count?: number }
 const AIM_DELAY = 80, AIM_WINDOW = 150;
-
-
-
 function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { tabs: RailTab[]; active: string; hover: boolean; label: string; list: RefObject<HTMLElement | null>; railRef: RefObject<HTMLElement | null>; onChange(id: string): void }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined), trail = useRef<{ x: number; y: number; t: number }[]>([]), under = useRef('');
   useEffect(() => () => clearTimeout(timer.current), []);
-
   const note = (e: { clientX: number; clientY: number; timeStamp: number }) => { trail.current = [...trail.current.filter((p) => e.timeStamp - p.t < AIM_WINDOW), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; };
   const aiming = () => {
-
     const now = performance.now(), pts = trail.current.filter((p) => now - p.t < AIM_WINDOW), box = list.current?.getBoundingClientRect(), from = pts[0], at = pts[pts.length - 1];
     if (!box || pts.length < 2 || now - at.t > AIM_DELAY || at.x <= from.x) return false;
     const slope = (a: { x: number; y: number }, b: { x: number; y: number }) => (b.y - a.y) / (b.x - a.x);
@@ -64,14 +47,12 @@ function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { t
     </button>)}
   </nav>;
 }
-
-
 const decoded = new Map<string, HTMLImageElement>();
 const decodeAhead = (src: string) => { if (decoded.has(src)) return; const img = new Image(); img.src = src; decoded.set(src, img); img.decode().catch(() => {}); };
 const idle = (run: () => void) => typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 3000 }) : setTimeout(run, 1500);
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
-  return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
+  return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" draggable={false} onError={() => setFailed(src)}/> : null}</span>;
 }
 const PickerRow = memo(function PickerRow({ row, index, id, active, selected, pinned, onActive, onPick, onPin }: {
   row: PickerItem; index: number; id: string; active: boolean; selected: boolean; pinned: boolean;
@@ -80,7 +61,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, pi
   countRender('picker-row');
   const media = row.image !== undefined, [head, tail] = splitTail(row.label);
   return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index} data-child={row.child || undefined}>
-    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={(e) => { if (e.pointerType === 'mouse') onActive(index); }} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
+    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={(e) => { if (e.pointerType === 'mouse') onActive(index); }} data-full-text={joinParts([row.label, row.sub, row.meta])} onClick={() => onPick(row)}>
       {media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status status-text" data-tone={row.status.tone}>{row.status.label}</span>}</span>
       {!media && row.meta && <span className="pk-meta">{row.meta}</span>}
@@ -90,7 +71,6 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, pi
   </div>;
 });
 type TabRows = { tab: string; rows: PickerItem[]; heads: Map<number, string> };
-
 const PickerTab = memo(function PickerTab({ t, on, active, id, value, pinned, empty, onActive, onPick, onPin }: {
   t: TabRows; on: boolean; active: number; id: string; value?: string; pinned: Set<string>; empty: string;
   onActive(index: number): void; onPick(row: PickerItem): void; onPin(row: PickerItem): void;
@@ -99,28 +79,20 @@ const PickerTab = memo(function PickerTab({ t, on, active, id, value, pinned, em
 });
 export function Picker({ label, value, groups, sections = false, onPick, facetHeads = false, memory = `orca.parity.${label}`, footer = [], className = '', triggerProps, children }: Props) {
   countRender('picker');
-
-  const triggerEl = useRef<HTMLButtonElement | null>(null), [edge, setEdge] = useState<Edge>({ align: 'start', alignOffset: 0 });
+  const triggerEl = useRef<HTMLButtonElement | null>(null), [edge, setEdge] = useState<Edge>({ align: 'start' });
   const [open, setOpen] = useState(false), [primed, setPrimed] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
   const savedPins = usePreference(`${memory}.pins`);
   const pins = useMemo(() => read(`${memory}.pins`), [memory,savedPins]);
   const railRef = useRef<HTMLElement>(null), body = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
   const id = useId();
-
   const live = open || primed;
   const pool = useMemo(() => live ? groups().map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, groups]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const tabbed = useMemo(() => pool.filter(g => !g.allOnly), [pool]);
-
   const rails = useMemo<RailTab[]>(() => sections ? [{id: 'all', title: 'All'}, ...(tabbed.every(g => !g.title) ? [] : tabbed.map(g => ({id: g.id, title: g.title})))] : [...(pool.some(g => g.items.some(r => pinnedSet.has(r.id))) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:'All profiles'}, ...pool.map(({id,title}) => ({id,title}))], [sections, pinnedSet, pool, tabbed]);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
-
   const activeRail = rails.some(r => r.id === rail) ? rail : 'all';
   const all = useMemo(() => [...new Map(pool.filter(g => !g.filter).flatMap((g) => g.items).map((item) => [item.id, item])).values()], [pool]);
-
-
-
-
   const tabs = useMemo<TabRows[]>(() => rails.map(r => {
     if (!sections) return {tab: r.id, rows: r.id === 'pins' ? all.filter(x => pinnedSet.has(x.id)) : r.id === 'all' ? all : pool.find(g => g.id === r.id)?.items ?? [], heads: new Map<number, string>()};
     const g = r.id === 'all' ? undefined : tabbed.find(t => t.id === r.id), favourites = (g ? g.items : all).filter(x => pinnedSet.has(x.id));
@@ -128,7 +100,6 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
     const byFacet = (items: PickerItem[]) => { const at = new Map<string, PickerItem[]>(); for (const x of items) at.set(x.facet ?? '', [...at.get(x.facet ?? '') ?? [], x.sub === x.facet ? {...x, sub: undefined} : x]); return [...at].map(([title, rows]) => ({title, items: rows})); };
     const secs = [{title: 'Favorites', items: favourites}, ...(g ? (facetHeads ? byFacet(rest(g.items)) : [{title: g.title, items: rest(g.items)}])
       : [...pool.filter(x => !x.filter && !x.allOnly), ...pool.filter(x => x.allOnly)].map(x => ({title: x.title, items: rest(x.items)})))].filter(x => x.items.length);
-
     const at = new Map<number, string>(); let i = 0;
     if (!g || facetHeads || secs.length > 1) for (const sec of secs) { at.set(i, sec.title); i += sec.items.length; }
     return {tab: r.id, rows: secs.flatMap(sec => sec.items), heads: at};
@@ -142,14 +113,11 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
     const pad = parseFloat(getComputedStyle(l).paddingTop) + parseFloat(getComputedStyle(l).paddingBottom);
     const need = Math.max(...[...l.children].map(t => t.scrollHeight + pad), railRef.current?.scrollHeight ?? 0);
     if (need > fill.current) { fill.current = need; box.style.setProperty('--pk-fill', `${need}px`); }
-
     const pop = box.parentElement, foot = pop?.querySelector<HTMLElement>(':scope > .pk-foot');
     if (pop) box.style.setProperty('--pk-chrome', `${(foot?.offsetHeight ?? 0) + pop.offsetHeight - pop.clientHeight}px`);
   }, [open, tabs]);
-
   const groupsRef = useRef(groups); groupsRef.current = groups;
   const warm = useCallback(() => { for (const g of groupsRef.current()) for (const item of g.items) if (item.image) decodeAhead(item.image); }, []);
-
   useEffect(() => { const handle = idle(warm); return () => { if (typeof cancelIdleCallback === 'function' && typeof handle === 'number') cancelIdleCallback(handle); else clearTimeout(handle as ReturnType<typeof setTimeout>); }; }, [warm]);
   const enabled = useMemo(() => rows.flatMap((r, i) => r.disabled ? [] : [i]), [rows]);
   const resetType = () => { typed.current = {text: '', at: 0}; };
@@ -160,7 +128,6 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
     el?.focus({preventScroll: true}); el?.scrollIntoView({ block: 'nearest' });
   };
   const focusChoice = () => { const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); };
-
   const focusOnOpen = useRef(focusChoice); focusOnOpen.current = focusChoice;
   useEffect(() => { if (open && list.current) focusOnOpen.current(); }, [open]);
   const prime = () => { warm(); setPrimed(true); };
@@ -190,7 +157,6 @@ export function Picker({ label, value, groups, sections = false, onPick, facetHe
       else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); resetType(); move(enabled[e.key === 'Home' ? 0 : enabled.length - 1] ?? -1); }
       else if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('.pk-option') && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
       else if (rails.length && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-
         e.preventDefault();
         if (e.key === 'ArrowRight' && inRail) move(enabled[0] ?? -1);
         else if (e.key === 'ArrowLeft' && !inRail) railTab(activeRail)?.focus();

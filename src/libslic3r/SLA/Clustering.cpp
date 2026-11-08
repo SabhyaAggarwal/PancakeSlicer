@@ -15,7 +15,7 @@
 namespace Slic3r { namespace sla {
 
 namespace bgi = boost::geometry::index;
-using Index3D = bgi::rtree< PointIndexEl, bgi::rstar<16, 4>   >;
+using Index3D = bgi::rtree< PointIndexEl, bgi::rstar<16, 4>  >;
 
 namespace {
 
@@ -30,8 +30,6 @@ ClusteredPoints cluster(Index3D &sindex,
                             const Index3D &, const PointIndexEl &)> qfn)
 {
     using Elems = std::vector<PointIndexEl>;
-
-
 
     std::function<void(Elems&, Elems&)> group =
         [&sindex, &group, max_points, qfn](Elems& pts, Elems& cluster)
@@ -96,17 +94,13 @@ std::vector<PointIndexEl> distance_queryfn(const Index3D& sindex,
 }
 
 }
-
-
 ClusteredPoints cluster(
     const std::vector<unsigned>& indices,
     std::function<Vec3d(unsigned)> pointfn,
     double dist,
     unsigned max_points)
 {
-
     Index3D sindex;
-
 
     for(auto idx : indices) sindex.insert( std::make_pair(pointfn(idx), idx));
 
@@ -117,16 +111,13 @@ ClusteredPoints cluster(
                    });
 }
 
-
 ClusteredPoints cluster(
     const std::vector<unsigned>& indices,
     std::function<Vec3d(unsigned)> pointfn,
     std::function<bool(const PointIndexEl&, const PointIndexEl&)> predicate,
     unsigned max_points)
 {
-
     Index3D sindex;
-
 
     for(auto idx : indices) sindex.insert( std::make_pair(pointfn(idx), idx));
 
@@ -143,9 +134,7 @@ ClusteredPoints cluster(
 
 ClusteredPoints cluster(const Eigen::MatrixXd& pts, double dist, unsigned max_points)
 {
-
     Index3D sindex;
-
 
     for(Eigen::Index i = 0; i < pts.rows(); i++)
         sindex.insert(std::make_pair(Vec3d(pts.row(i)), unsigned(i)));

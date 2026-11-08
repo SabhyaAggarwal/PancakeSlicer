@@ -23,7 +23,6 @@ using Polygons          = std::vector<Polygon, PointsAllocator<Polygon>>;
 using PolygonPtrs       = std::vector<Polygon*, PointsAllocator<Polygon*>>;
 using ConstPolygonPtrs  = std::vector<const Polygon*, PointsAllocator<const Polygon*>>;
 
-
 bool contains(const Polygon& polygon, const Point& p, bool border_result = true);
 bool contains(const Polygons& polygons, const Point& p, bool border_result = true);
 
@@ -35,7 +34,7 @@ public:
 	Polygon(std::initializer_list<Point> points) : MultiPoint(points) {}
     Polygon(const Polygon &other) : MultiPoint(other.points) {}
     Polygon(Polygon &&other) noexcept : MultiPoint(std::move(other.points)) {}
-	static Polygon new_scale(const std::vector<Vec2d> &points) {
+	static Polygon new_scale(const std::vector<Vec2d> &points) { 
         Polygon pgn;
         pgn.points.reserve(points.size());
         for (const Vec2d &pt : points)
@@ -48,18 +47,15 @@ public:
     Point& operator[](Points::size_type idx) { return this->points[idx]; }
     const Point& operator[](Points::size_type idx) const { return this->points[idx]; }
 
-
     const Point& last_point() const { return this->points.front(); }
 
     double length() const;
     Lines lines() const;
     Polyline split_at_vertex(const Point &point) const;
-
     Polyline split_at_index(int index) const;
-
     Polyline split_at_first_point() const { return this->split_at_index(0); }
     Points   equally_spaced_points(double distance) const { return this->split_at_first_point().equally_spaced_points(distance); }
-
+    
     static double area(const Points &pts);
     double area() const;
     bool is_counter_clockwise() const;
@@ -69,12 +65,9 @@ public:
     bool is_valid() const { return this->points.size() >= 3; }
     void douglas_peucker(double tolerance);
 
-
     bool contains(const Point &point) const { return Slic3r::contains(*this, point, true); }
-
     bool on_boundary(const Point &point, double eps) const
         { return (this->point_projection(point) - point).cast<double>().squaredNorm() < eps * eps; }
-
 
     Polygons simplify(double tolerance) const;
     void densify(float min_length, std::vector<float>* lengths = nullptr);
@@ -86,16 +79,11 @@ public:
     bool intersections(const Line& line, Points* intersections) const;
     bool overlaps(const Polygons& other) const;
 
-
-
-
     Points convex_points(double angle_threshold = 0.) const;
     Points concave_points(double angle_threshold = 0.) const;
-
     Point point_projection(const Point &point) const;
     std::vector<float> parameter_by_length() const;
-
-
+    
     Polygon transform(const Transform3d& trafo) const;
 
     using iterator = Points::iterator;
@@ -111,15 +99,12 @@ BoundingBox get_extents_rotated(const Polygon &poly, double angle);
 BoundingBox get_extents_rotated(const Polygons &polygons, double angle);
 std::vector<BoundingBox> get_extents_vector(const Polygons &polygons);
 
-
 bool        polygon_is_convex(const Points &poly);
 inline bool polygon_is_convex(const Polygon &poly) { return polygon_is_convex(poly.points); }
-
 
 inline bool has_duplicate_points(Polygon &&poly)      { return has_duplicate_points(std::move(poly.points)); }
 inline bool has_duplicate_points(const Polygon &poly) { return has_duplicate_points(poly.points); }
 bool        has_duplicate_points(const Polygons &polys);
-
 
 bool remove_same_neighbor(Polygon &polygon);
 bool remove_same_neighbor(Polygons &polygons);
@@ -141,20 +126,17 @@ inline double area(const Polygons &polys)
     return s;
 }
 
-
 bool remove_sticks(Polygon &poly);
 bool remove_sticks(Polygons &polys);
-
 
 bool remove_degenerate(Polygons &polys);
 bool remove_small(Polygons &polys, double min_area);
 void remove_collinear(Polygon &poly);
 void remove_collinear(Polygons &polys);
 
-
 inline void polygons_append(Polygons &dst, const Polygons &src) { dst.insert(dst.end(), src.begin(), src.end()); }
 
-inline void polygons_append(Polygons &dst, Polygons &&src)
+inline void polygons_append(Polygons &dst, Polygons &&src) 
 {
     if (dst.empty()) {
         dst = std::move(src);
@@ -191,7 +173,7 @@ inline size_t count_points(const Polygons &polys) {
     return n_points;
 }
 
-inline Points to_points(const Polygons &polys)
+inline Points to_points(const Polygons &polys) 
 {
     Points points;
     points.reserve(count_points(polys));
@@ -200,7 +182,7 @@ inline Points to_points(const Polygons &polys)
     return points;
 }
 
-inline Lines to_lines(const Polygon &poly)
+inline Lines to_lines(const Polygon &poly) 
 {
     Lines lines;
     lines.reserve(poly.points.size());
@@ -212,7 +194,7 @@ inline Lines to_lines(const Polygon &poly)
     return lines;
 }
 
-inline Lines to_lines(const Polygons &polys)
+inline Lines to_lines(const Polygons &polys) 
 {
     Lines lines;
     lines.reserve(count_points(polys));
@@ -257,7 +239,6 @@ inline Polylines to_polylines(Polygons &&polys)
     return polylines;
 }
 
-
 inline Polygons to_polygons(const Polylines &polylines)
 {
     Polygons out;
@@ -287,23 +268,14 @@ inline Polygons to_polygons(VecOfPoints &&paths)
     return out;
 }
 
-
-
 bool polygons_match(const Polygon &l, const Polygon &r);
 
 Polygon make_circle(double radius, double error);
 Polygon make_circle_num_segments(double radius, size_t num_segments);
 
-
-
-
-
 struct PolygonPoint
 {
-
-
     size_t index;
-
 
     Point point;
 };
@@ -311,8 +283,6 @@ using PolygonPoints = std::vector<PolygonPoint>;
 
 bool overlaps(const Polygons& polys1, const Polygons& polys2);
 }
-
-
 #include <boost/polygon/polygon.hpp>
 namespace boost { namespace polygon {
     template <>
@@ -324,30 +294,25 @@ namespace boost { namespace polygon {
         typedef Slic3r::Points::const_iterator iterator_type;
         typedef Slic3r::Point point_type;
 
-
         static inline iterator_type begin_points(const Slic3r::Polygon& t) {
             return t.points.begin();
         }
-
 
         static inline iterator_type end_points(const Slic3r::Polygon& t) {
             return t.points.end();
         }
 
-
         static inline std::size_t size(const Slic3r::Polygon& t) {
             return t.points.size();
         }
 
-
-        static inline winding_direction winding(const Slic3r::Polygon&  ) {
+        static inline winding_direction winding(const Slic3r::Polygon& ) {
             return unknown_winding;
         }
     };
 
     template <>
     struct polygon_mutable_traits<Slic3r::Polygon> {
-
         template <typename iT>
         static inline Slic3r::Polygon& set_points(Slic3r::Polygon& polygon, iT input_begin, iT input_end) {
             polygon.points.clear();
@@ -356,15 +321,13 @@ namespace boost { namespace polygon {
                 boost::polygon::assign(polygon.points.back(), *input_begin);
                 ++input_begin;
             }
-
             polygon.points.pop_back();
             return polygon;
         }
     };
-
+    
     template <>
     struct geometry_concept<Slic3r::Polygons> { typedef polygon_set_concept type; };
-
 
     template <>
     struct polygon_set_traits<Slic3r::Polygons> {
@@ -380,9 +343,8 @@ namespace boost { namespace polygon {
             return polygon_set.end();
         }
 
-
-        static inline bool clean(const Slic3r::Polygons&  ) { return false; }
-        static inline bool sorted(const Slic3r::Polygons&  ) { return false; }
+        static inline bool clean(const Slic3r::Polygons& ) { return false; }
+        static inline bool sorted(const Slic3r::Polygons& ) { return false; }
     };
 
     template <>
@@ -393,6 +355,5 @@ namespace boost { namespace polygon {
         }
     };
 } }
-
 
 #endif

@@ -1,4 +1,3 @@
-
 import type { Config } from '../api/types';
 import type { Doc } from '../state/history';
 import type { State } from '../state/store';

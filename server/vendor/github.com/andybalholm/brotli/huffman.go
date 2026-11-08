@@ -6,8 +6,12 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Utilities for building Huffman decoding tables. */
+
 const huffmanMaxCodeLength = 15
 
+/* Maximum possible Huffman table size for an alphabet size of (index * 32),
+   max code length 15 and root table bits 8. */
 var kMaxHuffmanTableSize = []uint16{
 	256,
 	402,
@@ -48,14 +52,19 @@ var kMaxHuffmanTableSize = []uint16{
 	1528,
 }
 
+/* BROTLI_NUM_BLOCK_LEN_SYMBOLS == 26 */
 const huffmanMaxSize26 = 396
 
+/* BROTLI_MAX_BLOCK_TYPE_SYMBOLS == 258 */
 const huffmanMaxSize258 = 632
 
+/* BROTLI_MAX_CONTEXT_MAP_SYMBOLS == 272 */
 const huffmanMaxSize272 = 646
 
 const huffmanMaxCodeLengthCodeLength = 5
 
+/* Do not create this struct directly - use the ConstructHuffmanCode
+ * constructor below! */
 type huffmanCode struct {
 	bits  byte
 	value uint16
@@ -68,6 +77,19 @@ func constructHuffmanCode(bits byte, value uint16) huffmanCode {
 	return h
 }
 
+/* Builds Huffman lookup table assuming code lengths are in symbol order. */
+
+/* Builds Huffman lookup table assuming code lengths are in symbol order.
+   Returns size of resulting table. */
+
+/* Builds a simple Huffman table. The |num_symbols| parameter is to be
+   interpreted as follows: 0 means 1 symbol, 1 means 2 symbols,
+   2 means 3 symbols, 3 means 4 symbols with lengths [2, 2, 2, 2],
+   4 means 4 symbols with lengths [1, 2, 3, 3]. */
+
+/* Contains a collection of Huffman trees with the same alphabet size. */
+/* max_symbol is needed due to simple codes since log2(alphabet_size) could be
+   greater than log2(max_symbol). */
 type huffmanTreeGroup struct {
 	htrees        [][]huffmanCode
 	codes         []huffmanCode
@@ -341,10 +363,15 @@ var kReverseBits = [1 << reverseBitsMax]byte{
 
 const reverseBitsLowest = (uint64(1) << (reverseBitsMax - 1 + reverseBitsBase))
 
+/* Returns reverse(num >> BROTLI_REVERSE_BITS_BASE, BROTLI_REVERSE_BITS_MAX),
+   where reverse(value, len) is the bit-wise reversal of the len least
+   significant bits of value. */
 func reverseBits8(num uint64) uint64 {
 	return uint64(kReverseBits[num])
 }
 
+/* Stores code in table[0], table[step], table[2*step], ..., table[end] */
+/* Assumes that end is an integer multiple of step */
 func replicateValue(table []huffmanCode, step int, end int, code huffmanCode) {
 	for {
 		end -= step
@@ -355,6 +382,9 @@ func replicateValue(table []huffmanCode, step int, end int, code huffmanCode) {
 	}
 }
 
+/* Returns the table width of the next 2nd level table. |count| is the histogram
+   of bit lengths for the remaining symbols, |len| is the code length of the
+   next processed symbol. */
 func nextTableBitSize(count []uint16, len int, root_bits int) int {
 	var left int = 1 << uint(len-root_bits)
 	for len < huffmanMaxCodeLength {
@@ -370,7 +400,7 @@ func nextTableBitSize(count []uint16, len int, root_bits int) int {
 }
 
 func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, count []uint16) {
-	var code huffmanCode
+	var code huffmanCode /* current table entry */ /* symbol index in original or sorted table */ /* prefix code */ /* prefix code addend */ /* step size to replicate values in current table */ /* size of current table */ /* symbols sorted by code length */
 	var symbol int
 	var key uint64
 	var key_step uint64
@@ -380,9 +410,10 @@ func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, coun
 	var offset [huffmanMaxCodeLengthCodeLength + 1]int
 	var bits int
 	var bits_count int
-
+	/* offsets in sorted table for each length */
 	assert(huffmanMaxCodeLengthCodeLength <= reverseBitsMax)
 
+	/* Generate offsets into sorted symbol table by code length. */
 	symbol = -1
 
 	bits = 1
@@ -393,8 +424,10 @@ func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, coun
 		bits++
 	}
 
+	/* Symbols with code length 0 are placed after all other symbols. */
 	offset[0] = codeLengthCodes - 1
 
+	/* Sort symbols by length, by symbol order within each length. */
 	symbol = codeLengthCodes
 
 	for {
@@ -411,6 +444,7 @@ func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, coun
 
 	table_size = 1 << huffmanMaxCodeLengthCodeLength
 
+	/* Special case: all symbols but one have 0 code length. */
 	if offset[0] == 0 {
 		code = constructHuffmanCode(0, uint16(sorted[0]))
 		for key = 0; key < uint64(table_size); key++ {
@@ -420,6 +454,7 @@ func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, coun
 		return
 	}
 
+	/* Fill in table. */
 	key = 0
 
 	key_step = reverseBitsLowest
@@ -444,7 +479,7 @@ func buildCodeLengthsHuffmanTable(table []huffmanCode, code_lengths []byte, coun
 }
 
 func buildHuffmanTable(root_table []huffmanCode, root_bits int, symbol_lists symbolList, count []uint16) uint32 {
-	var code huffmanCode
+	var code huffmanCode /* current table entry */ /* next available space in table */ /* current code length */ /* symbol index in original or sorted table */ /* prefix code */ /* prefix code addend */ /* 2nd level table prefix code */ /* 2nd level table prefix code addend */ /* step size to replicate values in current table */ /* key length of current table */ /* size of current table */ /* sum of root table size and 2nd level table sizes */
 	var table []huffmanCode
 	var len int
 	var symbol int
@@ -473,6 +508,8 @@ func buildHuffmanTable(root_table []huffmanCode, root_bits int, symbol_lists sym
 	table_size = 1 << uint(table_bits)
 	total_size = table_size
 
+	/* Fill in the root table. Reduce the table size to if possible,
+	   and create the repetitions by memcpy. */
 	if table_bits > max_length {
 		table_bits = max_length
 		table_size = 1 << uint(table_bits)
@@ -499,11 +536,13 @@ func buildHuffmanTable(root_table []huffmanCode, root_bits int, symbol_lists sym
 		}
 	}
 
+	/* If root_bits != table_bits then replicate to fill the remaining slots. */
 	for total_size != table_size {
 		copy(table[table_size:], table[:uint(table_size)])
 		table_size <<= 1
 	}
 
+	/* Fill in 2nd level tables and add pointers to root table. */
 	key_step = reverseBitsLowest >> uint(root_bits-1)
 
 	sub_key = reverseBitsLowest << 1

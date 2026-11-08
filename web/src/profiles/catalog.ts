@@ -1,4 +1,3 @@
-
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
 import { getState, type State } from '../state/store';
 import { catalogAnchor, catalogKey, changedKeys, findCatalogBase, profilesFor, resolveProfile } from './model';
@@ -10,7 +9,6 @@ export { catalogKey } from './model';
 export interface ProfileRow {
   key: string;
   name: string;
-
   base: string;
   layerHeight?: number;
   nozzle?: number;
@@ -30,7 +28,6 @@ export function listProfiles(s: State, type: PresetType, filters: {browseAll?: b
   let cache = profileRows.get(s);
   if (!cache) profileRows.set(s, (cache = new Map()));
   if (!filters.browseAll && cache.has(type)) return cache.get(type)!;
-
   const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && (filters.browseAll || (p as { baseRole?: string }).baseRole !== 'base-only' && selectCompatibility(s,type,profileKey(p)).ok)).map((p) => {
     const { config, base } = resolveProfile(s, type, profileKey(p));
     return { key: profileKey(p), name: p.name, base: p.base?.name ?? p.inherits, ...metadata(config), vendor: base?.vendor,
@@ -39,18 +36,15 @@ export function listProfiles(s: State, type: PresetType, filters: {browseAll?: b
   if (!filters.browseAll) cache.set(type, rows);
   return rows;
 }
-
 export function resolveCatalogEntry(s: State, type: PresetType, key: string) {
   const found = findCatalogBase(s,type,key);
   if (!found.base) throw new Error(found.ambiguous ? 'This catalog name is ambiguous. Choose its exact source again.' : 'This catalog source is unavailable. Reopen Add and choose it again.');
   return {key: catalogKey(found.base), base: found.base, anchor: catalogAnchor(found.base)};
 }
 
-
 export const displayName = (base: SystemPreset) => base.name.replace(/\s*@.*$/, '').replace(/\s+0\.4 nozzle$/i, '').trim();
 export function uniqueName(s: State, type: PresetType, desired: string): string {
   let name = desired, n = 2;
-
   while (s.userPresets.some((p) => p.type === type && !p.archived && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
   return name;
 }
@@ -62,8 +56,6 @@ export function makeProfile(s: State, base: SystemPreset, name: string, values: 
 
 const pendingCreations=new Map<string,{creation:ProfileCreation;flight?:Promise<string>}>();
 const baseIdentity=catalogKey;
-
-
 export async function createProfileFromBase(type:PresetType,baseName:string,name?:string,values?:Config):Promise<string> {
   const {key:identity}=resolveCatalogEntry(getState(),type,baseName),explicit=name?.trim();
   const {profileCreation}=await import('./transactions');
@@ -84,7 +76,6 @@ export async function createProfileFromBase(type:PresetType,baseName:string,name
         if(reuse)return profileKey(reuse);
       }
       const made=makeProfile(s,current,explicit || displayName(current),explicit && values ? {...current.config,...values} : {});
-
       const defaults=type==='machine' ? (current as {print_defaults?:Config}).print_defaults : undefined;
       return defaults && Object.keys(defaults).length ? {...made,printOverrides:{...defaults}} as UserPreset : made;
     })};

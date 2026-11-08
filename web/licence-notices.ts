@@ -1,6 +1,5 @@
-
-
-
+// Minified chunks drop licence comments, but MIT-style licences require the notice in every copy.
+// Ship the licence of each npm package that reaches a main or worker chunk, plus the licence
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Plugin } from 'vite';
@@ -25,7 +24,6 @@ function embeddedNotices(files: Set<string>): string[] {
   return [...blocks];
 }
 
-
 export function licenceNotices(emit = true): Plugin {
   return {
     name: 'orca-licence-notices',
@@ -42,7 +40,6 @@ export function licenceNotices(emit = true): Plugin {
         }
       }
       if (!emit) return;
-
       for (const [, { dir }] of bundled) {
         const { dependencies = {} } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
         for (const name of Object.keys(dependencies)) {

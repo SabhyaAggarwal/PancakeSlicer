@@ -1,7 +1,4 @@
 #pragma once
-
-
-
 #include "libslic3r/Point.hpp"
 
 #include <array>
@@ -14,8 +11,6 @@
 namespace Slic3r::Nonplanar {
 
 struct ObjectiveGeometry;
-
-
 
 struct FieldTermField
 {
@@ -35,13 +30,7 @@ class FieldTerm
 {
 public:
     virtual ~FieldTerm() = default;
-
-
-
     virtual double cost(const ObjectiveGeometry &g, const std::vector<Vec3d> &G, std::vector<Vec3d> *dG) const = 0;
-
-
-
     virtual bool needs_field_values() const { return false; }
     virtual double cost_field(const FieldTermField &field, const std::vector<Vec3d> &G,
                               std::vector<double> *dphi, std::vector<Vec3d> *dG) const
@@ -50,7 +39,6 @@ public:
     }
 
 };
-
 
 using FieldTermFactory = std::function<std::shared_ptr<const FieldTerm>(const ObjectiveGeometry &g)>;
 
@@ -61,9 +49,7 @@ struct ActiveFieldTerm
     std::shared_ptr<const FieldTerm> term;
 };
 
-
 const std::vector<ActiveFieldTerm> &active_field_terms(const ObjectiveGeometry &g);
-
 
 void register_field_term(const std::string &name, FieldTermFactory factory);
 

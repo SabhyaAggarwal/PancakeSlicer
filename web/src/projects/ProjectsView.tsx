@@ -1,6 +1,3 @@
-
-
-
 import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ActionMenu, type MenuEntry } from '../components/Menu';
 import { Check } from '../components/Check';
@@ -18,16 +15,16 @@ import { setProjectsQuery, useProjectsQuery } from './query';
 import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
 import { preferenceJson, preferenceText, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
 import './projects.css';
-import { Glyph } from '../components/Glyph';
 import { Caret } from '../components/Caret';
+import { createPortal } from 'react-dom';
+import { usePhoneSheet } from '../workspace-sheet';
+import { Sep } from '../separator';
 
 const noCommands: readonly Readonly<ProjectCommandStatus>[] = Object.freeze([]);
 const noSubscribe = () => () => {};
 const emptyCommands = () => noCommands;
 type ProjectUndo = {id:string;name:string;run:()=>Promise<void>};
-
 const projectUndos = new Map<string,ProjectUndo>();
-
 const trashRestores = new Map<string,number|undefined>();
 const commandVerb = {rename:'Rename',duplicate:'Duplicate',archive:'Delete',restore:'Restore'};
 
@@ -37,8 +34,7 @@ type Sort = 'edited'|'name'|'objects';
 type View = 'grid'|'list';
 const PLACES = [{kind:'home',label:'Home'},{kind:'recent',label:'Recent'},{kind:'favorites',label:'Favorites'},{kind:'unsorted',label:'Unsorted'}] as const;
 const SORTS = [{value:'edited',label:'Last edited'},{value:'name',label:'Name'},{value:'objects',label:'Objects'}] as const;
-const RECENT_MS = 7 * 86400_000, HOME_RECENT = 6;
-
+const RECENT_MS = 7 * 86400_000, HOME_RECENT = 18;
 const DRAG = 'application/x-orca-projects', FOLDER_DRAG = 'application/x-orca-folder';
 let lastPlace: Place = {kind:'home'};
 const collapsed = new Set<string>();
@@ -64,21 +60,16 @@ const sorters: Record<Sort,(a:ProjectMeta,b:ProjectMeta)=>number> = {
 };
 
 async function exportProject(p:ProjectMeta) {
-
   if(!await confirmDialog('Export 3MF',`Open “${p.name}” and export it?`,['Export','Cancel']))return;
   try {const flow=await import('../flow/project');await flow.openProject(p.id);if(flow.project.get().context.id!==p.id || ['missing','failed','opening'].includes(flow.project.get().value))throw new Error('The project could not be opened.');await (await import('../actions')).saveProject();}
   catch(error){toast(`Export failed: ${message(error)}`);}
 }
 
 function Thumb({p}:{p:ProjectMeta}) {
-
-  return p.thumbnail && p.objects > 0 ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/> : null;
-}
-function FolderIcon() {
-  return <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z" fill="currentColor"/></svg>;
+  return p.thumbnail && p.objects > 0 ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/>
+    : <span className="pj-thumb-empty">{p.objects > 0 ? 'No preview' : 'Empty'}</span>;
 }
 const Dots = () => <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>;
-
 function FolderName({f,editing,done}:{f:Folder;editing:boolean;done(name:string|null):void}) {
   const settled=useRef(false);
   useEffect(()=>{if(editing)settled.current=false;},[editing]);
@@ -97,7 +88,6 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
   const committed=useRef(false),[renameError,setRenameError]=useState<string|null>(null),[renameSaving,setRenameSaving]=useState(false);
   const commit=async(name:string)=>{if(committed.current)return;if(!name.trim()){setRenameError('Enter a name.');return;}if(name.trim()===p.name){setRenaming(false);return;}committed.current=true;setRenameSaving(true);try{await (await import('../flow/project')).renameProject(p.id,name.trim());setRenameError(null);setRenaming(false);}catch(error){setRenameError(message(error));committed.current=false;}finally{setRenameSaving(false);}};
   useEffect(()=>{if(renaming)committed.current=false;},[renaming]);
-
   const click=(e:MouseEvent<HTMLElement>)=>{
     if(renaming || (e.target as Element).closest('button,input,.pj-check'))return;
     e.currentTarget.focus();
@@ -117,7 +107,7 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
       <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={more}><Dots/></button>
     </>;
   const time=<time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time>;
-  const details=<span className="pj-sub">{current && <span className="pj-open">Open</span>}{folder!==undefined && <span>{folder}</span>}<span>{objects(p.objects)}</span>{time}</span>;
+  const details=<span className="pj-sub">{current && <span className="pj-open">Open</span>}{folder!==undefined && <span>{folder}</span>}<span className="pj-count">{objects(p.objects)}</span>{time}</span>;
   return <div className={`pj-item${trash?' trash':''}${current?' current':''}${selected?' selected':''}${selecting?' selecting':''}`} role="row" tabIndex={focused?0:-1} data-id={p.id} aria-label={p.name} aria-selected={trash?undefined:selected} aria-current={current || undefined}
     draggable={!trash && !renaming} onDragStart={onDrag} onDragEnd={onDragEnd} onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
     {view==='grid' ? <>
@@ -146,29 +136,33 @@ function Projects() {
   useEffect(()=>{let active=true;void projectStore().then(store=>{if(active)setStorage(store);});return()=>{active=false;};},[status.state==='ready']);
   const commands=useSyncExternalStore(storage ? storage.subscribeCommands : noSubscribe,storage ? storage.commands : emptyCommands);
   const blocked=(id:string)=>commands.some(c=>c.id===id);
-
   usePreference('projects.favorites');usePreference('projects.view');usePreference('projects.sort');
   const favoriteIds=preferenceJson<unknown>('projects.favorites',[]),favorites=new Set(Array.isArray(favoriteIds)?favoriteIds.filter((id):id is string=>typeof id==='string'):[]),favoriteKey=[...favorites].join('\n');
   const view:View=preferenceText('projects.view')==='list'?'list':'grid';
   const sortPref=preferenceText('projects.sort') ?? 'edited',sort:Sort=Object.hasOwn(sorters,sortPref)?sortPref as Sort:'edited';
-
   const prefsLoaded=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot).hydrated;
   const toggleFavorite=(id:string)=>{if(!prefsLoaded)return;const next=new Set(favorites);if(!next.delete(id))next.add(id);savePreferences({'projects.favorites':[...next]});};
   const folderState=useFolders(),folders=folderState.folders;
   const [place,setPlaceState]=useState<Place>(lastPlace);
-
   const [railOpen,setRailOpen]=useState(false),closeRail=()=>setRailOpen(false);
+  const phone=usePhoneSheet(),[slot,setSlot]=useState<HTMLElement|null>(null);
+  useEffect(()=>setSlot(document.getElementById('topbar-slot')),[phone]);
+  const barActions=<>
+    <div className="seg pj-view" role="group" aria-label="View">
+      <button type="button" aria-pressed={view==='grid'} aria-label="Grid" onClick={()=>savePreferences({'projects.view':'grid'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" fill="currentColor"/></svg></button>
+      <button type="button" aria-pressed={view==='list'} aria-label="List" onClick={()=>savePreferences({'projects.view':'list'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z" fill="currentColor"/></svg></button>
+    </div>
+    <button type="button" className="btn" onClick={fileVerbs.import}>Import</button>
+    <button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button>
+  </>;
   const go=(next:Place)=>{lastPlace=next;setPlaceState(next);setRenaming(null);setMenu(null);setProjectsQuery('');closeRail();};
   const inTrash=place.kind==='trash',placeFolder=place.kind==='folder'?folders.find(f=>f.id===place.id):undefined;
-
   useEffect(()=>{if(place.kind==='folder' && folderState.state==='ready' && !placeFolder)go({kind:'home'});},[place,folderState.state,placeFolder]);
   const [,redraw]=useState(0);
-
   const [trash,setTrash]=useState<ProjectMeta[]|null>(null),[trashError,setTrashError]=useState<string|null>(null);
   const loadTrash=()=>listTrash().then(rows=>{setTrash(rows);setTrashError(null);},error=>setTrashError(message(error)));
   useEffect(()=>{void loadTrash();},[list]);
   const query=useProjectsQuery(),q=query.trim().toLocaleLowerCase();
-
   const known=useMemo(()=>new Set(folders.map(f=>f.id)),[folders]);
   const folderOf=(p:ProjectMeta)=>p.folderId && known.has(p.folderId)?p.folderId:null;
   const counts=useMemo(()=>{
@@ -176,7 +170,6 @@ function Projects() {
     for(const p of all){const f=folderOf(p);if(f)inFolder.set(f,(inFolder.get(f)??0)+1);}
     return {recent:all.filter(p=>now-p.savedAt<RECENT_MS).length,favorites:all.filter(p=>favorites.has(p.id)).length,unsorted:all.filter(p=>!folderOf(p)).length,trash:trash?.length,inFolder} as const;
   },[list,trash,favoriteKey,known]);
-
   const searching=!!q && !inTrash;
   const shown=useMemo(()=>{
     const now=Date.now(),match=(p:ProjectMeta)=>!q || p.name.toLocaleLowerCase().includes(q);
@@ -193,13 +186,11 @@ function Projects() {
   const latest=useRef(selection);latest.current=selection;
   const selected=selectedVisible(selection),selectedSet=useMemo(()=>new Set(selected),[selection]);
   const [renaming,setRenaming]=useState<string|null>(null),[error,setError]=useState<string|null>(null);
-
   const ops=useMachine(projectsOps),busy=ops.value==='deleting',retrying=ops.value==='retrying'?ops.context.id:null,writing=ops.value!=='idle';
   const [menu,setMenu]=useState<{id:string;x:number;y:number}|null>(null),grid=useRef<HTMLDivElement>(null);
   const [trashFocus,setTrashFocus]=useState<string|null>(null);
   const focusKey=inTrash?(shown.some(p=>p.id===trashFocus)?trashFocus:shown[0]?.id):selection.focus??visible[0];
   const dispatch=(event:SelectionEvent,focus=false)=>{const next=reduceSelection(latest.current,event);latest.current=next;setSelection(next);if(focus && next.focus)requestAnimationFrame(()=>{const row=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])].find(el=>el.dataset.id===next.focus);row?.focus();row?.scrollIntoView({block:'nearest'});});};
-
   const restoreEntries=async(entries:readonly ProjectUndo[])=>{
     let restored=0;const failed:string[]=[];
     try{
@@ -213,7 +204,6 @@ function Projects() {
     }finally{void loadTrash();}
   };
   const restore=(entries:readonly ProjectUndo[])=>runProjectsOp('restoring',()=>restoreEntries(entries));
-
   const restoreFromTrash=async(p:ProjectMeta)=>{
     const undo=projectUndos.get(p.id);
     if(undo){await restore([undo]);return;}
@@ -249,7 +239,6 @@ function Projects() {
       await refreshProjects();
     }catch(error){setError(message(error));}
   },command.operationId);
-
   const remove=async(ids:readonly string[],ask=true)=>{
     const targets=(list??[]).filter(p=>ids.includes(p.id));if(projectsOps.get().value!=='idle' || !targets.length || targets.some(p=>blocked(p.id)))return;
     if(ask && !await confirmDialog(targets.length===1?'Move to Trash?':`Move ${targets.length} projects to Trash?`,names(targets),['Move to Trash','Cancel'],true))return;
@@ -262,7 +251,6 @@ function Projects() {
     });
   };
   const onKey=(e:KeyboardEvent)=>{
-
     const command=e.ctrlKey||e.metaKey,focus=(e.target as Element).closest<HTMLElement>('.pj-item[data-id]')?.dataset.id ?? focusKey;
     if((e.target as Element).closest('input,textarea,[contenteditable=true]') || busy)return;
     if((e.target as Element).closest('button') && !(command&&e.key.toLowerCase()==='a') && e.key!=='Escape')return;
@@ -288,10 +276,8 @@ function Projects() {
     else return;e.preventDefault();e.stopPropagation();
   };
   const onDrop=(e:DragEvent)=>{if(!e.dataTransfer.files.length)return;e.preventDefault();void newProjectFrom(e.dataTransfer.files);};
-
   const [dragging,setDragging]=useState<'projects'|'folder'|null>(null),[editing,setEditing]=useState<string|null>(null);
   const dragIds=(id:string)=>selected.includes(id)?selected:[id];
-
   const ghost=(e:DragEvent,text:string)=>{
     const el=document.createElement('div');el.className='pj-ghost';el.textContent=text;document.body.append(el);
     e.dataTransfer.setDragImage(el,14,14);setTimeout(()=>el.remove());
@@ -309,7 +295,6 @@ function Projects() {
     catch(error){setError(`Move failed: ${message(error)}`);}
   };
   const uniqueName=(parent:string|null)=>{const taken=new Set(childFolders(folders,parent).map(f=>f.name.toLocaleLowerCase()));let name='New folder';for(let n=2;taken.has(name.toLocaleLowerCase());n++)name=`New folder ${n}`;return name;};
-
   const newFolder=async(parent:string|null,ids?:readonly string[])=>{
     try{const id=await createFolder(uniqueName(parent),parent);if(parent)collapsed.delete(parent);if(ids?.length)await moveProjects(ids,id);setEditing(id);}
     catch(error){setError(`New folder failed: ${message(error)}`);}
@@ -323,7 +308,6 @@ function Projects() {
     try{await moveFolder(id,parent);if(parent)collapsed.delete(parent);}catch(error){setError(`Move failed: ${message(error)}`);}
   };
   type Target={folder:string|null}|'trash'|'new';
-
   const dropTarget=(target:Target,folders=true)=>({
     onDragOver:(e:DragEvent<HTMLElement>)=>{
       const projects=e.dataTransfer.types.includes(DRAG),folder=folders && e.dataTransfer.types.includes(FOLDER_DRAG) && typeof target==='object';
@@ -358,7 +342,6 @@ function Projects() {
       {label:'New folder',action:()=>void newFolder(null,ids)},
     ];
   };
-
   const [folderMenu,setFolderMenu]=useState<{id:string;x:number;y:number}|null>(null);
   const folderMenuAt=(f:Folder)=>(e:MouseEvent<HTMLElement>)=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setFolderMenu({id:f.id,...(e.type==='contextmenu'?{x:e.clientX,y:e.clientY}:{x:r.left,y:r.bottom+2})});};
   const folderItems=(f:Folder):MenuEntry[]=>[
@@ -391,20 +374,15 @@ function Projects() {
     <button key={key} type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={open} {...(target?dropTarget(target):{})}>
       <span>{label}</span>{n!==undefined && <span className="pj-n">{n}</span>}
     </button>;
-
   const tileEditing=!inTrash && (place.kind==='home' || !!placeFolder || searching) && subfolders.some(f=>f.id===editing);
   const tree=folderTree(folders).filter(({folder})=>!folderPath(folders,folder.parentId ?? null).some(a=>collapsed.has(a.id)));
-
-  const tiles=!inTrash && (place.kind==='home' || placeFolder || searching) && <div className="pj-tiles" role="list" aria-label="Folders">
-    {place.kind==='home' && !searching && <div role="listitem" className="pj-tile" {...dropTarget({folder:null},false)}>
-      <button type="button" className="pj-tile-open" onClick={()=>go({kind:'unsorted'})}><span className="pj-tile-icon"><FolderIcon/></span><span className="pj-tile-text"><span className="pj-name">Unsorted</span><span className="pj-sub">{count(counts.unsorted,'project','projects')}</span></span></button>
-    </div>}
+  const tiles=!inTrash && (place.kind==='home' && subfolders.length>0 || placeFolder || searching && subfolders.length>0) && <div className="pj-tiles" role="list" aria-label="Folders">
     {subfolders.map(f=><div key={f.id} role="listitem" className="pj-tile" draggable={editing!==f.id} onDragStart={onFolderDrag(f)} onDragEnd={endDrag} {...dropTarget({folder:f.id})} onContextMenu={folderMenuAt(f)}>
-      <button type="button" className="pj-tile-open" onClick={()=>{if(editing!==f.id)go({kind:'folder',id:f.id});}}><span className="pj-tile-icon"><FolderIcon/></span><span className="pj-tile-text"><FolderName f={f} editing={editing===f.id} done={named(f)}/><span className="pj-sub">{count(counts.inFolder.get(f.id) ?? 0,'project','projects')}</span></span></button>
+      <button type="button" className="pj-tile-open" onClick={()=>{if(editing!==f.id)go({kind:'folder',id:f.id});}}><span className="pj-tile-text"><FolderName f={f} editing={editing===f.id} done={named(f)}/><span className="pj-sub">{count(counts.inFolder.get(f.id) ?? 0,'project','projects')}</span></span></button>
       <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${f.name}`} aria-haspopup="menu" onClick={folderMenuAt(f)}><Dots/></button>
     </div>)}
-    {!searching && <div role="listitem" className="pj-tile pj-tile-new" {...dropTarget('new',false)}>
-      <button type="button" className="pj-tile-open" onClick={()=>void newFolder(placeFolder?.id ?? null)}><span className="pj-tile-icon">+</span><span className="pj-tile-text"><span className="pj-name">New folder</span></span></button>
+    {!searching && placeFolder && <div role="listitem" className="pj-tile pj-tile-new" {...dropTarget('new',false)}>
+      <button type="button" className="pj-tile-open" onClick={()=>void newFolder(placeFolder?.id ?? null)}><span className="pj-tile-text"><span className="pj-name">New folder</span></span></button>
     </div>}
   </div>;
   const grid_=shown.length>0 && <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={inTrash?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>{head}{shown.map(item)}</div>;
@@ -426,7 +404,7 @@ function Projects() {
     </nav>
     <section className="pj-main" aria-label={title}>
       <header className="pj-bar">
-        <button type="button" className="btn pj-place" aria-expanded={railOpen} aria-controls="pj-rail" onClick={()=>setRailOpen(true)}><Glyph name="rail"/><span>{title}</span><Caret/></button>
+        <button type="button" className="btn pj-place" aria-expanded={railOpen} aria-controls="pj-rail" onClick={()=>setRailOpen(true)}><span>{title}</span><Caret/></button>
         {crumbs.length && !searching ? <nav className="pj-crumbs" aria-label="Folder path">
           <button type="button" className="btn-ghost" onClick={()=>go({kind:'home'})}>Home</button>
           {crumbs.map((f,i)=>i<crumbs.length-1
@@ -436,12 +414,7 @@ function Projects() {
         <input className="text pj-search" type="search" placeholder="Search" aria-label="Search all projects" value={query} onChange={e=>setProjectsQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape' && query){e.stopPropagation();setProjectsQuery('');}}}/>
         <div className="pj-tools">
           <Dropdown className="pj-sort" aria-label="Sort by" options={SORTS} value={sort} onValueChange={v=>savePreferences({'projects.sort':v})}/>
-          <div className="seg pj-view" role="group" aria-label="View">
-            <button type="button" aria-pressed={view==='grid'} aria-label="Grid" onClick={()=>savePreferences({'projects.view':'grid'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" fill="currentColor"/></svg></button>
-            <button type="button" aria-pressed={view==='list'} aria-label="List" onClick={()=>savePreferences({'projects.view':'list'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z" fill="currentColor"/></svg></button>
-          </div>
-          <button type="button" className="btn" onClick={fileVerbs.import}>Import</button>
-          <button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button>
+          {phone&&slot?createPortal(<div className="pj-top-actions">{barActions}</div>,slot):barActions}
         </div>
       </header>
       {failed && !loading && <div className="pj-line" role="alert"><span>{failed}</span><button type="button" className="btn" onClick={()=>{if(inTrash)void loadTrash();else void refreshProjects();}}>Retry</button></div>}
@@ -450,7 +423,7 @@ function Projects() {
         const pending=command.state==='preparing' || command.state==='sending',name=list?.find(p=>p.id===command.id)?.name ?? trash?.find(p=>p.id===command.id)?.name ?? command.name ?? 'Project';
         const state=pending?'Saving…':command.state==='acknowledged'?'Saved':command.state==='conflict'?`Changed elsewhere: ${command.error}`:`Not saved: ${command.error}`;
         return <div className={`pj-line${command.state==='failed'||command.state==='conflict'?' bad':''}`} key={command.operationId} aria-busy={pending} role="status">
-          <span><strong>{commandVerb[command.kind]} {name}</strong> · {state}</span>
+          <span><strong>{commandVerb[command.kind]} {name}</strong><Sep/>{state}</span>
           {!pending && (command.kind!=='restore' || projectUndos.has(command.id) || trashRestores.has(command.id)) && <button type="button" className="btn" disabled={writing} onClick={()=>void retry(command)}>{command.state==='acknowledged'?'Finish':'Retry'}</button>}
           {command.state==='conflict' && <button type="button" className="btn-ghost" disabled={writing} onClick={()=>void dismiss(command)}>Dismiss</button>}
         </div>;

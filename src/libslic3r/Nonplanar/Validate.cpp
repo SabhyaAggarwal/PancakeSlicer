@@ -31,12 +31,8 @@
 
 namespace Slic3r::Nonplanar {
 
-
-
 static StringObjectException validate_native_support(const Print &print, std::vector<StringObjectException> *warnings)
 {
-
-
     if (warnings != nullptr && !native_support_capable(print.config()) &&
         std::any_of(print.objects().begin(), print.objects().end(), [&print](const PrintObject *object) {
             const auto *style = object->model_object()->config.get().option<ConfigOptionEnum<SupportMaterialStyle>>("support_style");
@@ -61,7 +57,6 @@ static StringObjectException validate_native_support(const Print &print, std::ve
         static const char *other_style = L("Turn it off or choose another support style.");
         if (config.nonplanar_mode.value != NonplanarMode::Off)
             return refuse(_u8L("non-planar printing"), L("Set the non-planar mode to Off or choose another support style."), "nonplanar_mode");
-
         if (config.nonplanar_steep_skin.value && print.config().nonplanar_kinematics.value != RotaryLayout::None)
             return refuse(_u8L("the steep-face skin"), L("Turn off the steep-face skin or choose another support style."), "nonplanar_steep_skin");
         if (!is_auto(config.support_type.value))
@@ -88,6 +83,11 @@ static StringObjectException validate_native_support(const Print &print, std::ve
     return {};
 }
 
+double curved_max_angle_limit(NonplanarMode mode)
+{
+    return mode == NonplanarMode::NonplanarTop ? 30. : mode == NonplanarMode::CurvedTops ? 12. : 0.;
+}
+
 StringObjectException validate(const Print &print, std::vector<StringObjectException> *warnings)
 {
     if (StringObjectException err = validate_native_support(print, warnings); !err.string.empty())
@@ -106,10 +106,20 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         instances += object->instances().size();
         const NonplanarMode mode = object->config().nonplanar_mode.value;
         const bool          field = mode == NonplanarMode::Field || mode == NonplanarMode::OneShot;
+        if (mode == NonplanarMode::SmoothMorph) {
+            needs_head = enabled = true;
+            if (config.nonplanar_kinematics.value != RotaryLayout::None || config.spiral_mode || config.belt_printer)
+                return { L("Smooth morph requires a fixed 3-axis printer without spiral vase or belt printing."),
+                         object, "nonplanar_mode" };
+            if (object->num_printing_regions() != 1 || object->model_object()->is_mm_painted())
+                return { L("Smooth morph requires one material and one set of part settings."), object, "nonplanar_mode" };
+        }
         const double curved_angle = object->config().nonplanar_curved_max_angle.value;
-        if (mode == NonplanarMode::CurvedTops &&
-            (!std::isfinite(curved_angle) || curved_angle < 0. || curved_angle > 12.))
-            return { L("Maximum curved top angle must be a finite value from 0 to 12 degrees. Steeper curved tops are not supported."),
+        const double max_angle    = curved_max_angle_limit(mode);
+        if (curved_tops_mode(mode) &&
+            (!std::isfinite(curved_angle) || curved_angle < 0. || curved_angle > max_angle))
+            return { (boost::format(_u8L("Maximum curved top angle must be a finite value from 0 to %1% degrees. Steeper curved tops are "
+                                        "not supported.")) % max_angle).str(),
                      object, "nonplanar_curved_max_angle" };
         if (mode == NonplanarMode::Multiplanar || field) {
             multiplanar_instances += object->instances().size();
@@ -118,19 +128,12 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar chunks cannot be combined with spiral vase mode."), object, "nonplanar_mode" };
             if (config.belt_printer)
                 return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
-
-
             const bool fixed_head_file = mode == NonplanarMode::Field && !object->config().nonplanar_field_file.value.empty() &&
                                          config.nonplanar_kinematics.value == RotaryLayout::None;
-
-
             const bool fixed_head_oneshot = mode == NonplanarMode::OneShot && config.nonplanar_kinematics.value == RotaryLayout::None;
             if (std::string why; field && !fixed_head_file && !fixed_head_oneshot &&
                                  !field_motion_supported(config, &why))
                 return { why, object, "nonplanar_mode" };
-
-
-
             const ModelObject &model = *object->model_object();
             if (object->num_printing_regions() > 1 || model.is_mm_painted() ||
                 std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) {
@@ -139,9 +142,6 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar and rotary curved layers print one part with one set of settings. Remove negative "
                            "volumes, modifiers, painting and parts with their own settings, or use another non-planar mode."),
                          object, "nonplanar_mode" };
-
-
-
             if ((mode == NonplanarMode::Field || (mode == NonplanarMode::OneShot && !plinth_requested())) && object->config().raft_layers.value > 0)
                 return { L("Rotary curved layers cannot be printed on a raft."), object, "raft_layers" };
         }
@@ -162,19 +162,16 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                     return { L("Curved shells cannot use a modifier with a different layer height. Use the object's variable layer height instead."),
                              object, "layer_height" };
             }
-
             for (int filament : { top_shells_enabled(region, object->config()) ? region.top_surface_filament_id.value : 0,
                                   bottom_shells_enabled(region, object->config()) ? region.bottom_surface_filament_id.value : 0 })
                 if (filament > 0 && size_t(filament) <= config.filament_is_mixed.values.size() &&
                     config.filament_is_mixed.values[size_t(filament - 1)])
                     return { L("Curved shells need one physical filament per curved area. Select a non-mixed surface filament."),
                              object, "top_surface_filament_id" };
-
-
             const double height = region.nonplanar_shell_layer_height.value > 0. ? region.nonplanar_shell_layer_height.value :
                                                                                  automatic_shell_height(*object);
             if (min_nozzle > 0. && height > 0.75 * min_nozzle)
-
+                // xgettext:no-c-format, no-boost-format
                 return { L("Curved shell layer height must not exceed 75% of the nozzle diameter."), object,
                          "nonplanar_shell_layer_height" };
             const double cap = object->config().nonplanar_max_patch_height.value;
@@ -195,12 +192,10 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         }
     }
 
-
     if (multiplanar_instances > 0 && instances > 1 && config.print_sequence != PrintSequence::ByObject)
         return { L("Multiplanar objects can only be printed with other objects in \"By object\" sequence."), nullptr, "print_sequence" };
 
     if (config.nonplanar_kinematics.value != RotaryLayout::None) {
-
         const auto valid_floats = [](const ConfigOptionFloats &option, size_t size) {
             return option.values.size() == size && std::all_of(option.values.begin(), option.values.end(),
                                                                [](double value) { return std::isfinite(value); });
@@ -256,23 +251,18 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
 
 StringObjectException validate_layer_gcodes(const Print &print, std::vector<StringObjectException> *warnings)
 {
-
     if (print.config().print_sequence == PrintSequence::ByObject)
         return {};
-
-
     for (const CustomGCode::Item &item : print.model().get_curr_plate_custom_gcodes().gcodes)
         for (const PrintObject *object : print.objects()) {
             if (! object->is_step_done(posNonplanar) || object->layers().empty())
                 continue;
-
             const auto layer = std::lower_bound(object->layers().begin(), object->layers().end(), item.print_z - EPSILON,
                                                 [](const Layer *l, double z) { return l->print_z < z; });
             if (layer == object->layers().end())
                 continue;
             const size_t layer_idx = size_t(layer - object->layers().begin());
             for (const ConformalPatch &patch : object->conformal().patches) {
-
                 if (patch.host_layer < layer_idx || patch.z_min >= (*layer)->bottom_z() - EPSILON)
                     continue;
                 if (item.type == CustomGCode::PausePrint || item.type == CustomGCode::Custom || item.type == CustomGCode::Template)

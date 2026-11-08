@@ -34,7 +34,6 @@ bool wave_enabled(const Print &print)
 
 void write_wave_verification(const std::string &path, size_t grazes, size_t hits, const std::vector<WaveResult> &results)
 {
-
     boost::nowide::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
     std::string line;
     for (int i = 0; i < 1000 && file; ++i) {
@@ -116,9 +115,6 @@ WaveField::WaveField(const PrintObject &object)
         return;
     m_centre = unscale(bounds.center());
     if (m_mode != NonplanarWave::Top) {
-
-
-
         for (const SupportLayer *layer : object.support_layers()) {
             Points points;
             layer->support_fills.collect_points(points);
@@ -131,10 +127,7 @@ WaveField::WaveField(const PrintObject &object)
             m_paint.push_back({ allowed, get_extents(allowed), allowed.lines(), 0 });
     }
     m_base_z = m_slices[std::min(size_t(2), m_slices.size() - 1)].z;
-
     if (m_mode == NonplanarWave::Top && min_shells != std::numeric_limits<int>::max())
-
-
         m_amplitude = std::min({ m_amplitude, 0.5 * min_height, 0.5 * min_height * min_shells });
     if (m_mode == NonplanarWave::Infill)
         m_amplitude = std::min(m_amplitude, 0.5 * min_height);
@@ -177,7 +170,6 @@ double WaveField::offset(const Point &p, size_t layer) const
     if (m_mode == NonplanarWave::Whole) {
         ramp = std::clamp((m_slices[layer].z - m_base_z) / m_ramp_height, 0., 1.);
     } else if (m_mode == NonplanarWave::Top) {
-
         for (size_t top = layer; top < std::min(m_slices.size(), layer + size_t(m_max_shells)); ++top) {
             bool covered = false;
             for (const TopSurface &surface : m_slices[top].tops) {
@@ -195,7 +187,6 @@ double WaveField::offset(const Point &p, size_t layer) const
         }
     } else if (m_mode == NonplanarWave::Infill) {
         ramp = 1.;
-
         for (int d = -2; d <= 2; ++d) {
             const int other = int(layer) + d;
             if (other < 0 || other >= int(m_slices.size())) {
@@ -207,8 +198,6 @@ double WaveField::offset(const Point &p, size_t layer) const
                     ramp = std::min(ramp, 0.5 * std::abs(d));
         }
     }
-
-
     if (m_mode == NonplanarWave::Top && m_amplitude > 0.)
         ramp = std::min(ramp, std::max(0., (m_slices[layer].z - m_base_z) / (2. * m_amplitude)));
     return m_amplitude * wave(p) * ramp * paint_taper;

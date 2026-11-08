@@ -9,9 +9,6 @@
 
 namespace Slic3r { namespace csg {
 
-
-
-
 template<class It, class OutIt>
 void copy_csgrange_shallow(const Range<It> &csgrange, OutIt out)
 {
@@ -35,7 +32,6 @@ void copy_csgrange_shallow(const Range<It> &csgrange, OutIt out)
         ++out;
     }
 }
-
 
 template<class It, class OutIt>
 void copy_csgrange_deep(const Range<It> &csgrange, OutIt out)

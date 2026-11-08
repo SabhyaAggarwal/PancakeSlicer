@@ -40,9 +40,6 @@ inline int hex_digit_value(char ch)
     return -1;
 }
 
-
-
-
 inline std::string percent_decode_copy(const std::string& value)
 {
     std::string decoded;
@@ -73,7 +70,6 @@ inline std::string strip_file_uri_prefix_copy(const std::string& value)
         path.erase(0, std::string("localhost").size());
     else if (!path.empty() && path.front() != '/')
         path = "//" + path;
-
 
     if (path.size() >= 3 && path[0] == '/' && std::isalpha(static_cast<unsigned char>(path[1])) && path[2] == ':')
         path.erase(path.begin());
@@ -191,17 +187,6 @@ inline boost::filesystem::path resolve_existing_relative_path_case_insensitive(
     const boost::filesystem::path requested = resource_path.is_absolute() ? resource_path : base_dir / resource_path;
     return resolve_existing_path_case_insensitive(requested, context);
 }
-
-
-
-
-
-
-
-
-
-
-
 
 inline boost::filesystem::path resolve_external_resource_path(
     const boost::filesystem::path& base_dir,

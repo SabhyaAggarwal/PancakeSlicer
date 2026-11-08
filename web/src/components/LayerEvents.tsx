@@ -1,7 +1,3 @@
-
-
-
-
 import { useState } from 'react';
 import type { LayerRec } from '../preview/format';
 import { filamentColor } from '../plater/filamentColor';
@@ -9,6 +5,7 @@ import { effectiveConfig, getState, setEvents, useStore, type LayerEvent } from 
 import type { SliderTick } from './PreviewSliders';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { ActionMenu, type MenuEntry } from './Menu';
+import { SEP } from '../separator';
 
 const COLOR: Record<LayerEvent['type'], string> = {
   pause: '#E67E22', custom: '#3A7BD5', template: '#8E44AD', colour: '#E53935', change: '#00AE42',
@@ -25,7 +22,6 @@ export function eventLabel(e: LayerEvent): string {
 }
 
 const sameZ = (a: number, b: number) => Math.abs(a - b) < 1e-3;
-
 
 export function eventTicks(events: LayerEvent[], layers: LayerRec[]): SliderTick[] {
   return events.flatMap((e) => {
@@ -65,7 +61,7 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   const changeItems: MenuEntry[] = Array.from({ length: slots }, (_, i) => ({ label: `Filament ${i + 1}`,
     icon: <span className="menu-swatch" style={{ background: filamentColor(getState(), i + 1) }} />,
     action: () => put({ z, type: 'change', text: String(i + 1) }) }));
-  const items: MenuEntry[] = [{ label: `Layer ${layer + 1} · ${z.toFixed(2)} mm`, header: true }];
+  const items: MenuEntry[] = [{ label: `Layer ${layer + 1}${SEP}${z.toFixed(2)} mm`, header: true }];
   if (here.length) {
     if (here[0].type === 'custom') items.push({ label: 'Edit Custom G-code', keepOpen: true, action: () => setCustom(here[0].text ?? '') });
     if (here[0].type === 'change' && slots > 1) items.push(...changeItems);
@@ -81,7 +77,6 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   return <ActionMenu label={`Layer ${layer + 1}`} at={{ x: anchor.left, y: anchor.top }} items={items} onClose={onClose}
     returnFocus={document.querySelector<HTMLElement>('.ls-plus')} />;
 }
-
 
 export function EventList({ onPick }: { onPick?(z: number): void }) {
   const events = useStore((s) => s.events);

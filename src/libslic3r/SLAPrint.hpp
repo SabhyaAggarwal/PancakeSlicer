@@ -56,10 +56,6 @@ class GLCanvas;
 using _SLAPrintObjectBase =
     PrintObjectBaseWithState<SLAPrint, SLAPrintObjectStep, slaposCount>;
 
-
-
-
-
 enum SliceOrigin { soSupport, soModel };
 
 class SLAPrintObject : public _SLAPrintObjectBase
@@ -68,7 +64,6 @@ private:
     using Inherited = _SLAPrintObjectBase;
 
 public:
-
 
     SLAPrintObject(const SLAPrintObject&) = delete;
     SLAPrintObject& operator=(const SLAPrintObject&) = delete;
@@ -80,11 +75,8 @@ public:
     struct Instance {
         Instance(ObjectID inst_id, const Point &shft, float rot) : instance_id(inst_id), shift(shft), rotation(rot) {}
         bool operator==(const Instance &rhs) const { return this->instance_id == rhs.instance_id && this->shift == rhs.shift && this->rotation == rhs.rotation; }
-
         ObjectID instance_id;
-
         Point 	shift;
-
         float 	rotation;
     };
     const std::vector<Instance>& instances() const { return m_instances; }
@@ -92,17 +84,10 @@ public:
     bool                    has_mesh(SLAPrintObjectStep step) const;
     TriangleMesh            get_mesh(SLAPrintObjectStep step) const;
 
-
-
     const TriangleMesh&     support_mesh() const;
-
-
     const TriangleMesh&     pad_mesh() const;
 
-
     const indexed_triangle_set &hollowed_interior_mesh() const;
-
-
 
     const TriangleMesh & get_mesh_to_print() const {
         return (m_hollowing_data && is_step_done(slaposDrillHoles)) ? m_hollowing_data->hollow_mesh_with_holes_trimmed : transformed_mesh();
@@ -112,30 +97,19 @@ public:
         return (m_hollowing_data && is_step_done(slaposDrillHoles)) ? m_hollowing_data->hollow_mesh_with_holes : transformed_mesh();
     }
 
-
     const TriangleMesh&     transformed_mesh() const;
 
     sla::SupportPoints      transformed_support_points() const;
     sla::DrainHoles         transformed_drainhole_points() const;
 
-
-
-
-
     double get_elevation() const;
-
-
-
 
     double get_current_elevation() const;
 
-
     const std::vector<sla::SupportPoint>& get_support_points() const;
-
 
     class SliceRecord {
     public:
-
         static const size_t NONE = size_t(-1);
 
         static const SliceRecord EMPTY;
@@ -154,19 +128,15 @@ public:
         SliceRecord(coord_t key, float slicez, float height):
             m_print_z(key), m_slice_z(slicez), m_height(height) {}
 
-
         coord_t print_level() const { return m_print_z; }
 
-
         float slice_level() const { return m_slice_z; }
-
 
         float layer_height() const { return m_height; }
 
         bool is_valid() const { return m_po && ! std::isnan(m_slice_z); }
 
         const SLAPrintObject* print_obj() const { return m_po; }
-
 
         void set_model_slice_idx(const SLAPrintObject &po, size_t id) {
             m_po = &po; m_model_slices_idx = id;
@@ -198,11 +168,6 @@ private:
                    ? SliceRecord{coord_t(val), 0.f, 0.f}
                    : SliceRecord{0, float(val), 0.f};
     }
-
-
-
-
-
 
     template<class Container, class T>
     static auto closest_slice_record(
@@ -243,22 +208,9 @@ private:
 
 public:
 
-
-
-
-
-
-
-
-
-
-
     const std::vector<SliceRecord>& get_slice_index() const {
         return m_slice_index;
     }
-
-
-
 
     const SliceRecord& closest_slice_to_print_level(
             coord_t print_level,
@@ -267,9 +219,6 @@ public:
         auto it = closest_slice_record(m_slice_index, print_level, max_epsilon);
         return it == m_slice_index.end() ? SliceRecord::EMPTY : *it;
     }
-
-
-
 
     const SliceRecord& closest_slice_to_slice_level(
             float slice_level,
@@ -280,7 +229,6 @@ public:
     }
 
 protected:
-
     friend class SLAPrint;
 
 	SLAPrintObject(SLAPrint* print, ModelObject* model_object);
@@ -296,36 +244,25 @@ protected:
 
     template<class InstVec> inline void set_instances(InstVec&& instances) { m_instances = std::forward<InstVec>(instances); }
 
-
     bool                    invalidate_step(SLAPrintObjectStep step);
     bool                    invalidate_all_steps();
-
     bool                    invalidate_state_by_config_options(const std::vector<t_config_option_key> &opt_keys);
-
-
 
     std::vector<bool>                       m_stepmask;
 
 private:
-
     SLAPrintObjectConfig                    m_config;
 
-
     Transform3d                             m_trafo = Transform3d::Identity();
-
     bool                                    m_left_handed = false;
 
     std::vector<Instance> 					m_instances;
 
-
     std::vector<ExPolygons>                 m_model_slices;
-
-
 
     std::vector<SliceRecord>                m_slice_index;
 
     std::vector<float>                      m_model_height_levels;
-
 
     mutable CachedObject<TriangleMesh>      m_transformed_rmesh;
 
@@ -389,11 +326,8 @@ struct SLAPrintStatistics
     double                          total_weight;
     std::vector<double>             layers_times;
 
-
     DynamicConfig           config() const;
-
     static DynamicConfig    placeholders();
-
     std::string             finalize_output_path(const std::string &path_in) const;
 
     void clear() {
@@ -420,7 +354,6 @@ public:
 
     virtual void apply(const SLAPrinterConfig &cfg) = 0;
 
-
     template<class Fn, class CancelFn, class EP = ExecutionTBB>
     void draw_layers(
         size_t     layer_num,
@@ -443,14 +376,6 @@ public:
     }
 };
 
-
-
-
-
-
-
-
-
 class SLAPrint : public PrintBaseWithState<SLAPrintStep, slapsCount>
 {
 private:
@@ -468,20 +393,15 @@ public:
 
     void                clear() override;
     bool                empty() const override { return m_objects.empty(); }
-
     std::vector<ObjectID> print_object_ids() const override;
     ApplyStatus         apply(const Model &model, DynamicPrintConfig config, bool extruder_applied = false) override;
     void                set_task(const TaskParams &params) override;
     void                process(long long *time_cost_with_cache = nullptr, bool use_cache = false) override;
     void                finalize() override;
-
     bool                is_step_done(SLAPrintObjectStep step) const;
-
     bool                finished() const override { return this->is_step_done(slaposSliceSupports) && this->Inherited::is_step_done(slapsRasterize); }
 
     const PrintObjects& objects() const { return m_objects; }
-
-
     const SLAPrintObject* get_print_object_by_model_object_id(ObjectID object_id) const {
         auto it = std::find_if(m_objects.begin(), m_objects.end(),
             [object_id](const SLAPrintObject* obj) { return obj->model_object()->id() == object_id; });
@@ -498,9 +418,7 @@ public:
     const SLAMaterialConfig&    material_config() const { return m_material_config; }
     const SLAPrintObjectConfig& default_object_config() const { return m_default_object_config; }
 
-
     Vec3d                       relative_correction() const;
-
 
     Transform3d sla_trafo(const ModelObject &model_object) const;
 
@@ -512,12 +430,8 @@ public:
                                    Polygons *                              collison_polygons = nullptr,
                                    std::vector<std::pair<Polygon, float>> *height_polygons   = nullptr) const override;
 
-
-
-
     class PrintLayer {
         coord_t m_level;
-
 
         std::vector<std::reference_wrapper<const SliceRecord>> m_slices;
 
@@ -534,7 +448,6 @@ public:
 
         explicit PrintLayer(coord_t lvl) : m_level(lvl) {}
 
-
         bool operator<(const PrintLayer& other) const {
             return m_level < other.m_level;
         }
@@ -550,17 +463,13 @@ public:
         }
     };
 
-
-
     const std::vector<PrintLayer>& print_layers() const { return m_printer_input; }
 
     void set_printer(SLAArchive *archiver);
 
 private:
 
-
     bool invalidate_step(SLAPrintStep st);
-
 
     bool invalidate_state_by_config_options(const std::vector<t_config_option_key> &opt_keys, bool &invalidate_all_model_objects);
 
@@ -572,12 +481,9 @@ private:
     PrintObjects                    m_objects;
     std::vector<bool>               m_stepmask;
 
-
     std::vector<PrintLayer>         m_printer_input;
 
-
     SLAArchive                     *m_printer = nullptr;
-
 
     SLAPrintStatistics              m_print_statistics;
 
@@ -597,8 +503,6 @@ private:
 
 	friend SLAPrintObject;
 };
-
-
 
 bool is_zero_elevation(const SLAPrintObjectConfig &c);
 

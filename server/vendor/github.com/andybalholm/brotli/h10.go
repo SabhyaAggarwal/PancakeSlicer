@@ -19,9 +19,17 @@ func (*h10) StoreLookahead() uint {
 func hashBytesH10(data []byte) uint32 {
 	var h uint32 = binary.LittleEndian.Uint32(data) * kHashMul32
 
+	/* The higher bits contain more mixture from the multiplication,
+	   so we take our results from there. */
 	return h >> (32 - 17)
 }
 
+/* A (forgetful) hash table where each hash bucket contains a binary tree of
+   sequences whose first 4 bytes share the same hash code.
+   Each sequence is 128 long and is identified by its starting
+   position in the input data. The binary tree is sorted by the lexicographic
+   order of the sequences, and it is also a max-heap with respect to the
+   starting positions. */
 type h10 struct {
 	hasherCommon
 	window_mask_ uint
@@ -53,6 +61,16 @@ func rightChildIndexH10(self *h10, pos uint) uint {
 	return 2*(pos&self.window_mask_) + 1
 }
 
+/* Stores the hash of the next 4 bytes and in a single tree-traversal, the
+   hash bucket's binary tree is searched for matches and is re-rooted at the
+   current position.
+
+   If less than 128 data is available, the hash bucket of the
+   current position is searched for matches, but the state of the hash table
+   is not changed, since we can not know the final sorting order of the
+   current (incomplete) sequence.
+
+   This function must be called with increasing cur_ix positions. */
 func storeAndFindMatchesH10(self *h10, data []byte, cur_ix uint, ring_buffer_mask uint, max_length uint, max_backward uint, best_len *uint, matches []backwardMatch) []backwardMatch {
 	var cur_ix_masked uint = cur_ix & ring_buffer_mask
 	var max_comp_len uint = brotli_min_size_t(max_length, 128)
@@ -65,7 +83,17 @@ func storeAndFindMatchesH10(self *h10, data []byte, cur_ix uint, ring_buffer_mas
 	var best_len_left uint = 0
 	var best_len_right uint = 0
 	var depth_remaining uint
+	/* The forest index of the rightmost node of the left subtree of the new
+	   root, updated as we traverse and re-root the tree of the hash bucket. */
 
+	/* The forest index of the leftmost node of the right subtree of the new
+	   root, updated as we traverse and re-root the tree of the hash bucket. */
+
+	/* The match length of the rightmost node of the left subtree of the new
+	   root, updated as we traverse and re-root the tree of the hash bucket. */
+
+	/* The match length of the leftmost node of the right subtree of the new
+	   root, updated as we traverse and re-root the tree of the hash bucket. */
 	if should_reroot_tree {
 		self.buckets_[key] = uint32(cur_ix)
 	}
@@ -124,6 +152,13 @@ func storeAndFindMatchesH10(self *h10, data []byte, cur_ix uint, ring_buffer_mas
 	return matches
 }
 
+/* Finds all backward matches of &data[cur_ix & ring_buffer_mask] up to the
+   length of max_length and stores the position cur_ix in the hash table.
+
+   Sets *num_matches to the number of matches found, and stores the found
+   matches in matches[0] to matches[*num_matches - 1]. The matches will be
+   sorted by strictly increasing length and (non-strictly) increasing
+   distance. */
 func findAllMatchesH10(handle *h10, dictionary *encoderDictionary, data []byte, ring_buffer_mask uint, cur_ix uint, max_length uint, max_backward uint, gap uint, params *encoderParams, matches []backwardMatch) uint {
 	var orig_matches []backwardMatch = matches
 	var cur_ix_masked uint = cur_ix & ring_buffer_mask
@@ -189,9 +224,12 @@ func findAllMatchesH10(handle *h10, dictionary *encoderDictionary, data []byte, 
 	return uint(-cap(matches) + cap(orig_matches))
 }
 
+/* Stores the hash of the next 4 bytes and re-roots the binary tree at the
+   current sequence, without returning any matches.
+   REQUIRES: ix + 128 <= end-of-current-block */
 func (h *h10) Store(data []byte, mask uint, ix uint) {
 	var max_backward uint = h.window_mask_ - windowGap + 1
-
+	/* Maximum distance is window size - 16, see section 9.1. of the spec. */
 	storeAndFindMatchesH10(h, data, ix, mask, 128, max_backward, nil, nil)
 }
 
@@ -217,17 +255,27 @@ func (h *h10) StitchToPreviousBlock(num_bytes uint, position uint, ringbuffer []
 	if num_bytes >= h.HashTypeLength()-1 && position >= 128 {
 		var i_start uint = position - 128 + 1
 		var i_end uint = brotli_min_size_t(position, i_start+num_bytes)
+		/* Store the last `128 - 1` positions in the hasher.
+		   These could not be calculated before, since they require knowledge
+		   of both the previous and the current block. */
 
 		var i uint
 		for i = i_start; i < i_end; i++ {
-
+			/* Maximum distance is window size - 16, see section 9.1. of the spec.
+			   Furthermore, we have to make sure that we don't look further back
+			   from the start of the next block than the window size, otherwise we
+			   could access already overwritten areas of the ring-buffer. */
 			var max_backward uint = h.window_mask_ - brotli_max_size_t(windowGap-1, position-i)
 
+			/* We know that i + 128 <= position + num_bytes, i.e. the
+			   end of the current block and that we have at least
+			   128 tail in the ring-buffer. */
 			storeAndFindMatchesH10(h, ringbuffer, i, ringbuffer_mask, 128, max_backward, nil, nil)
 		}
 	}
 }
 
+/* MAX_NUM_MATCHES == 64 + MAX_TREE_SEARCH_DEPTH */
 const maxNumMatchesH10 = 128
 
 func (*h10) FindLongestMatch(dictionary *encoderDictionary, data []byte, ring_buffer_mask uint, distance_cache []int, cur_ix uint, max_length uint, max_backward uint, gap uint, max_distance uint, out *hasherSearchResult) {

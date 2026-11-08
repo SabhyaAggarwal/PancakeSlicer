@@ -6,9 +6,12 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Write bits into a byte array. */
+
 type bitWriter struct {
 	dst []byte
 
+	// Data waiting to be written is the low nbits of bits.
 	bits  uint64
 	nbits uint
 }
@@ -42,7 +45,7 @@ func (w *bitWriter) jumpToByteBoundary() {
 	for w.nbits != 0 {
 		dst = append(dst, byte(w.bits))
 		w.bits >>= 8
-		if w.nbits > 8 {
+		if w.nbits > 8 { // Avoid underflow
 			w.nbits -= 8
 		} else {
 			w.nbits = 0

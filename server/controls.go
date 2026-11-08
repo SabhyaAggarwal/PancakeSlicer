@@ -146,7 +146,6 @@ func (m *JobManager) quotaLocked() error {
 		}
 	}
 	sort.Slice(finished, func(i, k int) bool {
-
 		finished[i].mu.Lock()
 		a := finished[i].finished
 		finished[i].mu.Unlock()
@@ -383,7 +382,6 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				if id == "" {
 					id = strings.TrimPrefix(w.Header().Get("Location"), "/api/jobs/")
 				}
-
 				b, _ := json.Marshal(map[string]any{"method": logPrefix(r.Method, 32), "path": logPrefix(r.URL.Path, 1024), "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "client": s.clientIP(r), "job_id": logPrefix(id, 128)})
 				log.Writer().Write(append(b, '\n'))
 			}()
@@ -397,7 +395,6 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-
 		headerBytes := len(r.Method) + len(r.RequestURI) + len(r.Host) + 32
 		for name, values := range r.Header {
 			for _, value := range values {
@@ -408,7 +405,6 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			fail(w, http.StatusRequestHeaderFieldsTooLarge, "request headers exceed 1 MiB")
 			return
 		}
-
 		if (r.Method == "PUT" || r.Method == "POST" || r.Method == "PATCH") && r.URL.Path != "/api/jobs" && r.URL.Path != "/api/patch-preview" {
 			controller := http.NewResponseController(w)
 			deadline := time.Now().Add(uploadIdleTimeout)

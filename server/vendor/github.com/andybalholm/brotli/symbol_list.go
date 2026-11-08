@@ -6,6 +6,8 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Utilities for building Huffman decoding tables. */
+
 type symbolList struct {
 	storage []uint16
 	offset  int

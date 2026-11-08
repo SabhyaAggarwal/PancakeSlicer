@@ -1,6 +1,3 @@
-
-
-
 import { effectiveConfig, getState, markStale, setState, subscribeStore, type Mix, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import type { Config } from '../api/types';
@@ -12,7 +9,6 @@ import { remapNozzleAssignments } from '../multinozzle/assignments';
 import { insertFlushSlots, retainFlushSlots } from '../multinozzle/flush-mapping';
 import { allFlush, flushReady } from '../flush-state';
 
-
 export const SLOTS_MAX = 32;
 export { blend };
 
@@ -21,12 +17,10 @@ export const componentColour = (s: State, c: number) => (c >= 1 && c <= physical
 export const mixColour = (s: State, m: Mix) => blend(m.components.map((c) => componentColour(s, c)), m.ratios);
 export const filamentType = (s: State, c: number) => String([effectiveConfig(s, 'filament', c - 1).filament_type].flat()[0] ?? '');
 
-
 export function broken(s: State, m: Mix) {
   const n = physicalCount(s);
   return m.components.length < 2 || m.components.some((c) => c < 1 || c > n) || new Set(m.components.map((c) => filamentType(s, c))).size > 1;
 }
-
 
 function remapAll(st: State, map: number[], kept?: number[]): Partial<State> {
   const each = (os: PlateObject[]) => os.map((o) => remapObject(o, map));
@@ -42,7 +36,6 @@ function remapAll(st: State, map: number[], kept?: number[]): Partial<State> {
 
 const shifted = (mixes: Record<number, Mix>, from: number, by: number) =>
   Object.fromEntries(Object.entries(mixes).map(([i, m]) => [Number(i) >= from ? Number(i) + by : Number(i), m]));
-
 
 export async function addMix(m: Mix) {
   await flushReady();
@@ -62,7 +55,6 @@ export function editMix(i: number, m: Mix) {
   }));
 }
 
-
 export function deleteMixes(slots: number[], into?: number, name = 'Delete mixed filament') {
   undoable(name, () => setState((st) => {
     const gone = new Set(slots), n = st.filamentSlots.length;
@@ -77,7 +69,6 @@ export function deleteMixes(slots: number[], into?: number, name = 'Delete mixed
   }));
 }
 
-
 const paints = (p: Painting | undefined, n: number): boolean => {
   const walk = (x: PaintNode): boolean => (Array.isArray(x) ? x.some(walk) : x === n);
   return !!p && [...p.values()].some(walk);
@@ -85,21 +76,12 @@ const paints = (p: Painting | undefined, n: number): boolean => {
 const usesSlot = (o: PlateObject, n: number) => o.extruder === n || paints(o.paint?.color, n)
   || !!o.volumes?.some((v) => v.type === 'part' && (v.extruder === n || paints(v.paint?.color, n)));
 
-
-
-
-
-
-
-
-
 export function removeSlotAt(n: number): { moved: number; to: number; merged: { mix: number; into: number }[] } | null {
   const st0 = getState(), total = st0.filamentSlots.length, p = physicalCount(st0);
   if (n < 1 || n > total || total < 2 || (n <= p && p < 2)) return null;
   const target = n > 1 ? n - 1 : 2;
   const renumber = (j: number) => (j > n ? j - 1 : j);
   const to = renumber(target);
-
   const physical = (c: number) => (c === n ? to : c >= 1 && c <= total ? renumber(c) : c);
   const remixed = Object.entries(st0.mixes).flatMap(([k, m]) => (Number(k) === n - 1 ? [] : [[Number(k), { ...m, components: m.components.map(physical) }] as const]));
   const merged = remixed.filter(([, m]) => new Set(m.components).size === 1).map(([k, m]) => ({ mix: k + 1, into: m.components[0] }));
@@ -108,7 +90,6 @@ export function removeSlotAt(n: number): { moved: number; to: number; merged: { 
   const map = Array.from({ length: total }, (_, k) => (k === n - 1 ? to : merged.find((d) => d.mix === k + 1)?.into ?? kept.indexOf(k) + 1));
   const moved = st0.objects.filter((o) => usesSlot(o, n)).length;
   undoable('Remove filament', () => setState((st) => {
-
     const pick = <T,>(a: T[]) => kept.map((k) => Array.from(a)[k]);
     return {
       ...remapAll(st, map, kept),
@@ -119,7 +100,6 @@ export function removeSlotAt(n: number): { moved: number; to: number; merged: { 
   }));
   return { moved, to, merged };
 }
-
 
 function insertedFlush(st: State, changes: Partial<State>, previous: number[]): Partial<State> {
   const matrix = st.flush.matrix ?? st.projectMaterials?.matrix;
@@ -143,7 +123,6 @@ export async function addPhysical(colour?: string, name?: string) {
   }));
 }
 
-
 export function removePhysical() {
   undoable('Remove filament', () => setState((st) => {
     const p = physicalCount(st), n = st.filamentSlots.length;
@@ -158,7 +137,6 @@ export function removePhysical() {
   }));
 }
 
-
 let watching = false;
 export function watchColours() {
   if (watching) return;
@@ -172,8 +150,6 @@ export function watchColours() {
     setState({ slotColours });
   });
 }
-
-
 
 export function recommendations(s: State, three: boolean): Mix[] {
   const byType = new Map<string, number[]>();
@@ -191,7 +167,6 @@ export function recommendations(s: State, three: boolean): Mix[] {
       }
   return out.slice(0, 100);
 }
-
 
 export function readMixes(c: Config): Record<number, Mix> {
   const at = (k: string, i: number) => { const v = c[k]; return String(Array.isArray(v) ? v[i] ?? '' : ''); };

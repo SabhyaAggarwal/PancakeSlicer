@@ -1,35 +1,23 @@
-
-
-
 export const MAGIC = 'ORCAMV01';
-
 export const TRANSFER_MAGIC = 'ORCAMT02';
-
 export const PLANES_MAGIC = 'ORCAMT01';
-
 export const TRANSFER_FORM = 'mt2';
 
-
 export const CHUNK = 16384;
-
 export const transferBlockSize = (k: number) => CHUNK >> Math.max(0, 4 - k);
-
 export const BLOCK = 16384;
-
 
 export const MoveType = {
   Noop: 0, Retract: 1, Unretract: 2, Seam: 3, ToolChange: 4, ColorChange: 5, PausePrint: 6, CustomGCode: 7,
   Travel: 8, Wipe: 9, Extrude: 10,
 } as const;
 
-
 export const ROLE_NAMES = [
   'None', 'Inner wall', 'Outer wall', 'Overhang wall', 'Sparse infill', 'Internal solid infill', 'Top surface',
-  'Bottom surface', 'Ironing', 'Bridge', 'Internal Bridge', 'Gap infill', 'Skirt', 'Brim', 'Support',
+  'Bottom surface', 'Ironing', 'Bridge', 'Internal bridge', 'Gap infill', 'Skirt', 'Brim', 'Support',
   'Support interface', 'Support transition', 'Prime tower', 'Custom', 'Multiple',
 ];
 export const ROLE_COUNT = ROLE_NAMES.length;
-
 
 export interface PrintStatistics {
   total_used_filament_mm: number;
@@ -40,7 +28,6 @@ export interface PrintStatistics {
   total_toolchanges: number;
   per_extruder: { extruder_id: number; used_filament_mm: number; used_filament_g: number }[];
 }
-
 
 export function readStatistics(value: unknown): PrintStatistics | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -78,18 +65,13 @@ export interface Header {
   stateStride: number;
   layerStride: number;
   metaBytes: number;
-
   block: number;
-
   transfer: 0 | 1 | 2;
-
   extended: boolean;
-
   oriented?: boolean;
   tableRotary?: boolean;
   tableAC?: boolean;
 }
-
 
 export interface States {
   fan: Float32Array;
@@ -104,21 +86,17 @@ export interface States {
   patch: Int16Array;
 }
 
-
 export interface MoveChunk {
   start: number;
   count: number;
-
   pos: Float32Array;
   type: Uint8Array;
   role: Uint8Array;
   extruder: Uint8Array;
   cp: Uint8Array;
   de: Float32Array;
-
   orientation: Float32Array;
   inverseTime: Float32Array;
-
   actual: Float32Array;
   clearance: Float32Array;
   feed: Float32Array;
@@ -128,7 +106,6 @@ export interface MoveChunk {
   time: Float32Array;
   state: Uint32Array;
   gcode: Uint32Array;
-
   layer: Uint32Array;
 }
 
@@ -193,7 +170,6 @@ export function readStates(dv: DataView, offset: number, h: Header): States {
 
 export const isOption = (t: number) => t >= MoveType.Retract && t <= MoveType.CustomGCode;
 
-
 export function shortTime(t: number): string {
   let d = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600), m = Math.floor((t % 3600) / 60);
   const sec = Math.floor(t % 60);
@@ -203,3 +179,4 @@ export function shortTime(t: number): string {
   }
   return d > 0 ? `${d}d${h}h${m}m` : h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${sec}s` : t >= 1 ? `${sec}s` : t > 0 ? '<1s' : '0s';
 }
+export const spacedTime = (t: number) => shortTime(t).replace(/(\d)([a-z]+)(?=\d)/g, '$1$2 ');

@@ -31,14 +31,10 @@
 #include "libnoise/noise.h"
 #include <functional>
 
-
-
 namespace Slic3r::Feature::FuzzySkin {
-
 
 static double random_value() {
     thread_local std::random_device rd;
-
     thread_local std::mt19937 gen(rd.entropy() > 0 ? rd() : std::hash<std::thread::id>()(std::this_thread::get_id()));
     thread_local std::uniform_real_distribution<double> dist(0.0, 1.0);
     return dist(gen);
@@ -80,26 +76,6 @@ static std::unique_ptr<noise::module::Module> get_noise_module(const FuzzySkinCo
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static double ripple_phase_shift_rad(const FuzzySkinConfig& cfg)
 {
     if (cfg.ripple_offset == 0.0 || cfg.layers_between_ripple_offset <= 0)
@@ -111,14 +87,9 @@ static double ripple_phase_shift_rad(const FuzzySkinConfig& cfg)
     return fmod(raw_shift, 2.0 * M_PI);
 }
 
-
-
-
-
 static double ripple_anchor_arc_mm(const Points& poly)
 {
     const size_t np = poly.size();
-
 
     Vec2d anchor_world(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
     bool  found_crossing = false;
@@ -146,7 +117,6 @@ static double ripple_anchor_arc_mm(const Points& poly)
         }
     }
 
-
     double anchor_arc_mm = 0.0;
     double best_dist_sq  = std::numeric_limits<double>::max();
     double accum_mm      = 0.0;
@@ -168,8 +138,6 @@ static double ripple_anchor_arc_mm(const Points& poly)
     return anchor_arc_mm;
 }
 
-
-
 static void fuzzy_polyline_ripple(Points& poly, const FuzzySkinConfig& cfg)
 {
     const double amplitude    = unscale_(cfg.thickness);
@@ -178,7 +146,6 @@ static void fuzzy_polyline_ripple(Points& poly, const FuzzySkinConfig& cfg)
 
     if (N <= 0.0 || fill_step_mm < 1e-6)
         return;
-
 
     const size_t np           = poly.size();
     double       perimeter_mm = 0.0;
@@ -190,8 +157,6 @@ static void fuzzy_polyline_ripple(Points& poly, const FuzzySkinConfig& cfg)
 
     const double anchor_arc_mm   = ripple_anchor_arc_mm(poly);
     const double phase_shift_rad = ripple_phase_shift_rad(cfg);
-
-
 
     const double phase_at_anchor = M_PI * 2.0 + phase_shift_rad;
     auto arc_phase = [&](double arc_mm) -> double { return N * (2.0 * M_PI) * (arc_mm - anchor_arc_mm) / perimeter_mm + phase_at_anchor; };
@@ -231,9 +196,6 @@ static void fuzzy_polyline_ripple(Points& poly, const FuzzySkinConfig& cfg)
         poly = std::move(out);
 }
 
-
-
-
 static void fuzzy_extrusion_line_ripple(Arachne::ExtrusionJunctions& ext_lines, const FuzzySkinConfig& cfg)
 {
     const double amplitude    = unscale_(cfg.thickness);
@@ -243,12 +205,10 @@ static void fuzzy_extrusion_line_ripple(Arachne::ExtrusionJunctions& ext_lines, 
     if (N <= 0.0 || fill_step_mm < 1e-6)
         return;
 
-
     Points poly;
     poly.reserve(ext_lines.size());
     for (const auto& j : ext_lines)
         poly.push_back(j.p);
-
 
     const size_t np           = poly.size();
     double       perimeter_mm = 0.0;
@@ -321,7 +281,6 @@ FuzzySkinConfig fuzzy_skin_config(const PrintRegionConfig& config, int layer_id)
                            layer_id};
 }
 
-
 void fuzzy_polyline(Points& poly, bool closed, coordf_t slice_z, const FuzzySkinConfig& cfg)
 {
     if (cfg.noise_type == NoiseType::Ripple) {
@@ -342,12 +301,10 @@ void fuzzy_polyline(Points& poly, bool closed, coordf_t slice_z, const FuzzySkin
     for (Point &p1 : poly)
     {
         if (!closed) {
-
             closed = true;
             p0 = &p1;
             continue;
         }
-
         Vec2d  p0p1      = (p1 - *p0).cast<double>();
         double p0p1_size = p0p1.norm();
         double p0pa_dist = dist_left_over;
@@ -372,7 +329,6 @@ void fuzzy_polyline(Points& poly, bool closed, coordf_t slice_z, const FuzzySkin
         poly = std::move(out);
 }
 
-
 void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice_z, coordf_t layer_height, const FuzzySkinConfig& cfg, bool closed)
 {
 
@@ -387,8 +343,6 @@ void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice
 
     const double min_dist_between_points = cfg.point_distance * 3. / 4.;
     const double range_random_point_dist = cfg.point_distance / 2.;
-
-
     const double min_extrusion_width = scaled<double>(layer_height * (1. - 0.25 * M_PI) * 1.05);
     double dist_left_over = random_value() * (min_dist_between_points / 2.);
 
@@ -396,14 +350,12 @@ void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice
     Arachne::ExtrusionJunctions out;
     out.reserve(ext_lines.size());
     for (auto& p1 : ext_lines) {
-
         if (closed) {
             if (p0->p == p1.p) {
                 out.emplace_back(p1.p, p1.w, p1.perimeter_index);
                 continue;
             }
         }
-
 
         Vec2d  p0p1 = (p1.p - p0->p).cast<double>();
         double p0p1_size = p0p1.norm();
@@ -416,7 +368,7 @@ void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice
                     out.emplace_back(pa + (perp(p0p1).cast<double>().normalized() * r).cast<coord_t>(), p1.w, p1.perimeter_index);
                     break;
                 case FuzzySkinMode::Extrusion :
-                    out.emplace_back(pa, std::max(p1.w + r + min_extrusion_width,  min_extrusion_width), p1.perimeter_index);
+                    out.emplace_back(pa, std::max(p1.w + r + min_extrusion_width,  min_extrusion_width), p1.perimeter_index); 
                     break;
                 case FuzzySkinMode::Combined :
                     double rad = std::max(p1.w + r + min_extrusion_width,  min_extrusion_width);
@@ -453,8 +405,6 @@ void fuzzy_conformal_path(ExtrusionPathConformal& path, coordf_t z_base, const F
         return;
     const bool ripple = cfg.noise_type == NoiseType::Ripple;
     std::unique_ptr<noise::module::Module> noise = ripple ? nullptr : get_noise_module(cfg);
-
-
     double length_mm = 0., anchor_mm = 0., phase_at_anchor = 0.;
     if (ripple) {
         Points xy;
@@ -518,7 +468,6 @@ void fuzzy_conformal_path(ExtrusionPathConformal& path, coordf_t z_base, const F
             left_over = d - len;
         }
         along_mm += unscale_(len);
-
         if (i + 2 == n || !fuzzy(i) || !fuzzy(i + 1))
             keep(i + 1);
     }
@@ -574,7 +523,6 @@ void group_region_by_fuzzify(PerimeterGenerator& g)
         for (const auto& region : regions)
             if (should_fuzzify(region.config, g.layer_id, 0, true) || should_fuzzify(region.config, g.layer_id, 0, false))
                 max_thickness = std::max(max_thickness, region.config.thickness);
-
         g.fuzzy_supported_area = offset_ex(*g.lower_slices, float(g.ext_perimeter_flow.scaled_width() + max_thickness));
     }
 
@@ -597,7 +545,6 @@ bool should_fuzzify(const FuzzySkinConfig& config, const int layer_id, const siz
         return false;
     }
     if (!config.fuzzy_first_layer && layer_id <= 0) {
-
         return false;
     }
 
@@ -612,8 +559,6 @@ struct MergedFuzzyRegion {
     const FuzzySkinConfig *config;
     ExPolygons             expolygons;
 };
-
-
 
 static bool same_fuzzy_effect(const FuzzySkinConfig& a, const FuzzySkinConfig& b)
 {
@@ -634,10 +579,6 @@ static std::vector<MergedFuzzyRegion> collect_merged_fuzzy_regions(const std::ve
                                                                    const size_t                                           loop_idx,
                                                                    const bool                                             is_contour)
 {
-
-
-
-
     std::vector<MergedFuzzyRegion> merged_regions;
     merged_regions.reserve(regions.size());
     for (const auto& region : regions) {
@@ -649,7 +590,6 @@ static std::vector<MergedFuzzyRegion> collect_merged_fuzzy_regions(const std::ve
         for (auto& merged_region : merged_regions) {
             if (same_fuzzy_effect(*merged_region.config, region.first)) {
                 if (merged_region.expolygons.empty()) {
-
                 } else if (region.second.empty()) {
                     merged_region.expolygons.clear();
                 } else {
@@ -673,7 +613,6 @@ static std::vector<MergedFuzzyRegion> collect_merged_fuzzy_regions(const std::ve
 
     return merged_regions;
 }
-
 
 static void restrict_to_supported(std::vector<MergedFuzzyRegion>& merged_regions, const std::optional<ExPolygons>& supported)
 {
@@ -702,15 +641,10 @@ Polygon apply_fuzzy_skin(const Polygon& polygon, const PerimeterGenerator& perim
         return fuzzified;
     }
 
-
-
-
-
     auto merged_regions = collect_merged_fuzzy_regions(regions, perimeter_generator.layer_id, loop_idx, is_contour);
     if (merged_regions.empty()) {
         return polygon;
     }
-
 
     if (merged_regions.size() == 1) {
         const auto& mr = merged_regions.front();
@@ -741,9 +675,6 @@ Polygon apply_fuzzy_skin(const Polygon& polygon, const PerimeterGenerator& perim
     }
 #endif
 
-
-
-
     for (size_t i = 0; i < merged_regions.size(); ++i)
         for (size_t j = i + 1; j < merged_regions.size(); ++j)
             if (!merged_regions[i].expolygons.empty() && !merged_regions[j].expolygons.empty())
@@ -751,22 +682,16 @@ Polygon apply_fuzzy_skin(const Polygon& polygon, const PerimeterGenerator& perim
 
     restrict_to_supported(merged_regions, supported);
 
-
     fuzzified = polygon;
     for (const auto& r : merged_regions) {
         auto splitted = Algorithm::split_line(fuzzified, r.expolygons, true);
         if (splitted.empty()) {
-
             continue;
         }
 
-
         if (std::all_of(splitted.begin(), splitted.end(), [](const Algorithm::SplitLineJunction& j) { return j.clipped; })) {
-
             fuzzy_polyline(fuzzified.points, true, slice_z, *r.config);
         } else {
-
-
             const auto first_non_clipped = std::find_if(splitted.begin(), splitted.end(), [](const Algorithm::SplitLineJunction& j) {
                 return !j.clipped;
             });
@@ -799,7 +724,6 @@ Polygon apply_fuzzy_skin(const Polygon& polygon, const PerimeterGenerator& perim
                 }
             }
             if (!segment.empty()) {
-
                 segment.push_back(splitted.front().p);
                 fuzzy_current_segment();
             }
@@ -821,21 +745,13 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
         if (fuzzify)
             fuzzy_extrusion_line(extrusion->junctions, slice_z, perimeter_generator.layer_height, config, closed);
     } else {
-
-
-
-
         auto merged_regions = collect_merged_fuzzy_regions(regions, perimeter_generator.layer_id, extrusion->inset_idx, is_contour);
         if (!merged_regions.empty()) {
-
 
             if (merged_regions.size() == 1 && merged_regions.front().expolygons.empty() && !supported) {
                 fuzzy_extrusion_line(extrusion->junctions, slice_z, perimeter_generator.layer_height, *merged_regions.front().config, closed);
                 return;
             }
-
-
-
 
             if (!closed) {
                 for (auto& r : merged_regions) {
@@ -854,7 +770,6 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
                                           .c_str(),
                                       bbox);
 
-
                     Polygon extrusion_polygon;
                     extrusion_polygon.points.reserve(extrusion->junctions.size());
                     for (const auto& junction : extrusion->junctions) {
@@ -871,9 +786,6 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
             }
 #endif
 
-
-
-
             for (size_t i = 0; i < merged_regions.size(); ++i)
                 for (size_t j = i + 1; j < merged_regions.size(); ++j)
                     if (!merged_regions[i].expolygons.empty() && !merged_regions[j].expolygons.empty())
@@ -881,17 +793,13 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
 
             restrict_to_supported(merged_regions, supported);
 
-
             for (const auto& r : merged_regions) {
                 const auto splitted = Algorithm::split_line(*extrusion, r.expolygons, false);
                 if (splitted.empty()) {
-
                     continue;
                 }
 
-
                 if (std::all_of(splitted.begin(), splitted.end(), [](const Algorithm::SplitLineJunction& j) { return j.clipped; })) {
-
                     fuzzy_extrusion_line(extrusion->junctions, slice_z, perimeter_generator.layer_height, *r.config, closed);
                     continue;
                 } else {
@@ -901,17 +809,14 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
                     extrusion->junctions.clear();
 
                     const auto fuzzy_current_segment = [&segment, &extrusion, &r, slice_z, layer_height]() {
-
                         const auto front = segment.front();
                         const auto back  = segment.back();
 
                         fuzzy_extrusion_line(segment, slice_z, layer_height, *r.config, false);
-
                         if (!extrusion->junctions.empty() && extrusion->junctions.front().p != front.p) {
                             extrusion->junctions.push_back(front);
                         }
                         extrusion->junctions.insert(extrusion->junctions.end(), segment.begin(), segment.end());
-
                         if (!extrusion->junctions.empty() && extrusion->junctions.back().p != front.p) {
                             extrusion->junctions.push_back(back);
                         }
@@ -941,7 +846,6 @@ void apply_fuzzy_skin(Arachne::ExtrusionLine* extrusion, const PerimeterGenerato
                     if (!segment.empty()) {
                         fuzzy_current_segment();
                     }
-
 
                     if (closed && !extrusion->junctions.empty() && extrusion->junctions.front().p != extrusion->junctions.back().p) {
                         extrusion->junctions.back().p = extrusion->junctions.front().p;

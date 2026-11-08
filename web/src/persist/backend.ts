@@ -1,20 +1,14 @@
-
 import { projectId } from './identity';
 export interface ProjectMeta {
   id: string;
   name: string;
   savedAt: number;
-
   revision?: number;
-
   objects: number;
-
   thumbnail: string | null;
 }
 
-
 export interface StoredDocBase {
-
   files?: Record<string, string>;
   schemaVersion?: 2;
 }
@@ -32,29 +26,22 @@ export interface ProjectCommandStatus {
 export interface ProjectStore {
   referenceDocuments(): Promise<ProfileReferenceDocuments>;
   readonly kind: 'service';
-
   list(): Promise<ProjectMeta[]>;
   load(id: string): Promise<{ meta: ProjectMeta; doc: StoredDocBase } | null>;
-
   save(id: string, meta: Omit<ProjectMeta, 'id' | 'thumbnail'>, doc: StoredDocBase, thumbnail?: string | null): Promise<{ revision: number; savedAt: number }>;
   rename(id: string, name: string): Promise<ProjectCommandAck>;
   duplicate(id: string, newId: string, name: string): Promise<ProjectMeta>;
-
   remove(id: string): Promise<ProjectCommandAck>;
   restore(id: string, expectedRevision?: number): Promise<ProjectCommandAck>;
   commands(): readonly Readonly<ProjectCommandStatus>[];
   subscribeCommands(listener: () => void): () => void;
-
   discardRejectedCommand(operationId: string): void;
   putBlob(id: string, key: string, data: Blob): Promise<void>;
   getBlob(id: string, key: string): Promise<Blob | null>;
-  hasBlob(id: string, key: string): Promise<boolean>;
   emptyTrash?(): Promise<void>;
 }
 
-
 export const newKey = projectId;
-
 
 
 declare global {
@@ -91,8 +78,6 @@ export function projectStore(retry = false): Promise<ProjectStore | null> {
   const attempt: Promise<ProjectStore | null> = (async () => {
     await (await import('./service')).requireWorkspaceService();
     const { serviceStore } = await import('./project-service');
-
-
     let primed: Awaited<ReturnType<ProjectStore['list']>> | null = await serviceStore.list();
     const unsubscribe = subscribeProjectStorageChanges(() => { primed = null; unsubscribe(); });
     return { ...observableStore(serviceStore), list: () => {
@@ -100,7 +85,6 @@ export function projectStore(retry = false): Promise<ProjectStore | null> {
       primed = null;
       return first ? Promise.resolve(first) : serviceStore.list();
     } };
-
   })().catch((error: unknown) => { if (store === attempt) storageError = error instanceof Error ? error.message : String(error); return null; });
   return (store = attempt);
 }

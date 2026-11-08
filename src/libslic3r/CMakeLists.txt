@@ -21,7 +21,6 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 option(USE_SLIC3R_CONSOLE_LOG "Enable console logging in RelWithDebInfo builds" OFF)
 
-
 if (SLIC3R_CAD)
     find_package(SLVS REQUIRED)
 endif ()
@@ -167,6 +166,10 @@ set(lisbslic3r_sources
     Nonplanar/OrientationField.hpp
     Nonplanar/RotaryRouter.cpp
     Nonplanar/RotaryRouter.hpp
+    Nonplanar/Sha256.cpp
+    Nonplanar/Sha256.hpp
+    Nonplanar/StageCache.cpp
+    Nonplanar/StageCache.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
     GCode/ClearanceRepair.cpp
@@ -720,8 +723,6 @@ set(lisbslic3r_sources
     FlushVolPredictor.cpp
 )
 
-
-
 if (SLIC3R_CAD)
     list(APPEND lisbslic3r_sources
             CAD/GeometryEngine.cpp
@@ -763,8 +764,6 @@ set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE ON CACHE BOOL "" FORCE)
 
 cmake_policy(PUSH)
 cmake_policy(SET CMP0011 NEW)
-
-
 set(CMAKE_POLICY_DEFAULT_CMP0167 NEW)
 find_package(CGAL 6.2 REQUIRED)
 find_package(OpenCV REQUIRED core)
@@ -781,8 +780,6 @@ add_library(libslic3r_cgal STATIC
 )
 target_include_directories(libslic3r_cgal PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-
-
 get_target_property(_cgal_tgt CGAL::CGAL ALIASED_TARGET)
 if (NOT TARGET ${_cgal_tgt})
     set (_cgal_tgt CGAL::CGAL)
@@ -798,8 +795,6 @@ if (_opts)
 endif()
 
 if (IS_CLANG_CL)
-
-
     target_compile_options(libslic3r_cgal PRIVATE -Wno-overriding-option)
 endif ()
 
@@ -809,6 +804,7 @@ if (MSVC AND "${CMAKE_SIZEOF_VOID_P}" STREQUAL "4")
     target_compile_definitions(libslic3r_cgal PRIVATE CGAL_DO_NOT_USE_MPZF)
 endif ()
 
+encoding_check(libslic3r)
 
 target_compile_definitions(libslic3r PUBLIC -DUSE_TBB -DTBB_USE_CAPTURED_EXCEPTION=0)
 if (USE_SLIC3R_CONSOLE_LOG)
@@ -816,9 +812,6 @@ if (USE_SLIC3R_CONSOLE_LOG)
 endif()
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/TextureToColor PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
-
-
-
 
 set(_git_commit_hash_header "${CMAKE_CURRENT_BINARY_DIR}/git_commit_hash.h")
 add_custom_target(git_commit_hash_header
@@ -829,7 +822,6 @@ add_custom_target(git_commit_hash_header
         -P "${CMAKE_CURRENT_LIST_DIR}/GitCommitHash.cmake"
     COMMENT "Resolving the git commit hash")
 add_dependencies(libslic3r git_commit_hash_header)
-
 
 set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
 find_package(OpenCASCADE REQUIRED)
@@ -863,21 +855,8 @@ set(OCCT_LIBS
     TKMath
     TKernel
 )
-
-
-
-
-
-
-
-
-
-
-
 if (SLIC3R_CAD)
     set(OCCT_LIBS TKFillet TKOffset TKBool ${OCCT_LIBS})
-
-
     if (NOT TARGET TKFillet)
         message(FATAL_ERROR
             "SLIC3R_CAD is ON, but the OpenCASCADE in ${CMAKE_PREFIX_PATH} was built without "
@@ -885,12 +864,8 @@ if (SLIC3R_CAD)
             "or configure this project with -DSLIC3R_CAD=OFF.")
     endif ()
 endif ()
-
 set(OCCT_LIBS "${OCCT_LIBS}" CACHE INTERNAL "OCCT toolkits linked by libslic3r")
 if (WIN32)
-
-
-
     get_target_property(_occt_configs TKernel IMPORTED_CONFIGURATIONS)
     list(GET _occt_configs 0 _occt_fallback)
     foreach (_build_config IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
@@ -936,13 +911,10 @@ target_link_libraries(libslic3r
     )
 
 if(NOT WIN32)
-
-
     if (NOT TARGET freetype)
         add_library(freetype INTERFACE IMPORTED GLOBAL)
         target_link_libraries(freetype INTERFACE ${FREETYPE_LIBRARIES})
     endif ()
-
     target_link_libraries(libslic3r PRIVATE ${FREETYPE_LIBRARIES})
     if (NOT APPLE)
         target_link_libraries(libslic3r PRIVATE fontconfig)
@@ -972,9 +944,6 @@ if(SLIC3R_PROFILE)
 endif()
 
 if (WIN32)
-
-
-
     target_compile_definitions(libslic3r PUBLIC "WIN32_LEAN_AND_MEAN=" "NOMINMAX")
 endif ()
 

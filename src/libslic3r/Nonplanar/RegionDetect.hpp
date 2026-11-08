@@ -27,19 +27,10 @@ struct Region {
     Polygons projection;
 };
 
-
-
 std::vector<Region> detect_nonplanar_regions(const ModelVolume &volume, const Transform3d &transform,
                                             const HeadEnvelope &head);
 
-
-
-
-
 ExPolygons nonplanar_region_mask(const PrintObject &object, size_t layer_id);
-
-
-
 
 ExPolygons nonplanar_paint_mask(const PrintObject &object, size_t layer_id, const ExPolygons &domain);
 

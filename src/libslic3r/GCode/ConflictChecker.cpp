@@ -109,9 +109,6 @@ void LinesBucketQueue::emplace_back_bucket(ExtrusionLayers &&els, const void *ob
     auto oldSize = line_buckets.capacity();
     line_buckets.emplace_back(std::move(els), objPtr, offset);
     auto newSize = line_buckets.capacity();
-
-
-
     if (oldSize == newSize) {
         line_bucket_ptr_queue.push(&line_buckets.back());
     }
@@ -121,7 +118,6 @@ void LinesBucketQueue::emplace_back_bucket(ExtrusionLayers &&els, const void *ob
         std::swap(line_bucket_ptr_queue, newQueue);
     }
 }
-
 
 float LinesBucketQueue::getCurrBottomZ()
 {
@@ -239,8 +235,7 @@ ConflictResultOpt ConflictChecker::find_inter_of_lines_in_diff_objs(PrintObjectP
                                                                     std::optional<const FakeWipeTower *> wtdptr)
 {
     if (objs.empty() && !wtdptr) { return {}; }
-
-
+    
     size_t total_instances = 0;
     for (auto obj : objs) total_instances += obj->instances().size();
     if (total_instances <= 1 && !wtdptr) return {};
@@ -248,21 +243,11 @@ ConflictResultOpt ConflictChecker::find_inter_of_lines_in_diff_objs(PrintObjectP
     LinesBucketQueue conflictQueue;
 
     if (wtdptr.has_value()) {
-
         ExtrusionLayers wtels = wtdptr.value()->getTrueExtrusionLayersFromWipeTower();
-
-
-
-
-
-
-
-
         conflictQueue.emplace_back_bucket(std::move(wtels), wtdptr.value(), {wtdptr.value()->plate_origin.x(), wtdptr.value()->plate_origin.y()});
     }
     for (PrintObject *obj : objs) {
         auto layers = getAllLayersExtrusionPathsFromObject(obj);
-
         const auto& instances = obj->instances();
         for (size_t inst_idx = 0; inst_idx < instances.size(); ++inst_idx) {
             const PrintInstance& inst = instances[inst_idx];
@@ -307,13 +292,12 @@ ConflictResultOpt ConflictChecker::find_inter_of_lines_in_diff_objs(PrintObjectP
             const FakeWipeTower *wtdp = wtdptr.value();
             if (ptr1 == wtdp || ptr2 == wtdp) {
                 if (ptr2 == wtdp) { std::swap(ptr1, ptr2); }
-
                 const PrintInstance *inst2 = reinterpret_cast<const PrintInstance *>(ptr2);
                 const PrintObject *obj2 = inst2->print_object;
                 return std::make_optional<ConflictResult>("WipeTower", obj2->model_object()->name, conflictPrintZ, nullptr, inst2);
             }
         }
-
+        
         const PrintInstance *inst1 = reinterpret_cast<const PrintInstance *>(ptr1);
         const PrintInstance *inst2 = reinterpret_cast<const PrintInstance *>(ptr2);
         const PrintObject *obj1 = inst1->print_object;
@@ -343,7 +327,6 @@ ConflictComputeOpt ConflictChecker::line_intersect(const LineWithID &l1, const L
         bool          both_support = r1 == ExtrusionRole::erSupportMaterial || r1 == ExtrusionRole::erSupportMaterialInterface || r1 == ExtrusionRole::erSupportTransition;
         both_support = both_support && ( r2 == ExtrusionRole::erSupportMaterial || r2 == ExtrusionRole::erSupportMaterialInterface || r2 == ExtrusionRole::erSupportTransition);
         if (dist > (both_support ? SUPPORT_THRESHOLD:OTHER_THRESHOLD)) {
-
             return std::make_optional<ConflictComputeResult>(l1._id, l2._id);
         }
     }

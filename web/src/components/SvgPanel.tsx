@@ -1,6 +1,4 @@
 import { Check } from './Check';
-
-
 import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type SvgSpec } from '../state/store';
@@ -10,7 +8,6 @@ import { setTextPlacing, subscribeTextPlacing, textPlacing } from '../plater/tex
 const OPERATIONS = [['part', 'Join'], ['negative', 'Cut'], ['modifier', 'Modifier']] as const;
 
 export default function SvgPanel() {
-
   const objectId = useStore((s) => editedSvg(s)?.object.id);
   const v = useStore((s) => editedSvg(s)?.volume);
   const current = useStore((s) => editedSvg(s)?.spec);
@@ -22,7 +19,6 @@ export default function SvgPanel() {
   const timer = useRef(0);
   useEffect(() => () => setTextPlacing(false), []);
   useEffect(() => setSpec(current ?? null), [key]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => setSpec((sp) => (sp && current ? { ...sp, surface: current.surface } : sp)), [current?.surface]); // eslint-disable-line react-hooks/exhaustive-deps
   if (objectId === undefined || !spec) return null;
   const edit = (patch: Partial<SvgSpec>) => {
@@ -45,7 +41,7 @@ export default function SvgPanel() {
       {num('Depth', 'depth', 0.01, 1000)}
       {num('Size', 'size', 0.1, 1000)}
       {v && (
-        <label className="prefs-row cut-joint-row" title={canSurface ? undefined : 'Use surface needs a newer slicing tool'}>
+        <label className="prefs-row cut-joint-row" title={canSurface ? undefined : 'Update the slicing service to wrap onto a curved surface'}>
           <span>Use surface</span>
           <Check checked={!!spec.surface || placing} disabled={!canSurface && !spec.surface}
             onCheckedChange={(next) => { if (next) setTextPlacing(true); else { setTextPlacing(false); if (spec.surface) edit({ surface: undefined }); } }} />

@@ -19,11 +19,8 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
-
 constexpr double LevelFractions[] = { 0.2, 0.25, 0.3, 0.45, 0.6 };
-
 constexpr double ZoneRadius = 1.;
-
 
 HeightField smoothed(const HeightField &f)
 {
@@ -46,7 +43,6 @@ HeightField smoothed(const HeightField &f)
         }
     return out;
 }
-
 
 double diff1(const HeightField &f, int ix, int iy, int dx, int dy)
 {
@@ -71,7 +67,6 @@ double diff2(const HeightField &f, int ix, int iy, int dx, int dy)
     const double c = at(ix, iy), a = at(ix + dx, iy + dy), b = at(ix - dx, iy - dy);
     return std::isnan(a) || std::isnan(b) ? 0. : (a - 2. * c + b) / (f.pitch() * f.pitch() * (dx * dx + dy * dy));
 }
-
 
 void filter_levels(std::vector<int> &lv, int nx, int ny, int r, bool take_min)
 {
@@ -101,8 +96,6 @@ void filter_levels(std::vector<int> &lv, int nx, int ny, int r, bool take_min)
 
 double outer_bead_width(double height, double nozzle, double max_width)
 {
-
-
     const double hi = std::max(max_width, height);
     return std::clamp(2.5 * height, std::min(0.5 * nozzle, hi), hi);
 }
@@ -210,8 +203,6 @@ void AdaptiveStack::update_zones()
     size_t most = 0;
     for (const auto &[h0, mask] : masks) {
         levels.emplace_back(h0);
-
-
         const float     r   = float(scale_(2. * outer.pitch()));
         const double    tol = scale_(0.01);
         ExPolygons      z   = mask_to_expolygons(mask, outer);
@@ -236,7 +227,6 @@ AdaptiveStack adaptive_stack(const HeightField &surface, const HeightField &laye
     st.below        = below;
     st.layers       = layers;
 
-
     const double     h_lo = AdaptiveMinHeight * nozzle;
     std::vector<double> cand;
     for (double f : LevelFractions)
@@ -253,7 +243,6 @@ AdaptiveStack adaptive_stack(const HeightField &surface, const HeightField &laye
     for (size_t j = 0; j < cand.size(); ++j)
         width[j] = outer_bead_width(cand[j], nozzle, max_width);
 
-
     const HeightField S  = smoothed(surface);
     const int         nx = S.nx(), ny = S.ny();
     std::vector<int>  lv(size_t(nx) * ny, -1);
@@ -263,7 +252,6 @@ AdaptiveStack adaptive_stack(const HeightField &surface, const HeightField &laye
                 continue;
             const double gx = diff1(S, ix, iy, 1, 0), gy = diff1(S, ix, iy, 0, 1);
             const double hxx = diff2(S, ix, iy, 1, 0), hyy = diff2(S, ix, iy, 0, 1);
-
             const double hxy = 0.5 * (diff2(S, ix, iy, 1, 1) - diff2(S, ix, iy, 1, -1));
             const double kappa = 0.5 * std::abs(hxx + hyy) + std::sqrt(0.25 * (hxx - hyy) * (hxx - hyy) + hxy * hxy);
             const double slope = std::hypot(gx, gy);
@@ -282,7 +270,6 @@ AdaptiveStack adaptive_stack(const HeightField &surface, const HeightField &laye
             }
             lv[size_t(iy) * nx + ix] = best >= 0 ? best : least;
         }
-
     const int r = std::max(1, int(std::ceil(ZoneRadius / S.pitch())));
     filter_levels(lv, nx, ny, r, true);
     filter_levels(lv, nx, ny, r, false);
@@ -296,7 +283,6 @@ AdaptiveStack adaptive_stack(const HeightField &surface, const HeightField &laye
             st.count.data()[i] = float(st.top_count(h0));
             st.slots           = std::max(st.slots, st.top_count(h0));
         }
-
     pad_lowest(st.outer, 3);
     for (size_t i = 0; i < st.outer.data().size(); ++i)
         if (const float h0 = st.outer.data()[i]; !std::isnan(h0) && std::isnan(st.count.data()[i]))

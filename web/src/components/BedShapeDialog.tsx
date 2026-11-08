@@ -1,14 +1,17 @@
-
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import type { Config, ConfigValue } from '../api/types';
 import { bedBounds, parsePoints } from '../plater/geometry';
 import { bedAsset, registerBedAsset } from '../plater/bed-assets';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { union, type Polygon, type Pair } from 'polygon-clipping';
-import { setOption } from '../state/store';
+import { setOption, toast } from '../state/store';
+import { InfoTip } from './InfoTip';
+
+const SIZE_MIN = 0.01, SIZE_MAX = 214700, ORIGIN_LIMIT = 107350;
 
 export default function BedShapeDialog({ config, close, onSet = (key, value) => setOption('machine', key, value) }: { config: Config; close(): void; onSet?(key: string, value: ConfigValue): void }) {
+  const id = useId();
   const initial = parsePoints(config.printable_area);
   const bounds = bedBounds(initial);
   const [custom, setCustom] = useState(initial.map((p) => [p.x, p.y]));
@@ -19,7 +22,8 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
   const [diameter, setDiameter] = useState(size[0]);
   const [texture, setTexture] = useState(String(config.bed_custom_texture ?? ''));
   const [model, setModel] = useState(String(config.bed_custom_model ?? ''));
-  const valid = shape === 'Rectangular' ? size.every((n) => Number.isFinite(n) && n > 0 && n <= 214700) && origin.every((n) => Number.isFinite(n) && Math.abs(n) <= 107350) : shape === 'Circular' ? Number.isFinite(diameter) && diameter > 0 && diameter <= 214700 : custom.length >= 3;
+  const validSize = (n: number) => Number.isFinite(n) && n >= SIZE_MIN && n <= SIZE_MAX;
+  const valid = shape === 'Rectangular' ? size.every(validSize) && origin.every((n) => Number.isFinite(n) && Math.abs(n) <= ORIGIN_LIMIT) : shape === 'Circular' ? validSize(diameter) : custom.length >= 3;
   const points = shape === 'Rectangular' ? [[-origin[0], -origin[1]], [size[0] - origin[0], -origin[1]], [size[0] - origin[0], size[1] - origin[1]], [-origin[0], size[1] - origin[1]]] :
     shape === 'Circular' ? Array.from({ length: 72 }, (_, i) => { const a = (i + 1) * Math.PI * 2 / 72; return [diameter / 2 * Math.cos(a), diameter / 2 * Math.sin(a)]; }) : custom;
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
@@ -27,9 +31,14 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
   const scale = 230 / Math.max(maxX - minX, maxY - minY, 1);
   const px = (n: number) => 30 + (n - minX) * scale;
   const py = (n: number) => 265 - (n - minY) * scale;
-  const num = (label: string, value: number, set: (v: number) => void, min: number, max: number) => <label className="form-row"><span>{label}</span>
-    <span className="modal-unit"><input className="text num" type="number" min={min} max={max} step="any" value={Number.isFinite(value) ? value : ''} aria-invalid={!(Number.isFinite(value) && value >= min && value <= max) || undefined}
-      onChange={(e) => set(e.target.valueAsNumber)} /><span>mm</span></span></label>;
+  const num = (label: string, value: number, set: (v: number) => void, min: number, max: number) => {
+    const reason = !Number.isFinite(value) ? 'Enter a number' : value < min ? `Min ${min} mm` : value > max ? `Max ${max} mm` : '';
+    const errorId = `${id}-${label.replace(/ /g, '-')}`;
+    return <label className="form-row"><span>{label}<InfoTip label={label}>Allowed range: {min} mm to {max} mm</InfoTip></span>
+      <span className="control-stack"><span className="modal-unit"><input className="text num" type="number" min={min} max={max} step="any" value={Number.isFinite(value) ? value : ''} aria-invalid={!!reason || undefined} aria-describedby={reason ? errorId : undefined}
+        onChange={(e) => set(e.target.valueAsNumber)} onBlur={() => { if (reason) toast(`${label}: ${reason} (kept previous value).`, null, undefined, 'warning'); }} /><span>mm</span></span>
+        {reason && <span className="control-error" id={errorId} role="status">{reason}</span>}</span></label>;
+  };
   const at = (values: number[], set: (v: number[]) => void, i: number) => (v: number) => set(values.map((x, j) => (i === j ? v : x)));
   const asset = (title: string, value: string, set: (v: string) => void, accept: string) => <div className="form-row"><span>{title}</span>
     <span className="modal-file">{value ? <span className="modal-file-name" data-full-text={value}>{value.split(/[\\/]/).pop()}</span> : <span className="modal-file-none">None</span>}
@@ -47,7 +56,6 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
           if (Math.abs(area) > 1e-8) triangles.push([p]);
         }
         if (!triangles.length) throw new Error('The selected file contains no geometry.');
-
         let merged = union(triangles[0]);
         for (let i = 1; i < triangles.length; i += 128) merged = union(merged, ...triangles.slice(i, i + 128));
         if (merged.length !== 1) throw new Error('The selected file contains several disjointed areas. This is not supported.');
@@ -63,9 +71,9 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
       <ModalBody className="modal-split"><div className="modal-fields">
         <div className="form-row"><span>Shape</span><span className="seg" role="radiogroup" aria-label="Shape">{([['Rectangular', 'Rectangle'], ['Circular', 'Circle'], ['Custom', 'Custom']] as const).map(([name, label]) =>
           <button key={name} type="button" role="radio" aria-checked={shape === name} onClick={() => setShape(name)}>{label}</button>)}</span></div>
-        {shape === 'Rectangular' && <>{num('Width', size[0], at(size, setSize, 0), 0.01, 214700)}{num('Depth', size[1], at(size, setSize, 1), 0.01, 214700)}
-          {num('Origin X', origin[0], at(origin, setOrigin, 0), -107350, 107350)}{num('Origin Y', origin[1], at(origin, setOrigin, 1), -107350, 107350)}</>}
-        {shape === 'Circular' && num('Diameter', diameter, setDiameter, 0.01, 214700)}
+        {shape === 'Rectangular' && <>{num('Width', size[0], at(size, setSize, 0), SIZE_MIN, SIZE_MAX)}{num('Depth', size[1], at(size, setSize, 1), SIZE_MIN, SIZE_MAX)}
+          {num('Origin X', origin[0], at(origin, setOrigin, 0), -ORIGIN_LIMIT, ORIGIN_LIMIT)}{num('Origin Y', origin[1], at(origin, setOrigin, 1), -ORIGIN_LIMIT, ORIGIN_LIMIT)}</>}
+        {shape === 'Circular' && num('Diameter', diameter, setDiameter, SIZE_MIN, SIZE_MAX)}
         {shape === 'Custom' && <div className="form-row"><span>Outline</span><span className="modal-file"><span className="modal-file-none">{custom.length >= 3 ? `${custom.length} points` : 'None'}</span>
           <label className="btn">Load STL…<input type="file" aria-label="Load shape from STL" hidden accept=".stl" onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadShape(file); }} /></label></span></div>}
         {asset('Texture', texture, setTexture, '.png,.svg')}{asset('Model', model, setModel, '.stl')}

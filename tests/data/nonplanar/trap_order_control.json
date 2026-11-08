@@ -1,0 +1,18 @@
+{
+ "gcode": "trap_order_control.gcode",
+ "description": "Travel at Z 10 across the pillar site, then the pillar",
+ "true_head": "trap_head_true.json",
+ "generator_head": null,
+ "control": true,
+ "expected": {
+  "hit_lines": [],
+  "hit_count": 0,
+  "components": {}
+ },
+ "port": {
+  "hit_lines": [],
+  "hit_count": 0,
+  "components": {},
+  "recall": null
+ }
+}

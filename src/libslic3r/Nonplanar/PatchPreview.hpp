@@ -1,6 +1,4 @@
 #pragma once
-
-
 #include "HeightField.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
@@ -22,7 +20,6 @@ struct HeadEnvelope;
 
 struct PatchPreviewParams
 {
-
     std::shared_ptr<const DynamicPrintConfig> config;
 
     bool   banded             = false;
@@ -42,8 +39,6 @@ struct PatchPreviewParams
     bool operator!=(const PatchPreviewParams &rhs) const { return !(*this == rhs); }
 };
 
-
-
 PatchPreviewParams patch_preview_params(const DynamicPrintConfig &config);
 
 struct PatchPreview
@@ -53,28 +48,17 @@ struct PatchPreview
     std::vector<ExPolygons> patches;
 };
 
-
-
-
 PatchPreview preview_conformal_patches(const indexed_triangle_set &mesh, const HeadEnvelope &head,
                                        const PatchPreviewParams &params,
                                        const std::function<void()> &throw_if_canceled = {});
 
-
-
 enum class SlopeBand : unsigned char { Within, Near, Tilt, Beyond, Count };
-
-
 
 constexpr int SlopeAzimuths = 72;
 std::vector<double> preview_slope_limits(const HeadEnvelope &head, const PatchPreviewParams &params);
-
 double slope_limit_at(const std::vector<double> &limits, double phi);
-
 std::pair<double, double> face_slope(const Vec3d &n);
 SlopeBand slope_band(double slope, double limit, double max_tilt);
-
-
 double preview_pitch(const Vec2d &size, double pitch);
 
 }

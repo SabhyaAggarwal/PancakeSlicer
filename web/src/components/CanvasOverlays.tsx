@@ -1,19 +1,20 @@
+import { openUrlImport } from '../url-import';
+import { More } from './kit';
+import { preloadable } from '../preloadable';
 import { MenuButton, type MenuEntry } from './Menu';
 import { Glyph } from './Glyph';
 import { Check } from './Check';
 import { Range } from './Range';
-
-
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, fileUse, openFileDialog, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
-import { Icon, IconButton } from './Icon';
+import { IconButton } from './Icon';
 import { Caret } from './Caret';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
@@ -21,8 +22,8 @@ import { useTier } from '../breakpoints';
 import { SliceFailed } from './Notices';
 import './prepare.css';
 
-const OrientConfirm = lazy(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
-const RemapFilaments = lazy(() => import('./RemapFilaments'));
+const OrientConfirm = preloadable(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
+const RemapFilaments = preloadable(() => import('./RemapFilaments'));
 import { addPlate, canAddPlate } from '../plater/plates';
 import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArrangeSettings } from '../plater/arrangeSettings';
 import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, PAINT_TOOLS, paintTool, setPaintTool, subscribePaintTool, togglePaint, type PaintKind } from '../plater/paint';
@@ -30,15 +31,26 @@ import { filamentColor } from '../plater/filamentColor';
 import { canEditLayers } from './LayerHeight';
 import { Num } from './Num';
 import { setAssembly, useAssembly } from '../plater/assembly';
+import { Sep } from '../separator';
 
-
-const PAINT_GIZMOS: [PaintKind, string, string][] = [
-  ['support', 'toolbar_support', 'Support Painting (L)'],
-  ['seam', 'toolbar_seam', 'Seam painting (P)'],
-  ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
-  ['color', 'mmu_segmentation', 'Color Painting (N)'],
+const PAINT_GIZMOS: [PaintKind, string, string, string][] = [
+  ['support', 'toolbar_support', 'Support painting', 'L'],
+  ['seam', 'toolbar_seam', 'Seam painting', 'P'],
+  ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Fuzzy skin painting', 'H'],
+  ['color', 'mmu_segmentation', 'Color painting', 'N'],
 ];
 
+const GLYPH_BOX: Record<string, [number, number, number, number, number]> = {
+  instance_add: [40, 4.5, 4.5, 31, 31], instance_remove: [40, 4.5, 4.5, 31, 31], menu_obj_svg: [16, 0, 0, 15, 15],
+  toolbar_nonplanar_paint: [40, 4.5, 2.5, 32, 29.25],
+};
+export function ToolGlyph({ name, size }: { name: string; size: number }) {
+  const [vb, x, y, w, h] = GLYPH_BOX[name] ?? [40, 4, 4, 31, 31], side = Math.max(w, h);
+  const at = (start: number) => (vb === side ? 0 : (100 * start) / (vb - side));
+  return <span className="tool-glyph" aria-hidden style={{ width: size, height: size, ['--glyph' as string]: `url("/images/${name}.svg")`,
+    ['--glyph-size' as string]: `${(100 * vb) / side}%`, ['--glyph-at' as string]: `${at(x + w / 2 - side / 2)}% ${at(y + h / 2 - side / 2)}%` }} />;
+}
+const menuGlyph = (name: string) => <ToolGlyph name={name} size={16} />;
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
@@ -50,9 +62,7 @@ export function CanvasToolbar() {
   const instances = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.instances.length ?? 0);
   const project = useStore((s) => !!s.project);
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
-
   const brimEars = useStore((s) => !!s.features.brim_ears);
-
   const booleanOk = useStore(canBoolean);
   const text = useStore((s) => !!s.features.emboss_text);
   const assemblyOn = useAssembly().on;
@@ -62,38 +72,35 @@ export function CanvasToolbar() {
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
   const edit = !!sel && !placeholder && !sel.all;
-
   const splitParts = useStore((s) => !!s.features.volumes && !s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const cutBlock = useStore(cutBlocked);
   const paint = useStore(canPaint);
   const layers = useStore(canEditLayers);
   const preview = !!usePatchPreview();
   const nonplanarView = useNonplanarView();
-
   const [arranging, setArranging] = useState(false);
   const arrangeAt = useRef<HTMLSpanElement>(null);
   const rare: MenuEntry[] = [
-    {label:'Auto orient',action:()=>toolbarOperation('orient'),disabled:!hasObjects || project},
-    {label: 'Add plate', action: addPlate, disabled: !meshPlates},
-    {label: 'Add instance', action: addInstance, disabled: !edit || project, tip: locked || undefined},
-    {label: 'Remove instance', action: removeInstance, disabled: instances < 2 || project, tip: locked || undefined},
-    {label: 'Split to objects', action: () => toolbarOperation('split'), disabled: !edit || project},
-    {label: 'Split to parts', action: () => toolbarOperation('split-parts'), disabled: !edit || project || !splitParts},
+    {label: 'Auto orient', shortcut: 'Q', icon: menuGlyph('toolbar_orient'), action: () => toolbarOperation('orient'), disabled: !hasObjects || project},
+    {label: 'Add plate', icon: menuGlyph('toolbar_add_plate'), action: addPlate, disabled: !meshPlates},
+    {label: 'Add instance', shortcut: '+', icon: menuGlyph('instance_add'), action: addInstance, disabled: !edit || project, tip: locked || undefined},
+    {label: 'Remove instance', shortcut: '-', icon: menuGlyph('instance_remove'), action: removeInstance, disabled: instances < 2 || project, tip: locked || undefined},
+    {label: 'Split to objects', icon: menuGlyph('split_objects'), action: () => toolbarOperation('split'), disabled: !edit || project},
+    {label: 'Split to parts', icon: menuGlyph('split_parts'), action: () => toolbarOperation('split-parts'), disabled: !edit || project || !splitParts},
     'sep',
-    {label: 'Lay on face', shortcut: 'F', action: () => toggle('flatten'), disabled: !edit, checked: gizmo === 'flatten'},
-    {label: 'Cut', shortcut: 'C', action: toggleCut, disabled: !!cutBlock && gizmo !== 'cut', tip: cutBlock ?? undefined},
-    {label: 'Measure', shortcut: 'U', action: () => toggle('measure'), disabled: !sel || !!placeholder, checked: gizmo === 'measure'},
-    {label: 'Variable layer height', action: () => toggle('layers'), disabled: !layers && gizmo !== 'layers'},
-    {label: 'Assembly view', action: () => setAssembly({on: !assemblyOn}), disabled: !hasObjects && !assemblyOn},
-    {label: 'Mesh boolean', shortcut: 'B', action: toggleBoolean, disabled: !booleanOk && gizmo !== 'boolean'},
+    {label: 'Lay on face', shortcut: 'F', icon: menuGlyph('toolbar_flatten'), action: () => toggle('flatten'), disabled: !edit, checked: gizmo === 'flatten'},
+    {label: 'Cut', shortcut: 'C', icon: menuGlyph('toolbar_cut'), action: toggleCut, disabled: !!cutBlock && gizmo !== 'cut', tip: cutBlock ?? undefined},
+    {label: 'Measure', shortcut: 'U', icon: menuGlyph('toolbar_measure'), action: () => toggle('measure'), disabled: !sel || !!placeholder, checked: gizmo === 'measure'},
+    {label: 'Variable layer height', icon: menuGlyph('toolbar_variable_layer_height'), action: () => toggle('layers'), disabled: !layers && gizmo !== 'layers'},
+    {label: 'Assembly view', icon: menuGlyph('toolbar_assembly'), action: () => setAssembly({on: !assemblyOn}), disabled: !hasObjects && !assemblyOn},
+    {label: 'Mesh boolean', shortcut: 'B', icon: menuGlyph('toolbar_meshboolean'), action: toggleBoolean, disabled: !booleanOk && gizmo !== 'boolean'},
     'sep',
-    ...PAINT_GIZMOS.map(([kind, _icon, label]): MenuEntry => ({label, action: () => togglePaint(kind), disabled: !paint && gizmo !== kind, checked: gizmo === kind})),
-    ...(brimEars ? [{label: 'Brim ears', action: () => toggle('brimears'), disabled: !sel || !!placeholder || !!native || volumes} as MenuEntry] : []),
-    ...(text ? [{label: 'Emboss text', shortcut: 'T', action: toggleText, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
-    ...(svg ? [{label: 'SVG', action: toggleSvg, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
-    ...(preview ? [{label: 'Non-planar surfaces', action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
+    ...PAINT_GIZMOS.map(([kind, icon, label, key]): MenuEntry => ({label, shortcut: key, icon: menuGlyph(icon), action: () => togglePaint(kind), disabled: !paint && gizmo !== kind, checked: gizmo === kind})),
+    ...(brimEars ? [{label: 'Brim ears', icon: menuGlyph('toolbar_brimears'), action: () => toggle('brimears'), disabled: !sel || !!placeholder || !!native || volumes} as MenuEntry] : []),
+    ...(text ? [{label: 'Emboss text', shortcut: 'T', icon: menuGlyph('toolbar_text'), action: toggleText, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
+    ...(svg ? [{label: 'SVG', icon: menuGlyph('menu_obj_svg'), action: toggleSvg, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
+    ...(preview ? [{label: 'Non-planar surfaces', icon: menuGlyph('toolbar_nonplanar_paint'), action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
   ];
-
   const needSelection = !hasObjects ? 'add an object' : sel?.all ? 'select one object' : 'select an object';
   return <div className="canvas-toolbar">
     <ToolButton icon="toolbar_move" name="Move" keys="M" active={gizmo === 'move'} unavailable={!edit && needSelection} onClick={() => toggle('move')}/>
@@ -103,20 +110,15 @@ export function CanvasToolbar() {
     <span ref={arrangeAt} style={{display: 'inline-flex'}}><ToolButton icon="toolbar_arrange" name="Arrange" keys="A" active={arranging} unavailable={!hasObjects && !arranging && 'add an object'} onClick={() => setArranging(!arranging)}/></span>
     {arranging && <ArrangeOptions at={arrangeAt.current}/>}
     <ToolButton icon="toolbar_orient" name="Auto orient" keys="Q" unavailable={!hasObjects ? 'add an object' : project && 'not in an opened 3MF project'} onClick={e => toolbarOperation('orient', e.shiftKey)}/>
-    <ToolButton icon="toolbar_open" name="Add model" keys={`${MOD}+I`} onClick={openFileDialog}/>
+    <MenuButton label="Add model" className="icon-btn tb-tool-btn" items={[{ label: 'Add model…', shortcut: `${MOD}+I`, action: openFileDialog }, { label: 'Import from URL…', action: () => openUrlImport() }]}><ToolGlyph name="toolbar_open" size={22} /></MenuButton>
     <MenuButton className="btn-ghost canvas-more" label="Model tools" items={rare}>Tools<Caret/></MenuButton>
   </div>;
 }
 
-
-
-
-
-
 function ToolButton({ icon, name, keys, active = false, unavailable, onClick }: { icon: string; name: string; keys: string; active?: boolean; unavailable?: string | false; onClick(e: React.MouseEvent<HTMLButtonElement>): void }) {
-  return <button type="button" className={`icon-btn tb-tool-btn${active ? ' active' : ''}`} aria-label={`${name} · ${keys}${unavailable ? ` (${unavailable})` : ''}`}
+  return <button type="button" className={`icon-btn tb-tool-btn${active ? ' active' : ''}`} aria-label={`${name} (${keys})${unavailable ? `, ${unavailable}` : ''}`}
     aria-pressed={active} aria-disabled={unavailable ? true : undefined} onClick={(e) => { if (!unavailable) onClick(e); }}>
-    <Icon name={icon} size={24} />
+    <ToolGlyph name={icon} size={22} />
   </button>;
 }
 
@@ -125,7 +127,6 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const canMulti = useStore((s) => !!s.features.arrange_materials);
   const r = at?.getBoundingClientRect();
-
   return createPortal(
     <div className="manip-panel" role="dialog" aria-label="Arrange options" style={{ position: 'fixed', top: (r?.bottom ?? 40) + 8, left: r?.left ?? 0, zIndex: 5 }}>
       <div className="manip-grid" style={{ gridTemplateColumns: '70px 140px 70px' }}>
@@ -153,15 +154,7 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   );
 }
 
-
 const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
-
-
-
-
-
-
-
 
 export function AccessNotification() {
   const notice = useSyncExternalStore(subscribeAccess, accessSnapshot);
@@ -188,14 +181,12 @@ export function AccessNotification() {
   );
 }
 
-
 function previewFact(facts: PreviewFact[]) {
   if (facts.length === 1) return facts[0].ledge ? 'No support under ledges' : facts[0].curved ? `Curved top ${facts[0].curved}%` : 'Flat top, prints as Standard';
   if (facts.some((f) => f.ledge)) return 'No support under ledges';
   const curved = facts.filter((f) => f.curved > 0).length;
   return curved ? `Curved tops on ${curved} of ${facts.length}` : 'Flat tops, prints as Standard';
 }
-
 
 function plateFact(results: PlateResult[]) {
   if (results.length === 1) return results[0].fact;
@@ -204,6 +195,10 @@ function plateFact(results: PlateResult[]) {
   return curved ? `Curved tops on ${curved} of ${results.length}` : 'Flat tops, prints as Standard';
 }
 
+function FileName({ name }: { name: string }) {
+  const cut = Math.max(0, name.length - 10);
+  return <span className="notif-file"><span>{name.slice(0, cut)}</span><span>{name.slice(cut)}</span></span>;
+}
 
 const TRANSIENT_MS = 8000;
 
@@ -217,7 +212,6 @@ export function SliceNotification() {
   const brief = job.state === 'canceled' ? `canceled` : null;
   const done = job.state === 'done' && !job.stale && !job.exported ? `done:${job.id}` : null;
   const machine = useStore(printerPreset);
-  const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   const exported = job.exported ? `exported:${job.id}:${job.exported}` : null;
   useEffect(() => {
     const timers = ([[brief, 3000]] as const)
@@ -226,14 +220,14 @@ export function SliceNotification() {
     return () => timers.forEach(clearTimeout);
   }, [brief]);
   useEffect(() => setClosed(new Set()), [job.id]);
-
   const stack = useRef<HTMLDivElement>(null);
-  const newest = useRef<Element>(undefined);
   useLayoutEffect(() => {
-    const last = stack.current ? [...stack.current.querySelectorAll('.notification')].at(-1) : undefined;
-    if (last !== newest.current && stack.current) stack.current.scrollTop = stack.current.scrollHeight;
-    newest.current = last;
-  });
+    const el = stack.current;
+    if (!el) return;
+    const observer = new MutationObserver((records) => { if (records.some((r) => r.addedNodes.length)) el.scrollTop = el.scrollHeight; });
+    observer.observe(el, { childList: true });
+    return () => observer.disconnect();
+  }, []);
   const busy = job.state === 'running' || job.state === 'submitting';
   const close = (k: string) => (
     <button className="notif-close icon-btn" aria-label="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
@@ -250,14 +244,8 @@ export function SliceNotification() {
   const orientPrompts = useStore((s) => s.orientPrompts);
   const orientConfirm = useStore((s) => s.orientConfirm !== null);
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
-
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
-  const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
-
-  const canSend = useStore((s) => s.printerConnections.enabled);
-  const sendLink = canSend && <>{'\u00a0· '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
-
   const [held, setHeld] = useState(false);
   const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,
     ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
@@ -267,7 +255,7 @@ export function SliceNotification() {
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transient.join('|'), held]);
-  const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted(true), setState({ tab: 'preview' }))}>Compare</button>;
+  const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted('standard'), setState({ tab: 'preview' }))}>Compare</button>;
   const tier = useTier();
   const [tipsOpen, setTipsOpen] = useState(false);
   const tips = [
@@ -279,7 +267,7 @@ export function SliceNotification() {
             <Glyph name="close" size={14} />
           </button>
           <div className="notif-title">{o.name}</div>
-          <div className="notif-body">Stand this part up: less support{'\u00a0· '}<button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
+          <div className="notif-body">Stand this part up: less support<Sep/><button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
         </div>
       );
     }),
@@ -298,34 +286,23 @@ export function SliceNotification() {
     facts.length > 0 && !closed.has(factsKey) && !expired.has(factsKey) && (
       <div key="facts" className="notification done">
         {close(factsKey)}
-        <div className="notif-title">{facts.length === 1 ? `${facts[0].name}: Auto` : 'Auto'}</div>
+        <div className="notif-title">{facts.length === 1 ? <><FileName name={facts[0].name}/><span className="notif-what">: Auto</span></> : 'Auto'}</div>
         <div className="notif-body">{previewFact(facts)}</div>
       </div>
     ),
     done && results.length > 0 && !closed.has(`${done}:r`) && !expired.has(`${done}:r`) && (
       <div key="results" className="notification done">
         {close(`${done}:r`)}
-        <div className="notif-title">{results.length === 1 ? `${results[0].label}: ${results[0].style}` : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
+        <div className="notif-title">{results.length === 1 ? <><FileName name={results[0].label}/><span className="notif-what">: {results[0].style}</span></>
+          : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
         <div className="notif-body">
           {plateFact(results)}
-          {results.some((r) => r.curved) && <>{'\u00a0· '}{compareLink}</>}
-          {'\u00a0· '}{exportLink('Export')}{sendLink}
-        </div>
-      </div>
-    ),
-    done && !results.length && !closed.has(done) && !expired.has(done) && (
-      <div key="done" className="notification done">
-        {close(done)}
-        <div className="notif-title"><Icon name="notification_slicing_complete" size={16} /> Slice complete</div>
-        <div className="notif-body">
-          <button type="button" className="notif-link" onClick={download}>{exportLabel}</button>{sendLink}
+          {results.some((r) => r.curved) && <><Sep/>{compareLink}</>}
         </div>
       </div>
     ),
   ].filter((el): el is ReactElement => !!el);
   useEffect(() => { if (tips.length < 2) setTipsOpen(false); }, [tips.length]);
-
-
   return (
     <div className="notifications" ref={stack} onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
       <InTopLayer>
@@ -346,7 +323,7 @@ export function SliceNotification() {
         <div className="notification warning">
           {close(`pip${suggestIds}`)}
           <div className="notif-title">{suggest.length === 1 ? suggest[0].name : `${suggest.length} objects`}: Standard suggested</div>
-          <div className="notif-body">Print-in-place gaps{'\u00a0· '}<button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
+          <div className="notif-body">Print-in-place gaps<Sep/><button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
         </div>
       )}
       {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}
@@ -364,7 +341,7 @@ export function SliceNotification() {
           <div className="notif-text">
             {slicingText(job, plateIndex)}
             <button className="notif-cancel icon-btn" aria-label="Cancel slicing" onClick={cancelSlice}>
-              <Icon name="notification_cancel" size={16} />
+              <Glyph name="close" size={14} />
             </button>
           </div>
           <div className="progress-row">
@@ -374,7 +351,6 @@ export function SliceNotification() {
           </div>
         </div>
       )}
-      {                                                                                 }
       {tips.length > 1 && tier === 'phone' && (
         <button type="button" className="notif-chip" aria-expanded={tipsOpen} onClick={() => setTipsOpen(!tipsOpen)}>{tips.length} tips</button>
       )}
@@ -385,8 +361,7 @@ export function SliceNotification() {
 
 export { Toast } from './Notices';
 
-
-const CutJoints = lazy(() => import('./CutJoints'));
+const CutJoints = preloadable(() => import('./CutJoints'));
 
 export function CutPanel() {
   const cut = useStore((s) => (s.gizmo === 'cut' ? s.cut : null));
@@ -394,7 +369,6 @@ export function CutPanel() {
   const joints = useStore((s) => !!s.features.cut_connectors && !s.objects.find((o) => o.instances.some((i) => i.id === s.selected?.instance))?.project);
   if (!cut) return null;
   if (cut.editing) return <div className="manip-panel"><Suspense fallback={null}><CutJoints /></Suspense></div>;
-
   const joined = cut.mode === 'dovetail' || !!cut.connectors?.length;
   const initial = initialCut(getState());
   const part = (label: string, colour: string, keep: boolean, onKeep: (v: boolean) => void, place: boolean, onPlace?: (v: boolean) => void) => (
@@ -416,28 +390,29 @@ export function CutPanel() {
         <Num value={cut.z} onCommit={(z) => setCut({ z })} />
         <span>mm</span>
         <span />
-        <span>Rotation</span>
-        <Num value={cut.rotX} onCommit={(rotX) => setCut({ rotX })} />
-        <Num value={cut.rotY} onCommit={(rotY) => setCut({ rotY })} />
-        <span>°</span>
       </div>
       {joints && <Suspense fallback={null}><CutJoints /></Suspense>}
-      <div className="manip-grid">
-        <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
-        <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
-      </div>
-      <label className="select-row" style={{ whiteSpace: 'nowrap' }}>
-        <Check checked={!!cut.toParts} disabled={joined} onCheckedChange={(next) => setCut({ toParts: next })} />Cut to parts
-      </label>
-      {!cut.toParts && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
-          {part('Upper part', '#00ffff', cut.keepUpper, (keepUpper) => setCut({ keepUpper }), true)}
-          {part('Lower part', '#ff00ff', cut.keepLower, (keepLower) => setCut({ keepLower }), cut.placeLower, (placeLower) => setCut({ placeLower }))}
-          {cut.keepUpper && <label className="select-row" style={{ gridColumn: '2 / span 2', whiteSpace: 'nowrap' }}>
-            <Check checked={!!cut.flipUpper} onCheckedChange={(next) => setCut({ flipUpper: next })} />Flip upper part upside down
-          </label>}
+      <More id="cut">
+        <div className="manip-grid">
+          <span>Rotation</span>
+          <Num value={cut.rotX} onCommit={(rotX) => setCut({ rotX })} />
+          <Num value={cut.rotY} onCommit={(rotY) => setCut({ rotY })} />
+          <span>°</span>
+          <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
         </div>
-      )}
+        <label className="select-row" style={{ whiteSpace: 'nowrap' }}>
+          <Check checked={!!cut.toParts} disabled={joined} onCheckedChange={(next) => setCut({ toParts: next })} />Cut to parts
+        </label>
+        {!cut.toParts && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
+            {part('Upper part', '#00ffff', cut.keepUpper, (keepUpper) => setCut({ keepUpper }), true)}
+            {part('Lower part', '#ff00ff', cut.keepLower, (keepLower) => setCut({ keepLower }), cut.placeLower, (placeLower) => setCut({ placeLower }))}
+            {cut.keepUpper && <label className="select-row" style={{ gridColumn: '2 / span 2', whiteSpace: 'nowrap' }}>
+              <Check checked={!!cut.flipUpper} onCheckedChange={(next) => setCut({ flipUpper: next })} />Flip upper part upside down
+            </label>}
+          </div>
+        )}
+      </More>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button className="btn" onClick={() => void import('../plater/cutJoints').then((m) => setCut(m.flipped(getState(), cut)))}>Flip</button>
         <button className="btn" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY && !cut.connectors?.length)}
@@ -450,19 +425,15 @@ export function CutPanel() {
   );
 }
 
-
-const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support Painting', seam: 'Seam painting', fuzzy: 'Paint-on fuzzy skin', color: 'Color Painting' };
+const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support painting', seam: 'Seam painting', fuzzy: 'Fuzzy skin painting', color: 'Color painting' };
 
 export function PaintPanel() {
   const kind = useStore((s) => (isPaint(s.gizmo) ? s.gizmo : null));
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const t = useSyncExternalStore(subscribePaintTool, paintTool);
-
   const threshold = useStore((s) => object && kind === 'support' ? Number({ ...effectiveConfig(s, 'process'), ...object.settings }.support_threshold_angle) || 0 : 0);
   useEffect(() => { if (kind === 'support') setPaintTool({ highlight: threshold }); }, [kind, object?.id, threshold]);
-
   const filaments = useStore((s) => s.filamentSlots.map((_, i) => filamentColor(s, i + 1)).join(' ')).split(' ').filter(Boolean);
-
   useEffect(() => { if (kind && !PAINT_TOOLS[kind].some(([id]) => id === paintTool().tool)) setPaintTool({ tool: 'circle' }); }, [kind, t.tool]);
   useEffect(() => { if (t.filament > filaments.length) setPaintTool({ filament: 1 }); }, [t.filament, filaments.length]);
   if (!kind || !object) return null;
@@ -539,7 +510,6 @@ export function PaintPanel() {
     </div>
   );
 }
-
 
 function dismissOrientPrompt(id: number) {
   setState((st) => {

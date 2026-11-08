@@ -11,30 +11,9 @@
 
 namespace Slic3r::Arachne
 {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     class RedistributeBeadingStrategy : public BeadingStrategy
     {
     public:
-
-
-
-
-
-
         RedistributeBeadingStrategy(coord_t optimal_width_outer, double minimum_variable_line_ratio, BeadingStrategyPtr parent);
 
         ~RedistributeBeadingStrategy() override = default;

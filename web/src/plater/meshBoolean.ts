@@ -1,6 +1,3 @@
-
-
-
 import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { getState, markStale, setState, toast, type PlateObject, type Volume } from '../state/store';
@@ -9,7 +6,6 @@ import { bakeStl, instanceMatrix, volumeGeometry } from './geometry';
 import { meshJob } from './meshOps';
 
 export type BooleanOp = 'union' | 'difference' | 'intersection';
-
 export type PartKey = 'main' | number;
 
 export const BOOLEAN_WARNING = 'Unable to perform boolean operation on selected parts';
@@ -18,9 +14,6 @@ const partStl = (o: PlateObject, k: PartKey) => {
   const v = o.volumes?.find((x) => x.id === k);
   return v ? bakeStl({ ...o, geometry: v.geometry }, new THREE.Matrix4().fromArray(v.matrix)) : bakeStl(o, new THREE.Matrix4());
 };
-
-
-
 
 function withMain(o: PlateObject, geometry: THREE.BufferGeometry, source: File, c: THREE.Vector3): PlateObject {
   const back = new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z);
@@ -41,14 +34,12 @@ export async function meshBoolean(objectId: number, op: BooleanOp, a: PartKey, b
     if (!geometry.attributes.position.count) throw new Error(BOOLEAN_WARNING);
     const c = new THREE.Vector3(...(geometry.userData.sourceCentre as [number, number, number] ?? [0, 0, 0]));
     const remove = op === 'union' || deleteInput;
-
     const [src, tool] = remove && b === 'main' ? [b, a] : [a, b];
     const live = getState().objects.find((x) => x.id === objectId) ?? o;
     let next: PlateObject;
     if (src === 'main') next = withMain(live, geometry, file, c);
     else {
       const v = live.volumes!.find((x) => x.id === src)!;
-
       geometry.computeBoundingBox();
       const d = geometry.boundingBox!.getCenter(new THREE.Vector3()).add(c);
       const centred = volumeGeometry((geometry.attributes.position.array as Float32Array).slice(), (geometry.index?.array as Uint32Array | undefined)?.slice() ?? null, (geometry.attributes.normal?.array as Float32Array | undefined)?.slice());

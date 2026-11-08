@@ -1,0 +1,30 @@
+{
+ "gcode": "trap_travel_through_pillar.gcode",
+ "description": "Pillar to 20 mm, then a travel at Z 10 through it",
+ "true_head": "trap_head_true.json",
+ "generator_head": null,
+ "control": false,
+ "expected": {
+  "hit_lines": [
+   1688
+  ],
+  "hit_count": 1,
+  "components": {
+   "profile_6": 1,
+   "profile_2.5": 1,
+   "profile_0": 1
+  }
+ },
+ "port": {
+  "hit_lines": [
+   1688
+  ],
+  "hit_count": 1,
+  "components": {
+   "profile_6": 148,
+   "profile_2.5": 60,
+   "profile_0": 22
+  },
+  "recall": 1.0
+ }
+}

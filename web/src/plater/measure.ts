@@ -1,6 +1,3 @@
-
-
-
 import * as THREE from 'three';
 import { centreOf, near } from './measureState';
 import type { Edge, Feature } from './measureState';
@@ -11,7 +8,6 @@ type V = THREE.Vector3;
 
 export const fmt = (v: number) => v.toFixed(3);
 
-
 export function featureText(f: Feature | undefined): string {
   if (!f) return 'None';
   if (f.type === 'point') return f.label;
@@ -20,13 +16,9 @@ export function featureText(f: Feature | undefined): string {
   return 'Plane';
 }
 
-
-
 interface Topology {
-
   start: Uint32Array;
   tris: Uint32Array;
-
   plane: Int32Array;
   planes: LocalPlane[];
 }
@@ -34,9 +26,7 @@ type LocalFeature = { type: 'edge'; a: V; b: V } | { type: 'circle'; c: V; r: nu
 interface LocalPlane {
   normal: V;
   tris: number[];
-
   features: LocalFeature[];
-
   origin: V;
 }
 
@@ -65,7 +55,6 @@ function faceNormal(p: ArrayLike<number>, index: ArrayLike<number>, f: number, o
   return out.set(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx).normalize();
 }
 
-
 function neighbour(t: Topology, index: ArrayLike<number>, f: number, v0: number, v1: number): number {
   for (let k = t.start[v0]; k < t.start[v0 + 1]; k++) {
     const g = t.tris[k];
@@ -73,7 +62,6 @@ function neighbour(t: Topology, index: ArrayLike<number>, f: number, v0: number,
   }
   return -1;
 }
-
 
 function fitCircle(pts: V[], toPlane: THREE.Quaternion): { c: V; r: number; err: number } {
   const q = pts.map((p) => p.clone().applyQuaternion(toPlane));
@@ -94,7 +82,6 @@ function fitCircle(pts: V[], toPlane: THREE.Quaternion): { c: V; r: number; err:
 }
 
 const approx = (a: number, b: number, eps = 0.01) => Math.abs(a - b) < eps;
-
 
 function borderFeatures(border: V[], normal: V, toPlane: THREE.Quaternion, out: LocalFeature[]) {
   const n = border.length;
@@ -122,7 +109,6 @@ function borderFeatures(border: V[], normal: V, toPlane: THREE.Quaternion, out: 
     lengths.push(v2.length());
     if (!firstDifferent && i > 0 && !approx(angles[i], angles[i - 1])) firstDifferent = i;
   }
-
   const arcs: [number, number][] = [];
   let startIdx = -1, inArc = false, first = true, run: V[] = [], runLength = 0;
   const firstPt = at(firstDifferent, 1);
@@ -164,7 +150,6 @@ function borderFeatures(border: V[], normal: V, toPlane: THREE.Quaternion, out: 
       if (i === arcs[0][0]) break;
     }
   }
-
   for (let i = edges.length - 1; i >= 0 && edges.length > 1; i--) {
     const p = edges[i === 0 ? edges.length - 1 : i - 1], e = edges[i];
     if (near(p[1], e[0]) && approx(p[1].clone().sub(p[0]).normalize().dot(e[1].clone().sub(e[0]).normalize()), 1, 1e-4)) {
@@ -174,7 +159,6 @@ function borderFeatures(border: V[], normal: V, toPlane: THREE.Quaternion, out: 
   }
   for (const [a, b] of edges) out.push({ type: 'edge', a, b });
 }
-
 
 function planeOf(g: THREE.BufferGeometry, seed: number): LocalPlane {
   const t = topology(g);
@@ -201,7 +185,6 @@ function planeOf(g: THREE.BufferGeometry, seed: number): LocalPlane {
       }
     }
   }
-
   const next = new Map<number, number>();
   for (const f of tris)
     for (let j = 0; j < 3; j++) {
@@ -234,7 +217,6 @@ function planeOf(g: THREE.BufferGeometry, seed: number): LocalPlane {
 
 const closestOnSegment = (q: V, a: V, b: V) => new THREE.Line3(a, b).closestPointToPoint(q, true, new THREE.Vector3());
 
-
 function pointCircle(q: V, c: V, r: number, normal: V): DistAndPoints {
   const n = normal.clone().normalize();
   const proj = q.clone().addScaledVector(n, -n.dot(q.clone().sub(c)));
@@ -243,7 +225,6 @@ function pointCircle(q: V, c: V, r: number, normal: V): DistAndPoints {
   return { dist: Math.hypot(proj.distanceTo(c) - r, q.distanceTo(proj)), from: q, to };
 }
 
-
 function orthogonal(v: V): V {
   const a = [v.x, v.y, v.z];
   const imax = [0, 1, 2].reduce((m, i) => (Math.abs(a[i]) > Math.abs(a[m]) ? i : m), 0), inext = (imax + 1) % 3;
@@ -251,11 +232,6 @@ function orthogonal(v: V): V {
   r[imax] = a[inext], r[inext] = -a[imax];
   return new THREE.Vector3(...r).normalize();
 }
-
-
-
-
-
 
 export function featureAt(g: THREE.BufferGeometry, tri: number, point: V, world: THREE.Matrix4, key: string, pointOnly: boolean): Feature {
   const plane = planeOf(g, tri);
@@ -274,7 +250,6 @@ export function featureAt(g: THREE.BufferGeometry, tri: number, point: V, world:
     return { type: 'edge', a: w(best.a), b: w(best.b) };
   }
   if (best?.type === 'circle') {
-
     const c = w(best.c);
     const r = w(best.c.clone().add(orthogonal(plane.normal).multiplyScalar(best.r))).distanceTo(c);
     return { type: 'circle', c, r, normal: plane.normal.clone().applyMatrix3(normals).normalize() };
@@ -294,8 +269,6 @@ export function featureAt(g: THREE.BufferGeometry, tri: number, point: V, world:
   };
 }
 
-
-
 export interface DistAndPoints { dist: number; from: V; to: V }
 export interface Measurement {
   angle?: number;
@@ -314,7 +287,6 @@ const toPlane = (q: V, normal: V, origin: V): DistAndPoints => {
   return dp(q, q.clone().addScaledVector(n, -n.dot(q.clone().sub(origin))));
 };
 
-
 function angleEdgeEdge(e1: Edge, e2: Edge): number {
   const d1 = e1[1].clone().sub(e1[0]), d2 = e2[1].clone().sub(e2[0]);
   if (parallel(d1, d2)) return 0;
@@ -332,7 +304,6 @@ function pointEdge(q: V, [s, e]: Edge): Measurement {
   const inf = dp(q, line.at(t, new THREE.Vector3()));
   return { distanceStrict: t > 0 && t < 1 ? inf : dp(q, t <= 0 ? s : e), distanceInfinite: inf };
 }
-
 
 function edgeCircleNearest([s, e]: Edge, c: V, r: number, normal: V): DistAndPoints {
   const ds = [pointCircle(s, c, r, normal), pointCircle(e, c, r, normal)];
@@ -357,7 +328,6 @@ function measureOrdered(f1: Feature, f2: Feature, centres: boolean): Measurement
     if (f2.type === 'edge') {
       const e2: Edge = [f2.a, f2.b];
       const ds = [dp(e1[0], e2[0]), dp(e1[0], e2[1]), dp(e1[1], e2[0]), dp(e1[1], e2[1])];
-
       const foot = (v: V, e: Edge, flip: boolean) => {
         const line = new THREE.Line3(e[0], e[1]);
         const t = line.closestPointToPointParameter(v, false);
@@ -375,11 +345,9 @@ function measureOrdered(f1: Feature, f2: Feature, centres: boolean): Measurement
     let distanceInfinite: DistAndPoints | undefined;
     if (perpendicular(dir, f2.normal)) distanceInfinite = nearest([toPlane(f1.a, f2.normal, f2.origin), toPlane(f1.b, f2.normal, f2.origin)]);
     else {
-
       const ds = f2.edges.map((e) => measureOrdered({ type: 'edge', a: e[0], b: e[1] }, f1, centres).distanceInfinite);
       if (ds.length && ds.every(Boolean)) distanceInfinite = nearest(ds as DistAndPoints[]);
     }
-
     const angle = perpendicular(dir, f2.normal) ? 0 : Math.asin(THREE.MathUtils.clamp(Math.abs(dir.clone().normalize().dot(f2.normal.clone().normalize())), 0, 1));
     return { distanceInfinite, angle };
   }
@@ -393,7 +361,6 @@ function measureOrdered(f1: Feature, f2: Feature, centres: boolean): Measurement
   }
   if (f1.type === 'plane' && f2.type === 'plane') {
     if (parallel(f1.normal, f2.normal)) return { distanceInfinite: toPlane(f1.origin, f2.normal, f2.origin) };
-
     const dir = f1.normal.clone().cross(f2.normal).normalize();
     const n1 = f1.normal.clone().normalize(), n2 = f2.normal.clone().normalize();
     const d1 = n1.dot(f1.origin), d2 = n2.dot(f2.origin), k = n1.dot(n2);
@@ -406,14 +373,12 @@ function measureOrdered(f1: Feature, f2: Feature, centres: boolean): Measurement
 
 const RANK = { point: 0, edge: 1, circle: 2, plane: 3 };
 
-
 export function measure(a: Feature, b: Feature): Measurement {
   if (RANK[a.type] <= RANK[b.type]) return measureOrdered(a, b, true);
   const m = measureOrdered(b, a, true);
   const swap = (d?: DistAndPoints) => d && { dist: d.dist, from: d.to, to: d.from };
   return { ...m, distanceInfinite: swap(m.distanceInfinite), distanceStrict: swap(m.distanceStrict) };
 }
-
 
 export function measureRows(m: Measurement): [label: string, value: string][] {
   const rows: [string, string][] = [];
@@ -426,15 +391,12 @@ export function measureRows(m: Measurement): [label: string, value: string][] {
   return rows;
 }
 
-
 export function distanceComponents(m: Measurement): V | null {
   const v = m.distanceXyz && m.distanceXyz.length() > EPSILON ? m.distanceXyz
     : m.distanceInfinite ? m.distanceInfinite.to.clone().sub(m.distanceInfinite.from)
     : m.distanceStrict ? m.distanceStrict.to.clone().sub(m.distanceStrict.from) : null;
   return v && v.length() > 0.01 ? v : null;
 }
-
-
 
 export function transformFeature(f: Feature | undefined, m: THREE.Matrix4, ratio: number): Feature | undefined {
   if (!f) return f;

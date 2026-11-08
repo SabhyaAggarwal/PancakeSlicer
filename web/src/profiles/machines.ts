@@ -4,7 +4,6 @@ import { resolvePreset, type State } from '../state/store';
 export const nozzleOf = (preset: SystemPreset) => Number([preset.config.nozzle_diameter].flat()[0]);
 export const modelKey = (preset: SystemPreset) => JSON.stringify([preset.vendor, preset.model || preset.name]);
 
-
 export function printerModels(s: State) {
   const models = new Map<string, SystemPreset[]>();
   const saved = s.userPresets.filter((p) => p.type === 'machine').flatMap((p) => {
@@ -20,19 +19,10 @@ export function printerModels(s: State) {
   return models;
 }
 
-
 export function modelPreset(list: SystemPreset[], printer: string, diameter: number) {
   return list.find((p) => p.name === printer) ?? list.find((p) => nozzleOf(p) === diameter)
     ?? list.find((p) => nozzleOf(p) === 0.4) ?? list[0];
 }
-
-
-
-
-
-
-
-
 
 export function filamentSlots(printer?: SystemPreset): number {
   if (!printer) return 1;

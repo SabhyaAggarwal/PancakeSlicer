@@ -1,19 +1,16 @@
-
-
-
 import { Dropdown } from './Dropdown';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { preloadable } from '../preloadable';
+import { Suspense, useEffect, useState } from 'react';
 import { headLabel, loadHeadIndex } from '../heads';
 import { setOption, useStore } from '../state/store';
 
-const HeadDialog = lazy(() => import('./HeadDialog'));
+const HeadDialog = preloadable(() => import('./HeadDialog'));
 
 export default function HeadPicker({ value, onCommit }: { value: string; onCommit: (id: string) => void }) {
   const heads = useStore((s) => s.heads);
   const [error, setError] = useState(false);
   useEffect(() => void loadHeadIndex().catch(() => setError(true)), []);
   const ids = heads?.map((h) => h.id) ?? [];
-
   if (!ids.includes(value)) ids.unshift(value);
   return (
     <Dropdown aria-label="Print head" className="combo head-combo" value={value} onValueChange={onCommit} title={error ? 'The head library failed to load' : headLabel(value)} options={[...ids.map((id) => ({ value: id, label: headLabel(id) }))]} />

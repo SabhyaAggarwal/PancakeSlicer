@@ -20,7 +20,6 @@ class BBLModelTask;
 
 
 enum MachineBedType {
-
     BED_TYPE_PC = 0,
     BED_TYPE_PE,
     BED_TYPE_PEI,
@@ -54,7 +53,6 @@ struct FilamentInfo
     double      nozzle_diameter{0.0};
     std::string nozzle_volume_type;
 
-
     std::string ams_id;
     std::string slot_id;
 
@@ -82,7 +80,6 @@ public:
 
         return -1;
     };
-
 
     std::string get_display_filament_type() const
     {
@@ -210,15 +207,12 @@ public:
     std::string     task_gcode_in_3mf;
     std::string     task_create_time;
     std::string     task_thumbnail_url;
-
     std::string     task_bed_type;
     bool            task_bed_leveling;
     bool            task_flow_cali;
     bool            task_vibration_cali;
     bool            task_layer_inspect {true};
     bool            task_record_timelapse;
-
-
     std::string     task_weight;
     float           task_weightF;
     BBLSliceInfo    slice_info;
@@ -252,7 +246,6 @@ public:
     };
 
     BBLTask(BBLProfile* profile = nullptr);
-
 
     std::string                 task_id;
     std::string                 task_name;
@@ -308,7 +301,6 @@ public:
 class BBLProject {
 public:
     BBLProject() {
-
         project_name = "Untitled";
     }
     BBLProject(std::string name) {
@@ -330,7 +322,6 @@ public:
 
 
     std::vector<BBLProfile*>   profiles;
-
 
     void set_name(std::string name) { project_name = name; }
 

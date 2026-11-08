@@ -1,6 +1,3 @@
-
-
-
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { cameraCommand, type CameraView } from '../camera';
@@ -8,7 +5,6 @@ import { activeCamera } from '../plater/CameraViews';
 import { useViewOptions } from '../plater/viewOptions';
 import { MenuButton } from './Menu';
 import { Glyph } from './Glyph';
-
 
 const FACES: { view: CameraView; label: string; n: [number, number, number]; u: [number, number, number]; v: [number, number, number] }[] = [
   { view: 'top', label: 'Top', n: [0, 0, 1], u: [1, 0, 0], v: [0, -1, 0] },
@@ -35,7 +31,6 @@ export function Navigator() {
       const key = cam.quaternion.toArray().map((x) => x.toFixed(4)).join();
       if (key === last) return;
       last = key;
-
       m.makeRotationFromQuaternion(cam.quaternion).invert().premultiply(new THREE.Matrix4().makeScale(1, -1, 1));
       FACES.forEach((f, k) => {
         const el = faces.current[k];
@@ -53,8 +48,6 @@ export function Navigator() {
   }, [navigator]);
   if (!navigator) return null;
   return (
-
-
     <><div ref={cube} className="nav3d" style={{visibility:'hidden'}} aria-hidden="true">
       {FACES.map((f, k) => (
         <button key={f.view} type="button" tabIndex={-1} ref={(el) => { faces.current[k] = el; }} className="nav3d-face"

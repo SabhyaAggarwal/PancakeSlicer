@@ -1,6 +1,5 @@
 import type { Plugin } from 'vite';
 
-
 export function demoBuild(): Plugin {
   return {
     name: 'pancake-static-demo',

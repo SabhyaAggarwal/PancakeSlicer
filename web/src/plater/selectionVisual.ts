@@ -1,14 +1,12 @@
 import * as THREE from 'three';
 import { isSelected, type Selected } from '../state/store';
 
-export const SELECTION_COLOR = 0xa98bd4;
-export const HOVER_COLOR = 0xd4c4e8;
-
+export const SELECTION_COLOR = 0xd6d6d6;
+export const HOVER_COLOR = 0x6a6a6a;
 
 export function selectedSurface(selection: Selected | null, object: number, instance: number, volume?: number): boolean {
   return isSelected(selection, object, instance) && (selection?.volume === undefined || selection.volume === volume);
 }
-
 
 export class SelectionBounds {
   readonly group = new THREE.Group();
@@ -19,12 +17,15 @@ export class SelectionBounds {
   private readonly seen = new Set<THREE.Mesh>();
   private readonly center = new THREE.Vector3();
   private readonly size = new THREE.Vector3();
+  private readonly boxes = new WeakMap<THREE.Mesh, { key: string; box: THREE.Box3 }>();
 
   constructor() {
     const box = new THREE.BoxGeometry(1, 1, 1);
     this.geometry = new THREE.EdgesGeometry(box);
     box.dispose();
   }
+
+  recolor(selected: number, hovered: number) { this.selected.color.setHex(selected); this.hovered.color.setHex(hovered); }
 
   begin() { this.seen.clear(); }
 
@@ -37,16 +38,25 @@ export class SelectionBounds {
       line = new THREE.LineSegments(this.geometry, this.selected);
       line.matrixAutoUpdate = false;
       line.renderOrder = 8;
-
       line.raycast = () => {};
       this.lines.set(mesh, line);
       this.group.add(line);
     }
     line.material = selected ? this.selected : this.hovered;
-    box.getCenter(this.center); box.getSize(this.size).multiplyScalar(1.006);
+    const world = this.worldBox(mesh);
+    world.getCenter(this.center); world.getSize(this.size).multiplyScalar(1.006);
     this.size.set(Math.max(this.size.x, 0.1), Math.max(this.size.y, 0.1), Math.max(this.size.z, 0.1));
-    line.matrix.makeScale(this.size.x, this.size.y, this.size.z).setPosition(this.center).premultiply(mesh.matrix);
+    line.matrix.makeScale(this.size.x, this.size.y, this.size.z).setPosition(this.center);
     line.matrixWorldNeedsUpdate = true;
+  }
+
+  private worldBox(mesh: THREE.Mesh): THREE.Box3 {
+    const key = `${mesh.geometry.uuid}:${mesh.matrix.elements.join(',')}`, hit = this.boxes.get(mesh);
+    if (hit?.key === key) return hit.box;
+    const box = new THREE.Box3(), pos = mesh.geometry.getAttribute('position'), v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrix));
+    this.boxes.set(mesh, { key, box });
+    return box;
   }
 
   end() {

@@ -13,13 +13,11 @@
 
 namespace Slic3r { namespace opt {
 
-
 template<size_t N> struct Result {
     int resultcode;
     std::array<double, N> optimum;
     double score;
 };
-
 
 class Bound {
     double m_min, m_max;
@@ -34,26 +32,18 @@ public:
     double max() const noexcept { return m_max; }
 };
 
-
 template<size_t N> using Input = std::array<double, N>;
 template<size_t N> using Bounds = std::array<Bound, N>;
 
-
 class StopCriteria {
-
 
     double m_abs_score_diff = std::nan("");
 
-
     double m_rel_score_diff = std::nan("");
-
 
     double m_stop_score = std::nan("");
 
-
-
     std::function<bool()> m_stop_condition = [] { return false; };
-
 
     unsigned m_max_iterations = 0;
 
@@ -95,7 +85,6 @@ public:
     bool stop_condition() { return m_stop_condition(); }
 };
 
-
 template<size_t N> struct ScoreGradient {
     double score;
     std::optional<std::array<double, N>> gradient;
@@ -105,9 +94,7 @@ template<size_t N> struct ScoreGradient {
     {}
 };
 
-
 template<class T> struct always_false { enum { value = false }; };
-
 
 template<class Method, class Enable = void> class Optimizer {
 public:
@@ -118,44 +105,23 @@ public:
                        "Optimizer unimplemented for given method!");
     }
 
-
     Optimizer &to_min() { return *this; }
-
 
     Optimizer &to_max() { return *this; }
 
-
     Optimizer &set_criteria(const StopCriteria &) { return *this; }
-
 
     StopCriteria get_criteria() const { return {}; };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     template<class Func, size_t N>
-    Result<N> optimize(Func&&  ,
+    Result<N> optimize(Func&& ,
                        const Input<N> & ,
-                       const Bounds<N>&  ) { return {}; }
+                       const Bounds<N>& ) { return {}; }
 
-
-    void seed(long  ) {}
+    void seed(long ) {}
 };
 
 namespace detail {
-
-
 
 template<size_t N, class T> auto to_arr(const T *a)
 {
@@ -170,8 +136,6 @@ template<size_t N, class T> auto to_arr(const T (&a) [N])
 }
 
 }
-
-
 template<size_t N> Bounds<N> bounds(const Bound (&b) [N]) { return detail::to_arr(b); }
 template<size_t N> Input<N> initvals(const double (&a) [N]) { return detail::to_arr(a); }
 template<size_t N> auto score_gradient(double s, const double (&grad)[N])

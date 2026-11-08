@@ -6,10 +6,6 @@
 
 namespace Slic3r::Nonplanar {
 
-
-
-
-
 inline std::string head_box_label(const std::string &name)
 {
     std::string out, word;

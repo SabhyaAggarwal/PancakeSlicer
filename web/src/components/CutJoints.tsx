@@ -1,5 +1,3 @@
-
-
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore, type CutConnector, type CutConnectorAttribs, type CutGroove } from '../state/store';
@@ -21,7 +19,6 @@ function Field({ label, value, onChange, min, max, step = 0.1, disabled, unit = 
     </label>
   );
 }
-
 
 function Pair({ label, value, tolerance, onValue, onTolerance, min, max }: {
   label: string; value: number; tolerance: number; onValue(v: number): void; onTolerance(v: number): void; min: number; max: number;
@@ -45,7 +42,6 @@ export default function CutJoints() {
   const mode = cut.mode ?? 'planar';
   const a = { ...CONNECTOR, ...cut.connector };
   const g = { ...GROOVE, ...cut.groove };
-
   const setA = (p: Partial<CutConnectorAttribs>) => setCut({ connector: { ...a, ...p },
     connectors: cut.connectors?.map((k, i) => (cut.selectedConnectors?.includes(i) ? { ...k, a: { ...k.a, ...p } } : k)) });
   const flip = () => setCut(flipped(getState(), cut));
@@ -56,7 +52,7 @@ export default function CutJoints() {
     return (
       <div className="cut-joints">
         <div className="manip-title">Connectors{count ? ` (${count})` : ''}</div>
-        <div className="cut-joint-hint">Left click: Add connector · Right click: Remove connector · Drag: Move connector · Shift+Left click: Add connector to selection · Ctrl+A: Select all connectors</div>
+        <div className="cut-joint-hint">{['Left click: Add connector', 'Right click: Remove connector', 'Drag: Move connector', 'Shift+Left click: Add connector to selection', 'Ctrl+A: Select all connectors'].map((t) => <span key={t}>{t}</span>)}</div>
         <div className="prefs-row cut-joint-row"><span>Type</span>
           <span className="cut-joint-radios">
             {TYPES.map(([t, label]) => (

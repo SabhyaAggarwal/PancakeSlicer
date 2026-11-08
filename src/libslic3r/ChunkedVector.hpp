@@ -9,11 +9,6 @@
 
 namespace Slic3r {
 
-
-
-
-
-
 template<class T, size_t ChunkBits = 15> class ChunkedVector
 {
 public:
@@ -35,7 +30,6 @@ public:
 
         Iterator() = default;
         Iterator(Owner *owner, size_t i) : m_owner(owner), m_i(i) {}
-
         template<class O, class R, class = std::enable_if_t<std::is_convertible_v<O *, Owner *>>>
         Iterator(const Iterator<O, R> &other) : m_owner(other.owner()), m_i(other.index()) {}
 
@@ -118,7 +112,6 @@ public:
         return slot;
     }
     void pop_back() { (*this)[--m_size] = T(); }
-
     void resize(size_t n)
     {
         grow(n);
@@ -134,14 +127,12 @@ public:
         pop_back();
         return { this, pos.index() };
     }
-
     void clear()
     {
         m_chunks.clear();
         m_chunks.shrink_to_fit();
         m_size = 0;
     }
-
     void shrink_to_fit()
     {
         m_chunks.resize((m_size + chunk_size - 1) >> ChunkBits);

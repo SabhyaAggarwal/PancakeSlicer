@@ -149,10 +149,6 @@ namespace Slic3r
         FilamentGroupContext::SpeedInfo m_speed_info;
     };
 
-
-
-
-
     struct ClusteringBudget
     {
         int timeout_ms = 3000;
@@ -226,14 +222,11 @@ namespace Slic3r
             m_elem_count = elem_count;
             m_default_group_id = default_group_id;
         }
-
         void set_max_cluster_size(const std::vector<int>& group_size) { m_max_cluster_size = group_size; }
 
         void set_cluster_group_size(const std::vector<std::pair<std::set<int>,int>>& cluster_group_size);
 
-
         void set_placable_limits(const std::unordered_map<int, std::vector<int>>& placable_limits) { m_placeable_limits = placable_limits; }
-
 
         void set_unplacable_limits(const std::unordered_map<int, std::vector<int>>& unplacable_limits) { m_unplaceable_limits = unplacable_limits; }
 
@@ -245,12 +238,9 @@ namespace Slic3r
 
     protected:
         bool have_enough_size(const std::vector<int>& cluster_size, const std::vector<std::pair<std::set<int>, int>>& cluster_group_size,int elem_count);
-
         int calc_cost(const std::vector<int>& clusters, const std::vector<int>& cluster_centers, int cluster_id = -1);
 
-
         std::vector<int>init_cluster_center(const std::unordered_map<int, std::vector<int>>& placeable_limits, const std::unordered_map<int, std::vector<int>>& unplaceable_limits, const std::vector<int>& cluster_size, const std::vector<std::pair<std::set<int>, int>>& cluster_group_size, int seed);
-
         std::vector<int> assign_cluster_label(const std::vector<int>& center, const std::unordered_map<int, std::vector<int>>& placeable_limits, const std::unordered_map<int, std::vector<int>>& unplaceable_limits, const std::vector<int>& group_size, const std::vector<std::pair<std::set<int>, int>>& cluster_group_size);
 
     protected:

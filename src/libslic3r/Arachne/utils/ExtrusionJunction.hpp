@@ -13,30 +13,11 @@
 namespace Slic3r::Arachne
 {
 
-
-
-
-
-
-
 struct ExtrusionJunction
 {
-
-
-
-
     Point p;
 
-
-
-
     coord_t w;
-
-
-
-
-
-
 
     size_t perimeter_index;
 
@@ -55,7 +36,6 @@ inline Point operator-(const ExtrusionJunction& a, const ExtrusionJunction& b)
 {
     return a.p - b.p;
 }
-
 
 inline const Point& make_point(const ExtrusionJunction& ej)
 {

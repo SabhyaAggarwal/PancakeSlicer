@@ -27,7 +27,6 @@ namespace Slic3r {
 std::vector<std::vector<size_t>> connected_bodies(const std::vector<const ExPolygons *> &layers, size_t &count,
                                                   const std::function<void()> &throw_if_canceled)
 {
-
     std::vector<size_t> first(layers.size() + 1, 0);
     for (size_t l = 0; l < layers.size(); ++l)
         first[l + 1] = first[l] + layers[l]->size();
@@ -47,7 +46,6 @@ std::vector<std::vector<size_t>> connected_bodies(const std::vector<const ExPoly
     for (size_t l = 0; l + 1 < layers.size(); ++l) {
         if (throw_if_canceled)
             throw_if_canceled();
-
         size_t a_layer = l;
         size_t b_layer = l + 1;
         if (layers[a_layer]->size() < layers[b_layer]->size())
@@ -66,7 +64,6 @@ std::vector<std::vector<size_t>> connected_bodies(const std::vector<const ExPoly
             AABBTreeIndirect::traverse(
                 tree, [&query](const IslandTree::Node &node) { return node.bbox.intersects(query); },
                 [&](const IslandTree::Node &node) {
-
                     const size_t b = node.idx;
                     if (boxes[a_layer][a].overlap(boxes[b_layer][b]) && find(first[a_layer] + a) != find(first[b_layer] + b) &&
                         !intersection_ex((*layers[a_layer])[a], (*layers[b_layer])[b]).empty())
@@ -94,7 +91,6 @@ IslandLocator::IslandLocator(const ExPolygons &islands, coord_t margin) : m_isla
     m_boxes.reserve(islands.size());
     for (const ExPolygon &island : islands)
         m_boxes.emplace_back(get_extents(island).inflated(margin));
-
     std::vector<size_t> order(m_boxes.size());
     for (size_t i = 0; i < order.size(); ++i)
         order[i] = i;
@@ -126,12 +122,10 @@ std::pair<int, double> IslandLocator::find(const Point &point, bool strict) cons
     return { nearest, distance };
 }
 
-
 struct AreaMoments
 {
     double area{ 0. };
     Vec2d  first{ Vec2d::Zero() };
-
     Vec3d second{ Vec3d::Zero() };
 
     void add(const Polygon &polygon)
@@ -151,7 +145,6 @@ struct AreaMoments
         }
     }
 };
-
 
 struct Moments
 {
@@ -193,7 +186,6 @@ std::vector<SolidBody> solid_bodies(const std::vector<MeshInPlace> &solids, cons
     if (z_min >= z_max || slabs == 0)
         return {};
 
-
     const double       thickness = (z_max - z_min) / double(slabs);
     std::vector<float> zs(slabs);
     for (size_t k = 0; k < slabs; ++k)
@@ -214,7 +206,6 @@ std::vector<SolidBody> solid_bodies(const std::vector<MeshInPlace> &solids, cons
             append(cut[k], std::move(slices_negative[k]));
     }
 
-
     const bool uniform = std::all_of(densities.begin(), densities.end(), [&densities](double d) { return d == densities.front(); });
     std::vector<ExPolygons>           islands(slabs);
     std::vector<std::vector<Moments>> moments(slabs);
@@ -233,7 +224,6 @@ std::vector<SolidBody> solid_bodies(const std::vector<MeshInPlace> &solids, cons
                     area.add(hole);
                 if (area.area <= 0.)
                     return;
-
                 Matrix3d second;
                 second << area.second.x(), area.second.z(), area.first.x() * z, area.second.z(), area.second.y(), area.first.y() * z,
                     area.first.x() * z, area.first.y() * z, area.area * (z * z + thickness * thickness / 12.);
@@ -245,7 +235,6 @@ std::vector<SolidBody> solid_bodies(const std::vector<MeshInPlace> &solids, cons
                     add(islands[k][j], densities.front(), j);
                 continue;
             }
-
             const IslandLocator locator(islands[k], 10);
             ExPolygons          later = cut[k];
             for (size_t i = solids.size(); i-- > 0;)

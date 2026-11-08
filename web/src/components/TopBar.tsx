@@ -1,11 +1,11 @@
+import { openUrlImport } from '../url-import';
+import { preloadable } from '../preloadable';
 import { DEMO, DOCS_URL } from '../demo/config';
 import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
-
-
-import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { Suspense, useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
@@ -18,8 +18,7 @@ import { renameProject } from '../projects/api';
 import { useProject } from '../flow/project';
 import { toggleHistory } from '../projects/versions';
 import { openUpdate, startUpdateChecks, useUpdate } from '../update-check';
-import { APP_VERSION, buildLine, useBuildInfo } from '../build-info';
-import { Icon } from './Icon';
+import { APP_VERSION } from '../build-info';
 import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
 import { openGcode } from '../preview/jump';
@@ -31,14 +30,16 @@ import { toggleSidebar, useSidebarHidden } from '../sidebar';
 import { printerReady, showSettings } from '../workspace-sheet';
 import { useTier } from '../breakpoints';
 import { Glyph } from './Glyph';
+import { PrintingChip } from '../printers/PrintingChip';
+import { sliceAndCompare } from '../compare';
+import { settingsChangedSinceSlice } from '../compare-settings';
 
 type MenuItem = MenuEntry;
 function Menu({title, items}: {title: string; items: MenuItem[]}) { return <MenuButton label={title} items={items} className="menu-title" />; }
 
 const exportStl = (multi: boolean) => import('../exportStl').then((m) => m.exportStl(false, multi));
 
-const ArchiveDialog = lazy(() => import('./ArchiveDialog'));
-
+const ArchiveDialog = preloadable(() => import('./ArchiveDialog'));
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
@@ -66,8 +67,6 @@ export function TopBar() {
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, ''));
-
-
   const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, () => !!visibleToolpaths());
   const tab = useStore((st) => st.tab);
   const exportName = name;
@@ -76,44 +75,42 @@ export function TopBar() {
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
   const hasPrinters = useStore((s) => s.printerConnections.enabled);
   const fileItems: MenuItem[] = [
-          { label: 'New Project', shortcut: `${MOD}+N`, action: newProject, tip: 'Start a new project' },
-          { label: 'Save Project', shortcut: `${MOD}+S`, action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
-          { label: 'Save Project as...', shortcut: `${MOD}+Shift+S`, action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
-          { label: 'Open Project...', shortcut: `${MOD}+O`, action: openProjectDialog, tip: 'Open a project file' },
-          { label: 'Recent projects...', action: showProjects },
+          { label: 'New project', shortcut: `${MOD}+N`, action: newProject, tip: 'Start a new project' },
+          { label: 'Save project', shortcut: `${MOD}+S`, action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
+          { label: 'Save project as…', shortcut: `${MOD}+Shift+S`, action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
+          { label: 'Open project…', shortcut: `${MOD}+O`, action: openProjectDialog, tip: 'Open a project file' },
+          { label: 'Recent projects', action: showProjects },
           'sep',
-          { label: canLoadStep() ? 'Import 3MF/STL/STEP/OBJ...' : 'Import 3MF/STL/OBJ...', shortcut: `${MOD}+I`, action: openFileDialog, tip: 'Load a model' },
-          { label: 'Import ZIP Archive...', action: () => void import('./ArchiveDialog').then((m) => m.importZipArchive(setArchive)), tip: 'Load models contained within a ZIP archive' },
-          { label: 'Open G-code...', action: () => openGcode(), tip: 'Open a G-code file' },
-          { label: 'Import Configs...', action: () => setState({ presetUx: { kind: 'import' } }), tip: 'Load configs' },
+          { label: canLoadStep() ? 'Import 3MF/STL/STEP/OBJ…' : 'Import 3MF/STL/OBJ…', shortcut: `${MOD}+I`, action: openFileDialog, tip: 'Load a model' },
+          { label: 'Import from URL…', action: () => openUrlImport() },
+          { label: 'Import ZIP archive…', action: () => void import('./ArchiveDialog').then((m) => m.importZipArchive(setArchive)), tip: 'Load models contained within a ZIP archive' },
+          { label: 'Open G-code…', action: () => openGcode(), tip: 'Open a G-code file' },
+          { label: 'Import configs…', action: () => setState({ presetUx: { kind: 'import' } }), tip: 'Load configs' },
           'sep',
-          { label: exportLabel + '...', shortcut: `${MOD}+G`, action: download, disabled: !exportEnabled, tip: stale ? STALE_RESULT_TIP : exportTip },
-          ...(plates ? [{ label: 'Export all plate sliced file...', action: () => void exportAll(), disabled: !exportAllEnabled, tip: 'Export all plate sliced file' }] : []),
-          ...(hasPrinters ? [{ label: 'Send...', action: () => setState({ appDialog: 'send' }), disabled: !exportEnabled, tip: 'Upload the sliced file to a printer' }] : []),
-          { label: 'Export all objects as one STL...', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
-          { label: 'Export all objects as STLs...', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
-
-          ...(exportDrc ? [{ label: 'Export all objects as one DRC...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
-          ...(generic3mf ? [{ label: 'Export Generic 3MF...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
-          { label: 'Export toolpaths as OBJ...', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
+          { label: exportLabel, shortcut: `${MOD}+G`, action: download, disabled: !exportEnabled, tip: stale ? STALE_RESULT_TIP : exportTip },
+          ...(plates ? [{ label: 'Export sliced files for all plates', action: () => void exportAll(), disabled: !exportAllEnabled, tip: 'Export sliced files for all plates' }] : []),
+          ...(hasPrinters ? [{ label: 'Send…', action: () => setState({ appDialog: 'send' }), disabled: !exportEnabled, tip: 'Upload the sliced file to a printer' }] : []),
+          { label: 'Export all objects as one STL', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
+          { label: 'Export all objects as STLs', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
+          ...(exportDrc ? [{ label: 'Export all objects as one DRC', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
+          ...(generic3mf ? [{ label: 'Export generic 3MF', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
+          { label: 'Export toolpaths as OBJ', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
-          { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
+          { label: 'Export preset bundle…', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
   const devReset = useDevReset();
-  const update = useUpdate(), build = useBuildInfo(), barTier = useTier(), narrowBar = barTier === 'narrow' || barTier === 'phone';
+  const update = useUpdate();
   useEffect(() => startUpdateChecks(devReset), [devReset]);
-
   const projectId = useProject((p) => p.context.id), projectState = useProject((p) => p.value);
   const renameHere = async () => {
     const next = await promptDialog('Rename project', name ?? 'Untitled');
     if (!next || next === name) return;
     if (projectId && projectState !== 'blank') void renameProject(projectId, next); else setState({ projectName: next });
   };
-  const appItems: MenuItem[] = [...(narrowBar ? [{label:`PancakeSlicer v${APP_VERSION}`,header:true} as MenuItem] : []),...(update ? [{label:`Update available: v${update.version}`,action:()=>openUpdate(update)} as MenuItem] : []),{label:'About PancakeSlicer',action:()=>setState({appDialog:'about'})},'sep',{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [{label:`PancakeSlicer v${APP_VERSION}`,header:true} as MenuItem,...(update ? [{label:`Update available: v${update.version}`,action:()=>openUpdate(update)} as MenuItem] : []),{label:'About PancakeSlicer',action:()=>setState({appDialog:'about'})},'sep',{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
-
             ...redoNames().reverse().map((name, i, all): MenuItem => ({ label: `Redo ${name}`, action: () => redoSteps(all.length - i) })),
             ...(undoLabel && redoLabel ? ['sep' as const] : []),
             ...undoNames().map((name, i): MenuItem => ({ label: `Undo ${name}`, action: () => undoSteps(i + 1) })),
@@ -124,38 +121,39 @@ export function TopBar() {
           { label: 'Paste', shortcut: `${MOD}+V`, action: pasteClipboard, disabled: !pasteEnabled, tip: 'Paste clipboard' },
           { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Deletes the current selection' },
           { label: 'Delete all', shortcut: `${MOD}+Del`, action: deleteAll, disabled: !hasObjects, tip: 'Deletes all objects' },
-          { label: 'Clone Selected', shortcut: `${MOD}+K`, action: () => setState({ appDialog: 'clone' }), disabled: !hasSel || hasProject, tip: 'Clone copies of selections' },
+          { label: 'Clone selected', shortcut: `${MOD}+K`, action: () => setState({ appDialog: 'clone' }), disabled: !hasSel || hasProject, tip: 'Clone copies of selections' },
           'sep',
-          { label: 'Duplicate Current Plate', action: duplicatePlate, disabled: !plateTools, tip: 'Duplicate the current plate' },
+          { label: 'Duplicate current plate', action: duplicatePlate, disabled: !plateTools, tip: 'Duplicate the current plate' },
           'sep',
-          { label: 'Select All', shortcut: `${MOD}+A`, action: selectAll, disabled: !hasObjects, tip: 'Selects all objects' },
-          { label: 'Deselect All', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselects all objects' },
+          { label: 'Select all', shortcut: `${MOD}+A`, action: selectAll, disabled: !hasObjects, tip: 'Selects all objects' },
+          { label: 'Deselect all', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselects all objects' },
           'sep',
           { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
           'sep',
-          { label: 'Search settings...', shortcut: `${MOD}+F`, action: () => openPalette('/'), tip: 'Search in all printer, filament and process settings' },
+          { label: 'Search settings…', shortcut: `${MOD}+F`, action: () => openPalette('/'), tip: 'Search in all printer, filament and process settings' },
           { label: 'Preferences', shortcut: `${MOD}+P`, action: () => setState({ appDialog: 'preferences' }) },
         ]}, {label: 'View', sub: [
           ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: String(i), action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
           'sep',
-          { label: 'Show Sidebar', shortcut: `${MOD}+\\`, role: 'menuitemcheckbox', checked: !sidebarHidden, action: () => toggleSidebar() },
+          { label: 'Show sidebar', shortcut: `${MOD}+\\`, role: 'menuitemcheckbox', checked: !sidebarHidden, action: () => toggleSidebar() },
           'sep',
-          { label: 'Use Perspective View', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
-          { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
-          { label: 'Auto Perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
+          { label: 'Use perspective view', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
+          { label: 'Use orthogonal view', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
+          { label: 'Auto perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
           'sep',
-          { label: 'Show G-code Window', shortcut: 'C', role: 'menuitemcheckbox', checked: view.gcodeWindow, action: () => toggleViewOption('gcodeWindow'), tip: 'Show G-code window in Preview scene.' },
+          { label: 'Show G-code window', shortcut: 'C', role: 'menuitemcheckbox', checked: view.gcodeWindow, action: () => toggleViewOption('gcodeWindow'), tip: 'Show G-code window in Preview scene.' },
           { label: 'Show 3D Navigator', role: 'menuitemcheckbox', checked: view.navigator, action: () => toggleViewOption('navigator'), tip: 'Show 3D navigator in Prepare and Preview scene.' },
-          { label: 'Show Gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
+          { label: 'Show gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
           'sep',
-          { label: 'Show Labels', shortcut: brimEarsKeys ? `${MOD}+E` : 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
-          { label: 'Show Overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Show object overhang highlight in 3D scene.' },
-          { label: 'Show Non-planar Surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Color top surfaces by their slope against the print head's limit and show where curved top shells will be printed." },
-          { label: 'Show Selected Outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Show outline around selected object in 3D scene.' },
-          { label: 'Show X-Ray', role: 'menuitemcheckbox', checked: view.xray, action: () => toggleViewOption('xray'), tip: 'Draw models see-through, so hidden parts show.' },
-          { label: 'Show Center of Mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show the center of mass of each object in 3D scene.' },
-          { label: 'Show Axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y and Z axes at the bed origin.' },
-          { label: 'Show Wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show wireframes in 3D scene.' },
+          { label: 'Show labels', shortcut: brimEarsKeys ? `${MOD}+E` : 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
+          { label: 'Show overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Show object overhang highlight in 3D scene.' },
+          { label: 'Show non-planar surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Color top surfaces by their slope against the print head's limit and show where curved top shells will be printed." },
+          { label: 'Show edges', role: 'menuitemcheckbox', checked: view.edges, action: () => toggleViewOption('edges'), tip: "Draw the parts' sharp edges in a darker shade of their colour." },
+          { label: 'Show selected outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Show outline around selected object in 3D scene.' },
+          { label: 'Show X-ray', role: 'menuitemcheckbox', checked: view.xray, action: () => toggleViewOption('xray'), tip: 'Draw models see-through, so hidden parts show.' },
+          { label: 'Show center of mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show the center of mass of each object in 3D scene.' },
+          { label: 'Show axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y and Z axes at the bed origin.' },
+          { label: 'Show wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show wireframes in 3D scene.' },
         ]}, ...(canCalibrate() ? [{label: 'Calibration', sub: [
           { label: 'Temperature', action: () => setState({ calibDialog: 'temperature' }), tip: 'Temperature Calibration' },
           { label: 'Max flowrate', action: () => setState({ calibDialog: 'max-flowrate' }), tip: 'Max flowrate' },
@@ -163,35 +161,32 @@ export function TopBar() {
           { label: 'Flow ratio', action: () => setState({ calibDialog: 'flow-ratio' }), tip: 'Flow Rate Calibration' },
           { label: 'Retraction', action: () => setState({ calibDialog: 'retraction' }), tip: 'Retraction' },
           { label: 'Cornering', action: () => setState({ calibDialog: 'cornering' }), tip: 'Cornering calibration' },
-          { label: 'Input Shaping', sub: [
-            { label: 'Input Shaping Frequency', action: () => setState({ calibDialog: 'input-shaping-freq' }), tip: 'Input Shaping Frequency' },
-            { label: 'Input Shaping Damping/zeta factor', action: () => setState({ calibDialog: 'input-shaping-damp' }), tip: 'Input Shaping Damping/zeta factor' },
+          { label: 'Input shaping', sub: [
+            { label: 'Input shaping frequency', action: () => setState({ calibDialog: 'input-shaping-freq' }), tip: 'Input Shaping Frequency' },
+            { label: 'Input shaping damping/zeta factor', action: () => setState({ calibDialog: 'input-shaping-damp' }), tip: 'Input Shaping Damping/zeta factor' },
           ] },
           { label: 'VFA', action: () => setState({ calibDialog: 'vfa' }), tip: 'VFA' },
           { label: 'Non-planar', action: () => setState({ calibDialog: 'nonplanar' }), tip: 'Non-planar calibration' },
           'sep',
-          { label: 'Calibration Guide', action: () => window.open('/help/calibration.html', '_blank', 'noopener'), tip: 'Calibration Guide' },
+          { label: 'Calibration guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
         ]} as MenuItem] : []), {label: 'Help', sub: [
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
-          { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
+          { label: 'Keyboard shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup', action: openSetup, tip: 'Printer, profiles, connection and filaments' },
         ]}];
   return <header className="topbar compact-topbar">
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo-48.png" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
-    {                                                                                                                         }
-    <span className="app-version" data-truncated="true" data-full-text={buildLine(build)}>v{APP_VERSION}</span>
-    {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><Glyph name="update"/><span>Update</span></button>}
+    {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><span>Update</span></button>}
     </div>
     {DEMO ? <a className="mock-badge demo-chip" href={DOCS_URL} target="_blank" rel="noopener noreferrer" title="PancakeSlicer documentation">Demo</a> : mock && <span className="mock-badge">Demo</span>}
     {DEMO && <DemoResultNotice/>}
-    {                                                                                 }
     {tab !== 'projects' && <TabBar/>}
+    {tab === 'projects' && <div id="topbar-slot" className="topbar-slot"/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
   </header>;
 }
-
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
   return <span className="side-options"><MenuButton className="btn slant side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
@@ -212,40 +207,37 @@ export function TabBar() {
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
-
-
-
   const tier = useTier(), wide = tier === 'wide', coarse = window.matchMedia('(pointer: coarse)').matches, folded = tier === 'narrow' || tier === 'phone' || (tier === 'medium' && coarse);
-
-
   const ready = job.state === 'done' && !job.stale && exportEnabled && !folded;
   const sliceClass = `${ready ? 'btn' : 'btn-primary'} slant${busy ? ' slicing' : ''}`, exportClass = `${ready ? 'btn-primary' : 'btn'} slant`;
   const progress = busy ? { '--p': `${Math.round(job.pct)}%` } as CSSProperties : undefined;
   const allSlice = wide && plates && sliceMode === 'Slice all';
+  const changed = useStore(settingsChangedSinceSlice);
+  const compareSlice = () => { sliceAndCompare(slice); setState({ tab: 'preview' }); };
   const allExport = wide && plates && exportMode === 'all';
   const more: MenuEntry[] = [
+    ...(folded && changed ? [{label: 'Slice and compare', action: compareSlice, disabled: !printer || busy || !!outside, tip: 'Slice with the new settings and compare with the previous slice'}] : []),
     ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
     ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
-
     ...(tier === 'phone' && saved ? [{label: 'Version history', action: toggleHistory} satisfies MenuEntry] : []),
     ...(!wide && plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : []),
   ];
   return (
     <div className="tabbar">
-      {                                                                                                                    }
       <div className="seg slant-seg view-switch" role="group" aria-label="View">
         <button type="button" aria-label="Prepare" aria-pressed={tab === 'prepare'} className="view-tab" onClick={() => setState({ tab: 'prepare' })}>
-          <Icon name="tab_3d_active" size={16} />
           <span>Prepare</span>
         </button>
         <button type="button" aria-label="Preview" aria-pressed={tab === 'preview'} className="view-tab" onClick={() => setState({ tab: 'preview' })}>
-          <Icon name="tab_preview_active" size={16} />
           <span>Preview</span>
         </button>
+        <button type="button" aria-label="Device" aria-pressed={tab === 'device'} className="view-tab" onClick={() => setState({ tab: 'device' })}>
+          <span>Device</span>
+        </button>
       </div>
-      {                                                                                         }
       <div className="title-zone"><ProjectTitle/></div>
       <div className="tabbar-actions">
+        <PrintingChip/>
         {allSlice ? (
           <button className={sliceClass} style={progress} disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
         ) : (
@@ -253,6 +245,7 @@ export function TabBar() {
             {tier === 'phone' ? 'Slice' : 'Slice plate'}
           </button>
         )}
+        {!allSlice && !folded && changed && <button className="btn slant" disabled={!printer || busy || !!outside} onClick={compareSlice}>Slice and compare</button>}
         {wide && plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         {!folded && <span className="export-actions">{allExport ? (
           <button className={exportClass} disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>

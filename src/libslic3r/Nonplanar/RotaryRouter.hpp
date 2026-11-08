@@ -14,14 +14,6 @@ namespace Slic3r::Nonplanar {
 
 struct ConformalResult;
 
-
-
-
-
-
-
-
-
 struct RotaryRoute
 {
     enum class Stage { Replace, Append };
@@ -29,26 +21,16 @@ struct RotaryRoute
     Stage       stage;
     std::function<bool(const PrintObject &)>                      claims;
     std::function<bool(PrintObject &, ConformalResult &)>         build;
-
     std::function<bool(const PrintObject &)>                      decides = {};
 };
 
-
 const std::vector<RotaryRoute> &rotary_routes();
-
-
-
 
 bool rotary_route_claimed(const PrintObject &object);
 
-
 bool rotary_route_appends(const PrintObject &object);
 
-
 bool build_rotary_routes(PrintObject &object, ConformalResult &result, RotaryRoute::Stage stage);
-
-
-
 
 struct RoutePrediction
 {
@@ -57,7 +39,6 @@ struct RoutePrediction
     double      confidence = 0.;
 };
 RoutePrediction predict_rotary_route(const indexed_triangle_set &mesh, const PrintObject &object);
-
 
 constexpr double PlanarEarlyThreshold = 0.95;
 

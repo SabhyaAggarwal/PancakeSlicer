@@ -31,23 +31,19 @@ void SurfaceCollection::simplify(double tolerance)
     this->surfaces = ss;
 }
 
-
 void SurfaceCollection::group(std::vector<SurfacesPtr> *retval)
 {
     for (Surfaces::iterator it = this->surfaces.begin(); it != this->surfaces.end(); ++it) {
-
         SurfacesPtr* group = NULL;
         for (std::vector<SurfacesPtr>::iterator git = retval->begin(); git != retval->end(); ++git)
             if (! git->empty() && surfaces_could_merge(*git->front(), *it)) {
                 group = &*git;
                 break;
             }
-
         if (group == NULL) {
             retval->resize(retval->size() + 1);
             group = &retval->back();
         }
-
         group->push_back(&*it);
     }
 }
@@ -147,7 +143,7 @@ void SurfaceCollection::remove_types(std::initializer_list<SurfaceType> types)
         surfaces.erase(surfaces.begin() + j, surfaces.end());
 }
 
-void SurfaceCollection::export_to_svg(const char *path, bool show_labels)
+void SurfaceCollection::export_to_svg(const char *path, bool show_labels) 
 {
     BoundingBox bbox;
     for (Surfaces::const_iterator surface = this->surfaces.begin(); surface != this->surfaces.end(); ++surface)

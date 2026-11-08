@@ -1,5 +1,3 @@
-
-
 import type { PreviewData } from './data';
 
 export interface VisibleToolpaths { data: PreviewData; layers: [number, number] }

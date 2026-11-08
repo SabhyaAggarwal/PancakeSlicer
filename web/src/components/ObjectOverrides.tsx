@@ -1,8 +1,3 @@
-
-
-
-
-
 import { Popover } from 'radix-ui';
 import { useMemo, useRef, useState } from 'react';
 import { useAddSettingsRequest } from './add-settings-request';
@@ -25,8 +20,6 @@ const plain = (name: string) => name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '
 const editable = (o: PlateObject) => !o.project;
 const instanceKeys = (o: PlateObject) => o.instances.map((i) => `${o.id}:${i.id}`);
 
-
-
 export interface ObjectOverrides extends ProfileFields { keys: Set<string>; mixed: Record<string, string>;
   target: { kind: 'objects'; ids: number[] } | { kind: 'part'; object: number; volume: number } | { kind: 'range'; object: number; range: LayerRange } }
 
@@ -34,7 +27,6 @@ const same = (key: string, a: ConfigValue | undefined, b: ConfigValue | undefine
 
 function overridesOf(s: State, project: Config): ObjectOverrides | null {
   const sel = s.selected, object = sel ? s.objects.find((o) => o.id === sel.object) : undefined;
-
   const single = (kind: 'part' | 'range', settings: Config, name: string, set: (k: string, v: ConfigValue) => void, remove: (keys: string[]) => void, target: ObjectOverrides['target']): ObjectOverrides => {
     const baseline = { ...project, ...object!.settings };
     return { name, keys: REGION_KEYS, mixed: {}, target, config: { ...baseline, ...settings }, baseline, changes: settings,
@@ -65,21 +57,16 @@ function overridesOf(s: State, project: Config): ObjectOverrides | null {
   return {
     name: objects.length === 1 ? plain(objects[0].name) : `${objects.length} objects`, keys: OBJECT_KEYS, mixed, target: { kind: 'objects', ids },
     config, baseline: project, changes,
-
     set: (k, v) => undoable('Edit object settings', () => objects.forEach((o) => same(k, v, project[k]) ? removeObjectOptions(o.id, [k]) : setObjectOption(o.id, k, v)), `objects:${ids}:${k}`),
     reset: (k) => undoable('Reset to project', () => objects.forEach((o) => removeObjectOptions(o.id, [k]))),
   };
 }
-
 
 export function useObjectOverrides(): ObjectOverrides | null {
   const objects = useStore((s) => s.objects), selected = useStore((s) => s.selected);
   const project = useStore((s) => effectiveConfig(s, 'process'));
   return useMemo(() => overridesOf(getState(), project), [objects, selected, project]);
 }
-
-
-
 
 export function ObjectPicker({ overrides }: { overrides: ObjectOverrides | null }) {
   const objects = useStore((s) => s.objects), selected = useStore((s) => s.selected);
@@ -108,7 +95,6 @@ export function ObjectPicker({ overrides }: { overrides: ObjectOverrides | null 
   </Popover.Root>;
 }
 
-
 export function RangeEditor({ objectId, range }: { objectId: number; range: LayerRange }) {
   const object = useStore((s) => s.objects.find((o) => o.id === objectId));
   const field = (label: string, value: number, commit: (v: number) => boolean) => (
@@ -133,12 +119,9 @@ export function RangeEditor({ objectId, range }: { objectId: number; range: Laye
 }
 
 
-
-
 export default function ObjectScope() {
   const overrides = useObjectOverrides();
   const top = useRef<HTMLDivElement>(null);
-
   useAddSettingsRequest(!!overrides, () => top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   return <>
     <div className="rail-row rail-row-wide" ref={top}><span className="preset-combo"><ObjectPicker overrides={overrides} /></span></div>

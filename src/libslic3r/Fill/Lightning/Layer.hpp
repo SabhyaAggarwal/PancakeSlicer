@@ -32,11 +32,6 @@ struct GroundingLocation
     Point p() const;
 };
 
-
-
-
-
-
 class Layer
 {
 public:
@@ -53,9 +48,6 @@ public:
         const std::function<void()> &throw_on_cancel_callback
     );
 
-
-
-
     GroundingLocation getBestGroundingLocation
     (
         const Point& unsupported_location,
@@ -67,11 +59,6 @@ public:
         const SparseNodeGrid& tree_node_locator,
         const NodeSPtr& exclude_tree = nullptr
     );
-
-
-
-
-
 
     bool attach(const Point& unsupported_location, const GroundingLocation& ground, NodeSPtr& new_child, NodeSPtr& new_root);
 

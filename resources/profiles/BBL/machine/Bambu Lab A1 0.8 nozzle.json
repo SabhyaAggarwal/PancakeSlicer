@@ -14,7 +14,7 @@
     "default_filament_profile": [
         "Bambu PLA Basic @BBL A1"
     ],
-    "default_print_profile": "0.40mm Non-planar top @BBL A1 0.8 nozzle",
+    "default_print_profile": "0.40mm Smoothest tops @BBL A1 0.8 nozzle",
     "max_layer_height": [
         "0.56"
     ],

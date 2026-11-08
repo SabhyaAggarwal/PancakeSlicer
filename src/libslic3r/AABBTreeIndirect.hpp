@@ -19,24 +19,10 @@
 #include "Utils.hpp"
 #include "libslic3r.h"
 
-
 #include <igl/Hit.h>
 
 namespace Slic3r {
 namespace AABBTreeIndirect {
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 template<int ANumDimensions, typename ACoordType>
 class Tree
@@ -46,44 +32,27 @@ public:
 	using					CoordType     = ACoordType;
     using 					VectorType 	  = Eigen::Matrix<CoordType, NumDimensions, 1, Eigen::DontAlign>;
     using  					BoundingBox   = Eigen::AlignedBox<CoordType, NumDimensions>;
-
     enum : size_t {
-
         npos  = size_t(-1),
-
         inner = size_t(-2)
     };
 
-
-
     struct Node {
-
         size_t 			idx = npos;
-
-
         BoundingBox 	bbox;
 
         bool 	is_valid() const { return this->idx != npos; }
         bool 	is_inner() const { return this->idx == inner; }
         bool 	is_leaf()  const { return ! this->is_inner(); }
 
-        template<typename SourceNode>
-        void set(const SourceNode &rhs) {
+    	template<typename SourceNode>
+    	void set(const SourceNode &rhs) {
             this->idx  = rhs.idx();
             this->bbox = rhs.bbox();
 		}
     };
 
 	void clear() { m_nodes.clear(); }
-
-
-
-
-
-
-
-
-
 
 	template<typename SourceNode>
 	void build(std::vector<SourceNode> &&input)
@@ -98,7 +67,6 @@ public:
         if (input.empty())
 			clear();
 		else {
-
             m_nodes.assign(next_highest_power_of_2(input.size()) * 2 - 1, Node());
             build_recursive(input, 0, 0, input.size() - 1);
 		}
@@ -107,7 +75,6 @@ public:
 	const std::vector<Node>& 	nodes() const { return m_nodes; }
 	const Node& 				node(size_t idx) const { return m_nodes[idx]; }
 	bool 						empty() const { return m_nodes.empty(); }
-
 
     static size_t				left_child_idx(size_t idx) { return idx * 2 + 1; }
     static size_t				right_child_idx(size_t idx) { return left_child_idx(idx) + 1; }
@@ -122,7 +89,6 @@ public:
 	}
 
 private:
-
 	template<typename SourceNode>
 	void build_recursive(std::vector<SourceNode> &input, size_t node, const size_t left, const size_t right)
 	{
@@ -130,11 +96,9 @@ private:
         assert(left <= right);
 
 		if (left == right) {
-
 			m_nodes[node].set(input[left]);
 			return;
 		}
-
 
         BoundingBox bbox(input[left].bbox());
         for (size_t i = left + 1; i <= right; ++ i)
@@ -142,19 +106,13 @@ private:
         int dimension = -1;
         bbox.diagonal().maxCoeff(&dimension);
 
-
 		size_t center = (left + right) / 2;
 		partition_input(input, size_t(dimension), left, right, center);
-
 		m_nodes[node].idx  = inner;
 		m_nodes[node].bbox = bbox;
         build_recursive(input, node * 2 + 1, left, center);
 		build_recursive(input, node * 2 + 2, center + 1, right);
 	}
-
-
-
-
 
 	template<typename SourceNode>
 	void partition_input(std::vector<SourceNode> &input, const size_t dimension, size_t left, size_t right, const size_t k) const
@@ -163,8 +121,6 @@ private:
 			size_t center = (left + right) / 2;
 			CoordType pivot;
 			{
-
-
 				CoordType left_value   = input[left  ].centroid()(dimension);
 				CoordType center_value = input[center].centroid()(dimension);
 				CoordType right_value  = input[right ].centroid()(dimension);
@@ -183,35 +139,26 @@ private:
 				pivot = center_value;
 			}
 			if (right <= left + 2)
-
 				break;
 			size_t i = left;
 			size_t j = right - 1;
 			std::swap(input[center], input[j]);
-
 			for (;;) {
-
-
 				while (input[++ i].centroid()(dimension) < pivot) ;
-
 				while (input[-- j].centroid()(dimension) > pivot && i < j) ;
 				if (i >= j)
 					break;
 				std::swap(input[i], input[j]);
 			}
-
 			std::swap(input[i], input[right - 1]);
-
 			if (k < i)
 				right = i - 1;
 			else if (k == i)
-
 				break;
 			else
 				left = i + 1;
 		}
 	}
-
 
 	std::vector<Node> m_nodes;
 };
@@ -221,14 +168,11 @@ using Tree3f = Tree<3, float>;
 using Tree2d = Tree<2, double>;
 using Tree3d = Tree<3, double>;
 
-
-
 class BoundingBoxWrapper {
 public:
 	using BoundingBox = Eigen::AlignedBox<coord_t, 2>;
 	BoundingBoxWrapper(const size_t idx, const Slic3r::BoundingBox &bbox) :
         m_idx(idx),
-
         m_bbox(bbox.min - Point(SCALED_EPSILON, SCALED_EPSILON), bbox.max + Point(SCALED_EPSILON, SCALED_EPSILON)) {}
     size_t             idx() const { return m_idx; }
     const BoundingBox& bbox() const { return m_bbox; }
@@ -254,7 +198,6 @@ namespace detail {
 		const VectorType 					 dir;
 		const VectorType					 invdir;
 
-
 		const double  						 eps;
 	};
 
@@ -263,26 +206,17 @@ namespace detail {
 		std::vector<igl::Hit<float> >				 hits;
 	};
 
-
-
-
-
-
 	template <typename Derivedsource, typename Deriveddir, typename Scalar>
 	inline bool ray_box_intersect_invdir(
-        const Eigen::MatrixBase<Derivedsource> 	&origin,
-        const Eigen::MatrixBase<Deriveddir> 	&inv_dir,
-        Eigen::AlignedBox<Scalar,3> 			 box,
-        const Scalar 							&t0,
-        const Scalar 							&t1) {
-
-
+  		const Eigen::MatrixBase<Derivedsource> 	&origin,
+  		const Eigen::MatrixBase<Deriveddir> 	&inv_dir,
+  		Eigen::AlignedBox<Scalar,3> 			 box,
+  		const Scalar 							&t0,
+  		const Scalar 							&t1) {
         if (std::isinf(inv_dir.x()) && (origin.x() < box.min().x() || origin.x() > box.max().x()))
             return false;
         if (std::isinf(inv_dir.y()) && (origin.y() < box.min().y() || origin.y() > box.max().y()))
             return false;
-
-
 		if (inv_dir.x() < 0)
 			std::swap(box.min().x(), box.max().x());
 		if (inv_dir.y() < 0)
@@ -314,57 +248,38 @@ namespace detail {
         return tmin < t1 && tmax > t0;
 	}
 
-
-
-
-
-
-
 	template<typename V, typename W>
 	std::enable_if_t<std::is_same<typename V::Scalar, double>::value&& std::is_same<typename W::Scalar, double>::value, bool>
 	intersect_triangle(const V &orig, const V &dir, const W &vert0, const W &vert1, const W &vert2, double &t, double &u, double &v, double eps)
 	{
-
 	   const V      edge1 = vert1 - vert0;
 	   const V      edge2 = vert2 - vert0;
-
 	   const V      pvec  = dir.cross(edge2);
-
 	   const double det   = edge1.dot(pvec);
 	   V      	 	qvec;
 
 	   if (det > eps) {
-
-            V tvec = orig - vert0;
-
-            u = tvec.dot(pvec);
+	      	V tvec = orig - vert0;
+	      	u = tvec.dot(pvec);
 			if (u < 0.0 || u > det)
 				return false;
-
-            qvec = tvec.cross(edge1);
-
-            v = dir.dot(qvec);
-            if (v < 0.0 || u + v > det)
-                return false;
+	      	qvec = tvec.cross(edge1);
+	      	v = dir.dot(qvec);
+	      	if (v < 0.0 || u + v > det)
+		 		return false;
 	   } else if (det < -eps) {
-
-            V tvec = orig - vert0;
-
-            u = tvec.dot(pvec);
-            if (u > 0.0 || u < det)
-                return false;
-
-            qvec = tvec.cross(edge1);
-
-            v = dir.dot(qvec);
-            if (v > 0.0 || u + v < det)
-                return false;
-	   } else
-
-            return false;
+	      	V tvec = orig - vert0;
+	      	u = tvec.dot(pvec);
+	      	if (u > 0.0 || u < det)
+		 		return false;
+	      	qvec = tvec.cross(edge1);
+	      	v = dir.dot(qvec);
+	      	if (v > 0.0 || u + v < det)
+		 		return false;
+	   } else 
+		   	return false;
 
 	   double inv_det = 1.0 / det;
-
 	   t = edge2.dot(qvec) * inv_det;
 	   u *= inv_det;
 	   v *= inv_det;
@@ -410,34 +325,32 @@ namespace detail {
 	{
         const auto &node = ray_intersector.tree.node(node_idx);
         assert(node.is_valid());
-
+		
         if (! ray_box_intersect_invdir(ray_intersector.origin, ray_intersector.invdir, node.bbox.template cast<Scalar>(), Scalar(0), min_t))
 			return false;
 
-        if (node.is_leaf()) {
-
+	  	if (node.is_leaf()) {
             auto   face = ray_intersector.faces[node.idx];
 		    double t, u, v;
 		    if (intersect_triangle(
-                    ray_intersector.origin, ray_intersector.dir,
-                    ray_intersector.vertices[face(0)], ray_intersector.vertices[face(1)], ray_intersector.vertices[face(2)],
+		    		ray_intersector.origin, ray_intersector.dir, 
+		    		ray_intersector.vertices[face(0)], ray_intersector.vertices[face(1)], ray_intersector.vertices[face(2)], 
                     t, u, v, ray_intersector.eps)
-                && t > 0.) {
+		    	&& t > 0.) {
                 hit = igl::Hit<float> { int(node.idx), -1, float(u), float(v), float(t) };
 				return true;
 		    } else
-                return false;
-        } else {
-
+		    	return false;
+	  	} else {
 			size_t left  = node_idx * 2 + 1;
 			size_t right = left + 1;
 			igl::Hit<float> left_hit;
 			igl::Hit<float> right_hit;
 	        bool left_ret = intersect_ray_recursive_first_hit(ray_intersector, left,  min_t, left_hit);
 			if (left_ret && left_hit.t < min_t) {
-                min_t = left_hit.t;
-                hit   = left_hit;
-            } else
+	    		min_t = left_hit.t;
+	    		hit   = left_hit;
+	  		} else
 			    left_ret = false;
 	        bool right_ret = intersect_ray_recursive_first_hit(ray_intersector, right, min_t, right_hit);
 			if (right_ret && right_hit.t < min_t)
@@ -457,34 +370,31 @@ namespace detail {
 		assert(node.is_valid());
 
         if (! ray_box_intersect_invdir(ray_intersector.origin, ray_intersector.invdir, node.bbox.template cast<Scalar>(),
-                Scalar(0), std::numeric_limits<Scalar>::infinity()))
+    			Scalar(0), std::numeric_limits<Scalar>::infinity()))
 			return;
 
-        if (node.is_leaf()) {
+	  	if (node.is_leaf()) {
             auto   face = ray_intersector.faces[node.idx];
 		    double t, u, v;
 		    if (intersect_triangle(
-                    ray_intersector.origin, ray_intersector.dir,
-                    ray_intersector.vertices[face(0)], ray_intersector.vertices[face(1)], ray_intersector.vertices[face(2)],
+		    		ray_intersector.origin, ray_intersector.dir, 
+		    		ray_intersector.vertices[face(0)], ray_intersector.vertices[face(1)], ray_intersector.vertices[face(2)], 
                     t, u, v, ray_intersector.eps)
-                && t > 0.) {
+		    	&& t > 0.) {
                 ray_intersector.hits.emplace_back(igl::Hit<float>{ int(node.idx), -1, float(u), float(v), float(t) });
 			}
-        } else {
-
+	  	} else {
 			size_t left  = node_idx * 2 + 1;
 			size_t right = left + 1;
-            intersect_ray_recursive_all_hits(ray_intersector, left);
-            intersect_ray_recursive_all_hits(ray_intersector, right);
+		  	intersect_ray_recursive_all_hits(ray_intersector, left);
+		  	intersect_ray_recursive_all_hits(ray_intersector, right);
 		}
 	}
-
 
     template<typename Vector>
     static inline Vector closest_point_to_triangle(const Vector &p, const Vector &a, const Vector &b, const Vector &c)
     {
         using Scalar = typename Vector::Scalar;
-
         Vector ab = b - a;
         Vector ac = c - a;
         Vector ap = p - a;
@@ -492,43 +402,36 @@ namespace detail {
         Scalar d2 = ac.dot(ap);
         if (d1 <= 0 && d2 <= 0)
           return a;
-
         Vector bp = p - b;
         Scalar d3 = ab.dot(bp);
         Scalar d4 = ac.dot(bp);
         if (d3 >= 0 && d4 <= d3)
           return b;
-
         Scalar vc = d1*d4 - d3*d2;
         if (a != b && vc <= 0 && d1 >= 0 && d3 <= 0) {
             Scalar v = d1 / (d1 - d3);
             return a + v * ab;
         }
-
         Vector cp = p - c;
         Scalar d5 = ab.dot(cp);
         Scalar d6 = ac.dot(cp);
         if (d6 >= 0 && d5 <= d6)
           return c;
-
         Scalar vb = d5*d2 - d1*d6;
         if (vb <= 0 && d2 >= 0 && d6 <= 0) {
           Scalar w = d2 / (d2 - d6);
           return a + w * ac;
         }
-
         Scalar va = d3*d6 - d5*d4;
         if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
           Scalar w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
           return b + w * (c - b);
         }
-
         Scalar denom = Scalar(1.0) / (va + vb + vc);
         Scalar v = vb * denom;
         Scalar w = vc * denom;
         return a + ab * v + ac * w;
     };
-
 
 
 	template<typename AVertexType, typename AIndexedFaceType, typename ATreeType, typename AVectorType>
@@ -562,16 +465,15 @@ namespace detail {
         IndexedPrimitivesDistancerType	&distancer,
 		size_t 							 node_idx,
 		Scalar 							 low_sqr_d,
-        Scalar 							 up_sqr_d,
+  		Scalar 							 up_sqr_d,
 		size_t 							&i,
-        Eigen::PlainObjectBase<typename IndexedPrimitivesDistancerType::VectorType> &c)
+  		Eigen::PlainObjectBase<typename IndexedPrimitivesDistancerType::VectorType> &c)
 	{
 		using Vector = typename IndexedPrimitivesDistancerType::VectorType;
 
-        if (low_sqr_d > up_sqr_d)
+  		if (low_sqr_d > up_sqr_d)
 			return low_sqr_d;
-
-
+	  
         auto set_min = [&i, &c, &up_sqr_d](const Scalar sqr_d_candidate, const size_t i_candidate, const Vector &c_candidate) {
 			if (sqr_d_candidate < up_sqr_d) {
 				i     	 = i_candidate;
@@ -582,14 +484,14 @@ namespace detail {
 
 		const auto &node = distancer.tree.node(node_idx);
 		assert(node.is_valid());
-        if (node.is_leaf())
-        {
+  		if (node.is_leaf()) 
+  		{
             Scalar sqr_dist;
             Vector c_candidate = distancer.closest_point_to_origin(node.idx, sqr_dist);
             set_min(sqr_dist, node.idx, c_candidate);
-        }
-        else
-        {
+  		} 
+  		else
+  		{
 			size_t left_node_idx  = node_idx * 2 + 1;
             size_t right_node_idx = left_node_idx + 1;
 			const auto &node_left  = distancer.tree.node(left_node_idx);
@@ -616,25 +518,23 @@ namespace detail {
 				looked_right = true;
 			};
 
-
             using BBoxScalar = typename IndexedPrimitivesDistancerType::TreeType::BoundingBox::Scalar;
             if (node_left.bbox.contains(distancer.origin.template cast<BBoxScalar>()))
-                look_left();
+			  	look_left();
             if (node_right.bbox.contains(distancer.origin.template cast<BBoxScalar>()))
-                look_right();
-
+			  	look_right();
 			Scalar left_up_sqr_d  = node_left.bbox.squaredExteriorDistance(distancer.origin);
 			Scalar right_up_sqr_d = node_right.bbox.squaredExteriorDistance(distancer.origin);
 			if (left_up_sqr_d < right_up_sqr_d) {
-                if (! looked_left && left_up_sqr_d < up_sqr_d)
-                    look_left();
-                if (! looked_right && right_up_sqr_d < up_sqr_d)
-                    look_right();
+			  	if (! looked_left && left_up_sqr_d < up_sqr_d)
+			    	look_left();
+			  	if (! looked_right && right_up_sqr_d < up_sqr_d)
+			    	look_right();
 			} else {
-                if (! looked_right && right_up_sqr_d < up_sqr_d)
-                    look_right();
-                if (! looked_left && left_up_sqr_d < up_sqr_d)
-                    look_left();
+			  	if (! looked_right && right_up_sqr_d < up_sqr_d)
+			    	look_right();
+			  	if (! looked_left && left_up_sqr_d < up_sqr_d)
+			    	look_left();
 			}
 		}
 		return up_sqr_d;
@@ -672,22 +572,13 @@ namespace detail {
     }
 
 }
-
-
-
-
-
 template<typename VertexType, typename IndexedFaceType>
 inline Tree<3, typename VertexType::Scalar> build_aabb_tree_over_indexed_triangle_set(
-
-	const std::vector<VertexType> 		&vertices,
-
+	const std::vector<VertexType> 		&vertices, 
     const std::vector<IndexedFaceType> 	&faces,
-
     const typename VertexType::Scalar 	 eps = 0)
 {
     using 				 TreeType 		= Tree<3, typename VertexType::Scalar>;
-
     using 				 VectorType	    = typename TreeType::VectorType;
     using 				 BoundingBox 	= typename TreeType::BoundingBox;
 
@@ -725,24 +616,14 @@ inline Tree<3, typename VertexType::Scalar> build_aabb_tree_over_indexed_triangl
 	return out;
 }
 
-
-
-
 template<typename VertexType, typename IndexedFaceType, typename TreeType, typename VectorType>
 inline bool intersect_ray_first_hit(
-
 	const std::vector<VertexType> 		&vertices,
-
 	const std::vector<IndexedFaceType> 	&faces,
-
 	const TreeType 						&tree,
-
 	const VectorType					&origin,
-
 	const VectorType 					&dir,
-
 	igl::Hit<float> 					&hit,
-
 	const double 						 eps = 0.000001)
 {
     using Scalar = typename VectorType::Scalar;
@@ -755,26 +636,14 @@ inline bool intersect_ray_first_hit(
         ray_intersector, size_t(0), std::numeric_limits<Scalar>::infinity(), hit);
 }
 
-
-
-
-
-
 template<typename VertexType, typename IndexedFaceType, typename TreeType, typename VectorType>
 inline bool intersect_ray_all_hits(
-
 	const std::vector<VertexType> 		&vertices,
-
 	const std::vector<IndexedFaceType> 	&faces,
-
 	const TreeType 						&tree,
-
 	const VectorType					&origin,
-
 	const VectorType 					&dir,
-
 	std::vector<igl::Hit<float> > 				&hits,
-
 	const double 						 eps = 0.000001)
 {
     auto ray_intersector = detail::RayIntersectorHits<VertexType, IndexedFaceType, TreeType, VectorType> {
@@ -785,7 +654,6 @@ inline bool intersect_ray_all_hits(
 	if (tree.empty()) {
 		hits.clear();
 	} else {
-
         ray_intersector.hits = std::move(hits);
         ray_intersector.hits.clear();
         ray_intersector.hits.reserve(8);
@@ -796,48 +664,28 @@ inline bool intersect_ray_all_hits(
 	return ! hits.empty();
 }
 
-
-
-
-
-
 template<typename VertexType, typename IndexedFaceType, typename TreeType, typename VectorType>
 inline typename VectorType::Scalar squared_distance_to_indexed_triangle_set(
-
 	const std::vector<VertexType> 		&vertices,
-
 	const std::vector<IndexedFaceType> 	&faces,
-
 	const TreeType 						&tree,
-
 	const VectorType					&point,
-
 	size_t 								&hit_idx_out,
-
 	Eigen::PlainObjectBase<VectorType>	&hit_point_out)
 {
     using Scalar = typename VectorType::Scalar;
     auto distancer = detail::IndexedTriangleSetDistancer<VertexType, IndexedFaceType, TreeType, VectorType>
         { vertices, faces, tree, point };
-    return tree.empty() ? Scalar(-1) :
-        detail::squared_distance_to_indexed_primitives_recursive(distancer, size_t(0), Scalar(0), std::numeric_limits<Scalar>::infinity(), hit_idx_out, hit_point_out);
+    return tree.empty() ? Scalar(-1) : 
+    	detail::squared_distance_to_indexed_primitives_recursive(distancer, size_t(0), Scalar(0), std::numeric_limits<Scalar>::infinity(), hit_idx_out, hit_point_out);
 }
-
-
-
-
 
 template<typename VertexType, typename IndexedFaceType, typename TreeType, typename VectorType>
 inline bool is_any_triangle_in_radius(
-
         const std::vector<VertexType> 		&vertices,
-
         const std::vector<IndexedFaceType> 	&faces,
-
         const TreeType 						&tree,
-
         const VectorType					&point,
-
         typename VectorType::Scalar &max_distance_squared)
 {
     using Scalar = typename VectorType::Scalar;
@@ -857,18 +705,12 @@ inline bool is_any_triangle_in_radius(
     return hit_point.allFinite();
 }
 
-
 template<typename VertexType, typename IndexedFaceType, typename TreeType, typename VectorType>
 inline std::vector<size_t> all_triangles_in_radius(
-
         const std::vector<VertexType> 		&vertices,
-
         const std::vector<IndexedFaceType> 	&faces,
-
         const TreeType 						&tree,
-
         const VectorType					&point,
-
         typename VectorType::Scalar max_distance_squared)
 {
     auto distancer = detail::IndexedTriangleSetDistancer<VertexType, IndexedFaceType, TreeType, VectorType>
@@ -883,8 +725,6 @@ inline std::vector<size_t> all_triangles_in_radius(
 	detail::indexed_primitives_within_distance_squared_recurisve(distancer, size_t(0), max_distance_squared, found_triangles);
 	return found_triangles;
 }
-
-
 
 
 template<typename TreeType, typename VectorType>
@@ -910,9 +750,7 @@ void get_candidate_idxs(const TreeType& tree, const VectorType& v, std::vector<s
     return;
 }
 
-
 template<class G> struct Intersecting {};
-
 
 template<class CoordType, int NumD>
 struct Intersecting<Eigen::AlignedBox<CoordType, NumD>> {
@@ -930,7 +768,6 @@ template<class G> auto intersecting(const G &g) { return Intersecting<G>{g}; }
 
 template<class G> struct Within {};
 
-
 template<class CoordType, int NumD>
 struct Within<Eigen::AlignedBox<CoordType, NumD>> {
     Eigen::AlignedBox<CoordType, NumD> box;
@@ -947,8 +784,6 @@ template<class G> auto within(const G &g) { return Within<G>{g}; }
 
 namespace detail {
 
-
-
 template<int Dims, typename T, typename Pred, typename Fn>
 bool traverse_recurse(const Tree<Dims, T> &tree,
                       size_t               idx,
@@ -957,35 +792,24 @@ bool traverse_recurse(const Tree<Dims, T> &tree,
 {
     assert(tree.node(idx).is_valid());
 
-    if (!pred(tree.node(idx)))
-
-        return true;
+    if (!pred(tree.node(idx))) 
+    	return true;
 
     if (tree.node(idx).is_leaf()) {
-
         return callback(tree.node(idx));
     } else {
-
 
         auto trv = [&](size_t idx) -> bool {
             return traverse_recurse(tree, idx, std::forward<Pred>(pred),
                                     std::forward<Fn>(callback));
         };
 
-
-
         return trv(Tree<Dims, T>::left_child_idx(idx)) &&
-               trv(Tree<Dims, T>::right_child_idx(idx));
+        	   trv(Tree<Dims, T>::right_child_idx(idx));
     }
 }
 
 }
-
-
-
-
-
-
 template<int Dims, typename T, typename Predicate, typename Fn>
 void traverse(const Tree<Dims, T> &tree, Predicate &&pred, Fn &&callback)
 {

@@ -46,6 +46,23 @@
       ]
     },
     {
+      "id": "nonplanar_top",
+      "target": "mode",
+      "hardware": "known",
+      "feature": "curved_tops",
+      "readiness": "curved_tops",
+      "settingPrefixes": [
+        "nonplanar_curved_"
+      ]
+    },
+    {
+      "id": "smooth_morph",
+      "target": "mode",
+      "hardware": "known",
+      "feature": "curved_tops",
+      "readiness": "curved_tops"
+    },
+    {
       "id": "oneshot",
       "target": "mode",
       "hardware": "known",

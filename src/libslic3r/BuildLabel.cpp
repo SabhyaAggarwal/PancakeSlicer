@@ -1,4 +1,3 @@
-
 #include "BuildLabel.hpp"
 #include "git_commit_hash.h"
 

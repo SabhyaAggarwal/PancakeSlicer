@@ -30,7 +30,6 @@ using ExPolygons = std::vector<ExPolygon>;
 class ExtrusionEntityCollection;
 class Extruder;
 
-
 enum ExtrusionRole : uint8_t {
     erNone,
     erPerimeter,
@@ -51,17 +50,13 @@ enum ExtrusionRole : uint8_t {
     erSupportTransition,
     erWipeTower,
     erCustom,
-
     erMixed,
     erCount
 };
 
-
 enum ExtrusionLoopRole : uint8_t {
     elrDefault=0x0,
-
     elrHole=0x1,
-
     elrInternal = 0x2,
     elrSkirt=0x4,
 };
@@ -117,7 +112,6 @@ inline bool is_bridge(ExtrusionRole role)
         || role == erOverhangPerimeter;
 }
 
-
 inline bool is_support(ExtrusionRole role)
 {
     return role == erSupportMaterial
@@ -135,7 +129,6 @@ public:
     virtual bool can_sort() const { return true; }
     virtual void set_reverse() {}
     virtual ExtrusionEntity* clone() const = 0;
-
     virtual ExtrusionEntity* clone_move() = 0;
     virtual ~ExtrusionEntity() {}
     virtual void reverse() = 0;
@@ -143,19 +136,13 @@ public:
     virtual Point last_point() const = 0;
     virtual const Point3& first_point3() const = 0;
     virtual const Point3& last_point3() const = 0;
-
-
-
+    
     virtual void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const = 0;
-
-
-
     virtual void polygons_covered_by_spacing(Polygons &out, const float scaled_epsilon) const = 0;
     Polygons polygons_covered_by_width(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_width(out, scaled_epsilon); return out; }
     Polygons polygons_covered_by_spacing(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_spacing(out, scaled_epsilon); return out; }
-
     virtual double min_mm3_per_mm() const = 0;
     virtual Polyline as_polyline() const = 0;
     virtual void   collect_polylines(Polylines &dst) const = 0;
@@ -163,8 +150,7 @@ public:
     virtual Polylines as_polylines() const { Polylines dst; this->collect_polylines(dst); return dst; }
     virtual double length() const = 0;
     virtual double total_volume() const = 0;
-
-
+    
     int inset_idx = -1;
 
     static std::string role_to_string(ExtrusionRole role);
@@ -179,46 +165,22 @@ public:
     Polyline3 polyline;
     double overhang_degree = 0;
     int curve_degree = 0;
-
     double mm3_per_mm;
-
     float width;
-
     float height;
     double smooth_speed = 0;
     bool z_contoured = false;
-
-
     float contour_base = 0.f;
-
-
-
-
     float distance_to_top = -1.0;
     bool nonplanar_source = false;
     bool continuous_top = false;
     size_t source_layer_id = size_t(-1);
     int source_surface_id = -1;
     uint64_t source_path_id = 0;
-
-
     bool wave_overhang = false;
-
-
-
     bool wave_overhang_floor = false;
-
-
-
     bool wave_overhang_perimeter = false;
-
-
-
     bool wave_overhang_floor_perimeter = false;
-
-
-
-
     int8_t wave_overhang_floor_distance = 0;
 
     ExtrusionPath() : mm3_per_mm(-1), width(-1), height(-1), m_role(erNone), m_no_extrusion(false) {}
@@ -380,7 +342,6 @@ public:
     }
 
 	ExtrusionEntity* clone() const override { return new ExtrusionPath(*this); }
-
 	ExtrusionEntity* clone_move() override { return new ExtrusionPath(std::move(*this)); }
     void reverse() override { this->polyline.reverse(); }
     Point first_point() const override { return this->polyline.points.front().to_point(); }
@@ -390,28 +351,18 @@ public:
     size_t size() const { return this->polyline.size(); }
     bool empty() const { return this->polyline.empty(); }
     bool is_closed() const { return ! this->empty() && this->polyline.points.front() == this->polyline.points.back(); }
-
-
     void intersect_expolygons(const ExPolygons &collection, ExtrusionEntityCollection* retval) const;
-
-
     void subtract_expolygons(const ExPolygons &collection, ExtrusionEntityCollection* retval) const;
     void clip_end(double distance);
     virtual void simplify(double tolerance);
     double length() const override;
     ExtrusionRole role() const override { return m_role; }
-
-
     void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const override;
-
-
-
     void polygons_covered_by_spacing(Polygons &out, const float scaled_epsilon) const override;
     Polygons polygons_covered_by_width(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_width(out, scaled_epsilon); return out; }
     Polygons polygons_covered_by_spacing(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_spacing(out, scaled_epsilon); return out; }
-
     double min_mm3_per_mm() const override { return this->mm3_per_mm; }
     Polyline as_polyline() const override { return this->polyline.to_polyline(); }
     void   collect_polylines(Polylines &dst) const override { if (! this->polyline.empty()) dst.emplace_back(this->polyline.to_polyline()); }
@@ -419,9 +370,7 @@ public:
     void   collect_points3(Points3 &dst) const { append(dst, this->polyline.points); }
     double total_volume() const override { return mm3_per_mm * unscale<double>(length()); }
 
-
     void simplify_by_fitting_arc(double tolerance);
-
     bool is_force_no_extrusion() const { return m_no_extrusion; }
     void set_force_no_extrusion(bool no_extrusion) { m_no_extrusion = no_extrusion; }
     void set_extrusion_role(ExtrusionRole extrusion_role) { m_role = extrusion_role; }
@@ -432,7 +381,6 @@ private:
     void _inflate_collection(const Polylines &polylines, ExtrusionEntityCollection* collection) const;
     bool m_can_reverse = true;
     ExtrusionRole m_role;
-
     bool m_no_extrusion = false;
 };
 
@@ -489,18 +437,12 @@ public:
     bool is_flat() const { return is_approx(slope_begin.z_ratio, slope_end.z_ratio); }
 };
 
-
-
-
-
-
 class ExtrusionPathConformal : public ExtrusionPath
 {
 public:
     std::vector<float> bead_height;
     std::vector<Vec3f> tool_axis;
     std::vector<float> bead_width;
-
     uint32_t           native_road_id = UINT32_MAX;
     int                patch_id = -1;
     int                shell    = -1;
@@ -512,10 +454,7 @@ public:
                            std::vector<float> &&bead_height, std::vector<Vec3f> &&tool_axis = {});
     ExtrusionEntity *clone() const override { return new ExtrusionPathConformal(*this); }
     ExtrusionEntity *clone_move() override { return new ExtrusionPathConformal(std::move(*this)); }
-
     void reverse() override;
-
-
     void simplify(double tolerance) override;
 };
 
@@ -524,13 +463,11 @@ class ExtrusionPathOriented : public ExtrusionPath
 public:
     ExtrusionPathOriented(ExtrusionRole role, double mm3_per_mm, float width, float height) : ExtrusionPath(role, mm3_per_mm, width, height) {}
     ExtrusionEntity* clone() const override { return new ExtrusionPathOriented(*this); }
-
     ExtrusionEntity* clone_move() override { return new ExtrusionPathOriented(std::move(*this)); }
     virtual bool can_reverse() const override { return false; }
 };
 
 typedef std::vector<ExtrusionPath> ExtrusionPaths;
-
 
 class ExtrusionMultiPath : public ExtrusionEntity
 {
@@ -560,7 +497,6 @@ public:
     bool can_reverse() const override { return m_can_reverse; }
     void set_reverse() override { m_can_reverse = false; }
 	ExtrusionEntity* clone() const override { return new ExtrusionMultiPath(*this); }
-
 	ExtrusionEntity* clone_move() override { return new ExtrusionMultiPath(std::move(*this)); }
     void reverse() override;
     Point first_point() const override { return this->paths.front().polyline.points.front().to_point(); }
@@ -571,18 +507,12 @@ public:
     bool empty() const { return this->paths.empty(); }
     double length() const override;
     ExtrusionRole role() const override { return this->paths.empty() ? erNone : this->paths.front().role(); }
-
-
     void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const override;
-
-
-
     void polygons_covered_by_spacing(Polygons &out, const float scaled_epsilon) const override;
     Polygons polygons_covered_by_width(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_width(out, scaled_epsilon); return out; }
     Polygons polygons_covered_by_spacing(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_spacing(out, scaled_epsilon); return out; }
-
     double min_mm3_per_mm() const override;
     Polyline as_polyline() const override;
     void   collect_polylines(Polylines &dst) const override { Polyline pl = this->as_polyline(); if (! pl.empty()) dst.emplace_back(std::move(pl)); }
@@ -598,17 +528,11 @@ private:
     bool m_can_reverse = true;
 };
 
-
 class ExtrusionLoop : public ExtrusionEntity
 {
 public:
     ExtrusionPaths paths;
-
-
-
     bool print_after_infill = false;
-
-
     ExtrusionPaths raised;
 
     ExtrusionLoop(ExtrusionLoopRole role = elrDefault) : m_loop_role(role) {}
@@ -621,7 +545,6 @@ public:
     bool is_loop() const override{ return true; }
     bool can_reverse() const override { return false; }
 	ExtrusionEntity* clone() const override{ return new ExtrusionLoop (*this); }
-
 	ExtrusionEntity* clone_move() override { return new ExtrusionLoop(std::move(*this)); }
     bool make_clockwise();
     bool make_counter_clockwise();
@@ -644,24 +567,16 @@ public:
     };
     ClosestPathPoint         get_closest_path_and_point(const Point &point, bool prefer_non_overhang) const;
     void clip_end(double distance, ExtrusionPaths* paths) const;
-
-
     bool has_overhang_point(const Point &point) const;
     ExtrusionRole role() const override { return this->paths.empty() ? erNone : this->paths.front().role(); }
     ExtrusionLoopRole loop_role() const { return m_loop_role; }
     void set_loop_role(ExtrusionLoopRole role) {    m_loop_role = role; }
-
-
     void polygons_covered_by_width(Polygons &out, const float scaled_epsilon) const override;
-
-
-
     void polygons_covered_by_spacing(Polygons &out, const float scaled_epsilon) const  override;
     Polygons polygons_covered_by_width(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_width(out, scaled_epsilon); return out; }
     Polygons polygons_covered_by_spacing(const float scaled_epsilon = 0.f) const
         { Polygons out; this->polygons_covered_by_spacing(out, scaled_epsilon); return out; }
-
     double min_mm3_per_mm() const override;
     Polyline as_polyline() const override {
         if (this->paths.empty() || this->length() <= 0.)
@@ -676,9 +591,7 @@ public:
             append(dst, to_points(p.polyline.points));
     }
     double total_volume() const override { double volume =0.; for (const auto& path : paths) volume += path.total_volume(); return volume; }
-
     bool is_smooth(double angle_threshold = 0.174, double min_arm_length = 0.025) const;
-
 
 #ifndef NDEBUG
 	bool validate() const {
@@ -765,7 +678,6 @@ inline void extrusion_entities_append_paths(ExtrusionEntitiesPtr &dst, Polylines
         }
     polylines.clear();
 }
-
 
 inline void extrusion_entities_append_paths_with_wipe(ExtrusionEntitiesPtr &dst, Polylines &&polylines, ExtrusionRole role, double mm3_per_mm, float width, float height)
 {

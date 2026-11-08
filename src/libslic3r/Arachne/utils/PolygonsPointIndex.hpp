@@ -16,44 +16,20 @@
 namespace Slic3r::Arachne
 {
 
-
 inline const Point &make_point(const Point &p) { return p; }
-
-
-
 
 template<typename Paths>
 class PathsPointIndex
 {
 public:
-
-
-
     const Paths* polygons;
 
     unsigned int poly_idx;
 
     unsigned int point_idx;
-
-
-
-
-
-
-
-
     PathsPointIndex() : polygons(nullptr), poly_idx(0), point_idx(0) {}
 
-
-
-
-
-
-
     PathsPointIndex(const Paths *polygons, unsigned int poly_idx, unsigned int point_idx) : polygons(polygons), poly_idx(poly_idx), point_idx(point_idx) {}
-
-
-
 
     PathsPointIndex(const PathsPointIndex& original) = default;
 
@@ -65,21 +41,9 @@ public:
         return make_point((*polygons)[poly_idx][point_idx]);
     }
 
-
-
-
     bool initialized() const { return polygons; }
 
-
-
-
     const Polygon &getPolygon() const { return (*polygons)[poly_idx]; }
-
-
-
-
-
-
 
     bool operator==(const PathsPointIndex &other) const
     {
@@ -100,13 +64,11 @@ public:
         point_idx = other.point_idx;
         return *this;
     }
-
     PathsPointIndex &operator++()
     {
         point_idx = (point_idx + 1) % (*polygons)[poly_idx].size();
         return *this;
     }
-
     PathsPointIndex &operator--()
     {
         if (point_idx == 0)
@@ -114,14 +76,12 @@ public:
         point_idx--;
         return *this;
     }
-
     PathsPointIndex next() const
     {
         PathsPointIndex ret(*this);
         ++ret;
         return ret;
     }
-
     PathsPointIndex prev() const
     {
         PathsPointIndex ret(*this);
@@ -131,9 +91,6 @@ public:
 };
 
 using PolygonsPointIndex = PathsPointIndex<Polygons>;
-
-
-
 
 struct PolygonsPointIndexSegmentLocator
 {
@@ -146,9 +103,6 @@ struct PolygonsPointIndexSegmentLocator
         return std::pair<Point, Point>(start, end);
     }
 };
-
-
-
 
 template<typename Paths>
 struct PathsPointIndexLocator
@@ -163,9 +117,6 @@ struct PathsPointIndexLocator
 
 namespace std
 {
-
-
-
 template <>
 struct hash<Slic3r::Arachne::PolygonsPointIndex>
 {

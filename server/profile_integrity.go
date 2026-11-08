@@ -48,7 +48,6 @@ func profileCompatible(p *Preset, printer, process string, filament bool) bool {
 	if (p.Evaluated || len(p.CompatiblePrinters) > 0) && !slices.Contains(p.CompatiblePrinters, printer) {
 		return false
 	}
-
 	prints := stringList(p.Config["compatible_prints"])
 	return !filament || len(prints) == 0 || slices.Contains(prints, process)
 }
@@ -116,11 +115,9 @@ func (s *Server) resolveJobProfiles(req *JobRequest) (*VendorPresets, *profilePr
 		if preset == nil {
 			return nil, profileSelectionProblem("profile_unknown", "filament", name, req.Vendor, i+1)
 		}
-
 		if profileCompatible(preset, req.Printer, req.Process, false) {
 			continue
 		}
-
 		if variant := filamentVariant(vendor, name, req.Printer, req.Process); variant != "" {
 			if req.SubmittedFilaments == nil {
 				req.SubmittedFilaments = slices.Clone(req.Filaments)

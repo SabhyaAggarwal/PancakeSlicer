@@ -43,7 +43,6 @@ func stripExtendedMoves(src, dst string) error {
 	defer os.Remove(tmp.Name())
 	w := bufio.NewWriterSize(tmp, 1<<20)
 	if flags&1 == 0 || moveStride != extMoveStride {
-
 		if _, err := w.Write(head); err == nil {
 			_, err = io.Copy(w, r)
 		}

@@ -1,0 +1,50 @@
+{
+ "gcode": "trap_gantry.gcode",
+ "description": "40 mm pillar finished first, then a second object's first layers",
+ "true_head": "trap_head_true.json",
+ "generator_head": "trap_head_shrunk.json",
+ "control": false,
+ "expected": {
+  "hit_lines": [
+   3371,
+   3374,
+   3375,
+   3376,
+   3377,
+   3381,
+   3383,
+   3384,
+   3385,
+   3386,
+   3387
+  ],
+  "hit_count": 11,
+  "components": {
+   "x_gantry": 11
+  }
+ },
+ "port": {
+  "hit_lines": [
+   3371,
+   3374,
+   3375,
+   3376,
+   3377,
+   3381,
+   3383,
+   3384,
+   3385,
+   3386,
+   3387
+  ],
+  "hit_count": 11,
+  "components": {
+   "x_gantry": 401
+  },
+  "recall": 1.0
+ },
+ "generator_head_hits": {
+  "brute_force": 0,
+  "port": 0
+ }
+}

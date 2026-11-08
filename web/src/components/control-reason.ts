@@ -1,4 +1,3 @@
-
 export function disabledCommandReason(label: string): string {
   if (/undo/i.test(label)) return 'There is nothing to undo.';
   if (/redo/i.test(label)) return 'There is nothing to redo.';

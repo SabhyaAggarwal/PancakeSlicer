@@ -79,23 +79,16 @@ bool StepPreProcessor::preprocess(const char* path, std::string &output_path)
     std::string temp_line;
     while (std::getline(infile, temp_line)) {
         if (m_encode_type == EncodedType::UTF8) {
-
             if (isUtf8(temp_line)) {
-
             }
-
             else if (isGBK(temp_line)) {
                 m_encode_type = EncodedType::GBK;
             }
-
-
             else {
                 m_encode_type = EncodedType::OTHER;
             }
         }
         if (m_encode_type == EncodedType::GBK)
-
-
             temp_file << decode_path(temp_line.c_str()) << std::endl;
         else
             temp_file << temp_line.c_str() << std::endl;
@@ -140,8 +133,6 @@ bool StepPreProcessor::isUtf8(const std::string str)
         const unsigned char lead = static_cast<unsigned char>(str[i]);
         if ((lead & 0x80) == 0x00) {
             i++;
-
-
         } else if ((num = preNum(lead)) >= 2 && num <= 4) {
             if (i + num > str.length())
                 return false;
@@ -161,7 +152,6 @@ bool StepPreProcessor::isUtf8(const std::string str)
 bool StepPreProcessor::isGBK(const std::string str) {
     size_t i = 0;
     while (i < str.length()) {
-
         const unsigned char lead = static_cast<unsigned char>(str[i]);
         if (lead <= 0x7f) {
             i++;
@@ -263,190 +253,6 @@ static void getNamedSolids(const TopLoc_Location& location,
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Step::Step(fs::path path, ImportStepProgressFn stepFn, StepIsUtf8Fn isUtf8Fn):
     m_stepFn(stepFn),
     m_utf8Fn(isUtf8Fn)
@@ -539,7 +345,7 @@ Step::Step_Status Step::load()
     }else {
         return Step_Status::LOAD_ERROR;
     }
-
+    
 }
 
 Step::Step_Status Step::mesh(Model* model,
@@ -565,7 +371,7 @@ Step::Step_Status Step::mesh(Model* model,
         m_shape_tool->GetFreeShapes(topLevelShapes);
         unsigned int id{ 1 };
         int topShapeLength = topLevelShapes.Length() + 1;
-
+        
         for (int iLabel = 1; iLabel < topShapeLength; ++iLabel) {
             progress = static_cast<double>(iLabel) / (topShapeLength-1);
             if (cb_cancel) {
@@ -579,7 +385,6 @@ Step::Step_Status Step::mesh(Model* model,
         tbb::parallel_for(tbb::blocked_range<size_t>(0, namedSolids.size()), [&](const tbb::blocked_range<size_t>& range) {
             for (size_t i = range.begin(); i < range.end(); i++) {
                 BRepMesh_IncrementalMesh mesh(namedSolids[i].solid, linear_deflection, false, angle_deflection, true);
-
                 int aNbNodes = 0;
                 int aNbTriangles = 0;
                 for (TopExp_Explorer anExpSF(namedSolids[i].solid, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
@@ -592,7 +397,6 @@ Step::Step_Status Step::mesh(Model* model,
                 }
 
                 if (aNbTriangles == 0 || aNbNodes == 0)
-
                     continue;
 
                 stl[i].stats.type = inmemory;
@@ -602,9 +406,7 @@ Step::Step_Status Step::mesh(Model* model,
 
                 std::vector<Vec3f> points;
                 points.reserve(aNbNodes);
-
                 int aNbFacesNoTri = 0;
-
                 int aNodeOffset = 0;
                 int aTriangleOffet = 0;
                 for (TopExp_Explorer anExpSF(namedSolids[i].solid, TopAbs_FACE); anExpSF.More(); anExpSF.Next()) {
@@ -615,14 +417,12 @@ Step::Step_Status Step::mesh(Model* model,
                         ++aNbFacesNoTri;
                         continue;
                     }
-
                     gp_Trsf aTrsf = aLoc.Transformation();
                     for (int aNodeIter = 1; aNodeIter <= aTriangulation->NbNodes(); ++aNodeIter) {
                         gp_Pnt aPnt = aTriangulation->Node(aNodeIter);
                         aPnt.Transform(aTrsf);
                         points.emplace_back(Vec3f(aPnt.X(), aPnt.Y(), aPnt.Z()));
                     }
-
                     const TopAbs_Orientation anOrientation = anExpSF.Current().Orientation();
                     int anId[3] = {};
                     for (int aTriIter = 1; aTriIter <= aTriangulation->NbTriangles(); ++aTriIter) {
@@ -631,7 +431,6 @@ Step::Step_Status Step::mesh(Model* model,
                         aTri.Get(anId[0], anId[1], anId[2]);
                         if (anOrientation == TopAbs_REVERSED)
                             std::swap(anId[1], anId[2]);
-
                         stl_facet facet;
                         facet.vertex[0] = points[anId[0] + aNodeOffset - 1].cast<float>();
                         facet.vertex[1] = points[anId[1] + aNodeOffset - 1].cast<float>();
@@ -658,7 +457,6 @@ Step::Step_Status Step::mesh(Model* model,
             if (cb_cancel)
                 return;
 
-
             if (stl[i].stats.number_of_facets > 0) {
                 TriangleMesh triangle_mesh;
                 triangle_mesh.from_stl(stl[i]);
@@ -675,22 +473,19 @@ Step::Step_Status Step::mesh(Model* model,
     while (!task_result) {
         boost::this_thread::sleep_for(boost::chrono::milliseconds(300));
         if (progress_2 > 0) {
-
             update_process(LOAD_STEP_STAGE_GET_MESH, static_cast<int>(progress_2 * 100), 100, cb_cancel);
         }else {
             if (meshed_solid_num.load()) {
-
                 int meshed_solid = meshed_solid_num.load();
                 update_process(LOAD_STEP_STAGE_GET_SOLID, static_cast<int>((float)meshed_solid / namedSolids.size() * 10) + 10, 20, cb_cancel);
             } else {
                 if (progress > 0) {
-
                     update_process(LOAD_STEP_STAGE_GET_SOLID, static_cast<int>(progress * 10), 20, cb_cancel);
                 }
             }
         }
-
-
+        
+        
         if (cb_cancel) {
             if (task) {
                 if (task->joinable()) {
@@ -707,7 +502,6 @@ Step::Step_Status Step::mesh(Model* model,
             delete task;
         }
     }
-
 
     if (new_object->volumes.size() == 0) {
         model->delete_object(new_object);
@@ -749,7 +543,7 @@ unsigned int Step::get_triangle_num(double linear_deflection, double angle_defle
     } catch(const Exception &) {
         return 0;
     }
-
+    
     return tri_num;
 }
 

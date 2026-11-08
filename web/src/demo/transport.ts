@@ -1,4 +1,3 @@
-
 import type { ServicePresets } from '../api/catalog';
 type Row = Record<string, any>;
 interface Seed { library: Row; preferences: Row; session: Row; health: Row; options: Row; tooltips: Row;
@@ -25,7 +24,7 @@ function initial(s: Seed): DemoState { return structuredClone({ library: s.libra
   projects: Object.fromEntries(s.projects.map(p => [p.meta.id, p])), drafts: {}, assets: {}, jobs: {}, versions: {}, folders: [], folderRevision: 0 }); }
 async function state(): Promise<DemoState> {
   return stateRead ??= seed().then(s => {
-    if (mainThread) { try { const saved = sessionStorage.getItem(STORAGE); if (saved) return JSON.parse(saved) as DemoState; } catch {                                                 } }
+    if (mainThread) { try { const saved = sessionStorage.getItem(STORAGE); if (saved) return JSON.parse(saved) as DemoState; } catch {  } }
     return initial(s);
   });
 }
@@ -36,7 +35,6 @@ function save(s: DemoState) {
 }
 export async function resetDemo() {
   const next = initial(await seed());
-
   next.preferences = { revision: 0, document: {} };
   next.session = { revision: 0, document: { demoOnboarding: true } };
   stateRead = Promise.resolve(next); save(next);
@@ -107,6 +105,7 @@ const from64 = (value: string) => new Response(Uint8Array.from(atob(value), c =>
 async function handle(request: Request): Promise<Response> {
   const url = new URL(request.url), path = decodeURIComponent(url.pathname).slice(5), method = request.method, data = await seed();
   if (path === 'healthz') return json(data.health);
+  if (path === 'update') return json({ release: null });
   if (path === 'options') return json({ ...data.options, devReset: false });
   if (path === 'options/tooltips') return json(data.tooltips);
   if (path === 'printer-catalog') return json(data.printers);

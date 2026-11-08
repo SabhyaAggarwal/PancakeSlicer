@@ -1,6 +1,3 @@
-
-
-
 import * as THREE from 'three';
 import { getState, markStale, newId, setState, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
@@ -17,7 +14,6 @@ export async function assemble(ids: number[]) {
   const objects = getState().objects.filter((o) => ids.includes(o.id) && !o.project?.placeholder);
   if (objects.length < 2 && !(objects.length === 1 && objects[0].instances.length > 1)) return;
   const [o0] = objects, i0 = o0.instances[0];
-
   const world0 = copy(o0.geometry, instanceMatrix(o0, i0));
   world0.computeBoundingBox();
   const b = world0.boundingBox!, c = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z);

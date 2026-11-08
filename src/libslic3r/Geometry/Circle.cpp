@@ -25,21 +25,15 @@ Point circle_center_taubin_newton(const Points::const_iterator& input_begin, con
 	return Point::new_scale(center.x(), center.y());
 }
 
-
-
-
 Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_begin, const Vec2ds::const_iterator& input_end, size_t cycles)
 {
-
     const Vec2d sum = std::accumulate(input_begin, input_end, Vec2d(0,0));
     const size_t n = std::distance(input_begin, input_end);
     const double n_flt = static_cast<double>(n);
     const Vec2d centroid { sum / n_flt };
 
-
     double Mxx = 0, Myy = 0, Mxy = 0, Mxz = 0, Myz = 0, Mzz = 0;
     for (auto it = input_begin; it < input_end; ++it) {
-
         double Xi {it->x() - centroid.x()};
         double Yi {it->y() - centroid.y()};
         double Zi {Xi*Xi + Yi*Yi};
@@ -51,15 +45,12 @@ Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_begin, con
         Mzz += (Zi*Zi);
     }
 
-
     Mxx /= n_flt;
     Myy /= n_flt;
     Mxy /= n_flt;
     Mxz /= n_flt;
     Myz /= n_flt;
     Mzz /= n_flt;
-
-
 
     const double Mz {Mxx + Myy};
     const double Cov_xy {Mxx*Myy - Mxy*Mxy};
@@ -70,7 +61,6 @@ Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_begin, con
 
     const double C22 = {C2 + C2};
     const double C33 = {C3 + C3 + C3};
-
 
     double xnew = 0.0;
     double ynew = 1e20;
@@ -90,12 +80,10 @@ Vec2d circle_center_taubin_newton(const Vec2ds::const_iterator& input_begin, con
         if (std::abs((xnew-xold) / xnew) < 1e-12) i = cycles;
 
         if (xnew < 0) {
-
             xnew = 0.0;
         }
     }
-
-
+    
     double DET = xnew*xnew - xnew*Mz + Cov_xy;
 
     Vec2d center(Mxz * (Myy - xnew) - Myz * Mxy, Myz * (Mxx - xnew) - Mxz*Mxy);

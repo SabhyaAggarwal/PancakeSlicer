@@ -1,8 +1,3 @@
-
-
-
-
-
 import * as THREE from 'three';
 import type { PreviewData } from './data';
 import { MoveType } from './format';
@@ -39,7 +34,6 @@ export interface HoverInfo {
 
 export class NonplanarHover {
   private grid: Grid | null = null;
-
 
   pick(d: PreviewData, camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, w: number, h: number, range: [number, number], hiddenRoles: Set<number>, px: number, py: number): number {
     const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -103,18 +97,13 @@ function build(d: PreviewData, m: THREE.Matrix4, w: number, h: number, range: [n
   return g;
 }
 
-
 export function explain(d: PreviewData, id: number, record: Record<string, unknown> | undefined): HoverInfo {
   const st = d.states!;
   const s = d.state[id];
   const patchId = st.patch[s];
   const objects = (record?.objects as { id?: number; name?: string; patches?: RecordPatch[]; instances?: { shift_mm?: number[] }[] }[] | undefined) ?? [];
-
-
   const label = st.label[s];
   let own = objects.filter((o) => o.id === label);
-
-
   if (!own.length && objects.length > 1 && label >= 0) {
     const c = labelCentres(d).get(label);
     let best = Infinity;
@@ -142,7 +131,6 @@ export function explain(d: PreviewData, id: number, record: Record<string, unkno
 }
 
 const centres = new WeakMap<PreviewData, Map<number, [number, number]>>();
-
 
 function labelCentres(d: PreviewData): Map<number, [number, number]> {
   let out = centres.get(d);

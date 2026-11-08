@@ -19,7 +19,6 @@ namespace Slic3r {
 
 namespace {
 
-
 inline uint64_t edge_key(int a, int b)
 {
     const uint32_t lo = uint32_t(std::min(a, b)), hi = uint32_t(std::max(a, b));
@@ -32,8 +31,6 @@ void bake_stage_topology(const BakeStageMesh &mesh, size_t &open_edges, size_t &
                          size_t &degenerate)
 {
     open_edges = non_manifold_edges = degenerate = 0;
-
-
 
     std::vector<uint64_t> keys;
     keys.reserve(mesh.indices.size() * 3);
@@ -90,9 +87,6 @@ void BakeStageRecorder::capture(const char *name, const TextureBake::TriSoup &so
     s.detail = detail;
     s.ms     = ms;
 
-
-
-
     const size_t                 n = soup.pos.size();
     TextureBake::QuantizedPointMap map(TextureBake::WELD_GRID_GEOMETRY, std::min(n, size_t(1) << 22));
     std::vector<int>             id(n);
@@ -104,8 +98,6 @@ void BakeStageRecorder::capture(const char *name, const TextureBake::TriSoup &so
     }
     s.mesh.indices.reserve(n / 3);
     for (size_t t = 0; t + 2 < n; t += 3) {
-
-
         if (id[t] == id[t + 1] || id[t + 1] == id[t + 2] || id[t] == id[t + 2])
             continue;
         s.mesh.indices.emplace_back(id[t], id[t + 1], id[t + 2]);
@@ -175,8 +167,6 @@ size_t dump_bake_stages(const std::vector<BakeStageSnapshot> &stages, const std:
         const BakeStageSnapshot &s = stages[i];
         if (s.mesh.empty())
             continue;
-
-
 
         std::string safe;
         for (const char c : s.name)

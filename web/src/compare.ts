@@ -1,6 +1,3 @@
-
-
-
 import { useSyncExternalStore } from 'react';
 import { jobRequest } from './actions';
 import { canForcePlanar } from './api/client';
@@ -10,18 +7,18 @@ import { jobValue } from './options';
 import { getState } from './state/store';
 import { createMachine, type StateNode } from './flow/fsm';
 
+export type CompareSource = 'standard' | 'previous';
 export type CompareState =
   | { state: 'idle' }
-  | { state: 'running'; key: string; queued: boolean; pct: number }
-  | { state: 'done'; key: string; id: string; status: JobStatus }
-  | { state: 'failed'; key: string; error: string; busy: boolean };
+  | { state: 'running'; source: 'standard'; key: string; queued: boolean; pct: number }
+  | { state: 'done'; source: CompareSource; key: string; id: string; status: JobStatus }
+  | { state: 'failed'; source: 'standard'; key: string; error: string; busy: boolean };
 
-type CompareEvent = { type: 'START'; key: string } | { type: 'SHOW'; key: string; id: string; status: JobStatus } | { type: 'STOP' }
+type CompareEvent = { type: 'START'; key: string } | { type: 'SHOW'; source: CompareSource; key: string; id: string; status: JobStatus } | { type: 'STOP' }
   | { type: 'FORGET'; key: string } | { type: 'PROGRESS'; request: number; queued: boolean; pct: number }
   | { type: 'DONE'; request: number; id: string; status: JobStatus } | { type: 'FAIL'; request: number; error: string; busy: boolean };
 interface CompareContext { request: number; view: CompareState }
 const cache = new Map<string, { id: string; status: JobStatus }>();
-
 let active: { id?: string; stop?: () => void; submission: AbortController } | null = null;
 function stopActive() {
   const a = active;
@@ -35,9 +32,8 @@ type On = NonNullable<StateNode<CompareState['state'], CompareEvent, Ctx>['on']>
 const listeners = new Set<() => void>();
 const mine = (c: Ctx, e: { request: number }) => e.request === c.request;
 const key = (c: Ctx) => c.view.state === 'idle' ? '' : c.view.key;
-
-const start: On['START'] = { target: 'running', action: (c, e) => ({ request: c.request + 1, view: { state: 'running', key: e.key, queued: true, pct: 0 } }) };
-const show: On['SHOW'] = { target: 'done', action: (c, e) => ({ request: c.request + 1, view: { state: 'done', key: e.key, id: e.id, status: e.status } }) };
+const start: On['START'] = { target: 'running', action: (c, e) => ({ request: c.request + 1, view: { state: 'running', source: 'standard', key: e.key, queued: true, pct: 0 } }) };
+const show: On['SHOW'] = { target: 'done', action: (c, e) => ({ request: c.request + 1, view: { state: 'done', source: e.source, key: e.key, id: e.id, status: e.status } }) };
 const stopped = (c: Ctx): Partial<Ctx> => ({ request: c.request + 1, view: { state: 'idle' } });
 const late = {};
 const settled: On = { START: start, SHOW: show, STOP: { target: 'idle', action: stopped },
@@ -47,9 +43,9 @@ const compare = createMachine<CompareState['state'], CompareEvent, CompareContex
   states: {
     idle: { on: { ...settled, STOP: {} } },
     running: { exit: () => { stopActive(); }, on: { ...settled,
-      PROGRESS: [{ guard: mine, action: (c, e) => ({ view: { state: 'running', key: key(c), queued: e.queued, pct: e.pct } }) }, late],
-      DONE: [{ target: 'done', guard: mine, action: (c, e) => { cache.set(key(c), { id: e.id, status: e.status }); return { view: { state: 'done', key: key(c), id: e.id, status: e.status } }; } }, late],
-      FAIL: [{ target: 'failed', guard: mine, action: (c, e) => ({ view: { state: 'failed', key: key(c), error: e.error, busy: e.busy } }) }, late],
+      PROGRESS: [{ guard: mine, action: (c, e) => ({ view: { state: 'running', source: 'standard', key: key(c), queued: e.queued, pct: e.pct } }) }, late],
+      DONE: [{ target: 'done', guard: mine, action: (c, e) => { cache.set(key(c), { id: e.id, status: e.status }); return { view: { state: 'done', source: 'standard', key: key(c), id: e.id, status: e.status } }; } }, late],
+      FAIL: [{ target: 'failed', guard: mine, action: (c, e) => ({ view: { state: 'failed', source: 'standard', key: key(c), error: e.error, busy: e.busy } }) }, late],
     } },
     done: { on: settled },
     failed: { on: settled },
@@ -62,16 +58,33 @@ export function useCompare(): CompareState {
   return useSyncExternalStore(compare.subscribe, () => compare.get().context.view);
 }
 
-
-let wanted = false;
-export function setCompareWanted(on: boolean) {
-  wanted = on;
+let wanted: CompareSource | null = null;
+export function setCompareWanted(source: CompareSource | null) {
+  wanted = source;
+  if (!source) baseline = null;
   for (const l of listeners) l();
 }
-export function useCompareWanted(): boolean {
+export function useCompareWanted(): CompareSource | null {
   return useSyncExternalStore(subscribe, () => wanted);
 }
 
+export interface Baseline { id: string; status: JobStatus; signature: string; warnings: string[] }
+let baseline: Baseline | null = null;
+export function useBaseline(): Baseline | null {
+  return useSyncExternalStore(subscribe, () => baseline);
+}
+
+export function sliceAndCompare(slice: () => Promise<unknown>) {
+  const job = getState().job;
+  if (job.state !== 'done' || !job.id || !job.status || !job.plateSignature) return;
+  baseline = { id: job.id, status: job.status, signature: job.plateSignature, warnings: job.warnings ?? [] };
+  setCompareWanted('previous');
+  void slice();
+}
+
+export function showPrevious() {
+  if (baseline) compare.send({ type: 'SHOW', source: 'previous', key: baseline.signature, id: baseline.id, status: baseline.status });
+}
 
 let standardData: PreviewData | null = null;
 export function setStandardData(d: PreviewData | null) {
@@ -82,37 +95,29 @@ export function useStandardData(): PreviewData | null {
   return useSyncExternalStore(subscribe, () => standardData);
 }
 
-
-
-
-
-
 async function standardRequest() {
   const req = await jobRequest(getState());
   const flat = { nonplanar_mode: jobValue('nonplanar_mode', 'off'), zaa_enabled: false };
   return {
     ...req,
     overrides: { ...req.overrides, ...flat },
-
     plate: req.plate && { objects: req.plate.objects.map((o) => {
       const { nonplanar_mode: _, ...rest } = o.settings ?? {};
       return { ...o, settings: canForcePlanar() ? { ...rest, zaa_enabled: '0' } : { ...rest, nonplanar_mode: 'off', zaa_enabled: '0' } };
     }) },
     project_settings: req.plate ? undefined : canForcePlanar() ? { zaa_enabled: false } : flat,
     force_planar: canForcePlanar() || undefined,
-
     output: 'gcode' as const,
     priority: 'low' as const,
   };
 }
-
 
 export async function startCompare() {
   const s = getState();
   const key = s.job.plateSignature;
   if (!s.api || s.job.state !== 'done' || !key) return;
   const kept = cache.get(key);
-  if (kept) return compare.send({ type: 'SHOW', key, ...kept });
+  if (kept) return compare.send({ type: 'SHOW', source: 'standard', key, ...kept });
   const now = compare.get().context.view;
   if (now.state === 'running' && now.key === key) return;
   compare.send({ type: 'START', key });
@@ -120,7 +125,6 @@ export async function startCompare() {
   active = own;
   const current = () => compare.get().context.request === request;
   try {
-
     const id = await s.api.submit(await standardRequest(), submission.signal);
     if (!current()) return void s.api.cancel(id).catch(() => undefined);
     own.id = id;
@@ -136,9 +140,7 @@ export async function startCompare() {
   }
 }
 
-
 export const stopCompare = () => compare.send({ type: 'STOP' });
-
 
 export function forgetCompare(key: string) {
   cache.delete(key);

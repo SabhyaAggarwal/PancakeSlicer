@@ -13,7 +13,6 @@ class TriangleMesh;
 class ModelObject;
 class Model;
 
-
 extern bool load_drc(const char *path, TriangleMesh *meshptr);
 extern bool load_drc(const char *path, Model *model, const char *object_name = nullptr);
 

@@ -1,5 +1,3 @@
-
-
 import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { bedArea } from '../actions';
@@ -15,7 +13,6 @@ interface Piece { side: 'upper' | 'lower' | `dowel-${number}`; triangles: number
 
 let busy = false;
 
-
 export async function performCut() {
   const s = getState();
   const t = cutTarget(s);
@@ -27,13 +24,9 @@ export async function performCut() {
   const created: PlateObject[] = [], overlay = beginBusy('Cutting object');
   try {
     setState({ toast: null });
-
-
     const toStl = instanceMatrix(o, inst).multiply(objectMatrix(o).invert()).invert();
     const p = cutPoint(s, c)!.applyMatrix4(toStl);
     const n = cutNormal(c).transformDirection(toStl);
-
-
     if (n.z < -1 + 1e-9) n.set(1e-5, 0, -1).normalize();
     const joints = c.mode === 'dovetail' || c.connectors?.length ? await import('./cutJoints') : null;
     const fd = new FormData();
@@ -44,7 +37,6 @@ export async function performCut() {
     for (const [k, v] of Object.entries(joints?.jointFields(s, c, toStl, p, n) ?? {})) fd.append(k, v);
     await attachFiles(fd, [{ name: 'cut.stl', blob: await bakeStl(o) }]);
     appendLibrary(fd, s);
-
     const response = await postJob(fd);
     if (!response.ok) throw await responseError(response);
     const { id } = await response.json() as { id: string };
@@ -62,15 +54,12 @@ export async function performCut() {
       files = await Promise.all(pieces.map(async (piece) => {
         const r = await fetch(`${s.api!.downloadUrl(id)}?piece=${piece.side}`);
         if (!r.ok) throw await responseError(r);
-
         const name = piece.side.startsWith('dowel-') ? `${base}-Dowel-Connector-${piece.side.slice(6)}` : pieces.length > 1 ? `${base}_${piece.side === 'upper' ? 'A' : 'B'}` : base;
         return { piece, file: new File([await r.blob()], `${name}.stl`, { type: 'model/stl' }) };
       }));
     } finally {
       await s.api.cancel(id);
     }
-
-
     const turned = (side: Piece['side']) => (side === 'upper' && (c.rotX !== 0 || c.rotY !== 0 || !!c.flipUpper)) || (side === 'lower' && c.placeLower);
     if (c.toParts) return void await cutToParts(o, files, signature);
     const others = s.objects.filter((ob) => ob.id !== o.id);
@@ -114,17 +103,12 @@ export async function performCut() {
   }
 }
 
-
-
-
-
 async function cutToParts(o: PlateObject, files: { piece: Piece; file: File }[], signature: string) {
   const s = getState(), inst = o.instances[0];
   const load = async (side: Piece['side']) => {
     const f = files.find((x) => x.piece.side === side);
     if (!f) throw new Error('The native tool returned one piece: the plane does not cross the object.');
     const geometry = await loadMesh(f.file);
-
     const toWorld = instanceMatrix(o, inst).multiply(objectMatrix(o).invert())
       .multiply(new THREE.Matrix4().makeTranslation(...geometry.userData.sourceCentre as [number, number, number]));
     return { f, geometry, toWorld };

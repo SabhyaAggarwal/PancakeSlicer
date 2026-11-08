@@ -14,82 +14,7 @@
 #include <cstdio>
 #include <iomanip>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 namespace marchsq {
-
 
 struct Coord
 {
@@ -118,7 +43,6 @@ struct Coord
 
 inline std::ostream& operator<<(std::ostream& os, const Coord& o) { return os << "(r=" << o.r << ",c=" << o.c << ")"; }
 
-
 using Ring = std::vector<Coord>;
 
 inline std::ostream& operator<<(std::ostream& os, const Ring& r)
@@ -129,20 +53,15 @@ inline std::ostream& operator<<(std::ostream& os, const Ring& r)
     return os << "\n";
 }
 
-
 template<class T, class Enable = void> struct _RasterTraits
 {
-
     using ValueType = typename T::ValueType;
 
-
     static ValueType get(const T& raster, size_t row, size_t col);
-
 
     static size_t rows(const T& raster);
     static size_t cols(const T& raster);
 };
-
 
 template<class ExecutionPolicy, class Enable = void> struct _Loop
 {
@@ -152,7 +71,6 @@ template<class ExecutionPolicy, class Enable = void> struct _Loop
             fn(*it, size_t(it - from));
     }
 };
-
 
 template<> struct _Loop<Slic3r::ExecutionTBB>
 {
@@ -181,8 +99,6 @@ template<class ExecutionPolicy, class It, class Fn> void for_each_idx(ExecutionP
 
 template<class E> constexpr std::underlying_type_t<E> _t(E e) noexcept { return static_cast<std::underlying_type_t<E>>(e); }
 
-
-
 enum class Dir : uint8_t {
     none      = 0b0000,
     left      = 0b0001,
@@ -196,9 +112,6 @@ enum class Dir : uint8_t {
 
 inline std::ostream& operator<<(std::ostream& os, const Dir& d) { return os << ".<v#>x##^#X#####"[_t(d)]; }
 
-
-
-
 static const constexpr std::array<uint32_t, 16> NEXT_CCW = [] {
     auto map = decltype(NEXT_CCW){};
     for (uint32_t cbda = 0; cbda < 16; cbda++) {
@@ -208,7 +121,6 @@ static const constexpr std::array<uint32_t, 16> NEXT_CCW = [] {
     }
     return map;
 }();
-
 
 inline void step(Coord& crd, const Dir d, const long n = 1)
 {
@@ -227,36 +139,28 @@ template<class Rst> class Grid
     size_t                m_gridlen;
     std::vector<uint32_t> m_tags;
     std::vector<uint32_t> m_dirs;
-
-
     inline Coord rastercoord(const Coord& crd) const
     {
-
         return {(crd.r - 1) * m_window.r, (crd.c - 1) * m_window.c};
     }
-
 
     Coord bl(const Coord& crd) const { return tl(crd) + Coord{m_window.r, 0}; }
     Coord br(const Coord& crd) const { return tl(crd) + Coord{m_window.r, m_window.c}; }
     Coord tr(const Coord& crd) const { return tl(crd) + Coord{0, m_window.c}; }
     Coord tl(const Coord& crd) const { return rastercoord(crd); }
 
-
     inline bool is_within(const Coord& crd) const { return crd.r >= 0 && crd.r < m_rastsize.r && crd.c >= 0 && crd.c < m_rastsize.c; }
-
 
     uint32_t get_tags_block32(const size_t bidx, const TRasterValue<Rst> v) const
     {
         Coord    gcrd = coord(bidx * 32);
         Coord    rcrd = rastercoord(gcrd);
         uint32_t tags = 0;
-
         for (uint32_t b = 1; b; b <<= 1) {
             if (is_within(rcrd) && isoval(*m_rst, rcrd) > v)
                 tags |= b;
             gcrd.c += 1;
             rcrd.c += m_window.c;
-
             if (gcrd.c >= m_gridsize.c) {
                 gcrd = Coord(gcrd.r + 1, 0);
                 rcrd = rastercoord(gcrd);
@@ -265,16 +169,12 @@ template<class Rst> class Grid
         return tags;
     }
 
-
     uint32_t get_dirs_block8(const size_t bidx) const
     {
         size_t   gidx = bidx * 8;
         uint32_t dirs = 0;
 
-
-
         uint32_t tags9 = get_tags9(gidx) | (get_tags9(gidx + m_gridsize.c) << 16);
-
         if ((tags9 != 0) && (tags9 != 0x01ff01ff)) {
             for (auto s = 0; s < 32; s += 4) {
                 uint8_t tags = (tags9 & 0b11) | ((tags9 >> 14) & 0b1100);
@@ -285,7 +185,6 @@ template<class Rst> class Grid
         return dirs;
     }
 
-
     uint32_t get_tags9(size_t gidx) const
     {
         uint32_t tags = 0;
@@ -293,16 +192,13 @@ template<class Rst> class Grid
         int      o    = gidx % 32;
 
         if (gidx < m_gridlen) {
-
             tags = (m_tags[i] >> o) & 0x1ff;
-
             if ((o > (32 - 9)) && ((i + 1) < m_tags.size())) {
                 tags |= (m_tags[i + 1] << (32 - o)) & 0x1ff;
             }
         }
         return tags;
     }
-
 
     void clr_dirs(const size_t gidx, const Dir d)
     {
@@ -313,7 +209,6 @@ template<class Rst> class Grid
         m_dirs[i] &= ~(static_cast<uint32_t>(d) << (o * 4));
     }
 
-
     Dir get_dirs(const size_t gidx) const
     {
         assert(gidx < m_gridlen);
@@ -323,12 +218,9 @@ template<class Rst> class Grid
         return Dir((m_dirs[i] >> (o * 4)) & 0b1111);
     }
 
-
     Coord coord(size_t i) const { return {long(i) / m_gridsize.c, long(i) % m_gridsize.c}; }
 
-
     size_t seq(const Coord& crd) const { return crd.seq(m_gridsize); }
-
 
     size_t stepidx(const size_t idx, const Dir d) const
     {
@@ -342,22 +234,15 @@ template<class Rst> class Grid
         }
     }
 
-
     size_t search_start_cell(size_t gidx = 0) const
     {
         size_t i = gidx / 8;
         int    o = gidx % 8;
-
-
         while (i < m_dirs.size()) {
             if (!m_dirs[i]) {
-
                 i++;
                 o = 0;
             } else {
-
-
-
                 for (uint32_t m = 0b1111 << (o * 4); !(m_dirs[i] & m); m <<= 4)
                     o++;
                 break;
@@ -366,26 +251,18 @@ template<class Rst> class Grid
         return i * 8 + o;
     }
 
-
     Dir next_dir(size_t idx, Dir prev = Dir::all) const
     {
         Dir next = get_dirs(idx);
 
-
-
-
-
         switch (next) {
         case Dir::leftright:
-
             assert(prev == Dir::up || prev == Dir::down || prev == Dir::all);
             return (prev == Dir::up) ? Dir::left : Dir::right;
         case Dir::updown:
-
             assert(prev == Dir::left || prev == Dir::right || prev == Dir::all);
             return (prev == Dir::right) ? Dir::up : Dir::down;
         default:
-
             assert(next == Dir::none || next == Dir::left || next == Dir::down || next == Dir::right || next == Dir::up);
             return next;
         }
@@ -467,8 +344,6 @@ template<class Rst> class Grid
         inline bool operator>=(const CellIt& o) const { return (*this - o) >= 0; }
     };
 
-
-
     struct Edge
     {
         CellIt from, to;
@@ -505,14 +380,10 @@ template<class Rst> class Grid
 
     void interpolate_edge(Coord& ecrd, TRasterValue<Rst> isoval) const
     {
-
         assert((0 <= ecrd.r) && (ecrd.r < m_gridlen));
         assert((ecrd.c == long(Dir::left)) || (ecrd.c == long(Dir::down)) || (ecrd.c == long(Dir::right)) || (ecrd.c == long(Dir::up)));
         Edge e = edge(ecrd);
         ecrd   = std::lower_bound(e.from, e.to, isoval).crd;
-
-
-
         if (e.from.dir == Dir::up)
             ecrd.r += 1;
         else if (e.from.dir == Dir::left)
@@ -530,22 +401,13 @@ public:
         , m_dirs(m_gridlen / 8 + 1, 0)
     {}
 
-
     template<class ExecutionPolicy> void tag_grid(ExecutionPolicy&& policy, TRasterValue<Rst> isoval)
     {
-
         for_each_idx(std::forward<ExecutionPolicy>(policy), m_tags.begin(), m_tags.end(),
                      [this, isoval](uint32_t& tag_block, size_t bidx) { tag_block = get_tags_block32(bidx, isoval); });
-
-
         for_each_idx(std::forward<ExecutionPolicy>(policy), m_dirs.begin(), m_dirs.end(),
                      [this](uint32_t& dirs_block, size_t bidx) { dirs_block = get_dirs_block8(bidx); });
-
     }
-
-
-
-
 
     std::vector<Ring> scan_rings()
     {
@@ -557,8 +419,6 @@ public:
             size_t idx  = startidx;
             Dir    next = next_dir(idx);
             do {
-
-
                 assert(next != Dir::none);
                 Coord ringvertex{long(idx), long(next)};
                 ring.emplace_back(ringvertex);
@@ -567,16 +427,12 @@ public:
                 next = next_dir(idx, next);
                 assert(idx < m_gridlen);
             } while (idx != startidx);
-
-
             assert(next == Dir::none || next == Dir::left || next == Dir::up);
             if (ring.size() > 1)
                 rings.emplace_back(ring);
         }
         return rings;
     }
-
-
 
     template<class ExecutionPolicy> void interpolate_rings(ExecutionPolicy&& policy, std::vector<Ring>& rings, TRasterValue<Rst> isov)
     {

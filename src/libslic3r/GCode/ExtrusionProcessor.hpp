@@ -1,10 +1,7 @@
 #ifndef slic3r_ExtrusionProcessor_hpp_
 #define slic3r_ExtrusionProcessor_hpp_
 
-
-
 #include "../AABBTreeLines.hpp"
-
 #include "../libslic3r.h"
 #include "../ExtrusionEntity.hpp"
 #include "../Layer.hpp"
@@ -41,7 +38,6 @@ template<int Dim> struct ExtendedPoint
     float curvature;
 };
 
-
 struct NoKnownDistances
 {
     template<typename P> const double *operator()(const P &) const { return nullptr; }
@@ -54,13 +50,8 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                                                               float                                   flow_width,
                                                               float                                   max_line_length = -1.0f,
                                                               float                                   min_distance    = -1.0f,
-
-
                                                               const std::function<float(float)>&      distance_to_speed = {},
-
-
                                                               float                                   fan_overlap_threshold = -1.0f,
-
                                                               const KNOWN_DISTANCES&                  known_distance = KNOWN_DISTANCES{})
 {
     bool   looped     = input_points.front() == input_points.back();
@@ -92,11 +83,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
     };
 
     using P = typename POINTS::value_type;
-
-
-
-
-
     double min_spacing = flow_width*0.25;
 
     using AABBScalar = typename AABBTreeLines::LinesDistancer<L>::Scalar;
@@ -127,10 +113,8 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
         ExtendedPoint<L::Dim> next_point{maybe_unscale(input_points[i])};
         next_point.distance = input_distance(input_points[i], next_point.position) + boundary_offset;
 
-
         if (ADD_INTERSECTIONS &&
             ((points.back().distance > boundary_offset + EPSILON) != (next_point.distance > boundary_offset + EPSILON))) {
-
             const ExtendedPoint<L::Dim>  prev_point    = points.back();
             auto                         intersections = unscaled_prev_layer.template intersections_with_line<true>(
                 L{prev_point.position.template cast<AABBScalar>(), next_point.position.template cast<AABBScalar>()});
@@ -138,7 +122,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                 ExtendedPoint<L::Dim> p{};
                 p.position = intersection.first.template cast<double>();
                 p.distance = boundary_offset;
-
                 if ((p.position - prev_point.position).norm() > min_spacing &&
                     (next_point.position - p.position).norm() > min_spacing) {
                     points.push_back(p);
@@ -148,44 +131,20 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
         points.push_back(next_point);
     }
 
-
-
-
-
     const float width_inv = 1.f / flow_width;
-
     auto fan_on = [fan_overlap_threshold, width_inv](float distance) {
         return fan_overlap_threshold >= 0.f && 1.f - distance * width_inv <= fan_overlap_threshold;
     };
-
-
     auto same_speed_and_fan = [&distance_to_speed, &fan_on](float a, float b) {
         return std::abs(distance_to_speed(a) - distance_to_speed(b)) <= 1.f && fan_on(a) == fan_on(b);
     };
-
-
-
     auto slower_or_cooled = [&distance_to_speed, &fan_on](float a, float b) {
         return distance_to_speed(a) < distance_to_speed(b) - 1.f || (fan_on(a) && !fan_on(b));
     };
 
-
-
-
-
-
-
-
-
-
     if (PREV_LAYER_BOUNDARY_OFFSET && ADD_INTERSECTIONS && distance_to_speed && (min_distance > 0 || fan_overlap_threshold >= 0.f)) {
-
-
-
         const double max_probe_spacing = std::max(2., 4. * min_spacing);
-
         constexpr int max_bisection_depth = 10;
-
 
         struct Subspan { double t0, t1; int depth; };
 
@@ -222,9 +181,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
             if (!interior.empty()) {
                 std::sort(interior.begin(), interior.end(),
                           [](const std::pair<double, float>& l, const std::pair<double, float>& r) { return l.first < r.first; });
-
-
-
                 size_t kept = 0;
                 for (size_t i = 0; i < interior.size(); ++i) {
                     const float sample    = interior[i].second;
@@ -232,13 +188,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                     const bool  at_end    = i + 1 == interior.size();
                     const float before    = at_start ? curr.distance : interior[kept - 1].second;
                     const float after     = at_end ? next.distance : interior[i + 1].second;
-
-
-
-
-
-
-
                     const bool worth_before = !same_speed_and_fan(sample, before) && (!at_start || slower_or_cooled(sample, before));
                     const bool worth_after  = !same_speed_and_fan(sample, after) && (!at_end || slower_or_cooled(sample, after));
                     if (worth_before || worth_after)
@@ -252,8 +201,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                 sampled_points.assign(points.begin(), points.begin() + point_idx + 1);
             }
             if (!sampled_points.empty()) {
-
-
                 for (const auto& [t, distance] : interior)
                     sampled_points.push_back({curr.position + t * step, distance});
                 sampled_points.push_back(next);
@@ -262,7 +209,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
         if (!sampled_points.empty())
             points = std::move(sampled_points);
     }
-
 
     if (PREV_LAYER_BOUNDARY_OFFSET && ADD_INTERSECTIONS) {
         std::vector<ExtendedPoint<L::Dim>> new_points;
@@ -276,27 +222,14 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                 (next.distance > -boundary_offset && next.distance < boundary_offset + 2.0f)) {
                 double line_len = (next.position - curr.position).norm();
 
-
-
-
-
-
-
-
                 const bool split_line = distance_to_speed ?
                     line_len >= 2.f && (slower_or_cooled(curr.distance, 0.f) || slower_or_cooled(next.distance, 0.f)) :
                     line_len > 4.0f;
                 if (split_line) {
-
-
                     double a0 = std::clamp((curr.distance + 3 * boundary_offset) / line_len, 0.0, 1.0);
                     double a1 = std::clamp(1.0f - (next.distance + 3 * boundary_offset) / line_len, 0.0, 1.0);
                     double t0 = std::min(a0, a1);
                     double t1 = std::max(a0, a1);
-
-
-
-
 
                     ExtendedPoint<L::Dim> cut[2]{};
                     bool                  keep[2] = {false, false};
@@ -312,17 +245,12 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                         keep[k] = (p - curr.position).norm() > min_spacing && (next.position - p).norm() > min_spacing;
                     }
                     if (distance_to_speed) {
-
-
-
                         if (keep[0])
                             keep[0] = !same_speed_and_fan(cut[0].distance, curr.distance) ||
                                       !same_speed_and_fan(cut[0].distance, keep[1] ? cut[1].distance : next.distance);
                         if (keep[1])
                             keep[1] = !same_speed_and_fan(cut[1].distance, keep[0] ? cut[0].distance : curr.distance) ||
                                       !same_speed_and_fan(cut[1].distance, next.distance);
-
-
                         if (keep[0] && keep[1] && (cut[1].position - cut[0].position).norm() <= min_spacing)
                             keep[1] = false;
                     }
@@ -335,7 +263,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
         }
         points = std::move(new_points);
     }
-
 
     if (max_line_length > 0) {
         std::vector<ExtendedPoint<L::Dim>> new_points;
@@ -355,8 +282,7 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
                     ExtendedPoint<L::Dim> new_p{};
                     new_p.position = pos;
                     new_p.distance = float(p_dist + boundary_offset);
-
-
+                    
                     if ((pos - curr.position).norm() > min_spacing && (next.position - pos).norm() > min_spacing) {
                         new_points.push_back(new_p);
                     }
@@ -369,7 +295,6 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
 
     if constexpr (!CURVATURE)
         return points;
-
 
     float accumulated_distance = 0;
     std::vector<float> distances_for_curvature(points.size());
@@ -443,8 +368,6 @@ struct Point3Hash
     size_t operator()(const Vec3crd &pt) const noexcept { return size_t(((89 * 31 + int64_t(pt.x())) * 31 + pt.y()) * 31 + pt.z()); }
 };
 
-
-
 struct PrecomputedOverhangLayer
 {
     const PrintObject                                               *object{nullptr};
@@ -453,8 +376,6 @@ struct PrecomputedOverhangLayer
     std::shared_ptr<const AABBTreeLines::LinesDistancer<CurledLine>> lower_curled_lines;
     std::unordered_map<Point3, double, Point3Hash>                   distances;
 };
-
-
 
 inline PrecomputedOverhangLayer precompute_overhang_layer(const PrintObject *object, const Layer &layer, bool curled_lines = true)
 {
@@ -488,14 +409,9 @@ struct ProcessedPoint
     float overlap = 1.0f;
 };
 
-
-
-
 struct OverhangSpeedSections
 {
-
     static ConfigOptionPercents overlap_levels() { return ConfigOptionPercents({90, 75, 50, 25, 13, 0}); }
-
 
     std::vector<std::pair<float, float>> sections;
 
@@ -522,7 +438,6 @@ struct OverhangSpeedSections
         }
     }
 
-
     float slowdown_from(float original_speed) const
     {
         float smallest = std::numeric_limits<float>::infinity();
@@ -534,7 +449,6 @@ struct OverhangSpeedSections
             }
         return found ? smallest : -1.f;
     }
-
 
     float speed(float distance, float original_speed) const
     {
@@ -561,7 +475,6 @@ class ExtrusionQualityEstimator
     using CurledLines  = AABBTreeLines::LinesDistancer<CurledLine>;
     std::unordered_map<const PrintObject*, std::shared_ptr<const Boundaries>>  prev_layer_boundaries;
     std::unordered_map<const PrintObject*, std::shared_ptr<const CurledLines>> prev_curled_extrusions;
-
     std::unordered_map<const PrintObject*, const Layer*>                      prev_layer_sources;
     std::unordered_map<const PrintObject*, const Layer*>                      last_prepared_layers;
     std::vector<PrecomputedOverhangLayer>                                     precomputed_layers;
@@ -583,9 +496,7 @@ class ExtrusionQualityEstimator
 public:
     void set_current_object(const PrintObject *object) { current_object = object; }
 
-
     void set_precomputed_layers(std::vector<PrecomputedOverhangLayer> &&layers) { precomputed_layers = std::move(layers); }
-
 
     void prepare_for_new_layer(const PrintObject * obj, const Layer *layer)
     {
@@ -612,26 +523,16 @@ public:
                                                            float                               ext_perimeter_speed,
                                                            float                               original_speed,
                                                            bool								   slowdown_for_curled_edges,
-
-
                                                            float                               fan_overlap_threshold = -1.0f)
     {
         const OverhangSpeedSections speed_sections(overlaps, speeds, ext_perimeter_speed, path.width);
-
-
         const float smallest_distance_with_lower_speed = speed_sections.slowdown_from(original_speed);
 
-
         auto calculate_speed = [&speed_sections, &original_speed](float distance) { return speed_sections.speed(distance, original_speed); };
-
-
-
-
 
         auto effective_speed = [&calculate_speed, original_speed](float distance) {
             return std::min(calculate_speed(distance), original_speed);
         };
-
 
         const std::unordered_map<Point3, double, Point3Hash> *known = nullptr;
         if (const PrecomputedOverhangLayer *precomputed = precomputed_for(current_object);
@@ -659,19 +560,14 @@ public:
 
             float artificial_distance_to_curled_lines = 0.0;
             if(slowdown_for_curled_edges) {
-
-                const double dist_limit = 10.0 * path.width;
+            	const double dist_limit = 10.0 * path.width;
 				{
                     Vec3d middle       = 0.5 * (curr.position + next.position);
                     auto  line_indices = prev_curled.all_lines_in_radius(Point::new_scale(middle),
                                                                                                     scale_(dist_limit));
                     if (!line_indices.empty()) {
                         double len = (next.position - curr.position).norm();
-
-
-
-
-                        if (len > 2) {
+                    	if (len > 2) {
                             Vec2d dir   = Vec2d(next.position.head<2>() - curr.position.head<2>()) / len;
                             Vec2d right = Vec2d(-dir.y(), dir.x());
 
@@ -686,38 +582,36 @@ public:
                             for (size_t idx : line_indices) {
                                 const CurledLine& line   = prev_curled.get_line(idx);
                                 Lines             inside = intersection_ln({{line.a, line.b}}, {box_of_influence});
-                                if (inside.empty())
-                                    continue;
-                                double projected_length = abs(dir.dot(unscaled(Vec2d((inside.back().b - inside.back().a).cast<double>()))));
-                                projected_lengths_sum += projected_length;
+                            	if (inside.empty())
+                                	continue;
+                            	double projected_length = abs(dir.dot(unscaled(Vec2d((inside.back().b - inside.back().a).cast<double>()))));
+                            	projected_lengths_sum += projected_length;
                             }
                             if (projected_lengths_sum < 0.4 * len) {
                                 line_indices.clear();
                             }
                         }
-
-                        for (size_t idx : line_indices) {
-                            const CurledLine &line                 = prev_curled.get_line(idx);
-                            float             distance_from_curled = unscaled(line_alg::distance_to(line, Point::new_scale(middle)));
-                            float             dist                 = path.width * (1.0 - (distance_from_curled / dist_limit)) *
+                    
+                    	for (size_t idx : line_indices) {
+                        	const CurledLine &line                 = prev_curled.get_line(idx);
+                        	float             distance_from_curled = unscaled(line_alg::distance_to(line, Point::new_scale(middle)));
+                        	float             dist                 = path.width * (1.0 - (distance_from_curled / dist_limit)) *
                                      (1.0 - (distance_from_curled / dist_limit)) *
                                      (line.curled_height / (path.height * 10.0f));
-                            artificial_distance_to_curled_lines = std::max(artificial_distance_to_curled_lines, dist);
-                        }
+                        	artificial_distance_to_curled_lines = std::max(artificial_distance_to_curled_lines, dist);
+                    	}
                     }
                 }
-            }
+            }	
 
             float extrusion_speed = std::min(calculate_speed(curr.distance), calculate_speed(next.distance));
-
-
             extrusion_speed = std::min(extrusion_speed, original_speed);
-
+            
             if(slowdown_for_curled_edges) {
                 float curled_speed = calculate_speed(artificial_distance_to_curled_lines);
-                extrusion_speed       = std::min(curled_speed, extrusion_speed);
+            	extrusion_speed       = std::min(curled_speed, extrusion_speed);
             }
-
+            
             float overlap = std::min(1 - (curr.distance+artificial_distance_to_curled_lines) * width_inv, 1 - (next.distance+artificial_distance_to_curled_lines) * width_inv);
 
             processed_points.push_back({Point3(scaled(curr.position)), extrusion_speed, overlap});

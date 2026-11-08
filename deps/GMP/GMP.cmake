@@ -45,17 +45,17 @@ else ()
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
-            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a")
+            set(_gmp_ccflags "${_gmp_ccflags} -march=armv7-a") # Works on RPi-4
             set(_gmp_build_tgt armv7)
         endif()
         set(_gmp_build_tgt "--build=${_gmp_build_tgt}-pc-linux-gnu")
     else ()
-        set(_gmp_build_tgt "")
+        set(_gmp_build_tgt "") # let it guess
     endif()
 
     set(_cross_compile_arg "")
     if (CMAKE_CROSSCOMPILING)
-
+        # TOOLCHAIN_PREFIX should be defined in the toolchain file
         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
     endif ()
 

@@ -76,8 +76,6 @@ ExtrusionPaths projected_helix(const Group &g, const NonplanarSurface &surface,
                               const NonplanarClearanceModel &head)
 {
     const double spacing = g.sample.mm3_per_mm / g.sample.height;
-
-
     const double min_height = std::max(g.home->layer()->object()->slicing_parameters().min_layer_height,
         2. * (head.safety_mm + .001));
     if (min_height >= double(g.sample.height) - 1e-6) return {};
@@ -105,8 +103,6 @@ ExtrusionPaths projected_helix(const Group &g, const NonplanarSurface &surface,
     Point3 previous_end;
     paths(region->fills, [&](const ExtrusionPath &piece) {
         if (piece.polyline.points.empty()) return;
-
-
         const Point3 &first = piece.polyline.points.front();
         const bool joined = !previous ||
             ((previous_end.to_point() - first.to_point()).cast<double>().norm() <= scale_(.000002) &&
@@ -127,7 +123,6 @@ ExtrusionPaths projected_helix(const Group &g, const NonplanarSurface &surface,
     path.source_layer_id = home->id();
     path.continuous_top = true;
     path.set_reverse();
-
     ExtrusionPaths out;
     double arc = 0.;
     auto flush = [&](ExtrusionPath &run) {
@@ -157,8 +152,6 @@ ExtrusionPaths projected_helix(const Group &g, const NonplanarSurface &surface,
         }
     }
     flush(run);
-
-
     if (!continuous_curved_top_clear(out, head)) return {};
     return out;
 }
@@ -172,8 +165,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
     for(Layer *layer:shells)
         for(size_t r=0;r<layer->region_count();++r) {
             LayerRegion *region=layer->get_region(int(r));
-
-
             if (!region->region().config().nonplanar_sublayer_walls.value) continue;
             for (const Surface &surface : region->slices.surfaces)
                 if (surface.is_nonplanar())
@@ -192,7 +183,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
                     if(!g.home || g.home->layer()->id()<layer->id()) g.home=region;
                 });
         }
-
     std::function<void(const ExtrusionEntity&,size_t)> check_unit = [&](const ExtrusionEntity &entity,size_t r) {
         if(const auto *c=dynamic_cast<const ExtrusionEntityCollection*>(&entity)) {
             for(const auto *child:c->entities) check_unit(*child,r);
@@ -220,9 +210,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
         const auto &surfaces=object.nonplanar_surfaces();
         const auto it=std::find_if(surfaces.begin(),surfaces.end(),[&](const NonplanarSurface &surface) { return surface.stable_id==surface_id; });
         if(it==surfaces.end()) continue;
-
-
-
         if (it->stats.max.z-it->stats.min.z < 2. * g.sample.height) {
             BOOST_LOG_TRIVIAL(info)<<"Continuous curved top "<<surface_id<<": shallow crown keeps native roads";
             continue;
@@ -230,11 +217,7 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
         const double spacing=g.sample.mm3_per_mm/g.sample.height;
         if(!std::isfinite(spacing) || spacing<.1 || spacing>2.) continue;
         if(object.print()->canceled()) throw CanceledException();
-        const auto head=NonplanarClearanceModel::from_print(object.print()->config(),g.sample.height);
-
-
-
-
+        const auto head=NonplanarClearanceModel::for_object(object,g.sample.height);
         ExtrusionPaths helix = projected_helix(g, *it, head);
         if (!helix.empty()) {
             BOOST_LOG_TRIVIAL(info)<<"Continuous curved top "<<surface_id<<" shell "<<offset<<": "<<g.roads
@@ -243,9 +226,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
             replaced.insert(id);
             continue;
         }
-
-
-
         const ExPolygons raw_inset = offset_ex(it->horizontal_projection(), -float(scale_(.5 * spacing)));
         if (raw_inset.empty() || !diff_ex(raw_inset, union_ex(g.area)).empty()) {
             BOOST_LOG_TRIVIAL(info)<<"Continuous curved top "<<surface_id<<": source mesh exceeds the clipped footprint; keeping original roads";
@@ -274,7 +254,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
         Points3 points;
         points.reserve(cycles.front().size());
         for(const auto &p:cycles.front()) {
-
             const Point3 q(scaled<coord_t>(std::round(1000.*p[0])*.001),scaled<coord_t>(std::round(1000.*p[1])*.001),
                            scaled<coord_t>(std::round(1000.*(p[2]-offset))*.001));
             if(points.empty() || points.back()!=q) points.push_back(q);
@@ -291,8 +270,6 @@ void make_continuous_curved_tops(const PrintObject &object, const std::vector<La
         if(path.polyline.points.size()<4) continue;
         path.source_layer_id=g.home->layer()->id();
         path.continuous_top=true;
-
-
         if (!diff_pl(Polylines{path.polyline.to_polyline()}, union_ex(g.area)).empty()) {
             BOOST_LOG_TRIVIAL(info)<<"Continuous curved top "<<surface_id<<": cycle leaves the clipped footprint; keeping original roads";
             continue;

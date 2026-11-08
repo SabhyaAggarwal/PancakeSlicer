@@ -6,7 +6,6 @@ export const valuesOf = (value: ConfigValue | undefined): string[] => value === 
 export const extruderCount = (config: Config) => Math.max(1, valuesOf(config.nozzle_diameter).length);
 export const extruderLabel = (index: number, count: number, bambu: boolean) => bambu && count === 2 ? `${index === 0 ? 'Left' : 'Right'} nozzle` : `Extruder ${index + 1}`;
 
-
 export function valueAt(value: ConfigValue | undefined, index: number, fallback = ''): string {
   const values = valuesOf(value);
   return values[index] ?? values[0] ?? fallback;
@@ -23,7 +22,6 @@ export function variantsOf(config: Config, type: PresetType): string[] {
   return valuesOf(config[`${prefix(type)}_extruder_variant`]);
 }
 
-
 export function installedVariant(config: Config, type: PresetType, machine: Config, extruder: number): number {
   const name = `${valueAt(machine.extruder_type, extruder, 'Direct Drive')} ${valueAt(machine.nozzle_volume_type ?? machine.default_nozzle_volume_type, extruder, 'Standard')}`;
   const variants = variantsOf(config, type);
@@ -32,13 +30,11 @@ export function installedVariant(config: Config, type: PresetType, machine: Conf
   return index < 0 ? 0 : index;
 }
 
-
 export function splitFilamentConfig(config: Config, slot: number): Config {
   const indices = valuesOf(config.filament_self_index).flatMap((id, i) => Number(id) === slot + 1 ? [i] : []);
   return Object.fromEntries(Object.entries(config).map(([key, value]) => [key, !Array.isArray(value) ? value :
     filament_options_with_variant.has(key) && indices.length ? indices.map((i) => valueAt(value, i)) : [valueAt(value, slot)]]));
 }
-
 
 export function variantIndex(config: Config, type: PresetType, selection: ExtruderSelection): number {
   const variants = variantsOf(config, type);
@@ -57,14 +53,12 @@ export function optionIndex(key: string, type: PresetType, config: Config, selec
   return printer_extruder_options.has(key) || key === 'extruder_offset' ? Math.min(selection.extruder, extruderCount(config) - 1) : null;
 }
 
-
 export function selectedOptionValues(config: Config, type: PresetType, selection: ExtruderSelection): Config {
   return Object.fromEntries(Object.entries(config).map(([key, value]) => {
     const index = optionIndex(key, type, config, selection);
     return [key, index === null ? value : [valueAt(value, index)]];
   }));
 }
-
 
 export function filamentVectors(configs: Config[], defaults: Config): Config {
   const variants = configs.map((c) => variantsOf(c, 'filament'));

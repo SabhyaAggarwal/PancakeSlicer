@@ -9,7 +9,6 @@
 
 namespace Slic3r {
 
-
 enum class PointsStatus {
     NoPoints,
     Generating,

@@ -1,6 +1,6 @@
 {
 	"name": "Creality",
-	"version": "02.03.02.90",
+	"version": "02.03.02.91",
 	"force_update": "0",
 	"description": "Creality configurations",
 	"machine_model_list": [
@@ -1459,52 +1459,52 @@
 			"sub_path": "process/fdm_process_creality_common_1_0.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1 (0.4 nozzle)",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1 (0.4 nozzle).json"
+			"name": "0.20mm Smoothest tops @Creality K1 (0.4 nozzle)",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1 (0.4 nozzle).json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1 Max_CFS-C 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1 Max_CFS-C 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K1 Max_CFS-C 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1 Max_CFS-C 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1 SE",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1 SE.json"
+			"name": "0.20mm Smoothest tops @Creality K1 SE",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1 SE.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1 SE_CFS-C 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1 SE_CFS-C 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K1 SE_CFS-C 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1 SE_CFS-C 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1C",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1C.json"
+			"name": "0.20mm Smoothest tops @Creality K1C",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1C.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1C_CFS-C 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1C_CFS-C 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K1C_CFS-C 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1C_CFS-C 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1Max (0.4 nozzle)",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1Max (0.4 nozzle).json"
+			"name": "0.20mm Smoothest tops @Creality K1Max (0.4 nozzle)",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1Max (0.4 nozzle).json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K1_CFS-C 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K1_CFS-C 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K1_CFS-C 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K1_CFS-C 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K2 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K2 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K2 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K2 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K2 Plus 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K2 Plus 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K2 Plus 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K2 Plus 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K2 Pro 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K2 Pro 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K2 Pro 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K2 Pro 0.4 nozzle.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality K2 SE 0.4 nozzle",
-			"sub_path": "process/0.20mm Non-planar top @Creality K2 SE 0.4 nozzle.json"
+			"name": "0.20mm Smoothest tops @Creality K2 SE 0.4 nozzle",
+			"sub_path": "process/0.20mm Smoothest tops @Creality K2 SE 0.4 nozzle.json"
 		},
 		{
 			"name": "0.08mm SuperDetail @Creality K2 0.2 nozzle",
@@ -1947,16 +1947,16 @@
 			"sub_path": "process/0.36mm Chunky @Creality Ender5Pro (2019) 1.0.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality Ender-3 V3",
-			"sub_path": "process/0.20mm Non-planar top @Creality Ender-3 V3.json"
+			"name": "0.20mm Smoothest tops @Creality Ender-3 V3",
+			"sub_path": "process/0.20mm Smoothest tops @Creality Ender-3 V3.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality Ender-3 V3 Plus",
-			"sub_path": "process/0.20mm Non-planar top @Creality Ender-3 V3 Plus.json"
+			"name": "0.20mm Smoothest tops @Creality Ender-3 V3 Plus",
+			"sub_path": "process/0.20mm Smoothest tops @Creality Ender-3 V3 Plus.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Creality Ender3V3KE",
-			"sub_path": "process/0.20mm Non-planar top @Creality Ender3V3KE.json"
+			"name": "0.20mm Smoothest tops @Creality Ender3V3KE",
+			"sub_path": "process/0.20mm Smoothest tops @Creality Ender3V3KE.json"
 		}
 	],
 	"filament_list": [

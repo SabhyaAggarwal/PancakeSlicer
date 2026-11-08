@@ -1,23 +1,19 @@
+import { openUrlImport } from '../url-import';
+import { UrlImportInline } from './UrlImport';
 import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
-
-
 import { useEffect, useSyncExternalStore } from 'react';
-import knobUrl from '../../../resources/handy_models/knurled-knob.stl?url';
+import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
 import carUrl from '../samples/sports_car_3d.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
 import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
-import { startOver, useDevReset } from '../dev-reset';
 import { openSetup } from '../onboarding/setup-flow';
 import { applySurface, type SurfaceId } from '../intent/surface';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
-
-
-
 const SAMPLES: { url: string; file: string; label: string; surface?: SurfaceId }[] = [
   { url: carUrl, file: 'sports_car.stl', label: 'Sports car', surface: 'smooth' },
   { url: handyUrl('3DBenchy.drc'), file: '3DBenchy.drc', label: 'Benchy' },
@@ -37,7 +33,9 @@ function DropZone() {
           Add model<kbd>{MOD}I</kbd>
         </button>
         <button type="button" className="btn-ghost" onClick={openProjectDialog}>Open project</button>
+        <button type="button" className="btn-ghost" onClick={() => openUrlImport('', true)}>From URL</button>
       </div>
+      <UrlImportInline />
       <div className="fr-samples">
         <span>or try</span>
         {SAMPLES.map((s) => (
@@ -49,10 +47,6 @@ function DropZone() {
     </div>
   );
 }
-
-
-
-
 
 let firstVisitObserver: (() => void) | null = null;
 onLeaveDocument(() => firstVisitObserver?.());
@@ -73,14 +67,7 @@ function afterFirstVisit() {
   firstVisitObserver=stop;
 }
 
-
 const hasFilament = (s: ReturnType<typeof getState>) => !!s.filamentSlots[0] && (() => { const r = resolvePreset(s, 'filament', s.filamentSlots[0]); return !!r.name && !r.error; })();
-
-
-export function StartOver({ className = 'btn' }: { className?: string }) {
-  if (!useDevReset()) return null;
-  return <button type="button" className={`fr-startover ${className}`} onClick={() => void startOver().catch(() => {})}>Start over</button>;
-}
 
 let setupOffered = false;
 export default function EmptyPlate() {
@@ -88,21 +75,15 @@ export default function EmptyPlate() {
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
   const library=useStore(s=>s.profileLibraryLoad.state);
   const filament=useStore(hasFilament);
-
   const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && (!printer || !filament);
-
-
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
-
   useEffect(()=>{if(firstVisit && !setupOffered){setupOffered=true;openSetup();}},[firstVisit]);
   return (
     <div className="empty-plate">
       <div className="fr-card"><DropZone /></div>
-      <StartOver />
     </div>
   );
 }
-
 
 export function SetupWizard({ close }: { close(): void }) {
   useEffect(() => { openSetup(); close(); }, []);

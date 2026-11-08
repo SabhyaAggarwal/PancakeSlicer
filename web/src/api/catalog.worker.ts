@@ -1,4 +1,3 @@
-
 import type { CompactCatalog } from './compact-catalog';
 import { normalizeCatalog } from './catalog';
 import { loadRuntimeOptions, nativePresetCatalog, type RuntimeOptions } from '../option-inventory';
@@ -6,17 +5,14 @@ import optionsUrl from '../options.generated.json?url&no-inline';
 import type { OptionDef, TabDesc } from '../options';
 import type { EngineCapabilities } from './health';
 
-
 export type CatalogIn = { id: number; type: 'mock'; url: string } | { id: number; type: 'settings'; optionsUrl: string; tabUrl: string; engine: EngineCapabilities | null } | {
   type?: 'catalog';
   id: number;
   vendor: string;
   models: string[];
-
   names?: string[];
   engine: EngineCapabilities;
 }
-
 
 export type CatalogOut =
   | { id: number; type: 'catalog'; catalog: CompactCatalog; from: 'cache' | 'network' }
@@ -57,7 +53,6 @@ async function asset(url: string) {
   return r.json();
 }
 
-
 async function runtimeOptions(url:string,engine:EngineCapabilities|null) {
   const key=`options|${FORMAT}|${url}|${JSON.stringify(engine)}`;
   const loaded=await loadRuntimeOptions(url,engine,runtimeCache.get(key));
@@ -65,7 +60,6 @@ async function runtimeOptions(url:string,engine:EngineCapabilities|null) {
   while(runtimeCache.size>2)runtimeCache.delete(runtimeCache.keys().next().value!);
   return loaded;
 }
-
 
 function loadDefinitions(url: string, engine: EngineCapabilities | null): Promise<RuntimeOptions> {
   const key = JSON.stringify(engine);
@@ -102,14 +96,10 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     const { vendor, models, names } = e.data;
     const key = `${FORMAT}|${vendor}|${names ? `names:${JSON.stringify(names)}` : models.join(',')}`;
     const entry = catalogs.get(key)?.entry;
-
-
     const read = (etag?: string | null) => fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...names ? names.map((n) => ['name', n]) : models.map((m) => ['model', m])])}`, {
-
       cache: 'no-cache',
       headers: etag ? { 'If-None-Match': etag } : {},
     });
-
     const early = entry ? undefined : read();
     const { options } = await loading;
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
@@ -119,7 +109,6 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     if (r.status !== 304) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
       const catalog = normalizeCatalog(await r.json(), vendor, nativePresetCatalog());
-
       if (!cached || JSON.stringify(cached.catalog) !== JSON.stringify(catalog)) post({ id, type: 'catalog', catalog, from: 'network' });
       remember({key,etag:r.headers.get('ETag'),types,catalog});
     } else if(!cached)throw new Error('Catalog validation returned 304 without a matching memory entry.');

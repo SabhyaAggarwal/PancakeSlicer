@@ -1,15 +1,10 @@
-
-
-
 import { setState } from '../state/store';
 
 interface StreamLayers { layers: { first: number }[]; layerEnd: number[] }
 let stream: { key: string; data: StreamLayers } | null = null;
 export const setLoadedStream = (s: typeof stream) => { stream = s; };
 
-
 export function layerOfMove(data: StreamLayers, move: number): number | null {
-
   let lo = 0, hi = data.layers.length - 1, k = -1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -18,10 +13,8 @@ export function layerOfMove(data: StreamLayers, move: number): number | null {
   return k >= 0 && move < data.layerEnd[k] ? k : null;
 }
 
-
 export const streamLayerOf = (jobId: string | undefined, move: number) =>
   stream?.key === `job:${jobId}` && stream.data.layers.length ? layerOfMove(stream.data, move) : null;
-
 
 let pending: number | null = null;
 let onJump: (() => void) | null = null;
@@ -33,7 +26,6 @@ export function jumpToMove(move: number) {
 export const takeJump = () => { const m = pending; pending = null; return m; };
 export const peekJump = () => pending;
 export const setJumpListener = (l: typeof onJump) => { onJump = l; };
-
 
 let pendingFile: File | null = null;
 let onFile: ((f: File) => void) | null = null;

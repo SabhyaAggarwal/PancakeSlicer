@@ -723,7 +723,7 @@
       "source": "src/slic3r/GUI/Tab.cpp:4779"
     },
     {
-      "title": "Setting Overrides",
+      "title": "Setting overrides",
       "icon": "custom-gcode_setting_override",
       "groups": [
         {

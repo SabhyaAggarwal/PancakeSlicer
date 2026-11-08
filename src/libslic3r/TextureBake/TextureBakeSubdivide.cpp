@@ -26,7 +26,6 @@ double edge_len_sq(const VertStore &v, int a, int b)
     return (v.pos[size_t(a)] - v.pos[size_t(b)]).squaredNorm();
 }
 
-
 void normalize_store_normals(VertStore &verts)
 {
     for (Vec3d &n : verts.nrm) {
@@ -34,8 +33,6 @@ void normalize_store_normals(VertStore &verts)
         n = (len > 0.0) ? Vec3d(n / len) : Vec3d(0.0, 0.0, 1.0);
     }
 }
-
-
 
 int get_midpoint(VertStore &verts, QuantizedPointMap &cache, int a, int b,
                  QuantizedPointMap *pos_canon_map)
@@ -68,12 +65,6 @@ struct PassResult
     bool                 capped  = false;
 };
 
-
-
-
-
-
-
 PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, double max_edge_length,
                           int safety_cap, const std::vector<uint8_t> &face_excluded,
                           QuantizedPointMap *pos_canon_map, const std::vector<int> &face_parent_id,
@@ -84,13 +75,9 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
     const size_t tri_count  = indices.size() / 3;
     const bool   have_canon = !verts.canon.empty();
 
-
-
     const size_t      expect = std::max<size_t>(size_t(1) << 16, tri_count);
     QuantizedPointMap mid_cache(1.0, expect);
     QuantizedPointMap split_edges(1.0, expect);
-
-
 
     const auto key_of = [&](int v) -> int64_t { return have_canon ? verts.canon[size_t(v)] : v; };
     const auto mark_edge = [&](int a, int b) {
@@ -103,10 +90,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         return (u < v ? split_edges.get_key(u, v, 0) : split_edges.get_key(v, u, 0)) != -1;
     };
 
-
-
-
-
     const auto too_long = [&](int a, int b) {
         const double len_sq = edge_len_sq(verts, a, b);
         if (len_sq <= max_sq)
@@ -117,11 +100,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         return within((verts.pos[size_t(a)] + verts.pos[size_t(b)]) * 0.5,
                       0.5 * len + (len - max_edge_length) / SUBDIVIDE_GRADE);
     };
-
-
-
-
-
 
     std::vector<uint8_t> want(tri_count, 0);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &range) {
@@ -142,7 +120,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
             mark_wanted(t);
         else if (within && want[t] != 0)
             unreached.push_back(t);
-
     for (size_t n = 0; n != unreached.size();) {
         n = unreached.size();
         unreached.erase(std::remove_if(unreached.begin(), unreached.end(), [&](size_t t) {
@@ -159,9 +136,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         out.face_parent_id = face_parent_id;
         return out;
     }
-
-
-
 
     std::vector<uint8_t> tri_marks(tri_count);
     const size_t         predicted = tbb::parallel_reduce(
@@ -185,7 +159,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
         out.capped         = true;
         return out;
     }
-
 
     out.indices.resize(predicted * 3);
     if (!face_excluded.empty())
@@ -215,11 +188,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
             emit(a, b, c);
             emit_face_data(excl, pid, 1);
         } else if (n == 3) {
-
-             \
-
-             \
-
             const int m_ab = get_midpoint(verts, mid_cache, a, b, pos_canon_map);
             const int m_bc = get_midpoint(verts, mid_cache, b, c, pos_canon_map);
             const int m_ca = get_midpoint(verts, mid_cache, c, a, pos_canon_map);
@@ -244,13 +212,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
             }
             emit_face_data(excl, pid, 2);
         } else {
-
-
-
-
-
-
-
             if (!s_ab) {
                 const int m_bc = get_midpoint(verts, mid_cache, b, c, pos_canon_map);
                 const int m_ca = get_midpoint(verts, mid_cache, c, a, pos_canon_map);
@@ -282,7 +243,6 @@ PassResult subdivide_pass(VertStore &verts, const std::vector<int> &indices, dou
 
 IndexedMesh to_indexed_fast(const TriSoup &geometry)
 {
-
     IndexedMesh       out;
     const size_t      n = geometry.pos.size();
     QuantizedPointMap vert_map(WELD_GRID_GEOMETRY, std::min(n, size_t(1) << 22));
@@ -299,7 +259,6 @@ IndexedMesh to_indexed_fast(const TriSoup &geometry)
                 out.verts.wgt.push_back(double(geometry.exclude_weight[i]));
         } else {
             out.verts.nrm[size_t(idx)] += nf.cast<double>();
-
             if (has_w && double(geometry.exclude_weight[i]) > out.verts.wgt[size_t(idx)])
                 out.verts.wgt[size_t(idx)] = double(geometry.exclude_weight[i]);
         }
@@ -311,15 +270,11 @@ IndexedMesh to_indexed_fast(const TriSoup &geometry)
 
 IndexedMesh to_indexed(const TriSoup &geometry)
 {
-
-
-
     IndexedMesh  out;
     out.has_canon      = true;
     const size_t n     = geometry.pos.size();
     const bool   has_w = !geometry.exclude_weight.empty();
     const double sharp_cos = std::cos(SUBDIVIDE_SHARP_ANGLE_DEG * M_PI / 180.0);
-
 
     std::vector<Vec3d> face_unit(n), face_raw(n);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, n / 3), [&](const tbb::blocked_range<size_t> &range) {
@@ -344,7 +299,6 @@ IndexedMesh to_indexed(const TriSoup &geometry)
 
     for (size_t i = 0; i < n; ++i) {
         const Vec3f &p = geometry.pos[i];
-
         const int  canon_id       = out.pos_canon_map.get_or_set(p, int(out.verts.count()));
         const bool fresh_position = out.pos_canon_map.inserted();
 
@@ -371,8 +325,6 @@ IndexedMesh to_indexed(const TriSoup &geometry)
             out.verts.nrm[size_t(cl.idx)] += face_raw[i];
             if (has_w && double(geometry.exclude_weight[i]) > out.verts.wgt[size_t(cl.idx)])
                 out.verts.wgt[size_t(cl.idx)] = double(geometry.exclude_weight[i]);
-
-
             cl.fn_unit += face_unit[i];
             if (const double rl = cl.fn_unit.norm(); rl > 0.0)
                 cl.fn_unit /= rl;
@@ -381,7 +333,6 @@ IndexedMesh to_indexed(const TriSoup &geometry)
             break;
         }
         if (!matched) {
-
             const int idx = add_vertex(canon_id);
             clusters.push_back({ idx, face_unit[i] });
             out.indices[i] = idx;
@@ -403,11 +354,8 @@ TriSoup to_non_indexed(const VertStore &verts, const std::vector<int> &indices,
     if (want_weights)
         out.exclude_weight.resize(tri_count * 3);
 
-
     tbb::parallel_for(tbb::blocked_range<size_t>(0, tri_count), [&](const tbb::blocked_range<size_t> &r) {
         for (size_t t = r.begin(); t < r.end(); ++t) {
-
-
             const bool  have_face_flag = !face_excluded.empty();
             const float face_w         = have_face_flag ? (face_excluded[t] ? 1.f : 0.f) : 0.f;
             for (int v = 0; v < 3; ++v) {
@@ -460,8 +408,6 @@ SubdivideResult subdivide(const TriSoup &geometry, double max_edge_length,
             result.safety_cap_hit = true;
 
         if (on_progress) {
-
-
             const double max_edge_sq = tbb::parallel_reduce(
                 tbb::blocked_range<size_t>(0, current_indices.size() / 3), 0.0,
                 [&](const tbb::blocked_range<size_t> &r, double acc) {

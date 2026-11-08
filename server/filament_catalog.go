@@ -4,17 +4,17 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
 type filamentFamily struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Brand    string   `json:"brand,omitempty"`
-	Material string   `json:"material,omitempty"`
-	Colour   string   `json:"colour,omitempty"`
-	Models   []string `json:"models"`
-
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Brand    string            `json:"brand,omitempty"`
+	Material string            `json:"material,omitempty"`
+	Colour   string            `json:"colour,omitempty"`
+	Models   []string          `json:"models"`
 	Variants map[string]string `json:"variants"`
 	Fallback string            `json:"fallback"`
 }
@@ -62,16 +62,30 @@ func filamentFamilies(v *VendorPresets) []filamentFamily {
 	return out
 }
 
+var filamentCatalogs sync.Map
+
 func (s *Server) filamentCatalog(w http.ResponseWriter, r *http.Request) {
 	vendor, err := s.presets.vendor(r.URL.Query().Get("vendor"))
 	if err != nil {
 		fail(w, 404, "unknown vendor")
 		return
 	}
-	body, err := cacheJSON(map[string]any{"vendor": vendor.Vendor, "families": filamentFamilies(vendor)})
+	body, err := filamentCatalogResponse(vendor)
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
 	body.serve(w, r, "filament-catalog.json", "application/json", catalogCache, time.Time{})
+}
+
+func filamentCatalogResponse(vendor *VendorPresets) (*cachedResponse, error) {
+	if body, ok := filamentCatalogs.Load(vendor); ok {
+		return body.(*cachedResponse), nil
+	}
+	built, err := cacheJSON(map[string]any{"vendor": vendor.Vendor, "families": filamentFamilies(vendor)})
+	if err != nil {
+		return nil, err
+	}
+	body, _ := filamentCatalogs.LoadOrStore(vendor, built)
+	return body.(*cachedResponse), nil
 }

@@ -24,7 +24,6 @@ class TriangleMesh;
 class Model;
 class ModelObject;
 
-
 const int LOAD_STEP_STAGE_READ_FILE          = 0;
 const int LOAD_STEP_STAGE_GET_SOLID          = 1;
 const int LOAD_STEP_STAGE_GET_MESH           = 2;
@@ -44,7 +43,6 @@ struct NamedSolid
     int tri_face_cout = 0;
 };
 
-
 extern bool load_step(const char *path, Model *model,
                       bool& is_cancel,
                       double linear_deflection = 0.003,
@@ -53,12 +51,6 @@ extern bool load_step(const char *path, Model *model,
                       ImportStepProgressFn proFn = nullptr,
                       StepIsUtf8Fn isUtf8Fn = nullptr,
                       long& mesh_face_num = *(new long(-1)));
-
-
-
-
-
-
 
 class StepPreProcessor {
     enum class EncodedType : unsigned char
@@ -75,7 +67,6 @@ public:
 private:
     static bool isGBK(const std::string str);
     static int preNum(const unsigned char byte);
-
     EncodedType m_encode_type = EncodedType::UTF8;
 };
 

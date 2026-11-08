@@ -1,0 +1,7232 @@
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <boost/algorithm/string/erase.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <cstddef>
+#include <algorithm>
+#include "libslic3r/Color.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Line.hpp"
+#include "libslic3r/Polyline.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include <functional>
+#include <iterator>
+#include "libslic3r/BuildVolume.hpp"
+#include "libslic3r/GCode/WipeTower.hpp"
+#include "libslic3r/CustomGCode.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
+#include <ios>
+#include <iomanip>
+#include "libslic3r/Arrange.hpp"
+#include "libslic3r/PrintBase.hpp"
+#include "libslic3r/Model.hpp"
+#include "libslic3r/format.hpp"
+#include <cstring>
+#include <exception>
+#include "libslic3r/ParameterUtils.hpp"
+#include <imgui.h>
+#include "libslic3r/Format/bbs_3mf.hpp"
+#include "libslic3r/Print.hpp"
+#include "libslic3r/LocalesUtils.hpp"
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <map>
+#include <mutex>
+#include <numeric>
+#include "slic3r/GUI/ImGuiWrapper.hpp"
+#include <optional>
+#include <tuple>
+#include <utility>
+#include "slic3r/GUI/MeshUtils.hpp"
+#include "slic3r/GUI/GLTexture.hpp"
+#include "slic3r/GUI/GLShader.hpp"
+#include "slic3r/GUI/OpenGLManager.hpp"
+#include "slic3r/GUI/SceneRaycaster.hpp"
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include "slic3r/GUI/3DScene.hpp"
+#include "slic3r/GUI/Plater.hpp"
+#include "slic3r/GUI/GUI_ObjectLayers.hpp"
+#include <vector>
+#include <string>
+#include <sstream>
+#include <regex>
+#include "libslic3r/MultiNozzleUtils.hpp"
+#include "libslic3r/FilamentMixer.hpp"
+#include <future>
+#include <glad/gl.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/filesystem/path.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/nowide/convert.hpp>
+#include <boost/nowide/cstdio.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+
+#include "libslic3r/libslic3r.h"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/GCode/WipeTowerEstimate.hpp"
+#include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Geometry.hpp"
+#include "libslic3r/GCode/ThumbnailData.hpp"
+#include "libslic3r/IMEXHelpers.hpp"
+#include "libslic3r/IMEXZones.hpp"
+#include "libslic3r/Utils.hpp"
+#include "libslic3r/LifecycleEvents.hpp"
+
+#include "I18N.hpp"
+#include "GUI_App.hpp"
+#include "libslic3r/AppConfig.hpp"
+#include "libslic3r/PresetBundle.hpp"
+#include "BackgroundSlicingProcess.hpp"
+#include "Widgets/Label.hpp"
+#include "2DBed.hpp"
+#include "3DBed.hpp"
+#include "PartPlate.hpp"
+#include "Camera.hpp"
+#include "GUI_Colors.hpp"
+#include "GUI_ObjectList.hpp"
+#include "Tab.hpp"
+#include "format.hpp"
+#include "slic3r/GUI/GUI.hpp"
+#include "slic3r/Utils/FileHelp.hpp"
+#include <imgui/imgui_internal.h>
+#include <wx/colour.h>
+#include <wx/dcgraph.h>
+#include <wx/string.h>
+#include <wx/types.h>
+#include <wx/dcmemory.h>
+#include <wx/intl.h>
+#include <wx/event.h>
+#include <wx/image.h>
+#include <wx/gdicmn.h>
+#include "libslic3r/ObjectID.hpp"
+#include "libslic3r/Preset.hpp"
+#include "libslic3r/SLA/Pad.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "slic3r/GUI/GLCanvas3D.hpp"
+#include "slic3r/GUI/GLModel.hpp"
+
+class wxFont;
+
+static const float GROUND_Z = -0.03f;
+static const float GROUND_Z_GRIDLINE = -0.26f;
+static const float GRABBER_X_FACTOR = 0.20f;
+static const float GRABBER_Y_FACTOR = 0.03f;
+static const float GRABBER_Z_VALUE = 0.5f;
+static unsigned int GLOBAL_PLATE_INDEX = 0;
+
+static const double LOGICAL_PART_PLATE_GAP = 1. / 5.;
+static const int PARTPLATE_ICON_SIZE = 16;
+static const int PARTPLATE_EDIT_PLATE_NAME_ICON_SIZE = 9;
+static const int PARTPLATE_ICON_GAP_TOP = 3;
+static const int PARTPLATE_ICON_GAP_LEFT = 3;
+static const int PARTPLATE_ICON_GAP_Y = 5;
+static const int PARTPLATE_TEXT_OFFSET_X1 = 3;
+static const int PARTPLATE_TEXT_OFFSET_X2 = 1;
+static const int PARTPLATE_TEXT_OFFSET_Y = 1;
+static const int PARTPLATE_PLATENAME_OFFSET_Y  = 10;
+
+const float WIPE_TOWER_DEFAULT_X_POS = 165.;
+const float WIPE_TOWER_DEFAULT_Y_POS = 250.;
+
+const float N9_WIPE_TOWER_DEFAULT_Y_POS = 160.;
+
+const float I3_WIPE_TOWER_DEFAULT_X_POS = 0.;
+const float I3_WIPE_TOWER_DEFAULT_Y_POS = 250.;
+
+std::array<unsigned char, 4>  PlateTextureForeground = {0x0, 0xae, 0x42, 0xff};
+
+namespace Slic3r {
+namespace GUI {
+
+class Bed3D;
+
+ColorRGBA PartPlate::SELECT_COLOR		= { 0.2666f, 0.2784f, 0.2784f, 1.0f };
+ColorRGBA PartPlate::UNSELECT_COLOR		= { 0.82f, 0.82f, 0.82f, 1.0f };
+ColorRGBA PartPlate::UNSELECT_DARK_COLOR		= { 0.384f, 0.384f, 0.412f, 1.0f };
+ColorRGBA PartPlate::DEFAULT_COLOR		= { 0.5f, 0.5f, 0.5f, 1.0f };
+ColorRGBA PartPlate::LINE_TOP_COLOR		= { 0.89f, 0.89f, 0.89f, 1.0f };
+ColorRGBA PartPlate::LINE_TOP_DARK_COLOR		= { 0.431f, 0.431f, 0.463f, 1.0f };
+ColorRGBA PartPlate::LINE_TOP_SEL_COLOR  = { 0.5294f, 0.5451, 0.5333f, 1.0f};
+ColorRGBA PartPlate::LINE_TOP_SEL_DARK_COLOR = { 0.298f, 0.298f, 0.3333f, 1.0f};
+ColorRGBA PartPlate::LINE_BOTTOM_COLOR	= { 0.8f, 0.8f, 0.8f, 0.4f };
+ColorRGBA PartPlate::HEIGHT_LIMIT_TOP_COLOR		= { 0.6f, 0.6f, 1.0f, 1.0f };
+ColorRGBA PartPlate::HEIGHT_LIMIT_BOTTOM_COLOR	= { 0.4f, 0.4f, 1.0f, 1.0f };
+
+void get_text_extent(const wxString &msg, wxCoord &w, wxCoord &h, wxFont *font)
+{
+  wxMemoryDC memDC;
+  if (font)
+    memDC.SetFont(*font);
+  memDC.GetTextExtent(msg, &w, &h);
+}
+
+
+wxFont* find_font(const std::string& text_str, int max_size = 32)
+{
+  auto is_font_suitable = [](std::string str, wxFont &font, int max_size) {
+    wxString msg(str);
+	wxCoord w, h;
+	get_text_extent(msg, w, h, &font);
+
+    if (w <= max_size)
+      return true;
+    else
+      return false;
+  };
+  wxFont *font = nullptr;
+  if (is_font_suitable(text_str, Label::Head_24, max_size))
+    font = &Label::Head_24;
+  else if (is_font_suitable(text_str, Label::Head_20, max_size))
+    font = &Label::Head_20;
+  else if (is_font_suitable(text_str, Label::Head_18, max_size))
+    font = &Label::Head_18;
+  else if (is_font_suitable(text_str, Label::Head_16, max_size))
+    font = &Label::Head_16;
+  else if (is_font_suitable(text_str, Label::Head_14, max_size))
+    font = &Label::Head_14;
+  else
+    font = &Label::Head_12;
+
+  return font;
+}
+void PartPlate::update_render_colors()
+{
+	PartPlate::SELECT_COLOR			= ImGuiWrapper::from_ImVec4(RenderColor::colors[RenderCol_Plate_Selected]);
+    PartPlate::UNSELECT_COLOR		= ImGuiWrapper::from_ImVec4(RenderColor::colors[RenderCol_Plate_Unselected]);
+    PartPlate::DEFAULT_COLOR        = ImGuiWrapper::from_ImVec4(RenderColor::colors[RenderCol_Plate_Default]);
+    PartPlate::LINE_TOP_COLOR       = ImGuiWrapper::from_ImVec4(RenderColor::colors[RenderCol_Plate_Line_Top]);
+    PartPlate::LINE_BOTTOM_COLOR    = ImGuiWrapper::from_ImVec4(RenderColor::colors[RenderCol_Plate_Line_Bottom]);
+}
+
+void PartPlate::load_render_colors()
+{
+    RenderColor::colors[RenderCol_Plate_Selected]    = ImGuiWrapper::to_ImVec4(SELECT_COLOR);
+    RenderColor::colors[RenderCol_Plate_Unselected]  = ImGuiWrapper::to_ImVec4(UNSELECT_COLOR);
+    RenderColor::colors[RenderCol_Plate_Default]     = ImGuiWrapper::to_ImVec4(DEFAULT_COLOR);
+    RenderColor::colors[RenderCol_Plate_Line_Top]    = ImGuiWrapper::to_ImVec4(LINE_TOP_COLOR);
+    RenderColor::colors[RenderCol_Plate_Line_Bottom] = ImGuiWrapper::to_ImVec4(LINE_BOTTOM_COLOR);
+}
+
+
+PartPlate::PartPlate()
+	: ObjectBase(-1), m_plater(nullptr), m_model(nullptr), m_quadric(nullptr)
+{
+	assert(this->id().invalid());
+	init();
+}
+
+PartPlate::PartPlate(PartPlateList *partplate_list, Vec3d origin, int width, int depth, double height, Plater* platerObj, Model* modelObj, bool printable, PrinterTechnology tech)
+	:m_partplate_list(partplate_list), m_plater(platerObj), m_model(modelObj), printer_technology(tech), m_origin(origin), m_width(width), m_depth(depth), m_height(height),  m_printable(printable)
+{
+	init();
+}
+
+PartPlate::~PartPlate()
+{
+	clear();
+}
+
+void PartPlate::init()
+{
+	m_locked = false;
+	m_ready_for_slice = true;
+	m_slice_result_valid = false;
+	m_slice_percent = -1.0f;
+	m_hover_id = -1;
+	m_selected = false;
+
+	m_print_index = -1;
+	m_print = nullptr;
+	m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = FilamentMapMode::fmmAutoForFlush;
+}
+
+BedType PartPlate::get_bed_type(bool load_from_project) const
+{
+	std::string bed_type_key = "curr_bed_type";
+
+	if (m_config.has(bed_type_key)) {
+		BedType bed_type = m_config.opt_enum<BedType>(bed_type_key);
+		return bed_type;
+	}
+
+	if (!load_from_project || !m_plater || !wxGetApp().preset_bundle)
+		return btDefault;
+
+	DynamicConfig& proj_cfg = wxGetApp().preset_bundle->project_config;
+	if (proj_cfg.has(bed_type_key))
+		return proj_cfg.opt_enum<BedType>(bed_type_key);
+	return btDefault;
+}
+
+void PartPlate::set_bed_type(BedType bed_type)
+{
+    std::string bed_type_key = "curr_bed_type";
+
+    assert(m_plater != nullptr);
+
+    BedType old_real_bed_type = get_bed_type();
+    if (old_real_bed_type == btDefault) {
+        DynamicConfig& proj_cfg = wxGetApp().preset_bundle->project_config;
+        if (proj_cfg.has(bed_type_key))
+            old_real_bed_type = proj_cfg.opt_enum<BedType>(bed_type_key);
+    }
+    BedType new_real_bed_type = bed_type;
+    if (bed_type == BedType::btDefault) {
+        DynamicConfig& proj_cfg = wxGetApp().preset_bundle->project_config;
+        if (proj_cfg.has(bed_type_key))
+            new_real_bed_type = proj_cfg.opt_enum<BedType>(bed_type_key);
+    }
+    if (old_real_bed_type != new_real_bed_type) {
+        update_slice_result_valid_state(false);
+    }
+
+    if (bed_type == BedType::btDefault)
+        m_config.erase(bed_type_key);
+    else
+        m_config.set_key_value("curr_bed_type", new ConfigOptionEnum<BedType>(bed_type));
+}
+
+void PartPlate::reset_bed_type()
+{
+    m_config.erase("curr_bed_type");
+}
+
+void PartPlate::reset_skirt_start_angle()
+{
+    m_config.erase("skirt_start_angle");
+}
+
+void PartPlate::set_print_seq(PrintSequence print_seq)
+{
+    std::string print_seq_key = "print_sequence";
+
+    assert(m_plater != nullptr);
+
+    PrintSequence old_real_print_seq = get_print_seq();
+    if (old_real_print_seq == PrintSequence::ByDefault) {
+        auto curr_preset_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        if (curr_preset_config.has(print_seq_key))
+            old_real_print_seq = curr_preset_config.option<ConfigOptionEnum<PrintSequence>>(print_seq_key)->value;
+    }
+
+    PrintSequence new_real_print_seq = print_seq;
+
+    if (print_seq == PrintSequence::ByDefault) {
+        auto curr_preset_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        if (curr_preset_config.has(print_seq_key))
+            new_real_print_seq = curr_preset_config.option<ConfigOptionEnum<PrintSequence>>(print_seq_key)->value;
+    }
+
+    if (old_real_print_seq != new_real_print_seq) {
+        update_slice_result_valid_state(false);
+    }
+
+    if (print_seq == PrintSequence::ByDefault)
+        m_config.erase(print_seq_key);
+    else
+        m_config.set_key_value(print_seq_key, new ConfigOptionEnum<PrintSequence>(print_seq));
+}
+
+PrintSequence PartPlate::get_print_seq() const
+{
+    std::string print_seq_key = "print_sequence";
+
+    if (m_config.has(print_seq_key)) {
+        PrintSequence print_seq = m_config.opt_enum<PrintSequence>(print_seq_key);
+        return print_seq;
+    }
+
+    return PrintSequence::ByDefault;
+}
+
+PrintSequence PartPlate::get_real_print_seq(bool* plate_same_as_global) const
+{
+	PrintSequence global_print_seq = wxGetApp().global_print_sequence();
+    PrintSequence curr_plate_seq = get_print_seq();
+    if (curr_plate_seq == PrintSequence::ByDefault) {
+		curr_plate_seq = global_print_seq;
+    }
+
+	if(plate_same_as_global)
+		*plate_same_as_global = (curr_plate_seq == global_print_seq);
+
+    return curr_plate_seq;
+}
+
+std::vector<int> PartPlate::get_real_filament_maps(const DynamicConfig& g_config, bool* use_global_param) const
+{
+	auto maps = get_filament_maps();
+	if (!maps.empty()) {
+		if (use_global_param) { *use_global_param = false; }
+		return maps;
+	}
+	auto g_maps = g_config.option<ConfigOptionInts>("filament_map")->values;
+	if (use_global_param) { *use_global_param = true; }
+	return g_maps;
+}
+
+std::vector<int> PartPlate::get_real_filament_volume_maps(const DynamicConfig& g_config, bool* use_global_param) const
+{
+	auto maps = get_filament_volume_maps();
+	if (!maps.empty()) {
+		if (use_global_param) { *use_global_param = false; }
+		return maps;
+	}
+	auto g_maps = g_config.option<ConfigOptionInts>("filament_volume_map")->values;
+	if (use_global_param) { *use_global_param = true; }
+	return g_maps;
+}
+
+FilamentMapMode PartPlate::get_real_filament_map_mode(const DynamicConfig& g_config, bool* use_global_param) const
+{
+	auto mode = get_filament_map_mode();
+	if (FilamentMapMode::fmmDefault != mode) {
+		if (use_global_param) { *use_global_param = false; };
+		return mode;
+	}
+
+	auto g_mode = g_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode")->value;
+	if (use_global_param) { *use_global_param = true; }
+	return g_mode;
+}
+
+
+bool PartPlate::has_spiral_mode_config() const
+{
+	std::string key = "spiral_mode";
+	return m_config.has(key);
+}
+
+bool PartPlate::get_spiral_vase_mode() const
+{
+	std::string key = "spiral_mode";
+	if (m_config.has(key)) {
+		return m_config.opt_bool(key);
+	}
+	else {
+		DynamicPrintConfig* global_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
+		if (global_config->has(key))
+			return global_config->opt_bool(key);
+	}
+	return false;
+}
+
+std::vector<Vec2d> PartPlate::get_plate_wrapping_detection_area() const
+{
+    DynamicPrintConfig  gconfig                  = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    ConfigOptionPoints *wrapping_exclude_area_opt = gconfig.option<ConfigOptionPoints>("wrapping_exclude_area");
+    if (wrapping_exclude_area_opt) {
+        std::vector<Vec2d> wrapping_area = wrapping_exclude_area_opt->values;
+        for (Vec2d& pt : wrapping_area) {
+            pt += Vec2d(m_origin.x(), m_origin.y());
+        }
+        return wrapping_area;
+    }
+
+    return std::vector<Vec2d>();
+}
+
+std::string PartPlate::get_imex_mode() const
+{
+    if (m_config.has("imex_parallel_mode")) {
+        auto* opt = m_config.option<ConfigOptionString>("imex_parallel_mode");
+        if (opt && !opt->value.empty())
+            return opt->value;
+    }
+    return kImexPrimaryMode;
+}
+
+std::string PartPlate::get_effective_imex_mode() const
+{
+    std::string mode = get_imex_mode();
+    if (mode != kImexPrimaryMode)
+        return mode;
+    if (!m_plater)
+        return mode;
+    if (auto* bundle = wxGetApp().preset_bundle) {
+        if (auto* opt = bundle->prints.get_edited_preset().config.option<ConfigOptionString>("imex_parallel_mode"))
+            if (!opt->value.empty())
+                return opt->value;
+    }
+    return kImexPrimaryMode;
+}
+
+void PartPlate::set_imex_mode(const std::string& mode)
+{
+    if (mode.empty() || mode == kImexPrimaryMode) {
+        m_config.erase("imex_parallel_mode");
+    } else {
+        m_config.set_key_value("imex_parallel_mode", new ConfigOptionString(mode));
+    }
+    update_slice_result_valid_state(false);
+    m_imex_zones_mode_cache = "\x01";
+    m_imex_ghost_cache_key = "\x01";
+}
+
+void PartPlate::reset_imex_mode()
+{
+    m_config.erase("imex_parallel_mode");
+    update_slice_result_valid_state(false);
+    m_imex_zones_mode_cache = "\x01";
+    m_imex_ghost_cache_key  = "\x01";
+}
+
+std::map<int,int> PartPlate::get_imex_head_filament_map() const
+{
+    if (!m_config.has("imex_head_filament_map"))
+        return {};
+    auto* opt = m_config.option<ConfigOptionString>("imex_head_filament_map");
+    if (!opt) return {};
+    return parse_imex_head_filament_map(opt->value);
+}
+
+void PartPlate::set_imex_head_filament_map(const std::map<int,int>& m)
+{
+    if (m.empty()) {
+        m_config.erase("imex_head_filament_map");
+    } else {
+        std::ostringstream os;
+        bool first = true;
+        for (const auto& [phys, slot] : m) {
+            if (!first) os << ',';
+            os << phys << ':' << slot;
+            first = false;
+        }
+        m_config.set_key_value("imex_head_filament_map", new ConfigOptionString(os.str()));
+    }
+    update_slice_result_valid_state(false);
+}
+
+void PartPlate::reset_imex_head_filament_map()
+{
+    m_config.erase("imex_head_filament_map");
+    update_slice_result_valid_state(false);
+}
+
+ColorRGBA PartPlate::get_imex_head_filament_color(int physical_head) const
+{
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb)
+        return GLVolume::UNPRINTABLE_COLOR;
+
+    return get_imex_head_filament_color(physical_head,
+                                        effective_physical_extruder_map(*pb),
+                                        get_imex_head_filament_map());
+}
+
+ColorRGBA PartPlate::get_imex_head_filament_color(int physical_head,
+                                                  const ConfigOptionInts& pem,
+                                                  const std::map<int, int>& plate_map) const
+{
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb)
+        return GLVolume::UNPRINTABLE_COLOR;
+
+    const int logical = resolve_filament_for_head(plate_map, pem, physical_head);
+    if (logical < 0)
+        return GLVolume::UNPRINTABLE_COLOR;
+
+    auto* colours = pb->project_config.option<ConfigOptionStrings>("filament_colour");
+    if (!colours || logical >= (int)colours->values.size())
+        return GLVolume::UNPRINTABLE_COLOR;
+
+    ColorRGBA rgba;
+    if (!decode_color(colours->values[logical], rgba))
+        return GLVolume::UNPRINTABLE_COLOR;
+    return rgba;
+}
+
+void PartPlate::set_spiral_vase_mode(bool spiral_mode, bool as_global)
+{
+	std::string key = "spiral_mode";
+	if (as_global)
+		m_config.erase(key);
+	else {
+		if (spiral_mode) {
+			if (get_spiral_vase_mode())
+				return;
+			auto answer = static_cast<TabPrintPlate*>(wxGetApp().plate_tab)->show_spiral_mode_settings_dialog(false);
+			if (answer == wxID_YES) {
+				m_config.set_key_value(key, new ConfigOptionBool(true));
+				set_vase_mode_related_object_config();
+			}
+		}
+		else
+			m_config.set_key_value(key, new ConfigOptionBool(false));
+	}
+}
+
+bool PartPlate::valid_instance(int obj_id, int instance_id) const
+{
+	if ((obj_id >= 0) && (obj_id < m_model->objects.size()))
+	{
+		ModelObject* object = m_model->objects[obj_id];
+		if ((instance_id >= 0) && (instance_id < object->instances.size()))
+			return true;
+	}
+
+	return false;
+}
+
+void PartPlate::calc_bounding_boxes() const {
+	BoundingBoxf3* bounding_box = const_cast<BoundingBoxf3*>(&m_bounding_box);
+	*bounding_box = BoundingBoxf3();
+	for (const Vec2d& p : m_shape) {
+		bounding_box->merge({ p(0), p(1), 0.0 });
+	}
+
+	BoundingBoxf3* extended_bounding_box = const_cast<BoundingBoxf3*>(&m_extended_bounding_box);
+	*extended_bounding_box = m_bounding_box;
+
+	double half_x = bounding_box->size().x() * GRABBER_X_FACTOR;
+	double half_y = bounding_box->size().y() * 1.0f * GRABBER_Y_FACTOR;
+	double half_z = GRABBER_Z_VALUE;
+	Vec3d center(bounding_box->center().x(), bounding_box->min(1) -half_y, GROUND_Z);
+	m_grabber_box.min = Vec3d(center.x() - half_x, center.y() - half_y, center.z() - half_z);
+	m_grabber_box.max = Vec3d(center.x() + half_x, center.y() + half_y, center.z() + half_z);
+	m_grabber_box.defined = true;
+	extended_bounding_box->merge(m_grabber_box);
+
+    m_exclude_bounding_box.clear();
+    BoundingBoxf3 exclude_bb;
+    for (int index = 0; index < m_exclude_area.size(); index ++) {
+		const Vec2d& p = m_exclude_area[index];
+
+		if (index % 4 == 0)
+			exclude_bb = BoundingBoxf3();
+
+		exclude_bb.merge({ p(0), p(1), 0.0 });
+
+		if (index % 4 == 3)
+		{
+			exclude_bb.max(2) = m_depth;
+			exclude_bb.min(2) = GROUND_Z;
+			m_exclude_bounding_box.emplace_back(exclude_bb);
+		}
+	}
+}
+
+void PartPlate::calc_triangles(const ExPolygon &poly)
+{
+    m_triangles.reset();
+
+    if (!init_model_from_poly(m_triangles.model, poly, GROUND_Z))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Unable to create plate triangles\n";
+}
+
+void PartPlate::calc_exclude_triangles(const ExPolygon &poly)
+{
+    m_exclude_triangles.reset();
+
+    if (!init_model_from_poly(m_exclude_triangles, poly, GROUND_Z))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Unable to create exclude triangles\n";
+}
+
+static bool init_model_from_lines(GLModel &model, const Lines &lines, float z);
+
+void PartPlate::calc_imex_zones()
+{
+    m_imex_copy_zones.clear();
+    m_imex_mirror_zones.clear();
+    m_imex_secondary_zone_boxes.clear();
+    m_imex_collision_zones.clear();
+    m_imex_collision_overlay.clear();
+    m_imex_margin_overlay.clear();
+    m_imex_primary_zone_box = std::nullopt;
+    m_imex_head_zone_centers.clear();
+    m_imex_primary_head = -1;
+
+    if (!wxGetApp().preset_bundle)
+        return;
+
+    PresetBundle&             bundle      = *wxGetApp().preset_bundle;
+    const DynamicPrintConfig& printer_cfg = bundle.printers.get_edited_preset().config;
+
+    std::string process_mode;
+    if (auto* mode_opt = bundle.prints.get_edited_preset().config.option<ConfigOptionString>("imex_parallel_mode"))
+        process_mode = mode_opt->value;
+
+    const ImexZoneLayout layout = compute_imex_zone_layout(printer_cfg, get_imex_mode(),
+                                                           process_mode, get_extents(m_shape));
+
+    m_imex_primary_head         = layout.primary_head;
+    m_imex_head_zone_centers    = layout.head_zone_centers;
+    m_imex_primary_zone_box     = layout.primary_zone_box;
+    m_imex_secondary_zone_boxes = layout.secondary_zone_boxes;
+    m_imex_collision_zones      = layout.collision_zones;
+
+    if (!m_imex_primary_zone_box.has_value())
+        return;
+
+    ExPolygon bed_poly;
+    generate_print_polygon(bed_poly);
+
+    auto push_zone_fill = [&](std::vector<GLModel>& vec, double cx0, double cx1, double cy0, double cy1) {
+        ExPolygon cell;
+        cell.contour.append({ scale_(cx0), scale_(cy0) });
+        cell.contour.append({ scale_(cx1), scale_(cy0) });
+        cell.contour.append({ scale_(cx1), scale_(cy1) });
+        cell.contour.append({ scale_(cx0), scale_(cy1) });
+        ExPolygons clipped = intersection_ex({ cell }, { bed_poly });
+        if (!clipped.empty()) {
+            GLModel m;
+            if (init_model_from_poly(m, clipped.front(), GROUND_Z))
+                vec.push_back(std::move(m));
+        }
+    };
+
+    for (const BoundingBoxf& b : layout.copy_zones)
+        push_zone_fill(m_imex_copy_zones, b.min.x(), b.max.x(), b.min.y(), b.max.y());
+    for (const BoundingBoxf& b : layout.mirror_zones)
+        push_zone_fill(m_imex_mirror_zones, b.min.x(), b.max.x(), b.min.y(), b.max.y());
+    for (const BoundingBoxf3& b : layout.collision_zones)
+        push_zone_fill(m_imex_collision_overlay, b.min.x(), b.max.x(), b.min.y(), b.max.y());
+    for (const BoundingBoxf& b : layout.margin_bands)
+        push_zone_fill(m_imex_margin_overlay, b.min.x(), b.max.x(), b.min.y(), b.max.y());
+}
+
+std::string PartPlate::build_imex_cache_key() const
+{
+    if (!m_plater || !wxGetApp().preset_bundle)
+        return "";
+    const DynamicPrintConfig& printer_cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
+    if (!is_imex_opt || !is_imex_opt->value)
+        return "";
+    std::string active_mode = get_effective_imex_mode();
+    std::string active_tools;
+    int         primary_phys = -1;
+    resolve_active_mode_tools(active_tools, primary_phys);
+    return active_mode
+         + "|" + std::to_string(imex_cfg_int(printer_cfg, "imex_tools_per_gantry"))
+         + "x" + std::to_string(imex_cfg_int(printer_cfg, "imex_gantry_count"))
+         + "|ly" + std::to_string((int)imex_cfg_enum<ImexToolLayout>(printer_cfg, "imex_tool_layout"))
+         + "|cw" + std::to_string((int)(imex_cfg_float(printer_cfg, "imex_nozzle_clearance_x") * 10))
+         + "|ch" + std::to_string((int)(imex_cfg_float(printer_cfg, "imex_nozzle_clearance_y") * 10))
+         + "|mg" + std::to_string((int)(imex_cfg_float(printer_cfg, "imex_carriage_margin") * 10))
+         + "|t" + active_tools
+         + "|p" + std::to_string(primary_phys)
+         + "|fw" + (imex_cfg_bool(printer_cfg, "imex_firmware_managed_zones") ? "1" : "0");
+}
+
+static void register_model_for_picking(GLCanvas3D &canvas, PickingModel &model, int id);
+
+void PartPlate::refresh_imex_icon()
+{
+    if (!m_plater) return;
+    PresetBundle* preset = wxGetApp().preset_bundle;
+    if (!preset) return;
+    bool dual_bbl = preset->is_bbl_vendor() && preset->get_printer_extruder_count() == 2;
+    auto* is_imex_opt = preset->printers.get_edited_preset().config.option<ConfigOptionBool>("is_imex");
+    if (is_imex_opt && is_imex_opt->value) {
+        int imex_slot = dual_bbl ? 7 : 6;
+        calc_vertex_for_icons(imex_slot, m_imex_mode_icon);
+        calc_vertex_for_imex_warn_badge(imex_slot, m_imex_warn_icon);
+
+        if (GLCanvas3D *canvas = m_plater->get_view3D_canvas3D()) {
+            canvas->remove_raycasters_for_picking(SceneRaycaster::EType::Bed,
+                                                  picking_id_component(PLATE_IMEX_MODE_ID));
+            register_model_for_picking(*canvas, m_imex_mode_icon, picking_id_component(PLATE_IMEX_MODE_ID));
+        }
+    }
+}
+
+void PartPlate::ensure_imex_zones()
+{
+    if (!m_plater) return;
+    std::string cache_key = build_imex_cache_key();
+    if (cache_key != m_imex_zones_mode_cache) {
+        m_imex_zones_mode_cache = cache_key;
+        calc_imex_zones();
+    }
+}
+
+std::string PartPlate::build_imex_ghost_cache_key() const
+{
+    std::string k = build_imex_cache_key();
+    if (k.empty()) return "";
+
+    k += "|obj";
+    for (const auto& oi : obj_to_instance_set)
+        k += std::to_string(oi.first) + "." + std::to_string(oi.second) + ",";
+    return k;
+}
+
+void PartPlate::ensure_imex_ghosts()
+{
+    std::string key = build_imex_ghost_cache_key();
+    if (key != m_imex_ghost_cache_key) {
+        m_imex_ghost_cache_key = key;
+        calc_imex_ghosts();
+    }
+}
+
+bool PartPlate::resolve_active_mode_tools(std::string& out_tools_str, int& out_primary_phys) const
+{
+    if (!wxGetApp().preset_bundle) return false;
+    const DynamicPrintConfig& printer_cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
+    if (!is_imex_opt || !is_imex_opt->value) return false;
+
+    const std::string active_mode = get_effective_imex_mode();
+    if (active_mode == kImexPrimaryMode) return false;
+
+    const ImexMode mode = find_imex_mode(printer_cfg, active_mode);
+    if (!mode.found()) return false;
+
+    const int primary_phys = imex_primary_tool_for_mode(mode.active_tools);
+    if (primary_phys < 0) return false;
+
+    out_tools_str    = mode.active_tools;
+    out_primary_phys = primary_phys;
+    return true;
+}
+
+static constexpr float IMEX_GHOST_ALPHA = 0.55f;
+
+void PartPlate::calc_imex_ghosts()
+{
+    m_imex_ghost_volumes.clear();
+    if (!m_plater || !m_model) return;
+    if (obj_to_instance_set.empty()) return;
+
+    std::string active_tools_str;
+    int primary_phys = -1;
+    if (!resolve_active_mode_tools(active_tools_str, primary_phys)) return;
+
+    if (imex_cfg_bool(wxGetApp().preset_bundle->printers.get_edited_preset().config,
+                      "imex_firmware_managed_zones"))
+        return;
+
+    ensure_imex_zones();
+
+    const auto heads = parse_imex_active_tools(active_tools_str);
+
+    const int tpg = std::max(1, imex_cfg_int(
+        wxGetApp().preset_bundle->printers.get_edited_preset().config, "imex_tools_per_gantry"));
+    const ImexGantryGrouping grouping =
+        group_imex_active_tools_by_gantry(active_tools_str, tpg);
+    auto is_aggregated = [&](int phys) -> bool {
+        const int g = phys / tpg;
+        for (const auto& grp : grouping.groups)
+            if (grp.gantry_index == g) return grp.aggregate;
+        return false;
+    };
+    auto skip_for_aggregation = [&](int phys) -> bool {
+        const int g = phys / tpg;
+        for (const auto& grp : grouping.groups) {
+            if (grp.gantry_index != g) continue;
+            return grp.aggregate && phys != grp.representative_phys;
+        }
+        return false;
+    };
+
+    auto mirror_axis_for = [&](int phys) {
+        return imex_mirror_axis_for(primary_phys, phys, tpg);
+    };
+
+    auto center_for = [&](int phys) -> Vec2d {
+        auto it = m_imex_head_zone_centers.find(phys);
+        return (it == m_imex_head_zone_centers.end()) ? Vec2d::Zero() : it->second;
+    };
+    const Vec2d primary_off = center_for(primary_phys);
+
+    auto bed_ext = get_extents(m_shape);
+    const double bed_x_center = 0.5 * (bed_ext.min(0) + bed_ext.max(0));
+    auto resolve_centers = [&](int phys) -> std::pair<Vec2d, Vec2d> {
+        const Vec2d target_off = center_for(phys);
+        if (!is_aggregated(phys)) {
+            return {primary_off, target_off - primary_off};
+        }
+        const Vec2d aggregated_primary{bed_x_center, primary_off.y()};
+        const Vec2d aggregated_target {bed_x_center, target_off.y()};
+        return {aggregated_primary, aggregated_target - aggregated_primary};
+    };
+
+    std::map<int, TriangleMesh> mesh_by_obj;
+    auto get_combined_mesh = [&](int obj_idx, const ModelObject* mo) -> const TriangleMesh& {
+        auto it = mesh_by_obj.find(obj_idx);
+        if (it != mesh_by_obj.end()) return it->second;
+        TriangleMesh combined;
+        for (const ModelVolume* mv : mo->volumes) {
+            if (!mv->is_model_part()) continue;
+            TriangleMesh tm = mv->mesh();
+            tm.transform(mv->get_matrix());
+            combined.merge(tm);
+        }
+        return mesh_by_obj.emplace(obj_idx, std::move(combined)).first->second;
+    };
+
+    for (const auto& oi : obj_to_instance_set) {
+        const int obj_idx  = oi.first;
+        const int inst_idx = oi.second;
+        if (obj_idx < 0 || obj_idx >= (int)m_model->objects.size()) continue;
+        ModelObject* mo = m_model->objects[obj_idx];
+        if (!mo || inst_idx < 0 || inst_idx >= (int)mo->instances.size()) continue;
+        ModelInstance* mi = mo->instances[inst_idx];
+
+        const Transform3d inst_world = mi->get_matrix();
+        const TriangleMesh& combined = get_combined_mesh(obj_idx, mo);
+
+        for (const auto& [phys, role] : heads) {
+            if (phys == primary_phys) continue;
+            if (phys >= IMEX_GHOST_MAX_HEADS) continue;
+            if (role == ImexRole::Span) continue;
+            if (skip_for_aggregation(phys)) continue;
+
+            const auto [pri_center, gantry] = resolve_centers(phys);
+            const Transform3d head_xf = imex_head_transform(
+                primary_phys, phys, role, gantry, pri_center, mirror_axis_for(phys));
+            const Transform3d ghost_xf = head_xf * inst_world;
+
+            auto ghost = std::make_unique<GLVolume>();
+            ghost->set_instance_transformation(ghost_xf);
+            ghost->force_transparent    = 1;
+            ghost->force_native_color   = 1;
+            ghost->disabled             = 1;
+            ghost->zoom_to_volumes      = 0;
+            ghost->shader_outside_printer_detection_enabled = 0;
+            ghost->picking              = 1;
+            ghost->composite_id = GLVolume::CompositeID(
+                imex_ghost_composite_id_for_head(phys), obj_idx, inst_idx);
+            ghost->model.init_from(combined);
+            m_imex_ghost_volumes.push_back(std::move(ghost));
+        }
+    }
+}
+
+void PartPlate::update_imex_ghost_transforms(
+    const std::function<std::optional<Transform3d>(int, int)>& primary_live_xf)
+{
+    if (m_imex_ghost_volumes.empty() || !m_plater || !m_model) return;
+
+    std::string active_tools_str;
+    int primary_phys = -1;
+    if (!resolve_active_mode_tools(active_tools_str, primary_phys)) return;
+
+    ensure_imex_zones();
+    auto center_for = [&](int phys) -> Vec2d {
+        auto it = m_imex_head_zone_centers.find(phys);
+        return (it == m_imex_head_zone_centers.end()) ? Vec2d::Zero() : it->second;
+    };
+    const Vec2d primary_off = center_for(primary_phys);
+
+    const int tpg = std::max(1, imex_cfg_int(
+        wxGetApp().preset_bundle->printers.get_edited_preset().config, "imex_tools_per_gantry"));
+    const ImexGantryGrouping grouping =
+        group_imex_active_tools_by_gantry(active_tools_str, tpg);
+    auto is_aggregated = [&](int phys) -> bool {
+        const int g = phys / tpg;
+        for (const auto& grp : grouping.groups)
+            if (grp.gantry_index == g) return grp.aggregate;
+        return false;
+    };
+    auto bed_ext = get_extents(m_shape);
+    const double bed_x_center = 0.5 * (bed_ext.min(0) + bed_ext.max(0));
+    auto resolve_centers = [&](int phys) -> std::pair<Vec2d, Vec2d> {
+        const Vec2d target_off = center_for(phys);
+        if (!is_aggregated(phys))
+            return {primary_off, target_off - primary_off};
+        const Vec2d ap{bed_x_center, primary_off.y()};
+        const Vec2d at{bed_x_center, target_off.y()};
+        return {ap, at - ap};
+    };
+    auto mirror_axis_for = [&](int phys) {
+        return imex_mirror_axis_for(primary_phys, phys, tpg);
+    };
+
+    std::map<int, ImexRole> role_by_phys;
+    for (const auto& [phys, role] : parse_imex_active_tools(active_tools_str))
+        role_by_phys[phys] = role;
+    auto role_for = [&](int phys) -> ImexRole {
+        auto it = role_by_phys.find(phys);
+        return (it == role_by_phys.end()) ? ImexRole::Copy : it->second;
+    };
+
+    for (auto& ghost : m_imex_ghost_volumes) {
+        const int head = imex_ghost_head_from_composite_id(ghost->composite_id.object_id);
+        const int inst_idx = ghost->composite_id.instance_id;
+        const int obj_idx  = ghost->composite_id.volume_id;
+        if (obj_idx < 0 || obj_idx >= (int)m_model->objects.size()) continue;
+        const ModelObject* mo = m_model->objects[obj_idx];
+        if (!mo || inst_idx < 0 || inst_idx >= (int)mo->instances.size()) continue;
+
+        Transform3d primary_xf;
+        if (primary_live_xf) {
+            if (auto live = primary_live_xf(obj_idx, inst_idx))
+                primary_xf = *live;
+            else
+                primary_xf = mo->instances[inst_idx]->get_matrix();
+        } else {
+            primary_xf = mo->instances[inst_idx]->get_matrix();
+        }
+
+        const ImexRole role = role_for(head);
+        const auto [pri_center, gantry] = resolve_centers(head);
+        const Transform3d head_xf = imex_head_transform(
+            primary_phys, head, role, gantry, pri_center, mirror_axis_for(head));
+        const Transform3d ghost_xf = head_xf * primary_xf;
+        ghost->set_instance_transformation(ghost_xf);
+    }
+}
+
+void PartPlate::update_imex_ghost_colors()
+{
+    if (m_imex_ghost_volumes.empty() || !m_plater) return;
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb) return;
+
+    const ConfigOptionInts pem = effective_physical_extruder_map(*pb);
+    const auto plate_map = get_imex_head_filament_map();
+
+    std::map<int, ColorRGBA> head_colors;
+    for (auto& ghost : m_imex_ghost_volumes) {
+        if (!ghost) continue;
+        const int head = imex_ghost_head_from_composite_id(ghost->composite_id.object_id);
+        auto hc = head_colors.find(head);
+        if (hc == head_colors.end())
+            hc = head_colors.emplace(head, get_imex_head_filament_color(head, pem, plate_map)).first;
+        ColorRGBA color = hc->second;
+        color.a(IMEX_GHOST_ALPHA);
+        ghost->color = color;
+    }
+}
+
+bool PartPlate::imex_hull_violates(const Polygon& hull) const
+{
+    return imex_hull_violates_zones(m_imex_secondary_zone_boxes, hull)
+        || imex_hull_violates_zones(m_imex_collision_zones, hull);
+}
+
+Polygon PartPlate::imex_wipe_tower_hull() const
+{
+    if (!m_plater || !m_print || !m_model)
+        return Polygon();
+    PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+    if (!preset_bundle)
+        return Polygon();
+
+    const DynamicPrintConfig& print_cfg = preset_bundle->prints.get_edited_preset().config;
+
+    const auto* mixed_opt = preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed");
+    const bool  has_mixed = mixed_opt != nullptr && has_any_mixed_filament(mixed_opt->values);
+    std::set<int> plate_objects;
+    for (const auto& pr : obj_to_instance_set)
+        plate_objects.insert(pr.first);
+    if (!prime_tower_is_printed(print_cfg, (int) get_extruders(true, false).size(),
+                                (int) plate_objects.size(), has_mixed))
+        return Polygon();
+
+    const int plate_extruder_size = (int) get_extruders(true).size();
+
+    Vec3d wt_pos, wt_size;
+    arrangement::ArrangePolygon ap = estimate_wipe_tower_polygon(preset_bundle->full_config(false), m_plate_index, wt_pos, wt_size, plate_extruder_size);
+    if (wt_size(0) <= 0. || wt_size(1) <= 0. || ap.poly.contour.points.empty())
+        return Polygon();
+
+    Polygon hull = ap.poly.contour;
+
+    if (const auto* rot = print_cfg.option<ConfigOptionFloat>("wipe_tower_rotation_angle");
+        rot && rot->value != 0.)
+        hull.rotate(Geometry::deg2rad(rot->value),
+                    Point(scaled(wt_pos.x()), scaled(wt_pos.y())));
+
+    hull.translate(Point(scaled(m_origin.x()), scaled(m_origin.y())));
+    return hull;
+}
+
+PartPlate::ImexPlacementViolation PartPlate::imex_placement_violation()
+{
+    ensure_imex_zones();
+    if (m_imex_secondary_zone_boxes.empty() && m_imex_collision_zones.empty())
+        return ImexPlacementViolation::None;
+    for (const auto& pr : obj_to_instance_set) {
+        int obj_id = pr.first;
+        int instance_id = pr.second;
+        if (!valid_instance(obj_id, instance_id))
+            continue;
+        ModelInstance* instance = m_model->objects[obj_id]->instances[instance_id];
+        if (imex_hull_violates(instance->convex_hull_2d()))
+            return ImexPlacementViolation::Object;
+    }
+    if (imex_hull_violates(imex_wipe_tower_hull()))
+        return ImexPlacementViolation::PrimeTower;
+    return ImexPlacementViolation::None;
+}
+
+bool PartPlate::has_imex_multimaterial_conflict() const
+{
+    auto* pb = wxGetApp().preset_bundle;
+    if (!pb) return false;
+    const DynamicPrintConfig& printer_cfg = pb->printers.get_edited_preset().config;
+    auto* is_imex_opt = printer_cfg.option<ConfigOptionBool>("is_imex");
+    if (!is_imex_opt || !is_imex_opt->value) return false;
+
+    const std::string mode = get_effective_imex_mode();
+    if (mode == kImexPrimaryMode) return false;
+
+    auto* tpg_opt   = printer_cfg.option<ConfigOptionInt>("imex_tools_per_gantry");
+    if (!tpg_opt) return false;
+    const ConfigOptionInts pem = effective_physical_extruder_map(*pb);
+
+    const std::string active_tools_str = find_imex_mode(printer_cfg, mode).active_tools;
+
+    const std::vector<int> used_1b = get_extruders(true, false);
+    std::vector<int> used_0b;
+    used_0b.reserve(used_1b.size());
+    for (int e : used_1b) if (e > 0) used_0b.push_back(e - 1);
+
+    if (auto* is_mixed_opt = wxGetApp().preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed")) {
+        const auto& is_mixed = is_mixed_opt->values;
+        if (std::any_of(used_0b.begin(), used_0b.end(),
+                        [&](int slot) { return slot >= 0 && slot < (int) is_mixed.size() && is_mixed[slot]; }))
+            return true;
+    }
+
+    return !imex_multicolor_block_reason(mode, active_tools_str, tpg_opt->value, used_0b, pem).empty();
+}
+
+void PartPlate::render_imex_zones(bool force_default_color)
+{
+    if (force_default_color)
+        return;
+
+    ensure_imex_zones();
+    ensure_imex_ghosts();
+
+    struct IMEXTheme {
+        ColorRGBA copy;
+        ColorRGBA mirror;
+        ColorRGBA danger;
+        ColorRGBA margin;
+    };
+
+    static const IMEXTheme k_standard = {
+        { 0.337f, 0.706f, 0.914f, 0.22f },
+        { 0.902f, 0.624f, 0.000f, 0.22f },
+        { 0.850f, 0.100f, 0.100f, 0.40f },
+        { 0.300f, 0.900f, 0.200f, 0.20f },
+    };
+    static const IMEXTheme k_deuteranopia = {
+        { 0.000f, 0.447f, 0.698f, 0.50f },
+        { 0.941f, 0.894f, 0.259f, 0.50f },
+        { 0.200f, 0.100f, 0.800f, 0.65f },
+        { 0.800f, 0.475f, 0.655f, 0.45f },
+    };
+    static const IMEXTheme k_tritanopia = {
+        { 0.835f, 0.369f, 0.000f, 0.50f },
+        { 0.800f, 0.475f, 0.655f, 0.50f },
+        { 0.850f, 0.100f, 0.100f, 0.55f },
+        { 0.000f, 0.700f, 0.600f, 0.45f },
+    };
+    static const IMEXTheme k_high_contrast = {
+        { 0.000f, 0.600f, 1.000f, 0.65f },
+        { 1.000f, 0.600f, 0.000f, 0.65f },
+        { 1.000f, 0.000f, 0.000f, 0.75f },
+        { 0.000f, 1.000f, 0.200f, 0.60f },
+    };
+
+    const IMEXTheme* theme = &k_standard;
+    if (wxGetApp().preset_bundle) {
+        const DynamicPrintConfig& pcfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        switch (imex_cfg_enum<ImexVizTheme>(pcfg, "imex_viz_theme")) {
+        case ImexVizTheme::Deuteranopia: theme = &k_deuteranopia;  break;
+        case ImexVizTheme::Tritanopia:   theme = &k_tritanopia;    break;
+        case ImexVizTheme::HighContrast: theme = &k_high_contrast; break;
+        default: break;
+        }
+    }
+
+    glsafe(::glDepthMask(GL_FALSE));
+
+    if (!m_imex_copy_zones.empty())
+        for (GLModel& z : m_imex_copy_zones)
+            if (z.is_initialized()) { z.set_color(theme->copy); z.render(); }
+
+    if (!m_imex_mirror_zones.empty())
+        for (GLModel& z : m_imex_mirror_zones)
+            if (z.is_initialized()) { z.set_color(theme->mirror); z.render(); }
+
+    glsafe(::glDepthMask(GL_TRUE));
+
+
+    if (!m_imex_collision_overlay.empty()) {
+        glsafe(::glDepthMask(GL_FALSE));
+        for (GLModel& s : m_imex_collision_overlay)
+            if (s.is_initialized()) { s.set_color(theme->danger); s.render(); }
+        glsafe(::glDepthMask(GL_TRUE));
+    }
+
+    if (!m_imex_margin_overlay.empty()) {
+        glsafe(::glDepthMask(GL_FALSE));
+        for (GLModel& b : m_imex_margin_overlay)
+            if (b.is_initialized()) { b.set_color(theme->margin); b.render(); }
+        glsafe(::glDepthMask(GL_TRUE));
+    }
+}
+
+void PartPlate::calc_triangles_from_polygon(const ExPolygon &poly, GLModel &render_model){
+    if (poly.empty()) {
+        render_model.reset();
+        return;
+    }
+    render_model.reset();
+    if (!init_model_from_poly(render_model, poly, GROUND_Z)) {
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "calc_triangles_from_polygon fail";
+    }
+}
+
+static bool init_model_from_lines(GLModel &model, const Lines &lines, float z)
+{
+
+    GLModel::Geometry init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
+    init_data.reserve_vertices(2 * lines.size());
+    init_data.reserve_indices(2 * lines.size());
+
+    for (const auto &l : lines) {
+        init_data.add_vertex(Vec3f(unscale<float>(l.a.x()), unscale<float>(l.a.y()), z));
+        init_data.add_vertex(Vec3f(unscale<float>(l.b.x()), unscale<float>(l.b.y()), z));
+        const unsigned int vertices_counter = (unsigned int)init_data.vertices_count();
+        init_data.add_line(vertices_counter - 2, vertices_counter - 1);
+    }
+
+    model.init_from(std::move(init_data));
+
+    return true;
+}
+
+static bool init_model_from_lines(GLModel &model, const Lines3 &lines)
+{
+
+    GLModel::Geometry init_data;
+    init_data.format = { GLModel::Geometry::EPrimitiveType::Lines, GLModel::Geometry::EVertexLayout::P3 };
+    init_data.reserve_vertices(2 * lines.size());
+    init_data.reserve_indices(2 * lines.size());
+
+    for (const auto &l : lines) {
+        init_data.add_vertex(Vec3f(unscale<float>(l.a.x()), unscale<float>(l.a.y()), unscale<float>(l.a.z())));
+        init_data.add_vertex(Vec3f(unscale<float>(l.b.x()), unscale<float>(l.b.y()), unscale<float>(l.b.z())));
+        const unsigned int vertices_counter = (unsigned int) init_data.vertices_count();
+        init_data.add_line(vertices_counter - 2, vertices_counter - 1);
+    }
+
+    model.init_from(std::move(init_data));
+
+    return true;
+}
+
+static void init_raycaster_from_model(PickingModel& model)
+{
+    assert(model.mesh_raycaster == nullptr);
+
+	const GLModel::Geometry &geometry = model.model.get_geometry();
+
+    indexed_triangle_set its;
+    its.vertices.reserve(geometry.vertices_count());
+    for (size_t i = 0; i < geometry.vertices_count(); ++i) {
+        its.vertices.emplace_back(geometry.extract_position_3(i));
+    }
+    its.indices.reserve(geometry.indices_count() / 3);
+    for (size_t i = 0; i < geometry.indices_count() / 3; ++i) {
+        const size_t tri_id = i * 3;
+        its.indices.emplace_back(geometry.extract_index(tri_id), geometry.extract_index(tri_id + 1), geometry.extract_index(tri_id + 2));
+    }
+
+    model.mesh_raycaster = std::make_unique<MeshRaycaster>(std::make_shared<const TriangleMesh>(std::move(its)));
+}
+
+void PartPlate::calc_gridlines(const ExPolygon& poly, const BoundingBox& pp_bbox) {
+    m_gridlines.reset();
+    m_gridlines_bolder.reset();
+
+    int   step          = Bed_2D::calculate_grid_step(pp_bbox, scale_(1.00));
+    Vec2d scaled_origin = Vec2d(scale_(m_origin.x()),scale_(m_origin.y()));
+    auto  grid_lines    = Bed_2D::generate_grid(poly, pp_bbox, scaled_origin, scale_(step), SCALED_EPSILON);
+
+    Lines lines_thin = to_lines(grid_lines[0]);
+	Lines lines_bold = to_lines(grid_lines[1]);
+
+	Lines contour_lines = to_lines(poly);
+	std::copy(contour_lines.begin(), contour_lines.end(), std::back_inserter(lines_thin));
+
+	if (!init_model_from_lines(m_gridlines       , lines_thin, GROUND_Z_GRIDLINE))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create bed grid lines\n";
+
+	if (!init_model_from_lines(m_gridlines_bolder, lines_bold, GROUND_Z_GRIDLINE))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create bed grid lines\n";
+}
+
+void PartPlate::calc_height_limit() {
+    m_height_limit_common.reset();
+    m_height_limit_bottom.reset();
+    m_height_limit_top.reset();
+
+	Lines3 bottom_h_lines, top_lines, top_h_lines, common_lines;
+	int shape_count = m_shape.size();
+	float first_z = 0.02f;
+	for (int i = 0; i < shape_count; i++) {
+		auto &cur_p = m_shape[i];
+		Vec3crd p1(scale_(cur_p.x()), scale_(cur_p.y()), scale_(first_z));
+		Vec3crd p2(scale_(cur_p.x()), scale_(cur_p.y()), scale_(m_height_to_rod));
+		Vec3crd p3(scale_(cur_p.x()), scale_(cur_p.y()), scale_(m_height_to_lid));
+
+		common_lines.emplace_back(p1, p2);
+		top_lines.emplace_back(p2, p3);
+
+		Vec2d next_p;
+		if (i < (shape_count - 1)) {
+			next_p = m_shape[i+1];
+
+		}
+		else {
+			next_p = m_shape[0];
+		}
+		Vec3crd p4(scale_(cur_p.x()), scale_(cur_p.y()), scale_(m_height_to_rod));
+		Vec3crd p5(scale_(next_p.x()), scale_(next_p.y()), scale_(m_height_to_rod));
+		bottom_h_lines.emplace_back(p4, p5);
+
+		Vec3crd p6(scale_(cur_p.x()), scale_(cur_p.y()), scale_(m_height_to_lid));
+		Vec3crd p7(scale_(next_p.x()), scale_(next_p.y()), scale_(m_height_to_lid));
+		top_h_lines.emplace_back(p6, p7);
+	}
+	std::copy(top_lines.begin(), top_lines.end(), std::back_inserter(top_h_lines));
+
+	if (!init_model_from_lines(m_height_limit_common, common_lines))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create height limit bottom lines\n";
+
+	if (!init_model_from_lines(m_height_limit_bottom, bottom_h_lines))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create height limit bottom lines\n";
+
+	if (!init_model_from_lines(m_height_limit_top, top_h_lines))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to create height limit top lines\n";
+}
+
+float PartPlate::icon_scale_factor() const
+{
+    const BoundingBoxf bed_ext  = get_extents(m_shape);
+    const double       by_depth = bed_ext.size().y() / 200.;
+    const double       by_gap   = bed_ext.size().x() * LOGICAL_PART_PLATE_GAP / (PARTPLATE_ICON_SIZE + 2 * PARTPLATE_ICON_GAP_LEFT);
+    return float(std::min(by_depth, by_gap));
+}
+
+void PartPlate::calc_vertex_for_number(int index, bool one_number, GLModel &buffer)
+{
+    buffer.reset();
+
+	ExPolygon poly;
+#if 0
+	Vec2d& p = m_shape[2];
+	float offset_x = one_number?PARTPLATE_TEXT_OFFSET_X1: PARTPLATE_TEXT_OFFSET_X2;
+
+	poly.contour.append({ scale_(p(0) + PARTPLATE_ICON_GAP + offset_x), scale_(p(1) - index * (PARTPLATE_ICON_SIZE + PARTPLATE_ICON_GAP) - PARTPLATE_ICON_GAP - PARTPLATE_ICON_SIZE + PARTPLATE_TEXT_OFFSET_Y) });
+	poly.contour.append({ scale_(p(0) + PARTPLATE_ICON_GAP + PARTPLATE_ICON_SIZE - offset_x), scale_(p(1) - index * (PARTPLATE_ICON_SIZE + PARTPLATE_ICON_GAP)- PARTPLATE_ICON_GAP - PARTPLATE_ICON_SIZE + PARTPLATE_TEXT_OFFSET_Y) });
+	poly.contour.append({ scale_(p(0) + PARTPLATE_ICON_GAP + PARTPLATE_ICON_SIZE - offset_x), scale_(p(1) - index * (PARTPLATE_ICON_SIZE + PARTPLATE_ICON_GAP)- PARTPLATE_ICON_GAP - PARTPLATE_TEXT_OFFSET_Y)});
+	poly.contour.append({ scale_(p(0) + PARTPLATE_ICON_GAP + offset_x), scale_(p(1) - index * (PARTPLATE_ICON_SIZE + PARTPLATE_ICON_GAP)- PARTPLATE_ICON_GAP - PARTPLATE_TEXT_OFFSET_Y) });
+#else
+    auto bed_ext   = get_extents(m_shape);
+    Vec2d p        = bed_ext[1];
+    float factor   = icon_scale_factor();
+    float size     = PARTPLATE_ICON_SIZE     * factor;
+    float offset_y = PARTPLATE_TEXT_OFFSET_Y * factor;
+    float offset_x = (one_number?PARTPLATE_TEXT_OFFSET_X1: PARTPLATE_TEXT_OFFSET_X2) * factor;
+    float gap_left = PARTPLATE_ICON_GAP_LEFT * factor;
+    p += Vec2d(gap_left,0);
+
+    poly.contour.append({ scale_(p(0) + offset_x)       , scale_(p(1) + offset_y) });
+    poly.contour.append({ scale_(p(0) + size - offset_x), scale_(p(1) + offset_y) });
+    poly.contour.append({ scale_(p(0) + size - offset_x), scale_(p(1) + size - offset_y) });
+    poly.contour.append({ scale_(p(0) + offset_x)       , scale_(p(1) + size - offset_y) });
+#endif
+    if (!init_model_from_poly(buffer, poly, GROUND_Z))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to generate geometry buffers for icons\n";
+}
+
+void PartPlate::calc_vertex_for_plate_name_edit_icon(GLTexture *texture, int index, PickingModel &model) {
+    model.reset();
+
+    ExPolygon poly;
+    auto  bed_ext  = get_extents(m_shape);
+    Vec2d p        = bed_ext[3];
+    float factor   = icon_scale_factor();
+    float icon_sz  = factor * PARTPLATE_EDIT_PLATE_NAME_ICON_SIZE;
+    float width    = icon_sz;
+    float height   = icon_sz;
+    float offset_y = factor * PARTPLATE_TEXT_OFFSET_Y;
+
+    float name_width = 0.0;
+    if (texture && texture->get_width() > 0 && texture->get_height())
+        name_width = icon_sz * texture->m_original_width / texture->get_height(); 
+
+    p += Vec2d(name_width, offset_y);
+
+    poly.contour.append({ scale_(p(0)        ), scale_(p(1)         ) });
+    poly.contour.append({ scale_(p(0) + width), scale_(p(1)         ) });
+    poly.contour.append({ scale_(p(0) + width), scale_(p(1) + height) });
+    poly.contour.append({ scale_(p(0)        ), scale_(p(1) + height) });
+
+    if (!init_model_from_poly(model.model, poly, GROUND_Z))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to generate geometry buffers for icons\n";
+
+    init_raycaster_from_model(model);
+}
+
+void PartPlate::calc_vertex_for_icons(int index, PickingModel &model)
+{
+    model.reset();
+
+    ExPolygon poly;
+    auto  bed_ext  = get_extents(m_shape);
+    Vec2d p        = bed_ext[2];
+    float factor   = icon_scale_factor();
+    float size     = PARTPLATE_ICON_SIZE     * factor;
+    float gap_left = PARTPLATE_ICON_GAP_LEFT * factor;
+    float gap_y    = PARTPLATE_ICON_GAP_Y    * factor;
+    float gap_top  = PARTPLATE_ICON_GAP_TOP  * factor;
+    p += Vec2d(gap_left,-1 * (index * (size + gap_y) + gap_top));
+
+    if (m_plater && m_plater->get_build_volume_type() == BuildVolume_Type::Circle)
+        p[1] -= std::max(0.0, (bed_ext.size()(1) - (size + gap_y) * 6 ) / 2);
+
+    poly.contour.append({ scale_(p(0))       , scale_(p(1) - size) });
+    poly.contour.append({ scale_(p(0) + size), scale_(p(1) - size) });
+    poly.contour.append({ scale_(p(0) + size), scale_(p(1)) });
+    poly.contour.append({ scale_(p(0))       , scale_(p(1)) });
+
+	if (!init_model_from_poly(model.model, poly, GROUND_Z))
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to generate geometry buffers for icons\n";
+
+	init_raycaster_from_model(model);
+}
+
+void PartPlate::calc_vertex_for_imex_warn_badge(int imex_icon_index, GLModel &model)
+{
+    model.reset();
+
+    auto  bed_ext  = get_extents(m_shape);
+    Vec2d p        = bed_ext[2];
+    auto  factor   = bed_ext.size()(1) / 200.0;
+    float size     = PARTPLATE_ICON_SIZE     * factor;
+    float gap_left = PARTPLATE_ICON_GAP_LEFT * factor;
+    float gap_y    = PARTPLATE_ICON_GAP_Y    * factor;
+    float gap_top  = PARTPLATE_ICON_GAP_TOP  * factor;
+
+    p += Vec2d(gap_left, -1 * (imex_icon_index * (size + gap_y) + gap_top));
+
+    float badge = size * 0.55f;
+    Vec2d bp(p(0) + size - badge, p(1) - size);
+
+    ExPolygon poly;
+    poly.contour.append({ scale_(bp(0))        , scale_(bp(1))        });
+    poly.contour.append({ scale_(bp(0) + badge), scale_(bp(1))        });
+    poly.contour.append({ scale_(bp(0) + badge), scale_(bp(1) + badge)});
+    poly.contour.append({ scale_(bp(0))        , scale_(bp(1) + badge)});
+
+    if (!init_model_from_poly(model, poly, GROUND_Z + 0.01f))
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to generate geometry for IMEX warn badge\n";
+}
+
+void PartPlate::render_background(bool force_default_color)
+{
+	if (m_selected && !force_default_color) return;
+
+	glsafe(::glDepthMask(GL_FALSE));
+
+	ColorRGBA color;
+	if (!force_default_color) {
+		if (m_selected) {
+            color = PartPlate::SELECT_COLOR;
+		}
+		else {
+            color = m_partplate_list->m_is_dark ? PartPlate::UNSELECT_DARK_COLOR : PartPlate::UNSELECT_COLOR;
+		}
+	}
+	else {
+        color = PartPlate::DEFAULT_COLOR;
+	}
+    m_triangles.model.set_color(color);
+    m_triangles.model.render();
+	glsafe(::glDepthMask(GL_TRUE));
+}
+
+void PartPlate::render_logo_texture(GLTexture &logo_texture, GLModel& logo_buffer, bool bottom)
+{
+	if (logo_texture.unsent_compressed_data_available()) {
+		logo_texture.send_compressed_data_to_gpu();
+	}
+
+	if (logo_buffer.is_initialized()) {
+		GLShaderProgram* shader = wxGetApp().get_shader("printbed");
+		if (shader != nullptr) {
+			shader->start_using();
+            const Camera &camera = wxGetApp().plater()->get_camera();
+            shader->set_uniform("view_model_matrix", camera.get_view_matrix());
+            shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+			shader->set_uniform("transparent_background", 0);
+			shader->set_uniform("svg_source", 0);
+
+			glsafe(::glDepthMask(GL_FALSE));
+
+			glsafe(::glEnable(GL_BLEND));
+            glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+			if (bottom)
+				glsafe(::glFrontFace(GL_CW));
+
+			GLuint tex_id = (GLuint)logo_texture.get_id();
+
+			glsafe(::glBindTexture(GL_TEXTURE_2D, tex_id));
+            logo_buffer.render();
+			glsafe(::glBindTexture(GL_TEXTURE_2D, 0));
+
+			if (bottom)
+				glsafe(::glFrontFace(GL_CCW));
+
+            glsafe(::glDisable(GL_BLEND));
+
+			glsafe(::glDepthMask(GL_TRUE));
+
+			shader->stop_using();
+		}
+	}
+}
+
+void PartPlate::render_logo(bool bottom, bool render_cali)
+{
+	if (!m_partplate_list->render_bedtype_logo) {
+		if (!m_partplate_list->load_logo_texture())
+			return;
+
+		if (m_logo_triangles.is_initialized())
+			render_logo_texture(m_partplate_list->m_logo_texture, m_logo_triangles, bottom);
+		return;
+	}
+
+	m_partplate_list->load_bedtype_textures();
+	m_partplate_list->load_cali_textures();
+    m_partplate_list->load_extruder_only_area_textures();
+	auto curr_bed_type = get_bed_type();
+	if (curr_bed_type == btDefault) {
+        DynamicConfig& proj_cfg = wxGetApp().preset_bundle->project_config;
+        if (proj_cfg.has(std::string("curr_bed_type")))
+            curr_bed_type = proj_cfg.opt_enum<BedType>(std::string("curr_bed_type"));
+	}
+	int bed_type_idx = (int)curr_bed_type;
+    auto is_single_extruder = wxGetApp().preset_bundle->get_printer_extruder_count() == 1;
+    if (!is_single_extruder) {
+        if (m_partplate_list->m_allow_bed_type_in_double_nozzle.find(bed_type_idx) == m_partplate_list->m_allow_bed_type_in_double_nozzle.end()) {
+            bed_type_idx = 0;
+        }
+    }
+	for (auto &part : m_partplate_list->bed_texture_info[bed_type_idx].parts) {
+		if (part.texture) {
+			if (part.buffer && part.buffer->is_initialized()
+				) {
+				if (part.offset.x() != m_origin.x() || part.offset.y() != m_origin.y()) {
+					part.offset = Vec2d(m_origin.x(), m_origin.y());
+					part.update_buffer();
+				}
+				render_logo_texture(*(part.texture),
+									*(part.buffer),
+									bottom);
+			}
+		}
+	}
+
+	if (render_cali) {
+		for (auto& part : m_partplate_list->cali_texture_info.parts) {
+			if (part.texture) {
+                if (part.buffer && part.buffer->is_initialized()) {
+					if (part.offset.x() != m_origin.x() || part.offset.y() != m_origin.y()) {
+						part.offset = Vec2d(m_origin.x(), m_origin.y());
+						part.update_buffer();
+					}
+					render_logo_texture(*(part.texture),
+						*(part.buffer),
+						bottom);
+				}
+			}
+		}
+	}
+
+    bool is_zh        = wxGetApp().app_config->get("language") == "zh_CN";
+    int  language_idx = (int) (is_zh ? ExtruderOnlyAreaType::Chinese:ExtruderOnlyAreaType::Engilish);
+    if (!is_single_extruder) {
+        for (auto &part : m_partplate_list->extruder_only_area_info[language_idx].parts) {
+            if (part.texture) {
+                if (part.buffer && part.buffer->is_initialized()) {
+                    if (part.offset.x() != m_origin.x() || part.offset.y() != m_origin.y()) {
+                        part.offset = Vec2d(m_origin.x(), m_origin.y());
+                        part.update_buffer();
+                    }
+                    render_logo_texture(*(part.texture), *(part.buffer), bottom);
+                }
+            }
+        }
+	}
+}
+
+void PartPlate::render_wrapping_detection_area(bool force_default_color)
+{
+    if (force_default_color || !m_wrapping_detection_triangles.is_initialized())
+        return;
+    ColorRGBA select_color{0.765f, 0.7686f, 0.7686f, 1.0f};
+    m_wrapping_detection_triangles.set_color(select_color);
+    m_wrapping_detection_triangles.render();
+}
+
+void PartPlate::render_exclude_area(bool force_default_color) {
+	if (force_default_color)
+		return;
+
+	ColorRGBA select_color{   .9f, .86f, .82f, .7f };
+	ColorRGBA unselect_color{ .6f, .6f, .6f, .3f };
+	glsafe(::glDepthMask(GL_FALSE));
+
+	if (m_selected) {
+		glsafe(::glColor4fv(select_color.data()));
+	}
+	else {
+		glsafe(::glColor4fv(unselect_color.data()));
+	}
+
+	m_exclude_triangles.set_color(m_selected ? select_color : unselect_color);
+    m_exclude_triangles.render();
+	glsafe(::glDepthMask(GL_TRUE));
+}
+
+void PartPlate::render_grid(bool bottom) {
+    GLShaderProgram* shader = wxGetApp().get_shader("flat");
+    if (shader == nullptr) {
+        return;
+    }
+
+    shader->start_using();
+    glsafe(::glEnable(GL_BLEND));
+    glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+    const Camera& camera = wxGetApp().plater()->get_camera();
+    const std::array<int, 4>& viewport = camera.get_viewport();
+    const Transform3d& view_matrix = camera.get_view_matrix();
+    const Transform3d& projection_matrix = camera.get_projection_matrix();
+
+    shader->set_uniform("view_model_matrix", view_matrix);
+    shader->set_uniform("projection_matrix", projection_matrix);
+
+#if !SLIC3R_OPENGL_ES
+    if (!OpenGLManager::get_gl_info().is_core_profile())
+        glsafe(::glLineWidth(1.0f * m_scale_factor));
+#endif
+
+    ColorRGBA color;
+	if (bottom)
+        color = LINE_BOTTOM_COLOR;
+	else {
+		if (m_selected)
+            color = m_partplate_list->m_is_dark ? LINE_TOP_SEL_DARK_COLOR : LINE_TOP_SEL_COLOR;
+		else
+            color = m_partplate_list->m_is_dark ? LINE_TOP_DARK_COLOR : LINE_TOP_COLOR;
+	}
+    m_gridlines.set_color(color);
+    m_gridlines.render();
+
+    shader->stop_using();
+
+#if SLIC3R_OPENGL_ES
+    shader = wxGetApp().get_shader("dashed_lines");
+#else
+    shader = OpenGLManager::get_gl_info().is_core_profile() ? wxGetApp().get_shader("dashed_thick_lines") : wxGetApp().get_shader("flat");
+#endif
+    if (shader == nullptr) {
+        return;
+    }
+    shader->start_using();
+
+    shader->set_uniform("view_model_matrix", view_matrix);
+    shader->set_uniform("projection_matrix", projection_matrix);
+
+#if !SLIC3R_OPENGL_ES
+    if (OpenGLManager::get_gl_info().is_core_profile()) {
+#endif
+        shader->set_uniform("viewport_size", Vec2d(double(viewport[2]), double(viewport[3])));
+        shader->set_uniform("width", 0.25f);
+#if !SLIC3R_OPENGL_ES
+    } else {
+        glsafe(::glLineWidth(2.0f * m_scale_factor));
+    }
+#endif
+
+    m_gridlines_bolder.set_color(color);
+    m_gridlines_bolder.render();
+
+    shader->stop_using();
+}
+
+void PartPlate::render_height_limit(PartPlate::HeightLimitMode mode)
+{
+	const bool relevant_for_print_mode = m_print && (m_print->config().print_sequence == PrintSequence::ByObject ||
+	                                                 (m_print->config().print_sequence == PrintSequence::ByLayer &&
+	                                                  wipe_tower_sparse_layers_skipped(m_print->config()) && m_print->has_wipe_tower()));
+	if (relevant_for_print_mode && mode != HEIGHT_LIMIT_NONE)
+	{
+#if !SLIC3R_OPENGL_ES
+	    if (!OpenGLManager::get_gl_info().is_core_profile())
+	        glsafe(::glLineWidth(3.0f * m_scale_factor));
+#endif
+        m_height_limit_common.set_color(HEIGHT_LIMIT_BOTTOM_COLOR);
+        m_height_limit_common.render();
+
+		if ((mode == HEIGHT_LIMIT_BOTTOM) || (mode == HEIGHT_LIMIT_BOTH)) {
+#if !SLIC3R_OPENGL_ES
+		    if (!OpenGLManager::get_gl_info().is_core_profile())
+		        glsafe(::glLineWidth(3.0f * m_scale_factor));
+#endif
+		    m_height_limit_bottom.set_color(HEIGHT_LIMIT_BOTTOM_COLOR);
+            m_height_limit_bottom.render();
+		}
+
+		if ((mode == HEIGHT_LIMIT_TOP) || (mode == HEIGHT_LIMIT_BOTH)){
+#if !SLIC3R_OPENGL_ES
+		    if (!OpenGLManager::get_gl_info().is_core_profile())
+		        glsafe(::glLineWidth(3.0f * m_scale_factor));
+#endif
+		    m_height_limit_top.set_color(HEIGHT_LIMIT_TOP_COLOR);
+            m_height_limit_top.render();
+		}
+	}
+}
+
+void PartPlate::render_icon_texture(GLModel &buffer, GLTexture &texture)
+{
+	GLuint tex_id = (GLuint)texture.get_id();
+	glsafe(::glBindTexture(GL_TEXTURE_2D, tex_id));
+    buffer.render();
+	glsafe(::glBindTexture(GL_TEXTURE_2D, 0));
+}
+
+void PartPlate::render_plate_name_texture()
+{
+	if (m_plate_name_edit_icon.mesh_raycaster == nullptr)
+		generate_plate_name_texture();
+
+	if (m_name_texture.get_id() == 0)
+		return;
+
+	GLuint tex_id = (GLuint)m_name_texture.get_id();
+	glsafe(::glBindTexture(GL_TEXTURE_2D, tex_id));
+    m_plate_name_icon.render();
+	glsafe(::glBindTexture(GL_TEXTURE_2D, 0));
+}
+
+void PartPlate::set_hover_tooltip(const std::string& tooltip)
+{
+    m_partplate_list->m_hover_tooltip = tooltip;
+}
+
+void PartPlate::render_icons(bool bottom, bool only_name, int hover_id)
+{
+	GLShaderProgram* shader = wxGetApp().get_shader("printbed");
+	if (shader != nullptr) {
+		shader->start_using();
+        const Camera &camera = wxGetApp().plater()->get_camera();
+        shader->set_uniform("view_model_matrix", camera.get_view_matrix());
+        shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+		shader->set_uniform("transparent_background", bottom);
+		shader->set_uniform("svg_source", 0);
+
+        glsafe(::glDepthMask(GL_FALSE));
+
+        glsafe(::glEnable(GL_BLEND));
+        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+        if (!only_name) {
+            if (hover_id == 1) {
+                render_icon_texture(m_del_icon.model, m_partplate_list->m_del_hovered_texture);
+                set_hover_tooltip(_u8L("Remove current plate (if not last one)"));
+            }
+            else
+                render_icon_texture(m_del_icon.model, m_partplate_list->m_del_texture);
+
+            if (hover_id == 2) {
+                render_icon_texture(m_orient_icon.model, m_partplate_list->m_orient_hovered_texture);
+                set_hover_tooltip(_u8L("Auto orient objects on current plate"));
+            }
+            else
+                render_icon_texture(m_orient_icon.model, m_partplate_list->m_orient_texture);
+
+            if (hover_id == 3) {
+                render_icon_texture(m_arrange_icon.model, m_partplate_list->m_arrange_hovered_texture);
+                set_hover_tooltip(_u8L("Arrange objects on current plate"));
+            }
+            else
+                render_icon_texture(m_arrange_icon.model, m_partplate_list->m_arrange_texture);
+
+            if (hover_id == 4) {
+                if (this->is_locked()) {
+                    render_icon_texture(m_lock_icon.model,
+                                        m_partplate_list->m_locked_hovered_texture);
+                    set_hover_tooltip(_u8L("Unlock current plate"));
+                }
+                else {
+                    render_icon_texture(m_lock_icon.model,
+                                        m_partplate_list->m_lockopen_hovered_texture);
+                    set_hover_tooltip(_u8L("Lock current plate"));
+                }
+            } else {
+                if (this->is_locked())
+                    render_icon_texture(m_lock_icon.model, m_partplate_list->m_locked_texture);
+                else
+                    render_icon_texture(m_lock_icon.model, m_partplate_list->m_lockopen_texture);
+            }
+
+            PresetBundle* preset = wxGetApp().preset_bundle;
+            bool dual_bbl = (preset->is_bbl_vendor() && preset->get_printer_extruder_count() == 2);
+            if (dual_bbl) {
+                if (hover_id == PLATE_FILAMENT_MAP_ID){
+                    render_icon_texture(m_plate_filament_map_icon.model, m_partplate_list->m_plate_set_filament_map_hovered_texture);
+                    set_hover_tooltip(_u8L("Filament grouping"));
+                } else
+                    render_icon_texture(m_plate_filament_map_icon.model, m_partplate_list->m_plate_set_filament_map_texture);
+            }
+
+			if (hover_id == 6) {
+                render_icon_texture(m_plate_name_edit_icon.model, m_partplate_list->m_plate_name_edit_hovered_texture);
+                set_hover_tooltip(_u8L("Edit current plate name"));
+			}
+			else
+                render_icon_texture(m_plate_name_edit_icon.model, m_partplate_list->m_plate_name_edit_texture);
+
+			if (hover_id == 7) {
+                render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_hovered_texture);
+                set_hover_tooltip(_u8L("Move plate to the front"));
+            } else
+                render_icon_texture(m_move_front_icon.model, m_partplate_list->m_move_front_texture);
+
+            {
+                PresetBundle* pb = wxGetApp().preset_bundle;
+                auto* is_imex_opt = pb ? pb->printers.get_edited_preset().config.option<ConfigOptionBool>("is_imex") : nullptr;
+                if (is_imex_opt && is_imex_opt->value) {
+                    std::string  active_tools;
+                    int          primary_phys = -1;
+                    const size_t kind = size_t(resolve_active_mode_tools(active_tools, primary_phys) ?
+                                                   imex_mode_kind(active_tools) :
+                                                   ImexModeKind::Primary);
+                    std::string hover_tip;
+                    if (hover_id == (int)PLATE_IMEX_MODE_ID) {
+                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_hovered_textures[kind]);
+                        std::string cur = get_imex_mode();
+                        const std::string effective = get_effective_imex_mode();
+                        if (cur == kImexPrimaryMode) cur = _u8L("Primary");
+                        if (effective != get_imex_mode()) {
+                            try {
+                                cur += (boost::format(_u8L(" (process preset: %1%)")) % effective).str();
+                            } catch (const std::exception&) {
+                                cur += (boost::format(" (process preset: %1%)") % effective).str();
+                            }
+                        }
+                        try {
+                            hover_tip = (boost::format(_u8L("IDEX/IQEX mode: %1% (left-click to cycle, right-click for menu)")) % cur).str();
+                        } catch (const std::exception&) {
+                            hover_tip = (boost::format("IDEX/IQEX mode: %1% (left-click to cycle, right-click for menu)") % cur).str();
+                        }
+                    } else {
+                        render_icon_texture(m_imex_mode_icon.model, m_partplate_list->m_imex_mode_textures[kind]);
+                    }
+                    if (has_imex_multimaterial_conflict()) {
+                        render_icon_texture(m_imex_warn_icon, m_partplate_list->m_imex_warn_texture);
+                        if (hover_id == (int)PLATE_IMEX_MODE_ID)
+                            hover_tip += (hover_tip.empty() ? "" : "\n\n") +
+                                         _u8L("Warning: this plate uses a parallel IDEX/IQEX mode with multi-material objects. Proceed with caution — verify your G-code handles this combination correctly.");
+                    }
+                    if (!hover_tip.empty())
+                        set_hover_tooltip(hover_tip);
+                }
+            }
+
+			if (m_partplate_list->render_plate_settings) {
+				bool has_plate_settings = get_bed_type() != BedType::btDefault || get_print_seq() != PrintSequence::ByDefault || !get_first_layer_print_sequence().empty() || !get_other_layers_print_sequence().empty() || has_spiral_mode_config();
+                if (hover_id == 5) {
+                    if (!has_plate_settings)
+                        render_icon_texture(m_plate_settings_icon.model, m_partplate_list->m_plate_settings_hovered_texture);
+                    else
+                        render_icon_texture(m_plate_settings_icon.model, m_partplate_list->m_plate_settings_changed_hovered_texture);
+
+                    set_hover_tooltip(_u8L("Customize current plate"));
+                } else {
+                    if (!has_plate_settings)
+                        render_icon_texture(m_plate_settings_icon.model, m_partplate_list->m_plate_settings_texture);
+                    else
+                        render_icon_texture(m_plate_settings_icon.model, m_partplate_list->m_plate_settings_changed_texture);
+                }
+            }
+
+            if (m_plate_index >= 0 && m_plate_index < MAX_PLATE_COUNT) {
+                render_icon_texture(m_plate_idx_icon, m_partplate_list->m_idx_textures[m_plate_index]);
+            }
+        }
+		render_plate_name_texture();
+
+        glsafe(::glDisable(GL_BLEND));
+
+        glsafe(::glDepthMask(GL_TRUE));
+        shader->stop_using();
+    }
+}
+
+void PartPlate::render_only_numbers(bool bottom)
+{
+	GLShaderProgram* shader = wxGetApp().get_shader("printbed");
+	if (shader != nullptr) {
+		shader->start_using();
+        const Camera &camera = wxGetApp().plater()->get_camera();
+        shader->set_uniform("view_model_matrix", camera.get_view_matrix());
+        shader->set_uniform("projection_matrix", camera.get_projection_matrix());
+		shader->set_uniform("transparent_background", bottom);
+		shader->set_uniform("svg_source", 0);
+
+        glsafe(::glDepthMask(GL_FALSE));
+
+        glsafe(::glEnable(GL_BLEND));
+        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+        if (m_plate_index >=0 && m_plate_index < MAX_PLATE_COUNT) {
+            render_icon_texture(m_plate_idx_icon, m_partplate_list->m_idx_textures[m_plate_index]);
+        }
+
+        glsafe(::glDisable(GL_BLEND));
+
+        glsafe(::glDepthMask(GL_TRUE));
+        shader->stop_using();
+    }
+}
+
+static void register_model_for_picking(GLCanvas3D &canvas, PickingModel &model, int id)
+{
+	if (model.mesh_raycaster == nullptr)
+		return;
+
+    canvas.add_raycaster_for_picking(SceneRaycaster::EType::Bed, id, *model.mesh_raycaster, Transform3d::Identity());
+}
+
+void PartPlate::register_raycasters_for_picking(GLCanvas3D &canvas)
+{
+    register_model_for_picking(canvas, m_triangles, picking_id_component(0));
+    register_model_for_picking(canvas, m_del_icon, picking_id_component(1));
+    register_model_for_picking(canvas, m_orient_icon, picking_id_component(2));
+    register_model_for_picking(canvas, m_arrange_icon, picking_id_component(3));
+    register_model_for_picking(canvas, m_lock_icon, picking_id_component(4));
+    if (m_partplate_list->render_plate_settings)
+        register_model_for_picking(canvas, m_plate_settings_icon, picking_id_component(5));
+
+    canvas.remove_raycasters_for_picking(SceneRaycaster::EType::Bed, picking_id_component(6));
+	if (m_plate_name_edit_icon.mesh_raycaster != nullptr)
+		register_model_for_picking(canvas, m_plate_name_edit_icon, picking_id_component(6));
+    register_model_for_picking(canvas, m_move_front_icon, picking_id_component(7));
+
+    PresetBundle* preset = wxGetApp().preset_bundle;
+    bool dual_bbl = (preset && preset->is_bbl_vendor() && preset->get_printer_extruder_count() == 2);
+    if (dual_bbl)
+        register_model_for_picking(canvas, m_plate_filament_map_icon, picking_id_component(PLATE_FILAMENT_MAP_ID));
+
+    if (preset) {
+        auto* is_imex_opt = preset->printers.get_edited_preset().config.option<ConfigOptionBool>("is_imex");
+        if (is_imex_opt && is_imex_opt->value && m_imex_mode_icon.mesh_raycaster)
+            register_model_for_picking(canvas, m_imex_mode_icon, picking_id_component(PLATE_IMEX_MODE_ID));
+    }
+}
+
+int PartPlate::picking_id_component(int idx) const
+{
+    return this->m_plate_index * GRABBER_COUNT + idx;
+}
+
+std::vector<int> PartPlate::get_extruders(bool conside_custom_gcode, bool expand_mixed_slots) const
+{
+	std::vector<int> plate_extruders;
+    if (check_objects_empty_and_gcode3mf(plate_extruders)) {
+        return plate_extruders;
+    }
+	return get_extruders(conside_custom_gcode, wxGetApp().preset_bundle->prints.get_edited_preset().config, wxGetApp().preset_bundle->project_config, expand_mixed_slots);
+}
+
+std::vector<int> PartPlate::get_extruders(bool conside_custom_gcode, const DynamicPrintConfig& glb_config, const DynamicPrintConfig& project_config, bool expand_mixed_slots) const
+{
+	std::vector<int> plate_extruders;
+	if (m_model->objects.empty()) {
+		for (const FilamentInfo &info : slice_filaments_info)
+			plate_extruders.push_back(info.id + 1);
+		return plate_extruders;
+	}
+	int glb_support_intf_extr = glb_config.opt_int("support_interface_filament");
+	int glb_support_extr = glb_config.opt_int("support_filament");
+	int glb_outer_wall_extr = glb_config.opt_int("outer_wall_filament_id");
+	int glb_inner_wall_extr = glb_config.opt_int("inner_wall_filament_id");
+	if (glb_outer_wall_extr == 0) glb_outer_wall_extr = glb_inner_wall_extr;
+	if (glb_inner_wall_extr == 0) glb_inner_wall_extr = glb_outer_wall_extr;
+	int glb_sparse_infill_extr = glb_config.opt_int("sparse_infill_filament_id");
+	int glb_internal_solid_extr = glb_config.opt_int("internal_solid_filament_id");
+	int glb_top_surface_extr = glb_config.opt_int("top_surface_filament_id");
+	int glb_bottom_surface_extr = glb_config.opt_int("bottom_surface_filament_id");
+	if (glb_top_surface_extr == 0) glb_top_surface_extr = glb_internal_solid_extr;
+	if (glb_bottom_surface_extr == 0) glb_bottom_surface_extr = glb_internal_solid_extr;
+	bool glb_support = glb_config.opt_bool("enable_support");
+    glb_support |= glb_config.opt_int("raft_layers") > 0;
+
+	for (int obj_idx = 0; obj_idx < m_model->objects.size(); obj_idx++) {
+		if (!contain_any_instance_totally(obj_idx))
+			continue;
+
+		ModelObject* mo = m_model->objects[obj_idx];
+		for (ModelVolume* mv : mo->volumes) {
+			std::vector<int> volume_extruders = mv->get_extruders();
+			plate_extruders.insert(plate_extruders.end(), volume_extruders.begin(), volume_extruders.end());
+		}
+
+        for (auto layer_range : mo->layer_config_ranges) {
+            if (layer_range.second.has("extruder")) {
+                if (auto id = layer_range.second.option("extruder")->getInt(); id > 0)
+					plate_extruders.push_back(id);
+			}
+		}
+
+		bool obj_support = false;
+		const ConfigOption* obj_support_opt = mo->config.option("enable_support");
+        const ConfigOption *obj_raft_opt    = mo->config.option("raft_layers");
+		if (obj_support_opt != nullptr || obj_raft_opt != nullptr) {
+            if (obj_support_opt != nullptr)
+				obj_support = obj_support_opt->getBool();
+            if (obj_raft_opt != nullptr)
+				obj_support |= obj_raft_opt->getInt() > 0;
+        }
+		else
+			obj_support = glb_support;
+
+        if (obj_support) {
+            int                 obj_support_intf_extr = 0;
+            const ConfigOption* support_intf_extr_opt = mo->config.option("support_interface_filament");
+            if (support_intf_extr_opt != nullptr)
+                obj_support_intf_extr = support_intf_extr_opt->getInt();
+            if (obj_support_intf_extr != 0)
+                plate_extruders.push_back(obj_support_intf_extr);
+            else if (glb_support_intf_extr != 0)
+                plate_extruders.push_back(glb_support_intf_extr);
+
+            int                 obj_support_extr = 0;
+            const ConfigOption* support_extr_opt = mo->config.option("support_filament");
+            if (support_extr_opt != nullptr)
+                obj_support_extr = support_extr_opt->getInt();
+            if (obj_support_extr != 0)
+                plate_extruders.push_back(obj_support_extr);
+            else if (glb_support_extr != 0)
+                plate_extruders.push_back(glb_support_extr);
+        }
+
+		int obj_outer_wall_extr = 0;
+		if (const ConfigOption* wall_opt = mo->config.option("outer_wall_filament_id"); wall_opt != nullptr)
+			obj_outer_wall_extr = wall_opt->getInt();
+		if (obj_outer_wall_extr == 0)
+			if (const ConfigOption* wall_opt = mo->config.option("inner_wall_filament_id"); wall_opt != nullptr)
+				obj_outer_wall_extr = wall_opt->getInt();
+		if (obj_outer_wall_extr != 0)
+			plate_extruders.push_back(obj_outer_wall_extr);
+		else if (glb_outer_wall_extr != 0)
+			plate_extruders.push_back(glb_outer_wall_extr);
+
+		int obj_inner_wall_extr = 0;
+		if (const ConfigOption* wall_opt = mo->config.option("inner_wall_filament_id"); wall_opt != nullptr)
+			obj_inner_wall_extr = wall_opt->getInt();
+		if (obj_inner_wall_extr == 0)
+			if (const ConfigOption* wall_opt = mo->config.option("outer_wall_filament_id"); wall_opt != nullptr)
+				obj_inner_wall_extr = wall_opt->getInt();
+		if (obj_inner_wall_extr != 0)
+			plate_extruders.push_back(obj_inner_wall_extr);
+		else if (glb_inner_wall_extr != 0)
+			plate_extruders.push_back(glb_inner_wall_extr);
+
+		int obj_sparse_infill_extr = 0;
+		const ConfigOption* sparse_infill_opt = mo->config.option("sparse_infill_filament_id");
+		if (sparse_infill_opt != nullptr)
+			obj_sparse_infill_extr = sparse_infill_opt->getInt();
+		if (obj_sparse_infill_extr != 0)
+			plate_extruders.push_back(obj_sparse_infill_extr);
+		else if (glb_sparse_infill_extr != 0)
+			plate_extruders.push_back(glb_sparse_infill_extr);
+
+		int obj_internal_solid_extr = 0;
+		if (const ConfigOption* solid_opt = mo->config.option("internal_solid_filament_id"); solid_opt != nullptr)
+			obj_internal_solid_extr = solid_opt->getInt();
+		if (obj_internal_solid_extr != 0)
+			plate_extruders.push_back(obj_internal_solid_extr);
+		else if (glb_internal_solid_extr != 0)
+			plate_extruders.push_back(glb_internal_solid_extr);
+
+		int obj_top_surface_extr = 0;
+		if (const ConfigOption* top_opt = mo->config.option("top_surface_filament_id"); top_opt != nullptr)
+			obj_top_surface_extr = top_opt->getInt();
+		if (obj_top_surface_extr == 0)
+			obj_top_surface_extr = obj_internal_solid_extr;
+		if (obj_top_surface_extr != 0)
+			plate_extruders.push_back(obj_top_surface_extr);
+		else if (glb_top_surface_extr != 0)
+			plate_extruders.push_back(glb_top_surface_extr);
+
+		int obj_bottom_surface_extr = 0;
+		if (const ConfigOption* bottom_opt = mo->config.option("bottom_surface_filament_id"); bottom_opt != nullptr)
+			obj_bottom_surface_extr = bottom_opt->getInt();
+		if (obj_bottom_surface_extr == 0)
+			obj_bottom_surface_extr = obj_internal_solid_extr;
+		if (obj_bottom_surface_extr != 0)
+			plate_extruders.push_back(obj_bottom_surface_extr);
+		else if (glb_bottom_surface_extr != 0)
+			plate_extruders.push_back(glb_bottom_surface_extr);
+
+	}
+
+	if (conside_custom_gcode) {
+        int nums_extruders = 0;
+        if (const ConfigOptionStrings *color_option = dynamic_cast<const ConfigOptionStrings *>(project_config.option("filament_colour"))) {
+            nums_extruders = color_option->values.size();
+			if (m_model->plates_custom_gcodes.find(m_plate_index) != m_model->plates_custom_gcodes.end()) {
+				for (auto item : m_model->plates_custom_gcodes.at(m_plate_index).gcodes) {
+					if (item.type == CustomGCode::Type::ToolChange && item.extruder <= nums_extruders)
+						plate_extruders.push_back(item.extruder);
+				}
+			}
+		}
+	}
+
+	std::sort(plate_extruders.begin(), plate_extruders.end());
+	auto it_end = std::unique(plate_extruders.begin(), plate_extruders.end());
+	plate_extruders.resize(std::distance(plate_extruders.begin(), it_end));
+
+	{
+		const auto* is_mixed_opt = project_config.option<ConfigOptionBools>("filament_is_mixed");
+		const auto* comp_strs_opt = project_config.option<ConfigOptionStrings>("filament_mixed_components");
+		if (expand_mixed_slots && is_mixed_opt && comp_strs_opt && has_any_mixed_filament(is_mixed_opt->values)) {
+			std::vector<unsigned int> ext_0based;
+			for (int e : plate_extruders)
+				if (e >= 1) ext_0based.push_back((unsigned int)(e - 1));
+			auto expanded = expand_mixed_filaments(ext_0based, is_mixed_opt->values, comp_strs_opt->values);
+			plate_extruders.clear();
+			for (unsigned int e : expanded)
+				plate_extruders.push_back((int)(e + 1));
+		}
+	}
+
+	return plate_extruders;
+}
+
+std::vector<int> PartPlate::get_extruders_under_cli(bool conside_custom_gcode, DynamicPrintConfig& full_config, bool expand_mixed_slots) const
+{
+    std::vector<int> plate_extruders;
+
+    int glb_support_intf_extr = full_config.opt_int("support_interface_filament");
+    int glb_support_extr = full_config.opt_int("support_filament");
+	int glb_outer_wall_extr = full_config.opt_int("outer_wall_filament_id");
+	int glb_inner_wall_extr = full_config.opt_int("inner_wall_filament_id");
+	if (glb_outer_wall_extr == 0) glb_outer_wall_extr = glb_inner_wall_extr;
+	if (glb_inner_wall_extr == 0) glb_inner_wall_extr = glb_outer_wall_extr;
+	int glb_sparse_infill_extr = full_config.opt_int("sparse_infill_filament_id");
+	int glb_internal_solid_extr = full_config.opt_int("internal_solid_filament_id");
+	int glb_top_surface_extr = full_config.opt_int("top_surface_filament_id");
+	int glb_bottom_surface_extr = full_config.opt_int("bottom_surface_filament_id");
+	if (glb_top_surface_extr == 0) glb_top_surface_extr = glb_internal_solid_extr;
+	if (glb_bottom_surface_extr == 0) glb_bottom_surface_extr = glb_internal_solid_extr;
+
+    bool glb_support = full_config.opt_bool("enable_support");
+    glb_support |= full_config.opt_int("raft_layers") > 0;
+
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+    {
+        int obj_id = it->first;
+        int instance_id = it->second;
+
+        if (valid_instance(obj_id, instance_id))
+        {
+            ModelObject* object = m_model->objects[obj_id];
+            ModelInstance* instance = object->instances[instance_id];
+
+            if (!instance->printable)
+                continue;
+
+            for (ModelVolume* mv : object->volumes) {
+                std::vector<int> volume_extruders = mv->get_extruders();
+                plate_extruders.insert(plate_extruders.end(), volume_extruders.begin(), volume_extruders.end());
+            }
+
+            for (auto layer_range : object->layer_config_ranges) {
+                if (layer_range.second.has("extruder")) {
+                    if (auto id = layer_range.second.option("extruder")->getInt(); id > 0)
+                        plate_extruders.push_back(id);
+                }
+            }
+
+            bool obj_support = false;
+            const ConfigOption* obj_support_opt = object->config.option("enable_support");
+            const ConfigOption *obj_raft_opt    = object->config.option("raft_layers");
+            if (obj_support_opt != nullptr || obj_raft_opt != nullptr) {
+                if (obj_support_opt != nullptr)
+                    obj_support = obj_support_opt->getBool();
+                if (obj_raft_opt != nullptr)
+                    obj_support |= obj_raft_opt->getInt() > 0;
+            }
+            else
+                obj_support = glb_support;
+
+            if (obj_support) {
+                int obj_support_intf_extr = 0;
+                const ConfigOption* support_intf_extr_opt = object->config.option("support_interface_filament");
+                if (support_intf_extr_opt != nullptr)
+                    obj_support_intf_extr = support_intf_extr_opt->getInt();
+                if (obj_support_intf_extr != 0)
+                    plate_extruders.push_back(obj_support_intf_extr);
+                else if (glb_support_intf_extr != 0)
+                    plate_extruders.push_back(glb_support_intf_extr);
+
+                int obj_support_extr = 0;
+                const ConfigOption* support_extr_opt = object->config.option("support_filament");
+                if (support_extr_opt != nullptr)
+                    obj_support_extr = support_extr_opt->getInt();
+                if (obj_support_extr != 0)
+                    plate_extruders.push_back(obj_support_extr);
+                else if (glb_support_extr != 0)
+                    plate_extruders.push_back(glb_support_extr);
+            }
+
+			int obj_outer_wall_extr = 0;
+			if (const ConfigOption* wall_opt = object->config.option("outer_wall_filament_id"); wall_opt != nullptr)
+				obj_outer_wall_extr = wall_opt->getInt();
+			if (obj_outer_wall_extr == 0)
+				if (const ConfigOption* wall_opt = object->config.option("inner_wall_filament_id"); wall_opt != nullptr)
+					obj_outer_wall_extr = wall_opt->getInt();
+			if (obj_outer_wall_extr != 0)
+				plate_extruders.push_back(obj_outer_wall_extr);
+			else if (glb_outer_wall_extr != 0)
+				plate_extruders.push_back(glb_outer_wall_extr);
+
+			int obj_inner_wall_extr = 0;
+			if (const ConfigOption* wall_opt = object->config.option("inner_wall_filament_id"); wall_opt != nullptr)
+				obj_inner_wall_extr = wall_opt->getInt();
+			if (obj_inner_wall_extr == 0)
+				if (const ConfigOption* wall_opt = object->config.option("outer_wall_filament_id"); wall_opt != nullptr)
+					obj_inner_wall_extr = wall_opt->getInt();
+			if (obj_inner_wall_extr != 0)
+				plate_extruders.push_back(obj_inner_wall_extr);
+			else if (glb_inner_wall_extr != 0)
+				plate_extruders.push_back(glb_inner_wall_extr);
+
+			int obj_sparse_infill_extr = 0;
+			const ConfigOption* sparse_infill_opt = object->config.option("sparse_infill_filament_id");
+			if (sparse_infill_opt != nullptr)
+				obj_sparse_infill_extr = sparse_infill_opt->getInt();
+			if (obj_sparse_infill_extr != 0)
+				plate_extruders.push_back(obj_sparse_infill_extr);
+			else if (glb_sparse_infill_extr != 0)
+				plate_extruders.push_back(glb_sparse_infill_extr);
+
+			int obj_internal_solid_extr = 0;
+			if (const ConfigOption* solid_opt = object->config.option("internal_solid_filament_id"); solid_opt != nullptr)
+				obj_internal_solid_extr = solid_opt->getInt();
+			if (obj_internal_solid_extr != 0)
+				plate_extruders.push_back(obj_internal_solid_extr);
+			else if (glb_internal_solid_extr != 0)
+				plate_extruders.push_back(glb_internal_solid_extr);
+
+			int obj_top_surface_extr = 0;
+			if (const ConfigOption* top_opt = object->config.option("top_surface_filament_id"); top_opt != nullptr)
+				obj_top_surface_extr = top_opt->getInt();
+			if (obj_top_surface_extr == 0)
+				obj_top_surface_extr = obj_internal_solid_extr;
+			if (obj_top_surface_extr != 0)
+				plate_extruders.push_back(obj_top_surface_extr);
+			else if (glb_top_surface_extr != 0)
+				plate_extruders.push_back(glb_top_surface_extr);
+
+			int obj_bottom_surface_extr = 0;
+			if (const ConfigOption* bottom_opt = object->config.option("bottom_surface_filament_id"); bottom_opt != nullptr)
+				obj_bottom_surface_extr = bottom_opt->getInt();
+			if (obj_bottom_surface_extr == 0)
+				obj_bottom_surface_extr = obj_internal_solid_extr;
+			if (obj_bottom_surface_extr != 0)
+				plate_extruders.push_back(obj_bottom_surface_extr);
+			else if (glb_bottom_surface_extr != 0)
+				plate_extruders.push_back(glb_bottom_surface_extr);
+        }
+    }
+
+    if (conside_custom_gcode) {
+        int nums_extruders = 0;
+        if (const ConfigOptionStrings *color_option = dynamic_cast<const ConfigOptionStrings *>(full_config.option("filament_colour"))) {
+            nums_extruders = color_option->values.size();
+            if (m_model->plates_custom_gcodes.find(m_plate_index) != m_model->plates_custom_gcodes.end()) {
+                for (auto item : m_model->plates_custom_gcodes.at(m_plate_index).gcodes) {
+                    if (item.type == CustomGCode::Type::ToolChange && item.extruder <= nums_extruders)
+                        plate_extruders.push_back(item.extruder);
+                }
+            }
+        }
+    }
+
+    std::sort(plate_extruders.begin(), plate_extruders.end());
+    auto it_end = std::unique(plate_extruders.begin(), plate_extruders.end());
+    plate_extruders.resize(std::distance(plate_extruders.begin(), it_end));
+
+    if (expand_mixed_slots) {
+        auto* is_mixed_opt = full_config.option<ConfigOptionBools>("filament_is_mixed");
+        auto* comp_strs_opt = full_config.option<ConfigOptionStrings>("filament_mixed_components");
+        if (is_mixed_opt && comp_strs_opt && has_any_mixed_filament(is_mixed_opt->values)) {
+            std::vector<unsigned int> ext_0based;
+            for (int e : plate_extruders)
+                if (e >= 1) ext_0based.push_back((unsigned int)(e - 1));
+            auto expanded = expand_mixed_filaments(ext_0based, is_mixed_opt->values, comp_strs_opt->values);
+            plate_extruders.clear();
+            for (unsigned int e : expanded)
+                plate_extruders.push_back((int)(e + 1));
+        }
+    }
+
+    return plate_extruders;
+}
+
+bool PartPlate::check_objects_empty_and_gcode3mf(std::vector<int> &result) const
+{
+    if (m_model->objects.empty()) {
+        if (wxGetApp().plater()->is_gcode_3mf()) {
+            for (int i = 0; i < slice_filaments_info.size(); i++) {
+                result.push_back(slice_filaments_info[i].id + 1);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+std::vector<int> PartPlate::get_extruders_without_support(bool conside_custom_gcode) const
+{
+	std::vector<int> plate_extruders;
+    if (check_objects_empty_and_gcode3mf(plate_extruders)) {
+        return plate_extruders;
+    }
+	const DynamicPrintConfig& glb_config = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+
+	for (int obj_idx = 0; obj_idx < m_model->objects.size(); obj_idx++) {
+		if (!contain_any_instance_totally(obj_idx))
+			continue;
+
+		ModelObject* mo = m_model->objects[obj_idx];
+		for (ModelVolume* mv : mo->volumes) {
+			std::vector<int> volume_extruders = mv->get_extruders();
+			plate_extruders.insert(plate_extruders.end(), volume_extruders.begin(), volume_extruders.end());
+		}
+	}
+
+	if (conside_custom_gcode) {
+		int nums_extruders = 0;
+		if (const ConfigOptionStrings* color_option = dynamic_cast<const ConfigOptionStrings*>(wxGetApp().preset_bundle->project_config.option("filament_colour"))) {
+			nums_extruders = color_option->values.size();
+			if (m_model->plates_custom_gcodes.find(m_plate_index) != m_model->plates_custom_gcodes.end()) {
+				for (auto item : m_model->plates_custom_gcodes.at(m_plate_index).gcodes) {
+					if (item.type == CustomGCode::Type::ToolChange && item.extruder <= nums_extruders)
+						plate_extruders.push_back(item.extruder);
+				}
+			}
+		}
+	}
+
+	std::sort(plate_extruders.begin(), plate_extruders.end());
+	auto it_end = std::unique(plate_extruders.begin(), plate_extruders.end());
+	plate_extruders.resize(std::distance(plate_extruders.begin(), it_end));
+
+	{
+		auto& project_config = wxGetApp().preset_bundle->project_config;
+		auto* is_mixed_opt = project_config.option<ConfigOptionBools>("filament_is_mixed");
+		auto* comp_strs_opt = project_config.option<ConfigOptionStrings>("filament_mixed_components");
+		if (is_mixed_opt && comp_strs_opt && has_any_mixed_filament(is_mixed_opt->values)) {
+			std::vector<unsigned int> ext_0based;
+			for (int e : plate_extruders)
+				if (e >= 1) ext_0based.push_back((unsigned int)(e - 1));
+			auto expanded = expand_mixed_filaments(ext_0based, is_mixed_opt->values, comp_strs_opt->values);
+			plate_extruders.clear();
+			for (unsigned int e : expanded)
+				plate_extruders.push_back((int)(e + 1));
+		}
+	}
+
+	return plate_extruders;
+}
+
+int PartPlate::get_physical_extruder_by_filament_id(const DynamicConfig& g_config, int idx) const
+{
+	const std::vector<int>& filament_map = get_real_filament_maps(g_config);
+	if (filament_map.size() < idx)
+	{
+		return -1;
+	}
+
+	const auto the_map = g_config.option<ConfigOptionInts>("physical_extruder_map");
+	if (!the_map)
+	{
+		return -1;
+	}
+
+	int zero_base_logical_idx = filament_map[idx - 1] - 1;
+	return the_map->values[zero_base_logical_idx];
+}
+
+int PartPlate::get_logical_extruder_by_filament_id(const DynamicConfig& g_config, int idx) const
+{
+	const std::vector<int>& filament_map = get_real_filament_maps(g_config);
+	if (idx <= 0 || idx > (int)filament_map.size())
+	{
+		return -1;
+	}
+
+	return filament_map[idx - 1] - 1;
+}
+
+std::vector<int> PartPlate::get_used_filaments()
+{
+	std::vector<int> used_filaments;
+    if (check_objects_empty_and_gcode3mf(used_filaments)) {
+        return used_filaments;
+    }
+
+	GCodeProcessorResult* result = get_slice_result();
+	if (!result)
+		return used_filaments;
+
+	std::set<int> used_extruders_set;
+	PrintEstimatedStatistics& ps = result->print_statistics;
+	for (const auto& item : ps.total_volumes_per_extruder)
+		used_extruders_set.emplace(item.first + 1);
+
+	return std::vector(used_extruders_set.begin(), used_extruders_set.end());
+}
+
+bool PartPlate::check_filament_printable(const DynamicPrintConfig &config, wxString& error_message)
+{
+    error_message.clear();
+    FilamentMapMode mode = this->get_real_filament_map_mode(config);
+    if (mode != fmmManual)
+        return true;
+
+    std::vector<int> used_filaments = get_extruders(true);
+    if (!used_filaments.empty()) {
+        const std::vector<std::string>& filament_types      = config.option<ConfigOptionStrings>("filament_type")->values;
+        const std::vector<int>&         filament_printables = config.option<ConfigOptionInts>("filament_printable")->values;
+        const std::vector<int>&         filament_map        = get_real_filament_maps(config);
+        const int filament_count = std::min({(int) filament_types.size(), (int) filament_printables.size(), (int) filament_map.size()});
+        for (auto filament_idx : used_filaments) {
+            int filament_id = filament_idx - 1;
+            if (filament_id < 0 || filament_id >= filament_count)
+                continue;
+            std::string filament_type = filament_types[filament_id];
+            int filament_printable_status = filament_printables[filament_id];
+            int extruder_idx = filament_map[filament_id] - 1;
+            if (!(filament_printable_status >> extruder_idx & 1)) {
+                wxString extruder_name = extruder_idx == 0 ? _L("left") : _L("right");
+                error_message  = wxString::Format(_L("The %s nozzle can not print %s."), extruder_name, filament_type);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool PartPlate::check_tpu_printable_status(const DynamicPrintConfig & config, const std::vector<int> &tpu_filaments)
+{
+	return true;
+}
+
+bool PartPlate::check_single_extruder_mixed_filament_risk(const DynamicPrintConfig &config, std::string &warning_text) const
+{
+    warning_text.clear();
+
+    auto *nozzle_diameter_opt = config.option<ConfigOptionFloatsNullable>("nozzle_diameter");
+    if (!nozzle_diameter_opt || nozzle_diameter_opt->values.size() > 1)
+        return false;
+
+    auto *is_mixed_opt = wxGetApp().preset_bundle->project_config.option<ConfigOptionBools>("filament_is_mixed");
+    if (!is_mixed_opt || !has_any_mixed_filament(is_mixed_opt->values))
+        return false;
+
+    auto is_mixed_slot = [&](int extruder_1based) {
+        size_t idx = (size_t)(extruder_1based - 1);
+        return idx < is_mixed_opt->values.size() && is_mixed_opt->values[idx];
+    };
+
+    const std::string mixed_warn_msg = _u8L("Printing mixed-color filament on a single-extruder printer requires frequent filament changes and flushing, "
+                                            "which may significantly increase waste and the risk of nozzle / waste-chute clogging.");
+
+    for (int obj_idx = 0; obj_idx < (int)m_model->objects.size(); ++obj_idx) {
+        if (!contain_any_instance_totally(obj_idx))
+            continue;
+        ModelObject *mo = m_model->objects[obj_idx];
+        int obj_ext = mo->config.has("extruder") ? mo->config.extruder() : 1;
+        if (is_mixed_slot(obj_ext)) {
+            warning_text = mixed_warn_msg;
+            return true;
+        }
+        for (ModelVolume *mv : mo->volumes) {
+            int vol_ext = mv->config.has("extruder") ? mv->config.extruder() : obj_ext;
+            if (is_mixed_slot(vol_ext)) {
+                warning_text = mixed_warn_msg;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool PartPlate::check_mixture_of_pla_and_petg(const DynamicPrintConfig &config)
+{
+    bool has_pla = false;
+    bool has_petg = false;
+
+    bool is_toolchanger = false;
+    auto *tool_change_time = config.option<ConfigOptionFloat>("machine_tool_change_time");
+    if (tool_change_time && tool_change_time->value > 0)
+        is_toolchanger = true;
+
+    std::map<int, bool> nozzle_has_pla;
+    std::map<int, bool> nozzle_has_petg;
+
+    std::vector<int> used_filaments = get_extruders(true);
+    if (!used_filaments.empty()) {
+        const auto *filament_types = config.option<ConfigOptionStrings>("filament_type");
+        for (auto filament_idx : used_filaments) {
+            int filament_id = filament_idx - 1;
+            if (filament_id < (int)filament_types->values.size()) {
+                const std::string &filament_type = filament_types->values[filament_id];
+                if (filament_type == "PLA") {
+                    has_pla = true;
+                    nozzle_has_pla[filament_id] = true;
+                }
+                if (filament_type == "PETG") {
+                    has_petg = true;
+                    nozzle_has_petg[filament_id] = true;
+                }
+            } else {
+                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " check error:array bound";
+            }
+        }
+    }
+
+    if (!has_pla || !has_petg)
+        return true;
+
+    if (is_toolchanger) {
+        for (const auto &kv : nozzle_has_pla) {
+            if (nozzle_has_petg.count(kv.first))
+                return false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+bool PartPlate::check_mixture_filament_compatible(const DynamicPrintConfig &config, std::string &error_msg)
+{
+    static std::unordered_map<std::string, std::unordered_set<std::string>> incompatible_filament_pairs;
+
+    auto add_incompatibility = [&](std::string filament_type1, std::string filament_type2) {
+        incompatible_filament_pairs[filament_type1].insert(filament_type2);
+        incompatible_filament_pairs[filament_type2].insert(filament_type1);
+    };
+
+    if (incompatible_filament_pairs.empty()) { add_incompatibility("PVA", "PETG"); }
+
+    std::vector<int>         used_filaments = get_extruders(true);
+    std::vector<std::string> filament_types;
+    auto                     filament_type_opt = config.option<ConfigOptionStrings>("filament_type");
+    for (auto filament : used_filaments) {
+        int filament_idx = filament - 1;
+        if (filament_idx >= filament_type_opt->values.size()) filament_idx = 0;
+        filament_types.push_back(filament_type_opt->values[filament_idx]);
+    };
+
+    {
+        std::unordered_set<std::string> seen;
+        filament_types.erase(std::remove_if(filament_types.begin(), filament_types.end(), [&](const std::string &s) { return !seen.insert(s).second; }), filament_types.end());
+    }
+
+    std::vector<std::pair<std::string, std::string>> conflicts;
+
+    for (size_t i = 0; i < filament_types.size(); i++) {
+        auto it = incompatible_filament_pairs.find(filament_types[i]);
+        if (it == incompatible_filament_pairs.end()) continue;
+        for (size_t j = i + 1; j < filament_types.size(); ++j) {
+            if (it->second.count(filament_types[j])) { conflicts.emplace_back(filament_types[i], filament_types[j]); }
+        }
+    }
+
+    if (!conflicts.empty()) {
+        auto conflict = conflicts.front();
+        error_msg     = GUI::format(_L("Mixing %1% with %2% in printing is not recommended.\n"), conflict.first, conflict.second);
+    }
+    return conflicts.empty();
+}
+
+bool PartPlate::check_compatible_of_nozzle_and_filament(const DynamicPrintConfig &config, const std::vector<std::string> &filament_presets, std::string &error_msg)
+{
+    float nozzle_diameter = config.option<ConfigOptionFloats>("nozzle_diameter")->values[0];
+    auto  volume_type_opt = config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
+
+    auto get_filament_alias = [](std::string preset_name) -> std::string {
+        size_t      at_pos = preset_name.find('@');
+        std::string alias  = preset_name.substr(0, at_pos);
+        size_t      first  = alias.find_first_not_of(' ');
+        if (first == std::string::npos) return "";
+        size_t last = alias.find_last_not_of(' ');
+        return alias.substr(first, last - first + 1);
+    };
+
+    bool with_same_volume_type = std::all_of(volume_type_opt->values.begin(), volume_type_opt->values.end(),
+                                             [first_value = volume_type_opt->values[0]](int value) { return value == first_value; });
+
+    std::set<std::string> selected_filament_alias;
+    for (auto &filament_preset : filament_presets) { selected_filament_alias.insert(get_filament_alias(filament_preset)); }
+
+    auto get_incompatible_selected = [&](const NozzleVolumeType volume_type) -> std::set<std::string> {
+        std::vector<std::string> incompatible_filaments = Print::get_incompatible_filaments_by_nozzle(nozzle_diameter, volume_type);
+        std::set<std::string>    ret;
+        for (auto &filament : selected_filament_alias) {
+            if (std::find(incompatible_filaments.begin(), incompatible_filaments.end(), filament) != incompatible_filaments.end()) ret.insert(filament);
+        }
+        return ret;
+    };
+
+    auto get_nozzle_msg = [](const float nozzle_diameter, const NozzleVolumeType volume_type) -> std::string {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(1) << nozzle_diameter;
+        std::string nozzle_msg = oss.str();
+        ((nozzle_msg += "mm ") += _u8L(get_nozzle_volume_type_string(volume_type))) += _u8L(" nozzle");
+        return nozzle_msg;
+    };
+
+    auto get_incompatible_filament_msg = [](const std::set<std::string> &incompatible_selected_filaments) -> std::string {
+        std::string filament_str;
+        size_t      idx = 0;
+        for (const auto &filament : incompatible_selected_filaments) {
+            if (idx > 0) filament_str += ',';
+            filament_str += filament;
+            ++idx;
+        }
+        return filament_str;
+    };
+
+    error_msg.clear();
+
+    std::set<int>                                     nozzle_volumes(volume_type_opt->values.begin(), volume_type_opt->values.end());
+    std::map<NozzleVolumeType, std::set<std::string>> incompatible_selected_map;
+
+    for (auto volume_type_value : nozzle_volumes) {
+        NozzleVolumeType volume_type           = static_cast<NozzleVolumeType>(volume_type_value);
+        auto             incompatible_selected = get_incompatible_selected(volume_type);
+        if (!incompatible_selected.empty()) incompatible_selected_map[volume_type] = incompatible_selected;
+    }
+
+    if (incompatible_selected_map.empty()) return true;
+
+    if (incompatible_selected_map.size() == 1) {
+        auto             elem                  = incompatible_selected_map.begin();
+        NozzleVolumeType volume_type           = elem->first;
+        auto             incompatible_selected = elem->second;
+        error_msg = GUI::format(_L("It is not recommended to print the following filament(s) with %1%: %2%\n"), get_nozzle_msg(nozzle_diameter, volume_type),
+                                get_incompatible_filament_msg(incompatible_selected));
+    } else {
+        std::string warning_msg = _u8L("It is not recommended to use the following nozzle and filament combinations:\n");
+        for (auto &elem : incompatible_selected_map) {
+            NozzleVolumeType volume_type           = elem.first;
+            auto             incompatible_selected = elem.second;
+            warning_msg += GUI::format(_L("%1% with %2%\n"),get_nozzle_msg(nozzle_diameter, volume_type), get_incompatible_filament_msg(incompatible_selected));
+        }
+        error_msg = warning_msg;
+    }
+    return false;
+}
+
+WipeTowerFootprint PartPlate::estimate_wipe_tower_footprint(const DynamicPrintConfig &config, int plate_extruder_size, bool use_global_objects) const
+{
+    std::vector<int> plate_extruders = get_extruders(true, config, config);
+    for (int id = 1; int(plate_extruders.size()) < plate_extruder_size; ++id)
+        if (std::find(plate_extruders.begin(), plate_extruders.end(), id) == plate_extruders.end())
+            plate_extruders.push_back(id);
+    const ConfigOption *wipe_tower_filament_opt = config.option("wipe_tower_filament");
+    const ConfigOption *enable_prime_tower_opt  = config.option("enable_prime_tower");
+    const int           wipe_tower_filament     = wipe_tower_filament_opt != nullptr ? wipe_tower_filament_opt->getInt() : 0;
+    if (enable_prime_tower_opt != nullptr && enable_prime_tower_opt->getBool() && plate_extruders.size() > 1 && wipe_tower_filament > 0 &&
+        std::find(plate_extruders.begin(), plate_extruders.end(), wipe_tower_filament) == plate_extruders.end())
+        plate_extruders.push_back(wipe_tower_filament);
+    if (plate_extruders.empty())
+        return WipeTowerFootprint();
+
+    const ConfigOption *layer_height_opt    = config.option("layer_height");
+    const double        global_layer_height = layer_height_opt != nullptr ? layer_height_opt->getFloat() : 0.08;
+    double              max_height          = 0.;
+    double              layer_height        = std::numeric_limits<double>::max();
+    for (int obj_idx = 0; obj_idx < int(m_model->objects.size()); ++obj_idx) {
+        const ModelObject *object = m_model->objects[obj_idx];
+        if (!use_global_objects && !contain_any_instance_totally(obj_idx))
+            continue;
+        for (int inst_idx = 0; inst_idx < int(object->instances.size()); ++inst_idx) {
+            if (!use_global_objects && !contain_instance_totally(obj_idx, inst_idx))
+                continue;
+            max_height = std::max(max_height, object->instance_convex_hull_bounding_box(inst_idx, true).size().z());
+        }
+        const ConfigOption *object_layer_height = object->config.option("layer_height");
+        layer_height = std::min(layer_height, object_layer_height != nullptr ? object_layer_height->getFloat() : global_layer_height);
+    }
+    if (layer_height == std::numeric_limits<double>::max())
+        layer_height = global_layer_height;
+
+    std::vector<unsigned int> filament_ids;
+    for (int id : plate_extruders)
+        if (id > 0)
+            filament_ids.push_back(static_cast<unsigned int>(id - 1));
+    return Slic3r::estimate_wipe_tower_footprint(config, resolve_wipe_tower_type(config), filament_ids, layer_height, max_height);
+}
+
+arrangement::ArrangePolygon PartPlate::estimate_wipe_tower_polygon(const DynamicPrintConfig& config, int plate_index, Vec3d& wt_pos, Vec3d& wt_size, int plate_extruder_size, bool use_global_objects) const
+{
+	float x = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_x"))->get_at(plate_index);
+	float y = dynamic_cast<const ConfigOptionFloats*>(config.option("wipe_tower_y"))->get_at(plate_index);
+	const WipeTowerFootprint footprint = estimate_wipe_tower_footprint(config, plate_extruder_size, use_global_objects);
+	wt_size = Vec3d(footprint.width, footprint.depth, footprint.height);
+	int plate_width=m_width, plate_depth=m_depth;
+	float w = wt_size(0);
+	float depth = wt_size(1);
+	float wp_brim_width = float(footprint.brim_width);
+	const BoundingBox outline = get_extents(estimate_wipe_tower_first_layer_outline(config, resolve_wipe_tower_type(config), w, depth, wt_size.z()));
+	wp_brim_width += float(std::max({0., unscaled(outline.max.x()) - w, unscaled(outline.max.y()) - depth, -unscaled(outline.min.x()), -unscaled(outline.min.y())}));
+	const float margin = WIPE_TOWER_MARGIN + wp_brim_width;
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format("arrange wipe_tower: wp_brim_width %1%") % wp_brim_width;
+	const float x_hi   = std::max(margin, (float) plate_width - w - margin);
+	const float y_hi   = std::max(margin, (float) plate_depth - depth - margin);
+	const float margin_c = (float) WIPE_TOWER_AUTO_MARGIN + wp_brim_width;
+	float x_lo_c = margin_c, x_hi_c = (float) plate_width - w - margin_c;
+	if (x_lo_c > x_hi_c) { x_lo_c = margin; x_hi_c = x_hi; }
+	float y_lo_c = margin_c, y_hi_c = (float) plate_depth - depth - margin_c;
+	if (y_lo_c > y_hi_c) { y_lo_c = margin; y_hi_c = y_hi; }
+	const float tol = 5.f;
+	if (x < margin - tol || x > x_hi + tol) x = std::clamp(x, x_lo_c, x_hi_c);
+	else                                    x = std::clamp(x, margin, x_hi);
+	if (y < margin - tol || y > y_hi + tol) y = std::clamp(y, y_lo_c, y_hi_c);
+	else                                    y = std::clamp(y, margin, y_hi);
+    wt_pos(0) = x;
+    wt_pos(1) = y;
+    wt_pos(2) = 0.f;
+
+	arrangement::ArrangePolygon wipe_tower_ap;
+	Polygon ap({
+		{scaled(x - wp_brim_width), scaled(y - wp_brim_width)},
+		{scaled(x + w + wp_brim_width), scaled(y - wp_brim_width)},
+		{scaled(x + w + wp_brim_width), scaled(y + depth + wp_brim_width)},
+		{scaled(x - wp_brim_width), scaled(y + depth + wp_brim_width)}
+		});
+	wipe_tower_ap.bed_idx = plate_index;
+	wipe_tower_ap.setter = NULL;
+
+	wipe_tower_ap.poly.contour = std::move(ap);
+	wipe_tower_ap.translation = { scaled(0.f), scaled(0.f) };
+	wipe_tower_ap.name = "WipeTower";
+	wipe_tower_ap.is_virt_object = true;
+	wipe_tower_ap.is_wipe_tower = true;
+
+	return wipe_tower_ap;
+}
+
+bool PartPlate::operator<(PartPlate& plate) const
+{
+	int index = plate.get_index();
+	return (this->m_plate_index < index);
+}
+
+void PartPlate::set_index(int index)
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plate_id update from %1% to %2%") % m_plate_index % index;
+
+	m_plate_index = index;
+	if (m_print != nullptr)
+		m_print->set_plate_index(index);
+}
+
+void PartPlate::clear(bool clear_sliced_result)
+{
+	obj_to_instance_set.clear();
+	instance_outside_set.clear();
+	if (clear_sliced_result) {
+		m_ready_for_slice = true;
+		update_slice_result_valid_state(false);
+	}
+	invalidate_plate_name_texture();
+	return;
+}
+
+void PartPlate::set_pos_and_size(Vec3d& origin, int width, int depth, double height, bool with_instance_move, bool do_clear)
+{
+	bool size_changed = false;
+	bool pos_changed = false;
+
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate_id %1%, before, origin {%2%,%3%,%4%}, plate_width %5%, plate_depth %6%, plate_height %7%")\
+		% m_plate_index % m_origin.x() % m_origin.y() % m_origin.z() % m_width % m_depth % m_height;
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": with_instance_move %1%, after, origin {%2%,%3%,%4%}, plate_width %5%, plate_depth %6%, plate_height %7%")\
+		% with_instance_move % origin.x() % origin.y() % origin.z() % width % depth % height;
+	size_changed = ((width != m_width) || (depth != m_depth) || (height != m_height));
+	pos_changed = (m_origin != origin);
+
+	if ((!size_changed) && (!pos_changed))
+	{
+		return;
+	}
+
+	if (with_instance_move && m_model)
+	{
+		for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it) {
+			int obj_id = it->first;
+			int instance_id = it->second;
+			if (!valid_instance(obj_id, instance_id))
+				continue;
+
+			ModelObject* object = m_model->objects[obj_id];
+			ModelInstance* instance = object->instances[instance_id];
+
+			Vec3d offset = instance->get_transformation().get_offset();
+			int off_x, off_y;
+
+			if (size_changed)
+			{
+				off_x = origin.x() - m_origin.x() + (width - m_width) / 2;
+				off_y = origin.y() - m_origin.y() + (depth - m_depth) / 2;
+			}
+			else
+			{
+				off_x = origin.x() - m_origin.x();
+				off_y = origin.y() - m_origin.y();
+			}
+			offset.x() = offset.x() + off_x;
+			offset.y() = offset.y() + off_y;
+
+			BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": object %1%, instance %2%, moved {%3%,%4%} to {%5%, %6%}")\
+				% obj_id % instance_id % off_x % off_y % offset.x() % offset.y();
+
+			instance->set_offset(offset);
+			object->invalidate_bounding_box();
+		}
+	}
+	else if (do_clear)
+	{
+		clear();
+	}
+
+    if (m_print)
+        m_print->set_plate_origin(origin);
+
+	m_origin = origin;
+	m_width = width;
+	m_depth = depth;
+	m_height = height;
+
+	if (with_instance_move && m_plater)
+		m_plater->mark_plate_toolbar_image_dirty();
+
+	return;
+}
+
+Vec3d PartPlate::get_center_origin()
+{
+	Vec3d origin;
+
+	origin(0) = (m_bounding_box.min(0) + m_bounding_box.max(0)) / 2;
+	origin(1) = (m_bounding_box.min(1) + m_bounding_box.max(1)) / 2;
+	origin(2) = m_origin.z();
+
+	return origin;
+}
+
+void PartPlate::generate_plate_name_texture()
+{
+	auto canvas = this->m_partplate_list->m_plater->get_view3D_canvas3D();
+	if (canvas == nullptr)
+		return;
+
+    m_plate_name_icon.reset();
+
+	m_name_texture.reset();
+	auto text = m_name.empty()? _L("Untitled") : from_u8(m_name);
+
+    int size = wxGetApp().em_unit() * PARTPLATE_EDIT_PLATE_NAME_ICON_SIZE;
+    auto l = Label::sysFont(size, true);
+    wxFont* font = &l;
+
+	wxColour foreground(0xf2, 0x75, 0x4e, 0xff);
+	if (!m_name_texture.generate_from_text_string(text.ToUTF8().data(), *font, *wxBLACK, foreground)) {
+		BOOST_LOG_TRIVIAL(error) << "PartPlate::generate_plate_name_texture(): generate_from_text_string() failed";
+		return;
+	}
+
+    ExPolygon poly;
+    auto  bed_ext  = get_extents(m_shape);
+    Vec2d p        = bed_ext[3];
+    float factor   = icon_scale_factor();
+    float icon_sz  = factor * PARTPLATE_EDIT_PLATE_NAME_ICON_SIZE;
+    float width    = icon_sz * m_name_texture.get_width() / m_name_texture.get_height();
+    float height   = icon_sz;
+    float offset_y = factor * PARTPLATE_TEXT_OFFSET_Y;
+
+    p += Vec2d(0, offset_y);
+
+    poly.contour.append({ scale_(p(0)        ), scale_(p(1)         ) });
+    poly.contour.append({ scale_(p(0) + width), scale_(p(1)         ) });
+    poly.contour.append({ scale_(p(0) + width), scale_(p(1) + height) });
+    poly.contour.append({ scale_(p(0)        ), scale_(p(1) + height) });
+
+    if (!init_model_from_poly(m_plate_name_icon, poly, GROUND_Z))
+        BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << "Unable to generate geometry buffers for icons\n";
+
+    canvas->remove_raycasters_for_picking(SceneRaycaster::EType::Bed, picking_id_component(6));
+    calc_vertex_for_plate_name_edit_icon(&m_name_texture, 0, m_plate_name_edit_icon);
+    register_model_for_picking(*canvas, m_plate_name_edit_icon, picking_id_component(6));
+}
+
+void PartPlate::invalidate_plate_name_texture()
+{
+	m_plate_name_edit_icon.mesh_raycaster.reset();
+
+	auto canvas = (m_plater != nullptr) ? m_plater->get_view3D_canvas3D() : nullptr;
+	if (canvas != nullptr) {
+		canvas->remove_raycasters_for_picking(SceneRaycaster::EType::Bed, picking_id_component(6));
+		canvas->set_as_dirty();
+	}
+}
+
+void PartPlate::set_plate_name(const std::string& name) 
+{ 
+    if (boost::equals(m_name, name))
+        return;
+
+	const std::string previous_name = m_name;
+	m_name = name;
+    if (m_print != nullptr)
+        m_print->set_plate_name(name);
+
+	invalidate_plate_name_texture();
+
+    if (m_plater != nullptr && !m_plater->is_loading_project()) {
+        LifecycleEventContext ctx;
+        ctx.name = name;
+        ctx.previous_name = previous_name;
+        ctx.index = m_plate_index;
+        fire_lifecycle_event(LifecycleEvent::PlateRenamed, ctx);
+    }
+}
+
+void PartPlate::get_print(PrintBase** print, GCodeResult** result, int* index)
+{
+	if (print && (printer_technology == PrinterTechnology::ptFFF))
+		*print = m_print;
+
+	if (result)
+		*result = m_gcode_result;
+
+	if (index)
+		*index = m_print_index;
+
+	return;
+}
+
+void PartPlate::set_print(PrintBase* print, GCodeResult* result, int index)
+{
+	if (printer_technology == PrinterTechnology::ptFFF)
+		m_print = static_cast<Print*>(print);
+
+	m_gcode_result = result;
+	if (index >= 0)
+		m_print_index = index;
+
+	m_print->set_plate_origin(m_origin);
+
+	return;
+}
+
+std::string PartPlate::get_gcode_filename()
+{
+	if (is_slice_result_valid() && get_slice_result()) {
+		return m_gcode_result->filename;
+	}
+	return "";
+}
+
+bool PartPlate::is_valid_gcode_file()
+{
+	if (get_gcode_filename().empty())
+		return false;
+	boost::filesystem::path gcode_file(m_gcode_result->filename);
+	if (!boost::filesystem::exists(gcode_file)) {
+		BOOST_LOG_TRIVIAL(info) << "invalid gcode file, file is missing, file = " << m_gcode_result->filename;
+		return false;
+	}
+	return true;
+}
+
+ModelObjectPtrs PartPlate::get_objects_on_this_plate() {
+    ModelObjectPtrs objects_ptr;
+    int obj_id;
+    for (auto it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); it++) {
+        obj_id = it->first;
+        objects_ptr.push_back(m_model->objects[obj_id]);
+    }
+    return objects_ptr;
+}
+
+ModelInstance* PartPlate::get_instance(int obj_id, int instance_id)
+{
+	if (!contain_instance(obj_id, instance_id))
+		return nullptr;
+	else
+		return m_model->objects[obj_id]->instances[instance_id];
+}
+
+bool PartPlate::contain_instance(int obj_id, int instance_id)
+{
+	bool result = false;
+	std::set<std::pair<int, int>>::iterator it;
+
+	it = obj_to_instance_set.find(std::pair(obj_id, instance_id));
+	if (it != obj_to_instance_set.end()) {
+		result = true;
+	}
+
+	return result;
+}
+
+bool PartPlate::contain_instance_totally(ModelObject* object, int instance_id) const
+{
+	bool result = false;
+	int obj_id = -1;
+
+	for (int index = 0; index < m_model->objects.size(); index ++)
+	{
+		if (m_model->objects[index] == object)
+		{
+			obj_id = index;
+			break;
+		}
+	}
+
+	if ((obj_id >= 0 ) && (obj_id < m_model->objects.size()))
+		result = contain_instance_totally(obj_id, instance_id);
+
+	return result;
+}
+
+bool PartPlate::contain_instance_totally(int obj_id, int instance_id) const
+{
+	bool result = false;
+	std::set<std::pair<int, int>>::iterator it;
+
+	it = obj_to_instance_set.find(std::pair(obj_id, instance_id));
+	if (it != obj_to_instance_set.end()) {
+		it = instance_outside_set.find(std::pair(obj_id, instance_id));
+		if (it == instance_outside_set.end())
+			result = true;
+	}
+
+	return result;
+}
+
+bool PartPlate::contain_any_instance_totally(int obj_id) const
+{
+	if (obj_id < 0 || obj_id >= int(m_model->objects.size()))
+		return false;
+
+	const ModelObject *object = m_model->objects[obj_id];
+	for (int instance_id = 0; instance_id < int(object->instances.size()); ++instance_id)
+		if (contain_instance_totally(obj_id, instance_id))
+			return true;
+
+	return false;
+}
+
+bool PartPlate::check_outside(int obj_id, int instance_id, BoundingBoxf3* bounding_box)
+{
+	ensure_imex_zones();
+
+	bool outside = true;
+
+	ModelObject* object = m_model->objects[obj_id];
+	ModelInstance* instance = object->instances[instance_id];
+
+	BoundingBoxf3 instance_box = bounding_box? *bounding_box: object->instance_convex_hull_bounding_box(instance_id);
+	Polygon hull = instance->convex_hull_2d();
+	BoundingBoxf3 plate_box = get_plate_box();
+	this->open_belt_y(plate_box);
+	if (instance_box.max.z() > plate_box.min.z())
+		plate_box.min.z() += instance_box.min.z();
+
+	if (instance_box.min.z() < SINKING_Z_THRESHOLD) {
+		if (plate_box.intersects(instance_box)) {
+			const BuildVolume build_volume(get_shape(), m_height, m_extruder_areas, m_extruder_heights);
+			const auto state = instance->calc_print_volume_state(build_volume);
+			outside = state == ModelInstancePVS_Partly_Outside;
+		}
+	}
+	else
+	if (plate_box.contains(instance_box))
+	{
+		if (m_exclude_bounding_box.size() > 0)
+		{
+			Polygon hull = instance->convex_hull_2d();
+			int index;
+			for (index = 0; index < m_exclude_bounding_box.size(); index ++)
+			{
+				Polygon p = m_exclude_bounding_box[index].polygon(true);
+				if (intersection({ p }, { hull }).empty() == false)
+				{
+					break;
+				}
+			}
+			if (index >= m_exclude_bounding_box.size())
+				outside = false;
+		}
+		else
+			outside = false;
+	}
+
+    if (!outside && imex_hull_violates(hull))
+        outside = true;
+
+	return outside;
+}
+
+bool PartPlate::intersect_instance(int obj_id, int instance_id, BoundingBoxf3* bounding_box)
+{
+	bool result = false;
+
+	if (!valid_instance(obj_id, instance_id))
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": plate_id %1%, invalid obj_id %2%, instance_id %3%") % m_plate_index % obj_id % instance_id;
+		return false;
+	}
+
+	if (m_printable)
+	{
+		ModelObject* object = m_model->objects[obj_id];
+		ModelInstance* instance = object->instances[instance_id];
+		BoundingBoxf3 instance_box = bounding_box? *bounding_box: object->instance_convex_hull_bounding_box(instance_id);
+		result = get_plate_box().intersects(instance_box);
+	}
+	else
+	{
+		result = is_left_top_of(obj_id, instance_id);
+	}
+
+	return result;
+}
+
+bool PartPlate::is_left_top_of(int obj_id, int instance_id)
+{
+	bool result = false;
+
+	if (!valid_instance(obj_id, instance_id))
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": plate_id %1%, invalid obj_id %2%, instance_id %3%") % m_plate_index % obj_id % instance_id;
+		return false;
+	}
+
+	ModelObject* object = m_model->objects[obj_id];
+	ModelInstance* instance = object->instances[instance_id];
+	std::pair<int, int> pair(obj_id, instance_id);
+	BoundingBoxf3 instance_box = object->instance_convex_hull_bounding_box(instance_id);
+
+	result = (m_origin.x() <= instance_box.min.x()) && (m_origin.y() >= instance_box.min.y());
+	return result;
+}
+
+int PartPlate::add_instance(int obj_id, int instance_id, bool move_position, BoundingBoxf3* bounding_box)
+{
+	if (!valid_instance(obj_id, instance_id))
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": plate_id %1%, invalid obj_id %2%, instance_id %3%, move_position %4%") % m_plate_index % obj_id % instance_id % move_position;
+		return -1;
+	}
+
+	ModelObject* object = m_model->objects[obj_id];
+	ModelInstance* instance = object->instances[instance_id];
+	std::pair<int, int> pair(obj_id, instance_id);
+
+    obj_to_instance_set.insert(pair);
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plate_id %1%, add instance obj_id %2%, instance_id %3%, move_position %4%") % m_plate_index % obj_id % instance_id % move_position;
+
+	if (move_position)
+	{
+		Vec3d center = get_center_origin();
+		center.z() = instance->get_transformation().get_offset(Z);
+
+		instance->set_offset(center);
+		object->invalidate_bounding_box();
+	}
+
+	bool outside = check_outside(obj_id, instance_id, bounding_box);
+	if (outside)
+		instance_outside_set.insert(pair);
+
+	if (m_ready_for_slice && outside)
+	{
+		m_ready_for_slice = false;
+	}
+	else if ((obj_to_instance_set.size() == 1) && (!m_ready_for_slice) && !outside)
+	{
+		m_ready_for_slice = true;
+	}
+
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1% , m_ready_for_slice changes to %2%") % m_plate_index %m_ready_for_slice;
+	if (m_plater)
+		m_plater->mark_plate_toolbar_image_dirty();
+	return 0;
+}
+
+int PartPlate::remove_instance(int obj_id, int instance_id)
+{
+	bool result;
+	std::set<std::pair<int, int>>::iterator it;
+
+	it = obj_to_instance_set.find(std::pair(obj_id, instance_id));
+	if (it != obj_to_instance_set.end()) {
+		obj_to_instance_set.erase(it);
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":plate_id %1%, found obj_id %2%, instance_id %3%") % m_plate_index % obj_id % instance_id;
+		result = 0;
+	}
+	else {
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plate_id %1%, can not find obj_id %2%, instance_id %3%") % m_plate_index % obj_id % instance_id;
+		result = -1;
+		return result;
+	}
+
+	it = instance_outside_set.find(std::pair(obj_id, instance_id));
+	if (it != instance_outside_set.end()) {
+		instance_outside_set.erase(it);
+	}
+	if (!m_ready_for_slice)
+		update_states();
+
+	return result;
+}
+
+BoundingBoxf3 PartPlate::get_objects_bounding_box()
+{
+    BoundingBoxf3 bbox;
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+    {
+        int obj_id = it->first;
+        int instance_id = it->second;
+
+        if ((obj_id >= 0) && (obj_id < m_model->objects.size()))
+        {
+            ModelObject* object = m_model->objects[obj_id];
+            if ((instance_id >= 0) && (instance_id < object->instances.size()))
+            {
+                BoundingBoxf3 instance_bbox = object->instance_bounding_box(instance_id);
+                bbox.merge(instance_bbox);
+            }
+        }
+    }
+    return bbox;
+}
+
+void PartPlate::translate_all_instance(Vec3d position)
+{
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+    {
+        int obj_id = it->first;
+        int instance_id = it->second;
+
+        if ((obj_id >= 0) && (obj_id < m_model->objects.size()))
+        {
+            ModelObject* object = m_model->objects[obj_id];
+            if ((instance_id >= 0) && (instance_id < object->instances.size()))
+            {
+                ModelInstance* instance = object->instances[instance_id];
+                const Vec3d& offset =  instance->get_offset();
+                instance->set_offset(offset + position);
+            }
+        }
+    }
+    return;
+}
+
+void PartPlate::duplicate_all_instance(unsigned int dup_count, bool need_skip, std::map<int, bool>& skip_objects)
+{
+    std::set<std::pair<int, int>> old_obj_list = obj_to_instance_set;
+    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plate_id %1%, dup_count %2%") % m_plate_index % dup_count;
+    for (std::set<std::pair<int, int>>::iterator it = old_obj_list.begin(); it != old_obj_list.end(); ++it)
+    {
+        int obj_id = it->first;
+        int instance_id = it->second;
+
+        if (valid_instance(obj_id, instance_id))
+        {
+            ModelObject* object = m_model->objects[obj_id];
+            ModelInstance* instance = object->instances[instance_id];
+
+            if (need_skip)
+            {
+                if (skip_objects.find(instance->loaded_id) != skip_objects.end())
+                {
+                    instance->printable = false;
+                    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": skipped object, loaded_id %1%, name %2%, set to unprintable, no need to duplicate") % instance->loaded_id % object->name;
+                    continue;
+                }
+            }
+            for (size_t index = 0; index < dup_count; index ++)
+            {
+                ModelObject* newObj = m_model->add_object(*object);
+                newObj->name = object->name +"_"+ std::to_string(index+1);
+                int new_obj_id = m_model->objects.size() - 1;
+                for ( size_t new_instance_id = 0; new_instance_id < newObj->instances.size(); new_instance_id++ )
+                {
+                    obj_to_instance_set.emplace(std::pair(new_obj_id, new_instance_id));
+                    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": duplicate object into plate: index_pair [%1%,%2%], obj_id %3%") % new_obj_id % new_instance_id % newObj->id().id;
+                }
+            }
+        }
+    }
+
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+    {
+        int obj_id = it->first;
+        int instance_id = it->second;
+
+        if (valid_instance(obj_id, instance_id))
+        {
+            ModelObject* object = m_model->objects[obj_id];
+            ModelInstance* instance = object->instances[instance_id];
+
+            if (instance->printable)
+            {
+                instance->loaded_id = instance->id().id;
+                if (need_skip) {
+                    while (skip_objects.find(instance->loaded_id) != skip_objects.end())
+                    {
+                        instance->loaded_id ++;
+                        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": duplicated id %1% with skip, try new one %2%") %instance->id().id  % instance->loaded_id;
+                    }
+                }
+                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": set obj %1% instance %2%'s loaded_id to its id %3%, name %4%") % obj_id %instance_id %instance->loaded_id  % object->name;
+            }
+        }
+    }
+
+    return;
+}
+
+
+
+void PartPlate::update_instance_exclude_status(int obj_id, int instance_id, BoundingBoxf3* bounding_box)
+{
+	bool outside;
+	std::set<std::pair<int, int>>::iterator it;
+
+	outside = check_outside(obj_id, instance_id, bounding_box);
+
+	it = instance_outside_set.find(std::pair(obj_id, instance_id));
+	if (it == instance_outside_set.end()) {
+		if (outside)
+			instance_outside_set.insert(std::pair(obj_id, instance_id));
+	}
+	else {
+		if (!outside)
+			instance_outside_set.erase(it);
+	}
+}
+
+void PartPlate::update_object_index(int obj_idx_removed, int obj_idx_max)
+{
+	std::set<std::pair<int, int>> temp_set;
+	std::set<std::pair<int, int>>::iterator it;
+	for (it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+	{
+		if (it->first >= obj_idx_removed)
+			temp_set.insert(std::pair(it->first-1, it->second));
+		else
+			temp_set.insert(std::pair(it->first, it->second));
+	}
+	obj_to_instance_set.clear();
+	obj_to_instance_set = temp_set;
+
+	temp_set.clear();
+	for (it = instance_outside_set.begin(); it != instance_outside_set.end(); ++it)
+	{
+		if (it->first >= obj_idx_removed)
+			temp_set.insert(std::pair(it->first - 1, it->second));
+		else
+			temp_set.insert(std::pair(it->first, it->second));
+	}
+	instance_outside_set.clear();
+	instance_outside_set = temp_set;
+
+}
+
+void PartPlate::set_vase_mode_related_object_config(int obj_id) {
+	ModelObjectPtrs obj_ptrs;
+	if (obj_id != -1) {
+		ModelObject* object = m_model->objects[obj_id];
+		obj_ptrs.push_back(object);
+	}
+	else
+		obj_ptrs = get_objects_on_this_plate();
+
+	DynamicPrintConfig* global_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
+	DynamicPrintConfig new_conf;
+	new_conf.set_key_value("wall_loops", new ConfigOptionInt(1));
+	new_conf.set_key_value("top_shell_layers", new ConfigOptionInt(0));
+	new_conf.set_key_value("sparse_infill_density", new ConfigOptionPercent(0));
+	new_conf.set_key_value("enable_support", new ConfigOptionBool(false));
+	new_conf.set_key_value("enforce_support_layers", new ConfigOptionInt(0));
+	new_conf.set_key_value("detect_thin_wall", new ConfigOptionBool(false));
+	new_conf.set_key_value("timelapse_type", new ConfigOptionEnum<TimelapseType>(tlTraditional));
+	new_conf.set_key_value("overhang_reverse", new ConfigOptionBool(false));
+	const auto applying_keys = global_config->diff(new_conf);
+
+	for (ModelObject* object : obj_ptrs) {
+		ModelConfigObject& config = object->config;
+
+		for (auto opt_key : applying_keys) {
+			config.set_key_value(opt_key, new_conf.option(opt_key)->clone());
+		}
+
+		const auto object_keys = config.get().diff(new_conf);
+		for (auto opt_key : object_keys) {
+			config.set_key_value(opt_key, new_conf.option(opt_key)->clone());
+		}
+	}
+}
+
+int PartPlate::printable_instance_size()
+{
+    int size = 0;
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it) {
+        int obj_id      = it->first;
+        int instance_id = it->second;
+
+        if (!valid_instance(obj_id, instance_id))
+            continue;
+
+        ModelObject *  object   = m_model->objects[obj_id];
+        ModelInstance *instance = object->instances[instance_id];
+
+        if ((instance->printable) && (instance_outside_set.find(std::pair(obj_id, instance_id)) == instance_outside_set.end())) {
+            size++;
+        }
+    }
+    return size;
+}
+
+bool PartPlate::has_printable_instances()
+{
+	bool result = false;
+
+	for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+	{
+		int obj_id = it->first;
+		int instance_id = it->second;
+
+		if (!valid_instance(obj_id, instance_id))
+			continue;
+
+		ModelObject* object = m_model->objects[obj_id];
+		ModelInstance* instance = object->instances[instance_id];
+
+		if ((instance->printable)&&(instance_outside_set.find(std::pair(obj_id, instance_id)) == instance_outside_set.end()))
+		{
+			result = true;
+			break;
+		}
+	}
+
+	return result;
+}
+
+bool PartPlate::is_all_instances_unprintable()
+{
+    bool result = true;
+
+    for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it) {
+        int obj_id      = it->first;
+        int instance_id = it->second;
+
+        if (!valid_instance(obj_id, instance_id))
+            continue;
+
+        ModelObject *  object   = m_model->objects[obj_id];
+        ModelInstance *instance = object->instances[instance_id];
+
+        if ((instance->printable)) {
+            result = false;
+            break;
+        }
+    }
+
+    return result;
+}
+
+void PartPlate::move_instances_to(PartPlate& left_plate, PartPlate& right_plate, BoundingBoxf3* bounding_box)
+{
+	for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it)
+	{
+		int obj_id = it->first;
+		int instance_id = it->second;
+
+		if (left_plate.intersect_instance(obj_id, instance_id, bounding_box))
+			left_plate.add_instance(obj_id, instance_id, false, bounding_box);
+		else
+			right_plate.add_instance(obj_id, instance_id, false, bounding_box);
+	}
+
+	return;
+}
+
+void PartPlate::generate_logo_polygon(ExPolygon &logo_polygon)
+{
+	if (m_shape.size() == 4)
+	{
+        bool is_bbl_vendor = false;
+
+		if (m_plater) {
+            if (auto preset_bundle = wxGetApp().preset_bundle; preset_bundle)
+                is_bbl_vendor = preset_bundle->is_bbl_vendor();
+		}
+
+		for (int i = 0; i < 4; i++)
+		{
+			const Vec2d& p = m_shape[i];
+			if ((i  == 0) || (i  == 1)) {
+                logo_polygon.contour.append({scale_(p(0)), scale_(is_bbl_vendor ? p(1) - 12.f : p(1))});
+            }
+			else {
+				logo_polygon.contour.append({ scale_(p(0)), scale_(p(1)) });
+			}
+		}
+	}
+	else {
+		for (const Vec2d& p : m_shape) {
+			logo_polygon.contour.append({ scale_(p(0)), scale_(p(1)) });
+		}
+	}
+}
+
+void PartPlate::generate_print_polygon(ExPolygon &print_polygon)
+{
+	auto compute_points = [&print_polygon](Vec2d& center, double radius, double start_angle, double stop_angle, int count)
+	{
+		double angle_steps;
+		angle_steps = (stop_angle - start_angle) / (count - 1);
+		for(int j = 0; j < count; j++ )
+		{
+			double angle = start_angle + j * angle_steps;
+			double x = center(0) + ::cos(angle) * radius;
+			double y = center(1) + ::sin(angle) * radius;
+			print_polygon.contour.append({ scale_(x), scale_(y) });
+		}
+	};
+
+	for (const Vec2d& p : m_shape) {
+			print_polygon.contour.append({scale_(p(0)), scale_(p(1))});
+		}
+}
+
+void PartPlate::generate_exclude_polygon(ExPolygon &exclude_polygon)
+{
+	auto compute_exclude_points = [&exclude_polygon](Vec2d& center, double radius, double start_angle, double stop_angle, int count)
+	{
+		double angle_steps;
+		angle_steps = (stop_angle - start_angle) / (count - 1);
+		for(int j = 0; j < count; j++ )
+		{
+			double angle = start_angle + j * angle_steps;
+			double x = center(0) + ::cos(angle) * radius;
+			double y = center(1) + ::sin(angle) * radius;
+			exclude_polygon.contour.append({ scale_(x), scale_(y) });
+		}
+	};
+
+	int points_count = 8;
+	if (m_exclude_area.size() == 4)
+	{
+		for (int i = 0; i < 4; i++)
+		{
+			const Vec2d& p = m_exclude_area[i];
+			Vec2d center;
+			double start_angle, stop_angle, radius;
+			radius = 1.f;
+			switch (i) {
+				case 0:
+					center(0)   = p(0) + radius;
+					center(1)   = p(1) + radius;
+					start_angle = 1.0 * PI;
+					stop_angle  = 1.5 * PI;
+					compute_exclude_points(center, radius, start_angle, stop_angle, points_count);
+				break;
+				case 1:
+					center(0)   = p(0) - radius;
+					center(1)   = p(1) + radius;
+					start_angle = 1.5 * PI;
+					stop_angle  = 2.0 * PI;
+					compute_exclude_points(center, radius, start_angle, stop_angle, points_count);
+					break;
+				case 2:
+					center(0)   = p(0) - radius;
+					center(1)   = p(1) - radius;
+ 					start_angle = 0.0 * PI;
+					stop_angle  = 0.5 * PI;
+					compute_exclude_points(center, radius, start_angle, stop_angle, points_count);
+					break;
+				case 3:
+					center(0)   = p(0) + radius;
+					center(1)   = p(1) - radius;
+					start_angle = 0.5 * PI;
+					stop_angle  = 1.0 * PI;
+					compute_exclude_points(center, radius, start_angle, stop_angle, points_count);
+					break;
+			}
+		}
+	}
+	else {
+		for (const Vec2d& p : m_exclude_area) {
+			exclude_polygon.contour.append({ scale_(p(0)), scale_(p(1)) });
+		}
+	}
+
+	exclude_polygon.contour.make_counter_clockwise();
+}
+
+bool PartPlate::set_shape(const Pointfs& shape, const Pointfs& exclude_areas, const std::vector<Pointfs>& extruder_areas, const std::vector<double>& extruder_heights, Vec2d position, float height_to_lid, float height_to_rod)
+{
+	Pointfs new_shape, new_exclude_areas;
+	m_extruder_heights = extruder_heights;
+	for (const Vec2d& p : shape) {
+		new_shape.push_back(Vec2d(p.x() + position.x(), p.y() + position.y()));
+	}
+
+	for (const Vec2d& p : exclude_areas) {
+		new_exclude_areas.push_back(Vec2d(p.x() + position.x(), p.y() + position.y()));
+	}
+
+	std::vector<Pointfs> new_extruder_areas;
+	for (const Pointfs& shape : extruder_areas) {
+		Pointfs new_extruder_area;
+		for (const Vec2d& p : shape) {
+			Vec2d point(p(0) + position.x(), p(1) + position.y());
+			new_extruder_area.push_back(point);
+		}
+		new_extruder_areas.push_back(new_extruder_area);
+	}
+	m_extruder_areas = std::move(new_extruder_areas);
+
+	if ((m_shape == new_shape)&&(m_exclude_area == new_exclude_areas)
+		&&(m_height_to_lid == height_to_lid)&&(m_height_to_rod == height_to_rod)) {
+		BOOST_LOG_TRIVIAL(info) << "PartPlate same shape, skip directly";
+		return false;
+	}
+
+	m_height_to_lid =  height_to_lid;
+	m_height_to_rod =  height_to_rod;
+
+	if ((m_shape != new_shape) || (m_exclude_area != new_exclude_areas))
+	{
+		m_shape = std::move(new_shape);
+		m_exclude_area = std::move(new_exclude_areas);
+
+		calc_bounding_boxes();
+
+		if (m_plater != nullptr) {
+			ExPolygon logo_poly;
+			generate_logo_polygon(logo_poly);
+			m_logo_triangles.reset();
+			if (!init_model_from_poly(m_logo_triangles, logo_poly, GROUND_Z + 0.02f))
+				BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Unable to create logo triangles\n";
+
+			ExPolygon poly;
+			generate_print_polygon(poly);
+			calc_triangles(poly);
+
+			m_print_polygon = poly;
+			m_wrapping_detection_triangles.reset();
+			init_raycaster_from_model(m_triangles);
+
+			ExPolygon exclude_poly;
+			generate_exclude_polygon(exclude_poly);
+			calc_exclude_triangles(exclude_poly);
+
+			const BoundingBox& pp_bbox = poly.contour.bounding_box();
+			calc_gridlines(poly, pp_bbox);
+			m_imex_zones_mode_cache = "\x01";
+			calc_imex_zones();
+
+			calc_vertex_for_icons(0, m_del_icon);
+			calc_vertex_for_icons(1, m_orient_icon);
+			calc_vertex_for_icons(2, m_arrange_icon);
+			calc_vertex_for_icons(3, m_lock_icon);
+			calc_vertex_for_icons(4, m_plate_settings_icon);
+			bool dual_bbl = false;
+			PresetBundle* preset = wxGetApp().preset_bundle;
+			dual_bbl = (preset->is_bbl_vendor() && preset->get_printer_extruder_count() == 2);
+			calc_vertex_for_icons(dual_bbl ? 5 : 6, m_plate_filament_map_icon);
+			calc_vertex_for_icons(dual_bbl ? 6 : 5, m_move_front_icon);
+			{
+				auto* is_imex_opt = preset->printers.get_edited_preset().config.option<ConfigOptionBool>("is_imex");
+				if (is_imex_opt && is_imex_opt->value) {
+					int imex_slot = dual_bbl ? 7 : 6;
+					calc_vertex_for_icons(imex_slot, m_imex_mode_icon);
+					calc_vertex_for_imex_warn_badge(imex_slot, m_imex_warn_icon);
+				}
+			}
+
+			calc_vertex_for_number(0, false, m_plate_idx_icon);
+			invalidate_plate_name_texture();
+		}
+	}
+
+	calc_height_limit();
+
+	return true;
+}
+
+const BoundingBox PartPlate::get_bounding_box_crd()
+{
+	const auto plate_shape = Slic3r::Polygon::new_scale(m_shape);
+
+	return plate_shape.bounding_box();
+}
+
+BoundingBoxf3 PartPlate::get_build_volume(bool use_share)
+{
+    auto  eps=Slic3r::BuildVolume::SceneEpsilon;
+	Vec3d up_point;
+	Vec3d low_point;
+	if (use_share && !m_extruder_areas.empty()) {
+		Polygon bed_poly = get_shared_poly(m_extruder_areas);
+		BoundingBox bbox = bed_poly.bounding_box();
+
+		up_point = Vec3d(unscale_(bbox.max.x()) + eps,  unscale_(bbox.max.y()) + eps, m_origin.z() + m_height + eps);
+		low_point = Vec3d(unscale_(bbox.min.x()) - eps, unscale_(bbox.min.y()) - eps, m_origin.z() - eps);
+	}
+	else {
+		up_point  = m_bounding_box.max + Vec3d(eps, eps, m_origin.z() + m_height + eps);
+		low_point = m_bounding_box.min + Vec3d(-eps, -eps, m_origin.z() - eps);
+	}
+    BoundingBoxf3 plate_box(low_point, up_point);
+    return plate_box;
+}
+
+Polygon PartPlate::get_shared_printable_polygon() const
+{
+	return m_extruder_areas.empty() ? Polygon::new_scale(m_shape) : get_shared_poly(m_extruder_areas);
+}
+
+
+bool PartPlate::belt_open_y() const
+{
+	if (m_plater == nullptr || wxGetApp().preset_bundle == nullptr)
+		return false;
+	const DynamicPrintConfig &printer = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+	const auto *belt       = printer.option<ConfigOptionBool>("belt_printer");
+	const auto *infinite_y = printer.option<ConfigOptionBool>("belt_printer_infinite_y");
+	return belt != nullptr && belt->value && infinite_y != nullptr && infinite_y->value;
+}
+
+bool PartPlate::contains(const Vec3d& point) const
+{
+	return m_bounding_box.contains(point);
+}
+
+bool PartPlate::contains(const GLVolume& v) const
+{
+	return m_bounding_box.contains(v.bounding_box());
+}
+
+bool PartPlate::contains(const BoundingBoxf3& bb) const
+{
+	BoundingBoxf3 print_volume(Vec3d(m_bounding_box.min(0), m_bounding_box.min(1), 0.0), Vec3d(m_bounding_box.max(0), m_bounding_box.max(1), 1e3));
+	print_volume.min(2) = -1e10;
+	print_volume.min(0) -= Slic3r::BuildVolume::BedEpsilon;
+	print_volume.min(1) -= Slic3r::BuildVolume::BedEpsilon;
+	print_volume.max(0) += Slic3r::BuildVolume::BedEpsilon;
+	print_volume.max(1) += Slic3r::BuildVolume::BedEpsilon;
+	this->open_belt_y(print_volume);
+	return print_volume.contains(bb);
+}
+
+bool PartPlate::intersects(const BoundingBoxf3& bb) const
+{
+	BoundingBoxf3 print_volume(Vec3d(m_bounding_box.min(0), m_bounding_box.min(1), 0.0), Vec3d(m_bounding_box.max(0), m_bounding_box.max(1), 1e3));
+	print_volume.min(2) = -1e10;
+	print_volume.min(0) -= Slic3r::BuildVolume::BedEpsilon;
+	print_volume.min(1) -= Slic3r::BuildVolume::BedEpsilon;
+	print_volume.max(0) += Slic3r::BuildVolume::BedEpsilon;
+	print_volume.max(1) += Slic3r::BuildVolume::BedEpsilon;
+	this->open_belt_y(print_volume);
+	return print_volume.intersects(bb);
+}
+
+void PartPlate::render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_body, bool force_background_color, HeightLimitMode mode, int hover_id, bool render_cali, bool show_grid, bool hide_chrome)
+{
+    glsafe(::glEnable(GL_DEPTH_TEST));
+
+    GLShaderProgram *shader = wxGetApp().get_shader("flat");
+    if (shader != nullptr) {
+        shader->start_using();
+        glsafe(::glEnable(GL_BLEND));
+        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
+        shader->set_uniform("view_model_matrix", view_matrix);
+        shader->set_uniform("projection_matrix", projection_matrix);
+
+        if (!bottom) {
+            render_background(force_background_color);
+
+            render_exclude_area(force_background_color);
+            render_imex_zones(force_background_color);
+            if(m_selected && wxGetApp().plater()->get_enable_wrapping_detection()){
+                if(!m_wrapping_detection_triangles.is_initialized()){
+                    auto points = get_plate_wrapping_detection_area();
+                    if (points.size() > 0) {
+                        ExPolygon temp_poly;
+                        for (const Vec2d &p : points) {
+                            temp_poly.contour.append({scale_(p(0)), scale_(p(1))});
+                        }
+                        auto      result = intersection(m_print_polygon, temp_poly);
+                        if (result.size() > 0) {
+                            ExPolygon wrapp_poly(result[0]);
+                            calc_triangles_from_polygon(wrapp_poly, m_wrapping_detection_triangles);
+                        }
+                    }
+                }
+                render_wrapping_detection_area(force_background_color);
+            }
+        }
+
+        render_height_limit(mode);
+
+        glsafe(::glDisable(GL_BLEND));
+
+        shader->stop_using();
+    }
+
+    if (wxGetApp().show_plate_gridlines() && show_grid) {
+        glsafe(::glDepthMask(bottom ? GL_TRUE : GL_FALSE));
+        render_grid(bottom);
+        glsafe(::glDepthMask(GL_TRUE));
+    }
+
+    if (!hide_chrome && !bottom && m_selected && !force_background_color) {
+        if (m_partplate_list)
+            render_logo(bottom, m_partplate_list->render_cali_logo && render_cali);
+        else
+            render_logo(bottom);
+    }
+
+    if (!hide_chrome) {
+        render_icons(bottom, only_body, hover_id);
+        if (!force_background_color) {
+            render_only_numbers(bottom);
+        }
+    }
+
+    glsafe(::glDisable(GL_DEPTH_TEST));
+}
+
+void PartPlate::set_selected() {
+	m_selected = true;
+}
+
+void PartPlate::set_unselected() {
+	m_selected = false;
+}
+
+
+void PartPlate::update_states()
+{
+	m_ready_for_slice = true;
+	for (std::set<std::pair<int, int>>::iterator it = obj_to_instance_set.begin(); it != obj_to_instance_set.end(); ++it) {
+		int obj_id = it->first;
+		int instance_id = it->second;
+
+		if (instance_outside_set.find(std::pair(obj_id, instance_id)) != instance_outside_set.end())
+		{
+			m_ready_for_slice = false;
+			break;
+		}
+	}
+
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1% , m_ready_for_slice changes to %2%") % m_plate_index %m_ready_for_slice;
+	return;
+}
+
+void PartPlate::update_slice_result_valid_state(bool valid)
+{
+    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1% , update slice result from %2% to %3%") % m_plate_index %m_slice_result_valid %valid;
+    const bool changed = (m_slice_result_valid != valid);
+    m_slice_result_valid = valid;
+    if (valid)
+        m_slice_percent = 100.0f;
+    else {
+        m_slice_percent = -1.0f;
+    }
+    if (changed && m_plater)
+        m_plater->mark_plate_toolbar_image_dirty();
+}
+
+void PartPlate::update_slice_context(BackgroundSlicingProcess & process)
+{
+	auto statuscb = [this](const Slic3r::PrintBase::SlicingStatus& status) {
+		Slic3r::SlicingStatusEvent *event = new Slic3r::SlicingStatusEvent(EVT_SLICING_UPDATE, 0, status);
+		if (status.message_type == Slic3r::PrintStateBase::SlicingDefaultNotification) {
+			auto temp = Slic3r::format(_u8L(" plate %1%:"), std::to_string(m_plate_index + 1));
+			event->status.text = temp + event->status.text;
+		}
+		wxQueueEvent(m_plater, event);
+	};
+
+	process.set_fff_print(m_print);
+	process.set_gcode_result(m_gcode_result);
+	process.select_technology(this->printer_technology);
+	process.set_current_plate(this);
+	m_print->set_status_callback(statuscb);
+	process.switch_print_preprocess();
+
+	return;
+}
+
+std::string PartPlate::get_tmp_gcode_path()
+{
+    if (m_tmp_gcode_path.empty()) {
+        boost::filesystem::path temp_path(m_model->get_backup_path("Metadata"));
+        temp_path /= (boost::format(".%1%.%2%.gcode") % get_current_pid() %
+                      GLOBAL_PLATE_INDEX++).str();
+        m_tmp_gcode_path = temp_path.string();
+    }
+    return m_tmp_gcode_path;
+}
+
+std::string PartPlate::get_temp_config_3mf_path()
+{
+	if (m_temp_config_3mf_path.empty()) {
+		boost::filesystem::path temp_path(m_model->get_backup_path("Metadata"));
+		temp_path /= (boost::format(".%1%.%2%_config.3mf") % get_current_pid() %
+			GLOBAL_PLATE_INDEX++).str();
+		m_temp_config_3mf_path = temp_path.string();
+
+	}
+	return m_temp_config_3mf_path;
+}
+
+int PartPlate::load_gcode_from_file(const std::string& filename)
+{
+	int ret = 0;
+
+	auto& preset_bundle = wxGetApp().preset_bundle;
+	std::vector<int>   filament_maps = this->get_filament_maps();
+	std::vector<int> f_volume_maps = this->get_filament_volume_maps();
+	if (f_volume_maps.empty()) {
+		f_volume_maps = preset_bundle->get_default_nozzle_volume_types_for_filaments(filament_maps);
+	}
+	DynamicPrintConfig full_config   = preset_bundle->full_config(false, filament_maps, f_volume_maps);
+	full_config.apply(m_config, true);
+	m_print->apply(*m_model, full_config, false);
+	m_print->apply(*m_model, full_config, false);
+
+	if (boost::filesystem::exists(filename)) {
+		assert(m_tmp_gcode_path.empty());
+		m_tmp_gcode_path = filename;
+		m_gcode_result->filename = filename;
+		m_print->set_gcode_file_ready();
+
+		update_slice_result_valid_state(true);
+
+		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": found valid gcode file %1%") % filename.c_str();
+	}
+	else {
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": can not find gcode file %1%") % filename.c_str();
+		ret = -1;
+	}
+
+	m_ready_for_slice = true;
+	return ret;
+}
+
+int PartPlate::load_thumbnail_data(std::string filename, ThumbnailData& thumb_data)
+{
+	bool result = true;
+	wxImage img;
+	if (boost::algorithm::iends_with(filename, ".png")) {
+		result = img.LoadFile(wxString::FromUTF8(filename.c_str()), wxBITMAP_TYPE_PNG);
+		img = img.Mirror(false);
+	}
+	if (result) {
+		thumb_data.set(img.GetWidth(), img.GetHeight());
+		for (int i = 0; i < img.GetWidth() * img.GetHeight(); i++) {
+			memcpy(&thumb_data.pixels[4 * i], (unsigned char*)(img.GetData() + 3 * i), 3);
+			if (img.HasAlpha()) {
+				thumb_data.pixels[4 * i + 3] = *(unsigned char*)(img.GetAlpha() + i);
+			}
+		}
+	} else {
+		return -1;
+	}
+	return 0;
+}
+
+int PartPlate::load_pattern_thumbnail_data(std::string filename)
+{
+	return 0;
+}
+
+int PartPlate::load_pattern_box_data(std::string filename)
+{
+    try {
+        nlohmann::json j;
+        boost::nowide::ifstream ifs(filename);
+        ifs >> j;
+
+        PlateBBoxData bbox_data;
+        bbox_data.from_json(j);
+        cali_bboxes_data = bbox_data;
+        return 0;
+    }
+    catch(std::exception &ex) {
+        BOOST_LOG_TRIVIAL(trace) << boost::format("catch an exception %1%")%ex.what();
+        return -1;
+    }
+}
+
+std::vector<int> PartPlate::get_first_layer_print_sequence() const
+{
+    const ConfigOptionInts *op_print_sequence_1st = m_config.option<ConfigOptionInts>("first_layer_print_sequence");
+    if (op_print_sequence_1st)
+        return op_print_sequence_1st->values;
+    else
+        return std::vector<int>();
+}
+
+std::vector<LayerPrintSequence> PartPlate::get_other_layers_print_sequence() const
+{
+	const ConfigOptionInts* other_layers_print_sequence_op = m_config.option<ConfigOptionInts>("other_layers_print_sequence");
+	const ConfigOptionInt* other_layers_print_sequence_nums_op = m_config.option<ConfigOptionInt>("other_layers_print_sequence_nums");
+	if (other_layers_print_sequence_op && other_layers_print_sequence_nums_op) {
+		const std::vector<int>& print_sequence = other_layers_print_sequence_op->values;
+		int sequence_nums = other_layers_print_sequence_nums_op->value;
+		auto other_layers_seqs = Slic3r::get_other_layers_print_sequence(sequence_nums, print_sequence);
+		return other_layers_seqs;
+	}
+	else
+		return {};
+}
+
+void PartPlate::set_first_layer_print_sequence(const std::vector<int>& sorted_filaments)
+{
+    if (sorted_filaments.size() > 0) {
+		if (sorted_filaments.size() == 1 && sorted_filaments[0] == 0) {
+            m_config.erase("first_layer_print_sequence");
+        }
+		else {
+            ConfigOptionInts *op_print_sequence_1st = m_config.option<ConfigOptionInts>("first_layer_print_sequence");
+            if (op_print_sequence_1st)
+                op_print_sequence_1st->values = sorted_filaments;
+            else
+                m_config.set_key_value("first_layer_print_sequence", new ConfigOptionInts(sorted_filaments));
+        }
+    }
+	else {
+        m_config.erase("first_layer_print_sequence");
+	}
+}
+
+void PartPlate::set_other_layers_print_sequence(const std::vector<LayerPrintSequence>& layer_seq_list)
+{
+	if (layer_seq_list.empty()) {
+		m_config.erase("other_layers_print_sequence");
+		m_config.erase("other_layers_print_sequence_nums");
+		return;
+	}
+
+	int sequence_nums;
+	std::vector<int> other_layers_seqs;
+	Slic3r::get_other_layers_print_sequence(layer_seq_list, sequence_nums, other_layers_seqs);
+	ConfigOptionInts* other_layers_print_sequence_op = m_config.option<ConfigOptionInts>("other_layers_print_sequence");
+	ConfigOptionInt* other_layers_print_sequence_nums_op = m_config.option<ConfigOptionInt>("other_layers_print_sequence_nums");
+	if (other_layers_print_sequence_op)
+		other_layers_print_sequence_op->values = other_layers_seqs;
+	else
+		m_config.set_key_value("other_layers_print_sequence", new ConfigOptionInts(other_layers_seqs));
+	if (other_layers_print_sequence_nums_op)
+		other_layers_print_sequence_nums_op->value = sequence_nums;
+	else
+		m_config.set_key_value("other_layers_print_sequence_nums", new ConfigOptionInt(sequence_nums));
+}
+
+void PartPlate::update_first_layer_print_sequence(size_t filament_nums)
+{
+	auto other_layers_seqs = get_other_layers_print_sequence();
+	if (!other_layers_seqs.empty()) {
+		bool need_update_data = false;
+		for (auto& other_layers_seq : other_layers_seqs) {
+			std::vector<int>& orders = other_layers_seq.second;
+			if (orders.size() > filament_nums) {
+				orders.erase(std::remove_if(orders.begin(), orders.end(), [filament_nums](int n) { return n > filament_nums; }), orders.end());
+				need_update_data = true;
+			}
+			if (orders.size() < filament_nums) {
+				for (size_t extruder_id = orders.size(); extruder_id < filament_nums; ++extruder_id) {
+					orders.push_back(extruder_id + 1);
+					need_update_data = true;
+				}
+			}
+		}
+		if (need_update_data)
+			set_other_layers_print_sequence(other_layers_seqs);
+	}
+
+
+    ConfigOptionInts * op_print_sequence_1st = m_config.option<ConfigOptionInts>("first_layer_print_sequence");
+    if (!op_print_sequence_1st) {
+		return;
+	}
+
+    std::vector<int> &print_sequence_1st = op_print_sequence_1st->values;
+    if (print_sequence_1st.size() == 0 || print_sequence_1st[0] == 0)
+		return;
+
+	if (print_sequence_1st.size() > filament_nums) {
+        print_sequence_1st.erase(std::remove_if(print_sequence_1st.begin(), print_sequence_1st.end(), [filament_nums](int n) { return n > filament_nums; }),
+                                 print_sequence_1st.end());
+    }
+	else if (print_sequence_1st.size() < filament_nums) {
+        for (size_t extruder_id = print_sequence_1st.size(); extruder_id < filament_nums; ++extruder_id) {
+            print_sequence_1st.push_back(extruder_id + 1);
+		}
+    }
+}
+
+void PartPlate::update_first_layer_print_sequence_when_delete_filament(size_t filament_id)
+{
+    auto other_layers_seqs = get_other_layers_print_sequence();
+    if (!other_layers_seqs.empty()) {
+        bool need_update_data = false;
+        for (auto &other_layers_seq : other_layers_seqs) {
+            std::vector<int> &orders = other_layers_seq.second;
+            orders.erase(std::remove_if(orders.begin(), orders.end(), [filament_id](int n) { return n == filament_id +1; }), orders.end());
+            for (auto &order : orders) {
+                order = order > filament_id ? order - 1 : order;
+            }
+            need_update_data = true;
+        }
+        if (need_update_data)
+            set_other_layers_print_sequence(other_layers_seqs);
+    }
+
+    ConfigOptionInts *op_print_sequence_1st = m_config.option<ConfigOptionInts>("first_layer_print_sequence");
+    if (!op_print_sequence_1st)
+        return;
+
+    std::vector<int> &print_sequence_1st = op_print_sequence_1st->values;
+    if (print_sequence_1st.size() == 0 || print_sequence_1st[0] == 0)
+        return;
+
+    print_sequence_1st.erase(std::remove_if(print_sequence_1st.begin(), print_sequence_1st.end(), [filament_id](int n) { return n == filament_id + 1; }), print_sequence_1st.end());
+    for (auto &order : print_sequence_1st) {
+        order = order > filament_id ? order - 1 : order;
+    }
+}
+
+void PartPlate::print() const
+{
+	unsigned int count=0;
+
+	BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << boost::format(": plate index %1%, pointer %2%, print_index %3% print pointer %4%") % m_plate_index % this % m_print_index % m_print;
+	BOOST_LOG_TRIVIAL(trace) << boost::format("\t origin {%1%,%2%,%3%}, width %4%,  depth %5%, height %6%") % m_origin.x() % m_origin.y() % m_origin.z() % m_width % m_depth % m_height;
+	BOOST_LOG_TRIVIAL(trace) << boost::format("\t m_printable %1%, m_locked %2%, m_ready_for_slice %3%, m_slice_result_valid %4%,  m_tmp_gcode_path %5%, set size %6%")\
+		% m_printable % m_locked % m_ready_for_slice % m_slice_result_valid % m_tmp_gcode_path % obj_to_instance_set.size();
+	BOOST_LOG_TRIVIAL(trace) << boost::format("excluded instance set size %1%")%instance_outside_set.size();
+
+	return;
+}
+
+FilamentMapMode PartPlate::get_filament_map_mode() const
+{
+    std::string key = "filament_map_mode";
+    if(m_config.has(key))
+        return m_config.option<ConfigOptionEnum<FilamentMapMode>>(key)->value;
+    return FilamentMapMode::fmmDefault;
+}
+
+void PartPlate::set_filament_map_mode(const FilamentMapMode& mode)
+{
+	const auto& proj_config = wxGetApp().preset_bundle->project_config;
+	FilamentMapMode global_mode = proj_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode")->value;
+	FilamentMapMode old_mode = get_filament_map_mode();
+	FilamentMapMode old_real_mode = old_mode == fmmDefault ? global_mode : old_mode;
+	FilamentMapMode new_real_mode = mode == fmmDefault ? global_mode : mode;
+
+	if (old_real_mode != new_real_mode)
+		clear_filament_map();
+	if (mode == fmmDefault)
+		clear_filament_map_mode();
+	else
+		m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = mode;
+}
+
+std::vector<int> PartPlate::get_filament_maps() const
+{
+    std::string key = "filament_map";
+    if (m_config.has(key))
+        return m_config.option<ConfigOptionInts>(key)->values;
+
+    return {};
+}
+
+void PartPlate::set_filament_maps(const std::vector<int>& f_maps)
+{
+    m_config.option<ConfigOptionInts>("filament_map", true)->values = f_maps;
+}
+
+void PartPlate::clear_filament_map()
+{
+    if (m_config.has("filament_map"))
+        m_config.erase("filament_map");
+}
+
+std::vector<int> PartPlate::get_filament_volume_maps() const
+{
+    std::string key = "filament_volume_map";
+    if (m_config.has(key))
+        return m_config.option<ConfigOptionInts>(key)->values;
+
+    return {};
+}
+
+void PartPlate::set_filament_volume_maps(const std::vector<int>& f_maps)
+{
+    m_config.option<ConfigOptionInts>("filament_volume_map", true)->values = f_maps;
+}
+
+void PartPlate::clear_filament_volume_map()
+{
+    if (m_config.has("filament_volume_map"))
+        m_config.erase("filament_volume_map");
+}
+
+std::vector<int> PartPlate::get_filament_nozzle_maps() const
+{
+    std::string key = "filament_nozzle_map";
+    if (m_config.has(key))
+        return m_config.option<ConfigOptionInts>(key)->values;
+
+    return {};
+}
+
+void PartPlate::set_filament_nozzle_maps(const std::vector<int>& f_maps)
+{
+    m_config.option<ConfigOptionInts>("filament_nozzle_map", true)->values = f_maps;
+}
+
+void PartPlate::clear_filament_map_mode()
+{
+    if (m_config.has("filament_map_mode"))
+        m_config.erase("filament_map_mode");
+}
+
+void PartPlate::on_extruder_count_changed(int extruder_count)
+{
+    if (extruder_count < 2) {
+        std::vector<int> f_map = wxGetApp().plater()->get_global_filament_map();
+        std::fill(f_map.begin(), f_map.end(), 1);
+        wxGetApp().plater()->set_global_filament_map(f_map);
+        clear_filament_map();
+        m_config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode", true)->value = FilamentMapMode::fmmAutoForFlush;
+    }
+}
+
+void PartPlate::set_filament_count(int filament_count)
+{
+    if (m_config.has("filament_map")) {
+        std::vector<int>& filament_maps = m_config.option<ConfigOptionInts>("filament_map")->values;
+        filament_maps.resize(filament_count, 1);
+    }
+
+    if (m_config.has("filament_nozzle_map")) {
+        std::vector<int>& filament_nozzle_map = m_config.option<ConfigOptionInts>("filament_nozzle_map")->values;
+        filament_nozzle_map.resize(filament_count, 0);
+    }
+
+    if (m_config.has("filament_volume_map")) {
+        std::vector<int>& filament_volume_map = m_config.option<ConfigOptionInts>("filament_volume_map")->values;
+        filament_volume_map.resize(filament_count, static_cast<int>(NozzleVolumeType::nvtStandard));
+    }
+}
+
+void PartPlate::on_filament_added()
+{
+    if (m_config.has("filament_map")) {
+        std::vector<int>& filament_maps = m_config.option<ConfigOptionInts>("filament_map")->values;
+        filament_maps.push_back(1);
+    }
+
+    if (m_config.has("filament_nozzle_map")) {
+        std::vector<int>& filament_nozzle_map = m_config.option<ConfigOptionInts>("filament_nozzle_map")->values;
+        filament_nozzle_map.push_back(0);
+    }
+
+    if (m_config.has("filament_volume_map")) {
+        std::vector<int>& filament_volume_map = m_config.option<ConfigOptionInts>("filament_volume_map")->values;
+        int volume_type = static_cast<int>(NozzleVolumeType::nvtStandard);
+        auto nozzle_volumes = wxGetApp().preset_bundle->project_config.option<ConfigOptionEnumsGeneric>("nozzle_volume_type");
+        if (nozzle_volumes && !nozzle_volumes->values.empty())
+            volume_type = nozzle_volumes->values[0];
+        if (volume_type == static_cast<int>(NozzleVolumeType::nvtHybrid))
+            volume_type = static_cast<int>(NozzleVolumeType::nvtStandard);
+
+        filament_volume_map.push_back(volume_type);
+    }
+}
+
+void PartPlate::on_filament_deleted(int filament_count, int filament_id)
+{
+    if (m_config.has("filament_map")) {
+        std::vector<int>& filament_maps = m_config.option<ConfigOptionInts>("filament_map")->values;
+        if (filament_id >= 0 && filament_id < (int) filament_maps.size())
+            filament_maps.erase(filament_maps.begin() + filament_id);
+    }
+
+    if (m_config.has("filament_nozzle_map")) {
+        std::vector<int>& filament_nozzle_map = m_config.option<ConfigOptionInts>("filament_nozzle_map")->values;
+        if (filament_id >= 0 && filament_id < (int) filament_nozzle_map.size())
+            filament_nozzle_map.erase(filament_nozzle_map.begin() + filament_id);
+    }
+
+    if (m_config.has("filament_volume_map")) {
+        std::vector<int>& filament_volume_map = m_config.option<ConfigOptionInts>("filament_volume_map")->values;
+        if (filament_id >= 0 && filament_id < (int) filament_volume_map.size())
+            filament_volume_map.erase(filament_volume_map.begin() + filament_id);
+    }
+
+    update_first_layer_print_sequence_when_delete_filament(filament_id);
+}
+
+
+PartPlateList::PartPlateList(int width, int depth, double height, Plater* platerObj, Model* modelObj, PrinterTechnology tech)
+	:m_plate_width(width), m_plate_depth(depth), m_plate_height(height), m_plater(platerObj), m_model(modelObj), printer_technology(tech),
+	unprintable_plate(this, Vec3d(0.0 + width * (1. + LOGICAL_PART_PLATE_GAP), 0.0, 0.0), width, depth, height, platerObj, modelObj, false, tech)
+{
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":plate_width %1%, plate_depth %2%, plate_height %3%") % width % depth % height;
+
+	init();
+}
+PartPlateList::PartPlateList(Plater* platerObj, Model* modelObj, PrinterTechnology tech)
+	:m_plate_width(0), m_plate_depth(0), m_plate_height(0), m_plater(platerObj), m_model(modelObj), printer_technology(tech),
+	unprintable_plate(this, Vec3d(0.0, 0.0, 0.0), m_plate_width, m_plate_depth, m_plate_height, platerObj, modelObj, false, tech)
+{
+	init();
+}
+
+PartPlateList::~PartPlateList()
+{
+	clear(true, true);
+	release_icon_textures();
+}
+
+void PartPlateList::init()
+{
+	m_intialized = false;
+	PartPlate* first_plate = NULL;
+	first_plate = new PartPlate(this, Vec3d(0.0, 0.0, 0.0), m_plate_width, m_plate_depth, m_plate_height, m_plater, m_model, true, printer_technology);
+	assert(first_plate != NULL);
+	m_plate_list.push_back(first_plate);
+
+	m_print_index = 0;
+	if (printer_technology == ptFFF)
+	{
+		Print* print = new Print();
+		GCodeResult* gcode = new GCodeResult();
+		m_print_list.emplace(m_print_index, print);
+		m_gcode_result_list.emplace(m_print_index, gcode);
+		first_plate->set_print(print, gcode, m_print_index);
+		m_print_index++;
+	}
+	first_plate->set_index(0);
+
+	m_plate_count = 1;
+	m_plate_cols = 1;
+	m_current_plate = 0;
+
+	select_plate(0);
+	unprintable_plate.set_index(1);
+
+	m_intialized = true;
+}
+
+Vec3d PartPlateList::compute_origin(int i, int cols)
+{
+	Vec3d origin;
+	Vec2d pos = compute_shape_position(i, cols);
+	origin    = Vec3d(pos.x(), pos.y(), 0);
+
+	return origin;
+}
+
+Vec3d PartPlateList::compute_origin_using_new_size(int i, int new_width, int new_depth)
+{
+	Vec3d origin;
+	int row, col;
+
+	row = i / m_plate_cols;
+	col = i % m_plate_cols;
+
+	origin(0) = col * (new_width * (1. + LOGICAL_PART_PLATE_GAP));
+	origin(1) = -row * (new_depth * (1. + LOGICAL_PART_PLATE_GAP));
+	origin(2) = 0;
+
+	return origin;
+}
+
+
+Vec3d PartPlateList::compute_origin_for_unprintable()
+{
+	int max_count = m_plate_cols * m_plate_cols;
+	if (m_plate_count == max_count)
+		return compute_origin(max_count + m_plate_cols - 1, m_plate_cols + 1);
+	else
+		return compute_origin(m_plate_count, m_plate_cols);
+}
+
+Vec2d PartPlateList::compute_shape_position(int index, int cols)
+{
+	Vec2d pos;
+	int row, col;
+
+	row = index / cols;
+	col = index % cols;
+
+	pos(0) = col * plate_stride_x();
+	pos(1) = -row * plate_stride_y();
+
+	return pos;
+}
+
+void PartPlateList::generate_icon_textures()
+{
+	m_icon_textures_dark = m_is_dark;
+	GLint max_tex_size = OpenGLManager::get_gl_info().get_max_tex_size(), icon_size = max_tex_size / 8;
+	std::string path = resources_dir() + "/images/";
+	std::string file_name;
+
+	if (icon_size > 256)
+		icon_size = 256;
+	{
+		file_name = path + (m_is_dark ? "plate_close_dark.svg" : "plate_close.svg");
+		if (!m_del_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_close_hover_dark.svg" : "plate_close_hover.svg");
+		if (!m_del_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	
+    {
+        file_name = path + (m_is_dark ? "plate_move_front_dark.svg" : "plate_move_front.svg");
+        if (!m_move_front_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+        }
+    }
+
+    {
+        file_name = path + (m_is_dark ? "plate_move_front_hover_dark.svg" : "plate_move_front_hover.svg");
+        if (!m_move_front_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+        }
+    }
+
+	{
+		file_name = path + (m_is_dark ? "plate_arrange_dark.svg" : "plate_arrange.svg");
+		if (!m_arrange_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_arrange_hover_dark.svg" : "plate_arrange_hover.svg");
+		if (!m_arrange_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_orient_dark.svg" : "plate_orient.svg");
+		if (!m_orient_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_orient_hover_dark.svg" : "plate_orient_hover.svg");
+		if (!m_orient_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_locked_dark.svg" : "plate_locked.svg");
+		if (!m_locked_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_locked_hover_dark.svg" : "plate_locked_hover.svg");
+		if (!m_locked_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_unlocked_dark.svg" : "plate_unlocked.svg");
+		if (!m_lockopen_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_unlocked_hover_dark.svg" : "plate_unlocked_hover.svg");
+		if (!m_lockopen_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_settings_dark.svg" : "plate_settings.svg");
+		if (!m_plate_settings_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+        file_name = path + (m_is_dark ? "plate_set_filament_map_dark.svg" : "plate_set_filament_map.svg");
+        if (!m_plate_set_filament_map_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+        }
+    }
+
+	{
+        file_name = path + (m_is_dark ? "plate_set_filament_map_hover_dark.svg" : "plate_set_filament_map_hover.svg");
+        if (!m_plate_set_filament_map_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+            BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+        }
+    }
+
+	{
+		file_name = path + (m_is_dark ? "plate_settings_changed_dark.svg" : "plate_settings_changed.svg");
+		if (!m_plate_settings_changed_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_settings_hover_dark.svg" : "plate_settings_hover.svg");
+		if (!m_plate_settings_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_settings_changed_hover_dark.svg" : "plate_settings_changed_hover.svg");
+		if (!m_plate_settings_changed_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+	{
+		file_name = path + (m_is_dark ? "plate_name_edit_dark.svg" : "plate_name_edit.svg");
+		if (!m_plate_name_edit_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+			BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		 }
+	}
+	{
+		file_name = path + (m_is_dark ? "plate_name_edit_hover_dark.svg" : "plate_name_edit_hover.svg");
+		if (!m_plate_name_edit_hovered_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+		}
+	}
+
+    {
+        file_name = path + "obj_warning.svg";
+        if (!m_imex_warn_texture.load_from_svg_file(file_name, true, false, false, icon_size)) {
+            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":load file %1% failed (IMEX warn badge)") % file_name;
+        }
+    }
+
+    {
+        static const char* kind_names[] = { "normal", "copy", "mirror", "custom" };
+        static_assert(std::size(kind_names) == kImexModeKindCount && std::tuple_size_v<decltype(m_imex_mode_textures)> == kImexModeKindCount);
+        for (size_t kind = 0; kind < kImexModeKindCount; ++kind)
+            for (const bool hovered : { false, true }) {
+                file_name = path + "plate_imex_" + kind_names[kind] + "_mode" + (hovered ? "_hover" : "") + (m_is_dark ? "_dark.svg" : ".svg");
+                GLTexture& texture = hovered ? m_imex_mode_hovered_textures[kind] : m_imex_mode_textures[kind];
+                if (!texture.load_from_svg_file(file_name, true, false, false, icon_size))
+                    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":load file %1% failed (IDEX/IQEX mode icon)") % file_name;
+            }
+    }
+
+	std::string text_str = "01";
+    int size = wxGetApp().em_unit() * PARTPLATE_ICON_SIZE;
+    auto l = Label::sysFont(int(size), true);
+    wxFont* font = &l;
+
+	for (int i = 0; i < MAX_PLATE_COUNT; i++) {
+		if (m_idx_textures[i].get_id() == 0) {
+			if ( i < 9 )
+				file_name = std::string("0") + std::to_string(i+1);
+			else
+				file_name = std::to_string(i+1);
+
+			wxColour foreground(0xf2, 0x75, 0x4e, 0xff);
+			if (!m_idx_textures[i].generate_from_text_string(file_name, *font, *wxBLACK, foreground)) {
+				BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":load file %1% failed") % file_name;
+			}
+		}
+	}
+}
+
+void PartPlateList::release_icon_textures()
+{
+	m_logo_texture.reset();
+	m_del_texture.reset();
+	m_del_hovered_texture.reset();
+    m_move_front_hovered_texture.reset();
+    m_move_front_texture.reset();
+	m_arrange_texture.reset();
+	m_arrange_hovered_texture.reset();
+	m_orient_texture.reset();
+	m_orient_hovered_texture.reset();
+	m_locked_texture.reset();
+	m_locked_hovered_texture.reset();
+	m_lockopen_texture.reset();
+	m_lockopen_hovered_texture.reset();
+	m_plate_settings_texture.reset();
+	m_plate_settings_hovered_texture.reset();
+    m_plate_set_filament_map_texture.reset();
+    m_plate_set_filament_map_hovered_texture.reset();
+	m_plate_name_edit_texture.reset();
+	m_plate_name_edit_hovered_texture.reset();
+    for (GLTexture& texture : m_imex_mode_textures)
+        texture.reset();
+    for (GLTexture& texture : m_imex_mode_hovered_textures)
+        texture.reset();
+    m_imex_warn_texture.reset();
+	for (int i = 0;i < MAX_PLATE_COUNT; i++) {
+		m_idx_textures[i].reset();
+	}
+	PartPlateList::is_load_bedtype_textures = false;
+    PartPlateList::is_load_extruder_only_area_textures = false;
+	PartPlateList::is_load_cali_texture = false;
+	m_next_bedtype_texture = 0;
+	m_next_extruder_only_area_texture = 0;
+	m_next_cali_texture = 0;
+	for (int i = 0; i < btCount; i++) {
+		for (auto& part: bed_texture_info[i].parts) {
+			if (part.texture) {
+				part.texture->reset();
+				delete part.texture;
+			}
+			if (part.buffer) {
+				delete part.buffer;
+			}
+		}
+	}
+    for (int i = 0; i < (unsigned char)ExtruderOnlyAreaType::btAreaCount; i++) {
+        for (auto &part : extruder_only_area_info[i].parts) {
+            if (part.texture) {
+                part.texture->reset();
+                delete part.texture;
+            }
+            if (part.buffer) { delete part.buffer; }
+        }
+    }
+}
+
+void PartPlateList::set_default_wipe_tower_pos_for_plate(int plate_idx, bool init_pos)
+{
+    DynamicConfig &     proj_cfg     = wxGetApp().preset_bundle->project_config;
+    ConfigOptionFloats *wipe_tower_x = proj_cfg.opt<ConfigOptionFloats>("wipe_tower_x");
+    ConfigOptionFloats *wipe_tower_y = proj_cfg.opt<ConfigOptionFloats>("wipe_tower_y");
+    wipe_tower_x->values.resize(m_plate_list.size(), wipe_tower_x->values.front());
+    wipe_tower_y->values.resize(m_plate_list.size(), wipe_tower_y->values.front());
+
+    auto printer_structure_opt = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<PrinterStructure>>("printer_structure");
+    float x = WIPE_TOWER_DEFAULT_X_POS;
+    float y = WIPE_TOWER_DEFAULT_Y_POS;
+    if (printer_structure_opt && printer_structure_opt->value == PrinterStructure::psI3) {
+        x = I3_WIPE_TOWER_DEFAULT_X_POS;
+        y = I3_WIPE_TOWER_DEFAULT_Y_POS;
+    }
+
+    std::string printer_type = wxGetApp().preset_bundle->printers.get_edited_preset().get_printer_type(wxGetApp().preset_bundle);
+    if (printer_type == "N9") {
+        y = N9_WIPE_TOWER_DEFAULT_Y_POS;
+    }
+
+    PartPlate *part_plate = get_plate(plate_idx);
+    Vec3d plate_origin = part_plate->get_origin();
+    BoundingBoxf3 plate_bbox = part_plate->get_bounding_box();
+    BoundingBoxf plate_bbox_2d(Vec2d(plate_bbox.min(0), plate_bbox.min(1)), Vec2d(plate_bbox.max(0), plate_bbox.max(1)));
+    const std::vector<Pointfs> &extruder_areas = part_plate->get_extruder_areas();
+    for (const Pointfs &points : extruder_areas) {
+        BoundingBoxf bboxf(points);
+        plate_bbox_2d.min = plate_bbox_2d.min(0) >= bboxf.min(0) ? plate_bbox_2d.min : bboxf.min;
+        plate_bbox_2d.max = plate_bbox_2d.max(0) <= bboxf.max(0) ? plate_bbox_2d.max : bboxf.max;
+    }
+
+    coordf_t plate_bbox_x_min_local_coord = plate_bbox_2d.min(0) - plate_origin(0);
+    coordf_t plate_bbox_x_max_local_coord = plate_bbox_2d.max(0) - plate_origin(0);
+    coordf_t plate_bbox_y_max_local_coord = plate_bbox_2d.max(1) - plate_origin(1);
+
+    std::vector<int> filament_maps = part_plate->get_real_filament_maps(proj_cfg);
+    std::vector<int> f_volume_maps = part_plate->get_filament_volume_maps();
+    if (f_volume_maps.empty()) {
+        f_volume_maps = wxGetApp().preset_bundle->get_default_nozzle_volume_types_for_filaments(filament_maps);
+    }
+    DynamicPrintConfig full_config = wxGetApp().preset_bundle->full_config(false, filament_maps, f_volume_maps);
+    WipeTowerFootprint footprint = part_plate->estimate_wipe_tower_footprint(full_config, init_pos ? 2 : 0);
+
+    if (!init_pos && (is_approx(footprint.width, 0.0) || is_approx(footprint.depth, 0.0))) {
+        footprint = part_plate->estimate_wipe_tower_footprint(full_config, 2);
+    }
+    Vec3d wipe_tower_size(footprint.width, footprint.depth, footprint.height);
+
+    const float brim_width = float(footprint.brim_width);
+    const float margin     = WIPE_TOWER_AUTO_MARGIN + brim_width;
+
+    {
+        if (x + margin + wipe_tower_size(0) > plate_bbox_x_max_local_coord) {
+            x = plate_bbox_x_max_local_coord - wipe_tower_size(0) - margin;
+        } else if (x < margin + plate_bbox_x_min_local_coord) {
+            x = margin + plate_bbox_x_min_local_coord;
+        }
+
+        if (y + margin + wipe_tower_size(1) > plate_bbox_y_max_local_coord) {
+            y = plate_bbox_y_max_local_coord - wipe_tower_size(1) - margin;
+        } else if (y < margin) {
+            y = margin;
+        }
+    }
+
+    {
+        Polygons bed{part_plate->get_shared_printable_polygon()};
+        bed.front().translate(Point(-scaled(plate_origin.x()), -scaled(plate_origin.y())));
+        const BoundingBox tower(Point::new_scale(x, y),
+                                Point::new_scale(x + wipe_tower_size(0), y + wipe_tower_size(1)));
+        const Vec2f move = WipeTower::move_box_inside_polygon(tower, bed, scaled<coord_t>(margin));
+        x += move.x();
+        y += move.y();
+    }
+
+    ConfigOptionFloat wt_x_opt(x);
+    ConfigOptionFloat wt_y_opt(y);
+    dynamic_cast<ConfigOptionFloats *>(proj_cfg.option("wipe_tower_x"))->set_at(&wt_x_opt, plate_idx, 0);
+    dynamic_cast<ConfigOptionFloats *>(proj_cfg.option("wipe_tower_y"))->set_at(&wt_y_opt, plate_idx, 0);
+}
+
+void PartPlateList::reset_size(int width, int depth, double height, bool reload_objects, bool update_shapes)
+{
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":before size: plate_width %1%, plate_depth %2%, plate_height %3%") % m_plate_width % m_plate_depth % m_plate_height;
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":after size: plate_width %1%, plate_depth %2%, plate_height %3%") % width % depth % height;
+	if ((m_plate_width != width) || (m_plate_depth != depth) || (m_plate_height != height))
+	{
+		m_plate_width = width;
+		m_plate_depth = depth;
+		m_plate_height = height;
+		update_all_plates_pos_and_size(false, false, true);
+		if (update_shapes) {
+			set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
+		}
+		if (reload_objects)
+			reload_all_objects();
+		else
+			clear(false, false, false, -1);
+	}
+
+	return;
+}
+
+void PartPlateList::clear(bool delete_plates, bool release_print_list, bool except_locked, int plate_index)
+{
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		if (except_locked && plate->is_locked())
+			plate->clear(false);
+		else if ((plate_index != -1) && (plate_index != i))
+			plate->clear(false);
+		else
+			plate->clear();
+		if (delete_plates)
+			delete plate;
+	}
+
+	if (delete_plates)
+	{
+		m_plate_list.clear();
+		m_current_plate = 0;
+	}
+
+	if (release_print_list)
+	{
+		for (std::map<int, PrintBase*>::iterator it = m_print_list.begin(); it != m_print_list.end(); ++it)
+		{
+			PrintBase* print = it->second;
+			assert(print != NULL);
+
+			delete print;
+		}
+		m_print_list.clear();
+		for (std::map<int, GCodeResult*>::iterator it = m_gcode_result_list.begin(); it != m_gcode_result_list.end(); ++it)
+		{
+			GCodeResult* gcode = it->second;
+			assert(gcode != NULL);
+
+			delete gcode;
+		}
+		m_gcode_result_list.clear();
+	}
+
+	unprintable_plate.clear();
+}
+
+void PartPlateList::reset(bool do_init)
+{
+	clear(true, false);
+
+	if (do_init) {
+		init();
+		m_plate_list[0]->set_filament_count(m_filament_count);
+	}
+
+	return;
+}
+
+void PartPlateList::reinit()
+{
+	clear(true, true);
+
+	init();
+
+	m_plate_list[0]->set_filament_count(m_filament_count);
+
+	Vec2d pos = compute_shape_position(0, m_plate_cols);
+	m_plate_list[0]->set_shape(m_shape, m_exclude_areas, m_extruder_areas, m_extruder_heights, pos, m_height_to_lid, m_height_to_rod);
+	Vec3d origin2 = compute_origin_for_unprintable();
+	unprintable_plate.set_pos_and_size(origin2, m_plate_width, m_plate_depth, m_plate_height, false);
+	calc_bounding_boxes();
+
+	if (m_plater) {
+        set_default_wipe_tower_pos_for_plate(0, true);
+    }
+
+	return;
+}
+
+void PartPlateList::update_plates()
+{
+    update_all_plates_pos_and_size(true, false);
+    set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
+}
+
+int PartPlateList::create_plate(bool adjust_position)
+{
+	PartPlate* plate = NULL;
+	Vec3d origin;
+	int new_index;
+
+	new_index = m_plate_list.size();
+	if (new_index >= MAX_PLATES_COUNT)
+		return -1;
+	int cols = compute_colum_count(new_index + 1);
+	int old_cols = compute_colum_count(new_index);
+	if (adjust_position && old_cols != cols)
+		reload_all_objects();
+
+	origin = compute_origin(new_index, cols);
+	plate = new PartPlate(this, origin, m_plate_width, m_plate_depth, m_plate_height, m_plater, m_model, true, printer_technology);
+	assert(plate != NULL);
+
+	if (printer_technology == ptFFF)
+	{
+		Print* print = new Print();
+		GCodeResult* gcode = new GCodeResult();
+		m_print_list.emplace(m_print_index, print);
+		m_gcode_result_list.emplace(m_print_index, gcode);
+		plate->set_print(print, gcode, m_print_index);
+		m_print_index++;
+	}
+
+	plate->set_filament_count(m_filament_count);
+
+	plate->set_index(new_index);
+	Vec2d pos = compute_shape_position(new_index, cols);
+	plate->set_shape(m_shape, m_exclude_areas, m_extruder_areas, m_extruder_heights, pos, m_height_to_lid, m_height_to_rod);
+	m_plate_list.emplace_back(plate);
+	update_plate_cols();
+	if (old_cols != cols)
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":old_cols %1% -> new_cols %2%") % old_cols % cols;
+		update_all_plates_pos_and_size(adjust_position, false);
+		set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
+
+		if (m_plater) {
+			Vec2d pos = compute_shape_position(m_current_plate, cols);
+			m_plater->set_bed_position(pos);
+		}
+	}
+	else
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": the same cols %1%") % old_cols;
+		Vec3d origin2 = compute_origin_for_unprintable();
+		unprintable_plate.set_pos_and_size(origin2, m_plate_width, m_plate_depth, m_plate_height, false);
+
+		calc_bounding_boxes();
+	}
+
+	if (m_plater) {
+        set_default_wipe_tower_pos_for_plate(new_index, true);
+	}
+
+	unprintable_plate.set_index(new_index+1);
+
+	if (adjust_position)
+		construct_objects_list_for_new_plate(new_index);
+
+	if (m_plater) {
+        wxGetApp().obj_list()->on_plate_added(plate);
+	}
+
+    if (m_plater != nullptr && m_intialized && !m_plater->is_loading_project()) {
+        LifecycleEventContext ctx;
+        ctx.name = plate->get_plate_name();
+        ctx.index = new_index;
+        fire_lifecycle_event(LifecycleEvent::PlateCreated, ctx);
+    }
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":created a new plate %1%") % new_index;
+	return new_index;
+}
+
+
+int PartPlateList::duplicate_plate(int index)
+{
+    int new_plate_index = create_plate(true);
+    PartPlate* old_plate = NULL;
+    PartPlate* new_plate = NULL;
+    old_plate = get_plate(index);
+    new_plate = get_plate(new_plate_index);
+
+    Vec3d plate_to_plate_offset = new_plate->m_origin - old_plate->m_origin;
+
+    ModelObjectPtrs obj_ptrs = old_plate->get_objects_on_this_plate();
+    for (ModelObject* object : obj_ptrs){
+        ModelObject* object_copy = m_model->add_object(*object);
+        int new_obj_id = new_plate->m_model->objects.size() - 1;
+        for (size_t new_instance_id = 0; new_instance_id < object_copy->instances.size(); new_instance_id++){
+            new_plate->obj_to_instance_set.emplace(std::pair(new_obj_id, new_instance_id));
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": duplicate object into plate: index_pair [%1%,%2%], obj_id %3%") % new_obj_id % new_instance_id % object_copy->id().id;
+        }
+    }
+    new_plate->translate_all_instance(plate_to_plate_offset);
+    wxGetApp().obj_list()->reload_all_plates();
+    return new_plate_index;
+}
+
+
+int PartPlateList::destroy_print(int print_index)
+{
+	int result = 0;
+
+	if (print_index >= 0)
+	{
+		std::map<int, PrintBase*>::iterator it = m_print_list.find(print_index);
+		if (it != m_print_list.end())
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":delete Print %1% for print_index %2%") % it->second % print_index;
+			delete it->second;
+			m_print_list.erase(it);
+		}
+		else
+		{
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":can not find Print for print_index %1%") % print_index;
+			result = -1;
+		}
+		std::map<int, GCodeResult*>::iterator it2 = m_gcode_result_list.find(print_index);
+		if (it2 != m_gcode_result_list.end())
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":delete GCodeResult %1% for print_index %2%") % it2->second % print_index;
+			delete it2->second;
+			m_gcode_result_list.erase(it2);
+		}
+		else
+		{
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":can not find GCodeResult for print_index %1%") % print_index;
+			result = -1;
+		}
+	}
+
+	return result;
+}
+
+int PartPlateList::delete_plate(int index)
+{
+	int ret = 0;
+	PartPlate* plate = NULL;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":delete plate %1%, count %2%") % index % m_plate_list.size();
+	if (index >= m_plate_list.size())
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":can not find plate");
+		return -1;
+	}
+	if (m_plate_list.size() <= 1)
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":only one plate left, can not delete");
+		return -1;
+	}
+
+	plate = m_plate_list[index];
+	if (index != plate->get_index())
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":plate %1%, has an invalid index %2%") % index % plate->get_index();
+		return -1;
+	}
+	const std::string plate_name = plate->get_plate_name();
+
+	if (m_plater) {
+		DynamicConfig& proj_cfg = wxGetApp().preset_bundle->project_config;
+		ConfigOptionFloats* wipe_tower_x = proj_cfg.opt<ConfigOptionFloats>("wipe_tower_x");
+		ConfigOptionFloats* wipe_tower_y = proj_cfg.opt<ConfigOptionFloats>("wipe_tower_y");
+		if (index < wipe_tower_x->values.size())
+			wipe_tower_x->values.erase(wipe_tower_x->values.begin() + index);
+		if (index < wipe_tower_y->values.size())
+			wipe_tower_y->values.erase(wipe_tower_y->values.begin() + index);
+	}
+
+	int cols = compute_colum_count(m_plate_list.size() - 1);
+	int old_cols = compute_colum_count(m_plate_list.size());
+
+	m_plate_list.erase(m_plate_list.begin() + index);
+	update_plate_cols();
+	Vec3d current_origin;
+	current_origin = compute_origin_for_unprintable();
+	plate->set_pos_and_size(current_origin, m_plate_width, m_plate_depth, m_plate_height, true);
+
+	for (unsigned int i = index; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		plate->set_index(i);
+		Vec3d origin = compute_origin(i, m_plate_cols);
+		plate->set_pos_and_size(origin, m_plate_width, m_plate_depth, m_plate_height, true);
+
+		Vec2d pos = compute_shape_position(i, m_plate_cols);
+		plate->set_shape(m_shape, m_exclude_areas, m_extruder_areas, m_extruder_heights, pos, m_height_to_lid, m_height_to_rod);
+	}
+
+	if (m_current_plate == index && index == 0) {
+		select_plate(0);
+	}
+	else if (m_current_plate >= index) {
+		select_plate(m_current_plate - 1);
+	}
+	else {
+		Vec2d pos = compute_shape_position(m_current_plate, m_plate_cols);
+		if (m_plater)
+			m_plater->set_bed_position(pos);
+	}
+
+	unprintable_plate.set_index(m_plate_list.size());
+
+	if (old_cols != cols)
+	{
+		update_all_plates_pos_and_size();
+		set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
+	}
+	else
+	{
+		Vec3d origin2 = compute_origin_for_unprintable();
+		unprintable_plate.set_pos_and_size(origin2, m_plate_width, m_plate_depth, m_plate_height, true);
+
+		calc_bounding_boxes();
+	}
+
+	plate->move_instances_to(*(m_plate_list[m_plate_list.size()-1]), unprintable_plate);
+	int print_index;
+	plate->get_print(nullptr, nullptr, &print_index);
+	destroy_print(print_index);
+
+	delete plate;
+
+    if (m_plater != nullptr && m_intialized && !m_plater->is_loading_project()) {
+        LifecycleEventContext ctx;
+        ctx.name = plate_name;
+        ctx.index = index;
+        fire_lifecycle_event(LifecycleEvent::PlateDeleted, ctx);
+    }
+
+#if 0
+	if (m_plater != nullptr) {
+		wxGetApp().obj_list()->reload_all_plates();
+	}
+#endif
+	return ret;
+}
+
+void PartPlateList::delete_selected_plate()
+{
+	delete_plate(m_current_plate);
+}
+
+bool PartPlateList::check_all_plate_local_bed_type(const std::vector<BedType> &cur_bed_types)
+{
+    std::string bed_type_key = "curr_bed_type";
+    bool        is_ok        = true;
+    for (int i = 0; i < m_plate_list.size(); i++) {
+        PartPlate *plate = m_plate_list[i];
+        if (plate->config()  && plate->config()->has(bed_type_key)) {
+            BedType bed_type = plate->config()->opt_enum<BedType>(bed_type_key);
+            if (bed_type == BedType::btDefault)
+                continue;
+            bool    find     = false;
+            for (auto tmp_type : cur_bed_types) {
+                if (bed_type == tmp_type) {
+                    find = true;
+                    break;
+                }
+            }
+            if (!find) {
+                plate->set_bed_type(BedType::btDefault);
+                is_ok = false;
+            }
+        }
+    }
+    return is_ok;
+}
+
+PartPlate* PartPlateList::get_plate(int index)
+{
+	PartPlate* plate = NULL;
+
+	if (index >= m_plate_list.size() || index < 0)
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":can not find index %1%, size %2%") % index % m_plate_list.size();
+		return NULL;
+	}
+
+	plate = m_plate_list[index];
+	assert(plate != NULL);
+
+	return plate;
+}
+
+PartPlate* PartPlateList::get_selected_plate()
+{
+	if (m_current_plate < 0 || m_current_plate >= m_plate_list.size()) {
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":can not find m_current_plate  %1%, size %2%") % m_current_plate % m_plate_list.size();
+		return NULL;
+	}
+	return m_plate_list[m_current_plate];
+}
+
+std::vector<PartPlate*> PartPlateList::get_nonempty_plate_list()
+{
+	std::vector<PartPlate*> nonempty_plate_list;
+	for (auto plate : m_plate_list){
+		if (!plate->empty()) {
+			nonempty_plate_list.push_back(plate);
+		}
+	}
+	return nonempty_plate_list;
+}
+
+std::vector<const GCodeProcessorResult*> PartPlateList::get_nonempty_plates_slice_results() {
+	std::vector<const GCodeProcessorResult*> nonempty_plates_slice_result;
+	for (auto plate : get_nonempty_plate_list()) {
+		nonempty_plates_slice_result.push_back(plate->get_slice_result());
+	}
+	return nonempty_plates_slice_result;
+}
+
+std::set<int> PartPlateList::get_extruders(bool conside_custom_gcode) const
+{
+    int plate_count = get_plate_count();
+    std::set<int> extruder_ids;
+
+    for (size_t i = 0; i < plate_count; i++) {
+        auto plate_extruders = m_plate_list[i]->get_extruders(conside_custom_gcode);
+        extruder_ids.insert(plate_extruders.begin(), plate_extruders.end());
+    }
+
+    return extruder_ids;
+}
+
+
+int PartPlateList::select_plate(int index)
+{
+	const std::lock_guard<std::mutex> local_lock(m_plates_mutex);
+	if (m_plate_list.empty() || index >= m_plate_list.size()) {
+		return -1;
+	}
+	const int previous_index = m_current_plate;
+
+	if (get_curr_plate_index() != index && m_intialized) {
+		if (m_plater)
+			m_plater->take_snapshot("select partplate!");
+	}
+
+	std::vector<PartPlate *>::iterator it = m_plate_list.begin();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		(*it)->set_unselected();
+	}
+
+	m_current_plate = index;
+	m_plate_list[m_current_plate]->set_selected();
+
+	if(m_model)
+		m_model->curr_plate_index = index;
+
+	if (m_intialized && m_plater) {
+		Vec2d pos = compute_shape_position(index, m_plate_cols);
+        m_plater->set_bed_position(pos);
+	}
+
+    if (previous_index != index && m_intialized && m_plater != nullptr && !m_plater->is_loading_project()) {
+        LifecycleEventContext ctx;
+        ctx.name = m_plate_list[index]->get_plate_name();
+        ctx.index = index;
+        fire_lifecycle_event(LifecycleEvent::PlateSelected, ctx);
+    }
+
+	return 0;
+}
+
+void PartPlateList::set_hover_id(int id)
+{
+	int index = id / PartPlate::GRABBER_COUNT;
+	int sub_hover_id = id % PartPlate::GRABBER_COUNT;
+	m_plate_list[index]->set_hover_id(sub_hover_id);
+}
+
+void PartPlateList::reset_hover_id()
+{
+	const std::lock_guard<std::mutex> local_lock(m_plates_mutex);
+	std::vector<PartPlate*>::iterator it = m_plate_list.begin();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		(*it)->set_hover_id(-1);
+	}
+}
+
+bool PartPlateList::intersects(const BoundingBoxf3& bb)
+{
+	bool result = false;
+	std::vector<PartPlate*>::iterator it = m_plate_list.begin();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		if ((*it)->intersects(bb)) {
+			result = true;
+		}
+	}
+	return result;
+}
+
+bool PartPlateList::contains(const BoundingBoxf3& bb)
+{
+	bool result = false;
+	std::vector<PartPlate*>::iterator it = m_plate_list.begin();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		if ((*it)->contains(bb)) {
+			result = true;
+		}
+	}
+	return result;
+}
+
+double PartPlateList::plate_stride_x()
+{
+	return m_plate_width * (1. + LOGICAL_PART_PLATE_GAP);
+}
+
+double PartPlateList::plate_stride_y()
+{
+	return m_plate_depth * (1. + LOGICAL_PART_PLATE_GAP);
+}
+
+int PartPlateList::get_plate_count() const
+{
+	int ret = 0;
+
+	ret = m_plate_list.size();
+
+	return ret;
+}
+
+void PartPlateList::invalidate_all_imex_ghosts()
+{
+    for (PartPlate* p : m_plate_list)
+        if (p) p->invalidate_imex_ghosts();
+}
+
+void PartPlateList::update_plate_cols()
+{
+	m_plate_count = m_plate_list.size();
+
+	m_plate_cols = compute_colum_count(m_plate_count);
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":m_plate_count %1%, m_plate_cols change to %2%") % m_plate_count % m_plate_cols;
+	return;
+}
+
+void PartPlateList::update_all_plates_pos_and_size(bool adjust_position, bool with_unprintable_move, bool switch_plate_type, bool do_clear)
+{
+	Vec3d origin1, origin2;
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		origin1 = compute_origin(i, m_plate_cols);
+		plate->set_pos_and_size(origin1, m_plate_width, m_plate_depth, m_plate_height, adjust_position, do_clear);
+
+        if (switch_plate_type && m_plater ) {
+			set_default_wipe_tower_pos_for_plate(i);
+		}
+	}
+
+	origin2 = compute_origin_for_unprintable();
+	unprintable_plate.set_pos_and_size(origin2, m_plate_width, m_plate_depth, m_plate_height, with_unprintable_move);
+}
+
+int PartPlateList::move_plate_to_index(int old_index, int new_index)
+{
+	int ret = 0, delta;
+	Vec3d origin;
+
+
+	if (old_index == new_index)
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":should not happen, the same index %1%") % old_index;
+		return -1;
+	}
+
+	reload_all_objects();
+
+	if (old_index < new_index)
+	{
+		delta = 1;
+	}
+	else
+	{
+		delta = -1;
+	}
+
+	PartPlate* plate = m_plate_list[old_index];
+	for (unsigned int i = (unsigned int)old_index; i != (unsigned int)new_index; i = i + delta)
+	{
+		m_plate_list[i] = m_plate_list[i + delta];
+		m_plate_list[i]->set_index(i);
+
+		origin = compute_origin(i, m_plate_cols);
+		m_plate_list[i]->set_pos_and_size(origin, m_plate_width, m_plate_depth, m_plate_height, true);
+	}
+	origin = compute_origin(new_index, m_plate_cols);
+	m_plate_list[new_index] = plate;
+	plate->set_index(new_index);
+	plate->set_pos_and_size(origin, m_plate_width, m_plate_depth, m_plate_height, true);
+
+	m_current_plate = new_index;
+
+	return ret;
+}
+
+int PartPlateList::lock_plate(int index, bool state)
+{
+	int ret = 0;
+	PartPlate* plate = NULL;
+
+	plate = get_plate(index);
+	if (!plate)
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":can not get plate for index %1%, size %2%") % index % m_plate_list.size();
+		return -1;
+	}
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":lock plate %1%, to state %2%") % index % state;
+
+	plate->lock(state);
+
+	return ret;
+}
+
+int PartPlateList::find_plate_by_print_index(int print_index)
+{
+	int plate_index = -1;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+
+		if (plate->m_print_index == print_index)
+		{
+			plate_index = i;
+			break;
+		}
+	}
+
+	return plate_index;
+}
+
+int PartPlateList::find_instance(int obj_id, int instance_id)
+{
+	int ret = -1;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		if (plate->contain_instance(obj_id, instance_id))
+			return i;
+	}
+
+	return ret;
+}
+
+int PartPlateList::find_instance(BoundingBoxf3& bounding_box)
+{
+	int ret = -1;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		if (plate->intersects(bounding_box))
+			return i;
+	}
+
+	return ret;
+}
+
+int PartPlateList::find_instance_belongs(int obj_id, int instance_id)
+{
+	int ret = -1;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		if (plate->contain_instance_totally(obj_id, instance_id))
+			return i;
+	}
+
+	return ret;
+}
+
+int PartPlateList::notify_instance_update(int obj_id, int instance_id, bool is_new)
+{
+	int ret = 0, index;
+	PartPlate* plate = NULL;
+	ModelObject* object = NULL;
+
+	if ((obj_id >= 0) && (obj_id < m_model->objects.size()))
+	{
+		object = m_model->objects[obj_id];
+	}
+	else if (obj_id >= 1000 && obj_id < 1000 + m_plate_count) {
+		PartPlate* plate = m_plate_list[obj_id - 1000];
+		plate->update_slice_result_valid_state( false );
+		plate->thumbnail_data.reset();
+        plate->no_light_thumbnail_data.reset();
+		plate->top_thumbnail_data.reset();
+		plate->pick_thumbnail_data.reset();
+
+		return 0;
+	}
+    else
+		return -1;
+
+	BoundingBoxf3 boundingbox = object->instance_convex_hull_bounding_box(instance_id);
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": obj_id %1%, instance_id %2%") % obj_id % instance_id;
+	index = find_instance(obj_id, instance_id);
+	if (index != -1)
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in previous plate %1%") % index;
+		plate = m_plate_list[index];
+		if (!plate->intersect_instance(obj_id, instance_id, &boundingbox))
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": not in plate %1% anymore, remove it") % index;
+			plate->remove_instance(obj_id, instance_id);
+		}
+		else
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": still in original plate %1%, no need to be updated") % index;
+			plate->update_instance_exclude_status(obj_id, instance_id, &boundingbox);
+			plate->update_states();
+			plate->update_slice_result_valid_state();
+			plate->thumbnail_data.reset();
+            plate->no_light_thumbnail_data.reset();
+			plate->top_thumbnail_data.reset();
+			plate->pick_thumbnail_data.reset();
+			return 0;
+		}
+		plate->update_slice_result_valid_state();
+		plate->thumbnail_data.reset();
+        plate->no_light_thumbnail_data.reset();
+		plate->top_thumbnail_data.reset();
+		plate->pick_thumbnail_data.reset();
+	}
+	else if (unprintable_plate.contain_instance(obj_id, instance_id))
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in unprintable plate");
+		if (!unprintable_plate.intersect_instance(obj_id, instance_id, &boundingbox))
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": not in unprintable plate anymore, remove it");
+			unprintable_plate.remove_instance(obj_id, instance_id);
+		}
+		else
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": still in unprintable plate, no need to be updated");
+			return 0;
+		}
+	}
+
+	auto is_object_config_compatible_with_spiral_vase = [](ModelObject* object) {
+		const DynamicPrintConfig& config = object->config.get();
+		if (config.has("wall_loops") && config.opt_int("wall_loops") == 1 &&
+			config.has("top_shell_layers") && config.opt_int("top_shell_layers") == 0 &&
+			config.has("sparse_infill_density") && config.option<ConfigOptionPercent>("sparse_infill_density")->value == 0 &&
+			config.has("enable_support") && !config.opt_bool("enable_support") &&
+			config.has("enforce_support_layers") && config.opt_int("enforce_support_layers") == 0 &&
+			config.has("ensure_vertical_shell_thickness") && config.opt_bool("ensure_vertical_shell_thickness") &&
+			config.has("detect_thin_wall") && !config.opt_bool("detect_thin_wall") &&
+			config.has("timelapse_type") && config.opt_enum<TimelapseType>("timelapse_type") == TimelapseType::tlTraditional)
+			return true;
+		else
+			return false;
+	};
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		if (plate->intersect_instance(obj_id, instance_id, &boundingbox))
+		{
+			plate->add_instance(obj_id, instance_id, false, &boundingbox);
+
+			if (plate->config()->has("spiral_mode") && plate->config()->opt_bool("spiral_mode") && !is_object_config_compatible_with_spiral_vase(object)) {
+				if (!is_new) {
+					auto answer = static_cast<TabPrintPlate*>(wxGetApp().plate_tab)->show_spiral_mode_settings_dialog(true);
+					if (answer == wxID_YES) {
+						plate->set_vase_mode_related_object_config(obj_id);
+					}
+				}
+				else {
+					plate->set_vase_mode_related_object_config(obj_id);
+				}
+			}
+
+			plate->update_slice_result_valid_state();
+			plate->thumbnail_data.reset();
+            plate->no_light_thumbnail_data.reset();
+			plate->top_thumbnail_data.reset();
+			plate->pick_thumbnail_data.reset();
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": add it to new plate %1%") % i;
+			return 0;
+		}
+	}
+
+	if (unprintable_plate.intersect_instance(obj_id, instance_id, &boundingbox))
+	{
+		unprintable_plate.add_instance(obj_id, instance_id, false, &boundingbox);
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": add it to unprintable plate");
+		return 0;
+	}
+
+	return 0;
+}
+
+int PartPlateList::notify_instance_removed(int obj_id, int instance_id)
+{
+	int ret = 0, index, instance_to_delete = instance_id;
+	PartPlate* plate = NULL;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": obj_id %1%, instance_id %2%") % obj_id % instance_id;
+	if (instance_id == -1) {
+		instance_to_delete = 0;
+	}
+	index = find_instance(obj_id, instance_to_delete);
+	if (index != -1)
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in plate %1%, remove it") % index;
+		plate = m_plate_list[index];
+		plate->remove_instance(obj_id, instance_to_delete);
+		plate->update_slice_result_valid_state();
+		plate->thumbnail_data.reset();
+        plate->no_light_thumbnail_data.reset();
+		plate->top_thumbnail_data.reset();
+		plate->pick_thumbnail_data.reset();
+	}
+
+	if (unprintable_plate.contain_instance(obj_id, instance_to_delete))
+	{
+		unprintable_plate.remove_instance(obj_id, instance_to_delete);
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in unprintable plate, remove it");
+	}
+
+	if (instance_id == -1) {
+		for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+		{
+			PartPlate* plate = m_plate_list[i];
+			assert(plate != NULL);
+
+			plate->update_object_index(obj_id, m_model->objects.size());
+		}
+		unprintable_plate.update_object_index(obj_id, m_model->objects.size());
+	}
+
+	if (m_plater)
+		m_plater->mark_plate_toolbar_image_dirty();
+
+	return 0;
+}
+
+int PartPlateList::add_to_plate(int obj_id, int instance_id, int plate_id)
+{
+	int ret = 0, index;
+	PartPlate* plate = NULL;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plate_id %1%, found obj_id %2%, instance_id %3%") % plate_id % obj_id % instance_id;
+	index = find_instance(obj_id, instance_id);
+	if (index != -1)
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in previous plate %1%") % index;
+		if (index != plate_id)
+		{
+			plate = m_plate_list[index];
+			plate->remove_instance(obj_id, instance_id);
+		}
+		else
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": already in this plate, no need to be added");
+			return 0;
+		}
+	}
+	else
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": not added to plate before, add it to center");
+	}
+	plate = get_plate(plate_id);
+	if (!plate)
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":can not get plate for index %1%, size %2%") % index % m_plate_list.size();
+		return -1;
+	}
+	ret = plate->add_instance(obj_id, instance_id, true);
+
+	return ret;
+}
+
+int PartPlateList::reload_all_objects(bool except_locked, int plate_index)
+{
+	int ret = 0;
+	unsigned int i, j, k;
+
+	clear(false, false, except_locked, plate_index);
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": m_model->objects.size() is %1%") % m_model->objects.size();
+	for (i = 0; i < (unsigned int)m_model->objects.size(); ++i)
+	{
+		ModelObject* object = m_model->objects[i];
+		for (j = 0; j < (unsigned int)object->instances.size(); ++j)
+		{
+			ModelInstance* instance = object->instances[j];
+			BoundingBoxf3 boundingbox = object->instance_convex_hull_bounding_box(j);
+			for (k = 0; k < (unsigned int)m_plate_list.size(); ++k)
+			{
+				PartPlate* plate = m_plate_list[k];
+				assert(plate != NULL);
+
+				if (plate->intersect_instance(i, j, &boundingbox))
+				{
+					plate->add_instance(i, j, false, &boundingbox);
+					BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found plate_id %1%, for obj_id %2%, instance_id %3%") % k % i % j;
+
+					break;
+				}
+			}
+
+			if ((k == m_plate_list.size()) && (unprintable_plate.intersect_instance(i, j, &boundingbox)))
+			{
+				unprintable_plate.add_instance(i, j, false, &boundingbox);
+				BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found in unprintable plate, obj_id %1%, instance_id %2%") % i % j;
+			}
+		}
+
+	}
+
+	return ret;
+}
+
+int PartPlateList::construct_objects_list_for_new_plate(int plate_index)
+{
+	int ret = 0;
+	unsigned int i, j, k;
+	PartPlate* new_plate = m_plate_list[plate_index];
+	bool already_included;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": m_model->objects.size() is %1%") % m_model->objects.size();
+	unprintable_plate.clear();
+	for (i = 0; i < (unsigned int)m_model->objects.size(); ++i)
+	{
+		ModelObject* object = m_model->objects[i];
+		for (j = 0; j < (unsigned int)object->instances.size(); ++j)
+		{
+			ModelInstance* instance = object->instances[j];
+			already_included = false;
+
+			for (k = 0; k < (unsigned int)plate_index; ++k)
+			{
+				PartPlate* plate = m_plate_list[k];
+				if (plate->contain_instance(i, j))
+				{
+					already_included = true;
+					break;
+				}
+			}
+
+			if (already_included)
+				continue;
+
+			BoundingBoxf3 boundingbox = object->instance_convex_hull_bounding_box(j);
+			if (new_plate->intersect_instance(i, j, &boundingbox))
+			{
+				ret |= new_plate->add_instance(i, j, false, &boundingbox);
+				BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": added to plate_id %1%, for obj_id %2%, instance_id %3%") % plate_index % i % j;
+
+				continue;
+			}
+
+			if ( (unprintable_plate.intersect_instance(i, j, &boundingbox)))
+			{
+				unprintable_plate.add_instance(i, j, false, &boundingbox);
+				BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found in unprintable plate, obj_id %1%, instance_id %2%") % i % j;
+			}
+		}
+	}
+
+	return ret;
+}
+
+
+int PartPlateList::compute_plate_index(arrangement::ArrangePolygon& arrange_polygon)
+{
+	int row, col;
+
+	float col_value = (unscale<double>(arrange_polygon.translation(X))) / plate_stride_x();
+	float row_value = (plate_stride_y() - unscale<double>(arrange_polygon.translation(Y))) / plate_stride_y();
+
+	row = round(row_value);
+	col = round(col_value);
+
+	return row * m_plate_cols + col;
+}
+
+bool PartPlateList::preprocess_arrange_polygon(int obj_index, int instance_index, arrangement::ArrangePolygon& arrange_polygon, bool selected)
+{
+	bool locked = false;
+	int lockplate_cnt = 0;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (m_plate_list[i]->contain_instance(obj_index, instance_index))
+		{
+			if (m_plate_list[i]->is_locked())
+			{
+				locked = true;
+				arrange_polygon.bed_idx = i;
+				arrange_polygon.row = i / m_plate_cols;
+				arrange_polygon.col = i % m_plate_cols;
+				arrange_polygon.translation(X) -= scaled<double>(plate_stride_x() * arrange_polygon.col);
+				arrange_polygon.translation(Y) += scaled<double>(plate_stride_y() * arrange_polygon.row);
+			}
+			else
+			{
+				if (!selected)
+				{
+					arrange_polygon.bed_idx = i - lockplate_cnt;
+					arrange_polygon.row = i / m_plate_cols;
+					arrange_polygon.col = i % m_plate_cols;
+					arrange_polygon.translation(X) -= scaled<double>(plate_stride_x() * arrange_polygon.col);
+					arrange_polygon.translation(Y) += scaled<double>(plate_stride_y() * arrange_polygon.row);
+				}
+			}
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": obj_id %1% instance_id %2% already in plate %3%, locked %4%, row %5%, col %6%\n") % obj_index % instance_index % i % locked % arrange_polygon.row % arrange_polygon.col;
+			return locked;
+		}
+		if (m_plate_list[i]->is_locked())
+			lockplate_cnt++;
+	}
+	if (!selected)
+		arrange_polygon.bed_idx = PartPlateList::MAX_PLATES_COUNT;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": not in any plates, bed_idx %1%, translation(x) %2%, (y) %3%") % arrange_polygon.bed_idx % unscale<double>(arrange_polygon.translation(X)) % unscale<double>(arrange_polygon.translation(Y));
+
+	return locked;
+}
+
+bool PartPlateList::preprocess_arrange_polygon_other_locked(int obj_index, int instance_index, arrangement::ArrangePolygon& arrange_polygon, bool selected)
+{
+	bool locked = false;
+
+	if (selected)
+	{
+	}
+	else
+	{
+		locked = true;
+		for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+		{
+			if (m_plate_list[i]->contain_instance(obj_index, instance_index))
+			{
+				arrange_polygon.bed_idx = i;
+				arrange_polygon.row = i / m_plate_cols;
+				arrange_polygon.col = i % m_plate_cols;
+				arrange_polygon.translation(X) -= scaled<double>(plate_stride_x() * arrange_polygon.col);
+				arrange_polygon.translation(Y) += scaled<double>(plate_stride_y() * arrange_polygon.row);
+				return locked;
+			}
+		}
+		arrange_polygon.bed_idx = PartPlateList::MAX_PLATES_COUNT;
+	}
+	return locked;
+}
+
+bool PartPlateList::preprocess_exclude_areas(arrangement::ArrangePolygons &unselected, bool enable_wrapping_detect, int num_plates, float inflation)
+{
+	bool added = false;
+
+    if (enable_wrapping_detect)
+	{
+        if (!m_wrapping_exclude_areas.empty())
+		{
+			Polygon ap{};
+            for (const Vec2d &p : m_wrapping_exclude_areas)
+			{
+                ap.append({scale_(p(0)), scale_(p(1))});
+            }
+
+			for(int j = 0; j < num_plates; j++)
+			{
+				arrangement::ArrangePolygon ret;
+				ret.poly.contour = ap;
+				ret.translation  = Vec2crd(0, 0);
+				ret.rotation     = 0.0f;
+				ret.is_virt_object = true;
+				ret.bed_idx      = j;
+				ret.height      = 1;
+				ret.name = "WrappingRegion";
+				ret.inflation = inflation;
+
+				unselected.emplace_back(std::move(ret));
+			}
+		}
+		added = true;
+	}
+
+	if (m_exclude_areas.size() > 0)
+	{
+		PartPlate *plate = m_plate_list[0];
+
+		for (int index = 0; index < plate->m_exclude_bounding_box.size(); index ++)
+		{
+			Polygon ap({
+				{scaled(plate->m_exclude_bounding_box[index].min.x()), scaled(plate->m_exclude_bounding_box[index].min.y())},
+				{scaled(plate->m_exclude_bounding_box[index].max.x()), scaled(plate->m_exclude_bounding_box[index].min.y())},
+				{scaled(plate->m_exclude_bounding_box[index].max.x()), scaled(plate->m_exclude_bounding_box[index].max.y())},
+				{scaled(plate->m_exclude_bounding_box[index].min.x()), scaled(plate->m_exclude_bounding_box[index].max.y())}
+				});
+
+			for (int j = 0; j < num_plates; j++)
+			{
+				arrangement::ArrangePolygon ret;
+				ret.poly.contour = ap;
+				ret.translation  = Vec2crd(0, 0);
+				ret.rotation     = 0.0f;
+				ret.is_virt_object = true;
+				ret.bed_idx      = j;
+				ret.height      = 1;
+				ret.name = "ExcludedRegion" + std::to_string(index);
+				ret.inflation = inflation;
+
+				unselected.emplace_back(std::move(ret));
+			}
+			added = true;
+		}
+	}
+
+	return added;
+}
+
+bool PartPlateList::preprocess_nonprefered_areas(arrangement::ArrangePolygons& regions, int num_plates, float inflation)
+{
+	bool added = false;
+
+	std::vector<BoundingBoxf> nonprefered_regions;
+	nonprefered_regions.emplace_back(Vec2d{ 18,0 }, Vec2d{ 240,15 });
+	PartPlate* plate = m_plate_list[0];
+	for (int index = 0; index < nonprefered_regions.size(); index++)
+	{
+		Polygon ap = scaled(nonprefered_regions[index]).polygon();
+		for (int j = 0; j < num_plates; j++)
+		{
+			arrangement::ArrangePolygon ret;
+			ret.poly.contour = ap;
+			ret.translation = Vec2crd(0, 0);
+			ret.rotation = 0.0f;
+			ret.is_virt_object = true;
+            ret.is_extrusion_cali_object = true;
+			ret.bed_idx = j;
+			ret.height = 1;
+			ret.name = "NonpreferedRegion" + std::to_string(index);
+			ret.inflation = inflation;
+
+			regions.emplace_back(std::move(ret));
+		}
+		added = true;
+	}
+	return added;
+}
+
+
+void PartPlateList::postprocess_bed_index_for_selected(arrangement::ArrangePolygon& arrange_polygon)
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": bed_idx %1%, locked_plate %2%, translation(x) %3%, (y) %4%") % arrange_polygon.bed_idx % arrange_polygon.locked_plate % unscale<double>(arrange_polygon.translation(X)) % unscale<double>(arrange_polygon.translation(Y));
+
+	if (arrange_polygon.bed_idx == -1)
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": can not be arranged inside plate!");
+		return;
+	}
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (m_plate_list[i]->is_locked())
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found locked_plate %1%, increate index by 1") % i;
+			arrange_polygon.bed_idx += 1;
+		}
+		else
+		{
+			if (arrange_polygon.bed_idx <= i)
+			{
+				BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":found in plate_index %1%, bed_idx %2%") % i % arrange_polygon.bed_idx;
+				return;
+			}
+		}
+	}
+
+	int plate_index = create_plate(false);
+
+	while (plate_index != -1)
+	{
+		if (arrange_polygon.bed_idx <= plate_index)
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":new plate_index %1%, matches bed_idx %2%") % plate_index % arrange_polygon.bed_idx;
+			break;
+		}
+
+		plate_index = create_plate(false);
+	}
+
+	return;
+}
+
+void PartPlateList::postprocess_bed_index_for_unselected(arrangement::ArrangePolygon& arrange_polygon)
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": bed_idx %1%, locked_plate %2%, translation(x) %3%, (y) %4%") % arrange_polygon.bed_idx % arrange_polygon.locked_plate % unscale<double>(arrange_polygon.translation(X)) % unscale<double>(arrange_polygon.translation(Y));
+
+	if (arrange_polygon.bed_idx == PartPlateList::MAX_PLATES_COUNT)
+		return;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (m_plate_list[i]->is_locked())
+		{
+			BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found locked_plate %1%, increate index by 1") % i;
+			arrange_polygon.bed_idx += 1;
+		}
+		else
+		{
+			if (arrange_polygon.bed_idx <= i)
+			{
+				BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(":found in plate_index %1%, bed_idx %2%") % i % arrange_polygon.bed_idx;
+				return;
+			}
+		}
+	}
+
+	return;
+}
+
+void PartPlateList::postprocess_bed_index_for_current_plate(arrangement::ArrangePolygon& arrange_polygon)
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": bed_idx %1%, locked_plate %2%, translation(x) %3%, (y) %4%") % arrange_polygon.bed_idx % arrange_polygon.locked_plate % unscale<double>(arrange_polygon.translation(X)) % unscale<double>(arrange_polygon.translation(Y));
+
+	if (arrange_polygon.bed_idx == -1)
+	{
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": can not be arranged inside plate!");
+	}
+	else if (arrange_polygon.bed_idx == 0)
+		arrange_polygon.bed_idx += m_current_plate;
+	else
+		arrange_polygon.bed_idx = m_plate_list.size();
+
+	return;
+}
+
+void PartPlateList::postprocess_arrange_polygon(arrangement::ArrangePolygon& arrange_polygon, bool selected)
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": bed_idx %1%, selected %2%, translation(x) %3%, (y) %4%") % arrange_polygon.bed_idx % selected % unscale<double>(arrange_polygon.translation(X)) % unscale<double>(arrange_polygon.translation(Y));
+
+	if ((selected) || (arrange_polygon.bed_idx != PartPlateList::MAX_PLATES_COUNT))
+	{
+		if (arrange_polygon.bed_idx == -1)
+		{
+			arrange_polygon.bed_idx = m_plate_list.size();
+			BoundingBox apbox = get_extents(arrange_polygon.transformed_poly());
+			auto        apbox_size = apbox.size();
+
+			arrange_polygon.translation(X) = 0.5 * apbox_size[0];
+			arrange_polygon.translation(Y) = scaled<double>(static_cast<double>(m_plate_depth)) - 0.5 * apbox_size[1];
+		}
+
+		arrange_polygon.row = arrange_polygon.bed_idx / m_plate_cols;
+		arrange_polygon.col = arrange_polygon.bed_idx % m_plate_cols;
+		arrange_polygon.translation(X) += scaled<double>(plate_stride_x() * arrange_polygon.col);
+		arrange_polygon.translation(Y) -= scaled<double>(plate_stride_y() * arrange_polygon.row);
+	}
+
+	return;
+}
+
+void PartPlateList::render(const Transform3d& view_matrix, const Transform3d& projection_matrix, bool bottom, bool only_current, bool only_body, int hover_id, bool render_cali, bool show_grid, bool hide_chrome)
+{
+	const std::lock_guard<std::mutex> local_lock(m_plates_mutex);
+	std::vector<PartPlate*>::iterator it = m_plate_list.begin();
+
+	int plate_hover_index = -1;
+	int plate_hover_action = -1;
+	if (hover_id != -1) {
+		plate_hover_index = hover_id / PartPlate::GRABBER_COUNT;
+		plate_hover_action = hover_id % PartPlate::GRABBER_COUNT;
+	}
+
+	load_icon_textures();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		int current_index = (*it)->get_index();
+		if (only_current && (current_index != m_current_plate))
+			continue;
+		if (current_index == m_current_plate) {
+			PartPlate::HeightLimitMode height_mode = (only_current)?PartPlate::HEIGHT_LIMIT_NONE:m_height_limit_mode;
+			if (plate_hover_index == current_index)
+                (*it)->render(view_matrix, projection_matrix, bottom, only_body, false, height_mode, plate_hover_action, render_cali, show_grid, hide_chrome);
+			else
+                (*it)->render(view_matrix, projection_matrix, bottom, only_body, false, height_mode, -1, render_cali, show_grid, hide_chrome);
+		}
+		else {
+			if (plate_hover_index == current_index)
+				(*it)->render(view_matrix, projection_matrix, bottom, only_body, false, PartPlate::HEIGHT_LIMIT_NONE, plate_hover_action, render_cali, show_grid, hide_chrome);
+			else
+                (*it)->render(view_matrix, projection_matrix, bottom, only_body, false, PartPlate::HEIGHT_LIMIT_NONE, -1, render_cali, show_grid, hide_chrome);
+		}
+	}
+}
+
+void PartPlateList::render_hover_tooltip() const
+{
+    if (m_hover_tooltip.empty())
+        return;
+
+    const auto scale = m_plater->get_current_canvas3D()->get_scale();
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {6 * scale, 3 * scale});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3 * scale);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGuiWrapper::COL_WINDOW_BACKGROUND);
+    ImGui::PushStyleColor(ImGuiCol_Border, {0, 0, 0, 0});
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 1.00f, 1.00f, 1.00f));
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(m_hover_tooltip.c_str());
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(2);
+}
+
+void PartPlateList::set_render_option(bool bedtype_texture, bool plate_settings)
+{
+    render_bedtype_logo = bedtype_texture;
+    render_plate_settings = plate_settings;
+}
+
+int PartPlateList::select_plate_by_obj(int obj_index, int instance_index)
+{
+	int ret = 0, index;
+	PartPlate* plate = NULL;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": obj_id %1%, instance_id %2%") % obj_index % instance_index;
+	index = find_instance(obj_index, instance_index);
+	if (index != -1)
+	{
+		BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": found it in plate %1%") % index;
+		select_plate(index);
+		return 0;
+	}
+	return -1;
+}
+
+void PartPlateList::calc_bounding_boxes()
+{
+	m_bounding_box.reset();
+	std::vector<PartPlate*>::iterator it = m_plate_list.begin();
+	for (it = m_plate_list.begin(); it != m_plate_list.end(); it++) {
+		m_bounding_box.merge((*it)->get_bounding_box(true));
+	}
+}
+
+void PartPlateList::select_plate_view()
+{
+	if (m_current_plate < 0 || m_current_plate >= m_plate_list.size()) return;
+
+	Vec3d target = m_plate_list[m_current_plate]->get_bounding_box(false).center();
+	Vec3d position(target.x(), target.y(), m_plater->get_camera().get_distance());
+	m_plater->get_camera().look_at(position, target, Vec3d::UnitY());
+	m_plater->get_camera().select_view("topfront");
+}
+
+bool PartPlateList::set_shapes(const Pointfs              &shape,
+                               const Pointfs              &exclude_areas,
+                               const Pointfs              &wrapping_exclude_areas,
+                               const std::vector<Pointfs> &extruder_areas,
+                               const std::vector<double>  &extruder_heights,
+                               const std::string          &texture_filename,
+                               float                       height_to_lid,
+                               float                       height_to_rod)
+{
+	const std::lock_guard<std::mutex> local_lock(m_plates_mutex);
+	m_shape = shape;
+	m_exclude_areas = exclude_areas;
+    m_wrapping_exclude_areas = wrapping_exclude_areas;
+	m_extruder_areas = extruder_areas;
+	m_extruder_heights = extruder_heights;
+	m_height_to_lid = height_to_lid;
+	m_height_to_rod = height_to_rod;
+
+	double stride_x = plate_stride_x();
+	double stride_y = plate_stride_y();
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PartPlate* plate = m_plate_list[i];
+		assert(plate != NULL);
+
+		Vec2d pos;
+
+		pos = compute_shape_position(i, m_plate_cols);
+		plate->set_shape(shape, exclude_areas, extruder_areas, extruder_heights, pos, height_to_lid, height_to_rod);
+	}
+	is_load_bedtype_textures = false;
+    is_load_extruder_only_area_textures = false;
+	m_next_bedtype_texture = 0;
+	m_next_extruder_only_area_texture = 0;
+	calc_bounding_boxes();
+
+	update_logo_texture_filename(texture_filename);
+
+	return true;
+}
+
+void PartPlateList::update_logo_texture_filename(const std::string &texture_filename)
+{
+    auto check_texture = [](const std::string &texture) {
+        boost::system::error_code ec;
+        return !texture.empty() && (boost::algorithm::iends_with(texture, ".png") || boost::algorithm::iends_with(texture, ".svg")) && boost::filesystem::exists(texture, ec);
+    };
+    if (!texture_filename.empty() && !check_texture(texture_filename)) {
+		m_logo_texture_filename = "";
+        BOOST_LOG_TRIVIAL(error) << "Unable to load bed texture: " << texture_filename;
+    } else {
+        m_logo_texture_filename = texture_filename;
+        Utils::slash_to_back_slash(m_logo_texture_filename);
+    }
+}
+
+void PartPlateList::update_slice_context_to_current_plate(BackgroundSlicingProcess& process)
+{
+	PartPlate* current_plate;
+
+	current_plate = m_plate_list[m_current_plate];
+	assert(current_plate != NULL);
+
+	current_plate->update_slice_context(process);
+
+	return;
+}
+
+Print& PartPlateList::get_current_fff_print() const
+{
+	PartPlate* current_plate;
+	Print* print;
+
+	current_plate = m_plate_list[m_current_plate];
+	assert(current_plate != NULL);
+
+	current_plate->get_print((PrintBase **)&print, nullptr, nullptr);
+
+	return *print;
+}
+
+GCodeProcessorResult* PartPlateList::get_current_slice_result() const
+{
+	PartPlate* current_plate;
+
+	current_plate = m_plate_list[m_current_plate];
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":m_current_plate %1%, current_plate %2%") % m_current_plate % current_plate;
+	assert(current_plate != NULL);
+
+	return current_plate->get_slice_result();
+}
+
+void PartPlateList::invalid_all_slice_result()
+{
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plates count %1%") % m_plate_list.size();
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		m_plate_list[i]->update_slice_result_valid_state(false);
+	}
+
+	return;
+}
+
+bool PartPlateList::is_all_slice_results_valid() const
+{
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (!m_plate_list[i]->is_slice_result_valid())
+			return false;
+	}
+	return true;
+}
+
+bool PartPlateList::is_all_slice_results_ready_for_print() const
+{
+    bool res = false;
+
+    for (unsigned int i = 0; i < (unsigned int) m_plate_list.size(); ++i) {
+        if (!m_plate_list[i]->empty()) {
+            if (m_plate_list[i]->is_all_instances_unprintable()) {
+				continue;
+			}
+            if (!m_plate_list[i]->is_slice_result_ready_for_print()) {
+				return false;
+			}
+        }
+        if (m_plate_list[i]->is_slice_result_ready_for_print()) {
+			res = true;
+		}
+    }
+
+    return res;
+}
+
+bool PartPlateList::is_all_slice_result_ready_for_export() const
+{
+	bool res = false;
+
+    for (unsigned int i = 0; i < (unsigned int) m_plate_list.size(); ++i) {
+        if (!m_plate_list[i]->empty()) {
+            if (m_plate_list[i]->is_all_instances_unprintable()) {
+				continue;
+			}
+            if (!m_plate_list[i]->is_slice_result_ready_for_print()) {
+				return false;
+			}
+        }
+        if (m_plate_list[i]->is_slice_result_ready_for_print()) {
+			if (!m_plate_list[i]->has_printable_instances()) {
+				return false;
+			}
+			res = true;
+		}
+    }
+
+    return res;
+}
+
+bool PartPlateList::is_all_plates_ready_for_slice() const
+{
+    for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (m_plate_list[i]->can_slice())
+			return true;
+	}
+	return false;
+}
+
+int PartPlateList::create_plate_from_gcode_file(const std::string& filename)
+{
+	int ret = 0;
+
+	return ret;
+}
+
+void PartPlateList::get_sliced_result(std::vector<bool>& sliced_result, std::vector<std::string>& gcode_paths)
+{
+	sliced_result.resize(m_plate_list.size());
+	gcode_paths.resize(m_plate_list.size());
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		sliced_result[i] = m_plate_list[i]->m_slice_result_valid;
+		gcode_paths[i] = m_plate_list[i]->m_tmp_gcode_path;
+	}
+}
+int PartPlateList::rebuild_plates_after_deserialize(std::vector<bool>& previous_sliced_result, std::vector<std::string>& previous_gcode_paths)
+{
+	int ret = 0;
+
+	BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": plates count %1%") % m_plate_list.size();
+    for (auto partplate : m_plate_list) {
+        partplate->m_plater = this->m_plater;
+        partplate->m_partplate_list = this;
+        partplate->m_model = this->m_model;
+        partplate->printer_technology = this->printer_technology;
+    }
+	update_plate_cols();
+	update_all_plates_pos_and_size(false, false, false, false);
+	set_shapes(m_shape, m_exclude_areas, m_wrapping_exclude_areas, m_extruder_areas, m_extruder_heights, m_logo_texture_filename, m_height_to_lid, m_height_to_rod);
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		bool need_reset_print = false;
+		if (m_plate_list[i]->m_slice_result_valid) {
+			if ((i >= previous_sliced_result.size()) || !previous_sliced_result[i])
+				m_plate_list[i]->update_slice_result_valid_state(false);
+		}
+		if ((i < previous_gcode_paths.size())
+			&& !previous_gcode_paths[i].empty()
+			&& (m_plate_list[i]->m_tmp_gcode_path != previous_gcode_paths[i])) {
+			if (boost::filesystem::exists(previous_gcode_paths[i])) {
+				boost::nowide::remove(previous_gcode_paths[i].c_str());
+				need_reset_print = true;
+			}
+		}
+
+		std::map<int, PrintBase*>::iterator it = m_print_list.find(m_plate_list[i]->m_print_index);
+		std::map<int, GCodeResult*>::iterator it2 = m_gcode_result_list.find(m_plate_list[i]->m_print_index);
+		if (it != m_print_list.end())
+		{
+			if (it2 == m_gcode_result_list.end())
+			{
+				assert(0);
+				BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":can not find gcode result for plate %1%, print index %2%") % i % m_plate_list[i]->m_print_index;
+				delete it->second;
+				m_print_list.erase(it);
+			}
+			else
+			{
+				m_plate_list[i]->set_print(it->second, it2->second, m_plate_list[i]->m_print_index);
+				it->second->set_plate_index(i);
+				if (need_reset_print) {
+					Print *print = dynamic_cast<Print*>(it->second);
+					it2->second->reset();
+					print->set_gcode_file_invalidated();
+					if ((i == m_current_plate)&&m_plater)
+						m_plater->reset_gcode_toolpaths();
+				}
+				continue;
+			}
+		}
+
+		Print* print = new Print();
+		GCodeResult* gcode = new GCodeResult();
+		m_print_list.emplace(m_print_index, print);
+		m_gcode_result_list.emplace(m_print_index, gcode);
+		m_plate_list[i]->set_print(print, gcode, m_print_index);
+		print->set_plate_index(i);
+		m_print_index++;
+	}
+
+	std::map<int, PrintBase*>::iterator it = m_print_list.begin();
+	int print_index;
+	std::vector<int> delete_list;
+	while (it != m_print_list.end())
+	{
+		print_index = it->first;
+
+		int plate_index = find_plate_by_print_index(print_index);
+		if (plate_index < 0)
+		{
+			delete_list.push_back(print_index);
+		}
+		it++;
+	}
+
+	for (unsigned int index = 0; index < delete_list.size(); index++)
+	{
+		destroy_print(delete_list[index]);
+	}
+
+	Vec2d pos = compute_shape_position(m_current_plate, m_plate_cols);
+	m_plater->set_bed_position(pos);
+
+	return ret;
+}
+
+int PartPlateList::rebuild_plates_after_arrangement(bool recycle_plates, bool except_locked, int plate_index)
+{
+	int ret = 0;
+
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":before rebuild, plates count %1%, recycle_plates %2%") % m_plate_list.size() % recycle_plates;
+
+	std::sort(m_model->objects.begin(), m_model->objects.end(), [](auto a, auto b) {return a->instances[0]->arrange_order < b->instances[0]->arrange_order; });
+
+	ret = reload_all_objects(except_locked, plate_index);
+
+	if (recycle_plates)
+	{
+		for (unsigned int i = (unsigned int)m_plate_list.size() - 1; i > 0; --i)
+		{
+			if (m_plate_list[i]->empty()
+				|| !m_plate_list[i]->has_printable_instances())
+			{
+				BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":delete plate %1% for empty") % i;
+				delete_plate(i);
+			}
+			else if (m_plate_list[i]->is_locked()) {
+				continue;
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
+#if 0
+	if (m_plater != nullptr) {
+		wxGetApp().obj_list()->reload_all_plates();
+	}
+#endif
+
+	if (m_plater)
+		m_plater->mark_plate_toolbar_image_dirty();
+
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":after rebuild, plates count %1%") % m_plate_list.size();
+	return ret;
+}
+
+int PartPlateList::store_to_3mf_structure(PlateDataPtrs& plate_data_list, bool with_slice_info, int plate_idx)
+{
+	int ret = 0;
+
+	plate_data_list.clear();
+	plate_data_list.reserve(m_plate_list.size());
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		PlateData* plate_data_item = new PlateData();
+		plate_data_item->filament_maps = m_plate_list[i]->get_filament_maps();
+		plate_data_item->locked = m_plate_list[i]->m_locked;
+		plate_data_item->plate_index = m_plate_list[i]->m_plate_index;
+		plate_data_item->plate_name  = m_plate_list[i]->get_plate_name();
+		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1% before load, width %2%, height %3%, size %4%!")
+			%(i+1) %m_plate_list[i]->thumbnail_data.width %m_plate_list[i]->thumbnail_data.height %m_plate_list[i]->thumbnail_data.pixels.size();
+		plate_data_item->plate_thumbnail.load_from(m_plate_list[i]->thumbnail_data);
+		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1% after load, width %2%, height %3%, size %4%!")
+			%(i+1) %plate_data_item->plate_thumbnail.width %plate_data_item->plate_thumbnail.height %plate_data_item->plate_thumbnail.pixels.size();
+		plate_data_item->config.apply(*m_plate_list[i]->config());
+
+		if (m_plate_list[i]->no_light_thumbnail_data.is_valid())
+			plate_data_item->no_light_thumbnail_file = "valid_no_light";
+		if (m_plate_list[i]->top_thumbnail_data.is_valid())
+			plate_data_item->top_file = "valid_top";
+		if (m_plate_list[i]->pick_thumbnail_data.is_valid())
+			plate_data_item->pick_file = "valid_pick";
+
+		if (m_plate_list[i]->obj_to_instance_set.size() > 0)
+		{
+			for (std::set<std::pair<int, int>>::iterator it = m_plate_list[i]->obj_to_instance_set.begin(); it != m_plate_list[i]->obj_to_instance_set.end(); ++it)
+				plate_data_item->objects_and_instances.emplace_back(it->first, it->second);
+		}
+
+		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ <<boost::format(": plate %1%, gcode_filename=%2%, with_slice_info=%3%, slice_valid %4%, object item count %5%.")
+			%i %m_plate_list[i]->m_gcode_result->filename % with_slice_info %m_plate_list[i]->is_slice_result_valid()%plate_data_item->objects_and_instances.size();
+
+		if (with_slice_info) {
+			if (m_plate_list[i]->get_slice_result() && m_plate_list[i]->is_slice_result_valid()) {
+				if (plate_idx == i || plate_idx == PLATE_CURRENT_IDX || plate_idx == PLATE_ALL_IDX) {
+					if (m_plate_list[i]->cali_bboxes_data.is_valid())
+						plate_data_item->pattern_bbox_file = "valid_pattern_bbox";
+					plate_data_item->gcode_file       = m_plate_list[i]->m_gcode_result->filename;
+					plate_data_item->is_sliced_valid  = true;
+					plate_data_item->gcode_prediction = std::to_string(
+						(int) m_plate_list[i]->get_slice_result()->print_statistics.modes[static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Normal)].time);
+					plate_data_item->toolpath_outside = m_plate_list[i]->m_gcode_result->toolpath_outside;
+                    plate_data_item->timelapse_warning_code = m_plate_list[i]->m_gcode_result->timelapse_warning_code;
+                    m_plate_list[i]->set_timelapse_warning_code(plate_data_item->timelapse_warning_code);
+					plate_data_item->is_label_object_enabled = m_plate_list[i]->m_gcode_result->label_object_enabled;
+                    plate_data_item->limit_filament_maps = m_plate_list[i]->m_gcode_result->limit_filament_maps;
+                    plate_data_item->layer_filaments  = m_plate_list[i]->m_gcode_result->layer_filaments;
+                    plate_data_item->filament_change_sequence = m_plate_list[i]->m_gcode_result->filament_change_sequence;
+                    plate_data_item->nozzle_change_sequence = m_plate_list[i]->m_gcode_result->nozzle_change_sequence;
+                    plate_data_item->optimal_assignment = m_plate_list[i]->m_gcode_result->optimal_assignment;
+                    plate_data_item->first_layer_time = std::to_string(m_plate_list[i]->get_slice_result()->initial_layer_time);
+                    if (const auto &report = m_plate_list[i]->get_slice_result()->nonplanar_report; !report.empty())
+                        plate_data_item->nonplanar_report = m_plater ? report.to_json(m_plater->nonplanar_orientations()) : report.to_json();
+					Print *print                      = nullptr;
+					m_plate_list[i]->get_print((PrintBase **) &print, nullptr, nullptr);
+					if (print) {
+						const PrintStatistics &ps = print->print_statistics();
+						if (ps.total_weight != 0.0) {
+							CNumericLocalesSetter locales_setter;
+							plate_data_item->gcode_weight =wxString::Format("%.2f", ps.total_weight).ToStdString();
+						}
+						plate_data_item->is_support_used = print->is_support_used();
+					} else {
+						BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format("print is null!");
+					}
+					plate_data_item->parse_filament_info(m_plate_list[i]->get_slice_result());
+
+					{
+						std::vector<unsigned int> used_mixed;
+						if (auto *slice_result = m_plate_list[i]->get_slice_result())
+							used_mixed = slice_result->used_mixed_filaments;
+						if (used_mixed.empty() && print)
+							used_mixed = print->get_slice_used_mixed_filaments();
+						if (!used_mixed.empty() && print) {
+							const auto &fila_types  = print->config().filament_type.values;
+							const auto &fila_colors = print->config().filament_colour.values;
+							const auto &fila_comps  = print->config().filament_mixed_components.values;
+							for (unsigned int fid : used_mixed) {
+								PlateMixedFilamentInfo mixed_info;
+								mixed_info.id = (int) fid + 1;
+								if (fid < fila_types.size())  mixed_info.type       = fila_types[fid];
+								if (fid < fila_colors.size()) mixed_info.color      = fila_colors[fid];
+								if (fid < fila_comps.size())  mixed_info.components = fila_comps[fid];
+								plate_data_item->mixed_filaments_info.push_back(mixed_info);
+							}
+						}
+					}
+				} else {
+					BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "slice result = " << m_plate_list[i]->get_slice_result()
+										<< ", result valid = " << m_plate_list[i]->is_slice_result_valid();
+				}
+			}
+		}
+
+		plate_data_list.push_back(plate_data_item);
+	}
+	BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(":stored %1% plates!") % m_plate_list.size();
+
+	return ret;
+}
+
+int PartPlateList::load_from_3mf_structure(PlateDataPtrs& plate_data_list, int filament_count)
+{
+	int ret = 0;
+
+	if (plate_data_list.size() <= 0)
+	{
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(":no plates, should not happen!");
+		return -1;
+	}
+	clear(true, true);
+	set_filament_count(filament_count);
+	for (unsigned int i = 0; i < (unsigned int)plate_data_list.size(); ++i)
+	{
+		int index = create_plate(false);
+		m_plate_list[index]->m_locked = plate_data_list[i]->locked;
+		m_plate_list[index]->config()->apply(plate_data_list[i]->config);
+		m_plate_list[index]->set_plate_name(plate_data_list[i]->plate_name);
+		if (plate_data_list[i]->plate_index != index)
+		{
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(":plate index %1% seems invalid, skip it")% plate_data_list[i]->plate_index;
+		}
+		BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, gcode_file %2%, is_sliced_valid %3%, toolpath_outside %4%, is_support_used %5% is_label_object_enabled %6%")
+			%i %plate_data_list[i]->gcode_file %plate_data_list[i]->is_sliced_valid %plate_data_list[i]->toolpath_outside %plate_data_list[i]->is_support_used %plate_data_list[i]->is_label_object_enabled;
+		if (!plate_data_list[i]->gcode_file.empty()) {
+			m_plate_list[index]->m_gcode_path_from_3mf = plate_data_list[i]->gcode_file;
+		}
+		GCodeResult* gcode_result = nullptr;
+		PrintBase* fff_print = nullptr;
+		m_plate_list[index]->get_print(&fff_print, &gcode_result, nullptr);
+		PrintStatistics& ps = (dynamic_cast<Print*>(fff_print))->print_statistics();
+		gcode_result->print_statistics.modes[static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Normal)].time = atoi(plate_data_list[i]->gcode_prediction.c_str());
+		ps.total_weight = atof(plate_data_list[i]->gcode_weight.c_str());
+		ps.total_used_filament = 0.f;
+		for (auto filament_item: plate_data_list[i]->slice_filaments_info)
+		{
+			ps.total_used_filament += filament_item.used_m;
+		}
+		ps.total_used_filament *= 1000;
+		gcode_result->toolpath_outside = plate_data_list[i]->toolpath_outside;
+		gcode_result->label_object_enabled = plate_data_list[i]->is_label_object_enabled;
+        gcode_result->timelapse_warning_code = plate_data_list[i]->timelapse_warning_code;
+        m_plate_list[index]->set_timelapse_warning_code(plate_data_list[i]->timelapse_warning_code);
+        gcode_result->filament_change_sequence = plate_data_list[i]->filament_change_sequence;
+        gcode_result->nozzle_change_sequence = plate_data_list[i]->nozzle_change_sequence;
+        gcode_result->optimal_assignment = plate_data_list[i]->optimal_assignment;
+		m_plate_list[index]->slice_filaments_info = plate_data_list[i]->slice_filaments_info;
+		gcode_result->warnings = plate_data_list[i]->warnings;
+        gcode_result->filament_maps = plate_data_list[i]->filament_maps;
+		gcode_result->used_mixed_filaments.clear();
+		for (const auto &mixed_info : plate_data_list[i]->mixed_filaments_info) {
+			if (mixed_info.id > 0)
+				gcode_result->used_mixed_filaments.push_back(static_cast<unsigned int>(mixed_info.id - 1));
+		}
+		if (Print *print = dynamic_cast<Print*>(fff_print))
+			print->set_slice_used_mixed_filaments(gcode_result->used_mixed_filaments);
+
+        {
+            auto parse_int_tokens = [](const std::string& str) -> std::vector<int> {
+                std::vector<int> out;
+                std::istringstream iss(str);
+                std::string tok;
+                while (iss >> tok) { try { out.push_back(std::stoi(tok)); } catch (...) {} }
+                return out;
+            };
+            auto parse_double_tokens = [](const std::string& str) -> std::vector<double> {
+                std::vector<double> out;
+                std::string s = str;
+                std::replace(s.begin(), s.end(), ',', ' ');
+                std::istringstream iss(s);
+                std::string tok;
+                while (iss >> tok) { try { out.push_back(std::stod(tok)); } catch (...) {} }
+                return out;
+            };
+
+            std::vector<int>    nozzle_volume_type_values = parse_int_tokens(plate_data_list[i]->nozzle_volume_types);
+            std::vector<double> nozzle_diameter_values    = parse_double_tokens(plate_data_list[i]->nozzle_diameters);
+
+            std::vector<NozzleVolumeType> extruder_volume_types(nozzle_volume_type_values.size(), NozzleVolumeType::nvtStandard);
+            for (size_t idx = 0; idx < nozzle_volume_type_values.size(); ++idx)
+                if (nozzle_volume_type_values[idx] >= 0 && nozzle_volume_type_values[idx] <= nvtMaxNozzleVolumeType)
+                    extruder_volume_types[idx] = static_cast<NozzleVolumeType>(nozzle_volume_type_values[idx]);
+
+            auto nozzle_infos = MultiNozzleUtils::load_nozzle_infos_with_compatibility(
+                plate_data_list[i]->nozzles_info,
+                plate_data_list[i]->slice_filaments_info,
+                plate_data_list[i]->filament_maps,
+                extruder_volume_types,
+                nozzle_diameter_values);
+
+            std::vector<int> fil_seq(plate_data_list[i]->filament_change_sequence.begin(), plate_data_list[i]->filament_change_sequence.end());
+            std::vector<int> noz_seq(plate_data_list[i]->nozzle_change_sequence.begin(), plate_data_list[i]->nozzle_change_sequence.end());
+            bool enable_filament_dynamic_map = false;
+            if (plate_data_list[i]->config.has("enable_filament_dynamic_map"))
+                enable_filament_dynamic_map = plate_data_list[i]->config.option<ConfigOptionBool>("enable_filament_dynamic_map")->value;
+
+            auto group_result = MultiNozzleUtils::StaticNozzleGroupResult::create(
+                plate_data_list[i]->slice_filaments_info, nozzle_infos, fil_seq, noz_seq, enable_filament_dynamic_map);
+            if (group_result)
+                gcode_result->nozzle_group_result = std::make_shared<MultiNozzleUtils::StaticNozzleGroupResult>(group_result.value());
+            else
+                gcode_result->nozzle_group_result = nullptr;
+        }
+		if (m_plater && !plate_data_list[i]->thumbnail_file.empty()) {
+			BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, load thumbnail from %2%.")%(i+1) %plate_data_list[i]->thumbnail_file;
+			if (boost::filesystem::exists(plate_data_list[i]->thumbnail_file)) {
+				m_plate_list[index]->load_thumbnail_data(plate_data_list[i]->thumbnail_file, m_plate_list[index]->thumbnail_data);
+				BOOST_LOG_TRIVIAL(info) << __FUNCTION__ <<boost::format(": plate %1% after load, width %2%, height %3%, size %4%!")
+					%(i+1) %m_plate_list[index]->thumbnail_data.width %m_plate_list[index]->thumbnail_data.height %m_plate_list[index]->thumbnail_data.pixels.size();
+			}
+		}
+
+		if (m_plater && !plate_data_list[i]->no_light_thumbnail_file.empty()) {
+			if (boost::filesystem::exists(plate_data_list[i]->no_light_thumbnail_file)) {
+				BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, load no_light_thumbnail_file from %2%.")%(i+1) %plate_data_list[i]->no_light_thumbnail_file;
+				m_plate_list[index]->load_thumbnail_data(plate_data_list[i]->no_light_thumbnail_file, m_plate_list[index]->no_light_thumbnail_data);
+			}
+		}
+
+		if (m_plater && !plate_data_list[i]->top_file.empty()) {
+			if (boost::filesystem::exists(plate_data_list[i]->top_file)) {
+				BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, load top_thumbnail from %2%.")%(i+1) %plate_data_list[i]->top_file;
+				m_plate_list[index]->load_thumbnail_data(plate_data_list[i]->top_file, m_plate_list[index]->top_thumbnail_data);
+			}
+		}
+		if (m_plater && !plate_data_list[i]->pick_file.empty()) {
+			if (boost::filesystem::exists(plate_data_list[i]->pick_file)) {
+				BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": plate %1%, load pick_thumbnail from %2%.")%(i+1) %plate_data_list[i]->pick_file;
+				m_plate_list[index]->load_thumbnail_data(plate_data_list[i]->pick_file, m_plate_list[index]->pick_thumbnail_data);
+			}
+		}
+		if (m_plater && !plate_data_list[i]->pattern_bbox_file.empty()) {
+			if (boost::filesystem::exists(plate_data_list[i]->pattern_bbox_file)) {
+				m_plate_list[index]->load_pattern_box_data(plate_data_list[i]->pattern_bbox_file);
+			}
+		}
+
+	}
+	print();
+	ret = reload_all_objects();
+	print();
+
+	return ret;
+}
+
+int PartPlateList::load_gcode_files()
+{
+	int ret = 0;
+
+	if (!m_plater)
+		return ret;
+
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		if (!m_plate_list[i]->m_gcode_path_from_3mf.empty()) {
+			m_model->update_print_volume_state({m_plate_list[i]->get_shape(), this->m_plate_height, m_plate_list[i]->get_extruder_areas(), m_plate_list[i]->get_extruder_heights() });
+
+			if (!m_plate_list[i]->load_gcode_from_file(m_plate_list[i]->m_gcode_path_from_3mf))
+				ret ++;
+		}
+	}
+
+	BOOST_LOG_TRIVIAL(trace) << boost::format("totally got %1% gcode files") % ret;
+
+	return ret;
+}
+
+void PartPlateList::print() const
+{
+	BOOST_LOG_TRIVIAL(trace) << __FUNCTION__ << boost::format("PartPlateList %1%, m_plate_count %2%, current_plate %3%, print_count %4%, current print index %5%, plate cols %6%") % this % m_plate_count % m_current_plate % m_print_list.size() % m_print_index % m_plate_cols;
+	BOOST_LOG_TRIVIAL(trace) << boost::format("m_plate_width %1%, m_plate_depth %2%, m_plate_height %3%, plate count %4%\nplate list:") % m_plate_width % m_plate_depth % m_plate_height % m_plate_list.size();
+	for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+	{
+		BOOST_LOG_TRIVIAL(trace) << boost::format("the %1%th plate") % i;
+		m_plate_list[i]->print();
+	}
+	BOOST_LOG_TRIVIAL(trace) << boost::format("the unprintable plate:");
+	unprintable_plate.print();
+
+	flush_logs();
+	return;
+}
+
+bool PartPlateList::is_load_bedtype_textures = false;
+bool PartPlateList::is_load_extruder_only_area_textures = false;
+bool PartPlateList::is_load_cali_texture     = false;
+
+void PartPlateList::BedTextureInfo::TexturePart::update_buffer()
+{
+	if (w == 0 || h == 0) {
+		return;
+	}
+
+	Pointfs rectangle;
+	rectangle.push_back(Vec2d(x, y));
+	rectangle.push_back(Vec2d(x+w, y));
+	rectangle.push_back(Vec2d(x+w, y+h));
+	rectangle.push_back(Vec2d(x, y+h));
+	ExPolygon poly;
+
+	for (int i = 0; i < 4; i++) {
+		const Vec2d & p = rectangle[i];
+		for (auto& p : rectangle) {
+			Vec2d pp = Vec2d(p.x() + offset.x(), p.y() + offset.y());
+			poly.contour.append({ scale_(pp(0)), scale_(pp(1)) });
+		}
+	}
+
+	if (!buffer)
+        buffer = new GLModel();
+
+	buffer->reset();
+
+	if (!init_model_from_poly(*buffer, poly, GROUND_Z + 0.02f)) {
+		BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":Unable to create buffer triangles\n";
+	}
+}
+
+void PartPlateList::BedTextureInfo::TexturePart::reset()
+{
+    if (texture) {
+        texture->reset();
+        delete texture;
+    }
+    if (buffer)
+        delete buffer;
+}
+
+void PartPlateList::BedTextureInfo::reset()
+{
+    for (size_t i = 0; i < parts.size(); i++)
+        parts[i].reset();
+}
+
+void PartPlateList::init_bed_type_info()
+{
+	BedTextureInfo::TexturePart pct_part_left(10, 130,  10, 110, "orca_bed_pct_left.svg");
+    BedTextureInfo::TexturePart st_part1(9, 70, 12.5, 170, "bbl_bed_st_left.svg");
+    BedTextureInfo::TexturePart st_part2(74, -10, 148, 12, "bbl_bed_st_bottom.svg");
+	BedTextureInfo::TexturePart pc_part1(10, 130, 10, 110, "bbl_bed_pc_left.svg");
+	BedTextureInfo::TexturePart pc_part2(74, -10, 148, 12, "bbl_bed_pc_bottom.svg");
+	BedTextureInfo::TexturePart ep_part1(7.5, 90, 12.5, 150, "bbl_bed_ep_left.svg");
+	BedTextureInfo::TexturePart ep_part2(74, -10, 148, 12, "bbl_bed_ep_bottom.svg");
+	BedTextureInfo::TexturePart pei_part1(7.5, 50, 12.5, 190, "bbl_bed_pei_left.svg");
+	BedTextureInfo::TexturePart pei_part2(74, -10, 148, 12, "bbl_bed_pei_bottom.svg");
+	BedTextureInfo::TexturePart pte_part1(10, 80, 10, 160, "bbl_bed_pte_left.svg");
+	BedTextureInfo::TexturePart pte_part2(74, -10, 148,  12, "bbl_bed_pte_bottom.svg");
+    auto bed_texture_maps        = wxGetApp().plater()->get_bed_texture_maps();
+    std::string bottom_texture_end_name = bed_texture_maps.find("bottom_texture_end_name") != bed_texture_maps.end() ? bed_texture_maps["bottom_texture_end_name"] : "";
+    std::string bottom_texture_rect_str = bed_texture_maps.find("bottom_texture_rect") != bed_texture_maps.end() ? bed_texture_maps["bottom_texture_rect"] : "";
+    std::string bottom_texture_rect_longer_str = bed_texture_maps.find("bottom_texture_rect_longer") != bed_texture_maps.end() ? bed_texture_maps["bottom_texture_rect_longer"] : "";
+    std::string middle_texture_rect_str = bed_texture_maps.find("middle_texture_rect") != bed_texture_maps.end() ? bed_texture_maps["middle_texture_rect"] : "";
+    std::string use_double_extruder_default_texture = bed_texture_maps.find("use_double_extruder_default_texture") != bed_texture_maps.end() ? bed_texture_maps["use_double_extruder_default_texture"] : "";
+    std::array<float, 4>        bottom_texture_rect = {0, 0, 0, 0}, bottom_texture_rect_longer = {0, 0, 0, 0}, middle_texture_rect = {0, 0, 0, 0};
+    if (bottom_texture_rect_str.size() > 0) {
+        std::vector<std::string> items;
+        boost::algorithm::erase_all(bottom_texture_rect_str, " ");
+        boost::split(items, bottom_texture_rect_str, boost::is_any_of(","));
+        if (items.size() == 4) {
+            for (int i = 0; i < items.size(); i++) {
+                bottom_texture_rect[i] = std::atof(items[i].c_str());
+            }
+        }
+    }
+    if (bottom_texture_rect_longer_str.size() > 0) {
+        std::vector<std::string> items;
+        boost::algorithm::erase_all(bottom_texture_rect_longer_str, " ");
+        boost::split(items, bottom_texture_rect_longer_str, boost::is_any_of(","));
+        if (items.size() == 4) {
+            for (int i = 0; i < items.size(); i++) {
+                bottom_texture_rect_longer[i] = std::atof(items[i].c_str());
+            }
+        }
+    }
+    if (middle_texture_rect_str.size() > 0) {
+        std::vector<std::string> items;
+        boost::algorithm::erase_all(middle_texture_rect_str, " ");
+        boost::split(items, middle_texture_rect_str, boost::is_any_of(","));
+        if (items.size() == 4) {
+            for (int i = 0; i < items.size(); i++) {
+                middle_texture_rect[i] = std::atof(items[i].c_str());
+            }
+        }
+    }
+    auto is_single_extruder = wxGetApp().preset_bundle->get_printer_extruder_count() == 1;
+    bool use_double_extruder_texture = !is_single_extruder || use_double_extruder_default_texture == "true";
+    if (use_double_extruder_texture) {
+        pte_part1 = BedTextureInfo::TexturePart(57, 300, 236.12f, 10.f, "bbl_bed_pte_middle.svg");
+        auto &middle_rect = middle_texture_rect;
+        if (middle_rect[2] > 0.f) {
+            pte_part1 = BedTextureInfo::TexturePart(middle_rect[0], middle_rect[1], middle_rect[2], middle_rect[3], "bbl_bed_pte_middle.svg");
+        }
+        pte_part2 = BedTextureInfo::TexturePart(45, -14.5, 70, 8, "bbl_bed_pte_left_bottom.svg");
+        auto &bottom_rect = bottom_texture_rect;
+        auto &bottom_rect_longer = bottom_texture_rect_longer;
+        if (bottom_texture_end_name.size() > 0 && bottom_rect[2] > 0.f) {
+            std::string pte_part2_name = "bbl_bed_pte_bottom_" + bottom_texture_end_name + ".svg";
+            pte_part2 = BedTextureInfo::TexturePart(bottom_rect[0], bottom_rect[1], bottom_rect[2], bottom_rect[3], pte_part2_name);
+        }
+
+        pei_part1  = BedTextureInfo::TexturePart(57, 300, 236.12f, 10.f, "bbl_bed_pei_middle.svg");
+        if (middle_rect[2] > 0.f) {
+            pei_part1 = BedTextureInfo::TexturePart(middle_rect[0], middle_rect[1], middle_rect[2], middle_rect[3], "bbl_bed_pei_middle.svg");
+        }
+        pei_part2  = BedTextureInfo::TexturePart(45, -14.5, 70, 8, "bbl_bed_pei_left_bottom.svg");
+        if (bottom_texture_end_name.size() > 0 && bottom_rect[2] > 0.f) {
+            std::string pei_part2_name = "bbl_bed_pei_bottom_" + bottom_texture_end_name + ".svg";
+            pei_part2                  = BedTextureInfo::TexturePart(bottom_rect[0], bottom_rect[1], bottom_rect[2], bottom_rect[3], pei_part2_name);
+        }
+
+        st_part1 = BedTextureInfo::TexturePart(57, 300, 236.12f, 10.f, "bbl_bed_st_middle.svg");
+        if (middle_rect[2] > 0.f) {
+            st_part1 = BedTextureInfo::TexturePart(middle_rect[0], middle_rect[1], middle_rect[2], middle_rect[3], "bbl_bed_st_middle.svg");
+        }
+        st_part2 = BedTextureInfo::TexturePart(45, -14.5, 260, 8, "bbl_bed_st_left_bottom.svg");
+        if (bottom_texture_end_name.size() > 0 && bottom_rect[2] > 0.f) {
+            std::string st_part2_name = "bbl_bed_st_bottom_" + bottom_texture_end_name + ".svg";
+            st_part2                   = BedTextureInfo::TexturePart(bottom_rect[0], bottom_rect[1], bottom_rect[2], bottom_rect[3], st_part2_name);
+        } else if (bottom_rect_longer[2] > 0.f) {
+            st_part2.update_pos(bottom_rect_longer[0], bottom_rect_longer[1], bottom_rect_longer[2], bottom_rect_longer[3]);
+        }
+
+        ep_part1 = BedTextureInfo::TexturePart(57, 300, 236.12f, 10.f, "bbl_bed_ep_middle.svg");
+        if (middle_rect[2] > 0.f) {
+            ep_part1 = BedTextureInfo::TexturePart(middle_rect[0], middle_rect[1], middle_rect[2], middle_rect[3], "bbl_bed_ep_middle.svg");
+        }
+        ep_part2 = BedTextureInfo::TexturePart(45, -14.5, 260, 8, "bbl_bed_ep_left_bottom.svg");
+        if (bottom_texture_end_name.size() > 0 && bottom_rect[2] > 0.f) {
+            std::string ep_part2_name = "bbl_bed_ep_bottom_" + bottom_texture_end_name + ".svg";
+            ep_part2                   = BedTextureInfo::TexturePart(bottom_rect[0], bottom_rect[1], bottom_rect[2], bottom_rect[3], ep_part2_name);
+        } else if (bottom_rect_longer[2] > 0.f) {
+            ep_part2.update_pos(bottom_rect_longer[0], bottom_rect_longer[1], bottom_rect_longer[2], bottom_rect_longer[3]);
+        }
+
+        pc_part1 = BedTextureInfo::TexturePart(57, 300, 236.12f, 10.f, "bbl_bed_pc_middle.svg");
+        if (middle_rect[2] > 0.f) {
+            pc_part1 = BedTextureInfo::TexturePart(middle_rect[0], middle_rect[1], middle_rect[2], middle_rect[3], "bbl_bed_pc_middle.svg"); }
+        pc_part2 = BedTextureInfo::TexturePart(45, -14.5, 70, 8, "bbl_bed_pc_left_bottom.svg");
+        if (bottom_texture_end_name.size() > 0 && bottom_rect[2] > 0.f) {
+            std::string pc_part2_name = "bbl_bed_pc_bottom_" + bottom_texture_end_name + ".svg";
+            pc_part2                  = BedTextureInfo::TexturePart(bottom_rect[0], bottom_rect[1], bottom_rect[2], bottom_rect[3], pc_part2_name);
+        }
+
+        m_allow_bed_type_in_double_nozzle.clear();
+        auto bed_types = wxGetApp().plater()->sidebar().get_cur_combox_bed_types();
+        for (int i = 0; i < bed_types.size(); i++) {
+            m_allow_bed_type_in_double_nozzle[bed_types[i]] = true;
+        }
+    } else {
+        if (bottom_texture_end_name.size() > 0) {
+            st_part2.update_file("bbl_bed_st_bottom_" + bottom_texture_end_name + ".svg");
+            pc_part2.update_file("bbl_bed_pc_bottom_" + bottom_texture_end_name + ".svg");
+            ep_part2.update_file("bbl_bed_ep_bottom_" + bottom_texture_end_name + ".svg");
+            pei_part2.update_file("bbl_bed_pei_bottom_" + bottom_texture_end_name + ".svg");
+            pte_part2.update_file("bbl_bed_pte_bottom_" + bottom_texture_end_name + ".svg");
+        }
+    }
+
+	for (size_t i = 0; i < btCount; i++) {
+		bed_texture_info[i].reset();
+		bed_texture_info[i].parts.clear();
+	}
+    bed_texture_info[btSuperTack].parts.push_back(st_part1);
+    bed_texture_info[btSuperTack].parts.push_back(st_part2);
+	bed_texture_info[btPC].parts.push_back(pc_part1);
+	bed_texture_info[btPC].parts.push_back(pc_part2);
+	bed_texture_info[btPCT].parts.push_back(pct_part_left);
+	bed_texture_info[btPCT].parts.push_back(pc_part2);
+	bed_texture_info[btEP].parts.push_back(ep_part1);
+	bed_texture_info[btEP].parts.push_back(ep_part2);
+	bed_texture_info[btPEI].parts.push_back(pei_part1);
+	bed_texture_info[btPEI].parts.push_back(pei_part2);
+	bed_texture_info[btPTE].parts.push_back(pte_part1);
+	bed_texture_info[btPTE].parts.push_back(pte_part2);
+
+	auto  bed_ext     = get_extents(m_shape);
+	int   bed_width   = bed_ext.size()(0);
+	int   bed_height  = bed_ext.size()(1);
+    float base_width  = 256;
+    float base_height = 256;
+    if (use_double_extruder_texture) {
+        base_width  = bed_width;
+        base_height = bed_height;
+    }
+    float x_rate      = bed_width / base_width;
+    float y_rate      = bed_height / base_height;
+    for (int i = 0; i < btCount; i++) {
+		for (int j = 0; j < bed_texture_info[i].parts.size(); j++) {
+			bed_texture_info[i].parts[j].x *= x_rate;
+			bed_texture_info[i].parts[j].y *= y_rate;
+            bed_texture_info[i].parts[j].w *= x_rate;
+            bed_texture_info[i].parts[j].h *= y_rate;
+            bed_texture_info[i].parts[j].update_buffer();
+        }
+    }
+}
+
+bool PartPlateList::calc_extruder_only_area(Rect &left_only_rect, Rect &right_only_rect)
+{
+    auto                convert_to_rect         = [](const Pointfs &pts, Rect &rect) {
+		rect.x = pts[0].x();
+        rect.y = pts[0].y();
+        rect.w = pts[1].x() - pts[0].x();
+        rect.h = pts[2].y() - pts[1].y();
+    };
+    auto is_single_extruder = wxGetApp().preset_bundle->get_printer_extruder_count() ==1;
+    if (is_single_extruder) {
+		return false;
+	}
+    if (m_extruder_areas.size() == 2) {
+        Rect printable_rect, left_extruder_printable_area, right_extruder_printable_area;
+        convert_to_rect(m_shape, printable_rect);
+        convert_to_rect(m_extruder_areas[0], left_extruder_printable_area);
+        convert_to_rect(m_extruder_areas[1], right_extruder_printable_area);
+        left_only_rect.x = left_extruder_printable_area.x;
+        left_only_rect.y = left_extruder_printable_area.y;
+        left_only_rect.w = printable_rect.w - right_extruder_printable_area.w;
+        left_only_rect.h = left_extruder_printable_area.h;
+
+        right_only_rect.x = left_extruder_printable_area.x + left_extruder_printable_area.w;
+        right_only_rect.y = right_extruder_printable_area.y;
+        right_only_rect.w = printable_rect.w - left_extruder_printable_area.w;
+        right_only_rect.h = right_extruder_printable_area.h;
+        if (left_only_rect.w < 0 || right_only_rect.w < 0) {
+			return false;
+		}
+        return true;
+	}
+    return false;
+}
+
+bool PartPlateList::init_extruder_only_area_info()
+{
+    Rect left_only_rect,  right_only_rect;
+    auto ok = calc_extruder_only_area(left_only_rect, right_only_rect);
+    if (!ok) { return false; }
+    float  base_width  = 25.f;
+    float  base_height = 320.f;
+    float  left_x_rate = left_only_rect.w / base_width;
+    float  left_y_rate = left_only_rect.h / base_height;
+    bool   is_zh       = wxGetApp().app_config->get("language") == "zh_CN";
+    Vec4f  base_left(-6.f, -75.f, 12.f, 150.f);
+    if (is_zh) {
+		base_left = Vec4f(-5.5f, -76.f, 12.f, 150.f);
+    }
+    base_left[0]   = base_left[0] * left_x_rate + left_only_rect.x + left_only_rect.w / 2.f;
+    base_left[1]   = base_left[1] * left_y_rate + left_only_rect.y + left_only_rect.h / 2.f;
+    base_left[2]   = base_left[2] * left_x_rate;
+    base_left[3]   = base_left[3] * left_y_rate;
+    Vec4f   base_right(-5.5f, -75.f, 12.f, 150.f);
+    if (is_zh) {
+        base_right = Vec4f(-4.5f, -76.f, 12.f, 150.f);
+    }
+    float right_x_rate = right_only_rect.w / base_width;
+    float right_y_rate = right_only_rect.h / base_height;
+    base_right[0]                   = base_right[0] * right_x_rate + right_only_rect.x + right_only_rect.w / 2.f;
+    base_right[1]                   = base_right[1] * right_y_rate + right_only_rect.y + right_only_rect.h / 2.f;
+    base_right[2]                   = base_right[2] * right_x_rate;
+    base_right[3]                   = base_right[3] * right_y_rate;
+    BedTextureInfo::TexturePart left_part(base_left[0], base_left[1], base_left[2], base_left[3], "left_extruder_only_area.svg");
+    BedTextureInfo::TexturePart left_ch_part(base_left[0], base_left[1], base_left[2], base_left[3], "left_extruder_only_area_ch.svg");
+    BedTextureInfo::TexturePart right_part(base_right[0], base_right[1], base_right[2], base_right[3], "right_extruder_only_area.svg");
+    BedTextureInfo::TexturePart right_ch_part(base_right[0], base_right[1], base_right[2], base_right[3], "right_extruder_only_area_ch.svg");
+
+    for (size_t i = 0; i < (unsigned char) ExtruderOnlyAreaType::btAreaCount; i++) {
+        extruder_only_area_info[i].reset();
+        extruder_only_area_info[i].parts.clear();
+    }
+    extruder_only_area_info[(unsigned char) ExtruderOnlyAreaType::Engilish].parts.push_back(left_part);
+    if (base_right[2]>5) {
+        extruder_only_area_info[(unsigned char) ExtruderOnlyAreaType::Engilish].parts.push_back(right_part);
+    }
+    extruder_only_area_info[(unsigned char) ExtruderOnlyAreaType::Chinese].parts.push_back(left_ch_part);
+    if (base_right[2] > 5) {
+        extruder_only_area_info[(unsigned char) ExtruderOnlyAreaType::Chinese].parts.push_back(right_ch_part);
+    }
+
+    for (int i = 0; i < (unsigned char) ExtruderOnlyAreaType::btAreaCount; i++) {
+        for (int j = 0; j < extruder_only_area_info[i].parts.size(); j++) {
+            extruder_only_area_info[i].parts[j].update_buffer();
+        }
+    }
+    return true;
+}
+
+static GLint logo_texture_size()
+{
+	return std::min<GLint>(OpenGLManager::get_gl_info().get_max_tex_size(), 2048);
+}
+
+static bool load_next_part_texture(PartPlateList::BedTextureInfo* infos, size_t count, size_t& next, bool compress_and_filter)
+{
+	size_t k = next;
+	for (size_t i = 0; i < count; ++i) {
+		if (k >= infos[i].parts.size()) {
+			k -= infos[i].parts.size();
+			continue;
+		}
+		++next;
+		PartPlateList::BedTextureInfo::TexturePart& part = infos[i].parts[k];
+		const std::string filename = resources_dir() + "/images/" + part.filename;
+		if (boost::filesystem::exists(filename)) {
+			part.texture = new GLTexture();
+			if (!part.texture->load_from_svg_file(filename, true, compress_and_filter, compress_and_filter, logo_texture_size()))
+				BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": load texture from %1% failed!") % filename;
+		} else {
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": load texture from %1% failed!") % filename;
+		}
+		return true;
+	}
+	return false;
+}
+
+void PartPlateList::load_bedtype_textures()
+{
+	while (load_next_bedtype_texture()) {}
+}
+
+bool PartPlateList::load_next_bedtype_texture()
+{
+	if (PartPlateList::is_load_bedtype_textures)
+		return false;
+	if (m_next_bedtype_texture == 0)
+		init_bed_type_info();
+	if (load_next_part_texture(bed_texture_info, btCount, m_next_bedtype_texture, true))
+		return true;
+	PartPlateList::is_load_bedtype_textures = true;
+	return false;
+}
+
+bool PartPlateList::load_logo_texture()
+{
+	if (m_logo_texture_filename.empty()) {
+		m_logo_texture.reset();
+		return false;
+	}
+
+	if (m_logo_texture.get_id() != 0 && m_logo_texture.get_source() == m_logo_texture_filename) {
+		if (m_logo_texture.unsent_compressed_data_available())
+			m_logo_texture.send_compressed_data_to_gpu();
+		return true;
+	}
+
+	m_logo_texture.reset();
+	if (boost::algorithm::iends_with(m_logo_texture_filename, ".svg")) {
+		if (!m_logo_texture.load_from_svg_file(m_logo_texture_filename, true, true, true, logo_texture_size())) {
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": load logo texture from %1% failed!") % m_logo_texture_filename;
+			return false;
+		}
+	}
+	else if (boost::algorithm::iends_with(m_logo_texture_filename, ".png")) {
+		if (!m_logo_texture.load_from_file(m_logo_texture_filename, true, GLTexture::MultiThreaded, true)) {
+			BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": load logo texture from %1% failed!") % m_logo_texture_filename;
+			return false;
+		}
+	}
+	else {
+		BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": can not load logo texture from %1%, unsupported format") % m_logo_texture_filename;
+		return false;
+	}
+	return true;
+}
+
+void PartPlateList::load_icon_textures()
+{
+	if (!icon_textures_loaded())
+		generate_icon_textures();
+}
+
+bool PartPlateList::load_next_plate_texture()
+{
+	if (!render_bedtype_logo) {
+		load_logo_texture();
+		return false;
+	}
+	return load_next_bedtype_texture() || load_next_cali_texture() || load_next_extruder_only_area_texture();
+}
+
+void PartPlateList::load_extruder_only_area_textures()
+{
+    while (load_next_extruder_only_area_texture()) {}
+}
+
+bool PartPlateList::load_next_extruder_only_area_texture()
+{
+    if (PartPlateList::is_load_extruder_only_area_textures)
+        return false;
+    if (m_next_extruder_only_area_texture == 0 && !init_extruder_only_area_info()) {
+        PartPlateList::is_load_extruder_only_area_textures = true;
+        return false;
+    }
+    if (load_next_part_texture(extruder_only_area_info, (size_t) ExtruderOnlyAreaType::btAreaCount, m_next_extruder_only_area_texture, false))
+        return true;
+    PartPlateList::is_load_extruder_only_area_textures = true;
+    return false;
+}
+
+void PartPlateList::init_cali_texture_info()
+{
+	BedTextureInfo::TexturePart cali_line(18, 2, 224, 16, "bbl_cali_lines.svg");
+	cali_texture_info.parts.push_back(cali_line);
+
+	for (int j = 0; j < cali_texture_info.parts.size(); j++) {
+		cali_texture_info.parts[j].update_buffer();
+	}
+}
+
+void PartPlateList::load_cali_textures()
+{
+	while (load_next_cali_texture()) {}
+}
+
+bool PartPlateList::load_next_cali_texture()
+{
+	if (PartPlateList::is_load_cali_texture)
+		return false;
+	if (m_next_cali_texture == 0)
+		init_cali_texture_info();
+	if (load_next_part_texture(&cali_texture_info, 1, m_next_cali_texture, true))
+		return true;
+	PartPlateList::is_load_cali_texture = true;
+	return false;
+}
+
+void PartPlateList::refresh_imex_icons()
+{
+    const std::lock_guard<std::mutex> local_lock(m_plates_mutex);
+    for (PartPlate* plate : m_plate_list)
+        plate->refresh_imex_icon();
+}
+
+void PartPlateList::on_extruder_count_changed(int extruder_count)
+{
+    for (unsigned int i = 0; i < (unsigned int) m_plate_list.size(); ++i) {
+        m_plate_list[i]->on_extruder_count_changed(extruder_count);
+    }
+    BOOST_LOG_TRIVIAL(info) << boost::format("%1%: extruder_count=%2%")% __FUNCTION__ %extruder_count;
+}
+
+void PartPlateList::set_filament_count(int filament_count)
+{
+    m_filament_count = filament_count;
+    for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+    {
+        m_plate_list[i]->set_filament_count(filament_count);
+    }
+    BOOST_LOG_TRIVIAL(info) << boost::format("%1%: filament_count=%2%")% __FUNCTION__ %filament_count;
+}
+
+void PartPlateList::on_filament_added(int filament_count)
+{
+    m_filament_count++;
+    for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+    {
+        m_plate_list[i]->on_filament_added();
+    }
+    BOOST_LOG_TRIVIAL(info) << boost::format("%1%: filament_count=%2%")% __FUNCTION__ %filament_count;
+}
+
+void PartPlateList::on_filament_deleted(int filament_count, int filament_id)
+{
+    m_filament_count--;
+    for (unsigned int i = 0; i < (unsigned int)m_plate_list.size(); ++i)
+    {
+        m_plate_list[i]->on_filament_deleted(filament_count, filament_id);
+    }
+    BOOST_LOG_TRIVIAL(info) << boost::format("%1%: filament_count=%2%, filament_id=%3%")% __FUNCTION__ %filament_count %filament_id;
+}
+
+}
+}

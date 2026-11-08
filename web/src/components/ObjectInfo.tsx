@@ -1,13 +1,9 @@
-
-
-
 import { useEffect, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { getState, setState, useStore, type PlateObject } from '../state/store';
 import { instanceBox, instanceMatrix } from '../plater/geometry';
 import { meshStats, subscribeMeshStats, meshStatsVersion, type MeshStats as Stats } from '../plater/meshStats';
 import { Copyable } from './Copyable';
-
 
 function objectStats(o: PlateObject): Stats {
   const det = (m: THREE.Matrix4) => Math.abs(m.determinant());
@@ -23,7 +19,8 @@ function objectStats(o: PlateObject): Stats {
   return total;
 }
 
-const num = (x: number) => String(Number(x.toPrecision(6)));
+const mm = (x: number) => x.toFixed(2);
+const volume = (mm3: number) => (mm3 >= 1000 ? `${(mm3 / 1000).toFixed(2)} cm³` : `${mm3.toFixed(1)} mm³`);
 const idle = (f: () => void) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(f) : setTimeout(f, 50));
 
 export default function ObjectInfo() {
@@ -32,7 +29,6 @@ export default function ObjectInfo() {
   const sel = useStore((s) => s.selected);
   const gizmo = useStore((s) => s.gizmo);
   const fix = useStore((s) => !!s.features.mesh_repair);
-
   useEffect(() => {
     let stop = false;
     const queue = objects.filter((o) => !o.project?.placeholder && !o.native);
@@ -52,11 +48,11 @@ export default function ObjectInfo() {
   const st = objectStats(o), inst = o.instances.find((i) => i.id === sel!.instance) ?? o.instances[0];
   const size = instanceBox(o, inst).getSize(new THREE.Vector3());
   return (
-
     <div className="object-info" role="status" aria-label="Object info">
-      <span><Copyable value={`${num(size.x)} × ${num(size.y)} × ${num(size.z)} mm`} /></span>
-      <span><Copyable value={`${num(st.volume)} mm³`} /></span>
-      <span><Copyable value={`${st.triangles} triangles`} /></span>
+      <span><Copyable value={`${mm(size.x)} × ${mm(size.y)} × ${mm(size.z)} mm`} /></span>
+      <span><Copyable value={volume(st.volume)} /></span>
+      <span><Copyable value={`${st.triangles.toLocaleString('en-US')} triangles`} /></span>
+      {o.sourceUrl && <a className="notif-link" href={o.sourceUrl} target="_blank" rel="noopener noreferrer" title={o.sourceUrl}>Source URL</a>}
       {st.openEdges > 0 && <span className="object-info-error">
         {st.openEdges} non-manifold edge{st.openEdges === 1 ? '' : 's'}
         {fix && <button type="button" className="notif-link" onClick={() => void import('../plater/meshOps').then((m) => m.fixModel(o.id))}>Fix Model</button>}

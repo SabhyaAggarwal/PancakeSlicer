@@ -8,15 +8,6 @@
 
 namespace Slic3r {
 
-
-
-
-
-
-
-
-
-
 template<class T>
 class AnyPtr {
     enum { RawPtr, UPtr, ShPtr, WkPtr };
@@ -96,8 +87,6 @@ public:
         return false;
     }
 
-
-
     std::shared_ptr<T> get_shared_cpy() const
     {
         std::shared_ptr<T> ret;
@@ -112,13 +101,11 @@ public:
         return ret;
     }
 
-
     void convert_unique_to_shared()
     {
         if (ptr.which() == UPtr)
             ptr = std::shared_ptr<T>{std::move(boost::get<std::unique_ptr<T>>(ptr))};
     }
-
 
     bool is_owned() const noexcept
     {

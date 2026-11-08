@@ -19,12 +19,11 @@ import (
 type JobState string
 
 const (
-	StateIdle      JobState = "idle"
-	StateQueued    JobState = "queued"
-	StatePreparing JobState = "preparing"
-	StateSlicing   JobState = "slicing"
-	StateRunning            = StateSlicing
-
+	StateIdle        JobState = "idle"
+	StateQueued      JobState = "queued"
+	StatePreparing   JobState = "preparing"
+	StateSlicing     JobState = "slicing"
+	StateRunning              = StateSlicing
 	StateStoring     JobState = "storing"
 	StateCanceling   JobState = "canceling"
 	StateDone        JobState = "done"
@@ -314,7 +313,6 @@ func (m *JobManager) restoreJobs() error {
 			f.Close()
 		}
 		m.jobs[j.ID] = j
-
 		if j.state == StateQueued {
 			ctx, cancel := context.WithCancel(context.Background())
 			j.cancel = cancel

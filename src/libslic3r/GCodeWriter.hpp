@@ -50,9 +50,7 @@ public:
     const Extruder* filament() const { if(m_curr_extruder_id==-1) return nullptr; return m_curr_filament_extruder[m_curr_extruder_id]; }
 
     void                 apply_print_config(const PrintConfig &print_config);
-
     void                 set_inverse_time_retractions(bool enabled) { m_inverse_time_retractions = enabled; }
-
     void                 set_extruders(std::vector<unsigned int> extruder_ids);
     const std::vector<Extruder>& extruders() const { return m_filament_extruders; }
     std::vector<unsigned int> extruder_ids() const {
@@ -72,99 +70,60 @@ public:
     std::string set_print_acceleration(unsigned int acceleration)   { return set_acceleration_internal(Acceleration::Print, acceleration); }
     std::string set_travel_acceleration(unsigned int acceleration)  { return set_acceleration_internal(Acceleration::Travel, acceleration); }
     std::string set_jerk_xy(double jerk);
-
     std::string set_accel_and_jerk(unsigned int acceleration, double jerk);
-    std::string set_junction_deviation(double junction_deviation);
+    std::string set_junction_deviation(double junction_deviation); 
     std::string set_pressure_advance(double pa, int tool = -1) const;
     std::string set_input_shaping(char axis, float damp, float freq, std::string type) const;
     std::string reset_e(bool force = false);
     std::string update_progress(unsigned int num, unsigned int tot, bool allow_100 = false) const;
     std::string enable_power_loss_recovery(PowerLossRecoveryMode mode);
-
     bool        need_toolchange(unsigned int filament_id) const;
     std::string set_extruder(unsigned int filament_id);
     void init_extruder(unsigned int filament_id);
-
-
     double get_extruder_retracted_length(const int filament_id);
-
-
     std::string toolchange_prefix() const;
     std::string toolchange(unsigned int filament_id, int nozzle_id);
     std::string set_speed(double F, const std::string &comment = std::string(), const std::string &cooling_marker = std::string());
-
     double      get_current_speed() const { return m_current_speed;}
     std::string travel_to_xy(const Vec2d &point, const std::string &comment = std::string());
-
     std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false, double max_speed_z = 0.,
                               double max_speed = 0.);
-
     std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false, double max_speed = 0.);
-
     double      max_speed_z() const { return m_max_joint_speed.z(); }
-
-
     void        set_z_travel_cap(double speed) { m_z_travel_cap = speed; }
-
-
     void        limit_next_travel_z() { m_limit_next_travel_z = true; }
     bool        will_move_z(double z) const;
     std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
-
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
-
-
-
     void        extrude_arc_as_polyline(std::string &out, const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
-
-
     std::string extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false,
                                bool keep_tiny_e = true);
-
     void        set_speed(std::string &out, double F, const std::string &comment = std::string(), const std::string &cooling_marker = std::string());
     void        extrude_to_xy(std::string &out, const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     void        extrude_arc_to_xy(std::string &out, const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
     void        extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false,
                                bool keep_tiny_e = true);
-
-
-
     void        extrude_helix_to_xyz(std::string &out, const Vec3d &point, const Vec2d &center, double dE, bool is_ccw,
                                      const std::string &comment = std::string());
     std::string retract(bool before_wipe = false, double retract_length = 0);
     std::string retract_for_toolchange(bool before_wipe = false, double retract_length = 0);
-
-
     std::string unretract(float extra_retract = 0.f);
-
     std::string eager_lift(const LiftType type);
-
     std::string lazy_lift(LiftType lift_type = LiftType::NormalLift, bool spiral_vase = false);
-
-
     void        cancel_lazy_lift() { m_to_lift = 0.; m_lifted = 0.; }
     std::string unlift();
     const Vec3d& get_position() const { return m_pos; }
     Vec3d&       get_position() { return m_pos; }
     void        set_position(const Vec3d& in) { m_pos = in; }
-
     void        set_position(const Vec3d& in, double z_hop) { m_pos = in; m_lifted = z_hop; m_to_lift = 0.; }
     double      get_zhop() const { return m_lifted; }
 
-
     void set_xy_offset(double x, double y) { m_x_offset = x; m_y_offset = y; }
     Vec2f get_xy_offset() { return Vec2f{m_x_offset, m_y_offset}; };
-
-
-
     static std::string set_fan(const GCodeFlavor gcode_flavor, unsigned int speed, unsigned int part_cooling_fan_min_pwm = 0);
-
-
     std::string set_fan(unsigned int speed) const;
-
     static std::string set_additional_fan(unsigned int speed);
     static std::string set_exhaust_fan(int speed);
-
     void set_object_start_str(std::string start_string) { m_gcode_label_objects_start = start_string; }
     bool is_object_start_str_empty() { return m_gcode_label_objects_start.empty(); }
     void set_object_end_str(std::string end_string) { m_gcode_label_objects_end = end_string; }
@@ -173,16 +132,13 @@ public:
     void add_object_end_labels(std::string &gcode);
     void add_object_change_labels(std::string& gcode);
 
-
     void set_current_position_clear(bool clear) {
         m_is_current_pos_clear = clear;
         if (clear)
             m_limit_next_travel_z = false;
     };
     bool is_current_position_clear() const { return m_is_current_pos_clear; };
-
     static bool full_gcode_comment;
-
     void set_is_bbl_machine(bool bval) {m_is_bbl_printers = bval;}
     const bool is_bbl_printers() const {return m_is_bbl_printers;}
     void set_is_first_layer(bool bval) { m_is_first_layer = bval; }
@@ -190,68 +146,34 @@ public:
     void invalidate_acceleration() { m_last_acceleration = 0; m_last_travel_acceleration = 0; }
     void invalidate_jerk() { m_last_jerk = 0; }
 
-
-
     void set_axis_remap(int rx, int ry, int rz);
     void set_build_volume_max(const Vec3d &max);
     bool has_axis_remap() const;
 
-
-
     void set_kinematics(std::unique_ptr<MachineKinematics> kinematics);
     const MachineKinematics& kinematics() const { return *m_kinematics; }
-
-
-
-
-
 
     using FirstLayerPointTest = std::function<bool(const Vec3d &point_logical)>;
     void set_first_layer_point_test(FirstLayerPointTest test) { m_first_layer_point_test = std::move(test); }
 
-
-
-
     void set_force_normal_lift(bool force) { m_force_normal_lift = force; }
-
 
     static bool supports_separate_travel_acceleration(GCodeFlavor flavor);
 
-
-
-
-
-
     void                  set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics);
-
-
     void                  set_min_joint_move_time(double seconds) { m_min_joint_move_time = seconds; }
     const ToolKinematics &tool_kinematics() const;
-
     void        extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment = {});
-
     std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {}, double speed = 0.);
-
     void        move_to_joints(std::string &out, const JointPose &joints, const std::string &comment = {});
-
-
     void        set_pose_speed(double F) { m_current_speed = F; }
-
-
     std::string end_inverse_time();
     const Vec3d     &get_tool_axis() const { return m_tool_axis; }
-
     JointPose        get_joints() const;
-
     void             set_joint_position(const JointPose &joints);
-
     static constexpr double max_tip_deviation = 0.02;
-
-
-
     static std::vector<std::array<double, 7>> *planned_moves;
 protected:
-
     Vec3d           m_pos = Vec3d::Zero();
     double          m_x_offset{ 0 };
     double          m_y_offset{ 0 };
@@ -264,33 +186,16 @@ protected:
 
     std::string _travel_to_z(double z, const std::string &comment, double max_speed = 0.);
 
-
-
     bool point_on_first_layer(const Vec3d &point_logical) const;
 
-
-
     bool must_skip_lift_now() const;
-
-
-
-
-
-
-
 
     bool uses_pointwise_travel_speed() const { return bool(m_first_layer_point_test); }
 
     FirstLayerPointTest    m_first_layer_point_test;
     bool                   m_force_normal_lift = false;
 
-
-
-
-
     std::unique_ptr<MachineKinematics> m_kinematics;
-
-
 
     std::unique_ptr<ToolKinematics> m_tool_kinematics;
     Vec3d                           m_tool_axis { Vec3d::UnitZ() };
@@ -298,7 +203,6 @@ protected:
     bool                            m_joints_valid = false;
     bool                            m_inverse_time = false;
     bool                            m_inverse_time_retractions = false;
-
     bool                            m_joint_feed_written = false;
     bool                            m_rotary_written = false;
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };
@@ -309,24 +213,16 @@ protected:
                                  double dE, const std::string &comment);
     void        pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel, double speed = 0.);
 
-
-
     int             m_remap_x = 0;
     int             m_remap_y = 1;
     int             m_remap_z = 2;
     Vec3d           m_build_vol_max = Vec3d::Zero();
 
-
-
     Vec3d apply_axis_remap(const Vec3d &pos) const;
-
-
-
 
     size_t     m_cached_extruder_idx;
 
 private:
-
     std::vector<Extruder> m_filament_extruders;
     bool            m_single_extruder_multi_material;
     std::vector<Extruder*> m_curr_filament_extruder;
@@ -334,8 +230,6 @@ private:
     unsigned int              m_last_acceleration;
     unsigned int              m_last_travel_acceleration;
     std::vector<unsigned int> m_max_travel_acceleration;
-
-
 
     std::vector<unsigned int> m_max_acceleration;
     std::vector<double>       m_max_jerk_x;
@@ -345,28 +239,15 @@ private:
     std::vector<double>       m_max_jerk_e;
     std::vector<double>       m_max_junction_deviation;
 
-
-
-
-
-
     int             m_last_bed_temperature;
     bool            m_last_bed_temperature_reached;
 
-
     double          m_resolution = 0.01;
-
-
-
-
-
-
     Polygon              m_bed_printable_area;
     std::vector<Polygon> m_extruder_printable_areas;
 
     std::string m_gcode_label_objects_start;
     std::string m_gcode_label_objects_end;
-
 
     bool            m_is_bbl_printers = false;
 
@@ -376,9 +257,7 @@ private:
     };
 
     std::string _spiral_travel_to_z(double z, const Vec2d &ij_offset, const std::string &comment);
-
     const Polygon *active_printable_area() const;
-
     bool spiral_lift_fits_printable_area(const Vec2d &center, double radius) const;
     std::string _retract(double length, double restart_extra, const std::string &comment);
     std::string set_acceleration_internal(Acceleration type, unsigned int acceleration);
@@ -395,25 +274,15 @@ public:
     GCodeFormatter(const GCodeFormatter&) = delete;
     GCodeFormatter& operator=(const GCodeFormatter&) = delete;
 
-
-
-
-
-
 #if 1
     static constexpr const int XYZF_EXPORT_DIGITS = 3;
     static constexpr const int E_EXPORT_DIGITS    = 5;
 #else
-
     static constexpr const int XYZF_EXPORT_DIGITS = 4;
     static constexpr const int E_EXPORT_DIGITS    = 6;
-
-
-
 #endif
     static constexpr const std::array<double, 10> pow_10 { 1., 10., 100., 1000., 10000., 100000., 1000000., 10000000., 100000000., 1000000000. };
     static constexpr const std::array<double, 10> pow_10_inv { 1. / 1., 1. / 10., 1. / 100., 1. / 1000., 1. / 10000., 1. / 100000., 1. / 1000000., 1. / 10000000., 1. / 100000000., 1. / 1000000000. };
-
 
     static double quantize(double v, size_t ndigits) { return std::round(v * pow_10[ndigits]) * pow_10_inv[ndigits]; }
     static double quantize_xyzf(double v) { return quantize(v, XYZF_EXPORT_DIGITS); }
@@ -443,7 +312,6 @@ public:
     void emit_f(double speed) {
         this->emit_axis('F', speed, XYZF_EXPORT_DIGITS);
     }
-
     void emit_ij(const Vec2d &point) {
         this->emit_axis('I', point.x(), XYZF_EXPORT_DIGITS);
         this->emit_axis('J', point.y(), XYZF_EXPORT_DIGITS);

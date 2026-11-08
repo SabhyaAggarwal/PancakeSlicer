@@ -53,8 +53,6 @@ namespace {
 std::mutex                              g_mutex;
 std::map<std::string, FieldTermFactory> g_factories;
 std::once_flag                          g_builtins;
-
-
 void register_builtins()
 {
     register_field_term("strength", make_strength_term);

@@ -1,0 +1,22 @@
+{
+ "gcode": "trap_plane_20_control.gcode",
+ "description": "Shell climbing a 20 deg plane with a 30 deg head: clear",
+ "true_head": "trap_head_cone30.json",
+ "generator_head": null,
+ "control": true,
+ "expected": {
+  "hit_lines": [],
+  "hit_count": 0,
+  "components": {}
+ },
+ "port": {
+  "hit_lines": [
+   540
+  ],
+  "hit_count": 1,
+  "components": {
+   "profile_0": 1
+  },
+  "recall": null
+ }
+}

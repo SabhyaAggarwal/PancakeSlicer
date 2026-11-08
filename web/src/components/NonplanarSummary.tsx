@@ -1,11 +1,7 @@
-
-
-
-
-
 import { useEffect, useState } from 'react';
 import { effectiveConfig, getState, useStore } from '../state/store';
 import { headShortName, loadHead, loadHeadIndex, slopeLimit, type Head } from '../heads';
+import { SEP } from '../separator';
 
 const num = (v: unknown) => Number(Array.isArray(v) ? v[0] : v) || 0;
 
@@ -31,7 +27,7 @@ export default function NonplanarSummary({ onExplain }: { onExplain?: () => void
   if (mode === 'off') return null;
   const info = heads?.find((h) => h.id === id);
   const name = !id ? 'generic' : info ? headShortName(info).replace(/^Bambu Lab /, '') : heads ? `${id} (missing; generic)` : id;
-  const text = `Head: ${name}${info && !info.calibrated ? ' · uncalibrated' : ''}`;
+  const text = `Head: ${name}${info && !info.calibrated ? `${SEP}uncalibrated` : ''}`;
   const details = [!id ? 'Generic conservative head' : info ? `${info.name}, ${info.calibrated ? 'calibrated' : 'uncalibrated'}` : `Head ${id}`];
   const gap = num(process.nonplanar_shell_layer_height) || num(process.layer_height);
   const cap = num(process.nonplanar_max_slope);

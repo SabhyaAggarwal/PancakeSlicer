@@ -33,20 +33,18 @@ bool BeltFloorContext::init_local(const SlicingParameters &sp, const PrintConfig
 {
     if (!init(sp, pcfg))
         return false;
-
-
     m_z_shift -= global_z_offset;
     return true;
 }
 
 Polygons BeltFloorContext::surface_polygon(coordf_t print_z) const
 {
-    return half_plane(print_z,  true);
+    return half_plane(print_z, true);
 }
 
 Polygons BeltFloorContext::valid_region_polygon(coordf_t print_z) const
 {
-    return half_plane(print_z,  false);
+    return half_plane(print_z, false);
 }
 
 double BeltFloorContext::floor_print_z(const Point &pos_slicing) const
@@ -78,20 +76,11 @@ Polygons BeltFloorContext::half_plane(coordf_t print_z, bool belt_surface) const
     const coord_t cutoff_scaled = scale_(cutoff);
     const coord_t large_bound   = scale_(1e3);
 
-
-
-
-
-
-
-
-
     bool high_side = (m_shear_factor > 0) == belt_surface;
 
     Polygon poly;
     if (m_from_axis == 0) {
         if (high_side) {
-
             poly.points = {
                 Point(cutoff_scaled, -large_bound),
                 Point(large_bound,   -large_bound),
@@ -99,7 +88,6 @@ Polygons BeltFloorContext::half_plane(coordf_t print_z, bool belt_surface) const
                 Point(cutoff_scaled,  large_bound)
             };
         } else {
-
             poly.points = {
                 Point(-large_bound,  -large_bound),
                 Point(cutoff_scaled, -large_bound),
@@ -109,7 +97,6 @@ Polygons BeltFloorContext::half_plane(coordf_t print_z, bool belt_surface) const
         }
     } else {
         if (high_side) {
-
             poly.points = {
                 Point(-large_bound, cutoff_scaled),
                 Point( large_bound, cutoff_scaled),
@@ -117,7 +104,6 @@ Polygons BeltFloorContext::half_plane(coordf_t print_z, bool belt_surface) const
                 Point(-large_bound, large_bound)
             };
         } else {
-
             poly.points = {
                 Point(-large_bound, -large_bound),
                 Point( large_bound, -large_bound),

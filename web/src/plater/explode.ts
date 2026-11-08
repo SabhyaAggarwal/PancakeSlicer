@@ -1,18 +1,8 @@
-
-
-
-
-
-
-
-
-
-
 import * as THREE from 'three';
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 import { responseError } from '../api/access';
-import { getState, newId, setState, type Instance, type LayerEvent, type LayerRange, type NativeObject, type PlateObject, type SeamMode, type Volume, type VolumeType } from '../state/store';
+import { getState, newId, type Instance, type LayerEvent, type LayerRange, type NativeObject, type PlateObject, type SeamMode, type Volume, type VolumeType } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceBox, instanceMatrix, setNativePlate } from './geometry';
 import { archivePainting, paintJson, type PaintKind } from './paint';
@@ -22,7 +12,6 @@ import { attachFiles, postJob } from '../api/blobs';
 type Json = Record<string, unknown>;
 type Rows = number[][];
 
-
 const pristine = new WeakSet<THREE.BufferGeometry>();
 export const markPristine = (g: THREE.BufferGeometry) => { pristine.add(g); return g; };
 
@@ -31,7 +20,6 @@ function rows(m: THREE.Matrix4): Rows {
   const e = m.elements;
   return [[e[0], e[4], e[8], e[12]], [e[1], e[5], e[9], e[13]], [e[2], e[6], e[10], e[14]], [e[3], e[7], e[11], e[15]]];
 }
-
 
 export async function volumeMesh(blob: Blob): Promise<THREE.BufferGeometry> {
   const zip = await new Promise<Record<string, Uint8Array>>(async (resolve, reject) =>
@@ -47,7 +35,6 @@ export async function volumeMesh(blob: Blob): Promise<THREE.BufferGeometry> {
   return g;
 }
 
-
 export function rawArrays(position: Float32Array, index: Uint32Array | Uint16Array | null): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(position, 3));
@@ -58,7 +45,6 @@ export function rawArrays(position: Float32Array, index: Uint32Array | Uint16Arr
   return g;
 }
 
-
 function rawGeometry(mesh: THREE.BufferGeometry, frame: THREE.Matrix4, transform: Rows): THREE.BufferGeometry {
   const g = mesh.clone().applyMatrix4(frame.clone().multiply(fromRows(transform)));
   g.computeVertexNormals();
@@ -66,7 +52,6 @@ function rawGeometry(mesh: THREE.BufferGeometry, frame: THREE.Matrix4, transform
   g.computeBoundingSphere();
   return markPristine(g);
 }
-
 
 function worldBox(mesh: THREE.BufferGeometry, inst: Json, transform: Rows): THREE.Box3 {
   return new THREE.Box3().setFromBufferAttribute(mesh.clone().applyMatrix4(fromRows(inst.transform as Rows).multiply(fromRows(transform))).attributes.position as THREE.BufferAttribute);
@@ -83,12 +68,10 @@ function plateEvents(plate: Json): LayerEvent[] {
   });
 }
 
-
 function plateObject(entry: Json, group: Json[], meshes: THREE.BufferGeometry[], files: Record<string, Blob>): PlateObject {
   const volumes = entry.volumes as Json[];
   const main = Math.max(0, volumes.findIndex((v) => v.type === 'part'));
   const first = group[0];
-
   const linear = fromRows(first.transform as Rows).setPosition(0, 0, 0);
   const m = new THREE.Matrix4().makeRotationZ((-Number(first.rot ?? 0) * Math.PI) / 180).multiply(linear);
   const mirrored = m.determinant() < 0;
@@ -117,12 +100,10 @@ function plateObject(entry: Json, group: Json[], meshes: THREE.BufferGeometry[],
   };
 }
 
-
 export async function nativeGeometry(n: NativeObject): Promise<THREE.BufferGeometry> {
   const v = (n.entry.volumes as Json[])[n.main];
   return rawGeometry(await volumeMesh(n.files[String(v.file)]), new THREE.Matrix4().fromArray(n.frame), v.transform as Rows);
 }
-
 
 function volumeType(v: Json): { type: VolumeType; seamMode?: SeamMode } {
   const t = String(v.type);
@@ -130,7 +111,6 @@ function volumeType(v: Json): { type: VolumeType; seamMode?: SeamMode } {
   if (m) return { type: 'seam', seamMode: m[1] as SeamMode };
   return t === 'seam' ? { type: 'seam', seamMode: (String(v.seam_mode ?? 'center') as SeamMode) } : { type: t as VolumeType };
 }
-
 
 export async function explodeProject(file: File): Promise<{ settings: Config; plates: { index: number; name: string; settings: Config; locked?: boolean; objects: PlateObject[]; events: LayerEvent[] }[] }> {
   const s = getState();
@@ -150,7 +130,6 @@ export async function explodeProject(file: File): Promise<{ settings: Config; pl
     await Promise.all(objects.flatMap((o) => (o.volumes as Json[]).map(async (v) => {
       const r = await fetch(`/api/jobs/${id}/exploded/${encodeURIComponent(String(v.file))}`);
       if (!r.ok) throw await responseError(r);
-
       files[String(v.file)] = new File([await r.blob()], String(v.file));
     })));
     const meshes = new Map<string, THREE.BufferGeometry>();
@@ -176,10 +155,7 @@ export async function explodeProject(file: File): Promise<{ settings: Config; pl
   }
 }
 
-
-
 const KINDS: PaintKind[] = ['support', 'seam', 'fuzzy', 'color'];
-
 function nativePaint(target: { geometry: THREE.BufferGeometry; paint?: PlateObject['paint'] }, original: unknown) {
   const now = paintJson(target) ?? {};
   for (const k of KINDS) if ((original as Json | undefined)?.[k] && !now[k]) now[k] = {};
@@ -187,10 +163,6 @@ function nativePaint(target: { geometry: THREE.BufferGeometry; paint?: PlateObje
 }
 
 const sameFrame = (o: PlateObject, n: NativeObject) => o.rotX === n.base.rotX && o.rotY === n.base.rotY && o.scale.every((v, k) => v === n.base.scale[k]);
-
-
-
-
 
 function nativeEntry(o: PlateObject, settings: (c: Config) => Record<string, string>, profile: () => number[] | undefined, prefix: string): { entry: PlateJson['objects'][number]; files: { name: string; blob: () => Blob | Promise<Blob> }[] } | null {
   const n = o.native;
@@ -213,11 +185,9 @@ function nativeEntry(o: PlateObject, settings: (c: Config) => Record<string, str
     out.push(volume(k, {
       name: w.name, type: w.type, ...(w.type === 'seam' ? { seam_mode: w.seamMode ?? 'center' } : {}), settings: settings(w.settings), paint: w.type === 'part' ? nativePaint(w, v.paint) : undefined,
       extruder: w.extruder || undefined,
-
       ...(moved ? { transform: rows(inverse.clone().multiply(new THREE.Matrix4().fromArray(w.matrix)).multiply(frame).multiply(fromRows(v.transform as Rows))) } : {}),
     }));
   });
-
   (o.volumes ?? []).filter((v) => !(v.native !== undefined && pristine.has(v.geometry))).forEach((v, k) => {
     const name = `${prefix}.added${k + 1}.stl`;
     files.push({ name, blob: () => rawStl(v.geometry) });
@@ -231,11 +201,9 @@ function nativeEntry(o: PlateObject, settings: (c: Config) => Record<string, str
     if (nat && keep) {
       const { plate: _, ...json } = nat.json;
       if (i.x === nat.x && i.y === nat.y && (i.z ?? 0) === nat.z && i.rotZ === nat.rotZ) return { ...json, printable: i.printable !== false };
-
       const b = instanceBox(o, i);
       return { ...json, x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: b.min.z, rot: i.rotZ, printable: i.printable !== false };
     }
-
     return { transform: rows(instanceMatrix(o, i).multiply(frame)), printable: i.printable !== false, ...(nat ? { identify_id: nat.json.identify_id } : {}) };
   });
   const { volumes: _v, instances: _i, layer_height_profile: lhp, ranges: _r, settings: _s, extruder: _e, name: _n, ...rest } = n.entry;
@@ -264,36 +232,3 @@ function rawStl(g: THREE.BufferGeometry): Blob {
 }
 
 setNativePlate(nativeEntry);
-
-
-function towers(config: Config, plates: number[]): Record<number, [number, number]> {
-  const list = (v: unknown) => (Array.isArray(v) ? v : String(v ?? '').split(',')).map(Number);
-  const xs = list(config.wipe_tower_x), ys = list(config.wipe_tower_y);
-  return Object.fromEntries(plates.flatMap((p, k) => (Number.isFinite(xs[k]) && Number.isFinite(ys[k]) ? [[p, [xs[k], ys[k]]]] : [])));
-}
-
-
-
-
-
-export async function openExplodedProject(file: File, adopt: (config: Config, slots: number, plateKeys: Set<string>) => void, current = () => true) {
-  const { readProject } = await import('./threemf');
-  const { items, materials } = await readProject(file);
-  const { settings, plates } = await explodeProject(file);
-  if (!current()) { for (const p of plates) for (const o of p.objects) o.geometry.dispose(); return; }
-  if (!plates.some((p) => p.objects.length)) throw new Error('the project has no printable objects');
-  const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
-  adopt(materials.config, slots, new Set(materials.plates.flatMap((p) => Object.keys(p.settings))));
-  const first = plates[0];
-  setState((st) => ({
-    project: null, projectName: file.name, projectMaterials: null, objects: first.objects, events: first.events, plateIndex: first.index,
-
-    projectPlates: plates.map((p) => ({ index: p.index, name: p.name, origin: [0, 0] as [number, number], settings: p.settings, objects: p.objects, events: p.events,
-      ...(p.locked || materials.plates.find((m) => m.index === p.index)?.locked ? { locked: true } : {}) })),
-    filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
-    slotColours: materials.colours.map((c) => c || undefined), flush: { matrix: materials.matrix, multiplier: materials.multiplier },
-    selected: null, processScope: 'global',
-
-    wipeTowerPos: towers(settings.wipe_tower_x !== undefined ? settings : materials.config, plates.map((p) => p.index)),
-  }));
-}

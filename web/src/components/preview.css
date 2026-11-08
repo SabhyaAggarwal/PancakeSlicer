@@ -1,11 +1,12 @@
-:where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-inset: var(--s-5); --pv-top: var(--pv-inset); --pv-legend-w: 288px; --pv-cube: 88px; --pv-slider: 168px;
+:where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-inset: var(--s-5); --pv-top: var(--pv-inset); --pv-legend-w: 288px; --pv-cube: 112px; --pv-slider: 168px;
   --pv-bar-h: 44px; --pv-floor: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-4)); }
 @media (pointer: coarse) { :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-slider: 184px; --pv-bar-h: 48px; --pv-cube: 76px; } }
 @media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-inset: var(--s-3); --pv-top: 60px; --pv-cube: var(--pv-inset); } }
 :where(.orca-parity) .preview { position: absolute; inset: 0; background: var(--canvas); }
 :where(.orca-parity) .preview-canvas { position: absolute; inset: 0; }
 :where(.orca-parity) .preview > .legend, :where(.orca-parity) .cmp-label { z-index: 2; }
-:where(.orca-parity) .preview-status, :where(.orca-parity) .preview-tip, :where(.orca-parity) .preview-loading, :where(.orca-parity) .legend, :where(.orca-parity) .order-bar,
+
+:where(.orca-parity) .preview-status, :where(.orca-parity) .preview-tip, :where(.orca-parity) .legend, :where(.orca-parity) .order-bar,
 :where(.orca-parity) .tool-position, :where(.orca-parity) .gcode-window, :where(.orca-parity) .cmp-label, :where(.orca-parity) .events-panel {
   background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-3); color: var(--ink); box-shadow: var(--shadow-pop);
 }
@@ -14,15 +15,12 @@
   padding: var(--s-4) var(--s-4) var(--s-4) var(--s-5); font: var(--t-body); color: var(--ink-2); max-width: calc(100% - 40px); }
 :where(.orca-parity) .preview-tip { position: absolute; pointer-events: none; max-width: 420px; padding: var(--s-3) var(--s-4); font: var(--t-small); white-space: pre-wrap; }
 :where(.orca-parity) .preview-tip b { display: block; margin-bottom: var(--s-1); font-weight: 600; }
-:where(.orca-parity) .preview-loading { position: absolute; left: var(--pv-cube); right: var(--pv-inset); bottom: var(--pv-floor); width: fit-content; max-width: calc(100% - var(--pv-cube) - var(--pv-inset));
-  margin-inline: auto; display: flex; align-items: center; gap: var(--s-4); padding: var(--s-2) var(--s-4); font: var(--t-small); white-space: nowrap; }
-:where(.orca-parity) .preview-loading-bar { width: 140px; height: 3px; border-radius: 2px; background: var(--sunken); overflow: hidden; }
-:where(.orca-parity) .preview-loading-bar > span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-2) var(--ease); }
-:where(.orca-parity) .preview-loading-n { font: var(--t-small); color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 11ch; }
+
 :where(.orca-parity) .legend { position: absolute; left: var(--pv-inset); top: var(--pv-top); width: min(var(--pv-legend-w), calc(100% - var(--pv-slider) - 2 * var(--pv-inset)));
   max-height: calc(100% - var(--pv-top) - var(--pv-cube)); display: flex; flex-direction: column; font: var(--t-small); }
 :where(.orca-parity) .lg-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); }
 :where(.orca-parity) .lg-head .lg-view { flex: none; height: var(--h-compact); min-height: 0; max-width: 60%; }
+:where(.orca-parity) .lg-head .lg-view:not(:hover, :focus-visible, [data-state=open]) { border-color: transparent; background: transparent; }
 
 :where(.orca-parity) .lg-scroll { overflow: auto; min-height: 0; padding: 0 var(--s-4) var(--s-3); user-select: text; scrollbar-width: thin; overflow-anchor: auto; }
 :where(.orca-parity) .lg-body { padding-top: var(--s-1); }
@@ -35,10 +33,11 @@
 :where(.orca-parity) .lg-role-row[aria-pressed='false'] .lg-swatch { opacity: 0.35; }
 :where(.orca-parity) .lg-role-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .lg-role-time { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-:where(.orca-parity) .lg-swatch { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+:where(.orca-parity) .lg-swatch { display: inline-block; flex: none; width: 14px; height: 6px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--swatch-ring); }
 :where(.orca-parity) .lg-row .lg-swatch, :where(.orca-parity) .lg-table .lg-swatch, :where(.orca-parity) .lg-opt .lg-swatch { margin-right: var(--s-3); }
 :where(.orca-parity) .lg-swatch.blank { box-shadow: none; }
 :where(.orca-parity) .lg-row { display: flex; align-items: center; min-height: 20px; }
+
 :where(.orca-parity) .lg-section { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
 :where(.orca-parity) .lg-section-title { margin-bottom: var(--s-2); font: var(--t-small); font-weight: 600; color: var(--ink-2); }
 :where(.orca-parity) .lg-sec { margin: var(--s-3) 0 var(--s-2); font: var(--t-small); font-weight: 600; color: var(--ink-2); }
@@ -73,6 +72,7 @@
 :where(.orca-parity) .lg-mode:hover { text-decoration: underline; }
 :where(.orca-parity) .lg-perf { margin-top: var(--s-3); color: var(--ink-2); font: var(--t-small); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .lg-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: normal; }
+
 :where(.orca-parity) .np-summary-line { min-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .np-toggles { display: grid; margin-top: var(--s-2); }
 :where(.orca-parity) .lg-scroll > .np-legend:first-child { display: contents; }
@@ -86,8 +86,9 @@
 :where(.orca-parity) .np-table td:first-child { color: var(--ink-2); }
 :where(.orca-parity) .np-good { color: var(--accent-text); font-weight: 600; }
 :where(.orca-parity) .np-warn img { margin-right: var(--s-3); }
+
 :where(.orca-parity) .layer-slider { position: absolute; right: var(--pv-inset); top: var(--pv-top); bottom: var(--pv-floor); width: 36px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
-  padding: var(--s-2) 0 0; background: rgb(54 54 54 / 0.82); border: 1px solid var(--line); border-radius: var(--r-3); user-select: none; font: var(--t-small); font-variant-numeric: tabular-nums; }
+  padding: var(--s-2) 0 0; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-3); user-select: none; font: var(--t-small); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .layer-slider, :where(.orca-parity) .layer-slider .ls-track { touch-action: none; }
 :where(.orca-parity) .ls-plus { flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--r-2); background: none; color: var(--ink-3); cursor: pointer; }
 :where(.orca-parity) .ls-plus:hover { background: var(--overlay); color: var(--ink); }
@@ -101,19 +102,20 @@
 :where(.orca-parity) .ls-thumb::before { content: ''; position: absolute; inset: -7px; border-radius: 50%; }
 :where(.orca-parity) .ls-thumb:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 :where(.orca-parity) .ls-tip { position: absolute; right: calc(100% + 14px); top: 50%; transform: translateY(-50%); width: max-content; display: flex; align-items: baseline; gap: var(--s-1);
-  padding: 0 var(--s-3); height: 26px; line-height: 24px; box-sizing: border-box; background: rgb(54 54 54 / 0.82); border: 1px solid var(--line); border-radius: var(--r-3); white-space: nowrap; color: var(--ink); font: var(--t-small); user-select: text; }
+  padding: 0 var(--s-3); height: 26px; line-height: 24px; box-sizing: border-box; background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-3); white-space: nowrap; color: var(--ink); font: var(--t-small); user-select: text; }
 :where(.orca-parity) .ls-tip b { font-weight: 600; }
 :where(.orca-parity) .ls-tip span { color: var(--ink-3); }
 :where(.orca-parity) .ls-tick { position: absolute; left: -4px; width: 12px; height: 2px; margin-bottom: -1px; border-radius: 1px; cursor: pointer; }
+
 :where(.orca-parity) .order-bar { position: absolute; left: var(--pv-cube); right: var(--pv-inset); bottom: var(--pv-inset); height: 40px; box-sizing: border-box; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s-3);
-  padding: 0 var(--s-3); overflow: hidden; container-type: inline-size; background: rgb(54 54 54 / 0.82); box-shadow: none; border-color: var(--line); font: var(--t-small); font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
+  padding: 0 var(--s-3); overflow: hidden; container-type: inline-size; background: var(--raised); box-shadow: none; font: var(--t-small); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
 :where(.orca-parity) .ob-transport { flex: none; display: flex; align-items: center; gap: var(--s-2); }
 :where(.orca-parity) .ob-btn { flex: none; display: grid; place-items: center; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--r-2);
-  background: none; color: var(--ink-3); cursor: pointer; }
+  background: none; color: var(--ink-2); cursor: pointer; }
 :where(.orca-parity) .ob-btn:hover { background: var(--overlay); color: var(--ink); }
 :where(.orca-parity) .ob-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .ob-play { color: var(--ink); }
-:where(.orca-parity) .ob-time { flex: none; min-width: 4ch; }
+:where(.orca-parity) .ob-time { flex: none; min-width: 4ch; color: var(--ink); }
 :where(.orca-parity) .order-bar .orca-range { flex: 1 1 0; min-width: 0; width: auto; height: 28px; }
 :where(.orca-parity) .order-bar .orca-range-track { height: 3px; background: var(--line-strong); }
 :where(.orca-parity) .order-bar .orca-range-fill { background: var(--accent); }
@@ -129,6 +131,7 @@
 :where(.orca-parity) .ob-seg .ob-btn + .ob-btn { border-left: 1px solid var(--line-strong); }
 :where(.orca-parity) .ob-seg .ob-btn[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
 @container (max-width: 600px) { :where(.orca-parity) .order-bar .ob-layer { display: none; } }
+
 :where(.orca-parity) .tool-position { position: absolute; left: var(--pv-cube); bottom: var(--pv-floor); max-width: calc(100% - var(--pv-cube) - var(--pv-slider)); padding: var(--s-2) var(--s-4) var(--s-2) var(--s-2);
   font: var(--t-small); font-variant-numeric: tabular-nums; user-select: text; }
 :where(.orca-parity) .tool-position-row { display: flex; align-items: center; gap: var(--s-3); }
@@ -140,6 +143,7 @@
 :where(.orca-parity) .tool-properties { border-collapse: collapse; margin: var(--s-2) 0 var(--s-3) var(--s-2); }
 :where(.orca-parity) .tool-properties th { text-align: left; font: var(--t-small); color: var(--ink-2); padding: 1px var(--s-4) 1px 0; }
 :where(.orca-parity) .tool-properties td { padding: 1px 0; white-space: normal; }
+
 :where(.orca-parity) .gcode-window { position: absolute; right: var(--pv-slider); top: var(--pv-top); z-index: 4; width: min(400px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); max-height: calc(60% - var(--pv-top) - var(--s-3));
   display: flex; flex-direction: column; overflow: hidden; user-select: text; }
 :where(.orca-parity) .gcode-head { display: flex; align-items: center; gap: var(--s-3); height: 36px; padding: 0 var(--s-2) 0 var(--s-4); border-bottom: 1px solid var(--line); }
@@ -149,10 +153,11 @@
 :where(.orca-parity) .gcode-lines { padding: var(--s-2) 0; font: 400 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
 :where(.orca-parity) .gcode-line { display: flex; padding: 0 var(--s-4) 0 var(--s-2); overflow: hidden; }
 :where(.orca-parity) .gcode-line .skel-line { width: 70%; height: 8px; margin: 5px 0 5px 7ch; }
-:where(.orca-parity) .gcode-line.current { background: var(--accent-tint); box-shadow: inset 2px 0 var(--accent); }
+:where(.orca-parity) .gcode-line.current { background: var(--selection-fill); box-shadow: inset 2px 0 var(--accent); }
 :where(.orca-parity) .gcode-no { flex: none; min-width: 7ch; margin-right: var(--s-3); color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .gcode-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :where(.orca-parity) .gcode-status { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding: var(--s-3) var(--s-4); color: var(--ink-2); font: var(--t-small); }
+
 :where(.orca-parity) .event-menu { position: fixed; left: auto; z-index: 50; min-width: 220px; }
 :where(.orca-parity) .events-panel { position: absolute; right: var(--pv-slider); bottom: var(--pv-floor); padding: var(--s-3) var(--s-4); font: var(--t-small);
   min-width: 220px; max-width: 320px; max-height: 120px; overflow: auto; }
@@ -161,11 +166,13 @@
 :where(.orca-parity) .events-dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 :where(.orca-parity) .events-z { margin-left: 0; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .events-label { flex: 1; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+
 :where(.orca-parity) .preview.compare > .preview-canvas { left: 50%; }
 :where(.orca-parity) .preview.compare > .preview-canvas.cmp-std { left: 0; right: 50%; border-right: 1px solid var(--line-strong); }
 :where(.orca-parity) .cmp-label { position: absolute; top: var(--pv-top); padding: var(--s-1) var(--s-3); color: var(--ink); }
 :where(.orca-parity) .cmp-left { right: calc(50% + var(--s-4)); }
 :where(.orca-parity) .cmp-right { left: calc(50% + var(--s-4)); border-color: var(--ink); }
+
 @media (max-width: 599px) {
   :where(.orca-parity) .gcode-window, :where(.orca-parity) .order-bar .ob-gcode { display: none; }
   :where(.orca-parity) .preview.compare > .preview-canvas { left: 0; top: 50%; }
@@ -174,6 +181,7 @@
   :where(.orca-parity) .cmp-left { top: auto; bottom: calc(50% + var(--s-3)); left: var(--s-4); right: auto; }
   :where(.orca-parity) .cmp-right { top: calc(50% + var(--s-3)); left: var(--s-4); }
 }
+
 @media (pointer: coarse) {
   :where(.orca-parity) .lg-role-row { height: 32px; }
   :where(.orca-parity) .lg-opt, :where(.orca-parity) .lg-switch { min-height: 34px; }

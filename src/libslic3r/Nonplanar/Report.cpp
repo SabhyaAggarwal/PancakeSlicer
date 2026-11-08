@@ -44,7 +44,6 @@ const char *pattern_name(NonplanarTopPattern pattern)
 
 bool is_underside(const std::string &reason) { return reason == "bottom" || boost::starts_with(reason, "overhang"); }
 
-
 float surface_z(const HeightField &surface, const Vec2d &p)
 {
     if (const float z = surface.sample(p); !std::isnan(z))
@@ -75,43 +74,39 @@ struct ReasonInfo
     const char *cls;
     const char *text;
 };
-
-
-
-
 const std::map<std::string, ReasonInfo> &reasons()
 {
     static const std::map<std::string, ReasonInfo> map{
-        { "flat", { "flat", L("flat: planar layers print it exactly") } },
-        { "planar_patch", { "flat", L("tilted plane: planar layers, Z contoured") } },
-        { "flat_ground", { "flat", L("flat ground: planar layers, Z contoured, print it exactly") } },
-        { "flat_sliver", { "flat", L("a sliver beside flat ground, printed with it") } },
-        { "steep", { "wall", L("steeper than a curved bead follows (atan(h/w)): planar layers, Z contoured") } },
-        { "steep_strip", { "wall", L("a steep strip between curved tops: planar layers, Z contoured") } },
-        { "narrow", { "wall", L("narrower than half a road: the contoured planar top measured better") } },
+        { "flat", { "flat", L("flat surface: flat layers print it cleanly") } },
+        { "planar_patch", { "flat", L("tilted flat plane: printed with Z-contoured flat layers") } },
+        { "flat_ground", { "flat", L("level surface: flat layers hit its exact height") } },
+        { "flat_sliver", { "flat", L("narrow strip beside a flat area: printed with it") } },
+        { "steep", { "wall", L("too steep for a curved line: printed flat with Z contouring") } },
+        { "steep_strip", { "wall", L("steep step between curved tops: printed flat with Z contouring") } },
+        { "narrow", { "wall", L("narrower than half a line: Z-contoured flat layers look cleaner") } },
         { "outline", { "outline", L("outline between surface samples") } },
-        { "near_bed", { "fallback", L("too close to the first layer for a shell") } },
-        { "contact", { "fallback", L("the head grazed printed roads there: planar layers, not Z contoured") } },
-        { "no_transition_layer", { "fallback", L("no planar layer under the first shell within the bead range") } },
-        { "no_pieces", { "fallback", L("the bands laid no road there") } },
-        { "shell_height", { "unreachable", L("shell layer too thick for the nozzle") } },
-        { "edge", { "fallback", L("edge of a curved top: near the bed, too steep or narrower than a road") } },
+        { "near_bed", { "fallback", L("too close to the build plate for a curved shell") } },
+        { "contact", { "fallback", L("print head would touch nearby plastic: kept flat") } },
+        { "no_transition_layer", { "fallback", L("no flat base layer close enough underneath to anchor the first curved shell") } },
+        { "no_pieces", { "fallback", L("too narrow for a curved pass to fit") } },
+        { "shell_height", { "unreachable", L("curved shell would be too thick for this nozzle") } },
+        { "edge", { "fallback", L("edge of a curved top: too close to the bed, too steep, or thinner than one line") } },
         { "head", { "fallback", L("the print head cannot reach it") } },
-        { "bottom", { "fallback", L("underside printed by planar bottom layers") } },
-        { "overhang_self_supporting", { "wall", L("self-supporting underside: planar layers print it") } },
-        { "overhang_unfit", { "wall", L("an overhang sliver under a road") } },
-        { "overhang_roof", { "wall", L("flat roof: a bridge prints it") } },
-        { "overhang_no_root", { "unreachable", L("overhang with nothing below to grow from") } },
-        { "overhang_rootless", { "unreachable", L("overhang with nothing below to grow from") } },
-        { "overhang_resting", { "unreachable", L("underside on or just above the bed") } },
-        { "overhang_unsampled", { "unreachable", L("underside over solid material") } },
-        { "overhang_supported", { "unreachable", L("overhang the curved layers cannot make printable: support prints it") } },
-        { "overhang_small", { "fallback", L("overhang smaller than the minimum patch") } },
-        { "overhang_no_beads", { "fallback", L("overhang no bead fits") } },
-        { "overhang_no_pieces", { "fallback", L("the overhang laid no road there") } },
-        { "overhang_narrow", { "wall", L("overhang narrower than a road") } },
-        { "overhang_outline", { "outline", L("overhang outline between surface samples") } },
-        { "overhang_rim", { "outline", L("overhang rim without a slope") } },
+        { "bottom", { "fallback", L("covered by standard flat bottom layers") } },
+        { "overhang_self_supporting", { "wall", L("self-supporting angle: flat layers print it") } },
+        { "overhang_unfit", { "wall", L("tiny overhang sliver under a toolpath") } },
+        { "overhang_roof", { "wall", L("flat roof: printed as a bridge") } },
+        { "overhang_no_root", { "unreachable", L("floating overhang with nothing underneath to build out from") } },
+        { "overhang_rootless", { "unreachable", L("floating overhang with nothing underneath to build out from") } },
+        { "overhang_resting", { "unreachable", L("on or just above the bed") } },
+        { "overhang_unsampled", { "unreachable", L("resting on solid plastic below") } },
+        { "overhang_supported", { "unreachable", L("too steep for curved layers: printed on supports") } },
+        { "overhang_small", { "fallback", L("overhang is smaller than the minimum patch size") } },
+        { "overhang_no_beads", { "fallback", L("too tight to fit a line on this overhang") } },
+        { "overhang_no_pieces", { "fallback", L("no overhang path needed here") } },
+        { "overhang_narrow", { "wall", L("overhang is narrower than a single line") } },
+        { "overhang_outline", { "outline", L("overhang edge falls between surface samples") } },
+        { "overhang_rim", { "outline", L("flat overhang rim with no slope to follow") } },
         { "untagged", { "fallback", L("no reason recorded") } },
     };
     return map;
@@ -139,7 +134,6 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
     shape = opening_ex(shape, float(scale_(0.05)));
     if (shape.empty() || surface.empty())
         return;
-
     const BoundingBox bb   = get_extents(shape);
     const coord_t     step = scaled<coord_t>(1.5);
     Polylines         lines;
@@ -157,7 +151,6 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
                 diag.fallback_hatch.emplace_back(std::move(draped));
             draped.clear();
         };
-
         auto add = [&](const Vec2d &p) {
             const float z = surface_z(surface, p);
             if (std::isnan(z) || (!draped.empty() && std::abs(z - draped.back().z()) > 2. * sample))
@@ -181,9 +174,8 @@ void record_fallback_shape(PatchDiagnostics &diag, ExPolygons shape, const Heigh
 NonplanarReport make_report(const Print &print, const GCodeProcessorResult &result, bool planar_too)
 {
     NonplanarReport report;
-
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
-            return object->config().nonplanar_mode.value != NonplanarMode::CurvedTops && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
+            return !curved_tops_mode(object->config().nonplanar_mode.value) && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
                    (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
         }))
         return report;
@@ -212,11 +204,14 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
                 keys += std::string(keys.empty() ? "" : " ") + key + "=" + config.opt_serialize(key);
             out.regions.emplace_back(std::move(keys));
         }
-        if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops) {
+        if (curved_tops_mode(object->config().nonplanar_mode.value)) {
             out.curved_tops = curved_tops_stats(*object);
             out.curved_budget = ClearanceRepair::curved_budget_report(print, *object);
-            if (out.curved_tops.kept == 0 && !out.curved_budget.reason.empty())
+            if (out.curved_tops.kept == 0 && !out.curved_budget.reason.empty()) {
                 out.curved_tops.planar_fallback_reason = out.curved_budget.reason;
+                out.curved_tops.planar_limit           = "budget";
+                out.curved_tops.reachable_slope_deg    = 0.;
+            }
             out.curved_cone_tolerance = curved_tops_cone_tolerance(print);
             out.top_patches = out.curved_tops.kept;
             out.curved_top = out.curved_tops.footprint_mm2;
@@ -351,7 +346,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                         { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top },
                         { "flat_top_mm2", o.flat_top }, { "curved_share", o.curved_share() }, { "support_free_mm2", o.support_free },
                         { "orientation", note != orientation.end() ? note->second : o.orientation }, { "warnings", o.warnings } };
-        if (o.mode == "curved_tops") {
+        if (o.mode == "curved_tops" || o.mode == "nonplanar_top") {
             jo["effective_cone_tolerance_mm"] = o.curved_cone_tolerance;
             jo["curved_surfaces_kept"] = o.curved_tops.kept;
             jo["curved_surfaces_candidates"] = o.curved_tops.candidates;
@@ -361,6 +356,9 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
             jo["curved_top_area_denominator_mm2"] = o.curved_tops.upward_area_mm2;
             jo["curved_top_area_denominator"] = "sum of XY-projected areas of all upward-facing mesh facets";
             if (!o.curved_tops.planar_fallback_reason.empty()) jo["planar_fallback_reason"] = o.curved_tops.planar_fallback_reason;
+            jo["curved_max_angle_deg"] = o.curved_tops.max_angle_deg;
+            if (!o.curved_tops.planar_limit.empty()) jo["planar_limit"] = o.curved_tops.planar_limit;
+            if (o.curved_tops.reachable_slope_deg > 0.) jo["reachable_slope_deg"] = o.curved_tops.reachable_slope_deg;
             const auto &budget = o.curved_budget;
             if (budget.measured || !budget.patches.empty() || !budget.reason.empty()) {
                 json patches = json::array();
@@ -419,8 +417,6 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
         objects_json.push_back(std::move(jo));
     }
     j["objects"] = std::move(objects_json);
-
-
     return j.dump(1, ' ', false, json::error_handler_t::replace);
 }
 

@@ -22,7 +22,6 @@
 #include <libslic3r/SLA/SupportTreeMesher.hpp>
 #include "libslic3r/SLA/JobController.hpp"
 
-
 namespace Slic3r {
 namespace sla {
 
@@ -50,15 +49,15 @@ Pad::Pad(const indexed_triangle_set &support_mesh,
     , zlevel(ground_level + pcfg.full_height() - pcfg.required_elevation())
 {
     thr();
-
+    
     ExPolygons sup_contours;
-
+    
     float zstart = float(zlevel);
     float zend   = zstart + float(pcfg.full_height() + EPSILON);
-
+    
     pad_blueprint(support_mesh, sup_contours, grid(zstart, zend, 0.1f), thr);
     create_pad(sup_contours, model_contours, tmesh, pcfg);
-
+    
     Vec3f offs{.0f, .0f, float(zlevel)};
     for (auto &p : tmesh.vertices) p += offs;
 
@@ -143,14 +142,14 @@ void SupportTreeBuilder::add_pillar_base(long pid, double baseheight, double rad
 const indexed_triangle_set &SupportTreeBuilder::merged_mesh(size_t steps) const
 {
     if (m_meshcache_valid) return m_meshcache;
-
+    
     indexed_triangle_set merged;
-
+    
     for (auto &head : m_heads) {
         if (ctl().stopcondition()) break;
         if (head.is_valid()) its_merge(merged, get_mesh(head, steps));
     }
-
+    
     for (auto &pill : m_pillars) {
         if (ctl().stopcondition()) break;
         its_merge(merged, get_mesh(pill, steps));
@@ -160,7 +159,7 @@ const indexed_triangle_set &SupportTreeBuilder::merged_mesh(size_t steps) const
         if (ctl().stopcondition()) break;
         its_merge(merged, get_mesh(pedest, steps));
     }
-
+    
     for (auto &j : m_junctions) {
         if (ctl().stopcondition()) break;
         its_merge(merged, get_mesh(j, steps));
@@ -170,7 +169,7 @@ const indexed_triangle_set &SupportTreeBuilder::merged_mesh(size_t steps) const
         if (ctl().stopcondition()) break;
         its_merge(merged, get_mesh(bs, steps));
     }
-
+    
     for (auto &bs : m_crossbridges) {
         if (ctl().stopcondition()) break;
         its_merge(merged, get_mesh(bs, steps));
@@ -187,17 +186,14 @@ const indexed_triangle_set &SupportTreeBuilder::merged_mesh(size_t steps) const
     }
 
     if (ctl().stopcondition()) {
-
         m_meshcache = {};
         return m_meshcache;
     }
-
+    
     m_meshcache = merged;
-
-
-
+    
     its_merge_vertices(m_meshcache);
-
+    
     BoundingBoxf3 bb = bounding_box(m_meshcache);
     m_model_height   = bb.max(Z) - bb.min(Z);
 
@@ -209,7 +205,7 @@ double SupportTreeBuilder::full_height() const
 {
     if (merged_mesh().indices.empty() && !pad().empty())
         return pad().cfg.full_height();
-
+    
     double h = mesh_height();
     if (!pad().empty()) h += pad().cfg.required_elevation();
     return h;
@@ -217,16 +213,14 @@ double SupportTreeBuilder::full_height() const
 
 const indexed_triangle_set &SupportTreeBuilder::merge_and_cleanup()
 {
-
-    auto &ret = merged_mesh();
-
-
+    auto &ret = merged_mesh(); 
+    
     m_heads = {};
     m_head_indices = {};
     m_pillars = {};
     m_junctions = {};
     m_bridges = {};
-
+    
     return ret;
 }
 
@@ -236,7 +230,7 @@ const indexed_triangle_set &SupportTreeBuilder::retrieve_mesh(MeshType meshtype)
     case MeshType::Support: return merged_mesh();
     case MeshType::Pad:     return pad().tmesh;
     }
-
+    
     return m_meshcache;
 }
 

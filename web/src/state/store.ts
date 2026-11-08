@@ -2,7 +2,6 @@ import { observePreference, preferenceJson, preferenceText } from '../saved-pref
 import { timeInteraction } from '../interaction-metrics';
 import { app } from '../flow/app';
 import { tools } from '../flow/tools';
-
 import { useSyncExternalStore } from 'react';
 import { plateSignature } from '../slice-input';
 import type * as THREE from 'three';
@@ -31,45 +30,29 @@ export interface Instance {
   id: number;
   x: number;
   y: number;
-
   rotZ: number;
-
   native?: { json: Record<string, unknown>; x: number; y: number; z: number; rotZ: number };
-
   z?: number;
   printable?: boolean;
 }
 
-
 export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer' | 'seam';
-
 export type SeamMode = 'center' | 'left' | 'right' | 'enforced' | 'blocked' | 'neutral';
 
-
 export interface Volume {
-
   seamMode?: SeamMode;
   id: number;
   name: string;
   type: VolumeType;
-
   geometry: THREE.BufferGeometry;
-
   matrix: number[];
-
   extruder: number;
-
   native?: number;
-
   settings: Config;
-
   paint?: Partial<Record<PaintKind, Painting>>;
-
   text?: TextSpec;
-
   svg?: SvgSpec;
 }
-
 
 export interface SvgSpec {
   svg: string;
@@ -79,10 +62,8 @@ export interface SvgSpec {
   surface?: TextSpec['surface'];
 }
 
-
 export interface TextSpec {
   text: string;
-
   font: string;
   size: number;
   depth: number;
@@ -91,19 +72,13 @@ export interface TextSpec {
   lineSpacing: number;
   charGap: number;
   align: 'left' | 'center' | 'right';
-
   surface?: { at: [number, number, number]; normal: [number, number, number] };
 }
 
-
 export interface NativeObject {
-
   entry: Record<string, unknown>;
-
   frame: number[];
-
   base: { rotX: number; rotY: number; scale: [number, number, number] };
-
   main: number;
   files: Record<string, Blob>;
   layerProfile?: number[];
@@ -111,74 +86,47 @@ export interface NativeObject {
 
 export interface LayerRange { id: number; z: [number, number]; layer_height: number; settings: Config }
 
-
-
 export interface Mix { components: number[]; ratios: number[]; gradient: 0 | 1 | null; perPart: boolean }
 
 export interface PlateObject {
   id: number;
   name: string;
-
   geometry: THREE.BufferGeometry;
-
   rotX: number;
   rotY: number;
   scale: [number, number, number];
   extruder: number;
   instances: Instance[];
-
   source: File;
-
+  sourceUrl?: string;
   simplification?: { trianglesBefore: number; trianglesAfter: number; maxErrorMm: number; kept: 'simplified' | 'original' };
-
   settings: Config;
-
   volumes?: Volume[];
-
   native?: NativeObject;
-
   ranges?: LayerRange[];
-
   paint?: Partial<Record<PaintKind, Painting>>;
-
   brimEars?: { p: [number, number, number]; r: number }[];
-
   text?: TextSpec;
-
   svg?: SvgSpec;
-
   units?: 'inch' | 'meter';
-
   layerProfile?: number[];
-
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
-
-
     saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] };
-
-
-
     paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy' | 'color', Record<string, string>>>; partTris?: number[] };
 }
-
 
 export interface LayerEvent {
   z: number;
   type: 'pause' | 'custom' | 'template' | 'colour' | 'change';
-
   text?: string;
 }
-
-
 
 export interface HeadInfo {
   id: string;
   name: string;
   calibrated: boolean;
-
   user?: boolean;
 }
-
 
 export type PresetUx =
   | { kind: 'compare'; type: PresetType; left?: string; right?: string }
@@ -186,8 +134,7 @@ export type PresetUx =
   | { kind: 'export' }
   | { kind: 'import'; back?: PresetUx };
 
-export type MainTab = 'projects' | 'prepare' | 'preview';
-
+export type MainTab = 'projects' | 'prepare' | 'preview' | 'device';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
 export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | 'svg' | PaintKind;
 
@@ -196,69 +143,48 @@ export interface JobView {
   state: 'idle' | 'submitting' | 'running' | 'done' | 'failed' | 'canceled';
   pct: number;
   stage: string;
-
   queuePosition?: number;
   error?: string;
   status?: JobStatus;
-
   stale?: boolean;
-
   plateSignature?: string;
-
   warnings?: string[];
-
   calib?: string;
-
   calibLog?: string[];
-
   exported?: string;
 }
 
-
 export interface CutPlane {
   z: number;
-
   rotX: number;
   rotY: number;
   keepUpper: boolean;
   keepLower: boolean;
   placeLower: boolean;
-
   flipUpper?: boolean;
-
   toParts?: boolean;
-
   mode?: 'planar' | 'dovetail';
-
-
   connectors?: CutConnector[];
-
   connector?: CutConnectorAttribs;
-
   selectedConnectors?: number[];
-
   editing?: boolean;
   groove?: CutGroove;
 }
 
 export interface CutConnector { pos: [number, number]; a: CutConnectorAttribs }
 
-
 export interface CutConnectorAttribs {
   type: 'plug' | 'dowel' | 'snap';
   style: 'prism' | 'frustum';
   shape: 'triangle' | 'square' | 'hexagon' | 'circle';
   depth: number; depthTolerance: number; size: number; sizeTolerance: number; angle: number;
-
   bulge: number; space: number;
 }
-
 
 export interface CutGroove { depth: number; depthTolerance: number; width: number; widthTolerance: number; flapsAngle: number; angle: number; count: number; gap: number }
 
 export interface State {
   api: Api | null;
-
   features: { native_support?: boolean; emboss_svg?: boolean; emboss_svg_surface?: boolean; plate_locks?: boolean; mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
     ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
@@ -277,118 +203,71 @@ export interface State {
   printer: string;
   process: string;
   filamentSlots: string[];
-
   dirty: Record<'machine' | 'process', Config>;
-
   filamentEdits: Record<string, Config>;
-
   projectPresets: { machine: Config; process: Config; filaments: Config[] } | null;
   projectNotice: string | null;
   bedType: string;
   uiMode: OptionMode;
-
   developerMode: boolean;
-
   mixedTemperatures: boolean;
   tab: MainTab;
-
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-
-
-
   selected: Selected | null;
   gizmo: Gizmo;
-
   uniformScale: boolean;
-
   contextMenu: { x: number; y: number; object?: number; instance?: number; volume?: number } | null;
-
   renaming: number | null;
-
   meshErrors: Record<number, number>;
-
   clipboard: PlateObject[];
-
   processScope: 'global' | 'objects';
-
   slotColours: (string | undefined)[];
-
   mixes: Record<number, Mix>;
-
   processVariant: { layerHeight: number } | null;
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
-
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-
   appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' | 'mixed' | null;
-
   filamentsToUse: string[] | null;
   calibDialog: CalibMenu | null;
-
   printerConnections: PrinterConnections;
   events: LayerEvent[];
-
   projectPlates: (ProjectPlate & { objects: PlateObject[]; events?: LayerEvent[] })[];
   plateIndex: number;
-
   project: File | null;
   projectName: string | null;
   job: JobView;
   noticeLog: NoticeEntry[];
   toast: string | null;
-
   toastSeq: number;
-
   toastAction: { label: string; run: () => void; msg?: string } | null;
-
   toastKind: NoticeKind | null;
-
   toastMs: number | null;
-
   recommendedStyle: Record<number, 'standard'>;
-
   heads: HeadInfo[] | null;
   presetUx: PresetUx | null;
-
   settingsFocus: { type: PresetType; page: string; key: string; nonce: number } | null;
-
   sessionDialog: 'recent' | null;
-
   orientPrompts: Record<number, OrientPrompt>;
-
   orientDismissed: number[];
-
   wipeTowerPos: Record<number, [number, number]>;
-
   wipeTower: WipeTowerEstimate | null;
-
   orientConfirm: OrientConfirm | null;
-
-
   settingsClipboard: { kind: 'object' | 'volume'; config: Config } | null;
 }
 
-
 export interface OrientPrompt {
-
   rotation: number[];
-
   pose: string;
-
   supportArea: [number, number];
 }
-
-
 
 export interface WipeTowerEstimate { x: number; y: number; width: number; depth: number; height: number; brim_width: number }
 export interface OrientSlice { time_s: number | null; support_g: number | null; floating_mm: number | null }
 
-
 export interface OrientConfirm {
   id: number;
-
   supportOn: boolean;
   supportArea: [number, number];
   original?: OrientSlice;
@@ -449,7 +328,7 @@ let state: State = {
   flushDialog: false,
   appDialog: null,
   calibDialog: null,
-  printerConnections: { enabled: false, live: false, connections: [], status: {}, transfers: [] },
+  printerConnections: { enabled: null, live: false, connections: [], status: {}, transfers: [] },
   events: [],
   projectPlates: [],
   plateIndex: 1,
@@ -474,8 +353,6 @@ export const getState = () => state;
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   const finishTiming = timeInteraction('store');
   let next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
-
-
   if(next.profileLibraryLoad.state==='ready' && next.profileSnapshots===state.profileSnapshots && next.projectPresets===state.projectPresets && next.printerLibrary===state.printerLibrary && (next.printer!==state.printer || next.process!==state.process || next.filamentSlots!==state.filamentSlots || next.slotColours!==state.slotColours || next.filamentEdits!==state.filamentEdits || next.mixes!==state.mixes))next.printerLibrary=capturePrinterMaterials(next);
   const selected = next.selected;
   if (selected && !next.objects.some((o) => o.id === selected.object && o.instances.some((i) => i.id === selected.instance))) {
@@ -498,22 +375,16 @@ const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);
 };
-
 export const subscribeStore = subscribe;
 export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(subscribe, () => sel(state));
 }
 
-
 export const effectiveMode = (s: State): OptionMode => s.developerMode ? 'developer' : s.uiMode;
 
 let nextId = 1;
 export const newId = () => nextId++;
-
 export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
-
-
-
 
 export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table', 'Fairino FR3 cell'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
@@ -521,7 +392,6 @@ export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 export function listFor(s: State, type: PresetType): SystemPreset[] {
   return type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
 }
-
 
 const resolvedCatalogs = new WeakMap<SystemPreset[], WeakMap<UserPreset[], Map<string, ReturnType<typeof resolveProfile>>>>();
 export function resolvePreset(s: Parameters<typeof resolveProfile>[0], type: PresetType, name: string) {
@@ -533,10 +403,8 @@ export function resolvePreset(s: Parameters<typeof resolveProfile>[0], type: Pre
   const key = `${type}:${name}`;
   let result = values.get(key);
   if (!result) values.set(key, (result = resolveProfile(s, type, name)));
-
   return 'printer' in s ? resolvedWithAuto(s as State, type, result) : result;
 }
-
 
 const profileConflictRows = new WeakMap<State, Map<string, ReturnType<typeof profileConflicts>>>();
 export function selectProfileConflicts(s: State, type: PresetType, name?: string) {
@@ -555,18 +423,14 @@ export async function resolveProfileConflict(type: PresetType, name: string, key
   await commitProfileRecords([{...preset,revision:(preset.revision ?? 0)+1}]);
 }
 
-
 export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const key = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? '';
   return effectiveProfileValues(s,type,key,slot);
 }
 
-
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer, process = s.process): SystemPreset[] {
   return listFor(s,type).filter(p => selectCompatibility({...s,process},type,p.name,printer).ok);
 }
-
-
 
 const printerCache = new WeakMap<SystemPreset, WeakMap<Config, SystemPreset>>();
 export function printerPreset(s: State): SystemPreset | undefined {
@@ -582,18 +446,14 @@ export function printerPreset(s: State): SystemPreset | undefined {
   return preset;
 }
 
-
 export function filamentVariant(s: State, name: string, printer = s.printer, process = s.process): string | undefined {
-
   return selectCompatibility({...s,process},'filament',name,printer).ok ? name : undefined;
 }
-
 
 export function filamentSwitchReason(s: State, slot: number): string | null {
   const name = s.filamentSlots[slot];
   return name && !filamentVariant(s, name) ? 'Unavailable for this machine' : null;
 }
-
 
 export function selectPrinter(name: string) {
   const initial=getState();
@@ -621,7 +481,6 @@ export function presetEdits(s: State, type: PresetType, slot = 0): Config {
 const settingName = (key: string) => `Change setting "${OPTIONS[key]?.label || key}"`;
 
 export function setOption(type: PresetType, key: string, value: ConfigValue, slot = 0) {
-
   if (type === 'process' && key === 'layer_height') { const h = Number(Array.isArray(value) ? value[0] : value); if (h > 0) setLayerHeight(h); return; }
   undoable(settingName(key), () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot), [key]: value };
@@ -630,13 +489,11 @@ export function setOption(type: PresetType, key: string, value: ConfigValue, slo
   }), `${type}:${slot}:${key}`);
 }
 
-
 export function setLayerHeight(layerHeight: number) {
   undoable('Layer height', () => setState((s) => ({ processVariant: { layerHeight }, job: markStale(s.job) })), 'process:layer_height');
 }
 
 export function resetOption(type: PresetType, key: string, slot = 0) {
-
   if (type === 'process' && key === 'layer_height') { undoable('Layer height', () => setState((s) => ({ processVariant: null, dirty: { ...s.dirty, process: Object.fromEntries(Object.entries(s.dirty.process).filter(([k]) => k !== 'layer_height')) }, job: markStale(s.job) })), 'process:layer_height'); return; }
   undoable(`Reset setting "${OPTIONS[key]?.label || key}"`, () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot) };
@@ -649,34 +506,27 @@ export function resetOption(type: PresetType, key: string, slot = 0) {
   }));
 }
 
-
 export function hasUnsavedEdits(s: State, type: PresetType, slot: number) {
   if (!selectChanges(s, type, slot).some((c) => c.scope === 'project' && c.owner.plate === undefined)) return false;
   return type !== 'filament' || !s.filamentSlots.some((f, i) => i !== slot && f === s.filamentSlots[slot]);
 }
 
 
-
 export function logNotice(message: string, kind: NoticeKind = noticeKind(message)) {
   setState((s) => ({ noticeLog: [...s.noticeLog.slice(-99), { id: (s.noticeLog.at(-1)?.id ?? 0) + 1, message, kind }] }));
 }
 
-
-export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null, kind?: NoticeKind) {
+export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null, kind?: NoticeKind, interrupt = false) {
   logNotice(msg, kind);
-  if (shouldToast(msg, action, kind))
+  if (interrupt || shouldToast(msg, action, kind))
     setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms, toastKind: kind ?? null });
 }
-
-
-
 
 function editName(patch: object): string {
   const k = Object.keys(patch);
   return k.includes('scale') ? 'Scale' : k.some((x) => x.startsWith('rot')) ? 'Rotate' : k.some((x) => 'xyz'.includes(x)) ? 'Move'
     : k.includes('extruder') ? 'Change Filament' : k.includes('name') ? 'Rename' : 'Edit object';
 }
-
 
 export function setPaint(id: number, kind: PaintKind, paint: Painting | null, name: string, volume?: number) {
   const painted = <T extends { paint?: Partial<Record<PaintKind, Painting>> }>(x: T): T => ({ ...x, paint: { ...x.paint, [kind]: paint ?? undefined } });
@@ -686,7 +536,6 @@ export function setPaint(id: number, kind: PaintKind, paint: Painting | null, na
     job: markStale(s.job),
   })));
 }
-
 
 export function mapPaint(id: number, kind: PaintKind, name: string, f: (target: { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> }, scale: number) => Painting | null) {
   undoable(name, () => setState((s) => ({
@@ -703,7 +552,6 @@ export function mapPaint(id: number, kind: PaintKind, name: string, f: (target: 
   })));
 }
 
-
 export function updateObject(id: number, patch: Partial<PlateObject>, name = editName(patch)) {
   undoable(name, () => setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, ...patch } : o)), job: markStale(s.job) })));
 }
@@ -719,16 +567,13 @@ export function updateInstance(objectId: number, instanceId: number, patch: Part
 
 export type Selected = { object: number; instance: number; allInstances?: boolean; all?: boolean; picked?: string[]; volume?: number; range?: number };
 
-
 export function isSelected(sel: Selected | null, object: number, instance: number) {
   if (!sel) return false;
   if (sel.all) return !sel.picked || sel.picked.includes(`${object}:${instance}`);
   return sel.object === object && (!!sel.allInstances || sel.instance === instance);
 }
 
-
 export const selectedObjectIds = (s: State) => s.objects.filter((o) => o.instances.some((i) => isSelected(s.selected, o.id, i.id))).map((o) => o.id);
-
 
 export function selectionOf(s: State, keys: string[]): Selected | null {
   const items = s.objects.flatMap((o) => o.instances.filter((i) => keys.includes(`${o.id}:${i.id}`)).map((i) => ({ o, i })));
@@ -740,7 +585,6 @@ export function selectionOf(s: State, keys: string[]): Selected | null {
   }
   return { object: o.id, instance: i.id, all: true, picked: items.map((x) => `${x.o.id}:${x.i.id}`) };
 }
-
 
 export function toggleSelection(object: number, instances: number[]) {
   const s = state, keys = instances.map((i) => `${object}:${i}`);
@@ -755,7 +599,6 @@ export function removeSelected() {
   undoable('Delete selected', () => setState((s) => {
     if (!s.selected) return {};
     if (s.objects.some((o) => o.project) && !canEditProject()) return {};
-
     const objects = s.objects
       .map((o) => (o.instances.some((i) => isSelected(s.selected, o.id, i.id)) ? { ...o, instances: o.instances.filter((i) => !isSelected(s.selected, o.id, i.id)) } : o))
       .filter((o) => o.instances.length > 0);
@@ -763,12 +606,10 @@ export function removeSelected() {
   }));
 }
 
-
 export function deleteAll() {
   const n = state.objects.length;
   undoable('Delete all', () => setState((s) => !s.project && s.projectPlates.length ? { objects: [], selected: null, job: markStale(s.job) }
     : { objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
-
   if (n) toast(n === 1 ? 'Deleted 1 object' : `Deleted ${n} objects`, { label: 'Undo', run: undo });
 }
 
@@ -797,7 +638,6 @@ export function setEvents(events: LayerEvent[], name = 'Edit layer events') {
 
 export { markStale };
 
-
 export function togglePrintable(objectId: number, instanceId?: number) {
   const o = state.objects.find((o) => o.id === objectId);
   if (!o) return;
@@ -806,11 +646,8 @@ export function togglePrintable(objectId: number, instanceId?: number) {
     printable ? 'Set Printable' : 'Set Unprintable');
 }
 
-
-
 const mapVolumes = (s: State, objectId: number, f: (v: Volume[]) => Volume[]) =>
   s.objects.map((o) => (o.id === objectId ? { ...o, volumes: f(o.volumes ?? []) } : o));
-
 
 export function updateVolume(objectId: number, volumeId: number, patch: Partial<Volume>, name = 'matrix' in patch ? 'Move' : editName(patch)) {
   undoable(name, () => setState((s) => ({
@@ -819,20 +656,16 @@ export function updateVolume(objectId: number, volumeId: number, patch: Partial<
   })));
 }
 
-
 export function addVolume(objectId: number, volume: Volume, name: string) {
   undoable(name, () => setState((s) => {
     const o = s.objects.find((ob) => ob.id === objectId);
     if (!o) return {};
-
-
     const volumes = sortVolumes([...(o.volumes ?? []), volume]);
     return { objects: mapVolumes(s, objectId, () => volumes), selected: { object: objectId, instance: o.instances[0].id, volume: volume.id }, job: markStale(s.job) };
   }));
 }
 
 const sortVolumes = (vs: Volume[]) => vs.sort((a, b) => VOLUME_ORDER.indexOf(a.type) - VOLUME_ORDER.indexOf(b.type));
-
 
 export function changeVolumeType(objectId: number, volumeId: number, type: VolumeType) {
   undoable('Change part type', () => setState((s) => ({

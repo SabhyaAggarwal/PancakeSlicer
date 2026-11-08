@@ -1,11 +1,8 @@
-
-
-
-
+import type { Config } from './api/types';
 import type { ObjectResult } from './preview/explain-record';
 import { applyStyle } from './print-style';
 import { beginStep } from './state/history';
-import { onShellsChecked } from './plater/geometry';
+import { onShellsChecked, topSlopes } from './plater/geometry';
 import { effectiveConfig, getState, setState, subscribeStore, type PlateObject, type State } from './state/store';
 import { styleOf } from './style-names';
 
@@ -21,8 +18,6 @@ function refresh() {
 onShellsChecked(refresh);
 subscribeStore(refresh);
 
-
-
 let explain: typeof import('./preview/explain-record') | null = null;
 export const explainRecord = () => explain;
 subscribeStore(() => {
@@ -30,12 +25,10 @@ subscribeStore(() => {
   void import('./preview/explain-record').then((m) => { if (!explain) { explain = m; kept = null; setState({}); } });
 });
 
-
 export function pendingRecommendations(s: State): PlateObject[] {
   const global = effectiveConfig(s, 'process');
   return s.objects.filter((o) => s.recommendedStyle[o.id] && styleOf({ ...global, ...o.settings }) !== s.recommendedStyle[o.id]);
 }
-
 
 export function applyRecommended(objects: PlateObject[]) {
   if (!objects.length) return;
@@ -52,10 +45,23 @@ export interface PlateResult extends ObjectResult { objectId?: number; label: st
 
 const NONE: PlateResult[] = [];
 let kept: { record: unknown; objects: unknown; rec: unknown; out: PlateResult[] } | null = null;
-
-
-
-
+function topFact(r: ObjectResult, o: PlateObject, process: Config): string {
+  if (r.curved || r.ledge || !r.limit) return r.fact;
+  const slopes = topSlopes(o), whole = (v: number) => String(Math.round(v));
+  const slope = slopes && slopes.max >= 0.5 ? `Top slope ${slopes.max - slopes.min > 1 ? 'up to ' : ''}${whole(slopes.max)}°` : 'Top';
+  const { kind, capDeg, reachableDeg } = r.limit;
+  if (kind === 'access') return reachableDeg != null
+    ? `${slope} is steeper than the print head reaches (${whole(reachableDeg)}°), prints as Standard`
+    : 'The print head cannot reach this top, prints as Standard';
+  if (kind === 'angle') return `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit, prints as Standard; try raising Max curved top angle`;
+  if (kind === 'height') {
+    const height = Number({ ...process, ...o.settings }.nonplanar_curved_max_height);
+    return `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit, prints as Standard`;
+  }
+  if (kind === 'area') return 'Top too small for a curved top, prints as Standard';
+  if (kind === 'budget') return 'A curved top would cost too much time or quality, prints as Standard';
+  return r.fact;
+}
 
 export function plateResults(s: State): PlateResult[] {
   const record = s.job.state === 'done' && !s.job.stale ? s.job.status?.record : undefined;
@@ -63,12 +69,11 @@ export function plateResults(s: State): PlateResult[] {
   const warned = new Set(pendingRecommendations(s).map((o) => o.id));
   if (record && !explain) return NONE;
   const results = explain?.objectResults(record) ?? [];
-
-
   const bare = (n: string) => n.replace(/\.(stl|obj|3mf|step|stp)$/i, '');
+  const process = effectiveConfig(s, 'process');
   const out = results.flatMap((r) => {
     const o = s.objects.length === 1 && results.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(r.name));
-    return o && warned.has(o.id) ? [] : [{ ...r, objectId: o?.id, label: o?.name ?? r.name }];
+    return o && warned.has(o.id) ? [] : [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: o?.name ?? r.name }];
   });
   kept = { record, objects: s.objects, rec: s.recommendedStyle, out };
   return out;

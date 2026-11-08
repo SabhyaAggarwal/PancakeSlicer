@@ -1,6 +1,3 @@
-
-
-
 import { useMemo, useRef, useState } from 'react';
 import { confirmDialog } from '../components/Ask';
 import { Dropdown } from '../components/Dropdown';
@@ -9,6 +6,7 @@ import {
   adoptConnection, connectionOf, discoverPrinters, KIND_LABEL, removeConnection, saveConnection, statusLine, statusTone, tempLine, testConnection, unassigned,
   type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered,
 } from './connections';
+import { printerModel } from './capabilities';
 import './printers.css';
 
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -18,7 +16,6 @@ const STAGE: Record<string, string> = {
   developer_mode: 'Developer Mode is off', address: 'Address not allowed', invalid: 'Check the address',
 };
 const DESKTOP = typeof window !== 'undefined' && !!(window as { orcaDesktop?: unknown }).orcaDesktop;
-
 
 function defaultKind(printer: string): ConnectionKind {
   const { base, config } = resolvePreset(getState(), 'machine', printer);
@@ -55,7 +52,6 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
   const hasSecret = !!saved?.has_secret && sameKind;
   const ready = kind === 'bambu-connect' || (bambu ? !!host.trim() && !!serial.trim() && (!!secret || hasSecret)
     : !!url.trim() && (keyOptional || !!secret || hasSecret) && (!digest || !!user.trim()));
-
   const fields = useRef(0);
   const touched = () => { fields.current++; setTest(null); };
   const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); touched(); };
@@ -64,19 +60,17 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
     setWorking(what); setError('');
     try { await action(); } catch (e) { setError(errorText(e)); } finally { setWorking(''); }
   };
-
   const modelOf = (preset?: string) => preset ? machines.find((m) => m.name === preset)?.model : undefined;
   const setupModel = useStore((s) => String(resolvePreset(s, 'machine', printer).config?.printer_model ?? '')) || undefined;
   const use = async (d: Discovered) => {
     const found = modelOf(d.preset);
     if (found && setupModel && found !== setupModel && !await confirmDialog('Different printer model',
-      `${d.model ?? found} at ${d.host ?? d.url} is not a ${setupModel}. G-code sliced with ${name} is made for a ${setupModel}; sent to this printer it can crash the head or print wrongly. Use it anyway?`,
+      `${d.model ?? found} at ${d.host ?? d.url} doesn't match your ${setupModel} profile. Sending ${name} G-code to a different machine could crash the toolhead or ruin the print. Use it anyway?`,
       ['Use anyway', 'Cancel'], true)) return;
     setKind(d.kind); touched();
     if (d.kind === 'bambu-lan') { setHost(d.host ?? ''); setSerial(d.serial ?? ''); setModel(d.model ?? ''); }
     else setUrl((d.url ?? '').replace(/^http:\/\//, ''));
   };
-
   const addAsNew = (d: Discovered) => run('add', async () => {
     const { createProfileFromBase } = await import('../profiles/catalog');
     const key = await createProfileFromBase('machine', d.preset!, d.name || `My ${d.model ?? KIND_LABEL[d.kind]}`);
@@ -90,7 +84,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
       {saved && (
         <div className="send-target" role="status">
           <span className="status-text" data-tone={statusTone(status)}>{statusLine(status) || 'Saved'}</span>
-          {tempLine(status) && <span className="send-meta">{tempLine(status)}</span>}
+          {tempLine(status, printerModel(getState(), printer) || model) && <span className="send-meta">{tempLine(status, printerModel(getState(), printer) || model)}</span>}
         </div>
       )}
       <label className="form-row"><span>Host type</span>

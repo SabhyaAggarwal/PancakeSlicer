@@ -17,21 +17,9 @@ namespace Slic3r::Arachne
 
 template<typename T> constexpr T pi_div(const T div) { return static_cast<T>(M_PI) / div; }
 
-
-
-
-
-
-
-
-
-
 class BeadingStrategy
 {
 public:
-
-
-
     struct Beading
     {
         coord_t total_thickness;
@@ -46,49 +34,17 @@ public:
 
     virtual ~BeadingStrategy() = default;
 
-
-
-
-
-
-
-
     virtual Beading compute(coord_t thickness, coord_t bead_count) const = 0;
-
-
-
 
     virtual coord_t getOptimalThickness(coord_t bead_count) const;
 
-
-
-
     virtual coord_t getTransitionThickness(coord_t lower_bead_count) const;
-
-
-
 
     virtual coord_t getOptimalBeadCount(coord_t thickness) const = 0;
 
-
-
-
-
-
     virtual coord_t getTransitioningLength(coord_t lower_bead_count) const;
 
-
-
-
-
-
     virtual float getTransitionAnchorPos(coord_t lower_bead_count) const;
-
-
-
-
-
-
 
     virtual std::vector<coord_t> getNonlinearThicknesses(coord_t lower_bead_count) const;
 
@@ -107,11 +63,6 @@ protected:
     double  wall_add_middle_threshold;
 
     coord_t default_transition_length;
-
-
-
-
-
     double  transitioning_angle;
 };
 

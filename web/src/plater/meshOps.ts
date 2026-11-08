@@ -1,6 +1,3 @@
-
-
-
 import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { responseError } from '../api/access';
@@ -10,15 +7,12 @@ import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
 import { appendLibrary } from '../slice-input';
 import { attachFiles, postJob } from '../api/blobs';
 
-
-
 export async function toolJob(operation: string, fields: Record<string, string>, files: [Blob, string][]) {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error('This needs the slicing service.');
   const fd = new FormData();
   fd.append('operation', operation);
   for (const [k, v] of Object.entries(fields)) fd.append(k, v);
-
   appendLibrary(fd, s);
   await attachFiles(fd, files.map(([blob, name]) => ({ name, blob })));
   const response = await postJob(fd);
@@ -36,18 +30,14 @@ export async function toolJob(operation: string, fields: Record<string, string>,
   }
 }
 
-
 export async function meshJob(operation: string, fields: Record<string, string>, files: [Blob, string][], name: string) {
   const { record, blob } = await toolJob(operation, fields, files);
   const file = new File([blob], `${name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
   return { record, file, geometry: await loadMesh(file) };
 }
 
-
 const run = async (o: PlateObject, operation: 'repair' | 'simplify', fields: Record<string, string> = {}) =>
   meshJob(operation, fields, [[await bakeStl({ ...o, rotX: 0, rotY: 0, scale: [1, 1, 1] }, new THREE.Matrix4()), 'mesh.stl']], o.name);
-
-
 
 function replace(o: PlateObject, file: File, geometry: THREE.BufferGeometry, name: string) {
   const c = new THREE.Vector3(...(geometry.userData.sourceCentre as [number, number, number] ?? [0, 0, 0]));
@@ -61,7 +51,6 @@ function replace(o: PlateObject, file: File, geometry: THREE.BufferGeometry, nam
   });
   undoable(name, () => setState((st) => ({ objects: st.objects.map((x) => (x.id === o.id ? next : x)), job: markStale(st.job) })));
 }
-
 
 export async function fixModel(objectId: number) {
   const o = getState().objects.find((x) => x.id === objectId);
@@ -81,8 +70,6 @@ export async function fixModel(objectId: number) {
     busy.end();
   }
 }
-
-
 
 export async function simplifyModel(objectId: number, triangles: number, maxError?: number) {
   const o = getState().objects.find((x) => x.id === objectId);

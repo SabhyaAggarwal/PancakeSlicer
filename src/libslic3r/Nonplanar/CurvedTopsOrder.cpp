@@ -33,8 +33,6 @@ Piece piece_of(ExtrusionPath path)
             std::min(a.z(), b.z()), std::max(a.z(), b.z())};
 }
 
-
-
 std::vector<Piece> split_paths(const std::vector<ExtrusionPath> &paths, double xy_step = 1., double z_step = .04)
 {
     std::vector<Piece> out;
@@ -110,7 +108,6 @@ Graph dependencies(const std::vector<Piece> &pieces, const NonplanarClearanceMod
     return graph;
 }
 
-
 std::set<size_t> cyclic_pieces(const Graph &graph)
 {
     std::vector<int> index(graph.size(), -1), low(graph.size());
@@ -160,15 +157,9 @@ bool continuous_curved_top_clear(const std::vector<ExtrusionPath> &paths, const 
         arc.push_back(walked + .5 * length);
         walked += length;
     }
-
-
-
     double contact_run = 1.;
     for (const auto &path : paths) contact_run = std::max(contact_run, 2. * double(path.width));
     const bool closed = paths.front().first_point3() == paths.back().last_point3();
-
-
-
     std::vector<std::vector<Piece>> refined(pieces.size());
     const auto fine = [&](size_t i) -> const std::vector<Piece> & {
         if (refined[i].empty()) refined[i] = split_paths({pieces[i].path}, .01, .001);
@@ -197,8 +188,6 @@ std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPa
 {
     if (!paths.empty() && std::all_of(paths.begin(), paths.end(), [](const ExtrusionPath &path) { return path.continuous_top; }))
         return paths;
-
-
     struct Ends { Point3 first, last; bool connected = true; };
     std::map<size_t, Ends> ends;
     for (const auto &path : paths)
@@ -248,10 +237,6 @@ std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPa
         bool reverse = false;
         for (auto it = ready.begin(); it != ready.end(); ++it) {
             const auto &path = pieces[*it].path;
-
-
-
-
             for (bool reversed : {false, true}) {
                 const Vec3d begin = unscale(reversed ? path.polyline.points.back() : path.polyline.points.front());
                 const double dz = ordered.empty() ? 0. : begin.z() - from_z;
@@ -265,7 +250,6 @@ std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPa
         if (reverse) path.reverse();
         const Vec3d end = unscale(path.polyline.points.back());
         from = end.head<2>(); from_z = end.z(); previous_source = path.source_path_id;
-
         if (!ordered.empty() && ordered.back().source_path_id == path.source_path_id &&
             ordered.back().height == path.height && ordered.back().mm3_per_mm == path.mm3_per_mm &&
             ordered.back().polyline.points.back() == path.polyline.points.front())
@@ -273,8 +257,6 @@ std::vector<ExtrusionPath> order_curved_tops_paths(const std::vector<ExtrusionPa
         else ordered.push_back(std::move(path));
         for (size_t w : graph[v]) if (--incoming[w] == 0) ready.push_back(w);
     }
-
-
     ordered.insert(ordered.begin(), std::make_move_iterator(boundary.begin()), std::make_move_iterator(boundary.end()));
     return ordered;
 }

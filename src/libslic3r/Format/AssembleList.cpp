@@ -108,7 +108,6 @@ AssembleListResult load_assemble_plate_list(const std::string &config_file, std:
                     BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": object %1%'s filaments count %2% not equal to clone count %3%, also not equal to 1") % assemble_object.path % assemble_object.filaments.size() % assemble_object.count;
                     return AssembleListResult::ConfigError;
                 }
-
                 if (std::any_of(assemble_object.filaments.begin(), assemble_object.filaments.end(), [](int id) { return id < 0; }))
                 {
                     BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << boost::format(": object %1% has a negative filament id") % assemble_object.path;

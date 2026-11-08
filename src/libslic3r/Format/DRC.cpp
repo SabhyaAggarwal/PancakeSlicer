@@ -76,7 +76,6 @@ bool load_drc(const char *path, TriangleMesh *meshptr)
             its.vertices.emplace_back(pos[0], pos[1], pos[2]);
         }
 
-
         const uint32_t num_points = dracoMesh.num_points();
         size_t num_faces = dracoMesh.num_faces();
         its.indices.reserve(num_faces);
@@ -129,17 +128,17 @@ bool store_drc(const char *path, TriangleMesh *mesh, int bits, int speed)
     try {
         const std::vector<stl_triangle_vertex_indices>* indices = &(mesh->its.indices);
         const std::vector<stl_vertex>* vertices = &(mesh->its.vertices);
-
+        
         Mesh dracoMesh;
 
         dracoMesh.set_num_points(vertices->size());
-
+        
         GeometryAttribute gaPos;
         gaPos.Init(GeometryAttribute::POSITION, nullptr, 3, DT_FLOAT32, false, sizeof(float)*3, 0);
         int32_t idPos = dracoMesh.AddAttribute(gaPos, true, indices->size() * 3);
-
+        
         dracoMesh.attribute(idPos)->Resize(vertices->size());
-
+        
         for (size_t i = 0; i < vertices->size(); ++ i) {
             float vertex[3];
             vertex[0] = vertices->at(i)(0);
@@ -147,7 +146,7 @@ bool store_drc(const char *path, TriangleMesh *mesh, int bits, int speed)
             vertex[2] = vertices->at(i)(2);
             dracoMesh.attribute(idPos)->SetAttributeValue(AttributeValueIndex(i), vertex);
         }
-
+        
         dracoMesh.SetNumFaces(indices->size());
         for (size_t i = 0; i < indices->size(); ++ i) {
             Mesh::Face face;
@@ -156,19 +155,19 @@ bool store_drc(const char *path, TriangleMesh *mesh, int bits, int speed)
             face[2] = PointIndex(indices->at(i)[2]);
             dracoMesh.SetFace(FaceIndex(i), face);
         }
-
+        
         Encoder encoder;
         encoder.SetSpeedOptions(speed, speed);
         encoder.SetAttributeQuantization(GeometryAttribute::POSITION, bits);
-
+        
         EncoderBuffer buffer;
         encoder.EncodeMeshToBuffer(dracoMesh, &buffer);
-
+        
         FILE* fp = boost::nowide::fopen(path, "wb");
         if (!fp) return false;
         size_t written = fwrite(buffer.data(), 1, buffer.size(), fp);
         fclose(fp);
-
+        
         if (written != buffer.size()) return false;
     } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << "store_drc: " << e.what();

@@ -28,23 +28,11 @@ SquareGrid::GridPoint SquareGrid::toGridPoint(const Vec2i64 &point)  const
 
 SquareGrid::grid_coord_t SquareGrid::toGridCoord(const int64_t &coord)  const
 {
-
-
-
-
-
-
     return coord / cell_size;
 }
 
 coord_t SquareGrid::toLowerCoord(const grid_coord_t& grid_coord)  const
 {
-
-
-
-
-
-
     return grid_coord * cell_size;
 }
 
@@ -69,14 +57,9 @@ bool SquareGrid::processLineCells(const std::pair<Point, Point> line, const std:
     const int64_t y_diff = int64_t(end.y() - start.y());
     const grid_coord_t y_dir = nonzeroSign(y_diff);
 
-
-
-
-
     grid_coord_t x_cell_start = start_cell.x();
     for (grid_coord_t cell_y = start_cell.y(); cell_y * y_dir <= end_cell.y() * y_dir; cell_y += y_dir)
     {
-
         const coord_t nearest_next_y = toLowerCoord(cell_y + ((nonzeroSign(cell_y) == y_dir || cell_y == 0) ? y_dir : coord_t(0)));
         grid_coord_t x_cell_end;
         if (y_diff == 0)
@@ -86,7 +69,6 @@ bool SquareGrid::processLineCells(const std::pair<Point, Point> line, const std:
         else
         {
             const int64_t area = int64_t(end.x() - start.x()) * int64_t(nearest_next_y - start.y());
-
             int64_t corresponding_x = int64_t(start.x()) + area / y_diff;
             x_cell_end = toGridCoord(corresponding_x + ((corresponding_x < 0) && ((area % y_diff) != 0)));
             if (x_cell_end < start_cell.x())
@@ -107,9 +89,6 @@ bool SquareGrid::processLineCells(const std::pair<Point, Point> line, const std:
                 return true;
             }
         }
-
-
-
         x_cell_start = x_cell_end;
     }
     assert(false && "We should have returned already before here!");

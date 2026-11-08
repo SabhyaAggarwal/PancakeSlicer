@@ -1,5 +1,3 @@
-
-
 import { MeshoptSimplifier } from 'three/examples/jsm/libs/meshopt_simplifier.module.js';
 
 export interface SimplificationInfo {
@@ -12,7 +10,6 @@ export interface SimplificationInfo {
 export async function simplifyMesh(positions: Float32Array, index: Uint32Array, options: { target?: number; maxErrorMm?: number; minTriangles?: number } = {}): Promise<{ positions: Float32Array; index: Uint32Array; info: SimplificationInfo } | null> {
   if (index.length < (options.minTriangles ?? 500_000) * 3 || !MeshoptSimplifier.supported) return null;
   await MeshoptSimplifier.ready;
-
   const extrema = [0, 0, 0, 0, 0, 0];
   for (let i = 1; i < positions.length / 3; ++i) for (let k = 0; k < 3; ++k) {
     if (positions[i * 3 + k] < positions[extrema[k] * 3 + k]) extrema[k] = i;

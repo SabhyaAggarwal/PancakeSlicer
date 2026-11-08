@@ -3,29 +3,22 @@ import { projectId } from './identity';
 import { jsonWrite, serviceJson } from './service';
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 export type ServiceDocument = Record<string, unknown>;
-
-
 export type DocumentSyncState = 'loading' | 'ready' | 'debounced' | 'writing' | 'failed' | 'conflict';
 export type DocumentSnapshot<D> = { state: DocumentSyncState; revision: number; document: D; error: string | null };
 type SyncEvent = { type: 'PATCH' } | { type: 'HYDRATED' } | { type: 'WRITE'; retry: boolean; auto: boolean } | { type: 'ACK' }
   | { type: 'FAIL'; error: string; conflict: boolean; transient: boolean } | { type: 'ONLINE' } | { type: 'RELOAD' };
 interface SyncContext { error: string | null; transient: boolean; retryDelay: number }
-
 type KeyMerge = (remote: unknown, local: unknown) => unknown;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
 export function createServiceDocument<D extends ServiceDocument>(path: string, method: 'PUT' | 'PATCH', beforeWrite: (document: D) => Promise<unknown> = () => Promise.resolve(), merge: Record<string, KeyMerge> = {}) {
   let current: DocumentSnapshot<D> = { state: 'loading', revision: 0, document: {} as D, error: null };
   let hydrated = false, loading: Promise<DocumentSnapshot<D>> | null = null, running: Promise<void> | null = null;
   let serial = 0, savedSerial = 0;
   let beforeHydration: Partial<D> = {};
-
   const unsaved = new Map<string, number>();
   let base = {} as D;
   let operation: { operationId: string; expectedRevision: number; document: D; serial: number } | null = null;
   const listeners = new Set<() => void>();
-
-
   const transient = (error: unknown) => { const status = (error as { status?: number }).status ?? 0;
     return error instanceof TypeError || error instanceof DOMException || status === 408 || status === 429 || status >= 500; };
   const auto = () => { void write(false, true).catch(() => {}); };
@@ -34,7 +27,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     { target: 'failed' as const, action: (c: SyncContext, e: Extract<SyncEvent, { type: 'FAIL' }>) =>
       ({ error: e.error, transient: e.transient, retryDelay: e.transient ? Math.min(c.retryDelay * 2 || 1000, 10_000) : c.retryDelay }) },
   ];
-
   const refail = { action: (_: SyncContext, e: Extract<SyncEvent, { type: 'FAIL' }>) => ({ error: e.error }) };
   const hydratedAfterFailure = [{ target: 'debounced' as const, guard: () => savedSerial < serial, action: () => ({ error: null }) }, { target: 'ready' as const, action: () => ({ error: null }) }];
   const edits: StateNode<DocumentSyncState, SyncEvent, SyncContext>['on'] = { PATCH: 'debounced', WRITE: 'writing', RELOAD: 'loading' };
@@ -45,7 +37,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
       ready: { on: edits },
       debounced: { on: { ...edits, HYDRATED: {}, FAIL: fail }, after: { ms: 500, action: () => { void flush().catch(() => {}); } } },
       writing: { on: { PATCH: {}, HYDRATED: {}, RELOAD: 'loading', FAIL: fail,
-
         ACK: [{ target: 'debounced', guard: () => savedSerial < serial, action: () => ({ error: null, retryDelay: 0 }) }, { target: 'ready', action: () => ({ error: null, retryDelay: 0 }) }] } },
       failed: { on: { PATCH: {}, RELOAD: 'loading', FAIL: refail, HYDRATED: hydratedAfterFailure,
         WRITE: { target: 'writing', guard: (c, e) => e.retry || (e.auto && c.transient) },
@@ -74,8 +65,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   };
   function patch(document: Partial<D>) {
     const captured = structuredClone(document) as Record<string, unknown>;
-
-
     for (const key of Object.keys(captured)) if (same(captured[key], (current.document as Record<string, unknown>)[key])) delete captured[key];
     if (!Object.keys(captured).length) return;
     if (!hydrated) beforeHydration = { ...beforeHydration, ...captured };
@@ -83,8 +72,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     publish({ document: { ...current.document, ...captured } });
     sync.send({ type: 'PATCH' });
   }
-
-
   const flush = (retry = false) => write(retry, false);
   async function write(retry: boolean, automatic: boolean): Promise<void> {
     if (running) { await running; if (savedSerial < serial) return write(retry, automatic); return; }
@@ -96,15 +83,11 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
       while (savedSerial < serial) {
         operation ??= { operationId: projectId(), expectedRevision: current.revision, document: current.document, serial };
         const captured = operation, { serial: _serial, ...body } = captured;
-
         await beforeWrite(captured.document);
         let ack: { revision: number } | null;
         try { ack = await serviceJson<{revision:number}>(path, jsonWrite(method, body)); }
         catch (error) {
-
-
           if ((error as { code?: string }).code !== 'revision_conflict' || ++rebases > 3) throw error;
-
           const carried = error as { revision?: number; document?: D };
           const remote = carried.document && Number.isSafeInteger(carried.revision) ? { revision: carried.revision!, document: carried.document }
             : await serviceJson<{revision:number;document:D}>(path);
@@ -115,7 +98,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
             if (same(theirs, base[key])) next[key] = mine;
             else if (same(theirs, mine)) unsaved.delete(key);
             else if (merge[key]) next[key] = merge[key](theirs, mine);
-
             else if (retry) next[key] = mine;
             else throw error;
           }
@@ -137,7 +119,6 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     snapshot: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     hydrate, patch, flush, machine: sync,
-
     async reload() {
       if (running) await running.catch(() => {});
       const previous = current, previousSerial = serial, previousSaved = savedSerial;

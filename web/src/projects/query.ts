@@ -1,4 +1,3 @@
-
 import { useSyncExternalStore } from 'react';
 
 let text = '';

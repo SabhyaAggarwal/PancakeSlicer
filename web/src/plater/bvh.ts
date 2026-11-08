@@ -1,25 +1,11 @@
-
-
-
-
 export interface Bvh {
-
   bounds: Float32Array;
-
   nodes: Uint32Array;
-
   tris: Uint32Array;
 }
 
 const LEAF = 0x80000000;
 const MAX_LEAF = 16;
-
-
-
-
-
-
-
 
 export function buildBvh(p: Float32Array, index: Uint32Array): Bvh {
   const n = index.length / 3;
@@ -106,7 +92,6 @@ export function buildBvh(p: Float32Array, index: Uint32Array): Bvh {
 const stack = new Uint32Array(128);
 const stackT = new Float64Array(128);
 
-
 export function supportBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, x: number, y: number, z: number): number {
   const { bounds, nodes, tris } = bvh;
   const upper = (i: number) => {
@@ -127,7 +112,6 @@ export function supportBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
       }
     } else {
       const left = i + 1, right = nodes[i * 2];
-
       if (upper(left) > upper(right)) { stack[top++] = right; stack[top++] = left; }
       else { stack[top++] = left; stack[top++] = right; }
     }
@@ -135,17 +119,11 @@ export function supportBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
   return best;
 }
 
-
-
-
-
-
 export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, o: ArrayLike<number>, d: ArrayLike<number>, far = Infinity, out?: { tri: number }): number {
   const { bounds, nodes, tris } = bvh;
   const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];
   const ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
   let best = far;
-
   const enter = (i: number) => {
     const b = 6 * i;
     let t0 = (bounds[b] - ox) * ix, t1 = (bounds[b + 3] - ox) * ix;
@@ -154,7 +132,6 @@ export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
     lo = Math.max(lo, Math.min(t0, t1)), hi = Math.min(hi, Math.max(t0, t1));
     t0 = (bounds[b + 2] - oz) * iz, t1 = (bounds[b + 5] - oz) * iz;
     lo = Math.max(lo, Math.min(t0, t1)), hi = Math.min(hi, Math.max(t0, t1));
-
     return hi < Math.max(lo, 0) || lo >= best ? Infinity : lo;
   };
   let top = 0;
@@ -166,7 +143,6 @@ export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
     if (meta & LEAF) {
       const first = nodes[2 * i], end = first + (meta & ~LEAF);
       for (let k = first; k < end; k++) {
-
         const t3 = 3 * tris[k];
         const a = 3 * index[t3], b = 3 * index[t3 + 1], c = 3 * index[t3 + 2];
         const e1x = p[b] - p[a], e1y = p[b + 1] - p[a + 1], e1z = p[b + 2] - p[a + 2];
@@ -191,7 +167,6 @@ export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
     }
     const l = i + 1, r = nodes[2 * i];
     const tl = enter(l), tr = enter(r);
-
     if (tl <= tr) {
       if (tr !== Infinity) stackT[top] = tr, stack[top++] = r;
       if (tl !== Infinity) stackT[top] = tl, stack[top++] = l;

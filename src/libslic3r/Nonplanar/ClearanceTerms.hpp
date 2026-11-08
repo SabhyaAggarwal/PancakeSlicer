@@ -1,6 +1,4 @@
 #pragma once
-
-
 #include "FieldTerm.hpp"
 
 #include <memory>

@@ -31,7 +31,18 @@ var configKinds = func() map[string]string {
 
 var settingKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 
-var hiddenSetting = regexp.MustCompile(`print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides`)
+var hiddenSetting = substrings{"print_host", "printhost", "printer_agent", "host_type", "api_key", "bbl_use_printhost", "upload", "cloud", "device", "octoprint", "_plugin_config_overrides"}
+
+type substrings []string
+
+func (s substrings) MatchString(key string) bool {
+	for _, part := range s {
+		if strings.Contains(key, part) {
+			return true
+		}
+	}
+	return false
+}
 
 func overrides(raw string) ([][2]string, error) {
 	if len(raw) > 256<<10 {
@@ -57,6 +68,9 @@ func overrides(raw string) ([][2]string, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("override %s: %w", key, err)
+		}
+		if key == "nonplanar_mode" {
+			value = canonicalNonplanarMode(value)
 		}
 		out = append(out, [2]string{key, value})
 	}
@@ -113,7 +127,6 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 			if kind != "strings" && strings.IndexFunc(part, unicode.IsControl) >= 0 {
 				return "", errors.New("scalar contains control characters")
 			}
-
 			if kind == "strings" && ((len(array) == 1 && part == "") || strings.ContainsAny(part, " \t;\\\"\r\n")) {
 				part = "\"" + escapeConfigString(part) + "\""
 			}
@@ -140,6 +153,5 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 	if kind != "string" && kind != "strings" && strings.IndexFunc(scalar, unicode.IsControl) >= 0 {
 		return "", errors.New("scalar contains control characters")
 	}
-
 	return scalar, nil
 }

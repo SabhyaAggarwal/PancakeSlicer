@@ -1,7 +1,5 @@
+import { openUrlImport } from '../url-import';
 import { savePreferences } from '../saved-preferences';
-
-
-
 import { addInstance, arrangeAll, canBoolean, canExport, cancelSlice, download, fillBed, openFileDialog, outputKind,
   removeInstance, setInstanceCount, slice, STALE_RESULT_TIP, toggleBoolean, toggleSvg, toggleText, toolbarOperation, outsideVolumeWarning } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, cutSelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, startRename } from '../edit';
@@ -24,7 +22,6 @@ import { registerCommand, type Command } from './registry';
 const s = getState;
 const objects = () => s().objects.length > 0 || 'Add a model first';
 const selection = () => !!s().selected || 'Select an object first';
-
 const editable = () => {
   const st = s(), o = st.objects.find((x) => x.id === st.selected?.object);
   return !st.selected ? 'Select an object first' : st.selected.all ? 'Select one object' : o?.project?.placeholder ? 'Not editable in an opened project' : true;
@@ -38,7 +35,7 @@ const exportable = () => {
 };
 const busy = (st: State) => st.job.state === 'running' || st.job.state === 'submitting';
 const gizmo = (g: Gizmo) => () => setState((st) => ({ gizmo: st.gizmo === g ? 'none' : g, tab: 'prepare' }));
-const printers = () => s().printerConnections.enabled || 'Printer connections are off on this service';
+const printers = () => s().printerConnections.enabled || (s().printerConnections.enabled === false ? 'Printer connections are off on this service' : 'Connecting to printers');
 const app = (d: NonNullable<State['appDialog']>) => () => setState({ appDialog: d });
 
 const VIEW_TOGGLES: [keyof ViewOptions, string, string?][] = [
@@ -54,7 +51,7 @@ const CALIB: [NonNullable<State['calibDialog']>, string][] = [
 ];
 
 export const CORE: Command[] = [
-
+  { id: 'file.importurl', title: 'Import from URL…', group: 'File', keywords: 'link download printables thingiverse makerworld github', run: () => openUrlImport() },
   { id: 'file.import', title: 'Import models…', group: 'File', keys: 'Mod+I', keywords: 'add open stl 3mf obj step load', run: openFileDialog, boost: 60 },
   { id: 'file.gcode', title: 'Open G-code…', group: 'File', run: () => openGcode() },
   { id: 'file.configs', title: 'Import configs…', group: 'File', keywords: 'presets bundle', run: () => setState({ presetUx: { kind: 'import' } }) },
@@ -64,7 +61,6 @@ export const CORE: Command[] = [
   { id: 'file.stl', title: 'Export all objects as one STL…', group: 'File', keywords: 'mesh', enabled: objects, run: () => void import('../exportStl').then((m) => m.exportStl(false, false)) },
   { id: 'file.stls', title: 'Export all objects as STLs…', group: 'File', keywords: 'mesh', enabled: objects, run: () => void import('../exportStl').then((m) => m.exportStl(false, true)) },
   { id: 'file.bundle', title: 'Export preset bundle…', group: 'File', keywords: 'configs', run: () => setState({ presetUx: { kind: 'export' } }) },
-
 
   { id: 'edit.undo', title: 'Undo', group: 'Edit', keys: 'Mod+Z', enabled: () => !!undoName() || 'Nothing to undo', run: undo },
   { id: 'edit.redo', title: 'Redo', group: 'Edit', keys: 'Mod+Y / Mod+Shift+Z', enabled: () => !!redoName() || 'Nothing to redo', run: redo },
@@ -79,7 +75,6 @@ export const CORE: Command[] = [
   { id: 'edit.clone', title: 'Clone selected…', group: 'Edit', keys: 'Mod+D', keywords: 'duplicate copies', enabled: noProject(selection), run: app('clone') },
   { id: 'edit.rename', title: 'Rename', group: 'Edit', keys: 'F2', enabled: selection, run: () => startRename() },
   { id: 'edit.prefs', title: 'Preferences', group: 'Edit', keys: 'Mod+P', keywords: 'settings options', run: app('preferences') },
-
 
   { id: 'obj.arrange', title: 'Arrange all', group: 'Object', keys: 'A', keywords: 'layout pack', enabled: objects, run: () => arrangeAll(true), boost: 30 },
   { id: 'obj.arrangeplate', title: 'Arrange this plate', group: 'Object', keys: 'Shift+A', enabled: objects, run: () => arrangeAll(false) },
@@ -97,7 +92,6 @@ export const CORE: Command[] = [
   ...(['X', 'Y', 'Z'] as const).map((a, i): Command => ({ id: `obj.mirror${a}`, title: `Mirror along ${a}`, group: 'Object', enabled: selection, run: () => void mirrorSelection(i as 0 | 1 | 2) })),
   { id: 'obj.table', title: 'Object table…', group: 'Object', keywords: 'list objects', enabled: objects, run: app('objectTable') },
 
-
   { id: 'tool.move', title: 'Move', group: 'Tools', keys: 'M', keywords: 'gizmo translate position', enabled: editable, run: gizmo('move') },
   { id: 'tool.rotate', title: 'Rotate', group: 'Tools', keys: 'R', keywords: 'gizmo turn', enabled: editable, run: gizmo('rotate') },
   { id: 'tool.scale', title: 'Scale', group: 'Tools', keys: 'S', keywords: 'gizmo size resize', enabled: editable, run: gizmo('scale') },
@@ -112,17 +106,14 @@ export const CORE: Command[] = [
   ...PAINTS.map(([k, title, keys]): Command => ({ id: `tool.paint.${k}`, title, group: 'Tools', keys, keywords: 'paint brush', enabled: () => canPaint(s()) || 'Select one object', run: () => { setState({ tab: 'prepare' }); togglePaint(k); } })),
   { id: 'tool.assembly', title: 'Assembly view', group: 'Tools', keywords: 'explode', enabled: objects, run: () => setAssembly({ on: !assembly().on }) },
 
-
-  { id: 'slice.plate', title: 'Slice plate', group: 'Slice', keys: 'Mod+R', enabled: () => !s().objects.length ? 'Add a model first' : busy(s()) ? 'Slicing' : outsideVolumeWarning() ?? true, run: () => void slice() },
+  { id: 'slice.plate', title: 'Slice plate', group: 'Slice', enabled: () => !s().objects.length ? 'Add a model first' : busy(s()) ? 'Slicing' : outsideVolumeWarning() ?? true, run: () => void slice() },
   { id: 'slice.all', title: 'Slice all plates', group: 'Slice', enabled: () => s().projectPlates.length > 1 ? !busy(s()) || 'Slicing' : 'One plate only', run: () => void sliceAll() },
   { id: 'slice.cancel', title: 'Cancel slicing', group: 'Slice', enabled: () => busy(s()) || 'Not slicing', run: cancelSlice },
-
 
   { id: 'plate.add', title: 'Add plate', group: 'Plate', enabled: () => canAddPlate(s()) || 'Not with this tool', run: addPlate },
   { id: 'plate.duplicate', title: 'Duplicate plate', group: 'Plate', enabled: () => canAddPlate(s()) || 'Not with this tool', run: duplicatePlate },
   { id: 'plate.settings', title: 'Plate settings…', group: 'Plate', keywords: 'bed type sequence', run: app('plate') },
   { id: 'plate.flush', title: 'Flushing volumes…', group: 'Plate', keywords: 'purge wipe', run: () => setState({ flushDialog: true }) },
-
 
   { id: 'view.prepare', title: 'Model', group: 'View', keys: 'L', keywords: 'prepare tab switch 3d', run: () => setState({ tab: 'prepare' }) },
   { id: 'view.preview', title: 'Layers', group: 'View', keys: 'L', keywords: 'preview tab switch toolpaths', run: () => setState({ tab: 'preview' }) },
@@ -137,7 +128,6 @@ export const CORE: Command[] = [
   { id: 'theme.dark', title: 'Theme: Dark', group: 'View', keywords: 'appearance colour night', run: () => setThemePref('dark') },
   { id: 'theme.system', title: 'Theme: System', group: 'View', keywords: 'appearance colour auto', run: () => setThemePref('system') },
 
-
   { id: 'preset.printer', title: 'Printer settings…', group: 'Preset', keywords: 'machine edit', run: () => setState({ dialog: { type: 'machine', slot: 0 } }) },
   { id: 'preset.filament', title: 'Filament settings…', group: 'Preset', keywords: 'material edit', run: () => setState({ dialog: { type: 'filament', slot: 0 } }) },
   { id: 'preset.process', title: 'Process settings', group: 'Preset', keywords: 'quality edit', run: () => setState({ tab: 'prepare', processScope: 'global' }) },
@@ -145,15 +135,13 @@ export const CORE: Command[] = [
   { id: 'preset.create', title: 'Create printer…', group: 'Preset', keywords: 'new machine nozzle', run: app('createPrinter') },
   { id: 'preset.search', title: 'Search settings', group: 'Preset', keys: 'Mod+F / /', keywords: 'find option', run: () => void import('./registry').then((m) => m.openPalette('/')) },
 
-
   { id: 'help.palette', title: 'Command palette', group: 'Help', keys: 'Mod+K', run: () => void import('./registry').then((m) => m.openPalette('')) },
   { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', keys: '?', run: app('shortcuts') },
   { id: 'help.develop', title: 'Develop mode', group: 'Help', keywords: 'developer expert debug', get detail() { return s().developerMode ? 'On' : 'Off'; }, run: () => { const on = !s().developerMode; savePreferences({'orca.developer_mode': on ? '1' : '0'}); setState({ developerMode: on }); } },
   { id: 'help.setup', title: 'Setup', group: 'Help', run: app('setup') },
   { id: 'help.about', title: 'About PancakeSlicer', group: 'Help', keywords: 'version licence', run: app('about') },
-  { id: 'help.calibguide', title: 'Calibration guide', group: 'Help', run: () => void window.open('/help/calibration.html', '_blank', 'noopener') },
+  { id: 'help.calibguide', title: 'Calibration guide', group: 'Help', run: () => void window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener') },
   ...CALIB.map(([k, title]): Command => ({ id: `calib.${k}`, title: `Calibrate: ${title}`, group: 'Calibration', enabled: () => canCalibrate() || 'Not with this tool', run: () => setState({ calibDialog: k }) })),
-
 
   { id: 'key.tab', title: 'Model / Layers (in a 3D view)', group: 'View', keys: 'Tab' },
   { id: 'key.views', title: 'Views', group: 'View', keys: '0 … 6' },
@@ -174,7 +162,6 @@ export const CORE: Command[] = [
   { id: 'key.pv.one', title: 'One layer', group: 'Preview', keys: 'Shift+L' },
   { id: 'key.pv.goto', title: 'Go to layer', group: 'Preview', keys: 'Shift+G' },
 ];
-
 
 export function exportTitle() {
   return outputKind(getState()) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';

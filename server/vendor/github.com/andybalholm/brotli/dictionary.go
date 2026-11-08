@@ -6,6 +6,7 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Collection of static dictionary words. */
 type dictionary struct {
 	size_bits_by_length [32]byte
 	offsets_by_length   [32]uint32
@@ -122805,7 +122806,7 @@ var kBrotliDictionaryData = []byte{
 }
 
 var kBrotliDictionary = dictionary{
-
+	/* size_bits_by_length */
 	[32]byte{
 		0,
 		0,
@@ -122841,6 +122842,7 @@ var kBrotliDictionary = dictionary{
 		0,
 	},
 
+	/* offsets_by_length */
 	[32]uint32{
 		0,
 		0,
@@ -122876,8 +122878,10 @@ var kBrotliDictionary = dictionary{
 		122784,
 	},
 
+	/* data_size ==  sizeof(kBrotliDictionaryData) */
 	122784,
 
+	/* data */
 	kBrotliDictionaryData,
 }
 

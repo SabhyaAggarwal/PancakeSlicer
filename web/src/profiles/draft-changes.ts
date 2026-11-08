@@ -13,13 +13,11 @@ function remember(values: Config, baseline: Config, revision: unknown, value: Co
   return value;
 }
 
-
 export function profileDraftChanges(values: Config, baseline: Config, revision: unknown): Config {
   const cached = drafts.get(values)?.get(baseline);
   return cached && Object.is(cached.revision, revision) ? cached.value
     : remember(values, baseline, revision, changedKeys(values, baseline));
 }
-
 
 export function editProfileDraftValue(values: Config, baseline: Config, key: string, value: ConfigValue | undefined, revision: unknown): Config {
   const previous = profileDraftChanges(values, baseline, revision);

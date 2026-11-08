@@ -37,10 +37,8 @@ namespace Slic3r
     static constexpr long long ENUM_EARLY_EXIT = 10000000;
     constexpr uint32_t GOLDEN_RATIO_32 = 0x9e3779b9;
 
-
     static void change_memoryed_heaps_to_arrays(MemoryedGroupHeap& heap,const int total_filament_num,const std::vector<unsigned int>& used_filaments, std::vector<std::vector<int>>& arrs)
     {
-
         arrs.clear();
         while (!heap.empty()) {
             auto top = heap.top();
@@ -57,7 +55,6 @@ namespace Slic3r
         std::unordered_map<int, int> filament_merge_map;
         for (auto elem : merged_filaments) {
             for (auto f : elem.second) {
-
                 filament_merge_map[f] = elem.first;
             }
         }
@@ -295,7 +292,6 @@ namespace Slic3r
                 groups_count[g_id]++;
             }
 
-
             group_hashs.clear();
             for (auto& nf : nozzles_filaments) {
                 uint64_t filament_mask = 0;
@@ -307,7 +303,6 @@ namespace Slic3r
             std::sort(group_hashs.begin(), group_hashs.end());
             if (group_set.find(group_hashs) != group_set.end()) continue;
             group_set.insert(group_hashs);
-
 
             int prefer_level = 0;
             int placeable_count = 0;
@@ -343,7 +338,6 @@ namespace Slic3r
                     }
                 }
             }
-
 
             std::vector<int> full_map(ctx.group_info.total_filament_num, ctx.machine_info.master_extruder_id);
             for (int i = 0; i < n; ++i)
@@ -409,21 +403,6 @@ namespace Slic3r
         return full_map;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     std::vector<int> select_best_group_for_ams(const std::vector<std::vector<int>>& filament_to_nozzles,
         const std::vector<MultiNozzleUtils::NozzleInfo>& nozzle_list,
         const std::vector<unsigned int>& used_filaments,
@@ -438,7 +417,6 @@ namespace Slic3r
             return filament_to_nozzles.size() ? filament_to_nozzles.front() : std::vector<int>();
 
         const int fail_cost = 9999;
-
 
         std::vector<std::vector<MachineFilamentInfo>> machine_filament_info = machine_filament_info_;
         machine_filament_info.resize(2);
@@ -467,7 +445,6 @@ namespace Slic3r
                 }
                 std::vector<std::vector<float>>distance_matrix(group_colors[i].size(), std::vector<float>(machine_filament_info[i].size()));
 
-
                 for (size_t src = 0; src < group_colors[i].size(); ++src) {
                     for (size_t dst = 0; dst < machine_filament_info[i].size(); ++dst) {
                         distance_matrix[src][dst] = calc_color_distance(
@@ -476,7 +453,6 @@ namespace Slic3r
                         );
                     }
                 }
-
 
                 std::vector<int>l_nodes(group_colors[i].size()), r_nodes(machine_filament_info[i].size());
                 std::iota(l_nodes.begin(), l_nodes.end(), 0);
@@ -533,14 +509,12 @@ namespace Slic3r
         }
         else {
             auto top = groups.top();
-
             if (top.prefer_level > item.prefer_level)
                 return;
             else if (top.prefer_level == item.prefer_level) {
                 if (top.cost <= item.cost) {
                     emplace_if_accepatle(groups, item, top);
                 }
-
                 else {
                     MemoryedGroupHeap new_heap;
                     new_heap.push(item);
@@ -552,7 +526,6 @@ namespace Slic3r
                     groups = std::move(new_heap);
                 }
             }
-
             else {
                 groups = MemoryedGroupHeap();
                 groups.push(item);
@@ -573,7 +546,6 @@ namespace Slic3r
 
     FlushDistanceEvaluator::FlushDistanceEvaluator(const std::vector<FlushMatrix>& flush_matrix, const std::vector<unsigned int>& used_filaments, const std::vector<std::vector<unsigned int>>& layer_filaments, double p)
     {
-
         std::vector<std::vector<int>>count_matrix(used_filaments.size(), std::vector<int>(used_filaments.size()));
         for (const auto& lf : layer_filaments) {
             for (auto iter = lf.begin(); iter != lf.end(); ++iter) {
@@ -600,7 +572,6 @@ namespace Slic3r
                     if (i == j)
                         m_distance_matrix[k][i][j] = 0;
                     else {
-
                         float max_val = std::max(flush_matrix[k][used_filaments[i]][used_filaments[j]], flush_matrix[k][used_filaments[j]][used_filaments[i]]);
                         float min_val = std::min(flush_matrix[k][used_filaments[i]][used_filaments[j]], flush_matrix[k][used_filaments[j]][used_filaments[i]]);
                         m_distance_matrix[k][i][j] = (max_val * p + min_val * (1 - p)) * (std::max(count_matrix[i][j], 1));
@@ -690,10 +661,8 @@ namespace Slic3r
     }
 
 
-
     std::vector<int> KMediods::init_cluster_center(const std::unordered_map<int, std::vector<int>>& placeable_limits, const std::unordered_map<int, std::vector<int>>& unplaceable_limits,const std::vector<int>& cluster_size,const std::vector<std::pair<std::set<int>,int>>& cluster_group_size, int seed)
     {
-
         std::vector<int> l_nodes(m_elem_count);
         std::vector<int> r_nodes(m_k);
         std::iota(l_nodes.begin(), l_nodes.end(), 0);
@@ -701,7 +670,6 @@ namespace Slic3r
 
         std::unordered_map<int, std::vector<int>> shuffled_placeable_limits;
         std::unordered_map<int, std::vector<int>> shuffled_unplaceable_limits;
-
         {
             std::mt19937 rng(seed);
             std::shuffle(l_nodes.begin(), l_nodes.end(), rng);
@@ -720,8 +688,6 @@ namespace Slic3r
 
         MaxFlowSolver M(l_nodes, r_nodes, shuffled_placeable_limits, shuffled_unplaceable_limits);
         auto ret = M.solve();
-
-
 
         std::vector<int> cluster_center(m_k, -1);
         for (size_t idx = 0; idx < ret.size(); ++idx) {
@@ -751,7 +717,6 @@ namespace Slic3r
             }
         }
 
-
         std::vector<int> r_nodes_capacity = {};
         std::vector<std::pair<std::set<int>, int>> r_nodes_group_capacity = {};
         if (have_enough_size(cluster_size, cluster_group_size, m_elem_count)) {
@@ -759,17 +724,9 @@ namespace Slic3r
             r_nodes_group_capacity = cluster_group_size;
         }
         else {
-
-
             r_nodes_capacity = std::vector<int>(m_k, m_elem_count);
         }
         std::vector<int> l_nodes_capacity(l_nodes.size(),1);
-
-
-
-
-
-
         MinFlushFlowSolver M(distance_matrix, l_nodes, r_nodes, placeable_limits, unplaceable_limits, l_nodes_capacity, r_nodes_capacity, r_nodes_group_capacity);
         auto ret = M.solve();
 
@@ -782,13 +739,6 @@ namespace Slic3r
         for (size_t idx = 0; idx < center.size(); ++idx)
             if (center[idx] != -1)
                 assert(labels[center[idx]] == idx);
-
-
-
-
-
-
-
 
         for (size_t idx = 0; idx < labels.size(); ++idx) {
             if (labels[idx] == -1) {
@@ -808,12 +758,6 @@ namespace Slic3r
 
         return labels;
     }
-
-
-
-
-
-
 
     void KMediods::do_clustering(const FilamentGroupContext& context, const ClusteringBudget& budget)
     {
@@ -838,7 +782,6 @@ namespace Slic3r
         std::vector<int> best_cluster_labels  = std::vector<int>(m_elem_count, m_default_group_id);
         double           best_cluster_cost    = std::numeric_limits<double>::max();
         int              retry_count          = 0;
-
 
         const int retry = std::max(1, budget.max_restarts);
         auto within_budget = [&]() { return budget.timeout_ms <= 0 || T.time_machine_end() < budget.timeout_ms; };
@@ -1006,7 +949,6 @@ namespace Slic3r
 
         std::unordered_map<int, int> filament_merge_map = get_merged_filament_map(merged_filaments);
 
-
         for (auto& layer_filament : new_ctx.model_info.layer_filaments) {
             for (auto& f : layer_filament) {
                 if (auto iter = filament_merge_map.find((int)(f)); iter != filament_merge_map.end()) {
@@ -1035,10 +977,6 @@ namespace Slic3r
 
     std::vector<int> FilamentGroup::calc_filament_group(int* cost)
     {
-
-
-
-
 
         try {
             if (FGMode::MatchMode == ctx.group_info.mode)
@@ -1141,7 +1079,6 @@ namespace Slic3r
 
                 map_filament_to_machine_filament(used_filament_idx, machine_filament_idx);
             }
-
             for (auto idx : filaments_to_optimize) {
                 int filament_idx = l_nodes[idx];
                 bool is_support_filament = used_filament_list[filament_idx].usage_type == FilamentUsageType::SupportOnly;
@@ -1152,15 +1089,12 @@ namespace Slic3r
 
                 auto optional_filaments = machine_filament_set[old_machine_filament];
 
-
                 std::vector<std::pair<int, int>> valid_candidates;
                 for (auto machine_filament : optional_filaments) {
                     int new_extruder_id = machine_filament_list[machine_filament].extruder_id;
 
-
                     int preference_score = 0;
                     bool new_extruder_prefer_support = ctx.machine_info.prefer_non_model_filament[new_extruder_id];
-
 
                     if (is_support_filament && new_extruder_prefer_support) {
                         preference_score += SupportPreferScore;
@@ -1168,7 +1102,6 @@ namespace Slic3r
 
                     valid_candidates.emplace_back(machine_filament, preference_score);
                 }
-
                 int best_preference_score = 0;
                 for (const auto& candidate : valid_candidates) {
                     if (candidate.second >= best_preference_score) {
@@ -1176,18 +1109,15 @@ namespace Slic3r
                     }
                 }
 
-
                 int best_candidate = -1;
                 int best_gap = std::numeric_limits<int>::max();
 
                 for (const auto& candidate : valid_candidates) {
-
                     int machine_filament = candidate.first;
                     int score = candidate.second;
                     if (score == best_preference_score) {
                         int new_extruder_id = machine_filament_list[machine_filament].extruder_id;
                         int new_gap = std::abs(extruder_filament_count[new_extruder_id] + 1 - extruder_filament_count[1 - new_extruder_id]);
-
 
                         if (new_gap < best_gap) {
                             best_gap = new_gap;
@@ -1195,7 +1125,6 @@ namespace Slic3r
                         }
                     }
                 }
-
                 if (best_candidate != -1) {
                     map_filament_to_machine_filament(filament_idx, best_candidate);
                 } else {
@@ -1221,7 +1150,6 @@ namespace Slic3r
                 return group;
         }
 
-
         {
             l_nodes = ungrouped_filaments;
             auto unlink_limits = build_unlink_limits(l_nodes, r_nodes, [&machine_filament_list, is_extruder_filament_compatible](int used_filament_idx, int machine_filament_idx) {
@@ -1233,7 +1161,6 @@ namespace Slic3r
             if (ungrouped_filaments.empty())
                 return group;
         }
-
 
         {
             l_nodes = ungrouped_filaments;
@@ -1313,8 +1240,6 @@ namespace Slic3r
         return group;
     }
 
-
-
     std::unordered_map<int, std::vector<int>> FilamentGroup::rebuild_nozzle_unprintables(const std::vector<unsigned int>& used_filaments, const std::unordered_map<int, std::vector<int>>& extruder_unprintables, const std::vector<int>& filament_volume_map)
     {
         std::unordered_map<int, std::vector<int>> nozzle_unprintables;
@@ -1365,7 +1290,6 @@ namespace Slic3r
     {
         std::vector<FilamentPlanRes> res;
 
-
         std::vector<int> r_nodes(ctx.nozzle_info.nozzle_list.size(), -1);
         auto initial_nozzle = ctx.nozzle_info.nozzle_status;
         for (int r_id = 0; r_id < r_nodes.size(); r_id++) { if (initial_nozzle.count(r_id)) r_nodes[r_id] = initial_nozzle[r_id]; }
@@ -1379,10 +1303,8 @@ namespace Slic3r
         int  prev_layer_last_nozzle_id   = -1;
         bool used_prev_layer_last_nozzle = false;
 
-
         std::vector<int> layer_fil_nozzle_match(ctx.model_info.filament_info.size(), 0);
         for (int i = 0; i < layer_nums; i++) {
-
             const auto      &layer_filaments = ctx.model_info.layer_filaments[i];
             std::vector<int> l_nodes(layer_filaments.begin(), layer_filaments.end());
             std::sort(l_nodes.begin(), l_nodes.end());
@@ -1393,9 +1315,7 @@ namespace Slic3r
                 continue;
             }
 
-
             std::vector<std::deque<int>> nozzle_fil_deq(r_nodes.size());
-
 
             std::unordered_map<int, size_t> filament_to_nozzle;
             filament_to_nozzle.reserve(r_nodes.size());
@@ -1405,7 +1325,6 @@ namespace Slic3r
 
             const int epochs = std::ceil(double(l_nodes.size()) / r_nodes.size());
             for (int j = 0; j < epochs; j++) {
-
                 std::vector<int>  remaining_l_nodes;
                 std::vector<int>  remaining_r_nodes;
                 std::vector<int>  remaining_r_nodes_to_origin;
@@ -1436,7 +1355,6 @@ namespace Slic3r
                     }
                 }
 
-
                 GroupMinCostFlowSolver s(flush_matrix, l_nodes, remaining_r_nodes, r_nodes_group);
                 auto                            match = s.solve();
                 int                             write = 0;
@@ -1447,7 +1365,6 @@ namespace Slic3r
                         layer_fil_nozzle_match[filament_id] = noz_id;
                         r_nodes[noz_id]                     = filament_id;
                         nozzle_fil_deq[noz_id].push_back(filament_id);
-
                         filament_to_nozzle[filament_id] = noz_id;
                     } else {
                         l_nodes[write++] = l_nodes[l_id];
@@ -1455,7 +1372,6 @@ namespace Slic3r
                 }
                 l_nodes.resize(write);
             }
-
 
             int start_extruder = 0;
             int start_nozzle   = 0;

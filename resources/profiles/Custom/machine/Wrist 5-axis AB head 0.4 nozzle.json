@@ -65,7 +65,7 @@
 	"rotary_firmware_rtcp": "0",
 	"rotary_inverse_time_feed": "1",
 	"nonplanar_max_tilt": "70",
-	"default_print_profile": "0.20mm Non-planar top @Wrist",
+	"default_print_profile": "0.20mm Smoothest tops @Wrist",
 	"printer_model": "Wrist 5-axis AB head",
 	"printer_variant": "0.4",
 	"default_filament_profile": [

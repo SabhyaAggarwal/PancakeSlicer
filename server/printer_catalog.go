@@ -15,13 +15,12 @@ import (
 )
 
 type catalogModel struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Family  string   `json:"family,omitempty"`
-	Cover   string   `json:"cover,omitempty"`
-	Nozzles []string `json:"nozzles"`
-	Bed     string   `json:"bed,omitempty"`
-
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Family   string            `json:"family,omitempty"`
+	Cover    string            `json:"cover,omitempty"`
+	Nozzles  []string          `json:"nozzles"`
+	Bed      string            `json:"bed,omitempty"`
 	Machines map[string]string `json:"machines"`
 }
 type catalogVendor struct {
@@ -34,6 +33,17 @@ var printerCatalog struct {
 	once     sync.Once
 	response *cachedResponse
 	err      error
+}
+
+func printerCatalogResponse(root string) (*cachedResponse, error) {
+	printerCatalog.once.Do(func() {
+		vendors, err := buildPrinterCatalog(root)
+		if err == nil {
+			printerCatalog.response, err = cacheJSON(map[string]any{"vendors": vendors})
+		}
+		printerCatalog.err = err
+	})
+	return printerCatalog.response, printerCatalog.err
 }
 
 func buildPrinterCatalog(root string) ([]catalogVendor, error) {
@@ -112,7 +122,8 @@ func bedOf(machines map[string]rawPreset, model string) string {
 		if stringValue(p["printer_model"]) != model || stringValue(p["instantiation"]) == "false" {
 			continue
 		}
-		if name == "" || strings.Contains(n, "0.4") && !strings.Contains(name, "0.4") {
+		if name == "" || strings.Contains(n, "0.4") != strings.Contains(name, "0.4") && strings.Contains(n, "0.4") ||
+			strings.Contains(n, "0.4") == strings.Contains(name, "0.4") && n < name {
 			name = n
 		}
 	}
@@ -140,18 +151,12 @@ func bedOf(machines map[string]rawPreset, model string) string {
 func (s *Server) printerCatalogRoutes(mux *http.ServeMux) {
 	root := filepath.Join(s.cfg.Resources, "profiles")
 	mux.HandleFunc("GET /api/printer-catalog", func(w http.ResponseWriter, r *http.Request) {
-		printerCatalog.once.Do(func() {
-			vendors, err := buildPrinterCatalog(root)
-			if err == nil {
-				printerCatalog.response, err = cacheJSON(map[string]any{"vendors": vendors})
-			}
-			printerCatalog.err = err
-		})
-		if printerCatalog.err != nil {
-			fail(w, 500, printerCatalog.err.Error())
+		response, err := printerCatalogResponse(root)
+		if err != nil {
+			fail(w, 500, err.Error())
 			return
 		}
-		printerCatalog.response.serve(w, r, "printer-catalog.json", "application/json", catalogCache, time.Time{})
+		response.serve(w, r, "printer-catalog.json", "application/json", catalogCache, time.Time{})
 	})
 	mux.HandleFunc("GET /api/printer-catalog/covers/{vendor}/{model}", func(w http.ResponseWriter, r *http.Request) {
 		vendor, model := r.PathValue("vendor"), r.PathValue("model")

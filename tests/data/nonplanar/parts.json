@@ -1,0 +1,165 @@
+{
+ "schema": "orca.nonplanar_bench_parts.v1",
+ "parts": {
+  "dome": {
+   "top": {
+    "surface": {
+     "kind": "sphere_cap",
+     "cx": 0.0,
+     "cy": 0.0,
+     "R": 60.0,
+     "zc": -41.96152422706632
+    },
+    "domain": {
+     "kind": "circle",
+     "cx": 0.0,
+     "cy": 0.0,
+     "r": 30.0
+    },
+    "eval_inset": 2.0
+   },
+   "description": "Spherical cap R=60 on a 60 x 10 mm cylinder, edge slope 30 deg",
+   "mesh_max_chord_error": 0.0063,
+   "bbox": [
+    [
+     -30.0,
+     -30.0,
+     0.0
+    ],
+    [
+     30.0,
+     30.0,
+     18.0385
+    ]
+   ],
+   "volume_mm3": 39895.954,
+   "triangles": 5940,
+   "file": "dome.obj"
+  },
+  "saddle": {
+   "top": {
+    "surface": {
+     "kind": "saddle",
+     "z0": 21.25,
+     "k": 80.0
+    },
+    "domain": {
+     "kind": "rect",
+     "x0": -30.0,
+     "y0": -30.0,
+     "x1": 30.0,
+     "y1": 30.0
+    },
+    "eval_inset": 2.0
+   },
+   "description": "z = (x^2 - y^2)/80 over 60 x 60, lowest top 10 mm; 36.9 deg on the axes",
+   "mesh_max_chord_error": 0.007,
+   "bbox": [
+    [
+     -30.0,
+     -30.0,
+     0.0
+    ],
+    [
+     30.0,
+     30.0,
+     32.5
+    ]
+   ],
+   "volume_mm3": 76500.0,
+   "triangles": 3680,
+   "file": "saddle.obj"
+  },
+  "dome_pillar": {
+   "top": {
+    "surface": {
+     "kind": "sphere_cap",
+     "cx": 0.0,
+     "cy": 0.0,
+     "R": 60.0,
+     "zc": -41.96152422706632
+    },
+    "domain": {
+     "kind": "circle",
+     "cx": 0.0,
+     "cy": 0.0,
+     "r": 30.0
+    },
+    "eval_inset": 2.0
+   },
+   "description": "Spherical cap R=60 on a 60 x 10 mm cylinder, edge slope 30 deg; \u00d86 x 40 mm pillar 4 mm from the dome edge at +X",
+   "pillar": {
+    "cx": 37.0,
+    "cy": 0.0,
+    "r": 3.0,
+    "height": 40.0
+   },
+   "mesh_max_chord_error": 0.0063,
+   "bbox": [
+    [
+     -30.0,
+     -30.0,
+     0.0
+    ],
+    [
+     40.0,
+     30.0,
+     40.0
+    ]
+   ],
+   "volume_mm3": 41019.674,
+   "triangles": 6068,
+   "file": "dome_pillar.obj"
+  },
+  "arch": {
+   "top": {
+    "surface": {
+     "kind": "flat",
+     "z0": 36.0
+    },
+    "domain": {
+     "kind": "rect",
+     "x0": -36.0,
+     "y0": -10.0,
+     "x1": 36.0,
+     "y1": 10.0
+    },
+    "eval_inset": 2.0
+   },
+   "bottom": {
+    "surface": {
+     "kind": "cylinder_y_under",
+     "cx": 0.0,
+     "zc": 0.0,
+     "R": 30.0
+    },
+    "domain": {
+     "kind": "rect",
+     "x0": -30.0,
+     "y0": -10.0,
+     "x1": 30.0,
+     "y1": 10.0
+    },
+    "eval_inset": 2.0
+   },
+   "needs_support": true,
+   "description": "Half-cylinder arch R=30 under a flat top at 36 mm, 72 x 20 mm",
+   "mesh_max_chord_error": 0.0,
+   "bbox": [
+    [
+     -36.0,
+     -10.0,
+     0.0
+    ],
+    [
+     36.0,
+     10.0,
+     36.0
+    ]
+   ],
+   "volume_mm3": 23585.848,
+   "triangles": 208,
+   "file": "arch.obj"
+  }
+ }
+}

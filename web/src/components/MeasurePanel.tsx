@@ -1,5 +1,3 @@
-
-
 import { useSyncExternalStore } from 'react';
 import { distanceComponents, featureText, fmt, measure, measureRows, transformFeature } from '../plater/measure';
 import { measureState, setMeasure, subscribeMeasure } from '../plater/measureState';
@@ -8,15 +6,12 @@ import { getState, updateObject } from '../state/store';
 import { promptDialog } from '../actions';
 import { IconButton } from './Icon';
 
-
-
 async function editToScale(current: number) {
   const text = await promptDialog('Edit to scale', fmt(current));
   const value = Number(text);
   const s = getState(), sel = s.selected, o = s.objects.find((x) => x.id === sel?.object);
   const inst = o?.instances.find((i) => i.id === sel?.instance);
   if (!o || !inst || sel?.all || !(value > 0) || Math.abs(value - current) < 1e-9 || current <= 0) return;
-
   const { first, second } = measureState();
   const ratio = value / current, before = instanceMatrix(o, inst);
   updateObject(o.id, { scale: o.scale.map((k) => k * ratio) as [number, number, number] }, 'Scale');
@@ -24,7 +19,6 @@ async function editToScale(current: number) {
   const m = instanceMatrix(after, after.instances.find((i) => i.id === inst.id)!).multiply(before.invert());
   setMeasure({ first: transformFeature(first, m, ratio), second: transformFeature(second, m, ratio) });
 }
-
 
 const FIRST = '#40bfbf', SECOND = '#bf40bf', ORCA = '#009688', AXES = ['#ff3c5b', '#64c818', '#2f88e9'];
 

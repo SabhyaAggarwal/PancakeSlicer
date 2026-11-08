@@ -15,38 +15,14 @@
 #include <limits>
 #include <cassert>
 
-
-
 namespace Slic3r::FillLightning
 {
-
-
-
-
-
-
-
-
 
 class DistanceField
 {
 public:
-
-
-
-
-
-
-
-
     DistanceField(const coord_t& radius, const Polygons& current_outline, const BoundingBox& current_outlines_bbox, const Polygons& current_overhang);
-
-
-
-
-
-
-
+    
     bool tryGetNextPoint(Point *out_unsupported_location, size_t *out_unsupported_cell_idx, const size_t start_idx = 0) const
     {
         for (size_t point_idx = start_idx; point_idx < m_unsupported_points.size(); ++point_idx) {
@@ -60,59 +36,24 @@ public:
         return false;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     void update(const Point& to_node, const Point& added_leaf);
 
 protected:
-
-
-
     coord_t m_cell_size;
-
-
-
-
 
     coord_t m_supporting_radius;
     int64_t m_supporting_radius2;
 
-
-
-
     struct UnsupportedCell
     {
-
         Point loc;
-
         coord_t dist_to_boundary;
     };
-
-
-
 
     std::vector<UnsupportedCell> m_unsupported_points;
     std::vector<bool>            m_unsupported_points_erased;
 
-
-
-
     const BoundingBox          m_unsupported_points_bbox;
-
-
-
-
-
 
     class UnsupportedPointsGrid
     {
@@ -192,15 +133,9 @@ protected:
 
     UnsupportedPointsGrid m_unsupported_points_grid;
 
-
-
-
     Point to_grid_point(const Point &point) const {
         return (point - m_unsupported_points_bbox.min) / m_cell_size;
     }
-
-
-
 
     Point from_grid_point(const Point &point) const {
         return point * m_cell_size + m_unsupported_points_bbox.min;

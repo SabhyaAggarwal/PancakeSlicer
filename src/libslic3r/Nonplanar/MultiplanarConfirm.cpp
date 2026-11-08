@@ -67,8 +67,6 @@ double thin_top_share(const indexed_triangle_set &mesh, double thickness)
 {
     if (mesh.indices.empty() || thickness <= 0.)
         return 0.;
-
-
     const AABBMesh tree(mesh);
     const size_t   stride = std::max<size_t>(1, mesh.indices.size() / 4000);
     double         up = 0., thin = 0.;
@@ -135,13 +133,9 @@ DeadlineWatch::~DeadlineWatch()
 
 namespace {
 
-
-
 thread_local unsigned rotary_measurement_depth = 0;
 thread_local NonplanarMode rotary_measurement_mode = NonplanarMode::Off;
-
 thread_local double rotary_measurement_time_cap = std::numeric_limits<double>::infinity();
-
 thread_local bool rotary_measurement_unchecked = false;
 thread_local bool curved_planar_pricing = false;
 class ControlPrint final : public Print
@@ -156,15 +150,11 @@ struct RotaryMeasurement
     ~RotaryMeasurement() { rotary_measurement_mode = previous; --rotary_measurement_depth; }
 };
 
-
-
 struct Bead
 {
     Vec3d a, b, axis;
     double width, height;
 };
-
-
 
 void append_beads(const GCodeProcessorResult &result, const PrintConfig &config, std::vector<Bead> &beads)
 {
@@ -181,13 +171,7 @@ void append_beads(const GCodeProcessorResult &result, const PrintConfig &config,
     }
 }
 
-
 thread_local std::string measured_failure;
-
-
-
-
-
 
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
@@ -200,7 +184,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     config.set_deserialize_strict("nonplanar_mode", mode == NonplanarMode::Auto ? "auto" :
                                   mode == NonplanarMode::Multiplanar ? "multiplanar" :
                                   mode == NonplanarMode::OneShot ? "oneshot" : "off");
-
     if (mode == NonplanarMode::Off)
         config.set_deserialize_strict("nonplanar_sublayer_walls", "0");
     if (mode == NonplanarMode::Multiplanar) {
@@ -209,20 +192,16 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     Model        model;
     ModelObject *copy = model.add_object(*object.model_object());
-
-
     DynamicPrintConfig &copy_config = const_cast<DynamicPrintConfig &>(copy->config.get());
     copy_config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(mode));
     if (mode == NonplanarMode::Off && copy_config.has("nonplanar_sublayer_walls"))
         copy_config.set_deserialize_strict("nonplanar_sublayer_walls", "0");
-
     if (oneshot_plinth_applied(object) && mode != NonplanarMode::OneShot)
         for (const auto &[key, value] : plinth_overrides(0)) {
             config.set_deserialize_strict(key, value);
             if (copy_config.has(key))
                 copy_config.set_deserialize_strict(key, value);
         }
-
     for (const auto &[key, value] : overrides) {
         config.set_deserialize_strict(key, value);
         if (copy_config.has(key))
@@ -230,19 +209,12 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     copy->clear_instances();
     copy->add_instance(emitted != nullptr ? *object.instances().front().model_instance : *object.model_object()->instances.front());
-
-
-
-
-
     static std::mutex                                                          planar_mutex;
     static std::map<std::string, std::pair<std::pair<double, std::vector<Bead>>, size_t>> planar_memo;
     static size_t                                                              planar_tick = 0;
     constexpr size_t                                                           PlanarMemo  = 32;
     std::string key;
     if (mode == NonplanarMode::Off && emitted == nullptr) {
-
-
         auto planar_reads = [](const std::string &opt) { return opt.rfind("nonplanar_", 0) != 0 || opt == "nonplanar_kinematics"; };
         for (const std::string &opt : config.keys())
             if (planar_reads(opt))
@@ -261,7 +233,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         const Transform3d &m = copy->instances.front()->get_matrix();
         key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
         const std::lock_guard<std::mutex> lock(planar_mutex);
-
         if (const auto it = planar_memo.find(key); measured == nullptr && emitted == nullptr && it != planar_memo.end()) {
             it->second.second = ++planar_tick;
             beads             = it->second.first.second;
@@ -308,8 +279,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
                 Pricing() { curved_planar_pricing = true; }
                 ~Pricing() { curved_planar_pricing = previous; }
             } pricing;
-
-
             print.invalidate_export();
             print.export_gcode(gcode.string(), &result, nullptr);
             BOOST_LOG_TRIVIAL(info) << "Curved top planar control: profile " << profile_time << " s, firmware planner "
@@ -321,7 +290,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
     }
-
     if (measure_deadline_passed()) {
         measured_failure = "the measuring deadline passed";
         boost::filesystem::remove(gcode, ec);
@@ -329,9 +297,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     if (measured != nullptr && !print.objects().empty()) {
         const PrintObject &printed = *print.objects().front();
-
-
-
         measured->floating         = floating_road(result, printed);
         measured->support          = std::any_of(printed.support_layers().begin(), printed.support_layers().end(),
                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
@@ -368,10 +333,6 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     return time;
 }
 
-
-
-
-
 double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
 {
     using Key = int64_t;
@@ -398,7 +359,6 @@ double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
         const Vec3d n = (mesh.vertices[mesh.indices[i][1]].cast<double>() - a).cross(mesh.vertices[mesh.indices[i][2]].cast<double>() - a);
         normals[i]    = n;
     }
-
     const std::vector<Vec3i32>                   neighbours = its_face_neighbors(mesh);
     std::unordered_map<Key, std::vector<Vec3d>> sharp;
     for (size_t i = 0; i < mesh.indices.size(); ++i)
@@ -453,8 +413,6 @@ double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
     }
     if (samples.empty())
         return std::numeric_limits<double>::quiet_NaN();
-
-
     std::unordered_map<Key, std::vector<size_t>> near_cells;
     for (size_t i = 0; i < samples.size(); ++i)
         near_cells[key(samples[i].first, 1.2)].push_back(i);
@@ -517,8 +475,6 @@ double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
     return count > 0 ? std::sqrt(sum / double(count)) : std::numeric_limits<double>::quiet_NaN();
 }
 
-
-
 double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Bead> &beads, bool whole_surface = false)
 {
     const double missing = std::numeric_limits<double>::quiet_NaN();
@@ -565,9 +521,6 @@ double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Be
         for (const auto &facet : facets)
             if (facet.area2 > 2e-6 && facet.normal.z() > whole_cos) whole_area += facet.area2;
     for (size_t i = 0; i < facets.size(); ++i) {
-
-
-
         if (facets[i].area2 <= 2e-6 || facets[i].normal.z() <= (whole_surface ? whole_cos : up_cos))
             continue;
         const auto &tri = mesh.indices[i];
@@ -655,7 +608,6 @@ double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Be
         }
     }
     auto ray_interval = [&](const Vec3d &p, const Vec3d &normal, const RoundedBead &b, std::pair<double, double> &out) {
-
         const Vec3d d1 = 2. * range * normal, r = p - range * normal - b.a + b.half * b.axis;
         const double a = d1.squaredNorm(), e = b.delta.squaredNorm(), f = b.delta.dot(r), c = d1.dot(r), d = d1.dot(b.delta);
         const double denom = a * e - d * d;
@@ -734,11 +686,8 @@ double rounded_normal_rms(const indexed_triangle_set &mesh, const std::vector<Be
         finish_run();
         if (std::isfinite(error) && std::abs(error) < 0.5) { sum += error * error; ++count; }
     }
-
     return count > 0 && 2 * count >= samples.size() ? std::sqrt(sum / double(count)) : missing;
 }
-
-
 
 struct ChunkCheck
 {
@@ -752,8 +701,6 @@ ChunkCheck check_chunks(const PrintObject &object)
     check.planar_time = measured_slice(object, NonplanarMode::Off, planar);
     throw_if_canceled(object);
     {
-
-
         const double previous = rotary_measurement_time_cap;
         rotary_measurement_time_cap = 1.1 * multiplanar_time_limit(check.planar_time);
         check.chunks_time = measured_slice(object, NonplanarMode::Multiplanar, chunks);
@@ -772,8 +719,6 @@ double net_support_mm3(const Print &print, const GCodeProcessorResult &result)
 {
     const double d   = print.config().filament_diameter.get_at(0);
     double       fil = 0.;
-
-
     for (const auto &mv : result.moves)
         if ((mv.type == EMoveType::Extrude || mv.type == EMoveType::Retract || mv.type == EMoveType::Unretract) &&
             is_support(mv.extrusion_role) && !mv.internal_only && !mv.timing_only)
@@ -796,7 +741,6 @@ bool rotary_auto_measurement()
 
 bool auto_rotary_requested(const PrintObject &object)
 {
-
     if (rotary_measurement_depth > 0 || (object.config().support_style.value == smsNative && object.config().enable_support.value))
         return false;
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
@@ -809,23 +753,16 @@ std::string auto_rotary_planar(const PrintObject &object)
     if (rotary_measurement_depth > 0 || object.config().nonplanar_mode.value != NonplanarMode::Auto ||
         !object.config().nonplanar_atom_toolpath.value.empty())
         return {};
-
-
-
     if (object.print()->config().spiral_mode.value)
         return {};
     const auto kinematics = make_tool_kinematics(object.print()->config());
-
     if (kinematics->rotary_count() == 0 || full_orientation(object.print()->config()))
         return {};
-
     if (rotary_route_claimed(object))
         return {};
 
     TriangleMesh mesh = object.model_object()->raw_mesh();
     mesh.transform(object.model_object()->instances.front()->get_matrix());
-
-
     if (const RoutePrediction prediction = predict_rotary_route(mesh.its, object); prediction.planar >= PlanarEarlyThreshold) {
         std::ostringstream why;
         why << "Auto mode prints planar layers for " << object.model_object()->name
@@ -834,23 +771,16 @@ std::string auto_rotary_planar(const PrintObject &object)
         return why.str();
     }
 
-
-
     std::vector<Bead> planar, candidate;
     const double planar_time = measured_slice(object, NonplanarMode::Off, planar);
     throw_if_canceled(object);
     const double planar_rms = rounded_normal_rms(mesh.its, planar);
     if (!std::isfinite(planar_time) || planar_time <= 0.)
         return {};
-
-
-
     constexpr double RotaryGainPerTime = 0.5;
     const double candidate_time = measured_slice(object, NonplanarMode::Auto, candidate);
     throw_if_canceled(object);
     const double candidate_rms = rounded_normal_rms(mesh.its, candidate);
-
-
     if (!std::isfinite(planar_rms) || (std::isfinite(candidate_time) && candidate_time > 0. && !std::isfinite(candidate_rms))) {
         if (!(std::isfinite(candidate_time) && candidate_time > RotaryMaxTimeRatio * planar_time))
             return {};
@@ -861,9 +791,6 @@ std::string auto_rotary_planar(const PrintObject &object)
                                    << candidate_time / planar_time << " keep false gain_only_keep true";
         return why.str();
     }
-
-
-
     const double ratio = candidate_time / planar_time;
     const double gain = planar_rms > 0. ? 1. - candidate_rms / planar_rms : 0.;
     const double gain_per_time = gain / std::max(1., ratio);
@@ -875,17 +802,14 @@ std::string auto_rotary_planar(const PrintObject &object)
         << object.model_object()->name << ": measured RMS along the normal " << candidate_rms
         << " mm against " << planar_rms << " mm planar, estimated time " << candidate_time / 60.
         << " against " << planar_time / 60. << " min, gain per relative time " << gain_per_time << ".";
-
     BOOST_LOG_TRIVIAL(warning) << "Rotary auto decision " << object.model_object()->name << ": gain " << gain << " time_ratio " << ratio
                                << " keep " << keep << " gain_only_keep " << (measured && earns);
     BOOST_LOG_TRIVIAL(info) << why.str();
-
     return keep ? std::string() : why.str();
 }
 
 bool auto_rotary_candidate(const PrintObject &object, const indexed_triangle_set &mesh)
 {
-
     if (rotary_route_claimed(object) || rotary_route_appends(object))
         return false;
     return auto_multiplanar_candidate(steep_top_share(mesh),
@@ -897,7 +821,6 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
     if (! auto_multiplanar_chunks(plan))
         return {};
     const std::string &name  = object.model_object()->name;
-
     const ChunkCheck   check = check_chunks(object);
     std::ostringstream measured;
     measured << "RMS along the normal " << check.chunks_rms << " mm against " << check.planar_rms << " mm planar, estimated time "

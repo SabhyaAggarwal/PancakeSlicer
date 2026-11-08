@@ -55,15 +55,12 @@ namespace marchsq {
 template<> struct _RasterTraits<Slic3r::png::ImageGreyscale> {
     using Rst = Slic3r::png::ImageGreyscale;
 
-
     using ValueType = uint8_t;
-
 
     static uint8_t get(const Rst &rst, size_t row, size_t col)
     {
         return rst.get(row, col);
     }
-
 
     static size_t rows(const Rst &rst) { return rst.rows; }
     static size_t cols(const Rst &rst) { return rst.cols; }
@@ -116,7 +113,6 @@ ArchiveData extract_sla_archive(const std::string &zipfname,
                                 const std::string &exclude)
 {
     ArchiveData arch;
-
 
     struct Arch: public MZ_Archive {
         Arch(const std::string &fname) {
@@ -172,7 +168,6 @@ ExPolygons rings_to_expolygons(const std::vector<marchsq::Ring> &rings,
 
         polys.emplace_back(poly);
     }
-
 
     return union_ex(polys);
 }
@@ -279,7 +274,6 @@ std::vector<ExPolygons> extract_slices_from_sla_archive(
 
     tbb::parallel_for(size_t(0), arch.images.size(),
                      [&arch, &slices, &st, &rstp, progr](size_t i) {
-
         {
             std::lock_guard<tbb::spin_mutex> lck(st.mutex);
             if (st.stop) return;
@@ -300,7 +294,6 @@ std::vector<ExPolygons> extract_slices_from_sla_archive(
         auto rings = marchsq::execute(img, isoval, rstp.win);
         ExPolygons expolys = rings_to_expolygons(rings, rstp.px_w, rstp.px_h);
 
-
         invert_raster_trafo(expolys, rstp.trafo, rstp.width, rstp.height);
 
         slices[i] = std::move(expolys);
@@ -319,9 +312,6 @@ ConfigSubstitutions import_sla_archive(const std::string &zipfname, DynamicPrint
     return out.load(arch.profile, ForwardCompatibilitySubstitutionRule::Enable);
 }
 
-
-
-
 ConfigSubstitutions import_sla_archive(
     const std::string &      zipfname,
     Vec2i32                    windowsize,
@@ -329,7 +319,6 @@ ConfigSubstitutions import_sla_archive(
     DynamicPrintConfig &     profile_out,
     std::function<bool(int)> progr)
 {
-
     windowsize.x() = std::max(1, windowsize.x());
     windowsize.y() = std::max(1, windowsize.y());
 
@@ -341,8 +330,6 @@ ConfigSubstitutions import_sla_archive(
                         ForwardCompatibilitySubstitutionRule::Enable);
 
     if (profile_in.empty()) {
-
-
         if (auto lh_opt = arch.config.find("layerHeight");
             lh_opt != arch.config.not_found())
         {
@@ -356,8 +343,6 @@ ConfigSubstitutions import_sla_archive(
             }
         }
     }
-
-
 
     profile_use = profile_in.empty() ? profile_out : profile_in;
     profile_out = profile_in;
@@ -384,20 +369,20 @@ std::string to_ini(const ConfMap &m)
 {
     std::string ret;
     for (auto &param : m) ret += param.first + " = " + param.second + "\n";
-
+    
     return ret;
 }
 
 std::string get_cfg_value(const DynamicPrintConfig &cfg, const std::string &key)
 {
     std::string ret;
-
+    
     if (cfg.has(key)) {
         auto opt = cfg.option(key);
         if (opt) ret = opt->serialize();
     }
-
-    return ret;
+    
+    return ret;    
 }
 
 void fill_iniconf(ConfMap &m, const SLAPrint &print)
@@ -415,16 +400,15 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
     m["printProfile"]   = get_cfg_value(cfg, "sla_print_settings_id");
     m["fileCreationTimestamp"] = Utils::utc_timestamp();
     m["prusaSlicerVersion"]    = SLIC3R_BUILD_ID;
-
+    
     SLAPrintStatistics stats = print.print_statistics();
-
-
+    
     double used_material = (stats.objects_used_material +
                             stats.support_used_material) / 1000;
-
+    
     int num_fade = print.default_object_config().faded_layers.getInt();
     num_fade = num_fade >= 0 ? num_fade : 0;
-
+    
     m["usedMaterial"] = std::to_string(used_material);
     m["numFade"]      = std::to_string(num_fade);
     m["numSlow"]      = std::to_string(stats.slow_layers_count);
@@ -437,30 +421,29 @@ void fill_iniconf(ConfMap &m, const SLAPrint &print)
         hollow_en = (*it++)->config().hollowing_enable;
 
     m["hollow"] = hollow_en ? "1" : "0";
-
+    
     m["action"] = "print";
 }
 
 void fill_slicerconf(ConfMap &m, const SLAPrint &print)
 {
     using namespace std::literals::string_view_literals;
-
-
-    static constexpr auto banned_keys = {
+    
+    static constexpr auto banned_keys = { 
 		"compatible_printers"sv,
         "compatible_prints"sv
     };
-
+    
     assert(std::is_sorted(banned_keys.begin(), banned_keys.end()));
     auto is_banned = [](const std::string &key) {
         return std::binary_search(banned_keys.begin(), banned_keys.end(), key);
     };
-
+    
     auto &cfg = print.full_print_config();
     for (const std::string &key : cfg.keys())
         if (! is_banned(key) && ! cfg.option(key)->is_nil())
             m[key] = cfg.opt_serialize(key);
-
+    
 }
 
 }
@@ -478,12 +461,12 @@ std::unique_ptr<sla::RasterBase> SL1Archive::create_raster() const
 
     mirror[X] = m_cfg.display_mirror_x.getBool();
     mirror[Y] = m_cfg.display_mirror_y.getBool();
-
+    
     auto ro = m_cfg.display_orientation.getInt();
     sla::RasterBase::Orientation orientation =
         ro == sla::RasterBase::roPortrait ? sla::RasterBase::roPortrait :
                                             sla::RasterBase::roLandscape;
-
+    
     if (orientation == sla::RasterBase::roPortrait) {
         std::swap(w, h);
         std::swap(pw, ph);
@@ -511,10 +494,10 @@ void SL1Archive::export_print(Zipper& zipper,
         prjname.empty() ?
             boost::filesystem::path(zipper.get_filename()).stem().string() :
             prjname;
-
+    
     ConfMap iniconf, slicerconf;
     fill_iniconf(iniconf, print);
-
+    
     iniconf["jobDir"] = project;
 
     fill_slicerconf(slicerconf, print);
@@ -524,18 +507,17 @@ void SL1Archive::export_print(Zipper& zipper,
         zipper << to_ini(iniconf);
         zipper.add_entry("prusaslicer.ini");
         zipper << to_ini(slicerconf);
-
+        
         size_t i = 0;
         for (const sla::EncodedRaster &rst : m_layers) {
 
             std::string imgname = project + string_printf("%.5d", i++) + "." +
                                   rst.extension();
-
+            
             zipper.add_entry(imgname.c_str(), rst.data(), rst.size());
         }
     } catch(std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << e.what();
-
         throw;
     }
 }

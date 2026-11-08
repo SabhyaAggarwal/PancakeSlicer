@@ -21,12 +21,11 @@ namespace Slic3r {
 class GluTessWrapper {
 public:
     GluTessWrapper() : m_tesselator(gluNewTess()) {
-
         gluTessCallback(m_tesselator, GLU_TESS_BEGIN_DATA,   (_GLUfuncptr)tessBeginCB);
         gluTessCallback(m_tesselator, GLU_TESS_END_DATA,     (_GLUfuncptr)tessEndCB);
         gluTessCallback(m_tesselator, GLU_TESS_ERROR_DATA,   (_GLUfuncptr)tessErrorCB);
         gluTessCallback(m_tesselator, GLU_TESS_VERTEX_DATA,  (_GLUfuncptr)tessVertexCB);
-        gluTessCallback(m_tesselator, GLU_TESS_COMBINE_DATA, (_GLUfuncptr)tessCombineCB);
+        gluTessCallback(m_tesselator, GLU_TESS_COMBINE_DATA, (_GLUfuncptr)tessCombineCB);        
     }
     ~GluTessWrapper() {
         gluDeleteTess(m_tesselator);
@@ -176,28 +175,17 @@ private:
 
     static void tessError(GLenum errorCode)
     {
-
-
-
     }
-
 
     GLUtesselator  *m_tesselator;
 
-
     GLenum          m_primitive_type;
-
     GLdouble        m_pt0[3];
     GLdouble        m_pt1[3];
-
     int             m_num_points;
-
     Pointf3s        m_output_triangles;
-
     std::deque<Vec3d> m_intersection_points;
-
     double          m_z;
-
     bool            m_flipped;
 };
 

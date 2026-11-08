@@ -9,8 +9,6 @@
 
 namespace Slic3r {
 
-
-
 class CurvedTopsAccessError : public SlicingError
 {
 public:

@@ -23,7 +23,6 @@ StrengthTerm::StrengthTerm(const ObjectiveGeometry &g, const std::string &path)
         BOOST_LOG_TRIVIAL(warning) << "Strength term: no 'mesh_min' header in " << path;
         return;
     }
-
     if (const std::streampos at = in.tellg(); in >> tag && tag == "mesh_size")
         in >> file_size.x() >> file_size.y() >> file_size.z();
     else {
@@ -36,7 +35,6 @@ StrengthTerm::StrengthTerm(const ObjectiveGeometry &g, const std::string &path)
                                 << file_size.transpose() << ", no term";
         return;
     }
-
     const Vec3d shift = std::isfinite(g.mesh_min.x()) ? Vec3d(g.mesh_min - file_min) : Vec3d::Zero();
     std::unordered_map<size_t, size_t> slot;
     size_t                             points = 0;
@@ -88,7 +86,6 @@ double StrengthTerm::cost(const ObjectiveGeometry &, const std::vector<Vec3d> &G
                        M[4] * d.x() + M[5] * d.y() + M[2] * d.z());
         const double dMd = d.dot(Md);
         sum += dMd;
-
         if (dG)
             (*dG)[m_nodes[s]] += (2. / (m_W * n)) * (Md - dMd * d);
     }

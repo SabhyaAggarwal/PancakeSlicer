@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -45,6 +46,8 @@ type Config struct {
 	Metrics               bool
 	TrustedProxies        []netip.Prefix
 	PrinterNetwork        string
+	ReleaseFeed           string
+	ReleaseToken          string
 	PrinterStore          *printerStore
 	Features              ToolFeatures
 	Options               *cachedResponse
@@ -85,7 +88,7 @@ func parseConfig() Config {
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
 	flag.StringVar(&c.FallbackBackend, "fallback-backend", env("ORCA_WEB_FALLBACK_BACKEND", ""), "comma-separated previous loopback backends for read-only historical jobs")
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
-	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/src/cli/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
+	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
 	flag.StringVar(&c.Resources, "resources", env("ORCA_WEB_RESOURCES", "resources"), "resources directory holding profiles/ and nonplanar/ (ORCA_WEB_RESOURCES)")
 	flag.StringVar(&c.JobRoot, "job-root", env("ORCA_WEB_JOB_ROOT", filepath.Join(os.TempDir(), "orca-webapp-jobs")), "scratch directory for job files (ORCA_WEB_JOB_ROOT)")
 	flag.StringVar(&c.StaticDir, "static", env("ORCA_WEB_STATIC", "web/dist"), "static front end to serve at / when it exists (ORCA_WEB_STATIC)")
@@ -104,7 +107,9 @@ func parseConfig() Config {
 	flag.Int64Var(&c.DiskQuota, "disk-quota", quota, "job directory quota in bytes; 0 disables (ORCA_WEB_DISK_QUOTA)")
 	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
-	flag.StringVar(&c.PrinterNetwork, "printer-network", env("ORCA_WEB_PRINTER_NETWORK", ""), "where printers may live, for printer connections and Send: lan (private IPv4/IPv6 ranges), or CIDRs and host names; empty turns printer connections off (ORCA_WEB_PRINTER_NETWORK)")
+	flag.StringVar(&c.PrinterNetwork, "printer-network", env("ORCA_WEB_PRINTER_NETWORK", "lan"), "where printers may live, for printer connections and Send: lan (private IPv4/IPv6 ranges), CIDRs and host names, or off (ORCA_WEB_PRINTER_NETWORK)")
+	flag.StringVar(&c.ReleaseFeed, "release-feed", env("ORCA_WEB_RELEASE_FEED", ""), "GitHub owner/repo whose latest release the update notice offers; empty offers none (ORCA_WEB_RELEASE_FEED)")
+	flag.StringVar(&c.ReleaseToken, "release-token", env("ORCA_WEB_RELEASE_TOKEN", ""), "token for a private -release-feed, sent only to GitHub's API (ORCA_WEB_RELEASE_TOKEN)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
 	if _, err := fallbackOrigins(c.FallbackBackend); err != nil {
@@ -176,36 +181,47 @@ func main() {
 		}
 	}
 	cfg.Features, cfg.Options = probeTool(cfg)
-	if err := probePlatePlacement(cfg); err != nil {
-		log.Printf("R238 placement unavailable; plate z/printable and loaded project saves require an upgraded tool: %v", err)
+	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
+	if cfg.Features.DumpPresets {
+		tool := cfg
+		presets.tool = &tool
+	}
+	var placementErr, plateIndexErr, presetErr error
+	var colour map[string]bool
+	usage := cfg.Features
+	var wg sync.WaitGroup
+	for _, run := range []func(){
+		func() { placementErr = probePlatePlacement(cfg) },
+		func() { plateIndexErr = probePlateIndex(cfg) },
+		func() { colour = probeColourChange(cfg) },
+		func() { probeUsage(cfg, &usage) },
+		func() { presetErr = warmPresets(presets) },
+	} {
+		wg.Add(1)
+		go func() { defer wg.Done(); run() }()
+	}
+	wg.Wait()
+	if presetErr != nil {
+		log.Fatal(presetErr)
+	}
+	cfg.Features = usage
+	if placementErr != nil {
+		log.Printf("R238 placement unavailable; plate z/printable and loaded project saves require an upgraded tool: %v", placementErr)
 	} else {
 		cfg.Features.PlatePlacement = true
 	}
-	if err := probePlateIndex(cfg); err != nil {
-		log.Printf("selected project plates unavailable: %v", err)
+	if plateIndexErr != nil {
+		log.Printf("selected project plates unavailable: %v", plateIndexErr)
 	} else {
 		cfg.Features.PlateIndex = true
 	}
-	cfg.Features.ColourChange = probeColourChange(cfg)
-	probeUsage(cfg, &cfg.Features)
+	cfg.Features.ColourChange = colour
 	log.Printf("tool operations: step %v, edit %v, force_planar %v, cut %v, volumes %v, patch_preview %v, surface_grid %v, calib %v", cfg.Features.Step, cfg.Features.Edit, cfg.Features.ForcePlanar, cfg.Features.Cut, cfg.Features.Volumes, cfg.Features.PatchPreview, cfg.Features.SurfaceGrid, cfg.Features.Calib)
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
-	if cfg.Features.DumpPresets {
-		presets.tool = &cfg
-	}
-	if _, err := presets.names(); err != nil {
-		log.Fatal(err)
-	}
-
-	for _, vendor := range []string{"BBL", "Prusa", "Custom"} {
-		if _, err := presets.vendor(vendor); err != nil {
-			log.Printf("cannot preload %s presets: %v", vendor, err)
-		}
-	}
+	go printerCatalogResponse(presets.root)
 	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -228,4 +244,20 @@ func main() {
 		log.Fatal(err)
 	}
 	<-shutdownDone
+}
+
+func warmPresets(presets *PresetIndex) error {
+	if _, err := presets.names(); err != nil {
+		return err
+	}
+	for _, name := range []string{"BBL", "Prusa", "Custom"} {
+		vendor, err := presets.vendor(name)
+		if err == nil {
+			_, err = filamentCatalogResponse(vendor)
+		}
+		if err != nil {
+			log.Printf("cannot preload %s presets: %v", name, err)
+		}
+	}
+	return nil
 }

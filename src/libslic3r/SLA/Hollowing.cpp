@@ -34,8 +34,6 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/SLA/Pad.hpp"
 
-
-
 #define L(s) Slic3r::I18N::translate(s)
 
 namespace Slic3r {
@@ -52,9 +50,7 @@ struct Interior {
     double nb_in = 3.;
     double nb_out = 3.;
 
-
     void reset_accessor() const
-
     {
         if (gridptr)
             accessor = gridptr->getConstAccessor();
@@ -134,13 +130,6 @@ InteriorPtr generate_interior(const TriangleMesh &   mesh,
     static const double MIN_OVERSAMPL = 3.5;
     static const double MAX_OVERSAMPL = 8.;
 
-
-
-
-
-
-
-
     auto voxel_scale = MIN_OVERSAMPL + (MAX_OVERSAMPL - MIN_OVERSAMPL) * hc.quality;
 
     InteriorPtr interior =
@@ -149,16 +138,13 @@ InteriorPtr generate_interior(const TriangleMesh &   mesh,
 
     if (interior && !interior->mesh.empty()) {
 
-
         swap_normals(interior->mesh);
-
 
         float loss_less_max_error = 2*std::numeric_limits<float>::epsilon();
         its_quadric_edge_collapse(interior->mesh, 0U, &loss_less_max_error);
 
         its_compactify_vertices(interior->mesh);
         its_merge_vertices(interior->mesh);
-
 
         swap_normals(interior->mesh);
     }
@@ -174,7 +160,7 @@ indexed_triangle_set DrainHole::to_mesh() const
     Eigen::Quaternionf q;
     q.setFromTwoVectors(Vec3f{0.f, 0.f, 1.f}, normal);
     for(auto& p : hole.vertices) p = q * p + pos;
-
+    
     return hole;
 }
 
@@ -200,9 +186,6 @@ bool DrainHole::is_inside(const Vec3f& pt) const
 }
 
 
-
-
-
 bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
                                   std::array<std::pair<float, Vec3d>, 2>& out)
                                   const
@@ -215,14 +198,10 @@ bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
 
     const float sqr_radius = pow(radius, 2.f);
 
-
     Vec3f center = pos+normal*height/2.f;
     float sqr_dist_limit = pow(height/2.f, 2.f) + sqr_radius ;
     if (ray.squaredDistance(center) > sqr_dist_limit)
         return false;
-
-
-
 
     size_t found = 0;
     Eigen::Hyperplane<float, 3> base;
@@ -230,13 +209,10 @@ bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
         for (size_t i=1; i<=1; --i) {
             Vec3f cylinder_center = pos+i*height*normal;
             if (i == 0) {
-
-
                 cylinder_center -= EPSILON*normal;
             }
             base = Eigen::Hyperplane<float, 3>(normal, cylinder_center);
             Vec3f intersection = ray.intersectionPoint(base);
-
             if ((cylinder_center-intersection).squaredNorm() < sqr_radius) {
                 out[found].first = ray.intersectionParameter(base);
                 out[found].second = (i==0 ? 1. : -1.) * normal.cast<double>();
@@ -246,26 +222,17 @@ bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
     }
     else
     {
-
-
         base = Eigen::Hyperplane<float, 3>(normal, pos-EPSILON*normal);
     }
 
-
     if (found != 2 && ! is_approx(std::abs(ray.direction().dot(normal)), 1.f)) {
-
         Vec3f proj_origin = base.projection(ray.origin());
         Vec3f proj_dir = base.projection(ray.origin()+ray.direction())-proj_origin;
-
         float par_scale = proj_dir.norm();
         proj_dir = proj_dir/par_scale;
         Eigen::ParametrizedLine<float, 3> projected_ray(proj_origin, proj_dir);
-
-
         Vec3f closest = projected_ray.projection(pos);
         float dist = sqrt((sqr_radius - (closest-pos).squaredNorm()));
-
-
         for (int i=-1; i<=1 && found !=2; i+=2) {
             Vec3f isect = closest + i*dist * projected_ray.direction();
             Vec3f to_isect = isect-proj_origin;
@@ -274,7 +241,6 @@ bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
                 par *= -1.f;
             Vec3d hit_normal = (pos-isect).normalized().cast<double>();
             isect = ray.pointAt(par);
-
             float vert_dist = base.signedDistance(isect);
             if (vert_dist > 0.f && vert_dist < height) {
                 out[found].first = par;
@@ -284,11 +250,8 @@ bool DrainHole::get_intersections(const Vec3f& s, const Vec3f& dir,
         }
     }
 
-
-
     if (found != 2)
         return false;
-
 
     if (out[0].first > out[1].first)
         std::swap(out[0], out[1]);
@@ -305,17 +268,17 @@ void cut_drainholes(std::vector<ExPolygons> & obj_slices,
     TriangleMesh mesh;
     for (const sla::DrainHole &holept : holes)
         mesh.merge(TriangleMesh{holept.to_mesh()});
-
+    
     if (mesh.empty()) return;
-
+    
     std::vector<ExPolygons> hole_slices = slice_mesh_ex(mesh.its, slicegrid, closing_radius, thr);
-
+    
     if (obj_slices.size() != hole_slices.size())
         BOOST_LOG_TRIVIAL(warning)
             << "Sliced object and drain-holes layer count does not match!";
 
     size_t until = std::min(obj_slices.size(), hole_slices.size());
-
+    
     for (size_t i = 0; i < until; ++i)
         obj_slices[i] = diff_ex(obj_slices[i], hole_slices[i]);
 }
@@ -338,9 +301,6 @@ void hollow_mesh(TriangleMesh &mesh, const Interior &interior, int flags)
     mesh.merge(TriangleMesh{interior.mesh});
 }
 
-
-
-
 static double get_distance_raw(const Vec3f &p, const Interior &interior)
 {
     assert(interior.gridptr);
@@ -356,8 +316,6 @@ static double get_distance_raw(const Vec3f &p, const Interior &interior)
 
 struct TriangleBubble { Vec3f center; double R; };
 
-
-
 static double get_distance(const TriangleBubble &b, const Interior &interior)
 {
     double R = b.R * interior.voxel_scale;
@@ -367,11 +325,7 @@ static double get_distance(const TriangleBubble &b, const Interior &interior)
            (D < 0. && R >= interior.nb_in)  ||
            ((D - R) < 0. && 2 * R > interior.thickness) ?
                 std::nan("") :
-
-
-
-
-                D - interior.closing_distance  ;
+                D - interior.closing_distance ;
 }
 
 double get_distance(const Vec3f &p, const Interior &interior)
@@ -380,8 +334,6 @@ double get_distance(const Vec3f &p, const Interior &interior)
     return d / interior.voxel_scale;
 }
 
-
-
 enum { NEW_FACE = -1};
 struct DivFace {
     Vec3i32 indx;
@@ -389,7 +341,6 @@ struct DivFace {
     long faceid = NEW_FACE;
     long parent = NEW_FACE;
 };
-
 
 template<class Fn>
 void divide_triangle(const DivFace &face, Fn &&visitor)
@@ -443,12 +394,9 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
         return use_exclude_mask && exclude_mask[face_id];
     };
 
-
     using exec_policy = ccr_seq;
 
-
     struct MeshMods {
-
 
         struct {
             std::vector<std::array<Vec3f, 3>> data;
@@ -468,13 +416,10 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
 
         } new_triangles;
 
-
-
         std::vector<bool> to_remove;
 
         MeshMods(const TriangleMesh &mesh):
             to_remove(mesh.its.indices.size(), false) {}
-
 
         size_t to_remove_cnt() const
         {
@@ -483,10 +428,8 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
 
     } mesh_mods{mesh};
 
-
     auto divfn = [&interior, bb, &mesh_mods](const DivFace &f) {
         BoundingBoxf3 facebb { f.verts.begin(), f.verts.end() };
-
 
         if (! facebb.intersects(bb) && f.faceid != NEW_FACE) {
             return false;
@@ -500,11 +443,7 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
         if (std::isnan(D))
             return true;
 
-
-
         double bubble_distance = D - R;
-
-
 
         if (bubble_distance < 0.) {
             if (f.faceid != NEW_FACE)
@@ -513,14 +452,11 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
             if (f.parent != NEW_FACE)
                 mesh_mods.to_remove[f.parent] = true;
 
-
-
             if ((R + D) < interior.thickness)
                 return false;
 
             return true;
         } else if (f.faceid == NEW_FACE) {
-
             mesh_mods.new_triangles.emplace_back(f.verts);
         }
 
@@ -532,7 +468,6 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
     exec_policy::for_each(size_t(0), faces.size(), [&] (size_t face_idx) {
         const Vec3i32 &face = faces[face_idx];
 
-
         if (is_excluded(face_idx))
             return;
 
@@ -540,7 +475,6 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
             { vertices[face(0)], vertices[face(1)], vertices[face(2)] };
 
         BoundingBoxf3 facebb { pts.begin(), pts.end() };
-
 
         if (! facebb.intersects(bb)) return;
 
@@ -576,7 +510,6 @@ void remove_inside_triangles(TriangleMesh &mesh, const Interior &interior,
     new_faces = {};
 
     mesh = TriangleMesh{mesh.its};
-
 }
 
 }}

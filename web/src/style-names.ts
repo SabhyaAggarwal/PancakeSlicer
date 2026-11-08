@@ -1,40 +1,29 @@
-
-
-
 import type { Config, ConfigValue } from './api/types';
-import { canonicalMode } from './nonplanar-mode';
+import { canonicalMode, MODE_LABELS } from './nonplanar-mode';
 
-export type StyleId = 'standard' | 'smooth' | 'zaa' | 'multiplanar' | 'field';
+export type StyleId = 'standard' | 'smooth' | 'fast' | 'morph' | 'zaa' | 'multiplanar' | 'field';
 
 export const STYLE_NAMES: Record<StyleId | 'custom', string> = {
-  standard: 'Standard', smooth: 'Curved tops', zaa: 'Z contour',
+  standard: 'Standard', smooth: MODE_LABELS.nonplanar_top, fast: MODE_LABELS.curved_tops, morph: MODE_LABELS.smooth_morph, zaa: 'Z contour',
   multiplanar: 'Tilted chunks', field: 'Rotary curved layers', custom: 'Custom',
 };
 
 const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(asText(v));
 
-
-
-
-
 export function styleOf(c: Config): StyleId | 'custom' {
   const mode = canonicalMode(asText(c.nonplanar_mode) || 'off');
   const zaa = on(c.zaa_enabled);
   if (mode === 'off') return zaa ? 'zaa' : 'standard';
   if (zaa) return 'custom';
-  if (mode === 'curved_tops') return 'smooth';
+  if (mode === 'nonplanar_top') return 'smooth';
+  if (mode === 'curved_tops') return 'fast';
+  if (mode === 'smooth_morph') return 'morph';
   if (mode === 'multiplanar' || mode === 'field') return mode;
   return 'custom';
 }
 
 type RecordObject = { mode?: unknown; deform?: unknown };
-
-
-
-
-
-
 
 export function recordConfig(inputs: Record<string, unknown>, objects: RecordObject[] = []): Config {
   const object = objects.find((o) => o.mode && o.mode !== 'off');

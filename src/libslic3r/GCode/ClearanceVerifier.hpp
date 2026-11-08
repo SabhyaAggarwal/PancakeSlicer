@@ -15,65 +15,42 @@ class ToolKinematics;
 struct JointPose;
 class Print;
 
-
-
-
-
 class MaterialColumns
 {
 public:
     MaterialColumns(const BoundingBoxf &bbox, double pitch);
     void deposit(const Vec3d &a, const Vec3d &b, double width);
     double top_in_rect(const BoundingBoxf &rect) const;
-
-
     std::vector<double> tops(const BoundingBoxf &rect, Vec2d &origin, int &nx, double &pitch) const;
     double ceiling() const { return m_ceiling; }
     double clearance(const Vec3d &tip, const Nonplanar::HeadEnvelope &head, std::string *component = nullptr) const;
-
     double swept_clearance(const Vec3d &a, const Vec3d &b, const Nonplanar::HeadEnvelope &head,
                            std::string *component = nullptr) const;
-
-
     struct PreparedBox { Vec3d min, max; bool infinite_x, infinite_y; size_t index; };
     struct PreparedHead
     {
         std::vector<PreparedBox> boxes;
-
         Vec2d finite_min { Vec2d::Constant(std::numeric_limits<double>::infinity()) };
         Vec2d finite_max { Vec2d::Constant(-std::numeric_limits<double>::infinity()) };
     };
     static PreparedHead prepare(const Nonplanar::HeadEnvelope &head);
-
-
-
-
     double swept_clearance(const Vec3d &a, const Vec3d &b, const PreparedHead &head, double bound, int *box = nullptr,
                            int hint = -1) const;
-
-
     double tilted_clearance(const Vec3d &tip, const Matrix3d &frame, const Nonplanar::HeadEnvelope &head) const;
-
     void merge(const MaterialColumns &other);
-
     double tile_bound(const BoundingBoxf &rect) const;
 private:
     void cells(const BoundingBoxf &rect, int &x0, int &y0, int &x1, int &y1) const;
-
     double cell_top(int x, int y) const
     {
         const auto &block = m_blocks[size_t(y / m_tile) * m_tx + x / m_tile];
         return !block ? -std::numeric_limits<double>::infinity() : (*block)[size_t(y % m_tile) * m_tile + x % m_tile];
     }
-
     double top_above(const BoundingBoxf &rect, double floor) const;
-
     std::vector<double> &writable(size_t t);
     BoundingBoxf m_bbox;
     double m_pitch;
     int m_nx, m_ny, m_tile, m_tx;
-
-
     std::vector<double> m_tiles;
     std::vector<std::shared_ptr<std::vector<double>>> m_blocks;
     double m_ceiling = -std::numeric_limits<double>::infinity();
@@ -81,7 +58,6 @@ private:
 
 double safe_travel_z(const MaterialColumns &columns, const Nonplanar::HeadEnvelope &head,
                      const Vec2d &a, const Vec2d &b, double hop);
-
 enum class ClearanceHitClass { Body, Cone, Land };
 struct ClearanceHit
 {
@@ -99,34 +75,17 @@ struct ClearanceParams
     double pitch = 0.25;
     double sweep = 0.25;
     double bead_eps = 0.05;
-
-
-
-
     bool contact_bar = false;
-
-
-
-
-
     double cone_tolerance = 0.05;
 };
 struct ClearanceReport
 {
     bool ran = false;
     size_t hit_moves = 0;
-
-
     size_t machine_hit_moves = 0;
-
-
     size_t tolerated_moves = 0;
-
     size_t cone_graze_moves = 0;
-
-
     size_t land_strict_moves = 0;
-
     size_t hit_land_moves = 0, hit_cone_moves = 0, hit_body_moves = 0, hit_travel_moves = 0, hit_extrusion_moves = 0;
     double min_clearance = std::numeric_limits<double>::infinity();
     std::vector<float> per_move;
@@ -137,10 +96,6 @@ struct ClearanceReport
 ClearanceReport verify_clearance(const GCodeProcessorResult &result, const ClearanceParams &params,
                                  const ToolKinematics &kinematics,
                                  const std::function<void()> &throw_if_canceled = {});
-
-
-
-
 class TableGuard
 {
 public:
@@ -154,6 +109,5 @@ private:
     const ToolKinematics  &m_kinematics;
     double                 m_margin;
 };
-
 void check_export_clearance(Print &print, GCodeProcessorResult &result);
 }

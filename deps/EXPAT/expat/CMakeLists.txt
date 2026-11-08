@@ -5,32 +5,32 @@ project(EXPAT)
 include(${CMAKE_CURRENT_LIST_DIR}/ConfigureChecks.cmake)
 
 macro(expat_shy_set var default cache type desc)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # Macro expat_shy_set came into life because:
+    # - Expat was previously using an inconsistent mix of CMake's native set()
+    #   and option() to define public build time options.
+    # - option() is more friendly than set() with regard to configuring an
+    #   external project that is pulled in by means of add_subdirectory() --
+    #   see comments in issue #597 -- so we wanted to get away from set().
+    # - option() auto-converts non-bool values to bool when writing to the CMake
+    #   cache, so we needed something that supports non-bool better and hence
+    #   wanted to get away from plain option(), too.
+    #
+    # As a result, this function serves as a hybrid between CMake's regular set()
+    # and option(): from set() it takes support for non-bool types and the function
+    # name and signature whereas from option() (with policy CMP0077 mode NEW) it
+    # takes being shy when a value has previously been defined for that variable.
+    #
+    # So that resolves all need for set(.. FORCE) when pulling in Expat by means of
+    # add_subdirectory().
+    #
     if(NOT ${cache} STREQUAL "CACHE")
         message(SEND_ERROR "Macro usage is: expat_shy_set(var default CACHE type desc)")
     endif()
 
     if(DEFINED ${var})
-
-
-
+        # NOTE: The idea is to (ideally) only add to the cache if
+        #       there is no cache entry, yet.  "if(DEFINED CACHE{var})"
+        #       requires CMake >=3.14.
         if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.14" AND NOT DEFINED "CACHE{${var}}")
             set("${var}" "${${var}}" CACHE "${type}" "${desc}")
         endif()
@@ -75,7 +75,7 @@ target_include_directories(expat PRIVATE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_B
 
 include(GNUInstallDirs)
 
-install(
+install( 
     FILES
         ${PROJECT_SOURCE_DIR}/expat.h
         ${PROJECT_SOURCE_DIR}/expat_config.h
@@ -90,21 +90,21 @@ target_link_libraries(EXPAT INTERFACE expat)
 include(CMakePackageConfigHelpers)
 
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"     
     VERSION 1.95
     COMPATIBILITY AnyNewerVersion
 )
 
 install(TARGETS expat EXPAT
   EXPORT ${PROJECT_NAME}Targets
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} 
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-export(EXPORT ${PROJECT_NAME}Targets
-       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake"
+export(EXPORT ${PROJECT_NAME}Targets 
+       FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake" 
        NAMESPACE ${PROJECT_NAME}:: )
 
 set(ConfigPackageLocation ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
@@ -127,3 +127,4 @@ install(
     DESTINATION
       ${ConfigPackageLocation}
 )
+

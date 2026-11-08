@@ -12,7 +12,6 @@
 
 namespace Slic3r::Geometry {
 
-
 template<typename PT> struct SegmentCellRange
 {
     const PT             source_segment_start_point;
@@ -27,7 +26,6 @@ template<typename PT> struct SegmentCellRange
 
     bool is_valid() const { return edge_begin && edge_end && edge_begin != edge_end; }
 };
-
 
 template<typename PT> struct PointCellRange
 {
@@ -73,37 +71,11 @@ public:
         Arachne::PolygonsPointIndex>::type
     get_source_point_index(const VoronoiDiagram::cell_type &cell, SegmentIterator segment_begin, SegmentIterator segment_end);
 
-
-
-
-
-
-
-
     template<typename Segment>
     static typename boost::polygon::enable_if<typename boost::polygon::gtl_if<typename boost::polygon::is_segment_concept<
         typename boost::polygon::geometry_concept<Segment>::type>::type>::type,
         Points>::type
     discretize_parabola(const Point &source_point, const Segment &source_segment, const Point &start, const Point &end, coord_t approximate_step_size, float transitioning_angle);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     template<typename SegmentIterator>
     static typename boost::polygon::enable_if<
@@ -112,25 +84,6 @@ public:
         Geometry::SegmentCellRange<
             typename boost::polygon::segment_point_type<typename std::iterator_traits<SegmentIterator>::value_type>::type>>::type
     compute_segment_cell_range(const VoronoiDiagram::cell_type &cell, SegmentIterator segment_begin, SegmentIterator segment_end);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     template<typename SegmentIterator>
     static typename boost::polygon::enable_if<

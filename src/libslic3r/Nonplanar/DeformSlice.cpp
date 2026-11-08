@@ -17,6 +17,7 @@
 #include "Multiplanar.hpp"
 #include "NpField.hpp"
 #include "PatchTools.hpp"
+#include "ShellSeams.hpp"
 #include "StrengthRoads.hpp"
 #include "SurfaceClip.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -61,44 +62,21 @@ namespace {
 
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
-
-
 constexpr double NearReach = 3.;
-
 constexpr double MaxClimb = 0.2;
-
 constexpr double MaxSegment = 0.6;
-
 constexpr double MinStretch = 0.1;
-
 constexpr double AlignedError = 0.02;
-
 constexpr double MaxPredicted = 0.030;
-
 constexpr double FlatPredicted = 0.025;
-
-
-
-
 constexpr double MaxShells = 1.2;
-
 constexpr double MaxSaddleShare = 0.25;
-
 constexpr double MaxTimeRatioPredicted = 1.25;
-
 constexpr double MaxTimeRatio = 1.15;
-
-
 constexpr double MaxMovesRatio = 1.5;
-
 constexpr double OutlineError = 0.03;
-
 constexpr double ZaaMinZ = 0.05;
-
-
-
 constexpr double HostWallTilt = 25.;
-
 
 double sample_clamped(const HeightField &f, const Vec2d &xy)
 {
@@ -109,7 +87,6 @@ double sample_clamped(const HeightField &f, const Vec2d &xy)
     const double tx = fx - ix, ty = fy - iy;
     return (1. - ty) * ((1. - tx) * f.at(ix, iy) + tx * f.at(jx, iy)) + ty * ((1. - tx) * f.at(ix, jy) + tx * f.at(jx, jy));
 }
-
 
 void blur(HeightField &f, int r)
 {
@@ -135,7 +112,6 @@ void blur(HeightField &f, int r)
         }
     }
 }
-
 
 void fill_nodata(HeightField &f, float fallback)
 {
@@ -168,8 +144,6 @@ void fill_nodata(HeightField &f, float fallback)
     }
 }
 
-
-
 DynamicPrintConfig deform_print_config(const PrintObject &object, double road_angle, bool given)
 {
     DynamicPrintConfig config = object.print()->full_print_config();
@@ -192,24 +166,14 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     set("enable_prime_tower", "0");
     set("enable_arc_fitting", "0");
     set("ironing_type", "no ironing");
-
-
     set("adaptive_layer_height_error", "0");
     set("overhang_layer_contact", "0%");
-
-
-
-
     if (!given)
         set("wall_generator", "classic");
-
-
     const double nozzle = config.opt<ConfigOptionFloats>("nozzle_diameter")->values.front();
     const double top_w  = object.printing_region(0).config().top_surface_line_width.get_abs_value(nozzle);
     if (top_w <= 0. || top_w > 0.75 * nozzle)
         set("top_surface_line_width", float_to_string_decimal_point(0.75 * nozzle));
-
-
     if (!std::isnan(road_angle)) {
         const std::string deg = float_to_string_decimal_point(Geometry::rad2deg(road_angle));
         set("solid_infill_direction", deg);
@@ -219,12 +183,9 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     return config;
 }
 
-
-
-
-
 void map_path(const ExtrusionPath &path, const Vec2d &center, double level, double thickness, const LayerField &field, double raft,
-              double step, std::vector<ExtrusionPathConformal *> &result, const std::function<bool(const Vec3d &)> &drop = {})
+              double step, std::vector<ExtrusionPathConformal *> &result, const std::function<bool(const Vec3d &)> &drop = {},
+              double tolerance = 0.01)
 {
     const Points3 &src = path.polyline.points;
     if (src.size() < 2)
@@ -243,10 +204,7 @@ void map_path(const ExtrusionPath &path, const Vec2d &center, double level, doub
         xy.emplace_back(p);
     }
     auto finish = [&](ExtrusionPathConformal *out) {
-        out->simplify(0.01);
-
-
-
+        out->simplify(tolerance);
         Points3           &pts = out->polyline.points;
         std::vector<float> &bh = out->bead_height;
         for (size_t i = 1; i < pts.size(); ++i) {
@@ -254,7 +212,6 @@ void map_path(const ExtrusionPath &path, const Vec2d &center, double level, doub
             const Vec2d  a = unscale(pts[i - 1].to_point()), b = unscale(pts[i].to_point());
             int          n = int(std::ceil(std::abs(dz) / MaxClimb));
             if ((b - a).norm() > MaxSegment) {
-
                 const Vec2d m = 0.5 * (a + b);
                 const Vec3d g = field.gradient(Vec3d(m.x(), m.y(), field.z_at(m, level)));
                 if (g.head<2>().norm() > 0.05 * g.z())
@@ -276,8 +233,6 @@ void map_path(const ExtrusionPath &path, const Vec2d &center, double level, doub
         result.push_back(out);
     };
     const double area = path.mm3_per_mm;
-
-
     Polyline3          poly;
     std::vector<float> beads;
     auto flush = [&]() {
@@ -300,10 +255,6 @@ void map_path(const ExtrusionPath &path, const Vec2d &center, double level, doub
     }
     flush();
 }
-
-
-
-
 
 struct Flattener
 {
@@ -360,11 +311,50 @@ struct Flattener
     }
 };
 
+struct PathRun
+{
+    Points3            pts;
+    std::vector<float> heights, widths;
+};
+PathRun path_run(const ExtrusionPathConformal &path, double length, bool from_back)
+{
+    PathRun      out;
+    const size_t n      = path.polyline.points.size();
+    const bool   widths = path.bead_width.size() == n;
+    auto at = [&](size_t k) { return from_back ? n - 1 - k : k; };
+    auto pos = [&](size_t k) { return unscale(path.polyline.points[at(k)]); };
+    double done = 0.;
+    for (size_t k = 1; k < n && done < length; ++k) {
+        const double l = (pos(k) - pos(k - 1)).norm();
+        const double t = l > 0. ? std::min(1., (length - done) / l) : 1.;
+        const Vec3d  q = pos(k - 1) + t * (pos(k) - pos(k - 1));
+        out.pts.emplace_back(coord_t(scale_(q.x())), coord_t(scale_(q.y())), coord_t(scale_(q.z())));
+        out.heights.emplace_back(path.bead_height[at(k - 1)] + float(t) * (path.bead_height[at(k)] - path.bead_height[at(k - 1)]));
+        if (widths)
+            out.widths.emplace_back(path.bead_width[at(k - 1)] + float(t) * (path.bead_width[at(k)] - path.bead_width[at(k - 1)]));
+        done += t * l;
+    }
+    return out;
+}
 
+void overlap_cut(ExtrusionPathConformal &a, ExtrusionPathConformal &b)
+{
+    const double length = 0.5 * StartRamp;
+    const bool   aw = a.bead_width.size() == a.polyline.points.size(), bw = b.bead_width.size() == b.polyline.points.size();
+    if (aw != bw)
+        return;
+    const PathRun tail = path_run(a, length, true), head = path_run(b, length, false);
+    a.polyline.points.insert(a.polyline.points.end(), head.pts.begin(), head.pts.end());
+    a.bead_height.insert(a.bead_height.end(), head.heights.begin(), head.heights.end());
+    if (aw)
+        a.bead_width.insert(a.bead_width.end(), head.widths.begin(), head.widths.end());
+    b.polyline.points.insert(b.polyline.points.begin(), tail.pts.rbegin(), tail.pts.rend());
+    b.bead_height.insert(b.bead_height.begin(), tail.heights.rbegin(), tail.heights.rend());
+    if (bw)
+        b.bead_width.insert(b.bead_width.begin(), tail.widths.rbegin(), tail.widths.rend());
+}
 
-
-
-void link_pieces(ExtrusionEntityCollection &shell, Point &last)
+void link_pieces(ExtrusionEntityCollection &shell, Point &last, bool connect = true)
 {
     auto is_wall = [](const ExtrusionEntity *e) {
         const ExtrusionRole r = e->role();
@@ -383,7 +373,7 @@ void link_pieces(ExtrusionEntityCollection &shell, Point &last)
         for (ExtrusionEntity *e : *group) {
             auto *cur  = static_cast<ExtrusionPathConformal *>(e);
             auto *prev = out.empty() ? nullptr : static_cast<ExtrusionPathConformal *>(out.back());
-            if (prev != nullptr && group == &rest && !is_wall(prev) && prev->role() == cur->role() && prev->width == cur->width &&
+            if (connect && prev != nullptr && group == &rest && !is_wall(prev) && prev->role() == cur->role() && prev->width == cur->width &&
                 prev->mm3_per_mm == cur->mm3_per_mm && prev->bead_width.empty() && cur->bead_width.empty() &&
                 (prev->last_point() - cur->first_point()).cast<double>().norm() <= scale_(1.5 * cur->width)) {
                 prev->polyline.points.insert(prev->polyline.points.end(), cur->polyline.points.begin(), cur->polyline.points.end());
@@ -399,7 +389,6 @@ void link_pieces(ExtrusionEntityCollection &shell, Point &last)
 }
 
 bool outer_wall(ExtrusionRole role) { return role == erExternalPerimeter || role == erOverhangPerimeter; }
-
 
 bool kept_stretches(const ExtrusionPath &path, double step, const std::function<bool(const Vec2d &)> &keep, ExtrusionEntitiesPtr *out)
 {
@@ -428,9 +417,6 @@ bool kept_stretches(const ExtrusionPath &path, double step, const std::function<
     flush();
     return all;
 }
-
-
-
 
 void host_outer_walls(const ExtrusionEntityCollection &in, double step, const std::function<bool(const Vec2d &)> &keep,
                       ExtrusionEntityCollection &out)
@@ -465,9 +451,6 @@ void host_outer_walls(const ExtrusionEntityCollection &in, double step, const st
 double deform_band_height(const HeadEnvelope &head, double slope, double inflation)
 {
     const double allowance_r = head.tip_allowance.radius, allowance_h = head.tip_allowance.height;
-
-
-
     struct Floor { double z, far; };
     std::vector<Floor> floors;
     for (const HeadBox &box : head.boxes) {
@@ -488,7 +471,6 @@ double deform_band_height(const HeadEnvelope &head, double slope, double inflati
     for (const Floor &f : floors)
         if (slope * f.far > f.z)
             reach = std::min(reach, f.z);
-
     return std::max(reach, head_band_height(head));
 }
 
@@ -510,7 +492,6 @@ double ColumnScaleField::max_slope_near(const Vec2d &xy, double level) const
             const double gy = std::max(std::abs(at(ix, iy + 1) - at(ix, iy)), std::abs(at(ix + 1, iy + 1) - at(ix + 1, iy)));
             g = std::max(g, std::hypot(gx, gy) / m_rho.pitch());
         }
-
     return (level - m_z0) * g;
 }
 
@@ -549,15 +530,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
                     S.at(ix, iy) = float(vertical_ray_hit(imesh, S.node(ix, iy), ray_z, -1.) + shift);
         });
     }
-
-
-
-
-
-
-
-
-
     if (report != nullptr && (P.flat_share_limit < 1. || P.saddle_share_limit < 1.)) {
         size_t flat = 0, all = 0, curved_n = 0, saddle = 0;
         const double k_min = 1. / 50., p2 = 2. * pitch;
@@ -576,7 +548,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
                 if (std::isnan(c + xm + xp + ym + yp + a + b + d + e))
                     continue;
                 ++curved_n;
-
                 const double fxx = (xp - 2. * c + xm) / (p2 * p2), fyy = (yp - 2. * c + ym) / (p2 * p2);
                 const double fxy = (e - b - d + a) / (4. * p2 * p2);
                 const double w   = 1. + g.squaredNorm();
@@ -597,7 +568,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
     const double      z0_min  = P.planar_top;
     const double      tan_min = std::tan(Geometry::deg2rad(1.));
 
-
     struct Node { double s; size_t n; };
     std::vector<Node> curved;
     double            s_max = 0.;
@@ -614,8 +584,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
             if (slope >= tan_min && slope <= P.max_slope && s - t < 0.05 && s > z0_min + P.layer_height)
                 curved.push_back({ double(t), size_t(iy) * S.nx() + ix });
         }
-
-
 
     double best_area = 0., best_z0 = z0_min, best_d = 1.;
     std::vector<std::pair<double, double>> by_z0;
@@ -637,7 +605,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
         double       cur = 0., best = 0.;
         for (const auto &e : ev)
             best = std::max(best, cur += e.second);
-
         cur            = 0.;
         double best_dd = Inf;
         for (size_t i = 0; i < ev.size(); ++i) {
@@ -652,7 +619,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
         }
         return best;
     };
-
     const double z0_step = P.layer_height * std::max(1., std::ceil((s_max - z0_min) / (40. * P.layer_height)));
     for (double z0 = z0_min; z0 < s_max - P.layer_height; z0 += z0_step) {
         double       d    = 1.;
@@ -668,13 +634,7 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
             break;
         }
     const double z0 = best_z0;
-
-
     const double D  = std::max(P.layer_height, P.layer_height * std::round(best_d / P.layer_height));
-
-
-
-
 
     HeightField rho = S, target = S;
     std::fill(target.data().begin(), target.data().end(), HeightField::NoData);
@@ -697,7 +657,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
         }
     fill_nodata(rho, 1.f);
     const int radius = std::max(1, int(std::lround(P.blur / pitch / 1.7)));
-
     auto lipschitz = [&](HeightField &f) {
         for (int pass = 0; pass < 2; ++pass) {
             double level_max = z0 + D;
@@ -708,8 +667,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
         }
     };
     lipschitz(rho);
-
-
     HeightField smooth = rho;
     blur(smooth, radius);
     for (int pass = 0; pass < 4; ++pass) {
@@ -719,7 +676,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
         smooth = rho;
         blur(smooth, radius);
     }
-
     rho = std::move(smooth);
     lipschitz(rho);
     blur(rho, radius);
@@ -746,8 +702,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
             if (std::abs(field->z_at(p, z0 + D) - s) <= 0.05)
                 r.aligned_area += cell;
         }
-
-
         HeightField level = S;
         for (int iy = 0; iy < S.ny(); ++iy)
             for (int ix = 0; ix < S.nx(); ++ix) {
@@ -783,14 +737,11 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
                     continue;
                 const Vec2d p = S.node(ix, iy);
                 const Vec3d g = field->gradient(Vec3d(p.x(), p.y(), z0 + 1.));
-
                 const double rr   = field->rho(p);
                 r.max_layer_slope = std::max(r.max_layer_slope, (l - z0) * rr * rr * g.head<2>().norm());
             }
         if (r.rho_max < r.rho_min)
             r.rho_min = r.rho_max = 1.;
-
-
         double sum = 0.;
         size_t n   = 0;
         for (int iy = 1; iy + 1 < S.ny(); ++iy)
@@ -814,10 +765,6 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
 indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerField &field, double max_edge)
 {
     indexed_triangle_set its   = mesh;
-
-
-
-
     if (const RepairedMeshErrors closed = its_close_holes(its); closed.holes_filled > 0)
         BOOST_LOG_TRIVIAL(info) << "Deform slice: closed " << closed.holes_filled << " mesh holes";
     const float          z0    = float(field.identity_below());
@@ -862,7 +809,6 @@ indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerFi
                 out.emplace_back(a, m, c);
                 out.emplace_back(m, b, c);
             } else {
-
                 const int i = !s[0] ? 0 : !s[1] ? 1 : 2;
                 const int r = (i + 1) % 3;
                 const int a = v[r], b = v[(r + 1) % 3], c = v[(r + 2) % 3];
@@ -893,6 +839,8 @@ bool deform_field_file(const PrintObject &object)
 bool deform_slice_requested(const PrintObject &object)
 {
     const PrintObjectConfig &cfg = object.config();
+    if (cfg.nonplanar_mode.value == NonplanarMode::SmoothMorph)
+        return true;
     if (!cfg.nonplanar_atom_toolpath.value.empty())
         return false;
     if (deform_field_file(object))
@@ -912,8 +860,6 @@ bool deform_slice_considered(const PrintObject &object)
     return cfg.nonplanar_atom_toolpath.value.empty() && cfg.nonplanar_deform.value == NonplanarDeform::Auto &&
            cfg.nonplanar_mode.value == NonplanarMode::Auto;
 }
-
-
 
 static double strength_road_angle(const PrintObject &object, const indexed_triangle_set &mesh, const LayerField &field,
                                   const HeightField *top)
@@ -970,9 +916,6 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
                     S.at(ix, iy) = float(vertical_ray_hit(imesh, S.node(ix, iy), bb.max.z() + 1., -1.));
         });
     }
-
-
-
     std::vector<double> rmin(S.data().size(), Inf), rmax(S.data().size(), 0.), smax(S.data().size(), 0.), err(S.data().size(), -1.),
         mult(S.data().size(), 0.);
     tbb::parallel_for(tbb::blocked_range<int>(0, S.ny()), [&](const tbb::blocked_range<int> &range) {
@@ -985,7 +928,6 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
                 const Vec2d p = S.node(ix, iy);
                 const Vec2d g = S.gradient(p);
                 double      j_top = 1.;
-
                 if (s > 0.)
                     mult[n] = std::min(double(s), r.z0) + std::max(0., field.phi(Vec3d(p.x(), p.y(), s)) - r.z0);
                 if (s > r.z0)
@@ -1005,8 +947,6 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
                 if (std::isnan(g.x()) || std::isnan(g.y()) || g.norm() > std::tan(Geometry::deg2rad(70.)))
                     continue;
                 const double level = field.phi(Vec3d(p.x(), p.y(), s));
-
-
                 const double off   = std::abs(field.z_at(p, layer_height * std::round(level / layer_height)) - s);
                 const Vec3d  gl    = field.gradient(Vec3d(p.x(), p.y(), s));
                 const bool   along = gl.z() > 1e-9 && (Vec2d(-gl.x() / gl.z(), -gl.y() / gl.z()) - g).norm() <= std::tan(Geometry::deg2rad(3.));
@@ -1027,7 +967,6 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
     if (!(r.rho_min <= r.rho_max))
         r.rho_min = r.rho_max = 1.;
     r.predicted_rms = cnt == 0 ? 0. : std::sqrt(sum / cnt);
-
     double levels = 0., heights = 0.;
     for (size_t n = 0; n < S.data().size(); ++n)
         if (!std::isnan(S.data()[n]) && S.data()[n] > 0.)
@@ -1037,7 +976,6 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
 }
 
 namespace {
-
 void translate_entity(ExtrusionEntity &ee, const Point3 &d)
 {
     if (auto *coll = dynamic_cast<ExtrusionEntityCollection *>(&ee)) {
@@ -1085,34 +1023,21 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     const double h      = ocfg.layer_height.value;
     const double first  = host_print.config().initial_layer_print_height.value;
     const double nozzle = host_print.config().nozzle_diameter.values.empty() ? 0.4 : host_print.config().nozzle_diameter.values.front();
-
     std::vector<double> layer_z;
     for (const Layer *layer : layers)
         layer_z.push_back(layer->print_z);
     const double raft = layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height);
-
-
-
-
     bool uniform = true;
     for (size_t i = 1; i < layers.size(); ++i)
         if (std::abs(layers[i]->height - h) > 1e-4)
             uniform = false;
 
     DeformFieldParams params;
-
-
-
-
-
     params.planar_top         = first + 2. * h;
     params.layer_height       = h;
     params.min_ratio          = 0.5;
     params.max_ratio          = std::min(1.5, 0.8 * nozzle / h);
-
-
     params.max_slope          = h / (0.75 * nozzle);
-
     std::unique_ptr<indexed_triangle_set> mesh_copy;
     auto mesh_of = [&]() -> const indexed_triangle_set & {
         if (!mesh_copy)
@@ -1143,17 +1068,16 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
                             << Geometry::rad2deg(std::atan(report.max_layer_slope)) << " deg, expected top RMS " << report.predicted_rms << ", layer factor " << report.layer_factor;
     if (report.predicted_rms > give_up_above)
         return fail("expected top RMS " + std::to_string(report.predicted_rms) + " mm, no better");
-
     if (planar_time * report.layer_factor > time_budget)
         return fail("expected time " + std::to_string(planar_time * report.layer_factor / 60.) + " min, over budget");
     if (admit && !admit(report))
         return fail("not admitted");
 
-
     Model        model;
     ModelObject *model_object = model.add_object();
     model_object->name        = name + " deformed";
-    TriangleMesh deformed(deform_mesh(mesh_of(), *field, 1.));
+    const bool morph = ocfg.nonplanar_mode.value == NonplanarMode::SmoothMorph;
+    TriangleMesh deformed(deform_mesh(mesh_of(), *field, morph ? 0.5 : 1.));
     const double deformed_top = deformed.bounding_box().max.z() - deformed.bounding_box().min.z();
     model_object->add_volume(std::move(deformed));
     model_object->add_instance();
@@ -1198,18 +1122,13 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
 
     const double seam_gap = scale_(object.printing_region(0).config().seam_gap.get_abs_value(nozzle));
 
-
     const double                                       z0 = field->identity_below();
-
-
-
     for (size_t i = 1; i < sliced.layers().size() && sliced.layers()[i]->print_z <= z0 + EPSILON; ++i)
         if (i >= layers.size() || std::abs(layers[i]->print_z - raft - sliced.layers()[i]->print_z) >= 1e-5)
             return fail("layer " + std::to_string(i) + " below the curved layers is off the host's layers");
     std::vector<std::vector<ExtrusionPathConformal *>> curved(sliced.layers().size());
     std::vector<int>                                   planar_host(sliced.layers().size(), -1);
-    const double                                       step = 0.5;
-
+    const double                                       step = morph ? 0.25 : 0.5;
     std::unique_ptr<sla::IndexedMesh> wall_mesh = host_walls ? std::make_unique<sla::IndexedMesh>(mesh_of()) : nullptr;
     const double                      steep_nz  = std::cos(Geometry::deg2rad(HostWallTilt));
     const std::function<bool(const Vec3d &)> steep = [&](const Vec3d &p) {
@@ -1223,26 +1142,25 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             const Layer *layer = sliced.layers()[i];
             const double level = layer->print_z;
             if (level <= z0 + EPSILON) {
-
                 if (i < layers.size() && std::abs(layers[i]->print_z - raft - level) < 1e-5)
                     planar_host[i] = int(i);
                 continue;
             }
             Flattener flat{ object.config().seam_position.value, layer, seam_gap, Point(0, 0), {} };
             for (const LayerRegion *layerm : layer->regions()) {
-                ExtrusionEntityCollection perimeters = layerm->perimeters, fills = layerm->fills;
+                ExtrusionEntityCollection perimeters = layerm->perimeters, fills = layerm->fills, thin_fills = layerm->thin_fills;
                 flat.add(&perimeters);
                 flat.add(&fills);
+                flat.add(&thin_fills);
             }
             for (const ExtrusionPath &p : flat.out) {
                 if (p.role() == erIroning)
                     continue;
                 map_path(p, center, level, layer->height, *field, raft, step, curved[i],
-                         host_walls && outer_wall(p.role()) ? steep : std::function<bool(const Vec3d &)>());
+                         host_walls && outer_wall(p.role()) ? steep : std::function<bool(const Vec3d &)>(), morph ? 0.002 : 0.01);
             }
         }
     });
-
 
     out.planar.clear();
     out.planar.resize(layers.size());
@@ -1250,15 +1168,12 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         if (i < planar_host.size() && planar_host[i] >= 0) {
             const LayerRegion *src = sliced.layers()[i]->regions().front();
             out.planar[i]          = std::make_unique<DeformSlice::Planar>(DeformSlice::Planar{ src->perimeters, src->fills, src->thin_fills });
-
-
             if (sliced.center_offset() != Point(0, 0)) {
                 const Point3 d(sliced.center_offset().x(), sliced.center_offset().y(), coord_t(0));
                 for (ExtrusionEntityCollection *c : { &out.planar[i]->perimeters, &out.planar[i]->fills, &out.planar[i]->thin_fills })
                     translate_entity(*c, d);
             }
         } else if (host_walls && i < layers.size()) {
-
             const double z   = layers[i]->print_z - raft - 0.5 * layers[i]->height;
             auto         own = std::make_unique<DeformSlice::Planar>();
             own->curved      = true;
@@ -1268,24 +1183,10 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
                 out.planar[i] = std::move(own);
         }
 
-
-
-
     const HeadEnvelope head = resolve_head_envelope(host_print.config());
     double             pitch = 0., tolerance = 0.;
-
-
     const double inflation = 0.6 * nozzle + 0.25 + 0.5 * MaxSegment;
-
-
-
-
-
     const bool shared_plate = host_print.objects().size() > 1 || object.instances().size() > 1;
-
-
-
-
     double slope = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, curved.size()), 1.1 * report.max_layer_slope,
         [&](const tbb::blocked_range<size_t> &range, double s) {
             for (size_t k = range.begin(); k < range.end(); ++k)
@@ -1303,17 +1204,14 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             return s;
         },
         [](double a, double b) { return std::max(a, b); });
-
     const bool   planar_beside = std::any_of(out.planar.begin(), out.planar.end(), [](const auto &p) { return p && p->curved; });
-    const double reach = object.has_support() || shared_plate || planar_beside ? head_band_height(head) : deform_band_height(head, slope, inflation);
+    const double reach = object.has_support() || shared_plate || planar_beside ? head_band_height(head) :
+                         morph                                                 ? Inf :
+                                                                                 deform_band_height(head, slope, inflation);
     double       cap   = multi_material_patch_height(object, head, ocfg.nonplanar_max_patch_height.value);
     cap                = cap > 0. ? std::min(cap, reach) : reach;
-
-
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);
     pitch     = cap - tolerance;
-
-
     const std::vector<double>                     cuts = event_cuts(object);
     std::map<std::pair<int, int>, ConformalPatch> bands;
     std::map<std::pair<int, int>, size_t>         band_layer;
@@ -1321,9 +1219,22 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         if (curved[k].empty())
             continue;
         ExtrusionEntitiesPtr paths(curved[k].begin(), curved[k].end());
+        ExtrusionPathConformal *last_piece = nullptr;
+        ConformalPatch         *last_patch = nullptr;
         cut_into_bands(paths, pitch, tolerance, [&](int b, ExtrusionPathConformal *whole) {
             cut_at_events(whole, cuts, [&](int slab, ExtrusionPathConformal *piece) {
+                const ExtrusionRole role = piece->role();
+                if (morph && (role == erTopSolidInfill || role == erExternalPerimeter) && last_piece != nullptr &&
+                    last_piece->polyline.points.back() == piece->polyline.points.front()) {
+                    overlap_cut(*last_piece, *piece);
+                    for (const Point3 &pt : last_piece->polyline.points) {
+                        last_patch->z_min = std::min(last_patch->z_min, unscale<double>(pt.z()));
+                        last_patch->z_max = std::max(last_patch->z_max, unscale<double>(pt.z()));
+                    }
+                }
                 ConformalPatch &patch = bands[{ b, slab }];
+                last_piece            = piece;
+                last_patch            = &patch;
                 const auto [it, inserted] = band_layer.try_emplace({ b, slab }, k);
                 if (inserted || it->second != k || patch.shell_paths.empty()) {
                     patch.shell_paths.emplace_back();
@@ -1350,7 +1261,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         const auto [b, slab] = key;
         Point last(0, 0);
         for (ExtrusionEntityCollection &shell : patch.shell_paths)
-            link_pieces(shell, last);
+            link_pieces(shell, last, !morph);
         patch.kind         = PatchKind::Volume;
         patch.band         = b;
         patch.region_id    = 0;
@@ -1419,17 +1330,10 @@ void apply_deform_slice(PrintObject &object, DeformSlice &&slice, ConformalResul
 
 namespace {
 
-
-
-
-
-
 class TopMetric
 {
 public:
-
     static constexpr double Pitch = 0.5;
-
     static constexpr double Buried = 1.5;
 
     TopMetric(const MeshRays &rays, double raft, const ConformalResult &shells) : m_raft(raft)
@@ -1452,7 +1356,6 @@ public:
             tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
                 for (int iy = range.begin(); iy < range.end(); ++iy)
                     for (int ix = 0; ix < nx; ++ix) {
-
                         const Vec2d p   = m_mesh.node(ix, iy) + Vec2d(0.5 * Pitch, 0.5 * Pitch);
                         const auto  hit = imesh.query_ray_hit(Vec3d(p.x(), p.y(), bb.max.z() + 1. - rays.shift), -Vec3d::UnitZ());
                         if (hit.is_hit()) {
@@ -1465,8 +1368,6 @@ public:
                     }
             });
         }
-
-
         const int    half  = std::max(1, int(std::lround(0.5 / Pitch)));
         const double tan70 = std::tan(Geometry::deg2rad(70.));
         std::vector<char> wall(nz.size(), 0), in(nz.size(), 0);
@@ -1511,22 +1412,13 @@ public:
                 m_floor = std::min(m_floor, double(m_mesh.data()[n]));
     }
 
-
-
     double floor() const { return m_floor - 2.; }
-
-
-
-
-
 
     void layer(double height) { m_layer_h = height; }
     void end_layer() {}
 
     void add(const Vec3d &a, const Vec3d &b, double width, int contour = 0)
     {
-
-
         if ((b - a).head<2>().norm() < 8. * Pitch) {
             auto buried = [&](const Vec2d &q) {
                 const Vec2d o  = (q - m_mesh.origin()) / Pitch;
@@ -1554,12 +1446,9 @@ public:
                     continue;
                 float &v = m_dep.at(ix, iy);
                 float      z = float(a.z() + t * (b.z() - a.z()));
-
-
                 const bool contourable = contour != 0 && (contour != 3 || m_planar[size_t(iy) * m_mesh.nx() + ix]);
                 if (contourable && !std::isnan(m_mesh.at(ix, iy))) {
                     const double d = m_mesh.at(ix, iy) - z;
-
                     const bool planar = m_planar[size_t(iy) * m_mesh.nx() + ix] != 0;
                     const double up = planar ? std::max(ZaaMinZ, 0.5 * m_layer_h) : ZaaMinZ;
                     if (d >= -m_layer_h && d <= up + (planar ? 0. : 0.03))
@@ -1567,11 +1456,6 @@ public:
                 }
                 if (std::isnan(v) || z > v) {
                     v = z;
-
-
-
-
-
                     float at = !contourable ? m_mesh.sample(a.head<2>() + t * d - Vec2d(0.5 * Pitch, 0.5 * Pitch)) : HeightField::NoData;
                     if (std::isnan(at))
                         at = m_mesh.at(ix, iy);
@@ -1612,12 +1496,10 @@ public:
             this->add(shell, host_z);
     }
 
-
     void clear()
     {
         std::fill(m_dep.data().begin(), m_dep.data().end(), HeightField::NoData);
         std::fill(m_err.data().begin(), m_err.data().end(), HeightField::NoData);
-
         std::fill(m_planar.begin(), m_planar.end(), 0);
     }
 
@@ -1625,7 +1507,6 @@ public:
     {
         double sum = 0.;
         size_t n   = 0;
-
         double weight = 0.;
         for (size_t i = 0; i < m_eval.size(); ++i)
             if (m_eval[i] && !std::isnan(m_err.data()[i]) && m_nz[i] > 0.f) {
@@ -1636,7 +1517,6 @@ public:
             }
         return n == 0 ? 0. : std::sqrt(sum / weight);
     }
-
     bool judged(const Vec3d &p) const
     {
         const Vec2d o  = (p.head<2>() - m_mesh.origin()) / Pitch;
@@ -1654,12 +1534,6 @@ private:
     double            m_layer_h = 0.2;
     double            m_floor   = Inf;
 };
-
-
-
-
-
-
 
 double surface_rms(const indexed_triangle_set &mesh, double shift, const TopMetric &metric, double top_ms, const LayerField *field, double h)
 {
@@ -1692,11 +1566,6 @@ double surface_rms(const indexed_triangle_set &mesh, double shift, const TopMetr
     }
     return area > 0. ? std::sqrt(sum / area) : 0.;
 }
-
-
-
-
-
 
 class TimeProxy
 {
@@ -1734,8 +1603,6 @@ public:
         m_speed[5] = first(rc.gap_infill_speed, 50.);
         m_speed[6] = first(rc.bridge_speed, 30.);
         m_max_volume = first(pc.filament_max_volumetric_speed, 0.);
-
-
         if (pc.nonplanar_road_cooling.value) {
             const double small = rc.small_perimeter_speed.values.empty() || rc.small_perimeter_speed.get_at(0).value == 0. ?
                                      0.5 * m_speed[0] : rc.small_perimeter_speed.get_at(0).get_abs_value(m_speed[0]);
@@ -1748,8 +1615,6 @@ public:
         m_accel[4] = accel(oc.top_surface_acceleration);
         m_accel[5] = def_a;
         m_accel[6] = accel_pct(oc.bridge_acceleration);
-
-
         auto lowest = [](const ConfigOptionFloats &opt) {
             double v = 0.;
             for (double x : opt.values)
@@ -1768,8 +1633,6 @@ public:
         else if (pc.gcode_flavor.value == gcfMarlinFirmware)
             m_limits.junction_deviation = lowest(pc.machine_max_junction_deviation);
         m_limits.segment_rate = m_rate;
-
-
         const GCodeFlavor flavor = pc.gcode_flavor.value;
         if (flavor == gcfKlipper ||
             (pc.emit_machine_limits_to_gcode.value && (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware))) {
@@ -1783,7 +1646,6 @@ public:
             if (flavor == gcfMarlinFirmware)
                 m_limits.junction_deviation = front(pc.machine_max_junction_deviation);
         }
-
         m_grade = std::clamp(0.8 * lowest(pc.machine_max_speed_z) / m_travel, 0.05, 0.12);
         m_processor.reset();
         m_processor.initialize_result_moves();
@@ -1802,8 +1664,6 @@ public:
             const auto  *c = dynamic_cast<const ExtrusionPathConformal *>(path);
             const int    r = this->role_index(path->role());
             double v = m_speed[r];
-
-
             if (m_max_volume > 0. && path->mm3_per_mm > 0.)
                 v = std::min(v, m_max_volume / path->mm3_per_mm);
             if (c != nullptr && m_small > 0. && path->role() != erIroning && unscale<double>(path->polyline.length()) < SmallRoadLength)
@@ -1814,8 +1674,6 @@ public:
             std::vector<float>  beads;
             std::vector<double> feed;
             if (c != nullptr) {
-
-
                 std::vector<ConformalPoint> cp(pts.size());
                 for (size_t i = 0; i < pts.size(); ++i) {
                     cp[i].pose.tip    = p3[i];
@@ -1843,7 +1701,6 @@ public:
                 for (size_t i = 0; i + 1 < p3.size(); ++i) {
                     glides[i]  = beads[i] <= 0.f || beads[i + 1] <= 0.f;
                     nominal[i] = glides[i] ? m_travel : v;
-
                     const double w = kept[i].width > 0.f ? 0.5 * (kept[i].width + kept[i + 1].width) : path->width;
                     const double section = w * 0.5 * (beads[i] + beads[i + 1]);
                     if (m_max_volume > 0. && section > 0.)
@@ -1855,8 +1712,6 @@ public:
             m_moves += p3.size() - 1;
             if (m_in_patch && m_have && c != nullptr && (p3.front() - m_last).norm() > 1e-6)
                 this->pass_travel(p3.front(), path->role());
-
-
             else if (!m_have || (p3.front() - m_last).head<2>().norm() > 2. * path->width) {
                 auto         infill  = [](ExtrusionRole r) { return r == erSolidInfill || r == erInternalInfill; };
                 const double d       = (p3.front() - m_last).head<2>().norm();
@@ -1895,10 +1750,8 @@ public:
 
     void add(const ConformalPatch &patch, double host_z)
     {
-
         if (!m_in_patches)
             m_planar_layer = this->flush() - m_layer_start, m_in_patches = true;
-
         this->line(";_NONPLANAR_BEGIN rate=%.0f", m_rate);
         m_in_patch = true;
         for (const ExtrusionEntityCollection &shell : patch.shell_paths)
@@ -1906,7 +1759,6 @@ public:
         m_in_patch = false;
         this->line(";_NONPLANAR_END");
     }
-
 
     void layer(double) {}
     void end_layer()
@@ -1922,16 +1774,13 @@ public:
     }
     double floor() const { return -Inf; }
 
-
     double seconds()
     {
         const double before = this->flush();
         m_processor.finalize(false);
         return m_time + std::max(0., double(m_processor.get_time(PrintEstimatedStatistics::ETimeMode::Normal)) - before);
     }
-
     size_t moves() const { return m_moves; }
-
     double extruding_seconds() const
     {
         double t = 0.;
@@ -1940,7 +1789,6 @@ public:
                 t += m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
         return t;
     }
-
     double planar_seconds() const { return m_planar; }
 
 private:
@@ -1958,10 +1806,6 @@ private:
         default: return 3;
         }
     }
-
-
-
-
     void pass_travel(const Vec3d &to, ExtrusionRole next)
     {
         constexpr double Step = 2.5;
@@ -1997,7 +1841,6 @@ private:
     template<class... Args> void line(const char *fmt, Args... args)
     {
         char buf[128];
-
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-security"
@@ -2015,7 +1858,6 @@ private:
         if (a != m_accel_last)
             this->line("M204 S%.0f", a), m_accel_last = a;
     }
-
     double flush()
     {
         if (!m_buf.empty()) {
@@ -2040,8 +1882,6 @@ private:
     bool           m_have = false;
 };
 
-
-
 class OverhangLength
 {
 public:
@@ -2053,7 +1893,6 @@ public:
             const ExtrusionRole r = path->role();
             if (r != erOverhangPerimeter && r != erBridgeInfill)
                 continue;
-
             const auto    *conformal = dynamic_cast<const ExtrusionPathConformal *>(path);
             const Points3 &pts       = path->polyline.points;
             for (size_t i = 1; i < pts.size(); ++i) {
@@ -2077,8 +1916,6 @@ private:
     double m_length = 0.;
 };
 
-
-
 template<class Proxy> void walk(Proxy &proxy, const PrintObject &object, const ConformalResult *result, const DeformSlice *slice)
 {
     const auto layers = object.layers();
@@ -2087,7 +1924,6 @@ template<class Proxy> void walk(Proxy &proxy, const PrintObject &object, const C
         for (const ConformalPatch &patch : slice->patches)
             hosted[patch.host_layer].push_back(&patch);
     else if (result != nullptr)
-
         for (size_t i = 0; i < layers.size(); ++i)
             for (const std::vector<int> *ids : { &layers[i]->conformal_patches_before, &layers[i]->conformal_patches_after })
                 for (int id : *ids)
@@ -2128,7 +1964,6 @@ double print_time_proxy(const PrintObject &object, const ConformalResult *result
 
 bool choose_deform_slice(PrintObject &object, ConformalResult &result)
 {
-
     struct CpuLog
     {
         const std::string &name;
@@ -2138,10 +1973,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
     const std::string &name   = object.model_object()->name;
     const auto         layers = object.layers();
     const double       h      = object.config().layer_height.value;
-
-
-
-
     const ObjectMesh &om = object_mesh(object, result);
     MeshRays          rays;
     {
@@ -2151,8 +1982,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         rays.bbox               = BoundingBoxf3(Vec3d(box.min.x(), box.min.y(), box.min.z() + rays.shift),
                                                 Vec3d(box.max.x(), box.max.y(), box.max.z() + rays.shift));
     }
-
-
     struct Score
     {
         double top = 0., surface = 0., time = 0., extruding = 0., overhang = 0.;
@@ -2160,7 +1989,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
     };
     std::unique_ptr<TopMetric> metric;
     double                     shells_v = 0., t_shells = -1., t_planar = 0.;
-
     auto score_rms = [&]() {
         if (metric)
             return;
@@ -2171,8 +1999,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
     auto score_time = [&]() {
         if (t_shells >= 0.)
             return;
-
-
         TimeProxy proxy(object);
         walk(proxy, object, &result, nullptr);
         t_shells = proxy.seconds();
@@ -2180,8 +2006,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": shells top RMS " << shells_v << " mm, " << t_shells / 60.
                                 << " min, their planar layers " << t_planar / 60. << " min";
     };
-
-
     auto admit = [&](const DeformFieldReport &r) {
         if (r.predicted_rms > MaxPredicted)
             return false;
@@ -2203,22 +2027,16 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         s.time      = proxy.seconds();
         s.extruding = proxy.extruding_seconds();
         s.moves     = proxy.moves();
-
-
         OverhangLength over;
         walk(over, object, res, slice);
         s.overhang = over.length();
         return s;
     };
-
     std::unique_ptr<DeformSlice> best;
     if (auto slice = std::make_unique<DeformSlice>();
         compute_deform_slice(object, *slice, nullptr, std::numeric_limits<double>::infinity(), nullptr, 0.,
                              std::numeric_limits<double>::infinity(), admit, &rays)) {
         const Score shells = score(&result, nullptr), d = score(nullptr, slice.get());
-
-
-
         const double gain  = 1. - d.surface / shells.surface;
         const double ratio = d.time / shells.time;
         const bool   ok    = d.top <= shells.top && gain > 0. && gain >= ratio - 1. && ratio <= MaxTimeRatio &&
@@ -2242,7 +2060,6 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
 bool build_deform_slice(PrintObject &object, ConformalResult &result, std::string *why)
 {
     DeformSlice slice;
-
     if (deform_field_file(object)) {
         const std::string &path = object.config().nonplanar_field_file.value;
         std::unique_ptr<NpLayerField> given;
@@ -2254,13 +2071,9 @@ bool build_deform_slice(PrintObject &object, ConformalResult &result, std::strin
         } catch (const RuntimeError &ex) {
             throw Slic3r::SlicingError(ex.what());
         }
-
-
         double top = 0.;
         for (const stl_vertex &v : slicing_frame_mesh(object).vertices)
             top = std::max(top, double(v.z()));
-
-
         const double first = object.print()->config().initial_layer_print_height.value, h = object.config().layer_height.value;
         if (given->identity_below() + 1e-6 < first + 2. * h)
             throw Slic3r::SlicingError(format(_u8L("The layer field %1% curves below %2% mm: a fixed head's first three layers must be planar."),
@@ -2276,19 +2089,21 @@ bool build_deform_slice(PrintObject &object, ConformalResult &result, std::strin
         apply_deform_slice(object, std::move(slice), result);
         return true;
     }
-
     std::shared_ptr<const LayerField> source;
-    if (object.config().nonplanar_deform.value != NonplanarDeform::On) {
+    const bool morph = object.config().nonplanar_mode.value == NonplanarMode::SmoothMorph;
+    if (morph) {
+        source = build_smooth_morph(object);
+    } else if (object.config().nonplanar_deform.value != NonplanarDeform::On) {
         source = build_layer_source(object, why);
         if (!source)
             return false;
     }
     if (!compute_deform_slice(object, slice, why, std::numeric_limits<double>::infinity(), source.get(), 0., std::numeric_limits<double>::infinity(),
-                              {}, nullptr, true))
+                              {}, nullptr, !morph))
         return false;
     if (source)
         slice.field = source;
-    result.layer_source = object.config().nonplanar_deform.serialize();
+    result.layer_source = morph ? "smooth_morph" : object.config().nonplanar_deform.serialize();
     apply_deform_slice(object, std::move(slice), result);
     return true;
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -128,6 +129,9 @@ func (h *statusHub) set(from *monitor, st PrinterStatus) {
 	close(h.wake)
 	h.wake = make(chan struct{})
 	h.mu.Unlock()
+	if h.m.history.confirmStarted(st) || h.m.history.recordEnd(st) {
+		h.bump()
+	}
 }
 
 func (h *statusHub) current(key string) (PrinterStatus, bool) {
@@ -231,6 +235,9 @@ func (s *Server) snapshot() statusSnapshot {
 		snap.Status = append(snap.Status, st)
 	}
 	m.hub.mu.Unlock()
+	for i := range snap.Status {
+		snap.Status[i].Job = s.deviceJob(snap.Status[i])
+	}
 	sort.Slice(snap.Status, func(i, j int) bool { return snap.Status[i].Printer < snap.Status[j].Printer })
 	active := map[string]bool{}
 	for _, t := range snap.Transfers {
@@ -323,13 +330,46 @@ func loadSendHistory(dir string) *sendHistory {
 	}
 	h.list = file.Sends
 	now := time.Now().UTC()
+	migrated := 0
 	for i := range h.list {
-		if t := &h.list[i]; t.active() {
+		t := &h.list[i]
+		if t.active() {
 			t.Error, t.Finished = "The service restarted during this transfer; check the printer before sending again", &now
+			t.Outcome, t.Reason, t.Recovery = "failed", "interrupted", "Check the printer's screen before sending again."
 			t.to(TransferFailed)
 		}
+		if t.Outcome == "" {
+			t.Outcome = recordedOutcome(*t)
+			if t.Outcome == "failed" {
+				t.Reason = "unknown"
+			}
+			migrated++
+		}
+	}
+	if migrated > 0 {
+		backup := h.path + ".pre-outcome"
+		if _, err := os.Stat(backup); errors.Is(err, os.ErrNotExist) {
+			if err := writeFileAtomic(backup, b); err != nil {
+				log.Printf("warning: send history: cannot back up %s before migrating it: %v", h.path, err)
+				return h
+			}
+		}
+		h.writeLocked()
+		log.Printf("send history: recorded the outcome of %d earlier sends (backup %s)", migrated, backup)
 	}
 	return h
+}
+
+func recordedOutcome(t Transfer) string {
+	switch {
+	case t.State != TransferDone:
+		return "failed"
+	case !t.Start:
+		return "uploaded"
+	case strings.Contains(t.Message, "did not confirm"):
+		return "waiting_for_printer"
+	}
+	return "printing"
 }
 
 func (h *sendHistory) record(t Transfer) {
@@ -351,12 +391,66 @@ func (h *sendHistory) record(t Transfer) {
 	if len(h.list) > sendHistoryCap {
 		h.list = h.list[len(h.list)-sendHistoryCap:]
 	}
+	h.writeLocked()
+}
+
+func (h *sendHistory) writeLocked() {
 	b, _ := json.MarshalIndent(struct {
 		Sends []Transfer `json:"sends"`
 	}{h.list}, "", " ")
 	if err := writeFileAtomic(h.path, b); err != nil {
 		log.Printf("warning: cannot save the send history: %v", err)
 	}
+}
+
+func sendStem(name string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(filepath.Base(name), ".3mf"), ".gcode")
+}
+
+func (h *sendHistory) confirmStarted(st PrinterStatus) bool {
+	if h == nil || !st.Online || (st.State != "printing" && st.State != "busy" && st.State != "paused") || st.File == "" {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := len(h.list) - 1; i >= 0; i-- {
+		t := &h.list[i]
+		if t.Printer != st.Printer || !t.Start {
+			continue
+		}
+		if t.Outcome != "waiting_for_printer" || st.At.Before(t.Started) || sendStem(t.Filename) != sendStem(st.File) {
+			return false
+		}
+		t.Outcome, t.Message = "printing", "Printing started; confirmed by the printer."
+		h.writeLocked()
+		return true
+	}
+	return false
+}
+
+func (h *sendHistory) recordEnd(st PrinterStatus) bool {
+	end := map[string]string{"finished": "finished", "failed": "failed"}[st.State]
+	if st.State == "idle" && st.Detail == "cancelled" {
+		end = "cancelled"
+	}
+	if h == nil || !st.Online || end == "" || st.File == "" {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := len(h.list) - 1; i >= 0; i-- {
+		t := &h.list[i]
+		if t.Printer != st.Printer || !t.Start {
+			continue
+		}
+		if t.Outcome != "printing" || t.JobEnd != "" || st.At.Before(t.Started) || sendStem(t.Filename) != sendStem(st.File) {
+			return false
+		}
+		t.JobEnd = end
+		h.writeLocked()
+		return true
+	}
+	return false
 }
 
 func (h *sendHistory) cards() map[string]string {
@@ -383,8 +477,12 @@ func (h *sendHistory) recent(age time.Duration) []Transfer {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := []Transfer{}
+	latest := map[string]string{}
 	for _, t := range h.list {
-		if t.Finished != nil && time.Since(*t.Finished) < age {
+		latest[t.Printer] = t.ID
+	}
+	for _, t := range h.list {
+		if t.Finished != nil && (time.Since(*t.Finished) < age || latest[t.Printer] == t.ID && (t.Outcome == "waiting_for_printer" || t.Outcome == "printing")) {
 			out = append(out, t)
 		}
 	}

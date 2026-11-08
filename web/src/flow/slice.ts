@@ -1,10 +1,7 @@
-
-
 import { plateSignature } from '../slice-input';
 import { documentGeneration, subscribeHistory } from '../state/history';
 import { getState, setState, subscribeStore, type JobView, type State } from '../state/store';
 import { createMachine, useMachine, type Snapshot } from './fsm';
-
 
 export interface SliceSummary {
   timeS: number | null;
@@ -16,19 +13,16 @@ export interface SliceSummary {
 
 export interface SliceResult {
   signature: string;
-
   job: JobView;
   summary: SliceSummary;
   at: number;
 }
-
 
 export interface SliceDiff {
   timeS: number | null;
   grams: number | null;
   supportG: number | null;
   layers: number | null;
-
   supportGone: boolean;
   supportAdded: boolean;
   warningsAdded: string[];
@@ -38,11 +32,8 @@ export interface SliceDiff {
 export type SliceStateName = 'editing' | 'slicing' | 'sliced' | 'stale' | 'failed';
 
 export interface SliceContext {
-
   result: SliceResult | null;
-
   previous: SliceResult | null;
-
   target: string | null;
   pct: number;
   stage: string;
@@ -74,8 +65,6 @@ export function summarize(job: JobView): SliceSummary {
   };
 }
 
-
-
 const cache = new Map<string, SliceResult>();
 function keep(r: SliceResult) {
   cache.delete(r.signature);
@@ -83,21 +72,16 @@ function keep(r: SliceResult) {
   for (const [k, old] of cache) {
     if (cache.size <= CACHE_SIZE) break;
     cache.delete(k);
-
     const ctx = slice.get().context;
     if (old.job.id && old !== ctx.result && old !== ctx.previous) void getState().api?.cancel(old.job.id).catch(() => undefined);
   }
 }
-
-
-
 
 const ALWAYS: (keyof State)[] = ['objects', 'projectPlates', 'plateIndex', 'project', 'events', 'filamentSlots', 'slotColours', 'flush',
   'printer', 'process', 'filamentEdits', 'bedType', 'wipeTowerPos', 'mixes'];
 const NEVER = new Set<keyof State>(['job', 'tab', 'selected', 'toast', 'toastSeq', 'toastAction', 'toastMs']);
 let watched: (keyof State)[] = ALWAYS;
 let seen: State = getState();
-
 
 function signature(s = getState()): string {
   const read = new Set<keyof State>(ALWAYS);
@@ -106,13 +90,10 @@ function signature(s = getState()): string {
   return sig;
 }
 
-
-
 const advance = (ctx: SliceContext, ev: SliceEvent) => {
   const r = (ev as { result: SliceResult }).result;
   return { previous: ctx.result ?? ctx.previous, result: r, error: null };
 };
-
 const annotated = (ctx: SliceContext, e: Extract<SliceEvent, { type: 'ANNOTATE' }>) => {
   const fill = (r: SliceResult | null) => (r?.signature === e.signature ? { ...r, summary: { ...r.summary, ...e.part } } : r);
   const r = cache.get(e.signature);
@@ -150,10 +131,7 @@ export const slice = createMachine<SliceStateName, SliceEvent, SliceContext>({
   },
 });
 
-
-
 let wired = false;
-
 export function startSliceTracking() {
   if (wired) return;
   wired = true;
@@ -177,7 +155,6 @@ export function startSliceTracking() {
       if (s.job.state === 'failed') slice.send({ type: 'ERROR', error: s.job.error ?? 'Not sliced' });
       else if (s.job.state !== 'done') slice.send({ type: 'CANCEL' });
     }
-
     if (s.job !== was.job && s.job.state === 'done' && !s.job.calib && s.job.plateSignature &&
         s.job.id !== slice.get().context.result?.job.id && (s.job.id !== was.job.id || was.job.state !== 'done')) {
       const r: SliceResult = { signature: s.job.plateSignature, job: s.job, summary: summarize(s.job), at: Date.now() };
@@ -192,9 +169,6 @@ export function startSliceTracking() {
   slice.subscribe((snap) => { if (snap.context.result && snap.value === 'sliced') keep(snap.context.result); });
 }
 
-
-
-
 export function cancelSlice() {
   slice.send({ type: 'CANCEL' });
   const result = slice.get().context.result;
@@ -208,15 +182,12 @@ export function useSlice<T>(sel?: (s: SliceSnapshot) => T) {
   return useMachine(slice, sel);
 }
 
-
 export const currentResult = (): SliceResult | null => slice.get().context.result;
-
 export const isStale = (s: SliceSnapshot = slice.get()) => !!s.context.result && s.value !== 'sliced';
 export const isFresh = (s: SliceSnapshot = slice.get()) => s.value === 'sliced';
 
 const minus = (a: number | null, b: number | null) => (a == null || b == null ? null : a - b);
 let memo: { a: SliceResult; b: SliceResult; d: SliceDiff } | null = null;
-
 export function sliceDiff(ctx: SliceContext = slice.get().context): SliceDiff | null {
   const { result: a, previous: b } = ctx;
   if (!a || !b) return null;
@@ -231,7 +202,6 @@ export function sliceDiff(ctx: SliceContext = slice.get().context): SliceDiff | 
   return d;
 }
 
-
 let waiting: (() => void) | null = null;
 export function whenFresh(f: () => void) {
   waiting?.(); waiting = null;
@@ -245,8 +215,6 @@ export function whenFresh(f: () => void) {
   waiting = off;
 }
 
-
 export const annotate = (signature: string, part: Partial<Pick<SliceSummary, 'supportG' | 'layers'>>) => slice.send({ type: 'ANNOTATE', signature, part });
-
 
 (window as unknown as { __slice: unknown }).__slice = { machine: slice, cache, sliceDiff, signature };

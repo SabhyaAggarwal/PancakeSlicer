@@ -12,7 +12,6 @@ const common = {
   SCRUB: { target: 'paused', action: position }, POSITION: { action: position },
 } as const;
 const play = { target: 'playing', guard: (c: PlaybackContext) => c.moves > 0 } as const;
-
 export const createPlayback = () => createMachine<'paused' | 'playing' | 'ended', PlaybackEvent, PlaybackContext>({
   id: 'playback', initial: 'paused', context: { rate: 60, position: 0, layer: 0, moves: 0 },
   states: {

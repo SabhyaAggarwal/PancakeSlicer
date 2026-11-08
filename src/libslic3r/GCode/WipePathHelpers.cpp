@@ -26,8 +26,6 @@ void WipeInwardSupport::append(const ExtrusionEntity &entity)
     else if (const auto *multipath = dynamic_cast<const ExtrusionMultiPath *>(&entity))
         paths = &multipath->paths;
 
-
-
     const bool is_inner = paths ? std::any_of(paths->begin(), paths->end(),
         [](const ExtrusionPath &path) { return is_internal_perimeter(path.role()); }) :
         is_internal_perimeter(entity.role());
@@ -37,21 +35,11 @@ void WipeInwardSupport::append(const ExtrusionEntity &entity)
         inner_lines.insert(inner_lines.end(), lines.begin(), lines.end());
 }
 
-
-
-
 static constexpr double miter_limit = 3.0;
-
-
-
 
 static constexpr double reversal_dot_threshold = -0.99;
 
-
-
 static constexpr double min_support_alignment = 0.5;
-
-
 
 static double wipe_tolerance(double distance, double relative_tolerance = 0.1)
 {
@@ -91,9 +79,6 @@ Point sample_path_at_distance(const ExtrusionPaths &paths, bool forward, double 
     return result;
 }
 
-
-
-
 static bool prepare_source(Points &pts)
 {
     pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
@@ -117,15 +102,11 @@ static bool build_offset_polyline(const Points &original, int dir, double offset
     if (original.size() < 2)
         return false;
 
-
-
-
     Points source = original;
     if (! prepare_source(source))
         return false;
 
     const size_t n = source.size();
-
 
     auto offset_segment = [dir, offset_dist](const Point &a, const Point &b) -> Line {
         Vec2d  v = (b - a).cast<double>();
@@ -141,12 +122,8 @@ static bool build_offset_polyline(const Points &original, int dir, double offset
     result.reserve(n);
     first_join_index = 0;
 
-
     Line l_prev = offset_segment(source[0], source[1]);
     result.push_back(l_prev.a);
-
-
-
 
     for (size_t i = 1; i + 1 < n; ++i) {
         Line l_next = offset_segment(source[i], source[i + 1]);
@@ -180,7 +157,6 @@ static bool build_offset_polyline(const Points &original, int dir, double offset
         l_prev = l_next;
     }
 
-
     result.push_back(l_prev.b);
 
     return true;
@@ -196,15 +172,10 @@ static bool starts_by_backtracking(const Polyline &path, Point actual_start)
 {
     if (path.points.size() < 3)
         return false;
-
-
     const Vec2d connector = (path.points[1] - actual_start).cast<double>();
     const Vec2d outgoing = (path.points[2] - path.points[1]).cast<double>();
-
-
     return connector.dot(outgoing) < -4. * SCALED_EPSILON * outgoing.norm();
 }
-
 
 static Point sample_polyline_at_distance(const Polyline &polyline, double target)
 {
@@ -222,9 +193,6 @@ static Point sample_polyline_at_distance(const Polyline &polyline, double target
     }
     return result;
 }
-
-
-
 
 static bool store_wipe_path(Polyline &destination, Point seam_start,
                             Polyline actual_path, double max_wipe_length)
@@ -276,10 +244,6 @@ bool offset_wipe_path(Polyline &polyline, Point seam_start, Point seam_end, Poin
         Points wrapped_source;
         wrapped_source.reserve(source.points.size() + 1);
         if (seam_start == seam_end) {
-
-
-
-
             size_t closing_index = original.points.size();
             while (closing_index > 0 && original.points[closing_index - 1] == seam_start)
                 --closing_index;
@@ -287,10 +251,6 @@ bool offset_wipe_path(Polyline &polyline, Point seam_start, Point seam_end, Poin
                 return false;
             wrapped_source.push_back(original.points[closing_index - 1]);
         } else {
-
-
-
-
             wrapped_source.push_back(seam_end);
         }
         wrapped_source.insert(wrapped_source.end(), source.points.begin(), source.points.end());
@@ -300,19 +260,12 @@ bool offset_wipe_path(Polyline &polyline, Point seam_start, Point seam_end, Poin
         if (! build_offset_polyline(wrapped_source, dir, offset_dist, offset_points, first_join_index) ||
             first_join_index == 0 || first_join_index >= offset_points.size())
             return false;
-
-
-
         offset_points.erase(offset_points.begin(), offset_points.begin() + first_join_index);
 
         Polyline actual_path;
         actual_path.points.reserve(offset_points.size() + 1);
         actual_path.points.push_back(wipe_start);
         actual_path.points.insert(actual_path.points.end(), offset_points.begin(), offset_points.end());
-
-
-
-
 
         if (seam_start != seam_end && wipe_start != seam_start && wipe_start != seam_end &&
             starts_by_backtracking(actual_path, wipe_start) && ! starts_by_backtracking(actual_path, seam_end)) {
@@ -334,18 +287,12 @@ bool offset_wipe_path(Polyline &polyline, Point seam_start, Point seam_end, Poin
 
         if (seam_start != seam_end && wipe_start == seam_end &&
             starts_by_backtracking(actual_path, wipe_start)) {
-
-
-
             return false;
         }
 
         const double actual_length = actual_path.length();
         const bool source_exhausted = original_length - source_length <= SCALED_EPSILON;
         if (actual_length + SCALED_EPSILON < max_wipe_length && ! source_exhausted) {
-
-
-
             const double deficit = max_wipe_length - actual_length;
             const double next_length = std::min(original_length,
                 source_length + std::max(deficit, 2. * SCALED_EPSILON));
@@ -354,9 +301,6 @@ bool offset_wipe_path(Polyline &polyline, Point seam_start, Point seam_end, Poin
             source_length = next_length;
             continue;
         }
-
-
-
 
         return store_wipe_path(polyline, seam_start, std::move(actual_path), max_wipe_length);
     }
@@ -379,27 +323,18 @@ static bool translated_wipe_path(Polyline &polyline, Point seam_start, Point sea
             actual_path.points.push_back(translated);
     };
 
-
-
-
     append_translated(seam_start);
     for (const Point &point : original.points)
         append_translated(point);
 
     if (seam_start != seam_end && wipe_start == seam_end &&
         starts_by_backtracking(actual_path, wipe_start)) {
-
-
-
         actual_path.points.resize(1);
         append_translated(seam_end);
     }
 
     return store_wipe_path(polyline, seam_start, std::move(actual_path), max_wipe_length);
 }
-
-
-
 
 static bool segment_is_supported(Point start, Point end,
                                   const AABBTreeLines::LinesDistancer<Line> &distancer,
@@ -417,7 +352,6 @@ static bool segment_is_supported(Point start, Point end,
         distancer.distance_from_lines<false>(end) > max_distance)
         return false;
 
-
     if ((end - start).cast<double>().norm() <= SCALED_EPSILON)
         return false;
     return segment_is_supported(start, midpoint, distancer, max_distance) &&
@@ -433,29 +367,17 @@ std::optional<double> wipe_path_support_score(
     if (polyline.points.size() < 2 || target_distancer.get_lines().empty() || max_distance <= 0)
         return std::nullopt;
 
-
-
-
-
     if (target_distancer.distance_from_lines<false>(wipe_start) >
         miter_limit * max_distance + 4. * SCALED_EPSILON)
         return std::nullopt;
 
     Point previous = wipe_start;
     for (size_t i = 1; i < polyline.points.size(); ++i) {
-
-
-
-
-
         if (! segment_is_supported(previous, polyline.points[i], all_support_distancer,
                                    max_distance + 4. * SCALED_EPSILON))
             return std::nullopt;
         previous = polyline.points[i];
     }
-
-
-
 
     return target_distancer.distance_from_lines<false>(polyline.points[1]);
 }
@@ -468,8 +390,6 @@ static bool initial_connector_is_clear(
     if (polyline.points.size() < 2 || polyline.points[1] == wipe_start)
         return false;
 
-
-
     if (seam_start == wipe_start)
         return true;
 
@@ -481,9 +401,6 @@ static bool initial_connector_is_clear(
     }
 
     Point closest;
-
-
-
     if (connector.distance_to_squared(seam_start, &closest) <= contact_tolerance * contact_tolerance &&
         (closest - wipe_start).cast<double>().norm() > contact_tolerance)
         return false;
@@ -499,8 +416,6 @@ static std::optional<Vec2d> support_offset_at_start(
     if (source.points.size() < 2)
         return std::nullopt;
 
-
-
     const Point support_query = disambiguate_branch ?
         sample_polyline_at_distance(source, 2. * max_support_distance) : source.first_point();
     const auto nearest_result = support_distancer.distance_from_lines_extra<false>(support_query);
@@ -508,8 +423,6 @@ static std::optional<Vec2d> support_offset_at_start(
     Vec2d sampled_offset = std::get<2>(nearest_result) - support_query.cast<double>();
 
     if (disambiguate_branch) {
-
-
         const Vec2d support_edge = (nearest_line.b - nearest_line.a).cast<double>();
         if (support_edge.norm() > SCALED_EPSILON) {
             const Vec2d support_tangent = support_edge.normalized();
@@ -521,9 +434,6 @@ static std::optional<Vec2d> support_offset_at_start(
 
     if (! disambiguate_branch)
         return sampled_offset;
-
-
-
 
     const Vec2d sampled_direction = sampled_offset.normalized();
     Vec2d local_offset = sampled_offset;
@@ -554,8 +464,6 @@ static double executable_path_length(const Polyline &stored_path, Point wipe_sta
     if (stored_path.points.size() < 2)
         return 0.;
 
-
-
     double length = (stored_path.points[1] - wipe_start).cast<double>().norm();
     for (size_t index = 2; index < stored_path.points.size(); ++index)
         length += (stored_path.points[index] - stored_path.points[index - 1]).cast<double>().norm();
@@ -567,9 +475,6 @@ static Lines material_side_support_lines(const Polyline &path, Point seam, int p
 {
     if (path.points.size() < 4 || path.first_point() != path.last_point())
         return {};
-
-
-
 
     const auto outgoing_it = std::find_if(
         path.points.begin() + 1, path.points.end(), [seam](const Point &point) { return point != seam; });
@@ -611,10 +516,6 @@ bool wipe_path_stays_on_material_side(
     if (initial_offset.norm() <= SCALED_EPSILON ||
         initial_offset.normalized().dot(support_direction.normalized()) < min_support_alignment)
         return false;
-
-
-
-
     const double clearance_tolerance = wipe_tolerance(effective_offset, 0.25);
     const double minimum_clearance = effective_offset - clearance_tolerance;
     const Lines &lines = current_perimeter_distancer.get_lines();
@@ -631,8 +532,6 @@ bool wipe_path_stays_on_material_side(
             return false;
         const Line &line = lines[line_index];
         Vec2d normal = left_normal(line);
-
-
         const Line &previous = lines[(line_index + lines.size() - 1) % lines.size()];
         const Line &next = lines[(line_index + 1) % lines.size()];
         if ((nearest - line.a.cast<double>()).norm() <= SCALED_EPSILON && previous.b == line.a)
@@ -641,9 +540,6 @@ bool wipe_path_stays_on_material_side(
             normal += left_normal(next);
         if (normal.norm() <= EPSILON)
             return false;
-
-
-
 
         normal.normalize();
         const Point wall_point = nearest.cast<coord_t>();
@@ -689,9 +585,6 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
     Lines material_support_lines;
     const Lines *candidate_support_lines = &target_perimeter_lines;
     if (seam_start == seam_end) {
-
-
-
         material_support_lines = material_side_support_lines(
             polyline, seam_start, preferred_dir, target_perimeter_lines);
         if (material_support_lines.empty())
@@ -712,42 +605,25 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
         return false;
     const Vec2d support_direction = toward_support / local_support_distance;
 
-
-
-
     Lines all_support_lines = printed_perimeter_lines;
     all_support_lines.insert(all_support_lines.end(), current_perimeter_lines.begin(), current_perimeter_lines.end());
     AABBTreeLines::LinesDistancer<Line> all_support_distancer(std::move(all_support_lines));
     AABBTreeLines::LinesDistancer<Line> current_perimeter_distancer(current_perimeter_lines);
 
-
-
-
     const double contact_tolerance = wipe_tolerance(effective_offset);
 
     struct Candidate {
         Polyline path;
-
-
         double support_score;
         double path_length;
     };
-
-
-
 
     const auto validate_candidate = [&](Polyline path, Point path_start, Point direction_start,
                                         double path_contact_tolerance,
                                         const Vec2d &candidate_support_direction,
                                         double candidate_offset,
                                         bool require_clearance = true) -> std::optional<Candidate> {
-
-
-
         const bool backtracks_across_gap = seam_start != seam_end && starts_by_backtracking(path, wipe_start);
-
-
-
         const bool material_side = wipe_path_stays_on_material_side(
             path, direction_start, candidate_support_direction,
             support_distancer, current_perimeter_distancer, candidate_offset,
@@ -776,8 +652,6 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
     std::optional<Candidate> preferred = offset_candidate(preferred_dir);
     std::optional<Candidate> alternate = offset_candidate(-preferred_dir);
 
-
-
     const auto translated_candidate = [&](Polyline source, Point source_start, Point source_end,
                                           const Vec2d &candidate_support_offset) -> std::optional<Candidate> {
         const double support_distance = candidate_support_offset.norm();
@@ -796,9 +670,6 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
 
     std::optional<Candidate> translated = translated_candidate(polyline, seam_start, seam_end, toward_support);
 
-
-
-
     const auto direct_candidate = [&](Point origin, const Vec2d &candidate_support_offset) -> std::optional<Candidate> {
         const double support_distance = candidate_support_offset.norm();
         const double candidate_offset = std::min(offset_dist, support_distance);
@@ -813,8 +684,6 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
         if (! store_wipe_path(path, seam_start, Polyline{wipe_start, destination}, max_wipe_length))
             return std::nullopt;
         const double candidate_tolerance = wipe_tolerance(candidate_offset);
-
-
         return validate_candidate(std::move(path), origin, wipe_start,
                                   candidate_tolerance, direction, candidate_offset, false);
     };
@@ -823,19 +692,12 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
     const double length_margin = wipe_tolerance(max_wipe_length);
     std::optional<Candidate> reversed;
     if (seam_start != seam_end && polyline.last_point() == seam_end) {
-
-
-
-
         Polyline reversed_source = polyline;
         reversed_source.reverse();
         const std::optional<Vec2d> reversed_support_offset = support_offset_at_start(
             reversed_source, seam_end, true, support_distancer, max_support_distance);
         if (reversed_support_offset) {
             reversed = translated_candidate(reversed_source, seam_end, seam_end, *reversed_support_offset);
-
-
-
             if (! reversed || reversed->path_length + length_margin < max_wipe_length) {
                 const double reverse_offset = std::min(offset_dist, reversed_support_offset->norm());
                 if (reverse_offset > SCALED_EPSILON &&
@@ -853,10 +715,6 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
         }
     }
 
-
-
-
-
     const double direction_change_margin = wipe_tolerance(effective_offset);
     std::optional<Candidate> selected = std::move(preferred);
     if (translated) {
@@ -865,12 +723,8 @@ bool offset_wipe_path_toward_support(Polyline &polyline, Point seam_start, Point
     }
     if (! selected)
         selected = std::move(direct);
-
-
     if (! selected)
         selected = std::move(alternate);
-
-
 
     if (reversed && (! selected ||
         (reversed->path_length > selected->path_length + length_margin &&
@@ -891,7 +745,6 @@ std::optional<Point> wipe_on_loops_destination(const ExtrusionPaths &paths, doub
     if (paths.empty() || nozzle_diam_scaled <= 0)
         return std::nullopt;
 
-
     double total_length = 0.;
     for (const ExtrusionPath &path : paths)
         total_length += path.length();
@@ -902,7 +755,6 @@ std::optional<Point> wipe_on_loops_destination(const ExtrusionPaths &paths, doub
 
     const Point seam_start = paths.front().first_point();
 
-
     if (a == b || a == seam_start || b == seam_start)
         return std::nullopt;
 
@@ -911,7 +763,6 @@ std::optional<Point> wipe_on_loops_destination(const ExtrusionPaths &paths, doub
         std::swap(a, b);
 
     double angle = seam_start.ccw_angle(a, b) / 3;
-
 
     static constexpr double angle_epsilon = 0.01;
     if (angle < angle_epsilon || angle > 2 * PI / 3 - angle_epsilon)

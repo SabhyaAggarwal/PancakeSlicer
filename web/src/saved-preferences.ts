@@ -1,4 +1,3 @@
-
 import { useSyncExternalStore } from 'react';
 import { createMachine } from './flow/fsm';
 import type { DocumentSyncState, JsonValue } from './persist/service-document';
@@ -19,7 +18,6 @@ export const preference = (key: string) => values[key];
 export function preferenceText(key: string): string | undefined {
   const value = preference(key); return value == null ? undefined : typeof value === 'string' ? value : String(value);
 }
-
 export function preferenceJson<T>(key: string, fallback: T): T {
   const value = preference(key);
   if (value === undefined || value === null) return fallback;
@@ -34,8 +32,6 @@ export function observePreference(key: string, listener: () => void) { listener(
 export const usePreference = (key: string) => useSyncExternalStore(listener => subscribePreference(key, listener), () => preference(key));
 export const savedPreferencesSnapshot = () => status;
 export const subscribeSavedPreferences = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-
-
 type BootState = 'idle' | 'starting' | 'attached' | 'failed';
 type BootEvent = { type: 'START' } | { type: 'HYDRATED' } | { type: 'FAIL'; error: string; transient: boolean } | { type: 'RETRY' } | { type: 'ONLINE' };
 interface BootContext { error: string | null; transient: boolean; retryDelay: number }
@@ -45,18 +41,14 @@ const boot = createMachine<BootState, BootEvent, BootContext>({
   id: 'saved-preferences', initial: 'idle', strict: true, context: { error: null, transient: false, retryDelay: 0 },
   states: {
     idle: { on: { START: { target: 'starting', action: start(false) } } },
-
     starting: { on: { START: {}, RETRY: {}, HYDRATED: { target: 'attached', action: () => ({ error: null, retryDelay: 0 }) },
       FAIL: { target: 'failed', action: (c, e) => ({ error: e.error, transient: e.transient, retryDelay: e.transient ? Math.min(c.retryDelay * 2 || 1000, 10_000) : c.retryDelay }) } } },
     attached: { on: { START: { action: () => { loading = Promise.resolve(); } }, RETRY: { action: () => { loading = controller!.flushServicePreferences(true); } } } },
-
-
     failed: { on: { START: { target: 'starting', action: start(false) }, RETRY: { target: 'starting', action: start(true) }, ONLINE: { target: 'starting', guard: (c) => c.transient, action: start(false) } },
       after: { ms: (c) => c.retryDelay, guard: (c) => c.transient, target: 'starting', action: start(false) } },
   },
 });
 const state = (s: DocumentSyncState): Status['state'] => s === 'debounced' || s === 'writing' ? 'pending' : s === 'conflict' ? 'failed' : s;
-
 function refresh(next = controller ? controller.servicePreferencesSnapshot().document : { ...values, ...queued }) {
   const b = boot.get(), doc = controller?.servicePreferencesSnapshot();
   publish(next, b.value === 'failed' ? { state: 'failed', error: b.context.error, hydrated: false }
@@ -64,7 +56,6 @@ function refresh(next = controller ? controller.servicePreferencesSnapshot().doc
 }
 boot.subscribe(() => refresh());
 if (typeof window !== 'undefined') window.addEventListener('online', () => { if (boot.get().value === 'failed') boot.send({ type: 'ONLINE' }); });
-
 export function savePreferences(patch: Record<string, JsonValue>) {
   const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !same(values[key], value)));
   if (!Object.keys(changed).length) return;
@@ -75,7 +66,6 @@ async function attach(retry: boolean) {
   try {
     if (!controller) {
       const loaded = await import('./persist/preferences');
-
       const edits = queued; queued = {}; controller = loaded;
       if (Object.keys(edits).length) controller.setServicePreferences(edits);
       controller.subscribeServicePreferences(() => refresh()); refresh();
@@ -92,7 +82,6 @@ async function attach(retry: boolean) {
     throw error;
   }
 }
-
 export function initialiseSavedPreferences(retry = false): Promise<void> {
   boot.send({ type: retry && boot.get().value !== 'idle' ? 'RETRY' : 'START' });
   return loading;

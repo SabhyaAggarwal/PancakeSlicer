@@ -1,0 +1,7 @@
+:where(.orca-parity) .url-import { display: grid; gap: var(--s-3); width: 100%; min-width: 0; text-align: left; }
+:where(.orca-parity) .fr-drop > .url-import { margin-top: var(--s-4); }
+:where(.orca-parity) .url-import-entry { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+:where(.orca-parity) .url-import-entry > input { flex: 1; min-width: 0; }
+:where(.orca-parity) .url-import-progress { color: var(--ink-2); font: var(--t-small); }
+:where(.orca-parity) .url-import-error { color: var(--danger); font: var(--t-small); overflow-wrap: anywhere; }
+:where(.orca-parity) .url-import .modal-pick { min-height: 0; max-height: min(40dvh, 320px); overflow: auto; }

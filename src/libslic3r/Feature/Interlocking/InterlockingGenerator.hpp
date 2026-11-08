@@ -18,61 +18,13 @@ namespace Slic3r { class PrintObject; }
 
 namespace Slic3r {
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class InterlockingGenerator
 {
 public:
-
-
-
     static void generate_interlocking_structure(PrintObject* print_object, const std::function<void()>& throw_on_cancel);
 
 private:
-
-
-
     void generateInterlockingStructure() const;
-
-
-
-
-
-
-
-
-
-
-
-
 
     InterlockingGenerator(PrintObject&          print_object,
                           const size_t          region_a_index,
@@ -100,61 +52,18 @@ private:
         , air_filtering(air_filtering)
         , throw_on_cancel(throw_on_cancel)
     {}
-
-
-
-
-
-
-
-
+    
     std::pair<ExPolygons, ExPolygons> growBorderAreasPerpendicular(const ExPolygons& a, const ExPolygons& b, const coord_t& detect) const;
-
-
-
-
-
 
     void handleThinAreas(const std::unordered_set<GridPoint3>& has_all_meshes) const;
 
-
-
-
-
-
-
-
     std::vector<std::unordered_set<GridPoint3>> getShellVoxels(const DilationKernel& kernel) const;
-
-
-
-
-
-
-
-
 
     void addBoundaryCells(const std::vector<ExPolygons>& layers, const DilationKernel& kernel, std::unordered_set<GridPoint3>& cells) const;
 
-
-
-
-
-
-
     std::vector<ExPolygons> computeUnionedVolumeRegions() const;
 
-
-
-
-
     std::vector<std::vector<ExPolygons>> generateMicrostructure() const;
-
-
-
-
-
-
 
     void applyMicrostructureToOutlines(const std::unordered_set<GridPoint3>& cells, const std::vector<ExPolygons>& layer_regions) const;
 
@@ -173,8 +82,6 @@ private:
     const coord_t        beam_layer_count;
     const DilationKernel interface_dilation;
     const DilationKernel air_dilation;
-
-
     const bool air_filtering;
 
     const std::function<void()>& throw_on_cancel;

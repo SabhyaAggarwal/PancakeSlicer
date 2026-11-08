@@ -1,6 +1,5 @@
-
-
 const GLYPH = {
+  fullscreen: 'M6 2.5H2.5V6M10 2.5h3.5V6M2.5 10v3.5H6M13.5 10v3.5H10',
   more: 'M3.5 8h.01M8 8h.01M12.5 8h.01',
   back: 'M10 3.5L5.5 8l4.5 4.5',
   filter: 'M2.5 3.5h11l-4.25 5v4l-2.5 1.25V8.5z',

@@ -1,14 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
 import { createMachine, useMachine } from '../flow/fsm';
 
 export type SetupStep = 'closed' | 'welcome' | 'tour' | 'printer' | 'profiles' | 'connect' | 'filaments' | 'applying' | 'done';

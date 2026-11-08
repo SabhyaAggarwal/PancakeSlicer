@@ -22,16 +22,12 @@ TrimmedLoop trim_loop(const Polygon &loop, const EdgeGrid::Grid &grid)
 			Visitor(const EdgeGrid::Grid &grid, const Slic3r::Point *pt_prev, const Slic3r::Point *pt_this) : grid(grid), pt_prev(pt_prev), pt_this(pt_this) {}
 
 			bool operator()(coord_t iy, coord_t ix) {
-
 				auto cell_data_range = grid.cell_data_range(iy, ix);
 				for (auto it_contour_and_segment = cell_data_range.first; it_contour_and_segment != cell_data_range.second; ++ it_contour_and_segment) {
-
 					auto segment = grid.segment(*it_contour_and_segment);
 					if (Geometry::segments_intersect(segment.first, segment.second, *pt_prev, *pt_this)) {
-
 					}
 				}
-
 				return true;
 			}
 

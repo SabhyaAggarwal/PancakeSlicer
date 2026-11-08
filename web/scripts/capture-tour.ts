@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -17,7 +11,6 @@ const page = await context.newPage();
 mkdirSync(out, { recursive: true });
 const tmp = path.join(out, '.png');
 mkdirSync(tmp, { recursive: true });
-
 async function save(name: string, shot: (file: string) => Promise<unknown>) {
   const png = path.join(tmp, `${name}.png`);
   await shot(png);
@@ -27,8 +20,6 @@ const ready = () => page.waitForFunction(() => (window as any).__plater?.getStat
 
 await page.goto(base, { waitUntil: 'load' });
 await ready();
-
-
 await page.waitForTimeout(2000);
 if (!await page.locator('.setup').count()) {
   await page.getByRole('button', { name: 'Application menu' }).click();
@@ -45,7 +36,6 @@ await page.getByRole('button', { name: 'Done', exact: true }).click();
 await page.getByRole('button', { name: 'Start printing' }).click({ timeout: 120_000 });
 await page.waitForTimeout(1500);
 
-
 await page.evaluate(() => (window as any).__plater.setState({ tab: 'prepare', presetUx: { kind: 'presets', type: 'process', name: 'profile:starter-everyday', edit: true } }));
 await page.getByRole('tab', { name: /Dynamic$/ }).first().click({ timeout: 30_000 });
 await page.locator('.dyn-formulas').first().waitFor();
@@ -57,7 +47,6 @@ await page.keyboard.press('Escape');
 await page.reload({ waitUntil: 'load' });
 await ready();
 
-
 await page.getByRole('button', { name: 'Projects', exact: true }).first().click();
 await page.getByRole('button', { name: 'New project', exact: true }).first().click();
 await page.getByRole('button', { name: 'Benchy', exact: true }).click({ timeout: 30_000 });
@@ -65,7 +54,6 @@ await page.waitForFunction(() => (window as any).__plater.getState().objects.len
 const facts = await roofPair(page, 'roof', save);
 await page.reload({ waitUntil: 'load' });
 await ready();
-
 
 for (const example of ['Knob', 'Shelf hook']) {
   await page.getByRole('button', { name: 'Projects', exact: true }).first().click();

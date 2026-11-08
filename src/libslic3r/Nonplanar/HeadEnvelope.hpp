@@ -11,9 +11,6 @@ namespace Slic3r { class PrintConfig; }
 
 namespace Slic3r::Nonplanar {
 
-
-
-
 struct HeadBox
 {
     std::string name;
@@ -24,15 +21,11 @@ struct HeadBox
     bool        nozzle     = false;
 };
 
-
-
-
 struct TipAllowance
 {
     double radius = 0.;
     double height = 0.;
 };
-
 
 struct SlopeStarSample { double azimuth, max_clean_slope; };
 struct SlopeStarReading
@@ -52,39 +45,19 @@ struct HeadEnvelope
     double               lateral_margin = 0.3;
     bool                 calibrated = false;
     std::string          provenance;
-
-
     std::string extensions;
 
     bool empty() const { return boxes.empty(); }
 
-
-
-
     double underside_height(const Vec2d &d) const;
-
-
-
-
-
-
-
-
-
-
 
     double max_slope(double phi, double gap, double reach = std::numeric_limits<double>::infinity()) const;
 
-
     std::vector<double> slope_map(int n, double gap) const;
-
-
 
     static HeadEnvelope from_slope_star(const HeadEnvelope &base, const SlopeStarReading &reading, float layer_height);
 
-
     double gantry_clearance() const;
-
 
     double reach() const;
 };
@@ -94,25 +67,16 @@ bool operator==(const TipAllowance &lhs, const TipAllowance &rhs);
 bool operator==(const HeadEnvelope &lhs, const HeadEnvelope &rhs);
 inline bool operator!=(const HeadEnvelope &lhs, const HeadEnvelope &rhs) { return !(lhs == rhs); }
 
-
-
-
 struct SideProfileRow { double height, xpos, xneg, ypos, yneg; };
 
 HeadEnvelope envelope_from_side_profile(const std::vector<SideProfileRow> &rows, double top,
                                         double gantry_height, double gantry_ymin, double gantry_ymax);
 
-
-
 struct NSideProfileRow { double height; std::vector<double> reach; };
 std::vector<HeadBox> boxes_from_n_side_profile(const std::vector<NSideProfileRow> &rows, double top);
 
-
-
 HeadEnvelope load_head_envelope(const std::string &json_text);
 std::string  save_head_envelope(const HeadEnvelope &envelope);
-
-
 
 class HeadLibrary
 {
@@ -120,19 +84,14 @@ public:
     static HeadLibrary &instance();
     const HeadEnvelope      *find(const std::string &id) const;
     std::vector<std::string> ids() const;
-
     std::string              source_path(const std::string &id) const;
     void                     reload();
-
-
     void                     save_user_head(const HeadEnvelope &head);
-
     static const HeadEnvelope &generic_conservative();
 
 private:
     HeadLibrary() = default;
     void load_locked() const;
-
 
     mutable std::mutex                          m_mutex;
     mutable bool                                m_loaded = false;
@@ -140,12 +99,7 @@ private:
     mutable std::map<std::string, std::string> m_sources;
 };
 
-
-
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning = nullptr);
-
-
-
 
 bool native_support_capable(const PrintConfig &config);
 

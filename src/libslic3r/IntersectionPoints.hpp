@@ -17,7 +17,6 @@ struct IntersectionLines {
 };
 using IntersectionsLines = std::vector<IntersectionLines>;
 
-
 IntersectionsLines get_intersections(const Lines &lines);
 IntersectionsLines get_intersections(const Polygon &polygon);
 IntersectionsLines get_intersections(const Polygons &polygons);

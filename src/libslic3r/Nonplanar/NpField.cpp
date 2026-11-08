@@ -90,8 +90,6 @@ NpField load_npfield(const std::string &path)
     f.solver      = text("solver");
     f.proxy_version = text("proxy_version");
     f.mesh_min    = vec3("mesh_min", false);
-
-
     if (const NpyArray tops = read("layer_z", false); !tops.values.empty()) {
         if (tops.shape.size() != 1)
             fail(path, "'layer_z' must be one-dimensional");
@@ -208,8 +206,6 @@ void to_plate_frame(NpField &f, const Vec2d &plate_offset)
 
 size_t make_z_monotone(NpField &f)
 {
-
-
     const double step   = 1e-3 * f.spacing.z();
     size_t       raised = 0;
     for (size_t i = 0; i < f.dims[0]; ++i)
@@ -227,14 +223,10 @@ size_t make_z_monotone(NpField &f)
 
 NpLayerField::NpLayerField(NpField field) : m_field(std::move(field))
 {
-
-
-
     if (const size_t raised = make_z_monotone(m_field); raised > 0)
         BOOST_LOG_TRIVIAL(warning) << "Native field: " << raised << " grid nodes raised to keep phi increasing in z (a fold over the field's "
                                    << m_field.dims[0] * m_field.dims[1] * m_field.dims[2] << " nodes)";
     const NpField &f = m_field;
-
     size_t bad = f.dims[2];
     for (size_t k = 0; k < f.dims[2] && bad == f.dims[2]; ++k)
         for (size_t i = 0; i < f.dims[0] && bad == f.dims[2]; ++i)
@@ -263,7 +255,6 @@ void NpLayerField::locate(const Vec3d &p, std::array<size_t, 3> &c, Vec3d &t) co
 
 double NpLayerField::phi(const Vec3d &p) const
 {
-
     std::array<size_t, 3> c;
     Vec3d                 t;
     this->locate(p, c, t);
@@ -309,7 +300,6 @@ Vec3d NpLayerField::gradient(const Vec3d &p) const
         g.y() += v * wx * (b ? 1. : -1.) * wz / m_field.spacing.y();
         g.z() += v * wx * wy * (e ? 1. : -1.) / m_field.spacing.z();
     }
-
     for (int a = 0; a < 3; ++a) {
         const double x = (p[a] - m_field.origin[a]) / m_field.spacing[a];
         if (x < 0. || x > double(m_field.dims[size_t(a)] - 1))

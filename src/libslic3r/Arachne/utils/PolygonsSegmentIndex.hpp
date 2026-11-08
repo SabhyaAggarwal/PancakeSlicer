@@ -14,9 +14,6 @@
 namespace Slic3r::Arachne
 {
 
-
-
-
 class PolygonsSegmentIndex : public PolygonsPointIndex
 {
 public:

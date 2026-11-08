@@ -23,7 +23,7 @@
 #include <oneapi/tbb/scalable_allocator.h>
 
 
-#include <Eigen/Geometry>
+#include <Eigen/Geometry> 
 
 #include "LocalesUtils.hpp"
 
@@ -41,25 +41,18 @@ class Polyline;
 class Polyline3;
 using Vector = Point;
 
-
 template<int N, int M, class T>
 using Mat = Eigen::Matrix<T, N, M, Eigen::DontAlign, N, M>;
 
 template<int N, class T> using Vec = Mat<N, 1, T>;
 
-
-
 using Vec2crd = Eigen::Matrix<coord_t,  2, 1, Eigen::DontAlign>;
 using Vec3crd = Eigen::Matrix<coord_t,  3, 1, Eigen::DontAlign>;
-
-
-
 using Vec2i32 = Eigen::Matrix<int32_t,  2, 1, Eigen::DontAlign>;
 using Vec2i64 = Eigen::Matrix<int64_t,  2, 1, Eigen::DontAlign>;
 using Vec3i32 = Eigen::Matrix<int32_t,  3, 1, Eigen::DontAlign>;
 using Vec3i64 = Eigen::Matrix<int64_t,  3, 1, Eigen::DontAlign>;
 using Vec4i32 = Eigen::Matrix<int32_t,  4, 1, Eigen::DontAlign>;
-
 
 using Vec2f   = Eigen::Matrix<float,    2, 1, Eigen::DontAlign>;
 using Vec3f   = Eigen::Matrix<float,    3, 1, Eigen::DontAlign>;
@@ -95,13 +88,10 @@ using Transform2d    = Eigen::Transform<double, 2, Eigen::Affine, Eigen::DontAli
 using Transform3f    = Eigen::Transform<float,  3, Eigen::Affine, Eigen::DontAlign>;
 using Transform3d    = Eigen::Transform<double, 3, Eigen::Affine, Eigen::DontAlign>;
 
-
 Polyline to_polyline(const Points &points);
 Polyline3 to_polyline(const Points3 &points);
 Points to_points(const Points3 &points);
 Points3   to_points3(const Points& points);
-
-
 
 template<int N, class T> Transform<N, T> identity() { return Transform<N, T>::Identity(); }
 inline const auto &identity3f = identity<3, float>;
@@ -125,14 +115,12 @@ inline typename Derived::Scalar cross2(const Eigen::MatrixBase<Derived> &v1, con
     return v1.x() * v2.y() - v1.y() * v2.x();
 }
 
-
 template<typename Derived>
 inline Eigen::Matrix<typename Derived::Scalar, 2, 1, Eigen::DontAlign> perp(const Eigen::MatrixBase<Derived> &v)
-{
+{ 
     static_assert(Derived::IsVectorAtCompileTime && int(Derived::SizeAtCompileTime) == 2, "perp(): parameter is not a 2D vector");
     return { - v.y(), v.x() };
 }
-
 
 template<typename Derived, typename Derived2>
 inline double angle(const Eigen::MatrixBase<Derived> &v1, const Eigen::MatrixBase<Derived2> &v2) {
@@ -170,19 +158,7 @@ inline std::string to_string(const Vec3d   &pt) { return std::string("[") + floa
 std::vector<Vec3f> transform(const std::vector<Vec3f>& points, const Transform3f& t);
 Pointf3s transform(const Pointf3s& points, const Transform3d& t);
 
-
-
-
-
-
-
 inline bool has_reflection(const Transform3d &transform) { return transform.matrix().determinant() < 0; }
-
-
-
-
-
-
 
 inline const Vec3d get_base(unsigned index, const Transform3d &transform) { return transform.linear().col(index); }
 inline const Vec3d get_x_base(const Transform3d &transform) { return get_base(0, transform); }
@@ -207,14 +183,11 @@ public:
     Point(int32_t x, int64_t y) : Vec2crd(coord_t(x), coord_t(y)) {}
     Point(double x, double y) : Vec2crd(coord_t(std::round(x)), coord_t(std::round(y))) {}
 	explicit Point(const Vec2d& rhs) : Vec2crd(coord_t(std::round(rhs.x())), coord_t(std::round(rhs.y()))) {}
-
-
     template<typename OtherDerived>
     Point(const Eigen::MatrixBase<OtherDerived> &other) : Vec2crd(other) {}
     static Point new_scale(coordf_t x, coordf_t y) { return Point(coord_t(scale_(x)), coord_t(scale_(y))); }
     template<typename OtherDerived>
     static Point new_scale(const Eigen::MatrixBase<OtherDerived> &v) { return Point(coord_t(scale_(v.x())), coord_t(scale_(v.y()))); }
-
 
     template<typename OtherDerived>
     Point& operator=(const Eigen::MatrixBase<OtherDerived> &other)
@@ -227,7 +200,7 @@ public:
     Point& operator-=(const Point& rhs) { this->x() -= rhs.x(); this->y() -= rhs.y(); return *this; }
 	Point& operator*=(const double &rhs) { this->x() = coord_t(this->x() * rhs); this->y() = coord_t(this->y() * rhs); return *this; }
     Point operator*(const double &rhs) { return Point(this->x() * rhs, this->y() * rhs); }
-    bool   both_comp(const Point &rhs, const std::string& op) {
+    bool   both_comp(const Point &rhs, const std::string& op) { 
         if (op == ">")
             return this->x() > rhs.x() && this->y() > rhs.y();
         else if (op == "<")
@@ -269,8 +242,8 @@ public:
     double distance_to(const Point &point) const { return (point - *this).cast<double>().norm(); }
 };
 
-inline bool operator<(const Point &l, const Point &r)
-{
+inline bool operator<(const Point &l, const Point &r) 
+{ 
     return l.x() < r.x() || (l.x() == r.x() && l.y() < r.y());
 }
 
@@ -278,7 +251,6 @@ inline Point operator* (const Point& l, const double& r)
 {
     return { coord_t(l.x() * r), coord_t(l.y() * r) };
 }
-
 
 class Point3 : public Vec3crd {
 public:
@@ -290,7 +262,6 @@ public:
     Point3(double x, double y, double z = 0.0) : Vec3crd(coord_t(std::round(x)), coord_t(std::round(y)), coord_t(std::round(z))) {}
     explicit Point3(const Vec2crd& vec2crd, coord_t z = 0) : Vec3crd(vec2crd.x(), vec2crd.y(), z) {}
     explicit Point3(const Vec3crd &vec3crd) : Vec3crd(vec3crd) {}
-
     template<typename OtherDerived>
     explicit Point3(const Eigen::MatrixBase<OtherDerived> &other) : Vec3crd(other) {}
 
@@ -303,7 +274,6 @@ public:
     static Point3 new_scale(const Vec3f &v) {
         return Point3(coord_t(scale_(v.x())), coord_t(scale_(v.y())), coord_t(scale_(v.z())));
     }
-
 
     template<typename OtherDerived>
     Point3& operator=(const Eigen::MatrixBase<OtherDerived> &other)
@@ -368,14 +338,12 @@ public:
     Point3 projection_onto(const MultiPoint3 &poly) const;
     Point3 projection_onto(const Line3 &line) const;
 
-
     Point to_point() const {
         return Point(this->x(), this->y());
     }
 
     double distance_to(const Point3 &point) const { return (point - *this).cast<double>().norm(); }
 };
-
 
 inline void append_points(Points &dst, const Points3 &src) {
     std::transform(src.begin(), src.end(),
@@ -438,14 +406,10 @@ inline Point3 lerp(const Point3& a, const Point3& b, double t)
     return Point3(((1. - t) * a.cast<double>() + t * b.cast<double>()).cast<coord_t>());
 }
 
-
-
 template<bool IncludeBoundary = false>
 BoundingBox get_extents(const Points &pts);
 extern template BoundingBox get_extents<false>(const Points &pts);
 extern template BoundingBox get_extents<true>(const Points &pts);
-
-
 
 template<bool IncludeBoundary = false>
 BoundingBox get_extents(const VecOfPoints &pts);
@@ -454,16 +418,12 @@ extern template BoundingBox get_extents<true>(const VecOfPoints &pts);
 
 BoundingBoxf get_extents(const std::vector<Vec2d> &pts);
 
-
-
 bool        has_duplicate_points(Points &&pts);
 inline bool has_duplicate_points(const Points &pts)
 {
     Points cpy = pts;
     return has_duplicate_points(std::move(cpy));
 }
-
-
 
 inline bool has_duplicate_successive_points(const Points &pts)
 {
@@ -473,15 +433,12 @@ inline bool has_duplicate_successive_points(const Points &pts)
     return false;
 }
 
-
-
 inline bool has_duplicate_successive_points_closed(const Points &pts)
 {
     return has_duplicate_successive_points(pts) || (pts.size() >= 2 && pts.front() == pts.back());
 }
 
-
-Points collect_duplicates(Points pts  );
+Points collect_duplicates(Points pts );
 
 inline bool shorter_then(const Point& p0, const coord_t len)
 {
@@ -493,14 +450,9 @@ inline bool shorter_then(const Point& p0, const coord_t len)
 }
 
 namespace int128 {
-
-
     int orient(const Vec2crd &p1, const Vec2crd &p2, const Vec2crd &p3);
-
-
     int cross(const Vec2crd &v1, const Vec2crd &v2);
 }
-
 
 struct PointHash {
     size_t operator()(const Vec2crd &pt) const noexcept {
@@ -508,22 +460,16 @@ struct PointHash {
     }
 };
 
-
-
-
-
 template<typename ValueType, typename PointAccessor> class ClosestPointInRadiusLookup
 {
 public:
-    ClosestPointInRadiusLookup(coord_t search_radius, PointAccessor point_accessor = PointAccessor()) :
+    ClosestPointInRadiusLookup(coord_t search_radius, PointAccessor point_accessor = PointAccessor()) : 
 		m_search_radius(search_radius), m_point_accessor(point_accessor), m_grid_log2(0)
     {
-
 		coord_t gridres = 2 * m_search_radius + 4;
         m_grid_resolution = gridres;
         assert(m_grid_resolution > 0);
         assert(m_grid_resolution < (coord_t(1) << 30));
-
 		if (m_grid_resolution > 32767) {
 			m_grid_resolution >>= 16;
 			m_grid_log2 += 16;
@@ -559,14 +505,10 @@ public:
             m_map.emplace(std::make_pair(Vec2crd(pt->x()>>m_grid_log2, pt->y()>>m_grid_log2), std::move(value)));
     }
 
-
-
     bool erase(const ValueType &value) {
         const Point *pt = m_point_accessor(value);
         if (pt != nullptr) {
-
             auto range = m_map.equal_range(Point((*pt).x()>>m_grid_log2, (*pt).y()>>m_grid_log2));
-
             for (auto it = range.first; it != range.second; ++ it) {
                 if (it->second == value) {
                     m_map.erase(it);
@@ -577,20 +519,13 @@ public:
         return false;
     }
 
-
     std::pair<const ValueType*, double> find(const Vec2crd &pt) {
-
-
         const ValueType *value_min = nullptr;
         double           dist_min = std::numeric_limits<double>::max();
-
         Vec2crd            grid_corner((pt.x()+(m_grid_resolution>>1))>>m_grid_log2, (pt.y()+(m_grid_resolution>>1))>>m_grid_log2);
-
         for (coord_t neighbor_y = -1; neighbor_y < 1; ++ neighbor_y) {
             for (coord_t neighbor_x = -1; neighbor_x < 1; ++ neighbor_x) {
-
                 auto range = m_map.equal_range(Vec2crd(grid_corner.x() + neighbor_x, grid_corner.y() + neighbor_y));
-
                 for (auto it = range.first; it != range.second; ++it) {
                     const ValueType &value = it->second;
                     const Vec2crd *pt2 = m_point_accessor(value);
@@ -604,24 +539,18 @@ public:
                 }
             }
         }
-        return (value_min != nullptr && dist_min < coordf_t(m_search_radius) * coordf_t(m_search_radius)) ?
-            std::make_pair(value_min, dist_min) :
+        return (value_min != nullptr && dist_min < coordf_t(m_search_radius) * coordf_t(m_search_radius)) ? 
+            std::make_pair(value_min, dist_min) : 
             std::make_pair(nullptr, std::numeric_limits<double>::max());
     }
 
-
     std::vector<std::pair<const ValueType*, double>> find_all(const Vec2crd &pt) {
-
-
         Vec2crd      grid_corner((pt.x()+(m_grid_resolution>>1))>>m_grid_log2, (pt.y()+(m_grid_resolution>>1))>>m_grid_log2);
-
         std::vector<std::pair<const ValueType*, double>> out;
         const double r2 = double(m_search_radius) * m_search_radius;
         for (coord_t neighbor_y = -1; neighbor_y < 1; ++ neighbor_y) {
             for (coord_t neighbor_x = -1; neighbor_x < 1; ++ neighbor_x) {
-
                 auto range = m_map.equal_range(Vec2crd(grid_corner.x() + neighbor_x, grid_corner.y() + neighbor_y));
-
                 for (auto it = range.first; it != range.second; ++it) {
                     const ValueType &value = it->second;
                     const Vec2crd *pt2 = m_point_accessor(value);
@@ -648,16 +577,6 @@ private:
 std::ostream& operator<<(std::ostream &stm, const Vec2d &pointf);
 
 
-
-
-
-
-
-
-
-
-
-
 template<class Tout,
          class Tin,
          class = FloatingOnly<Tin>>
@@ -666,17 +585,11 @@ inline constexpr FloatingOnly<Tout> scaled(const Tin &v) noexcept
     return Tout(v / Tin(SCALING_FACTOR));
 }
 
-
-
-
-
 template<class Tout = coord_t, class Tin, class = FloatingOnly<Tin>>
 inline constexpr ScaledCoordOnly<Tout> scaled(const Tin &v) noexcept
 {
-
     return Tout(v / Tin(SCALING_FACTOR));
 }
-
 
 template<class Tout = coord_t,
          class Tin,
@@ -689,7 +602,6 @@ scaled(const Eigen::Matrix<Tin, N, EigenArgs...> &v)
     return (v / SCALING_FACTOR).template cast<Tout>();
 }
 
-
 template<class Tout = double,
          class Tin,
          class = ArithmeticOnly<Tin>,
@@ -698,8 +610,6 @@ inline constexpr Tout unscaled(const Tin &v) noexcept
 {
     return Tout(v) * Tout(SCALING_FACTOR);
 }
-
-
 
 template<class Tout = double,
          class Tin,
@@ -713,25 +623,19 @@ unscaled(const Eigen::Matrix<Tin, N, EigenArgs...> &v) noexcept
     return v.template cast<Tout>() * Tout(SCALING_FACTOR);
 }
 
-
-
 inline coord_t align_to_grid(const coord_t coord, const coord_t spacing) {
-
-
-
     coord_t aligned = (coord < 0) ?
             ((coord - spacing + 1) / spacing) * spacing :
             (coord / spacing) * spacing;
     assert(aligned <= coord);
     return aligned;
 }
-inline Point   align_to_grid(Point   coord, Point   spacing)
+inline Point   align_to_grid(Point   coord, Point   spacing) 
     { return Point(align_to_grid(coord.x(), spacing.x()), align_to_grid(coord.y(), spacing.y())); }
-inline coord_t align_to_grid(coord_t coord, coord_t spacing, coord_t base)
+inline coord_t align_to_grid(coord_t coord, coord_t spacing, coord_t base) 
     { return base + align_to_grid(coord - base, spacing); }
 inline Point   align_to_grid(Point   coord, Point   spacing, Point   base)
     { return Point(align_to_grid(coord.x(), spacing.x(), base.x()), align_to_grid(coord.y(), spacing.y(), base.y())); }
-
 
 template<typename T> struct MinMax { T min; T max;};
 template<typename T>
@@ -754,8 +658,6 @@ static bool apply(T &val, const MinMax<T> &limit)
 }
 
 }
-
-
 namespace std {
     template<>
     struct hash<Slic3r::Vec2ds> {
@@ -783,22 +685,21 @@ namespace std {
     };
 }
 
-
 #include <boost/version.hpp>
 #include <boost/polygon/polygon.hpp>
 namespace boost { namespace polygon {
     template <>
     struct geometry_concept<Slic3r::Point> { using type = point_concept; };
-
+   
     template <>
     struct point_traits<Slic3r::Point> {
         using coordinate_type = coord_t;
-
+    
         static inline coordinate_type get(const Slic3r::Point& point, orientation_2d orient) {
             return static_cast<coordinate_type>(point((orient == HORIZONTAL) ? 0 : 1));
         }
     };
-
+    
     template <>
     struct point_mutable_traits<Slic3r::Point> {
         using coordinate_type = coord_t;
@@ -810,12 +711,7 @@ namespace boost { namespace polygon {
         }
     };
 } }
-
-
-
 namespace cereal {
-
-
 	template<class Archive> void serialize(Archive& archive, Slic3r::Vec2i32   &v) { archive(v.x(), v.y()); }
 	template<class Archive> void serialize(Archive& archive, Slic3r::Vec3i32   &v) { archive(v.x(), v.y(), v.z()); }
 	template<class Archive> void serialize(Archive& archive, Slic3r::Vec2i64 &v) { archive(v.x(), v.y()); }
@@ -831,7 +727,6 @@ namespace cereal {
     template<class Archive> void load(Archive &archive, Slic3r::Transform3d &m) { archive.loadBinary((char *) m.data(), sizeof(double) * 16); }
     template<class Archive> void save(Archive &archive, const Slic3r::Transform3d &m) { archive.saveBinary((char *) m.data(), sizeof(double) * 16); }
 }
-
 
 namespace Eigen {
 template<class T, int N, int M>

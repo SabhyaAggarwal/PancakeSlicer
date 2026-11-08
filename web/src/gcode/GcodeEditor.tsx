@@ -9,14 +9,9 @@ import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutt
 import { gcodeHighlight, gcodeLanguage } from './language';
 import { placeholderCompletion, placeholdersFor } from './placeholders';
 
-
-
-
 export function GcodeEditor({ optionKey, label, value, template, diff, readOnly, configKeys, empty, compact, onCommit, onView }: {
   optionKey: string; label: string; value: string; template: string; diff: boolean; readOnly?: boolean;
-
   empty?: string; compact?: boolean;
-
   configKeys: readonly string[];
   onCommit(text: string): void; onView?(view: EditorView | null): void;
 }) {
@@ -38,7 +33,6 @@ export function GcodeEditor({ optionKey, label, value, template, diff, readOnly,
           search({ top: true }), highlightSelectionMatches(), gcodeLanguage(known), gcodeHighlight,
           autocompletion({ override: [placeholderCompletion(placeholders)], icons: false }),
           keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap]),
-
           EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': label, spellcheck: 'false' }),
           EditorView.domEventHandlers({ blur: (_e, ed) => flush(ed) }),
@@ -50,7 +44,6 @@ export function GcodeEditor({ optionKey, label, value, template, diff, readOnly,
     });
     view.current = v; onView?.(v);
     return () => { flush(v); onView?.(null); v.destroy(); view.current = null; };
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [optionKey, placeholders]);
 

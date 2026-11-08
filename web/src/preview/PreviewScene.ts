@@ -1,5 +1,3 @@
-
-
 import * as THREE from 'three';
 import { CameraViews } from '../plater/CameraViews';
 import { getState, isSelected } from '../state/store';
@@ -16,14 +14,11 @@ import { binOf, type SurfaceGrid } from './surface-grid';
 import { toolAxis } from './pose';
 import { VOXEL_MM, voxelCentre } from './results';
 
-
 const SURFACE_LIFT_MM = 0.15;
 
 const FRAME_BUDGET_MS = 14;
-
 const RECOLOR_SLICE_MS = 12;
 const RECOLOR_STEP = 32768;
-
 const STILL_MS = 250;
 
 export class PreviewScene {
@@ -33,17 +28,10 @@ export class PreviewScene {
   get camera() { return this.views.camera; }
   get controls() { return this.views.controls; }
   private segments: SegmentRenderer;
-
-
-
-
   private back: { data: PreviewData; segments: SegmentRenderer; uploaded: number; colorCtx: ColorContext | null } | null = null;
   private spare: SegmentRenderer | null = null;
-
   private removed: { mesh: THREE.InstancedMesh; z: Float32Array } | null = null;
   private overlay = new THREE.Group();
-
-
   private hostW = 0;
   private hostH = 0;
   private diffVisible = false;
@@ -66,25 +54,12 @@ export class PreviewScene {
   private draw: DrawState = { range: [0, 0], roleMask: -1, typeMask: 0, optionMask: 0 };
   private frame = 0;
   private colorCtx: ColorContext | null = null;
-
   private colorKeyed: string | null = null;
-
   private recoloring: { next: number; frame: number } | null = null;
   private timer: { ext: any; query: WebGLQuery | null; gpuMs: number } = { ext: null, query: null, gpuMs: NaN };
-
   lastFrame: FrameStats & { frameMs: number; gpuMs: number; scale: number } = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0, frameMs: 0, gpuMs: NaN, scale: 1 };
   onFrame: (() => void) | null = null;
-
   onLost: (() => void) | null = null;
-
-
-
-
-
-
-
-
-
   private moving = false;
   private still = 0;
   private upscale: { prog: WebGLProgram; vao: WebGLVertexArrayObject; tex: WebGLTexture; scale: WebGLUniformLocation | null; w: number; h: number } | null = null;
@@ -117,7 +92,6 @@ export class PreviewScene {
         this.request();
       }, STILL_MS);
     });
-
     const cone = new THREE.ConeGeometry(1.2, 4, 24);
     cone.rotateX(-Math.PI / 2);
     cone.translate(0, 0, 2);
@@ -183,7 +157,6 @@ export class PreviewScene {
     this.request();
   }
 
-
   setBackData(d: PreviewData) {
     const segments = this.back?.segments ?? this.spare ?? new SegmentRenderer(this.renderer);
     this.spare = null;
@@ -191,7 +164,6 @@ export class PreviewScene {
     segments.reset(d);
     this.back = { data: d, segments, uploaded: 0, colorCtx: null };
   }
-
 
   syncBack(ctx: ColorContext | null) {
     const b = this.back;
@@ -206,7 +178,6 @@ export class PreviewScene {
     b.uploaded = end;
   }
 
-
   recolorBack(ctx: ColorContext, from: number, to: number) {
     const b = this.back;
     if (!b) return;
@@ -218,7 +189,6 @@ export class PreviewScene {
   get backData() {
     return this.back?.data ?? null;
   }
-
 
   promote() {
     const b = this.back;
@@ -233,13 +203,11 @@ export class PreviewScene {
     this.request();
   }
 
-
   dropBack() {
     if (!this.back) return;
     this.spare = this.back.segments;
     this.back = null;
   }
-
 
   showDiff(color: [number, number, number] | null) {
     this.draw = { ...this.draw, diffColor: color ?? undefined };
@@ -247,12 +215,10 @@ export class PreviewScene {
     this.request();
   }
 
-
   setDiffFlags(flags: Uint8Array | null) {
     this.segments.setDiff(flags);
     this.request();
   }
-
 
   setRemoved(keys: Iterable<number> | null, color?: string) {
     if (this.removed) {
@@ -282,7 +248,6 @@ export class PreviewScene {
     this.request();
   }
 
-
   setRemovedTop(top: number) {
     const r = this.removed;
     if (!r) return;
@@ -298,7 +263,6 @@ export class PreviewScene {
     }
   }
 
-
   clear() {
     this.dropBack();
     this.data = null;
@@ -310,7 +274,6 @@ export class PreviewScene {
   holds(d: PreviewData) {
     return this.data === d;
   }
-
 
   sync() {
     const d = this.data;
@@ -332,9 +295,6 @@ export class PreviewScene {
     this.colorKeyed = key;
     const d = this.data;
     if (!d || same) return;
-
-
-
     if (this.recoloring) cancelAnimationFrame(this.recoloring.frame);
     const segments = this.segments, job = (this.recoloring = { next: 0, frame: 0 });
     const slice = () => {
@@ -386,20 +346,17 @@ export class PreviewScene {
     return this.segments.pick(ray.ray, this.draw, 6 * pixel);
   }
 
-
   setFocus(mask: number | null) {
     if ((this.draw.focusMask ?? -1) === (mask ?? -1)) return;
     this.draw = { ...this.draw, focusMask: mask ?? -1 };
     this.request();
   }
 
-
   copyCamera(from: PreviewScene) {
     this.views.copy(from.views);
     this.views.resize(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight));
     this.request();
   }
-
 
   private onFit = () => {
     const s = getState(), box = new THREE.Box3();
@@ -412,12 +369,10 @@ export class PreviewScene {
     this.request();
   };
 
-
   fit(min: THREE.Vector3, max: THREE.Vector3) {
     this.views.fit(new THREE.Box3(min, max));
     this.request();
   }
-
 
   setSurface(grid: SurfaceGrid | null) {
     if (this.surface?.grid === grid) return;
@@ -434,7 +389,6 @@ export class PreviewScene {
       const pos = new Float32Array(cells.length * 18), col = new Float32Array(cells.length * 18);
       cells.forEach((i, k) => {
         const x0 = origin[0] + (i % nx) * pitch, y0 = origin[1] + Math.floor(i / nx) * pitch, z = meshZ[i] + SURFACE_LIFT_MM;
-
         const [r, g, b] = binOf(rms[i] * 1000).color;
         const c = new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
         const corners = [[x0, y0], [x0 + pitch, y0], [x0 + pitch, y0 + pitch], [x0, y0], [x0 + pitch, y0 + pitch], [x0, y0 + pitch]];
@@ -453,7 +407,6 @@ export class PreviewScene {
     }
     this.request();
   }
-
 
   pickSurface(px: number, py: number): number {
     const s = this.surface;
@@ -494,8 +447,6 @@ export class PreviewScene {
       gl.deleteQuery(tq.query);
       tq.query = null;
     }
-
-
     const cost = Number.isFinite(tq.gpuMs) ? tq.gpuMs : this.lastFrame.frameMs;
     const scale = (this.scale = !this.moving ? 1 : cost > FRAME_BUDGET_MS * 1.5 ? 0.5 : this.scale);
     const w = this.hostW, h = this.hostH;
@@ -512,7 +463,6 @@ export class PreviewScene {
     if (this.data) this.segments.render(this.camera, this.draw, Math.round(this.renderer.domElement.height * scale));
     const removed = !!this.removed && this.diffVisible;
     if (this.shells.children.length || removed) {
-
       this.shells.visible = true;
       this.overlay.visible = removed;
       const bedVisible = this.bed?.visible;
@@ -534,7 +484,6 @@ export class PreviewScene {
     this.onFrame?.();
   }
 
-
   private stretch(gl: WebGL2RenderingContext, scale: number) {
     const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
     const vw = Math.round(W * scale), vh = Math.round(H * scale);
@@ -547,7 +496,6 @@ export class PreviewScene {
         return sh;
       };
       const prog = gl.createProgram()!;
-
       gl.attachShader(prog, shader(gl.VERTEX_SHADER, `#version 300 es
 out vec2 uv;
 void main() { uv = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0); }`));
@@ -564,7 +512,6 @@ void main() { frag = texture(tex, uv * scale); }`));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, u.tex);
     if (u.w !== W || u.h !== H) {
-
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -586,11 +533,6 @@ void main() { frag = texture(tex, uv * scale); }`));
     gl.bindVertexArray(null);
     this.renderer.resetState();
   }
-
-
-
-
-
 
   bench(frames = 120, zoom = 1): Promise<{ scale: number; medianIntervalMs: number; p95IntervalMs: number; medianFrameMs: number; p95FrameMs: number; medianGpuMs: number; segments: number; lodBlocks: number; blocks: number }> {
     const c = this.controls;

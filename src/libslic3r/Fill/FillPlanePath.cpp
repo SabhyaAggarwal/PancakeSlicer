@@ -44,9 +44,7 @@ private:
                int(p.y() > m_bbox.max.y()) * int(Side::Top);
     };
 
-
     BoundingBox m_bbox;
-
 
     int         m_sides_prev;
     int         m_sides_this;
@@ -57,50 +55,36 @@ void InfillPolylineClipper::add_point(const Vec2d &fpt)
     const Point pt{ this->scaled(fpt) };
 
     if (m_out.size() < 2) {
-
         (m_out.empty() ? m_sides_prev : m_sides_this) = sides(pt);
         m_out.emplace_back(pt);
     } else {
-
         int sides_next = sides(pt);
         if (
             m_sides_this == 0 ||
-
-
             (m_sides_prev & m_sides_this & sides_next) == 0) {
-
             m_sides_prev = m_sides_this;
         } else {
-
-
             m_out.pop_back();
         }
-
         m_out.emplace_back(pt);
         m_sides_this = sides_next;
     }
 }
 
 void FillPlanePath::_fill_surface_single(
-    const FillParams                &params,
+    const FillParams                &params, 
     unsigned int                     thickness_layers,
-    const std::pair<float, Point>   &direction,
+    const std::pair<float, Point>   &direction, 
     ExPolygon                        expolygon,
     Polylines                       &polylines_out)
 {
     expolygon.rotate(-direction.first);
 
-
-
-
     bool        align = params.extrusion_role == ExtrusionRole::erInternalInfill;
     BoundingBox bounding_box;
     BoundingBox snug_bounding_box = get_extents(expolygon).inflated(SCALED_EPSILON);
 
-
     snug_bounding_box.offset(scale_(this->spacing)*params.multiline);
-
-
 
     if (align)
         bounding_box = this->bounding_box.rotated(-direction.first);
@@ -111,7 +95,7 @@ void FillPlanePath::_fill_surface_single(
     else
         bounding_box = extended_object_bounding_box();
 
-    Point shift = this->centered() ?
+    Point shift = this->centered() ? 
         bounding_box.center() :
         bounding_box.min;
     expolygon.translate(-shift.x(), -shift.y());
@@ -126,13 +110,11 @@ void FillPlanePath::_fill_surface_single(
         auto max_y = coord_t(ceil(coordf_t(bounding_box.max.y()) / distance_between_lines));
         auto resolution = scaled<double>(params.resolution) / distance_between_lines;
         if (align) {
-
             snug_bounding_box.translate(-shift.x(), -shift.y());
             InfillPolylineClipper output(snug_bounding_box, distance_between_lines);
             this->generate(min_x, min_y, max_x, max_y, resolution, params, output);
             polyline.points = std::move(output.result());
         } else {
-
             InfillPolylineOutput output(distance_between_lines);
             this->generate(min_x, min_y, max_x, max_y, resolution, params, output);
             polyline.points = std::move(output.result());
@@ -140,8 +122,6 @@ void FillPlanePath::_fill_surface_single(
     }
 
     if (params.extrusion_role == erIroning && dynamic_cast<FillArchimedeanChords*>(this) && polyline.size() > 1) {
-
-
         const double start_radius = 3. * scaled<double>(this->spacing) / params.density;
         auto first = std::find_if(polyline.points.begin(), polyline.points.end(),
                                   [start_radius](const Point &p) { return p.cast<double>().squaredNorm() >= start_radius * start_radius; });
@@ -151,7 +131,6 @@ void FillPlanePath::_fill_surface_single(
 
     Polylines polylines = {polyline};
 
-
     multiline_fill(polylines, params, spacing);
 
     if (polyline.size() >= 2) {
@@ -159,43 +138,28 @@ void FillPlanePath::_fill_surface_single(
         if (!polylines.empty()) {
             Polylines chained;
             if (params.dont_connect() || params.density > 0.5) {
-
-
-
-
                 auto is_flow_calib = params.fill_order == SurfaceFillOrder::Default &&
                                      params.extrusion_role == erTopSolidInfill &&
                                      this->print_object_config->has("calib_flowrate_topinfill_special_order") &&
                                      this->print_object_config->option("calib_flowrate_topinfill_special_order")->getBool() &&
                                      dynamic_cast<FillArchimedeanChords*>(this);
                 if (is_flow_calib) {
-
-
                     auto     it            = std::max_element(polylines.begin(), polylines.end(),
                                                               [](const Polyline& a, const Polyline& b) { return a.length() < b.length(); });
                     Polyline center_spiral = std::move(*it);
-
 
                     if (center_spiral.first_point().squaredNorm() > center_spiral.last_point().squaredNorm()) {
                         center_spiral.reverse();
                     }
 
-
                     polylines.erase(it);
                     chained = chain_polylines(std::move(polylines), nullptr);
 
-
                     chained.push_back(std::move(center_spiral));
                 } else if (params.fill_order != SurfaceFillOrder::Default) {
-
-
-
-
-
                     restore_source_path_order(polyline, polylines);
                     chained = std::move(polylines);
                     if (params.fill_order == SurfaceFillOrder::Inward) {
-
                         std::reverse(chained.begin(), chained.end());
                         for (Polyline &pl : chained)
                             pl.reverse();
@@ -205,7 +169,6 @@ void FillPlanePath::_fill_surface_single(
                 }
             } else
                 connect_infill(std::move(polylines), expolygon, chained, this->spacing, params);
-
             for (Polyline& pl : chained) {
                 pl.translate(shift.x(), shift.y());
                 pl.rotate(direction.first);
@@ -215,23 +178,18 @@ void FillPlanePath::_fill_surface_single(
     }
 }
 
-
 template<typename Output>
 static void generate_archimedean_chords(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double resolution, Output &output)
 {
-
     coordf_t rmax = std::sqrt(coordf_t(max_x)*coordf_t(max_x)+coordf_t(max_y)*coordf_t(max_y)) * std::sqrt(2.) + 1.5;
-
     coordf_t a = 1.;
     coordf_t b = 1./(2.*M_PI);
     coordf_t theta = 0.;
     coordf_t r = 1;
     Pointfs out;
-
     output.add_point({ 0, 0 });
     output.add_point({ 1, 0 });
     while (r < rmax) {
-
         theta += 2. * acos(1. - resolution / r);
         r = a + b * theta;
         output.add_point({ r * cos(theta), r * sin(theta) });
@@ -246,29 +204,11 @@ void FillArchimedeanChords::generate(coord_t min_x, coord_t min_y, coord_t max_x
         generate_archimedean_chords(min_x, min_y, max_x, max_y, resolution, output);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static inline Point hilbert_n_to_xy(const size_t n)
 {
     static constexpr const int next_state[16] { 4,0,0,12, 0,4,4,8, 12,8,8,4, 8,12,12,0 };
     static constexpr const int digit_to_x[16] { 0,1,1,0, 0,0,1,1, 1,0,0,1, 1,1,0,0 };
     static constexpr const int digit_to_y[16] { 0,0,1,1, 0,1,1,0, 1,1,0,0, 1,0,0,1 };
-
 
     size_t ndigits = 0;
     {
@@ -294,7 +234,6 @@ static inline Point hilbert_n_to_xy(const size_t n)
 template<typename Output>
 static void generate_hilbert_curve(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, Output &output)
 {
-
     size_t sz = 2;
     size_t pw = 1;
     {
@@ -313,7 +252,6 @@ static void generate_hilbert_curve(coord_t min_x, coord_t min_y, coord_t max_x, 
     }
 }
 
-
 template<typename Output>
 class SmoothingPolylineOutput
 {
@@ -323,12 +261,9 @@ public:
 
     void reserve(size_t n) { m_output.reserve(n); }
     void add_point(const Vec2d &pt) { auto emit = emitter(); m_smoother.push(pt, emit); }
-
     void finish() { auto emit = emitter(); m_smoother.flush(emit); }
 
 private:
-
-
     auto emitter()
     {
         return [this](const Vec2d &pt) {
@@ -346,8 +281,6 @@ private:
     Point          m_last_snapped { Point::Zero() };
     bool           m_has_last_snapped { false };
 };
-
-
 
 template<typename GenerateFn>
 static void generate_path(InfillPolylineOutput &output, const FillParams &params, const double resolution, GenerateFn generate)
@@ -369,7 +302,7 @@ static void generate_path(InfillPolylineOutput &output, const FillParams &params
         run(output);
 }
 
-void FillHilbertCurve::generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double  , InfillPolylineOutput &output)
+void FillHilbertCurve::generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double , InfillPolylineOutput &output)
 {
     if (output.clips())
         generate_hilbert_curve(min_x, min_y, max_x, max_y, static_cast<InfillPolylineClipper&>(output));
@@ -387,9 +320,7 @@ void FillHilbertCurve::generate(coord_t min_x, coord_t min_y, coord_t max_x, coo
 template<typename Output>
 static void generate_octagram_spiral(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, Output &output)
 {
-
     coordf_t rmax = std::sqrt(coordf_t(max_x)*coordf_t(max_x)+coordf_t(max_y)*coordf_t(max_y)) * std::sqrt(2.) + 1.5;
-
     coordf_t r = 0;
     coordf_t r_inc = sqrt(2.);
     output.add_point({ 0., 0. });
@@ -416,7 +347,7 @@ static void generate_octagram_spiral(coord_t min_x, coord_t min_y, coord_t max_x
     }
 }
 
-void FillOctagramSpiral::generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double  , InfillPolylineOutput &output)
+void FillOctagramSpiral::generate(coord_t min_x, coord_t min_y, coord_t max_x, coord_t max_y, const double , InfillPolylineOutput &output)
 {
     if (output.clips())
         generate_octagram_spiral(min_x, min_y, max_x, max_y, static_cast<InfillPolylineClipper&>(output));

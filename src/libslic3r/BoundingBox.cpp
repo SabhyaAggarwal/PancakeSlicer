@@ -19,7 +19,7 @@ template BoundingBox3Base<Vec3d>::BoundingBox3Base(const std::vector<Vec3d> &poi
 
 void BoundingBox::polygon(Polygon* polygon) const
 {
-    polygon->points = {
+    polygon->points = { 
         this->min,
         { this->max.x(), this->min.y() },
         this->max,
@@ -113,7 +113,6 @@ BoundingBoxBase<PointType, APointsType>::merge(const BoundingBoxBase<PointType, 
 template void BoundingBoxBase<Point, Points>::merge(const BoundingBoxBase<Point, Points> &bb);
 template void BoundingBoxBase<Vec2f>::merge(const BoundingBoxBase<Vec2f> &bb);
 template void BoundingBoxBase<Vec2d>::merge(const BoundingBoxBase<Vec2d> &bb);
-
 
 template <class PointType>
 Polygon BoundingBox3Base<PointType>::polygon(bool is_scaled) const

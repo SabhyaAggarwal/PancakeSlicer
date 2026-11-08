@@ -60,12 +60,6 @@ namespace Slic3r {
         m_based_on_all_layer = false;
     }
 
-
-
-
-
-
-
     std::vector<const PrintObject*> TimelapsePosPicker::get_object_list(const std::optional<std::vector<const PrintObject*>>& printed_objects)
     {
         std::vector<const PrintObject*> object_list;
@@ -77,12 +71,6 @@ namespace Slic3r {
         }
         return object_list;
     }
-
-
-
-
-
-
 
     void TimelapsePosPicker::construct_printable_area_by_printer()
     {
@@ -131,15 +119,6 @@ namespace Slic3r {
         }
     }
 
-
-
-
-
-
-
-
-
-
     ExPolygons TimelapsePosPicker::collect_object_slices_data(const Layer* layer, float height_range, const std::vector<const PrintObject*>& object_list, bool by_object)
     {
         auto range_intersect = [](int left1, int right1, int left2, int right2) {
@@ -186,7 +165,6 @@ namespace Slic3r {
         ret = union_(ret);
         return ret;
     }
-
 
     Polygons TimelapsePosPicker::collect_limit_areas_for_rod(const std::vector<const PrintObject*>& object_list, const PosPickCtx& ctx)
     {
@@ -269,7 +247,6 @@ namespace Slic3r {
 
 
 
-
     Polygon TimelapsePosPicker::expand_object_projection(const Polygon &poly, bool by_object, bool higher_than_curr)
     {
         float radius = 0;
@@ -283,13 +260,11 @@ namespace Slic3r {
         else
             radius = scale_(print->config().extruder_clearance_radius.value / 2);
 
-
         auto ret = offset(poly, radius);
         if (ret.empty())
             return {};
         return ret[0];
     }
-
 
     BoundingBoxf3 TimelapsePosPicker::expand_object_bbox(const BoundingBoxf3& bbox, bool by_object)
     {
@@ -331,7 +306,6 @@ namespace Slic3r {
         return ret + slice_params.gap_raft_object;
     }
 
-
     BoundingBoxf3 TimelapsePosPicker::get_real_instance_bbox(const PrintInstance& instance)
     {
         auto iter = bbox_cache.find(&instance);
@@ -341,7 +315,6 @@ namespace Slic3r {
         auto bbox = instance.get_bounding_box();
         double raft_height =get_raft_height(instance.print_object);
         bbox.max.z() += raft_height;
-
         bbox.min.x() -= m_plate_offset.x();
         bbox.max.x() -= m_plate_offset.x();
         bbox.min.y() -= m_plate_offset.y();
@@ -360,7 +333,6 @@ namespace Slic3r {
         float radius = m_nozzle_clearance_radius / 2;
 
         auto offset_bbox = bbox.inflated(sqrt(2) * radius);
-
         Polygon ret = {
             DefaultCameraPos,
             Point{std::max(scale_(offset_bbox.max.x()),0.),std::max(scale_(offset_bbox.min.y()),0.)},
@@ -369,17 +341,6 @@ namespace Slic3r {
         };
         return ret;
     }
-
-
-
-
-
-
-
-
-
-
-
 
     Point pick_pos_internal(const Point& curr_pos, const ExPolygons& safe_areas, const ExPolygons& path_collision_area, bool detect_path_collision,
                             const std::optional<Point>& farthest_point = std::nullopt)
@@ -404,10 +365,8 @@ namespace Slic3r {
         const double candidate_point_segment = scale_(5), weight_of_camera=1./3.;
         auto penaltyFunc = [&weight_of_camera, &farthest_point](const Point &curr_post, const Point &CameraPos, const Point &candidatet) -> double {
             if (farthest_point.has_value()) {
-
                 return (farthest_point.value() - candidatet).cwiseAbs().sum();
             }
-
             double ret_pen = (curr_post - candidatet).cwiseAbs().sum() - weight_of_camera * (CameraPos - candidatet).cwiseAbs().sum();
             return ret_pen;
         };
@@ -418,7 +377,6 @@ namespace Slic3r {
                 for (size_t idx = 0; idx < poly.points.size(); ++idx) {
                     double             best_penalty   = std::numeric_limits<double>::max();
                     Point              best_candidate = DefaultTimelapsePos;
-
                     if ((poly.points[idx] - poly.points[next_idx_modulo(idx, poly.points)]).cwiseAbs().sum() < candidate_point_segment) {
                         best_candidate = poly.points[idx];
                         best_penalty   = penaltyFunc(curr_pos, DefaultCameraPos, best_candidate);
@@ -426,7 +384,6 @@ namespace Slic3r {
                         Point direct_of_line = poly.points[next_idx_modulo(idx, poly.points)] - poly.points[idx];
                         double length_L1      = direct_of_line.cwiseAbs().sum();
                         int    num_steps      = static_cast<int>(length_L1 / candidate_point_segment);
-
                         direct_of_line.x()    = static_cast<coord_t>(static_cast<double> (direct_of_line.x()) * candidate_point_segment / length_L1);
                         direct_of_line.y()    = static_cast<coord_t>(static_cast<double> (direct_of_line.y()) * candidate_point_segment / length_L1);
                         Point candidate;
@@ -476,12 +433,10 @@ namespace Slic3r {
         return { unscale_(res.x()), unscale_(res.y()) };
     }
 
-
     Point TimelapsePosPicker::get_object_center(const PrintObject* obj)
     {
         if (!obj)
             return {};
-
         const auto& instance = obj->instances().front();
         auto instance_bbox = get_real_instance_bbox(instance);
         Point min_p{ instance_bbox.min.x(),instance_bbox.min.y() };
@@ -489,7 +444,6 @@ namespace Slic3r {
 
         return { scale_((min_p.x() + max_p.x()) / 2),scale_((min_p.y() + max_p.y()) / 2) };
     }
-
 
     Point TimelapsePosPicker::pick_nearest_object_center(const Point& curr_pos, const  std::vector<const PrintObject*>& object_list)
     {
@@ -507,7 +461,6 @@ namespace Slic3r {
         }
         return get_object_center(ptr);
     }
-
 
     Point TimelapsePosPicker::pick_pos_for_curr_layer(const PosPickCtx& ctx)
     {
@@ -550,14 +503,6 @@ namespace Slic3r {
 
         return pick_pos_internal(center_p, safe_area,path_collision_area, by_object, ctx.farthest_point);
     }
-
-
-
-
-
-
-
-
 
     Point TimelapsePosPicker::get_objects_center(const std::vector<const PrintObject*>& object_list)
     {
@@ -634,8 +579,6 @@ namespace Slic3r {
         m_all_layer_pos = pick_pos_internal(starting_pos, safe_area, {}, by_object);
         return *m_all_layer_pos;
     }
-
-
 
     bool TimelapsePosPicker::get_is_clear_to_x0(const PosPickCtx &ctx)
     {

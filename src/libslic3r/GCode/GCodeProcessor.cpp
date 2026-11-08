@@ -158,17 +158,11 @@ const std::string GCodeProcessor::Flush_End_Tag = " FLUSH_END";
 const std::string GCodeProcessor::VFlush_Start_Tag = " VFLUSH_START";
 const std::string GCodeProcessor::VFlush_End_Tag  = " VFLUSH_END";
 
-
 const std::string GCodeProcessor::External_Purge_Tag = " EXTERNAL_PURGE";
-
-
 
 const std::string GCodeProcessor::Skippable_Start_Tag = " SKIPPABLE_START";
 const std::string GCodeProcessor::Skippable_End_Tag   = " SKIPPABLE_END";
 const std::string GCodeProcessor::Skippable_Type_Tag  = " SKIPTYPE: ";
-
-
-
 
 const std::string GCodeProcessor::Machine_Start_GCode_End_Tag = " MACHINE_START_GCODE_END";
 const std::string GCodeProcessor::Machine_End_GCode_Start_Tag = " MACHINE_END_GCODE_START";
@@ -205,16 +199,12 @@ static float intersection_distance(float initial_rate, float final_rate, float a
 
 static float speed_from_distance(float initial_feedrate, float distance, float acceleration)
 {
-
     const float value = std::max(0.0f, sqr(initial_feedrate) + 2.0f * acceleration * distance);
     return ::sqrt(value);
 }
 
-
-
 static float max_allowable_speed(float acceleration, float target_velocity, float distance)
 {
-
     const float value = std::max(0.0f, sqr(target_velocity) - 2.0f * acceleration * distance);
     return std::sqrt(value);
 }
@@ -327,9 +317,6 @@ void GCodeProcessor::TimeBlock::calculate_trapezoid()
     const float decelerate_distance = std::max(0.0f, estimated_acceleration_distance(cruise, feedrate_profile.exit, -acceleration));
     float cruise_distance = distance - accelerate_distance - decelerate_distance;
 
-
-
-
     if (cruise_distance < 0.0f) {
         accelerate_distance = std::clamp(intersection_distance(feedrate_profile.entry, feedrate_profile.exit, acceleration, distance), 0.0f, distance);
         cruise_distance = 0.0f;
@@ -349,7 +336,6 @@ void GCodeProcessor::TimeMachine::State::reset()
     rotary_feedrate = {};
     axis_feedrate = { 0.0f, 0.0f, 0.0f, 0.0f };
     abs_axis_feedrate = { 0.0f, 0.0f, 0.0f, 0.0f };
-
     enter_direction = { 0.0f, 0.0f, 0.0f };
     exit_direction = { 0.0f, 0.0f, 0.0f };
     jd_unit_vec = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -408,20 +394,9 @@ float GCodeProcessor::TimeMachine::HostFeed::stall(const TimeBlock& block, doubl
 
 static void planner_forward_pass_kernel(const GCodeProcessor::TimeBlock& prev, GCodeProcessor::TimeBlock& curr)
 {
-
-
-
-
-
-
-
-
     if (!prev.flags.nominal_length && prev.feedrate_profile.entry < curr.feedrate_profile.entry) {
-
         const float new_entry_speed = max_allowable_speed(-prev.acceleration, prev.feedrate_profile.entry, prev.distance);
-
         if (new_entry_speed < curr.feedrate_profile.entry) {
-
             curr.feedrate_profile.entry = new_entry_speed;
             curr.flags.recalculate = true;
         }
@@ -430,37 +405,16 @@ static void planner_forward_pass_kernel(const GCodeProcessor::TimeBlock& prev, G
 
 static void planner_reverse_pass_kernel(GCodeProcessor::TimeBlock& curr, const GCodeProcessor::TimeBlock& next)
 {
-
-
-
-
-
-
-
-
     const float max_entry_speed = curr.max_entry_speed;
-
-
     if (curr.feedrate_profile.entry != max_entry_speed || next.flags.recalculate) {
-
-
-
-
-
-
-
         const float new_entry_speed = curr.flags.nominal_length ? max_entry_speed :
             std::min(max_entry_speed, max_allowable_speed(-curr.acceleration, next.feedrate_profile.entry, curr.distance));
         if (curr.feedrate_profile.entry != new_entry_speed) {
-
             curr.feedrate_profile.entry = new_entry_speed;
             curr.flags.recalculate = true;
         }
     }
 }
-
-
-
 
 static void klipper_smooth_cruise(std::vector<GCodeProcessor::TimeBlock>& blocks)
 {
@@ -500,16 +454,13 @@ static void recalculate_trapezoids(std::vector<GCodeProcessor::TimeBlock>& block
         next = &b;
 
         if (curr != nullptr) {
-
             if (curr->flags.recalculate || next->flags.recalculate) {
-
                 curr->feedrate_profile.exit = next->feedrate_profile.entry;
                 curr->calculate_trapezoid();
                 curr->flags.recalculate = false;
             }
         }
     }
-
 
     if (next != nullptr) {
         next->feedrate_profile.exit = next->safe_feedrate;
@@ -542,26 +493,14 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
 {
     if (!enabled)
         return;
-
-
-
-
     const bool drain_final = is_final && !m_additional_time_buffer.empty();
     if (blocks.size() < 2 && !drain_final) {
-
-
         if (additional_time > 0.0f)
             m_additional_time_buffer.emplace_back(target_move_type, additional_time);
         return;
     }
 
     assert(keep_last_n_blocks <= blocks.size());
-
-
-
-
-
-
 
     const bool synchronize_at_end = result.nonplanar && additional_time > 0.0f &&
                                     target_move_type == EMoveType::Noop && blocks.size() > keep_last_n_blocks;
@@ -570,11 +509,9 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
         additional_buffer.emplace_back(target_move_type, additional_time);
     additional_buffer = merge_adjacent_additional_time_blocks(additional_buffer);
 
-
     for (int i = static_cast<int>(blocks.size()) - 1; i > 0; --i) {
         planner_reverse_pass_kernel(blocks[i - 1], blocks[i]);
     }
-
 
     for (size_t i = 0; i + 1 < blocks.size(); ++i) {
         planner_forward_pass_kernel(blocks[i], blocks[i + 1]);
@@ -599,21 +536,15 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
         }
 
         time += double(block_time);
-
-
-
-
         if (block.skippable_type != SkipType::stNone)
             result.skippable_part_time[block.skippable_type] += block.time();
         result.moves[block.move_id].time[static_cast<size_t>(mode)] = block_time;
         gcode_time.cache += block_time;
-
         if (block.flags.prepare_stage)
             prepare_time += block_time;
 
         if (block.layer_id == 1)
             first_layer_time += block_time;
-
 
         if (mode == PrintEstimatedStatistics::ETimeMode::Normal) {
             GCodeProcessorResult::MoveVertex& curr_move = result.moves[block.move_id];
@@ -634,18 +565,13 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
 
             if (EPSILON < block.trapezoid.accelerate_until && block.trapezoid.accelerate_until < block.distance - EPSILON) {
                 const float t = block.trapezoid.accelerate_until / block.distance;
-
-
                 const Vec3f position = prev_move.position + t * (curr_move.position - prev_move.position);
                 if ((position - prev_move.position).norm() > EPSILON &&
                     (position - curr_move.position).norm() > EPSILON) {
                     const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t) : curr_move.delta_extruder;
                     const float feedrate = curr_move.feedrate;
-
-
                     const float width = interpolate ? lerp(prev_move.width, curr_move.width, t) : curr_move.width;
                     const float height = interpolate ? lerp(prev_move.height, curr_move.height, t) : curr_move.height;
-
                     const float mm3_per_mm = curr_move.mm3_per_mm;
                     const float fan_speed = result.state(curr_move).fan_speed;
                     const float temperature = interpolate ? lerp(result.state(prev_move).temperature, result.state(curr_move).temperature, t) :
@@ -668,18 +594,13 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             const bool has_deceleration = block.trapezoid.deceleration_distance(block.distance) > EPSILON;
             if (has_deceleration && block.trapezoid.decelerate_after > block.trapezoid.accelerate_until + EPSILON) {
                 const float t = block.trapezoid.decelerate_after / block.distance;
-
-
                 const Vec3f position = prev_move.position + t * (curr_move.position - prev_move.position);
                 if ((position - prev_move.position).norm() > EPSILON &&
                     (position - curr_move.position).norm() > EPSILON) {
                     const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t) : curr_move.delta_extruder;
                     const float feedrate = curr_move.feedrate;
-
-
                     const float width = interpolate ? lerp(prev_move.width, curr_move.width, t) : curr_move.width;
                     const float height = interpolate ? lerp(prev_move.height, curr_move.height, t) : curr_move.height;
-
                     const float mm3_per_mm = curr_move.mm3_per_mm;
                     const float fan_speed = result.state(curr_move).fan_speed;
                     const float temperature = interpolate ? lerp(result.state(prev_move).temperature, result.state(curr_move).temperature, t) :
@@ -714,23 +635,15 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             });
         }
         g1_times_cache.push_back({ block.g1_line_id, block.remaining_internal_g1_lines, float(time) });
-
         auto it_stop_time = std::lower_bound(stop_times.begin(), stop_times.end(), block.g1_line_id,
             [](const StopTime& t, unsigned int value) { return t.g1_line_id < value; });
         if (it_stop_time != stop_times.end() && it_stop_time->g1_line_id == block.g1_line_id)
             it_stop_time->elapsed_time = float(time);
     }
 
-
-
     m_additional_time_buffer.clear();
     if (additional_buffer_idx < additional_buffer.size()) {
         if (is_final) {
-
-
-
-
-
             float leftover = 0.0f;
             for (size_t i = additional_buffer_idx; i < additional_buffer.size(); ++i)
                 leftover += additional_buffer[i].second;
@@ -747,12 +660,6 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
 
     if (keep_last_n_blocks) {
         blocks.erase(blocks.begin(), blocks.begin() + n_blocks_process);
-
-
-
-
-
-
 
         TimeBlock &first_block = blocks.front();
         first_block.max_entry_speed = first_block.feedrate_profile.entry;
@@ -784,15 +691,10 @@ void GCodeProcessor::TimeProcessor::reset()
     struct is_from_chars_convertible<T, std::void_t<decltype(std::from_chars(std::declval<const char*>(), std::declval<const char*>(), std::declval<T&>()))>> : std::true_type {};
 #endif
 
-
 template<typename T>
 [[nodiscard]] static inline bool parse_number(const std::string_view sv, T &out)
 {
-
 #if __has_include(<charconv>)
-
-
-
     if constexpr (is_from_chars_convertible<T>::value) {
         auto str_end = sv.data() + sv.size();
         auto [end_ptr, error_code] = std::from_chars(sv.data(), str_end, out);
@@ -801,7 +703,6 @@ template<typename T>
     else
 #endif
     {
-
         try {
             assert(sv.size() < 1024);
             assert(sv.data() != nullptr);
@@ -823,7 +724,6 @@ template<typename T>
 }
 
 namespace {
-
 class GCodeFileWriter
 {
 public:
@@ -865,8 +765,6 @@ private:
     size_t               m_file_pos{0};
 };
 }
-
-
 class ExportLines
 {
 public:
@@ -917,20 +815,13 @@ private:
 #endif
 
     EWriteType m_write_type{EWriteType::BySize};
-
     const std::array<GCodeProcessor::TimeMachine, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)>& m_machines;
-
     GCodeFileWriter& m_writer;
-
     std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> m_times{0.0f, 0.0f};
-
     size_t m_size{0};
-
 
     std::deque<LineData> m_lines;
     size_t               m_added_lines_counter{0};
-
-
     std::vector<std::pair<size_t, size_t>> m_gcode_lines_map;
 
     size_t m_times_cache_id{0};
@@ -946,8 +837,6 @@ public:
         : m_write_type(type), m_machines(machines), m_writer(writer)
     {}
 #endif
-
-
         unsigned int update(const std::string& line, size_t lines_counter, size_t g1_lines_counter)
     {
         unsigned int ret = 0;
@@ -970,7 +859,6 @@ public:
         if (it == m_machines[Normal].g1_times_cache.end() || it->id > g1_lines_counter)
             return ret;
 
-
         if (GCodeReader::GCodeLine::cmd_is(line, "G2") || GCodeReader::GCodeLine::cmd_is(line, "G3")) {
             while (it != m_machines[Normal].g1_times_cache.end() && it->remaining_internal_g1_lines > 0) {
                 ++it;
@@ -990,7 +878,6 @@ public:
 
         return ret;
     }
-
 
     void append_line(const std::string& line, const bool ignore_from_move = false)
     {
@@ -1012,13 +899,11 @@ public:
         }
     }
 
-
     void insert_lines(const Backtrace&                                                    backtrace,
                       const std::string&                                                  cmd,
                       std::function<std::string(unsigned int, const std::vector<float>&)> line_inserter,
                       std::function<std::string(const std::string&)>                      line_replacer)
     {
-
         auto is_start_pos = [](const std::string& curr_cmd) {
             return ascii_iequals(curr_cmd, "G28") || ascii_iequals(curr_cmd, "G29") || ascii_iequals(curr_cmd, "PRINT_START") ||
                    ascii_iequals(curr_cmd, "START_PRINT");
@@ -1034,7 +919,6 @@ public:
             auto        start_rev_it     = rev_it;
 
             std::string curr_cmd = GCodeReader::GCodeLine::extract_cmd(rev_it->line);
-
             while (rev_it != m_lines.rend() && rev_it->times[Normal] > time_threshold_i && curr_cmd != cmd && !is_start_pos(curr_cmd)) {
                 rev_it->line = line_replacer(rev_it->line);
                 ++rev_it;
@@ -1042,10 +926,8 @@ public:
                     curr_cmd = GCodeReader::GCodeLine::extract_cmd(rev_it->line);
             }
 
-
             if (rev_it != m_lines.rend() && (curr_cmd == cmd || is_start_pos(curr_cmd)))
                 break;
-
 
             if (rev_it != m_lines.rend() && rev_it != start_rev_it && rev_it->times[Normal] != last_time_insertion) {
                 last_time_insertion = rev_it->times[Normal];
@@ -1060,7 +942,6 @@ public:
                 m_statistics.add_line(out_line.length());
 #endif
                 m_size += out_line.length();
-
                 for (auto map_it = m_gcode_lines_map.rbegin(); map_it != m_gcode_lines_map.rbegin() + rev_it_dist - 1; ++map_it) {
                     ++map_it->second;
                 }
@@ -1069,7 +950,6 @@ public:
             }
         }
     }
-
 
     void write(float backtrace_time)
     {
@@ -1086,7 +966,6 @@ public:
 #endif
         }
     }
-
 
     void flush()
     {
@@ -1113,11 +992,6 @@ public:
         }
     }
 
-
-
-
-
-
     unsigned int remap_gcode_id(unsigned int gcode_id) const
     {
         if (gcode_id == static_cast<unsigned int>(-1))
@@ -1139,7 +1013,6 @@ void GCodeProcessor::run_post_process()
     FilePtr in{ boost::nowide::fopen(m_result.filename.c_str(), "rb") };
     if (in.f == nullptr)
         throw Slic3r::RuntimeError(std::string("GCode processor post process export failed.\nCannot open file for reading.\n"));
-
 
     std::string out_path = m_result.filename + ".postprocess";
     FilePtr out{ boost::nowide::fopen(out_path.c_str(), "wb") };
@@ -1215,12 +1088,10 @@ void GCodeProcessor::run_post_process()
 
     std::string gcode_line;
     size_t g1_lines_counter = 0;
-
     std::array<std::pair<int, int>, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> last_exported_main;
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         last_exported_main[i] = { 0, time_in_minutes(m_time_processor.machines[i].time) };
     }
-
 
     std::array<int, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> last_exported_stop;
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
@@ -1228,18 +1099,13 @@ void GCodeProcessor::run_post_process()
     }
 
     m_result.lines_ends.clear();
-
     GCodeFileWriter writer(out, out_path, m_result.lines_ends, "GCode processor post process export failed.\nIs the disk full?");
     ExportLines export_line(m_result.backtrace_enabled ? ExportLines::EWriteType::ByTime : ExportLines::EWriteType::BySize,
         m_time_processor.machines, writer);
-
     export_line.reserve(m_line_id);
-
-
 
     auto process_placeholders = [&](std::string& gcode_line) {
         bool processed = false;
-
 
         auto line = std::string_view(gcode_line).substr(0, gcode_line.length() - 1);
 
@@ -1249,12 +1115,10 @@ void GCodeProcessor::run_post_process()
                 for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
                     const TimeMachine& machine = m_time_processor.machines[i];
                     if (machine.enabled) {
-
                         export_line.append_line(format_line_M73_main(machine.line_m73_main_mask.c_str(),
                             (line == reserved_tag(ETags::First_Line_M73_Placeholder)) ? 0 : 100,
                             (line == reserved_tag(ETags::First_Line_M73_Placeholder)) ? time_in_minutes(machine.time) : 0));
                         processed = true;
-
 
                         if (line == reserved_tag(ETags::First_Line_M73_Placeholder) && !machine.stop_times.empty()) {
                             const int to_export_stop = time_in_minutes(machine.stop_times.front().elapsed_time);
@@ -1270,7 +1134,6 @@ void GCodeProcessor::run_post_process()
                     if (mode == PrintEstimatedStatistics::ETimeMode::Normal || machine.enabled) {
                         char buf[128];
                         if (!s_IsBBLPrinter)
-
                             sprintf(buf, "; estimated printing time (%s mode) = %s\n",
                                     (mode == PrintEstimatedStatistics::ETimeMode::Normal) ? "normal" : "silent",
                                     get_time_dhms(machine.time).c_str());
@@ -1294,7 +1157,6 @@ void GCodeProcessor::run_post_process()
                     }
                 }
             }
-
             else if (line == reserved_tag(ETags::Total_Layer_Number_Placeholder)) {
                 char buf[128];
                 sprintf(buf, "; total layer number: %u\n", m_layer_id);
@@ -1307,7 +1169,6 @@ void GCodeProcessor::run_post_process()
     };
 
     auto process_used_filament = [&](std::string& gcode_line) {
-
         if (gcode_line.size() < 8 || gcode_line[0] != ';' || gcode_line[1] != ' ')
             return false;
         if (const char c = gcode_line[2]; c != 'f' && c != 't')
@@ -1335,10 +1196,8 @@ void GCodeProcessor::run_post_process()
         return ret;
     };
 
-
     auto process_inline_placeholders = [&](std::string& gcode_line) {
         bool processed = false;
-
         if (gcode_line.find('@') == std::string::npos)
             return processed;
 
@@ -1360,7 +1219,6 @@ void GCodeProcessor::run_post_process()
         int print_time_minute = (day_remainder_seconds % 3600) / 60;
         int print_time_sec = day_remainder_seconds % 60;
 
-
         size_t pos = gcode_line.find(print_time_total_placeholder);
         while (pos != std::string::npos) {
             char buf[64];
@@ -1369,7 +1227,6 @@ void GCodeProcessor::run_post_process()
             processed = true;
             pos = gcode_line.find(print_time_total_placeholder, pos + strlen(buf));
         }
-
 
         pos = gcode_line.find(print_time_day_placeholder);
         while (pos != std::string::npos) {
@@ -1380,7 +1237,6 @@ void GCodeProcessor::run_post_process()
             pos = gcode_line.find(print_time_day_placeholder, pos + strlen(buf));
         }
 
-
         pos = gcode_line.find(print_time_hour_placeholder);
         while (pos != std::string::npos) {
             char buf[64];
@@ -1389,7 +1245,6 @@ void GCodeProcessor::run_post_process()
             processed = true;
             pos = gcode_line.find(print_time_hour_placeholder, pos + strlen(buf));
         }
-
 
         pos = gcode_line.find(print_time_minute_placeholder);
         while (pos != std::string::npos) {
@@ -1400,7 +1255,6 @@ void GCodeProcessor::run_post_process()
             pos = gcode_line.find(print_time_minute_placeholder, pos + strlen(buf));
         }
 
-
         pos = gcode_line.find(print_time_sec_placeholder);
         while (pos != std::string::npos) {
             char buf[64];
@@ -1409,7 +1263,6 @@ void GCodeProcessor::run_post_process()
             processed = true;
             pos = gcode_line.find(print_time_sec_placeholder, pos + strlen(buf));
         }
-
 
         pos = gcode_line.find(used_filament_placeholder);
         while (pos != std::string::npos) {
@@ -1428,40 +1281,26 @@ void GCodeProcessor::run_post_process()
         return processed;
     };
 
-
     auto is_temporary_decoration = [](const std::string_view gcode_line) {
-
         assert(! gcode_line.empty());
         assert(gcode_line.back() == '\n');
 
-
-
-
-
-
         return false;
     };
-
 
     auto g1_times_cache_it = Slic3r::reserve_vector<std::vector<TimeMachine::G1LinesCacheItem>::const_iterator>(m_time_processor.machines.size());
     for (const auto& machine : m_time_processor.machines)
         g1_times_cache_it.emplace_back(machine.g1_times_cache.begin());
 
-
     auto process_line_move = [
-
         time_in_minutes, format_time_float, format_line_M73_main, format_line_M73_stop_int, format_line_M73_stop_float, time_in_last_minute,
         &self = std::as_const(m_time_processor),
-
         &g1_times_cache_it, &last_exported_main, &last_exported_stop,
-
         &export_line]
         (const size_t g1_lines_counter) {
         for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
             const TimeMachine& machine = self.machines[i];
             if (machine.enabled) {
-
-
                 auto& it = g1_times_cache_it[i];
                 while (it != machine.g1_times_cache.end() && it->id < g1_lines_counter)
                     ++it;
@@ -1474,7 +1313,6 @@ void GCodeProcessor::run_post_process()
                             to_export_main.first, to_export_main.second), true);
                         last_exported_main[i] = to_export_main;
                     }
-
                     auto it_stop = std::upper_bound(machine.stop_times.begin(), machine.stop_times.end(), it->elapsed_time,
                         [](float value, const TimeMachine::StopTime& t) { return value < t.elapsed_time; });
                     if (it_stop != machine.stop_times.end()) {
@@ -1517,61 +1355,32 @@ void GCodeProcessor::run_post_process()
         }
     };
 
-
-
-
-
-
     unsigned int current_layer_id = 0;
-
 
     auto process_line_T = [this, &export_line, &current_layer_id](const std::string& gcode_line, const size_t g1_lines_counter, const ExportLines::Backtrace& backtrace) {
         const std::string cmd = GCodeReader::GCodeLine::extract_cmd(gcode_line);
 
         int tool_number = -1;
         if (!parse_number(std::string_view(cmd).substr(1), tool_number)){
-
             return;
         }
         if (cmd.size() >= 2) {
             if (tool_number != -1) {
                 if (tool_number < 0 || (int)m_filament_nozzle_temp.size() <= tool_number) {
-
                     tool_number = std::clamp<int>(0, m_filament_nozzle_temp.size() - 1, tool_number);
-
-                    std::string warning = "GCode Post-Processor encountered an invalid toolchange, maybe from a custom gcode:";
+                    std::string warning = "Found an invalid toolchange during G-code post-processing (check your custom G-code):";
                     warning += "\n> ";
                     warning += gcode_line;
                     warning += "Generated M104 lines may be incorrect.";
                     BOOST_LOG_TRIVIAL(error) << warning;
-
                     if (m_print != nullptr)
                         m_print->active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, warning);
                 }
                 export_line.insert_lines(
                     backtrace, cmd,
-
                     [tool_number, this, &current_layer_id](unsigned int id, const std::vector<float>& time_diffs) {
-
-
-
-
-
                         const int temperature = int(current_layer_id > 1 ? m_filament_nozzle_temp[tool_number] :
                                                                          m_filament_nozzle_temp_first_layer[tool_number]);
-
-
-
-
-
-
-
-
-
-
-
-
-
                         if (this->m_is_XL_printer) {
                             std::string out = "M104.1 T" + std::to_string(tool_number);
                             if (time_diffs.size() > 0)
@@ -1587,7 +1396,6 @@ void GCodeProcessor::run_post_process()
                             return GCodeWriter::set_temperature(temperature, this->m_flavor, false, real_tool, comment);
                         }
                     },
-
                     [this, tool_number](const std::string& line) {
                         if (GCodeReader::GCodeLine::cmd_is(line, "M104")) {
                             GCodeReader::GCodeLine gline;
@@ -1607,44 +1415,21 @@ void GCodeProcessor::run_post_process()
         }
     };
 
-
-
-
     m_skippable_blocks.clear();
 
     unsigned int line_id = 0;
-
     const ExportLines::Backtrace backtrace_T = { m_preheat_time, m_preheat_steps };
-
-
     float max_backtrace_time = 120.0f;
-
-
-
-
-
-
-
-
 
     m_filament_blocks.clear();
     m_extruder_blocks.clear();
     m_machine_start_gcode_end_line_id = (unsigned int) (-1);
     m_machine_end_gcode_start_line_id = (unsigned int) (-1);
-
     if (m_enable_pre_heating)
         m_extruder_blocks.push_back(ExtruderPreHeating::ExtruderUsageBlcok());
-
-
-
     auto layered_ngr = std::dynamic_pointer_cast<MultiNozzleUtils::LayeredNozzleGroupResult>(m_result.nozzle_group_result);
     ExtruderPreHeating::ExtruderUsageBlcok temp_construct_block;
-
-
     auto handle_filament_change = [&](int filament_id, int cur_line_id, int nozzle_id) {
-
-
-
         if ((m_machine_start_gcode_end_line_id == (unsigned int) (-1) && (unsigned int) (cur_line_id) < m_machine_start_gcode_end_line_id) ||
             (m_machine_end_gcode_start_line_id != (unsigned int) (-1) && (unsigned int) (cur_line_id) > m_machine_end_gcode_start_line_id))
             return;
@@ -1654,14 +1439,11 @@ void GCodeProcessor::run_post_process()
             nozzle_id = layered_ngr->get_nozzle_id(filament_id, current_layer_id);
         int extruder_id = 0;
         if (layered_ngr) {
-
             if (auto nozzle_info = layered_ngr->get_nozzle_from_id(nozzle_id))
                 extruder_id = nozzle_info->extruder_id;
         }
         m_filament_blocks.emplace_back(filament_id, extruder_id, nozzle_id, cur_line_id, (unsigned int) (-1));
     };
-
-
 
     auto handle_nozzle_change_line = [&](const std::string& line, int& old_filament, int& next_filament, int& extruder_id, int gcode_id, int& old_nozzle_id, int& new_nozzle_id) -> bool {
         std::regex re(R"(OF(\d+)\s+NF(\d+)\s+ON(\d+)\s+NN(\d+))");
@@ -1679,7 +1461,6 @@ void GCodeProcessor::run_post_process()
         return true;
     };
 
-
     auto handle_toolchange_wipe_line = [](const std::string& line, bool& is_contact, bool& is_first_layer) -> bool {
         std::regex re(R"(CT(\d)(?:\s+FL(\d))?)");
         std::smatch match;
@@ -1690,15 +1471,11 @@ void GCodeProcessor::run_post_process()
         return true;
     };
 
-
-
     auto build_usage_blocks = [&](const std::string& gcode_line, int line_id) {
         using GLine = GCodeReader::GCodeLine;
-
         size_t skips = 0;
         while (skips < gcode_line.size() && (gcode_line[skips] == ' ' || gcode_line[skips] == '\t'))
             ++skips;
-
 
         if (gcode_line.size() > 1 && gcode_line.front() == ';') {
             std::string_view tag(gcode_line);
@@ -1708,7 +1485,6 @@ void GCodeProcessor::run_post_process()
             if (tag == Machine_Start_GCode_End_Tag) { m_machine_start_gcode_end_line_id = line_id; return; }
             if (tag == Machine_End_GCode_Start_Tag) { m_machine_end_gcode_start_line_id = line_id; return; }
         }
-
 
         if (GLine::cmd_starts_with(gcode_line, "T")) {
             std::istringstream str(gcode_line.substr(skips + 1));
@@ -1747,7 +1523,6 @@ void GCodeProcessor::run_post_process()
             return;
         }
 
-
         if (GLine::cmd_starts_with(gcode_line, (std::string(";") + Nozzle_Change_Start_Tag).c_str())) {
             int prev_filament{-1}, next_filament{-1}, extruder_id{-1}, prev_nozzle_id{-1}, next_nozzle_id{-1};
             handle_nozzle_change_line(gcode_line, prev_filament, next_filament, extruder_id, line_id, prev_nozzle_id, next_nozzle_id);
@@ -1765,8 +1540,6 @@ void GCodeProcessor::run_post_process()
             temp_construct_block.reset();
             return;
         }
-
-
         if (GLine::cmd_starts_with(gcode_line, (std::string(";") + Toolchange_Wipe_Tag).c_str())) {
             bool is_contact = false, is_first_layer = false;
             handle_toolchange_wipe_line(gcode_line, is_contact, is_first_layer);
@@ -1777,9 +1550,7 @@ void GCodeProcessor::run_post_process()
     };
 
     {
-
         std::vector<char> buffer(65536 * 10, 0);
-
         assert(gcode_line.empty());
         for (;;) {
             size_t cnt_read = ::fread(buffer.data(), 1, buffer.size(), in.f);
@@ -1789,16 +1560,13 @@ void GCodeProcessor::run_post_process()
             auto it        = buffer.begin();
             auto it_bufend = buffer.begin() + cnt_read;
             while (it != it_bufend || (eof && ! gcode_line.empty())) {
-
                 bool eol    = false;
                 auto it_end = it;
                 for (; it_end != it_bufend && ! (eol = *it_end == '\r' || *it_end == '\n'); ++ it_end) ;
-
                 eol |= eof && it_end == it_bufend;
                 gcode_line.insert(gcode_line.end(), it, it_end);
 
                 it = it_end;
-
                 if (it != it_bufend && *it == '\r') {
                     gcode_line += *it++;
                 }
@@ -1809,35 +1577,20 @@ void GCodeProcessor::run_post_process()
                 if (eol) {
                     ++line_id;
                     const unsigned int internal_g1_lines_counter = export_line.update(gcode_line, line_id, g1_lines_counter);
-
-
-
                     if (gcode_line.size() > 1 && gcode_line.front() == ';') {
                         std::string_view tag_line(gcode_line);
-
                         while (!tag_line.empty() && (tag_line.back() == '\n' || tag_line.back() == '\r'))
                             tag_line.remove_suffix(1);
-
                         tag_line.remove_prefix(1);
                         if (tag_line == reserved_tag(ETags::Layer_Change))
                             ++current_layer_id;
-
-
-
-
-
-
                         else if (tag_line == Skippable_Start_Tag)
                             m_skippable_blocks.emplace_back(line_id, 0);
                         else if (tag_line == Skippable_End_Tag && !m_skippable_blocks.empty())
                             m_skippable_blocks.back().second = line_id;
                     }
-
-
-
                     if (m_enable_pre_heating)
                         build_usage_blocks(gcode_line, line_id);
-
                     bool processed = process_placeholders(gcode_line);
                     if (processed)
                         gcode_line.clear();
@@ -1848,13 +1601,11 @@ void GCodeProcessor::run_post_process()
                     if (!processed && !is_temporary_decoration(gcode_line)) {
                         if (GCodeReader::GCodeLine::cmd_is(gcode_line, "G0") || GCodeReader::GCodeLine::cmd_is(gcode_line, "G1")) {
                             export_line.append_line(gcode_line);
-
                             process_line_move(g1_lines_counter++);
                             gcode_line.clear();
                         }
                         else if (GCodeReader::GCodeLine::cmd_is(gcode_line, "G2") || GCodeReader::GCodeLine::cmd_is(gcode_line, "G3")) {
                             export_line.append_line(gcode_line);
-
                             process_line_move(g1_lines_counter + internal_g1_lines_counter);
                             g1_lines_counter += (1 + internal_g1_lines_counter);
                             gcode_line.clear();
@@ -1863,7 +1614,6 @@ void GCodeProcessor::run_post_process()
                             ++g1_lines_counter;
                         }
                         else if (m_result.backtrace_enabled && GCodeReader::GCodeLine::cmd_starts_with(gcode_line, "T")) {
-
                             process_line_T(gcode_line, g1_lines_counter, backtrace_T);
                             max_backtrace_time = std::max(max_backtrace_time, backtrace_T.time);
                         }
@@ -1879,10 +1629,6 @@ void GCodeProcessor::run_post_process()
                 break;
         }
     }
-
-
-
-
 
     if (m_enable_pre_heating) {
         if (!m_filament_blocks.empty())
@@ -1921,13 +1667,6 @@ void GCodeProcessor::run_post_process()
     const std::string result_filename = m_result.filename;
     export_line.synchronize_moves(m_result);
 
-
-
-
-
-
-
-
     if (m_enable_pre_heating) {
         auto remap = [&export_line](unsigned int& id) { id = export_line.remap_gcode_id(id); };
         for (auto& b : m_filament_blocks) {
@@ -1953,30 +1692,11 @@ void GCodeProcessor::run_post_process()
             "Is " + out_path + " locked?" + '\n');
 }
 
-
-
-
-
-
-
-
-
-
 void GCodeProcessor::run_second_pass_injection()
 {
-
-
-
-
     TimeProcessor::InsertedLinesMap inserted_operation_lines;
 
-
-
-
-
-
     {
-
         int valid_machine_id = 0;
         for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
             if (m_time_processor.machines[i].enabled) {
@@ -1984,28 +1704,12 @@ void GCodeProcessor::run_second_pass_injection()
                 break;
             }
         }
-
-
-
-
         auto layered_ngr = std::dynamic_pointer_cast<MultiNozzleUtils::LayeredNozzleGroupResult>(m_result.nozzle_group_result);
         if (layered_ngr) {
             constexpr float inject_time_threshold = 0.f;
-
-
-
             std::vector<int> filament_nozzle_temps(m_filament_nozzle_temp.begin(), m_filament_nozzle_temp.end());
             std::vector<int> filament_nozzle_temps_initial(m_filament_nozzle_temp_first_layer.begin(), m_filament_nozzle_temp_first_layer.end());
-
-
             const std::vector<double> filament_max_temperature_drop_when_ec{ 0.f };
-
-
-
-
-
-
-
 
             std::vector<float> saved_time;
             saved_time.reserve(m_result.moves.size());
@@ -2043,7 +1747,6 @@ void GCodeProcessor::run_second_pass_injection()
             injector.build_extruder_free_blocks(m_filament_blocks, m_extruder_blocks);
             injector.process_pre_cooling_and_heating(inserted_operation_lines);
 
-
             for (size_t i = 0; i < m_result.moves.size(); ++i)
                 m_result.moves[i].time[valid_machine_id] = saved_time[i];
         }
@@ -2058,14 +1761,8 @@ void GCodeProcessor::run_second_pass_injection()
     if (out.f == nullptr)
         throw Slic3r::RuntimeError(std::string("GCode processor pre-heat injection pass failed.\nCannot open file for writing.\n"));
 
-
-
     m_result.lines_ends.clear();
     GCodeFileWriter writer(out, out_path, m_result.lines_ends, "GCode processor pre-heat injection pass failed.\nIs the disk full?\n");
-
-
-
-
 
     std::string gcode_line;
     unsigned int line_id = 0;
@@ -2091,10 +1788,6 @@ void GCodeProcessor::run_second_pass_injection()
                 gcode_line += *it++;
             if (eol) {
                 ++line_id;
-
-
-
-
                 if (op_it != inserted_operation_lines.end() && line_id == op_it->first) {
                     for (const auto& elem : op_it->second) {
                         switch (elem.second) {
@@ -2121,15 +1814,12 @@ void GCodeProcessor::run_second_pass_injection()
     out.close();
     in.close();
 
-
     handle_offsets_of_second_process(inserted_operation_lines);
 
     if (rename_file(out_path, m_result.filename))
         throw Slic3r::RuntimeError(std::string("Failed to rename the output G-code file from ") + out_path + " to " + m_result.filename + '\n' +
             "Is " + out_path + " locked?" + '\n');
 }
-
-
 
 void GCodeProcessor::handle_offsets_of_second_process(const TimeProcessor::InsertedLinesMap& inserted_operation_lines)
 {
@@ -2143,13 +1833,6 @@ void GCodeProcessor::handle_offsets_of_second_process(const TimeProcessor::Inser
         move.gcode_id += total_offset;
     }
 }
-
-
-
-
-
-
-
 
 void GCodeProcessor::PreCoolingInjector::process_pre_cooling_and_heating(TimeProcessor::InsertedLinesMap& inserted_operation_lines)
 {
@@ -2165,11 +1848,8 @@ void GCodeProcessor::PreCoolingInjector::process_pre_cooling_and_heating(TimePro
             return (int) (temp);
     };
 
-
-
     bool has_mixed_extruder_types = extruder_types.size() > 1 &&
         std::adjacent_find(extruder_types.begin(), extruder_types.end(), std::not_equal_to<>()) != extruder_types.end();
-
     float first_nozzle_dia = nozzle_diameter.empty() ? 0.4 : nozzle_diameter.front();
     float switcher_temp_offset = (first_nozzle_dia >= 0.6 - EPSILON) ? 40.f : 20.f;
 
@@ -2186,7 +1866,6 @@ void GCodeProcessor::PreCoolingInjector::process_pre_cooling_and_heating(TimePro
             bool apply_pre_heating = is_end ? false : true;
             float curr_temp = get_nozzle_temp(iter->last_filament_id, false, true, false);
             float target_temp = get_nozzle_temp(iter->next_filament_id, false, false, !iter->ignore_cooling_before_tower);
-
             if (has_filament_switcher && has_mixed_extruder_types && apply_pre_heating) {
                 float print_temp = get_nozzle_temp(iter->next_filament_id, false, false, false);
                 target_temp = std::min(target_temp, print_temp - switcher_temp_offset);
@@ -2196,9 +1875,6 @@ void GCodeProcessor::PreCoolingInjector::process_pre_cooling_and_heating(TimePro
     }
 }
 
-
-
-
 void GCodeProcessor::PreCoolingInjector::build_extruder_free_blocks(const std::vector<ExtruderPreHeating::FilamentUsageBlock>& filament_usage_blocks, const std::vector<ExtruderPreHeating::ExtruderUsageBlcok>& extruder_usage_blocks)
 {
     if (extruder_usage_blocks.size() <= 1)
@@ -2206,9 +1882,6 @@ void GCodeProcessor::PreCoolingInjector::build_extruder_free_blocks(const std::v
     else
         build_by_extruder_blocks(extruder_usage_blocks);
 }
-
-
-
 
 void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProcessor::InsertedLinesMap& inserted_operation_lines, const ExtruderFreeBlock& block, float curr_temp, float target_temp, bool pre_cooling, bool pre_heating)
 {
@@ -2377,7 +2050,6 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
     }
 
     if (pre_cooling && !pre_heating) {
-
         if (target_temp >= curr_temp)
             return;
         int clamped_target = std::max((int) room_temperature, (int) target_temp);
@@ -2385,7 +2057,6 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
         return;
     }
     if (!pre_cooling && pre_heating) {
-
         if (target_temp <= curr_temp)
             return;
         float heating_start_time = move_iter_upper->time[valid_machine_id] - (target_temp - curr_temp) / ext_heating_rate;
@@ -2399,7 +2070,6 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
         }
         return;
     }
-
     float mid_temp = std::max(room_temperature, (curr_temp * ext_heating_rate + target_temp * ext_cooling_rate - complete_free_time_gap * ext_cooling_rate * ext_heating_rate) / (ext_cooling_rate + ext_heating_rate));
     float heating_temp = target_temp - mid_temp;
     float heating_start_time = move_iter_upper->time[valid_machine_id] - heating_temp / ext_heating_rate;
@@ -2409,7 +2079,6 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
     --heating_move_iter;
     heating_move_iter = adjust_iter(heating_move_iter, move_iter_lower, move_iter_upper, false);
 
-
     float real_cooling_time = heating_move_iter->time[valid_machine_id] - move_iter_lower->time[valid_machine_id];
     int real_delta_temp = std::min((int) (real_cooling_time * ext_cooling_rate), (int) curr_temp);
     if (real_delta_temp == 0)
@@ -2418,9 +2087,6 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
     add_M104_lines(block.free_lower_gcode_id, extruder_id, cooling_temp, block.last_filament_id, false, block.next_filament_id, block.next_nozzle_id, TimeProcessor::InsertLineType::PreCooling, "Multi extruder pre cooling");
     add_M104_lines(heating_move_iter->gcode_id, extruder_id, target_temp, block.next_filament_id, true, block.next_filament_id, block.next_nozzle_id, TimeProcessor::InsertLineType::PreHeating, "Multi extruder pre heating");
 }
-
-
-
 
 void GCodeProcessor::PreCoolingInjector::build_by_filament_blocks(const std::vector<ExtruderPreHeating::FilamentUsageBlock>& filament_usage_blocks_)
 {
@@ -2467,8 +2133,6 @@ void GCodeProcessor::PreCoolingInjector::build_by_filament_blocks(const std::vec
         return a.free_lower_gcode_id < b.free_lower_gcode_id || (a.free_lower_gcode_id == b.free_lower_gcode_id && a.free_upper_gcode_id < b.free_upper_gcode_id);
     });
 }
-
-
 
 void GCodeProcessor::PreCoolingInjector::build_by_extruder_blocks(const std::vector<ExtruderPreHeating::ExtruderUsageBlcok>& extruder_usage_blocks_)
 {
@@ -2671,7 +2335,6 @@ void GCodeProcessor::UsedFilaments::process_caches(GCodeProcessor* processor)
 }
 
 void GCodeProcessorResult::reset() {
-
     lock();
 
     moves.clear();
@@ -2688,12 +2351,9 @@ void GCodeProcessorResult::reset() {
     support_masses.clear();
     lines_ends.clear();
     printable_area = Pointfs();
-
     bed_exclude_area = Pointfs();
     wrapping_exclude_area = Pointfs();
-
     toolpath_outside = false;
-
     label_object_enabled = false;
     long_retraction_when_cut = false;
     timelapse_warning_code = 0;
@@ -2718,37 +2378,21 @@ void GCodeProcessorResult::reset() {
     optimal_assignment.clear();
     filament_change_count_map.clear();
     warnings.clear();
-
     nozzle_group_result.reset();
-
     extruder_types.clear();
-
     printer_extruder_variant.clear();
     printer_extruder_id.clear();
-
     skippable_part_time.clear();
 
-
     unlock();
-
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" %1%: this=%2% reset finished")%__LINE__%this;
 }
 
 const std::vector<std::pair<GCodeProcessor::EProducer, std::string>> GCodeProcessor::Producers = {
-
-
     { EProducer::OrcaSlicer, SLIC3R_APP_NAME },
     { EProducer::OrcaSlicer, "generated by OrcaSlicer" },
     { EProducer::OrcaSlicer, "generated by BambuStudio" },
     { EProducer::OrcaSlicer, "BambuStudio" }
-
-
-
-
-
-
-
-
 };
 
 unsigned int GCodeProcessor::s_result_id = 0;
@@ -2821,7 +2465,6 @@ GCodeProcessor::GCodeProcessor()
 
 void GCodeProcessor::register_commands()
 {
-
     std::unordered_map<std::string, CommandProcessor::command_handler_t> command_handler_list = {
         {"G0", [this](const GCodeReader::GCodeLine& line) { process_G0(line); }},
         {"G1", [this](const GCodeReader::GCodeLine& line) { process_G1(line); }},
@@ -2875,8 +2518,6 @@ void GCodeProcessor::register_commands()
         {"M566", [this](const GCodeReader::GCodeLine& line) { process_M566(line); }},
         {"M702", [this](const GCodeReader::GCodeLine& line) { process_M702(line); }},
         {"M1020", [this](const GCodeReader::GCodeLine& line) { process_M1020(line); }},
-
-
         {"M900", [this](const GCodeReader::GCodeLine& line) { process_M900(line); }},
         {"M572", [this](const GCodeReader::GCodeLine& line) { process_M572(line); }},
 
@@ -2939,13 +2580,6 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
         return ps;
     };
 
-
-
-
-
-
-
-
     const bool machine_frame_active = m_machine_frame_transform.is_active();
     auto compare_pos = [&](const GCodeProcessorResult::MoveVertex &move) -> Vec3d {
         Vec3d pos = move.position.cast<double>();
@@ -2954,14 +2588,10 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
         Vec3d extruder_off = Vec3d::Zero();
         if (size_t(move.extruder_id) < m_extruder_offsets.size())
             extruder_off = m_extruder_offsets[move.extruder_id].cast<double>();
-
-
         Vec3d machine(pos.x() - m_x_offset - extruder_off.x(),
                       pos.y() - m_y_offset - extruder_off.y(),
                       pos.z() - extruder_off.z() + m_z_offset);
         Vec3d build = m_machine_frame_transform.apply_inverse(machine);
-
-
         return Vec3d(build.x() + m_x_offset, build.y() + m_y_offset, build.z());
     };
 
@@ -2975,13 +2605,8 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     std::map<int, std::map<int, GCodePosInfo>> gcode_path_pos;
     for (const GCodeProcessorResult::MoveVertex &move : m_result.moves) {
         const int object_label_id = m_result.state(move).object_label_id;
-
-        if (move.type == EMoveType::Extrude  ) {
+        if (move.type == EMoveType::Extrude ) {
             const Vec3d cp = compare_pos(move);
-
-
-
-
             const float z_for_height = machine_frame_active ? float(cp.z()) : m_result.state(move).print_z;
             if (move.extrusion_role == ExtrusionRole::erCustom) {
                 gcode_path_pos[object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(cp));
@@ -2998,7 +2623,6 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     bool valid = true;
     Point plate_offset = Point(scale_(m_x_offset), scale_(m_y_offset));
     plate_printable_poly.translate(plate_offset);
-
     BoundingBox plate_printable_bbox = plate_printable_poly.bounding_box();
     if (plate_printable_poly.is_valid()) {
         plate_printable_bbox.offset(scale_(2.0));
@@ -3025,11 +2649,6 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
                     valid = false;
                 }
             }
-
-
-
-
-
             if ( !m_belt_printer && iter->second.max_print_z > plate_printable_height ) {
                 m_result.gcode_check_result.error_code |= (1 << 3);
                 std::pair<int, int> filament_to_object_id;
@@ -3039,24 +2658,7 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
                 valid = false;
             }
 
-
-
-
-
-
-
-
-
-
-
             if (extruder_size > 1) {
-
-
-
-
-
-
-
                 if ((extruder_id < unprintable_areas.size()) && !unprintable_areas[extruder_id].empty())
                     for (Polygon poly : unprintable_areas[extruder_id]) {
                         poly.translate(plate_offset);
@@ -3069,7 +2671,6 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
                             valid = false;
                         }
                     }
-
 
                 if (!m_belt_printer && (extruder_id < printable_heights.size()) && (iter->second.max_print_z > printable_heights[extruder_id])) {
                     m_result.gcode_check_result.error_code |= (1 << 1);
@@ -3093,7 +2694,6 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
         }
     }
 
-
     for (int extruder_id = 0; extruder_id < unprintable_filament_types.size(); ++extruder_id) {
         const std::set<int> &filament_ids = unprintable_filament_types[extruder_id];
         for (int filament_id : filament_ids) {
@@ -3116,11 +2716,9 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     size_t filament_count = config.filament_diameter.values.size();
     m_result.filaments_count = filament_count;
 
-
     m_is_XL_printer = is_XL_printer(config);
     m_preheat_time = config.preheat_time;
     m_preheat_steps = config.preheat_steps;
-
     if(m_preheat_steps < 1)
         m_preheat_steps = 1;
     m_result.backtrace_enabled = config.ooze_prevention && m_preheat_time > 0 && (m_is_XL_printer || (!m_single_extruder_multi_material && filament_count > 1));
@@ -3131,11 +2729,7 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
         m_nozzle_volume[idx] = config.nozzle_volume.values[idx];
 
     m_physical_extruder_map = config.physical_extruder_map.values;
-
     m_extruder_max_nozzle_count = config.extruder_max_nozzle_count.values;
-
-
-
 
     m_filament_types.resize(filament_count);
     for (size_t idx = 0; idx < filament_count; ++idx)
@@ -3171,18 +2765,14 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     }
 
     std::vector<int> filament_map = config.filament_map.values;
-
     filament_map.resize(filament_count, config.master_extruder_id.value);
 
     for (size_t i = 0; i < filament_count; ++ i) {
         m_extruder_offsets[i] = to_3d(config.extruder_offset.get_at(filament_map[i] - 1).cast<float>().eval(), 0.f);
         m_extruder_colors[i]            = static_cast<unsigned char>(i);
-
-
         m_filament_nozzle_temp_first_layer[i] = static_cast<int>(config.nozzle_temperature_initial_layer.get_at(i));
         m_filament_nozzle_temp[i]      = static_cast<int>(config.nozzle_temperature.get_at(i));
         if (m_filament_nozzle_temp[i] == 0) {
-
             m_filament_nozzle_temp[i] = m_filament_nozzle_temp_first_layer[i];
         }
         m_result.filament_diameters[i]  = static_cast<float>(config.filament_diameter.get_at(i));
@@ -3195,18 +2785,13 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     if (m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfKlipper || m_flavor == gcfRepRapFirmware) {
         m_time_processor.machine_limits = reinterpret_cast<const MachineEnvelopeConfig&>(config);
         if (m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper) {
-
             m_time_processor.machine_limits.machine_max_acceleration_travel = m_time_processor.machine_limits.machine_max_acceleration_extruding;
         }
         if (m_flavor == gcfRepRapFirmware) {
-
             m_time_processor.machine_limits.machine_min_travel_rate.values.assign(m_time_processor.machine_limits.machine_min_travel_rate.size(), 0.);
             m_time_processor.machine_limits.machine_min_extruding_rate.values.assign(m_time_processor.machine_limits.machine_min_extruding_rate.size(), 0.);
         }
     }
-
-
-
 
     m_time_processor.filament_load_times = static_cast<float>(config.machine_load_filament_time.value);
     m_time_processor.filament_unload_times = static_cast<float>(config.machine_unload_filament_time.value);
@@ -3237,9 +2822,6 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
 
     m_result.printable_height = config.printable_height;
 
-
-
-
     m_machine_frame_transform.init_from_config(config);
     m_result.machine_frame_transform_active = m_machine_frame_transform.is_active();
     m_belt_printer = config.belt_printer.value;
@@ -3268,7 +2850,6 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     if (z_offset != nullptr)
         m_z_offset = z_offset->value;
 
-
     if (config.nonplanar_kinematics.value != RotaryLayout::None) {
         m_tool_kinematics = make_tool_kinematics(config);
         m_tool_kinematics->inverse({ Vec3d::Zero(), Vec3d::UnitZ() }, nullptr, m_joints);
@@ -3278,10 +2859,6 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
 void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
 {
     m_parser.apply_config(config);
-
-
-
-
 
     m_belt_render_config.clear();
     {
@@ -3295,8 +2872,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
             for (const char *key : belt_keys)
                 if (const ConfigOption *opt = config.option(key); opt != nullptr)
                     m_belt_render_config.set_key_value(key, opt->clone());
-
-
             static const char *bed_keys[] = { "printable_area", "printable_height" };
             if (belt->value)
                 for (const char *key : bed_keys)
@@ -3304,7 +2879,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
                         m_belt_render_config.set_key_value(key, opt->clone());
         }
     }
-
 
     const ConfigOptionFloatsNullable* nozzle_volume = config.option<ConfigOptionFloatsNullable>("nozzle_volume");
     if (nozzle_volume != nullptr) {
@@ -3321,14 +2895,10 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         m_physical_extruder_map = physical_extruder_map->values;
     }
 
-
     const ConfigOptionIntsNullable* extruder_max_nozzle_count = config.option<ConfigOptionIntsNullable>("extruder_max_nozzle_count");
     if (extruder_max_nozzle_count != nullptr) {
         m_extruder_max_nozzle_count = extruder_max_nozzle_count->values;
     }
-
-
-
 
     const ConfigOptionFloatsNullable* hotend_cooling_rate = config.option<ConfigOptionFloatsNullable>("hotend_cooling_rate");
     if (hotend_cooling_rate != nullptr)
@@ -3397,7 +2967,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     if (printable_area != nullptr)
         m_result.printable_area = make_counter_clockwise(printable_area->values);
 
-
     const ConfigOptionPoints* bed_exclude_area = config.option<ConfigOptionPoints>("bed_exclude_area");
     if (bed_exclude_area != nullptr)
         m_result.bed_exclude_area = bed_exclude_area->values;
@@ -3421,7 +2990,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     const ConfigOptionString* printer_model = config.option<ConfigOptionString>("printer_model");
     if (printer_model != nullptr)
         m_printer_model = printer_model->value;
-
 
     m_result.filaments_count = config.option<ConfigOptionFloats>("filament_diameter")->values.size();
 
@@ -3473,7 +3041,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         std::transform(m_filament_maps.begin(), m_filament_maps.end(), m_filament_maps.begin(), [](int value) {return value - 1; });
     }
 
-
     const ConfigOptionFloats* filament_costs = config.option<ConfigOptionFloats>("filament_cost");
     if (filament_costs != nullptr) {
         m_result.filament_costs.clear();
@@ -3484,7 +3051,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     for (size_t i = m_result.filament_costs.size(); i < m_result.filaments_count; ++i) {
         m_result.filament_costs.emplace_back(DEFAULT_FILAMENT_COST);
     }
-
 
     const ConfigOptionInts* filament_vitrification_temperature = config.option<ConfigOptionInts>("temperature_vitrification");
     if (filament_vitrification_temperature != nullptr) {
@@ -3503,7 +3069,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     const ConfigOptionPoints* extruder_offset = config.option<ConfigOptionPoints>("extruder_offset");
     const ConfigOptionBool* single_extruder_multi_material = config.option<ConfigOptionBool>("single_extruder_multi_material");
     if (extruder_offset != nullptr) {
-
         if (single_extruder_multi_material != nullptr && single_extruder_multi_material->getBool()) {
             Vec2f offset = extruder_offset->values[0].cast<float>();
             m_extruder_offsets.resize(m_result.filaments_count);
@@ -3526,7 +3091,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         }
     }
 
-
     const ConfigOptionStrings* filament_colour = config.option<ConfigOptionStrings>("filament_colour");
     if (filament_colour != nullptr && filament_colour->values.size() == m_result.extruder_colors.size()) {
         for (size_t i = 0; i < m_result.extruder_colors.size(); ++i) {
@@ -3540,7 +3104,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
             m_result.extruder_colors.emplace_back(std::string());
         }
     }
-
 
     for (size_t i = 0; i < m_result.extruder_colors.size(); ++i) {
         if (m_result.extruder_colors[i].empty())
@@ -3628,7 +3191,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
             m_time_processor.machine_limits.machine_max_acceleration_retracting.values = machine_max_acceleration_retracting->values;
 
 
-
         const ConfigOptionFloats* machine_max_acceleration_travel = config.option<ConfigOptionFloats>(m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper
                                                                                                     ? "machine_max_acceleration_extruding"
                                                                                                     : "machine_max_acceleration_travel");
@@ -3694,7 +3256,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     if (z_offset != nullptr)
         m_z_offset = z_offset->value;
 
-
     if (const auto *layout = config.option<ConfigOptionEnum<RotaryLayout>>("nonplanar_kinematics");
         layout != nullptr && layout->value != RotaryLayout::None) {
         PrintConfig print_config;
@@ -3702,11 +3263,6 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         m_tool_kinematics = make_tool_kinematics(print_config);
         m_tool_kinematics->inverse({ Vec3d::Zero(), Vec3d::UnitZ() }, nullptr, m_joints);
     }
-
-
-
-
-
 
     ensure_nozzle_group_result(static_cast<int>(m_result.filaments_count));
 }
@@ -3748,11 +3304,9 @@ void GCodeProcessor::reset()
     m_flushing = false;
     m_virtual_flushing = false;
     m_wipe_tower = false;
-
     m_skippable = false;
     m_skippable_type = SkipType::stNone;
     m_skippable_blocks.clear();
-
     m_filament_blocks.clear();
     m_extruder_blocks.clear();
     m_machine_start_gcode_end_line_id = (unsigned int) (-1);
@@ -3770,7 +3324,6 @@ void GCodeProcessor::reset()
     m_mm3_per_mm = 0.0f;
     m_travel_dist = 0.0f;
     m_fan_speed = 0.0f;
-
     m_pressure_advance = 0.0f;
     m_z_offset = 0.0f;
 
@@ -3779,10 +3332,7 @@ void GCodeProcessor::reset()
     m_filament_id = std::vector<unsigned char>(MAXIMUM_EXTRUDER_NUMBER, static_cast<unsigned char>(-1));
     m_last_filament_id = std::vector<unsigned char>(MAXIMUM_EXTRUDER_NUMBER, static_cast<unsigned char>(-1));
     m_extruder_id = static_cast<unsigned char>(-1);
-
-
     m_nozzle_status_recorder = MultiNozzleUtils::NozzleStatusRecorder{};
-
     m_nozzle_group_result.reset();
     m_machine_config_idx = 0;
     m_extruder_colors.resize(MIN_EXTRUDERS_COUNT);
@@ -3796,8 +3346,6 @@ void GCodeProcessor::reset()
 
     m_physical_extruder_map.clear();
     m_extruder_max_nozzle_count = { 1 };
-
-
 
     m_filament_types.clear();
     m_nozzle_diameter.clear();
@@ -3858,25 +3406,19 @@ DynamicConfig GCodeProcessor::export_config_for_render() const
     config.set_key_value("filament_is_support", new ConfigOptionBools(m_parser.get_config().filament_is_support.values));
     config.set_key_value("filament_type", new ConfigOptionStrings(m_parser.get_config().filament_type.values));
     config.set_key_value("filament_map", new ConfigOptionInts(m_parser.get_config().filament_map.values));
-
     for (const std::string &key : m_belt_render_config.keys())
         config.set_key_value(key, m_belt_render_config.option(key)->clone());
     return config;
 }
 
-
-
 void GCodeProcessor::process_file(const std::string& filename, std::function<void()> cancel_callback)
 {
     CNumericLocalesSetter locales_setter;
-
-
 
     {
         m_parser.parse_file_raw(filename, [this](GCodeReader& reader, const char *begin, const char *end) {
             begin = skip_whitespaces(begin, end);
             if (begin != end && *begin == ';') {
-
                 begin = skip_whitespaces(++ begin, end);
                 end   = remove_eols(begin, end);
                 if (begin != end) {
@@ -3892,20 +3434,13 @@ void GCodeProcessor::process_file(const std::string& filename, std::function<voi
         });
         m_parser.reset();
 
-
-
         if (m_producer == EProducer::OrcaSlicer || m_producer == EProducer::Slic3rPE || m_producer == EProducer::Slic3r) {
             DynamicPrintConfig config;
             config.apply(FullPrintConfig::defaults());
-
-
-
             config.load_from_gcode_file(filename, ForwardCompatibilitySubstitutionRule::EnableSilent);
-
 
             auto printer_model_opt = config.opt<ConfigOptionString>("printer_model");
             if (printer_model_opt && !printer_model_opt->value.empty()) {
-
                 GCodeProcessor::s_IsBBLPrinter = boost::starts_with(printer_model_opt->value, "Bambu Lab");
             }
 
@@ -3923,21 +3458,18 @@ void GCodeProcessor::process_file(const std::string& filename, std::function<voi
             apply_config_superslicer(filename);
     }
 
-
     m_result.filename = filename;
     m_result.id = ++s_result_id;
     initialize_result_moves();
     size_t parse_line_callback_cntr = 10000;
     m_parser.parse_file(filename, [this, cancel_callback, &parse_line_callback_cntr](GCodeReader& reader, const GCodeReader::GCodeLine& line) {
         if (-- parse_line_callback_cntr == 0) {
-
             parse_line_callback_cntr = 10000;
             if (cancel_callback)
                 cancel_callback();
         }
         this->process_gcode_line(line, true);
     }, m_result.lines_ends);
-
 
     this->finalize(false);
 }
@@ -3946,14 +3478,12 @@ void GCodeProcessor::initialize(const std::string& filename)
 {
     assert(is_decimal_separator_point());
 
-
     m_result.filename = filename;
     m_result.id = ++s_result_id;
 }
 
 void GCodeProcessor::process_buffer(const std::string &buffer)
 {
-
     m_parser.parse_buffer(buffer, [this](GCodeReader&, const GCodeReader::GCodeLine& line) {
         this->process_gcode_line(line, false);
     });
@@ -3964,7 +3494,6 @@ void GCodeProcessor::finalize(bool post_process)
     m_result.z_offset = m_z_offset;
     finalize_object_masses();
 
-
     for (GCodeProcessorResult::MoveVertex& move : m_result.moves) {
         if (move.type == EMoveType::Wipe) {
             move.width = Wipe_Width;
@@ -3972,10 +3501,7 @@ void GCodeProcessor::finalize(bool post_process)
         }
     }
 
-
-
-    calculate_time(m_result, 0, 0.0f, EMoveType::Noop,  true);
-
+    calculate_time(m_result, 0, 0.0f, EMoveType::Noop, true);
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -3992,14 +3518,9 @@ void GCodeProcessor::finalize(bool post_process)
 
     if (post_process){
         run_post_process();
-
-
-
-
         if (m_enable_pre_heating)
             run_second_pass_injection();
     }
-
     update_slice_warnings();
 }
 
@@ -4035,7 +3556,6 @@ std::vector<std::pair<CustomGCode::Type, std::pair<float, float>>> GCodeProcesso
 
 ConfigSubstitutions load_from_superslicer_gcode_file(const std::string& filename, DynamicPrintConfig& config, ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
-
 
     boost::nowide::ifstream ifs(filename);
 
@@ -4119,7 +3639,6 @@ void GCodeProcessor::apply_config_simplify3d(const std::string& filename)
         end   = remove_eols(begin, end);
         if (begin != end) {
             if (*begin == ';') {
-
                 begin = skip_whitespaces(++ begin, end);
                 if (begin != end) {
                     std::string_view comment(begin, end - begin);
@@ -4143,7 +3662,6 @@ void GCodeProcessor::apply_config_simplify3d(const std::string& filename)
                         producer_detected = true;
                 }
             } else {
-
                 reader.quit_parsing();
             }
         }
@@ -4165,9 +3683,7 @@ void GCodeProcessor::apply_config_simplify3d(const std::string& filename)
 void GCodeProcessor::process_gcode_line(const GCodeReader::GCodeLine& line, bool producers_enabled)
 {
 
-
     ++m_line_id;
-
 
     m_start_position = m_end_position;
 
@@ -4179,7 +3695,6 @@ void GCodeProcessor::process_gcode_line(const GCodeReader::GCodeLine& line, bool
             process_SET_VELOCITY_LIMIT(line);
             return;
         }
-
         if (ascii_iequals(cmd, "SET_PRESSURE_ADVANCE"))
         {
             process_SET_PRESSURE_ADVANCE(line);
@@ -4188,7 +3703,6 @@ void GCodeProcessor::process_gcode_line(const GCodeReader::GCodeLine& line, bool
     }
 
     if (cmd.length() > 1) {
-
         m_command_processor.process_comand(cmd, line);
     }
     else {
@@ -4205,8 +3719,6 @@ void GCodeProcessor::process_gcode_line(const GCodeReader::GCodeLine& line, bool
                 m_command_processor.process_comand(new_line.cmd(), new_line);
             }
             else {
-
-
                 process_tags(comment_content, producers_enabled);
             }
         }
@@ -4247,7 +3759,6 @@ int GCodeProcessor::get_gcode_last_filament(const std::string& gcode_str)
     return out_filament;
 }
 
-
 bool GCodeProcessor::get_last_z_from_gcode(const std::string& gcode_str, double& z)
 {
     int str_size = gcode_str.size();
@@ -4255,18 +3766,15 @@ bool GCodeProcessor::get_last_z_from_gcode(const std::string& gcode_str, double&
     int end_index = 0;
     bool is_z_changed = false;
     while (end_index < str_size) {
-
         if (gcode_str[end_index] != '\n') {
             end_index++;
             continue;
         }
-
         if (end_index > start_index) {
             std::string line_str = gcode_str.substr(start_index, end_index - start_index);
             line_str.erase(0, line_str.find_first_not_of(" "));
             line_str.erase(line_str.find_last_not_of(";") + 1);
             line_str.erase(line_str.find_last_not_of(" ") + 1);
-
 
             if (line_str.size() > 4 && (line_str.find("G0 ") == 0
                                        || line_str.find("G1 ") == 0
@@ -4277,7 +3785,6 @@ bool GCodeProcessor::get_last_z_from_gcode(const std::string& gcode_str, double&
                 double temp_z = 0;
                 if (z_pos != line_str.npos
                     && z_pos + 2 < line_str.size()) {
-
                     std::string z_sub = line_str.substr(z_pos + 2);
                     char* c = &z_sub[0];
                     char* end = c + sizeof(z_sub.c_str());
@@ -4288,14 +3795,12 @@ bool GCodeProcessor::get_last_z_from_gcode(const std::string& gcode_str, double&
 
                     auto [pend, ec] = fast_float::from_chars(c, end, temp_z);
                     if (pend != c && is_end_of_word(*pend)) {
-
                         z = temp_z;
                         is_z_changed = true;
                     }
                 }
             }
         }
-
         start_index = end_index + 1;
         end_index = start_index;
     }
@@ -4309,18 +3814,15 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
     int  end_index    = 0;
     bool is_z_changed = false;
     while (end_index < str_size) {
-
         if (gcode_str[end_index] != '\n') {
             end_index++;
             continue;
         }
-
         if (end_index > start_index) {
             std::string line_str = gcode_str.substr(start_index, end_index - start_index);
             line_str.erase(0, line_str.find_first_not_of(" "));
             line_str.erase(line_str.find_last_not_of(";") + 1);
             line_str.erase(line_str.find_last_not_of(" ") + 1);
-
 
             if (line_str.size() > 5 && (line_str.find("G0 ") == 0 || line_str.find("G1 ") == 0 || line_str.find("G2 ") == 0 || line_str.find("G3 ") == 0)) {
                 {
@@ -4328,7 +3830,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
                     auto   z_pos  = line_str.find(" X");
                     float  temp_z = 0;
                     if (z_pos != line_str.npos && z_pos + 2 < line_str.size()) {
-
                         std::string z_sub = line_str.substr(z_pos + 2);
                         char       *c     = &z_sub[0];
                         char       *end   = c + sizeof(z_sub.c_str());
@@ -4337,7 +3838,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
 
                         auto [pend, ec] = fast_float::from_chars(c, end, temp_z);
                         if (pend != c && is_end_of_word(*pend)) {
-
                             x            = temp_z;
                             is_z_changed = true;
                         }
@@ -4349,7 +3849,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
                     auto   z_pos  = line_str.find(" Y");
                     float  temp_z = 0;
                     if (z_pos != line_str.npos && z_pos + 2 < line_str.size()) {
-
                         std::string z_sub = line_str.substr(z_pos + 2);
                         char       *c     = &z_sub[0];
                         char       *end   = c + sizeof(z_sub.c_str());
@@ -4358,7 +3857,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
 
                         auto [pend, ec] = fast_float::from_chars(c, end, temp_z);
                         if (pend != c && is_end_of_word(*pend)) {
-
                             y            = temp_z;
                             is_z_changed = true;
                         }
@@ -4370,7 +3868,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
                     auto   z_pos  = line_str.find(" Z");
                     float  temp_z = 0;
                     if (z_pos != line_str.npos && z_pos + 2 < line_str.size()) {
-
                         std::string z_sub = line_str.substr(z_pos + 2);
                         char       *c     = &z_sub[0];
                         char       *end   = c + sizeof(z_sub.c_str());
@@ -4379,7 +3876,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
 
                         auto [pend, ec] = fast_float::from_chars(c, end, temp_z);
                         if (pend != c && is_end_of_word(*pend)) {
-
                             z            = temp_z;
                             is_z_changed = true;
                         }
@@ -4387,7 +3883,6 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
                 }
             }
         }
-
         start_index = end_index + 1;
         end_index   = start_index;
     }
@@ -4396,10 +3891,8 @@ bool GCodeProcessor::get_last_position_from_gcode(const std::string &gcode_str, 
 
 void GCodeProcessor::process_tags(const std::string_view comment, bool producers_enabled)
 {
-
     if (producers_enabled && process_producers_tags(comment))
         return;
-
 
     constexpr std::string_view road_tag = "_NATIVE_ROAD_ID=";
     if (boost::starts_with(comment, road_tag)) {
@@ -4409,7 +3902,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         m_native_road_id = parsed.ec == std::errc() && parsed.ptr == value.data() + value.size() ? id : UINT32_MAX;
         return;
     }
-
     if (boost::starts_with(comment, reserved_tag(ETags::Role))) {
         set_extrusion_role(ExtrusionEntity::string_to_role(comment.substr(reserved_tag(ETags::Role).length())));
         if (m_extrusion_role == erExternalPerimeter)
@@ -4417,7 +3909,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         m_processing_start_custom_gcode = (m_extrusion_role == erCustom && m_g1_line_id == 0);
         return;
     }
-
 
     if (boost::starts_with(comment, "_NONPLANAR_BEGIN")) {
         auto value = [comment](std::string_view key, int missing) {
@@ -4429,8 +3920,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(value("shell=", 0), 0, 0xFE));
         m_nonplanar_patch       = static_cast<short>(std::clamp(value("patch=", -1), -1, 0x7FFF));
         m_nonplanar_band        = static_cast<signed char>(std::clamp(value("band=", -1), -1, 0x7F));
-
-
         const size_t rate_pos = comment.find("rate=");
         const double rate     = rate_pos == comment.npos ? 0. : std::atof(std::string(comment.substr(rate_pos + 5)).c_str());
         m_nonplanar_feed_interval = rate > 0. && m_flavor != gcfKlipper ? float(1. / rate) : 0.f;
@@ -4444,27 +3933,20 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
     if (boost::starts_with(comment, " start printing object")) {
         m_object_label_id = get_object_label_id(comment);
         return;
     }
-
 
     if (boost::starts_with(comment, " stop printing object")) {
         m_object_label_id = -1;
         return;
     }
 
-
     if (boost::starts_with(comment, " Z_HEIGHT:")) {
         m_print_z = get_z_height(comment);
         return;
     }
-
-
-
-
 
     if (m_belt_printer && boost::starts_with(comment, "Z:")) {
         m_print_z = get_z_height(comment);
@@ -4480,22 +3962,16 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
-
-
-
     if (!m_in_config_block && boost::starts_with(comment, " belt_slice_rotation_angle = ")) {
         try {
             m_result.belt_tilt_angle = std::abs(std::stof(std::string(comment.substr(29))));
         } catch (...) {}
         return;
     }
-
     if (boost::starts_with(comment, reserved_tag(ETags::Wipe_Start))) {
         m_wiping = true;
         return;
     }
-
 
     if (boost::starts_with(comment, reserved_tag(ETags::Wipe_End))) {
         m_wiping = false;
@@ -4513,11 +3989,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
-
-
-
-
     if (boost::starts_with(comment, GCodeProcessor::Skippable_Start_Tag)) {
         m_skippable = true;
         return;
@@ -4529,19 +4000,16 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
     if (boost::starts_with(comment, GCodeProcessor::Skippable_Type_Tag)) {
         std::string_view type = comment.substr(GCodeProcessor::Skippable_Type_Tag.length());
         set_skippable_type(type);
         return;
     }
 
-
     if (boost::starts_with(comment, GCodeProcessor::Flush_Start_Tag)) {
         m_flushing = true;
         return;
     }
-
 
     if (boost::starts_with(comment, GCodeProcessor::Flush_End_Tag)) {
         m_flushing = false;
@@ -4558,15 +4026,10 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
-
-
     if (comment == Machine_End_GCode_Start_Tag) {
         m_skip_end_gcode_delays = true;
         return;
     }
-
-
 
     if (boost::starts_with(comment, GCodeProcessor::External_Purge_Tag)) {
         static const std::regex numberRegex(R"(\d+\.\d+)");
@@ -4586,19 +4049,16 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
     }
 
     if (!producers_enabled || m_producer == EProducer::OrcaSlicer) {
-
         if (boost::starts_with(comment, reserved_tag(ETags::Height))) {
             if (!parse_number(comment.substr(reserved_tag(ETags::Height).size()), m_forced_height))
                 BOOST_LOG_TRIVIAL(error) << "GCodeProcessor encountered an invalid value for Height (" << comment << ").";
             return;
         }
-
         if (boost::starts_with(comment, reserved_tag(ETags::Width))) {
             if (!parse_number(comment.substr(reserved_tag(ETags::Width).size()), m_forced_width))
                 BOOST_LOG_TRIVIAL(error) << "GCodeProcessor encountered an invalid value for Width (" << comment << ").";
             return;
         }
-
         if (m_manual_filament_change && boost::starts_with(comment, reserved_tag(ETags::Manual_Tool_Change))) {
             std::string_view tool_change_cmd = comment.substr(reserved_tag(ETags::Manual_Tool_Change).length());
             if (boost::starts_with(tool_change_cmd, "T")) {
@@ -4606,7 +4066,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
             }
         }
     }
-
 
     if (boost::starts_with(comment, reserved_tag(ETags::Color_Change))) {
         unsigned char filament_id = 0;
@@ -4678,7 +4137,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
     if (comment == reserved_tag(ETags::Pause_Print)) {
         store_move_vertex(EMoveType::Pause_Print);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::PausePrint, get_filament_id() + 1, "", ""};
@@ -4688,7 +4146,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         return;
     }
 
-
     if (comment == reserved_tag(ETags::Custom_Code)) {
         store_move_vertex(EMoveType::Custom_GCode);
         CustomGCode::Item item = { static_cast<double>(m_end_position[2]), CustomGCode::Custom, get_filament_id() + 1, "", ""};
@@ -4696,7 +4153,6 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         m_options_z_corrector.set();
         return;
     }
-
 
     if (comment == reserved_tag(ETags::Layer_Change)) {
         ++m_layer_id;
@@ -4728,7 +4184,6 @@ bool GCodeProcessor::process_bambuslicer_tags(const std::string_view comment)
 
 bool GCodeProcessor::process_cura_tags(const std::string_view comment)
 {
-
     std::string tag = "TYPE:";
     size_t pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -4760,7 +4215,6 @@ bool GCodeProcessor::process_cura_tags(const std::string_view comment)
         return true;
     }
 
-
     tag = "FLAVOR:";
     pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -4789,7 +4243,6 @@ bool GCodeProcessor::process_cura_tags(const std::string_view comment)
         return true;
     }
 
-
     tag = "LAYER:";
     pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -4802,21 +4255,16 @@ bool GCodeProcessor::process_cura_tags(const std::string_view comment)
 
 bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
 {
-
-
-
     std::string_view cmt = comment;
     size_t pos = cmt.find(" feature");
     if (pos == 0)
         cmt.remove_prefix(8);
-
 
     pos = cmt.find(" skirt");
     if (pos == 0) {
         set_extrusion_role(erSkirt);
         return true;
     }
-
 
     pos = cmt.find(" outer perimeter");
     if (pos == 0) {
@@ -4825,13 +4273,11 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" inner perimeter");
     if (pos == 0) {
         set_extrusion_role(erPerimeter);
         return true;
     }
-
 
     pos = cmt.find(" gap fill");
     if (pos == 0) {
@@ -4839,13 +4285,11 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" infill");
     if (pos == 0) {
         set_extrusion_role(erInternalInfill);
         return true;
     }
-
 
     pos = cmt.find(" solid layer");
     if (pos == 0) {
@@ -4853,13 +4297,11 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" bridge");
     if (pos == 0) {
         set_extrusion_role(erBridgeInfill);
         return true;
     }
-
 
     pos = cmt.find(" internal bridge");
     if (pos == 0) {
@@ -4867,13 +4309,11 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" support");
     if (pos == 0) {
         set_extrusion_role(erSupportMaterial);
         return true;
     }
-
 
     pos = cmt.find(" dense support");
     if (pos == 0) {
@@ -4881,13 +4321,11 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" prime pillar");
     if (pos == 0) {
         set_extrusion_role(erWipeTower);
         return true;
     }
-
 
     pos = cmt.find(" ooze shield");
     if (pos == 0) {
@@ -4895,21 +4333,17 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = cmt.find(" raft");
     if (pos == 0) {
         set_extrusion_role(erSupportMaterial);
         return true;
     }
 
-
     pos = cmt.find(" internal single extrusion");
     if (pos == 0) {
         set_extrusion_role(erNone);
         return true;
     }
-
-
 
     std::string tag = " tool";
     pos = cmt.find(tag);
@@ -4933,11 +4367,9 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
         return true;
     }
 
-
     tag = " layer";
     pos = cmt.find(tag);
     if (pos == 0) {
-
         const std::string_view data = cmt.substr(pos + tag.length());
         size_t end_start = data.find("end");
         if (end_start == data.npos)
@@ -4951,7 +4383,6 @@ bool GCodeProcessor::process_simplify3d_tags(const std::string_view comment)
 
 bool GCodeProcessor::process_craftware_tags(const std::string_view comment)
 {
-
     std::string tag = "segType:";
     size_t pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -4989,7 +4420,6 @@ bool GCodeProcessor::process_craftware_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" Layer #");
     if (pos == 0) {
         ++m_layer_id;
@@ -5001,7 +4431,6 @@ bool GCodeProcessor::process_craftware_tags(const std::string_view comment)
 
 bool GCodeProcessor::process_ideamaker_tags(const std::string_view comment)
 {
-
     std::string tag = "TYPE:";
     size_t pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -5033,8 +4462,6 @@ bool GCodeProcessor::process_ideamaker_tags(const std::string_view comment)
         return true;
     }
 
-
-
     tag = "WIDTH:";
     pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -5043,7 +4470,6 @@ bool GCodeProcessor::process_ideamaker_tags(const std::string_view comment)
         return true;
     }
 
-
     tag = "HEIGHT:";
     pos = comment.find(tag);
     if (pos != comment.npos) {
@@ -5051,7 +4477,6 @@ bool GCodeProcessor::process_ideamaker_tags(const std::string_view comment)
             BOOST_LOG_TRIVIAL(error) << "GCodeProcessor encountered an invalid value for Height (" << comment << ").";
         return true;
     }
-
 
     pos = comment.find("LAYER:");
     if (pos == 0) {
@@ -5064,15 +4489,11 @@ bool GCodeProcessor::process_ideamaker_tags(const std::string_view comment)
 
 bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
 {
-
-
-
     size_t pos = comment.find(" 'Raft Path'");
     if (pos == 0) {
         set_extrusion_role(erSkirt);
         return true;
     }
-
 
     pos = comment.find(" 'Support Interface Path'");
     if (pos == 0) {
@@ -5080,20 +4501,17 @@ bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" 'Travel/Ironing Path'");
     if (pos == 0) {
         set_extrusion_role(erIroning);
         return true;
     }
 
-
     pos = comment.find(" 'Support (may Stack) Path'");
     if (pos == 0) {
         set_extrusion_role(erSupportMaterial);
         return true;
     }
-
 
     pos = comment.find(" 'Perimeter Path'");
     if (pos == 0) {
@@ -5102,13 +4520,11 @@ bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" 'Pillar Path'");
     if (pos == 0) {
         set_extrusion_role(erNone);
         return true;
     }
-
 
     pos = comment.find(" 'Destring/Wipe/Jump Path'");
     if (pos == 0) {
@@ -5116,13 +4532,11 @@ bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" 'Prime Pillar Path'");
     if (pos == 0) {
         set_extrusion_role(erNone);
         return true;
     }
-
 
     pos = comment.find(" 'Loop Path'");
     if (pos == 0) {
@@ -5130,13 +4544,11 @@ bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" 'Crown Path'");
     if (pos == 0) {
         set_extrusion_role(erNone);
         return true;
     }
-
 
     pos = comment.find(" 'Solid Path'");
     if (pos == 0) {
@@ -5144,22 +4556,17 @@ bool GCodeProcessor::process_kissslicer_tags(const std::string_view comment)
         return true;
     }
 
-
     pos = comment.find(" 'Stacked Sparse Infill Path'");
     if (pos == 0) {
         set_extrusion_role(erInternalInfill);
         return true;
     }
 
-
     pos = comment.find(" 'Sparse Infill Path'");
     if (pos == 0) {
         set_extrusion_role(erSolidInfill);
         return true;
     }
-
-
-
 
     pos = comment.find(" BEGIN_LAYER_");
     if (pos == 0) {
@@ -5176,7 +4583,6 @@ bool GCodeProcessor::detect_producer(const std::string_view comment)
         size_t pos = comment.find(search_string);
         if (pos != comment.npos) {
             m_producer = id;
-
             return true;
         }
     }
@@ -5206,9 +4612,6 @@ void GCodeProcessor::process_G1(const GCodeReader::GCodeLine& line, const std::o
 
 void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
 {
-
-
-
     const ToolKinematics &kin      = *m_tool_kinematics;
     const bool            relative = m_global_positioning_type == EPositioningType::Relative;
     const bool            from_unknown = m_rotary_position_known_axes != 7;
@@ -5233,21 +4636,17 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
     m_joints         = joints;
 
     std::array<std::optional<double>, 4> g1_axes;
-
     for (int i = 0; i < 3; ++i)
         g1_axes[i] = (relative ? to[i] - from[i] : to[i] - m_origin[i]) / scale;
     if (line.has_e())
         g1_axes[E] = (double)line.e();
     std::optional<double> g1_feedrate;
     if (line.has_f()) {
-
-
         if (! m_inverse_time)
             g1_feedrate = (double)line.f();
         else if (const double length = (to - from).norm(); length > EPSILON)
             g1_feedrate = length * line.f();
     }
-
     const size_t previous_moves = m_result.moves.size();
     process_G1(g1_axes, g1_feedrate);
     if (m_joint_delta.rot[0] != 0. || m_joint_delta.rot[1] != 0.)
@@ -5293,8 +4692,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
             const double lengthsScaleFactor = (m_units == EUnits::Inches) ? double(INCHES_TO_MM) : 1.0;
             double       ret                = *value * lengthsScaleFactor;
-
-
             return is_relative ? m_start_position[axis] + ret : m_origin[axis] + ret;
         }
         else
@@ -5303,18 +4700,14 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
     ++m_g1_line_id;
 
-
     m_time_processor.machine_envelope_processing_enabled = true;
-
 
     for (unsigned char a = X; a <= E; ++a) {
         m_end_position[a] = extract_absolute_position_on_axis((Axis)a, axes[a], double(area_filament_cross_section));
     }
 
-
     if (feedrate.has_value())
         m_feedrate = (*feedrate) * MMMIN_TO_MMSEC;
-
 
     float max_abs_delta = 0.0f;
     AxisCoords delta_pos;
@@ -5322,7 +4715,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         delta_pos[a] = m_end_position[a] - m_start_position[a];
         max_abs_delta = std::max<float>(max_abs_delta, std::abs(delta_pos[a]));
     }
-
 
     if (max_abs_delta == 0.0f && (!m_tool_kinematics ||
         (m_joint_delta.xyz.isZero() && m_joint_delta.rot[0] == 0. && m_joint_delta.rot[1] == 0.)))
@@ -5344,10 +4736,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             m_used_filaments.increase_wipe_tower_caches(volume_extruded_filament);
         }
         else {
-
             m_used_filaments.increase_model_caches(volume_extruded_filament);
         }
-
         m_mm3_per_mm = area_toolpath_cross_section;
 
         if (m_forced_height > 0.0f)
@@ -5366,8 +4756,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (origin == G1DiscretizationOrigin::G1)
             m_extruded_last_z = m_end_position[Z];
         if (const auto removed = m_options_z_corrector.update(m_height)) {
-
-
             for (TimeMachine &machine : m_time_processor.machines)
                 for (TimeBlock &block : machine.blocks)
                     if (block.move_id > *removed)
@@ -5377,18 +4765,14 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (m_forced_width > 0.0f)
             m_width = m_forced_width;
         else if (m_extrusion_role == erExternalPerimeter)
-
             m_width = delta_pos[E] * static_cast<float>(M_PI * sqr(1.05f * filament_radius)) / (delta_xyz * m_height);
         else if (m_extrusion_role == erBridgeInfill || m_extrusion_role == erInternalBridgeInfill || m_extrusion_role == erNone)
-
             m_width = static_cast<float>(m_result.filament_diameters[filament_id]) * std::sqrt(delta_pos[E] / delta_xyz);
         else
-
             m_width = delta_pos[E] * static_cast<float>(M_PI * sqr(filament_radius)) / (delta_xyz * m_height) + static_cast<float>(1.0 - 0.25 * M_PI) * m_height;
 
         if (m_width == 0.0f)
             m_width = DEFAULT_TOOLPATH_WIDTH;
-
 
         m_width = std::min(m_width, std::max(2.0f, 4.0f * m_height));
     }
@@ -5407,13 +4791,10 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         }
     }
 
-
-
     AxisCoords time_delta = delta_pos;
     if (m_tool_kinematics)
         for (int axis = 0; axis < 3; ++axis)
             time_delta[axis] = float(m_joint_delta.xyz[axis]);
-
     auto move_length = [](const AxisCoords& time_delta) {
         float sq_xyz_length = sqr(time_delta[X]) + sqr(time_delta[Y]) + sqr(time_delta[Z]);
         return (sq_xyz_length > 0.0f) ? std::sqrt(sq_xyz_length) : std::abs(time_delta[E]);
@@ -5447,7 +4828,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (m_tool_kinematics)
             curr.feedrate = float(m_inverse_time ? distance * m_joint_feed / 60. : m_joint_feed / 60.);
 
-
         curr.enter_direction = { static_cast<float>(time_delta[X]), static_cast<float>(time_delta[Y]), static_cast<float>(time_delta[Z]) };
         float norm = curr.enter_direction.norm();
         if (norm > 0.f)
@@ -5460,11 +4840,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
         TimeBlock block;
         block.move_type = type;
-
-
-
         block.skippable_type = m_skippable_type;
-
         block.role = (type != EMoveType::Travel || m_extrusion_role == erCustom) ? m_extrusion_role : erNone;
         block.distance = distance;
         block.g1_line_id = m_g1_line_id;
@@ -5478,13 +4854,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (origin == G1DiscretizationOrigin::G2G3)
             m_arc_first_block = false;
 
-
-
-
-
-
-
-
         if ((!m_marlin_junctions || bambu) &&
             (prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
@@ -5496,11 +4865,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             v2(2, 0) = 0.0f;
             v2.normalize();
             float norm_diff = (v2 - v1).norm();
-
-
-
             if (norm_diff < 0.5f && norm_diff > 0.00001f) {
-
                 float dot = v1(0) * v2(0) + v1(1) * v2(1);
                 float cross = v1(0) * v2(1) - v1(1) * v2(0);
                 float angle = float(atan2(double(cross), double(dot)));
@@ -5510,7 +4875,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                 curr.feedrate = std::min(curr.feedrate, sqrt(acc * r));
             }
         }
-
 
         float min_feedrate_factor = 1.0f;
         for (unsigned char a = X; a <= E; ++a) {
@@ -5531,7 +4895,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                 if (rate > 0. && limit > 0.)
                     min_feedrate_factor = std::min(min_feedrate_factor, float(limit / rate));
             }
-
         curr.feedrate *= min_feedrate_factor;
         block.feedrate_profile.cruise = curr.feedrate;
 
@@ -5542,13 +4905,11 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             }
         }
 
-
         float acceleration =
             (type == EMoveType::Travel) ? get_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
             (is_extrusion_only_move(time_delta) ?
                 get_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
                 get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)));
-
 
         for (unsigned char a = X; a <= E; ++a) {
             float axis_max_acceleration = get_axis_max_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a), m_machine_config_idx);
@@ -5571,21 +4932,14 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         static const float PREVIOUS_FEEDRATE_THRESHOLD = 0.0001f;
         const bool has_prev_move = !blocks.empty() && prev.feedrate > PREVIOUS_FEEDRATE_THRESHOLD;
 
-
-
         const float vmax_junction_jd = calc_vmax_junction_deviation(block, prev, curr, has_prev_move,
                                                                     static_cast<PrintEstimatedStatistics::ETimeMode>(i),
                                                                     blocks.empty() ? nullptr : &blocks.back());
         const bool use_junction_deviation = vmax_junction_jd >= 0.0f;
 
-
-
         curr.safe_feedrate = use_junction_deviation ? 0.0f : block.feedrate_profile.cruise;
 
         if (!use_junction_deviation) {
-
-
-
             for (unsigned char a = X; a <= E; ++a) {
                 float axis_max_jerk = get_axis_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a));
                 if (curr.abs_axis_feedrate[a] > axis_max_jerk)
@@ -5601,19 +4955,16 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                         curr.feedrate * m_rotary_jerk[axis] / std::abs(curr.rotary_feedrate[axis]));
         block.feedrate_profile.exit = curr.safe_feedrate;
 
-
         float vmax_junction = use_junction_deviation ? vmax_junction_jd : curr.safe_feedrate;
         if (!use_junction_deviation && has_prev_move) {
             bool prev_speed_larger = prev.feedrate > block.feedrate_profile.cruise;
             float smaller_speed_factor = prev_speed_larger ? (block.feedrate_profile.cruise / prev.feedrate) : (prev.feedrate / block.feedrate_profile.cruise);
-
             vmax_junction = prev_speed_larger ? block.feedrate_profile.cruise : prev.feedrate;
 
             float v_factor = 1.0f;
             bool limited = false;
 
             for (unsigned char a = X; a <= E; ++a) {
-
                 if (a == X) {
                     Vec3f exit_v = prev.feedrate * (prev.exit_direction);
                     if (prev_speed_larger)
@@ -5630,16 +4981,12 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                                 limited = true;
                             }
                     }
-
-
-
                     for (size_t k = 0; m_marlin_junctions && k < 3; k++) {
                         float v_exit = exit_v[k], v_entry = entry_v[k];
                         if (limited) {
                             v_exit *= v_factor;
                             v_entry *= v_factor;
                         }
-
                         const float jerk = bambu ? std::abs(v_entry - v_exit) :
                                            (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
                                                                 ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
@@ -5664,19 +5011,13 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                         v_entry *= v_factor;
                     }
 
-
                     float jerk =
                         (v_exit > v_entry) ?
                         (((v_entry > 0.0f) || (v_exit < 0.0f)) ?
-
                             (v_exit - v_entry) :
-
                             std::max(v_exit, -v_entry)) :
-
                         (((v_entry < 0.0f) || (v_exit > 0.0f)) ?
-
                             (v_entry - v_exit) :
-
                             std::max(-v_exit, v_entry));
 
 
@@ -5702,10 +5043,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             if (limited)
                 vmax_junction *= v_factor;
 
-
-
             float vmax_junction_threshold = vmax_junction * 0.99f;
-
 
             if (prev.safe_feedrate > vmax_junction_threshold && curr.safe_feedrate > vmax_junction_threshold)
                 vmax_junction = curr.safe_feedrate;
@@ -5719,9 +5057,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         block.flags.recalculate = true;
         block.safe_feedrate = curr.safe_feedrate;
 
-
         block.calculate_trapezoid();
-
 
         prev = curr;
 
@@ -5734,31 +5070,25 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
     const Vec3f plate_offset = {(float) m_x_offset, (float) m_y_offset, 0.0f};
 
     if (m_seams_detector.is_active()) {
-
         if (type == EMoveType::Extrude && m_extrusion_role == erExternalPerimeter) {
-
             const Vec3f new_pos = m_result.moves.back().position - m_extruder_offsets[filament_id] - plate_offset;
             if (!m_seams_detector.has_first_vertex()) {
                 m_seams_detector.set_first_vertex(new_pos);
             } else if (m_detect_layer_based_on_tag) {
-
             const std::optional<Vec3f> first_vertex = m_seams_detector.get_first_vertex();
             if (new_pos.z() > first_vertex->z()) {
                 m_seams_detector.set_first_vertex(new_pos);
                 }
             }
         }
-
         else if ((type != EMoveType::Extrude || (m_extrusion_role != erExternalPerimeter && m_extrusion_role != erOverhangPerimeter)) && m_seams_detector.has_first_vertex()) {
             auto set_end_position = [this](const Vec3f& pos) {
                 m_end_position[X] = pos.x(); m_end_position[Y] = pos.y(); m_end_position[Z] = pos.z();
             };
 
             const Vec3f curr_pos(m_end_position[X], m_end_position[Y], m_end_position[Z]);
-
             const Vec3f new_pos = m_result.moves.back().position - m_extruder_offsets[filament_id] - plate_offset;
             const std::optional<Vec3f> first_vertex = m_seams_detector.get_first_vertex();
-
 
             if ((new_pos - *first_vertex).squaredNorm() < 0.0625f) {
                 set_end_position(0.5f * (new_pos + *first_vertex) + m_z_offset * Vec3f::UnitZ());
@@ -5776,7 +5106,6 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
     if (type == EMoveType::Extrude)
         add_object_mass(filament_id, area_filament_cross_section * delta_pos[E]);
-
 
     store_move_vertex(type);
 }
@@ -5824,18 +5153,14 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
 
     ++m_g1_line_id;
 
-
     m_time_processor.machine_envelope_processing_enabled = true;
-
 
     for (unsigned char a = X; a <= E; ++a) {
         m_end_position[a] = absolute_position((Axis)a, line);
     }
 
-
     if (line.has_f())
         m_feedrate = line.f() * MMMIN_TO_MMSEC;
-
 
     float max_abs_delta = 0.0f;
     AxisCoords delta_pos;
@@ -5844,12 +5169,10 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         max_abs_delta = std::max<float>(max_abs_delta, std::abs(delta_pos[a]));
     }
 
-
     if (max_abs_delta == 0.0f)
         return;
 
     EMoveType type = move_type(delta_pos);
-
     if (EMoveType::Unretract == type && m_virtual_flushing) {
         int extruder_id = get_extruder_id();
         float volume_flushed_filament = area_filament_cross_section * delta_pos[E];
@@ -5867,7 +5190,6 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
 
     if (line.has_f())
         m_feedrate = line.f() * MMMIN_TO_MMSEC;
-
 
     auto move_length = [](const AxisCoords& delta_pos) {
         float sq_xyz_length = sqr(delta_pos[X]) + sqr(delta_pos[Y]) + sqr(delta_pos[Z]);
@@ -5896,7 +5218,6 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
             minimum_travel_feedrate(static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_feedrate) :
             minimum_feedrate(static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_feedrate);
 
-
         curr.enter_direction = { static_cast<float>(delta_pos[X]), static_cast<float>(delta_pos[Y]), static_cast<float>(delta_pos[Z]) };
         float norm = curr.enter_direction.norm();
         if (!is_extrusion_only_move(delta_pos))
@@ -5909,11 +5230,7 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
 
         TimeBlock block;
         block.move_type = type;
-
-
-
         block.skippable_type = m_skippable_type;
-
         block.role = (type != EMoveType::Travel || m_extrusion_role == erCustom) ? m_extrusion_role : erNone;
         block.distance = distance;
         block.g1_line_id = m_g1_line_id;
@@ -5921,13 +5238,6 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         block.flags.prepare_stage = m_processing_start_custom_gcode;
         block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
         block.feed_interval = m_nonplanar_feed_interval;
-
-
-
-
-
-
-
 
         if ((!m_marlin_junctions || bambu) &&
             (prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
@@ -5940,11 +5250,7 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
             v2(2, 0) = 0.0f;
             v2.normalize();
             float norm_diff = (v2 - v1).norm();
-
-
-
             if (norm_diff < 0.5f && norm_diff > 0.00001f) {
-
                 float dot = v1(0) * v2(0) + v1(1) * v2(1);
                 float cross = v1(0) * v2(1) - v1(1) * v2(0);
                 float angle = float(atan2(double(cross), double(dot)));
@@ -5954,7 +5260,6 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                 curr.feedrate = std::min(curr.feedrate, sqrt(acc * r));
             }
         }
-
 
         float min_feedrate_factor = 1.0f;
         for (unsigned char a = X; a <= E; ++a) {
@@ -5968,7 +5273,6 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                 if (axis_max_feedrate != 0.0f) min_feedrate_factor = std::min<float>(min_feedrate_factor, axis_max_feedrate / curr.abs_axis_feedrate[a]);
             }
         }
-
         curr.feedrate *= min_feedrate_factor;
         block.feedrate_profile.cruise = curr.feedrate;
 
@@ -5979,13 +5283,11 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
             }
         }
 
-
         float acceleration =
             (type == EMoveType::Travel) ? get_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
             (is_extrusion_only_move(delta_pos) ?
                 get_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
                 get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)));
-
 
         for (unsigned char a = X; a <= E; ++a) {
             float axis_max_acceleration = get_axis_max_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a), m_machine_config_idx);
@@ -6001,21 +5303,14 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         static const float PREVIOUS_FEEDRATE_THRESHOLD = 0.0001f;
         const bool has_prev_move = !blocks.empty() && prev.feedrate > PREVIOUS_FEEDRATE_THRESHOLD;
 
-
-
         const float vmax_junction_jd = calc_vmax_junction_deviation(block, prev, curr, has_prev_move,
                                                                     static_cast<PrintEstimatedStatistics::ETimeMode>(i),
                                                                     blocks.empty() ? nullptr : &blocks.back());
         const bool use_junction_deviation = vmax_junction_jd >= 0.0f;
 
-
-
         curr.safe_feedrate = use_junction_deviation ? 0.0f : block.feedrate_profile.cruise;
 
         if (!use_junction_deviation) {
-
-
-
             for (unsigned char a = X; a <= E; ++a) {
                 float axis_max_jerk = get_axis_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a));
                 if (curr.abs_axis_feedrate[a] > axis_max_jerk)
@@ -6026,19 +5321,16 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
 
         block.feedrate_profile.exit = curr.safe_feedrate;
 
-
         float vmax_junction = use_junction_deviation ? vmax_junction_jd : curr.safe_feedrate;
         if (!use_junction_deviation && has_prev_move) {
             bool prev_speed_larger = prev.feedrate > block.feedrate_profile.cruise;
             float smaller_speed_factor = prev_speed_larger ? (block.feedrate_profile.cruise / prev.feedrate) : (prev.feedrate / block.feedrate_profile.cruise);
-
             vmax_junction = prev_speed_larger ? block.feedrate_profile.cruise : prev.feedrate;
 
             float v_factor = 1.0f;
             bool limited = false;
 
             for (unsigned char a = X; a <= E; ++a) {
-
                 if (a == X) {
                     Vec3f exit_v = prev.feedrate * (prev.exit_direction);
                     if (prev_speed_larger)
@@ -6055,16 +5347,12 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                                 limited = true;
                             }
                     }
-
-
-
                     for (size_t k = 0; m_marlin_junctions && k < 3; k++) {
                         float v_exit = exit_v[k], v_entry = entry_v[k];
                         if (limited) {
                             v_exit *= v_factor;
                             v_entry *= v_factor;
                         }
-
                         const float jerk = bambu ? std::abs(v_entry - v_exit) :
                                            (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
                                                                 ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
@@ -6089,19 +5377,13 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                         v_entry *= v_factor;
                     }
 
-
                     float jerk =
                         (v_exit > v_entry) ?
                         (((v_entry > 0.0f) || (v_exit < 0.0f)) ?
-
                             (v_exit - v_entry) :
-
                             std::max(v_exit, -v_entry)) :
-
                         (((v_entry < 0.0f) || (v_exit > 0.0f)) ?
-
                             (v_entry - v_exit) :
-
                             std::max(-v_exit, v_entry));
 
 
@@ -6116,10 +5398,7 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
             if (limited)
                 vmax_junction *= v_factor;
 
-
-
             float vmax_junction_threshold = vmax_junction * 0.99f;
-
 
             if (prev.safe_feedrate > vmax_junction_threshold && curr.safe_feedrate > vmax_junction_threshold)
                 vmax_junction = curr.safe_feedrate;
@@ -6133,15 +5412,12 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         block.flags.recalculate = true;
         block.safe_feedrate = curr.safe_feedrate;
 
-
         block.calculate_trapezoid();
-
 
         prev = curr;
 
         blocks.push_back(block);
     }
-
 
 }
 
@@ -6173,7 +5449,6 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
         end_position[a] = extract_absolute_position_on_axis((Axis)a, line, double(area_filament_cross_section));
     }
 
-
     Vec3f rel_center = Vec3f::Zero();
 #ifndef NDEBUG
     double radius = 0.0;
@@ -6198,7 +5473,6 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
         if (! axis_pos_J.empty() && ! line.has_value(axis_pos_J, rel_center.y()))
             return;
     }
-
 
     if (m_units == EUnits::Inches)
         rel_center *= INCHES_TO_MM;
@@ -6227,38 +5501,28 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
 
     Arc arc;
 
-
     arc.start = Vec3d(m_start_position[X], m_start_position[Y], m_start_position[Z]);
-
 
     arc.center = arc.start + rel_center.cast<double>();
 
-
     arc.end = Vec3d(end_position[X], end_position[Y], end_position[Z]);
 
-
     if (std::abs(arc.end_radius() - arc.start_radius()) > 0.001) {
-
     }
 
     assert(fitting != EFitting::R || std::abs(radius - arc.start_radius()) < EPSILON);
 
-
     std::optional<float> feedrate;
     if (line.has_f()) {
-
         feedrate = 1.0f * line.f() * MMMIN_TO_MMSEC;
     }
-
 
     std::optional<float> extrusion;
     if (line.has_e())
         extrusion = end_position[E] - m_start_position[E];
 
-
     const Vec3d rel_arc_start = arc.relative_start();
     const Vec3d rel_arc_end   = arc.relative_end();
-
 
     if (arc.is_full_circle())
         arc.angle = 2.0 * PI;
@@ -6286,9 +5550,6 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
         else if (m_e_local_positioning_type == EPositioningType::Relative)
             ret[E] -= prev_position[E];
 
-
-
-
         const double lengthsScaleFactor = (m_units == EUnits::Inches) ? double(INCHES_TO_MM) : 1.0;
         for (unsigned char a = X; a <= E; ++a) {
             ret[a] /= lengthsScaleFactor;
@@ -6310,10 +5571,6 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
     };
 
     if (m_flavor == gcfMarlinFirmware) {
-
-
-
-
 
         static const float MAX_ARC_DEVIATION = 0.02f;
         static const float MIN_ARC_SEGMENTS_PER_SEC = 50;
@@ -6342,24 +5599,18 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
             AxisCoords arc_target = { 0.0f, 0.0f, m_start_position[Z], m_start_position[E] };
             for (size_t i = 1; i < segments; ++i) {
                 if (--arc_recalc_count) {
-
                     const float r_new_Y = rvec.x() * sin_T + rvec.y() * cos_T;
                     rvec.x() = rvec.x() * cos_T - rvec.y() * sin_T;
                     rvec.y() = r_new_Y;
                 }
                 else {
                     arc_recalc_count = N_ARC_CORRECTION;
-
-
-
-
                     const float Ti = i * theta_per_segment;
                     const float cos_Ti = cos(Ti);
                     const float sin_Ti = sin(Ti);
                     rvec.x() = -rel_center.x() * cos_Ti + rel_center.y() * sin_Ti;
                     rvec.y() = -rel_center.x() * sin_Ti - rel_center.y() * cos_Ti;
                 }
-
 
                 arc_target[X] = arc.center.x() + rvec.x();
                 arc_target[Y] = arc.center.y() + rvec.y();
@@ -6373,17 +5624,10 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
             }
         }
 
-
         m_start_position = m_end_position;
         internal_only_g1_line(adjust_target(end_position, prev_target), arc.delta_z() != 0.0, (segments == 1) ? feedrate : std::nullopt, extrusion);
     }
     else {
-
-
-
-
-
-
 #if 0
         static const double MM_PER_ARC_SEGMENT = 1.0;
         const size_t segments = std::max<size_t>(std::floor(travel_length / MM_PER_ARC_SEGMENT), 1);
@@ -6403,9 +5647,7 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
         AxisCoords prev_target = m_start_position;
         AxisCoords arc_target;
 
-
         arc_target[Z] = m_start_position[Z];
-
 
         arc_target[E] = m_start_position[E];
 
@@ -6427,7 +5669,6 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
                 curr_rel_arc_start.y() = r_axisi;
             }
 
-
             arc_target[X] = arc.center.x() + curr_rel_arc_start.x();
             arc_target[Y] = arc.center.y() + curr_rel_arc_start.y();
             arc_target[Z] += z_per_segment;
@@ -6439,12 +5680,10 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
             prev_target = arc_target;
         }
 
-
         m_start_position = m_end_position;
         internal_only_g1_line(adjust_target(end_position, prev_target), arc.delta_z() != 0.0, (segments == 1) ? feedrate : std::nullopt, extrusion);
     }
 }
-
 
 void GCodeProcessor::process_G4(const GCodeReader::GCodeLine& line)
 {
@@ -6456,11 +5695,8 @@ void GCodeProcessor::process_G4(const GCodeReader::GCodeLine& line)
     }
 }
 
-
 void GCodeProcessor::process_G29(const GCodeReader::GCodeLine& line)
 {
-
-
     const float value_s = 260.0;
     if (s_IsBBLPrinter){
         if(m_measure_g29_time)
@@ -6473,11 +5709,9 @@ void GCodeProcessor::process_G29(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_G10(const GCodeReader::GCodeLine& line)
 {
-
     GCodeReader::GCodeLine g10;
     g10.set(Axis::E, -this->m_parser.config().retraction_length.get_at(m_extruder_id));
     g10.set(Axis::F,  this->m_parser.config().retraction_speed.get_at(m_extruder_id) * 60);
-
     const float feedrate = m_feedrate;
     --m_g1_line_id;
     process_G1(g10);
@@ -6486,11 +5720,9 @@ void GCodeProcessor::process_G10(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_G11(const GCodeReader::GCodeLine& line)
 {
-
     GCodeReader::GCodeLine g11;
     g11.set(Axis::E, this->m_parser.config().retraction_length.get_at(m_extruder_id) + this->m_parser.config().retract_restart_extra.get_at(m_extruder_id));
     g11.set(Axis::F, this->m_parser.config().deretraction_speed.get_at(m_extruder_id) * 60);
-
     const float feedrate = m_feedrate;
     --m_g1_line_id;
     process_G1(g11);
@@ -6509,13 +5741,11 @@ void GCodeProcessor::process_G21(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_G22(const GCodeReader::GCodeLine& line)
 {
-
     store_move_vertex(EMoveType::Retract);
 }
 
 void GCodeProcessor::process_G23(const GCodeReader::GCodeLine& line)
 {
-
     store_move_vertex(EMoveType::Unretract);
 }
 
@@ -6545,8 +5775,6 @@ void GCodeProcessor::process_G28(const GCodeReader::GCodeLine& line)
     reader.parse_line(new_line_raw, [&](GCodeReader& reader, const GCodeReader::GCodeLine& gline) { new_gline = gline; });
     process_G1(new_gline);
     if (m_tool_kinematics) {
-
-
         m_rotary_position_known_axes = 0;
         for (size_t i = previous_moves; i < m_result.moves.size(); ++i)
             m_result.moves[i].clearance_pose_known = false;
@@ -6581,18 +5809,11 @@ void GCodeProcessor::process_G92(const GCodeReader::GCodeLine& line)
     if (line.has_z()) {
         m_origin[Z] = m_end_position[Z] - line.z() * lengths_scale_factor;
         any_found = true;
-
-
-
-
-
         if (m_result.belt_tilt_angle != 0.f)
             m_result.belt_z_origin = m_origin[Z];
     }
 
     if (line.has_e()) {
-
-
         m_end_position[E] = line.e() * lengths_scale_factor;
         any_found = true;
     }
@@ -6600,8 +5821,6 @@ void GCodeProcessor::process_G92(const GCodeReader::GCodeLine& line)
         simulate_st_synchronize();
 
     if (!any_found && !line.has_unknown_axis()) {
-
-
         for (unsigned char a = X; a <= E; ++a) {
             m_origin[a] = m_end_position[a];
         }
@@ -6638,10 +5857,7 @@ void GCodeProcessor::process_VM104(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M106(const GCodeReader::GCodeLine& line)
 {
-
-
     if (!line.has('P') || (line.has('P') && line.p() == 1.0f)) {
-
         float new_fan_speed;
         if (line.has_value('S', new_fan_speed))
             m_fan_speed = (100.0f / 255.0f) * new_fan_speed;
@@ -6650,13 +5866,11 @@ void GCodeProcessor::process_M106(const GCodeReader::GCodeLine& line)
     }
 }
 
-
 void GCodeProcessor::process_M900(const GCodeReader::GCodeLine &line)
 {
     float pa_value = m_pressure_advance;
     line.has_value('K', pa_value);
     m_pressure_advance = std::max(0.0f, pa_value);
-
 }
 
 void GCodeProcessor::process_M572(const GCodeReader::GCodeLine &line)
@@ -6664,7 +5878,6 @@ void GCodeProcessor::process_M572(const GCodeReader::GCodeLine &line)
     float pa_value = m_pressure_advance;
     line.has_value('S', pa_value);
     m_pressure_advance = std::max(0.0f, pa_value);
-
 }
 
 void GCodeProcessor::process_SET_PRESSURE_ADVANCE(const GCodeReader::GCodeLine& line)
@@ -6688,8 +5901,6 @@ void GCodeProcessor::process_M107(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M108(const GCodeReader::GCodeLine& line)
 {
-
-
 
     if (m_flavor != gcfSailfish)
         return;
@@ -6726,8 +5937,6 @@ void GCodeProcessor::process_VM109(const GCodeReader::GCodeLine& line)
 void GCodeProcessor::process_M132(const GCodeReader::GCodeLine& line)
 {
 
-
-
     if (line.has('X'))
         m_origin[X] = 0.0f;
 
@@ -6743,8 +5952,6 @@ void GCodeProcessor::process_M132(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M135(const GCodeReader::GCodeLine& line)
 {
-
-
 
     if (m_flavor != gcfMakerWare)
         return;
@@ -6773,7 +5980,6 @@ void GCodeProcessor::process_M191(const GCodeReader::GCodeLine& line)
 {
     float chamber_temp = 0;
     const float wait_chamber_temp_time = 720.0;
-
     if (line.has_value('S', chamber_temp) && chamber_temp > 40)
         simulate_st_synchronize(wait_chamber_temp_time);
 }
@@ -6786,12 +5992,7 @@ void GCodeProcessor::process_M201(const GCodeReader::GCodeLine& line)
             if (float value; line.has_value(m_tool_kinematics->rotary_axes()[axis].letter, value))
                 m_rotary_acceleration[axis] = std::max(0.f, value);
 
-
     float factor = ((m_flavor != gcfRepRapSprinter && m_flavor != gcfRepRapFirmware) && m_units == EUnits::Inches) ? INCHES_TO_MM : 1.0f;
-
-
-
-
 
     auto set_all_slots = [](ConfigOptionFloats &option, size_t mode, float value) {
         for (size_t slot_base = 0; slot_base < option.size(); slot_base += 2)
@@ -6812,15 +6013,10 @@ void GCodeProcessor::process_M201(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M203(const GCodeReader::GCodeLine& line)
 {
-
     if (m_flavor == gcfRepetier)
         return;
 
-
-
     float factor = (m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfSmoothie || m_flavor == gcfKlipper) ? 1.0f : MMMIN_TO_MMSEC;
-
-
 
     auto set_all_slots = [](ConfigOptionFloats &option, size_t mode, float value) {
         for (size_t slot_base = 0; slot_base < option.size(); slot_base += 2)
@@ -6850,22 +6046,17 @@ void GCodeProcessor::process_M204(const GCodeReader::GCodeLine& line)
         if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal ||
             m_time_processor.machine_envelope_processing_enabled) {
             if (line.has_value('S', value)) {
-
-
-
                 set_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 if (line.has_value('T', value))
                     set_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
             }
             else {
-
                 if (line.has_value('P', value))
                     set_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 if (line.has_value('R', value))
                     set_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 if (line.has_value('T', value))
-
                     set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
             }
         }
@@ -6912,7 +6103,6 @@ void GCodeProcessor::process_M205(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_SET_VELOCITY_LIMIT(const GCodeReader::GCodeLine& line)
 {
-
     static const std::regex square_corner_velocity_pattern("\\sSQUARE_CORNER_VELOCITY\\s*=\\s*([0-9]*\\.*[0-9]*)");
     std::smatch matches;
     if (std::regex_search(line.raw(), matches, square_corner_velocity_pattern) && matches.size() == 2) {
@@ -6955,7 +6145,6 @@ void GCodeProcessor::process_SET_VELOCITY_LIMIT(const GCodeReader::GCodeLine& li
                 set_option_value(m_time_processor.machine_limits.machine_max_speed_y, i, _speed);
         }
     }
-
 
     static const std::regex cruise_ratio_pattern("\\sMINIMUM_CRUISE_RATIO\\s*=\\s*([0-9]*\\.*[0-9]*)");
     static const std::regex accel_to_decel_pattern("\\sACCEL_TO_DECEL\\s*=\\s*([0-9]*\\.*[0-9]*)");
@@ -7006,8 +6195,6 @@ void GCodeProcessor::process_M400(const GCodeReader::GCodeLine& line)
     float value_p = 0.0;
     if (line.has_value('S', value_s) || line.has_value('P', value_p)) {
         value_s += value_p * 0.001;
-
-
         if (m_skip_end_gcode_delays)
             return;
         simulate_st_synchronize(value_s);
@@ -7029,10 +6216,6 @@ void GCodeProcessor::process_M402(const GCodeReader::GCodeLine& line)
 {
     if (m_flavor != gcfRepetier)
         return;
-
-
-
-
 
     bool has_xyz = !(line.has('X') || line.has('Y') || line.has('Z'));
 
@@ -7078,9 +6261,6 @@ void GCodeProcessor::process_M702(const GCodeReader::GCodeLine& line)
 {
     int filament_id = get_filament_id();
     if (line.has('C')) {
-
-
-
         m_time_processor.extruder_unloaded = true;
         simulate_st_synchronize(get_filament_unload_time(filament_id));
     }
@@ -7098,9 +6278,6 @@ void GCodeProcessor::process_SYNC(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_T(const GCodeReader::GCodeLine& line)
 {
-
-
-
     int   nozzle_id = -1;
     float nozzle_val = 0.f;
     if (line.has_value('H', nozzle_val))
@@ -7120,7 +6297,6 @@ void GCodeProcessor::process_M1020(const GCodeReader::GCodeLine &line)
         int eid = 0;
         eid = std::stoi(filament_id_str);
         if (eid < 0 || eid > 254) {
-
             if ((m_flavor != gcfRepRapFirmware && m_flavor != gcfRepRapSprinter) || eid != -1)
                 BOOST_LOG_TRIVIAL(error) << "Invalid M1020 command (" << line.raw() << ").";
         }
@@ -7129,8 +6305,6 @@ void GCodeProcessor::process_M1020(const GCodeReader::GCodeLine &line)
                 BOOST_LOG_TRIVIAL(error) << "Invalid M1020 command (" << line.raw() << ").";
                 return;
             }
-
-
             int   nozzle_id = -1;
             float nozzle_val = 0.f;
             if (line.has_value('H', nozzle_val))
@@ -7142,8 +6316,6 @@ void GCodeProcessor::process_M1020(const GCodeReader::GCodeLine &line)
 
 void GCodeProcessor::process_T(const std::string_view command)
 {
-
-
     process_T(command, -1);
 }
 
@@ -7156,17 +6328,11 @@ void GCodeProcessor::process_T(const std::string_view command, int nozzle_id)
 
     int curr_filament_id = get_filament_id(false);
     int curr_extruder_id = get_extruder_id(false);
-
     if (command.length() > 1) {
         if (eid < 0 || eid > 254) {
-
-
-
-
             if ((m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware) && (command == "Tx" || command == "Tc" || command == "T?" ||
                  eid == 1000 || eid == 1100 || eid == 255 || eid == 1001 || eid == 65279 || eid == 65535))
                 return;
-
 
             if ((m_flavor != gcfRepRapFirmware && m_flavor != gcfRepRapSprinter) || eid != -1)
                 BOOST_LOG_TRIVIAL(error) << "Invalid T command (" << command << ").";
@@ -7176,8 +6342,6 @@ void GCodeProcessor::process_T(const std::string_view command, int nozzle_id)
                 BOOST_LOG_TRIVIAL(error) << "Invalid T command (" << command << ").";
                 return;
             }
-
-
             process_filament_change(eid, nozzle_id);
         }
     }
@@ -7194,17 +6358,9 @@ void GCodeProcessor::init_filament_maps_and_nozzle_type_when_import_only_gcode()
     }
 }
 
-
-
-
-
-
 void GCodeProcessor::ensure_nozzle_group_result(int min_filament_count)
 {
     if (m_nozzle_group_result) {
-
-
-
         m_result.nozzle_group_result = m_nozzle_group_result;
         return;
     }
@@ -7265,12 +6421,6 @@ void GCodeProcessor::ensure_nozzle_group_result(int min_filament_count)
 
 bool GCodeProcessor::use_multi_nozzle_change_time_model() const
 {
-
-
-
-
-
-
     if (m_nozzle_diameter.size() > 1)
         return true;
     for (int count : m_extruder_max_nozzle_count)
@@ -7278,22 +6428,6 @@ bool GCodeProcessor::use_multi_nozzle_change_time_model() const
             return true;
     return false;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 std::optional<MultiNozzleUtils::NozzleInfo> GCodeProcessor::resolve_target_nozzle(
     const MultiNozzleUtils::NozzleGroupResultBase &group, int id, int nozzle_id) const
@@ -7311,13 +6445,7 @@ std::optional<MultiNozzleUtils::NozzleInfo> GCodeProcessor::resolve_target_nozzl
 
 void GCodeProcessor::process_filament_change(int id, int nozzle_id)
 {
-
-
     if (!use_multi_nozzle_change_time_model() || !m_result.nozzle_group_result) {
-
-
-
-
         if (m_nozzle_group_result) {
             if (auto info = resolve_target_nozzle(*m_nozzle_group_result, id, nozzle_id))
                 m_nozzle_status_recorder.set_nozzle_status(info->group_id, id, info->extruder_id);
@@ -7331,13 +6459,11 @@ void GCodeProcessor::process_filament_change(int id, int nozzle_id)
     const int prev_filament_id = get_filament_id(false);
     float     extra_time       = 0.0f;
 
-
     if (prev_filament_id == id && nozzle_id == -1)
         return;
 
     if (prev_extruder_id != -1)
         m_last_filament_id[prev_extruder_id] = static_cast<unsigned char>(prev_filament_id);
-
 
     std::optional<MultiNozzleUtils::NozzleInfo> target_nozzle_info = resolve_target_nozzle(*m_result.nozzle_group_result, id, nozzle_id);
     if (!target_nozzle_info)
@@ -7354,11 +6480,6 @@ void GCodeProcessor::process_filament_change(int id, int nozzle_id)
     const bool extruder_change          = new_extruder_id != old_extruder_id;
     const bool nozzle_in_extruder_change = new_nozzle_id_in_extruder != old_nozzle_id_in_extruder;
     const bool filament_in_nozzle_change = new_filament_id != old_filament_in_nozzle;
-
-
-
-
-
 
     if (prev_extruder_id != -1)
         process_filaments(CustomGCode::ToolChange);
@@ -7391,12 +6512,9 @@ void GCodeProcessor::process_filament_change(int id, int nozzle_id)
         m_filament_id[new_extruder_id] = static_cast<unsigned char>(new_filament_id);
     m_extruder_id = static_cast<unsigned char>(new_extruder_id);
 
-
     m_nozzle_status_recorder.set_nozzle_status(new_nozzle_id_in_extruder, new_filament_id, new_extruder_id);
 
     m_cp_color.current = m_extruder_colors[new_filament_id];
-
-
 
     store_move_vertex(EMoveType::Tool_change);
 
@@ -7444,7 +6562,6 @@ void GCodeProcessor::process_filament_change(int id)
         m_last_filament_id[prev_extruder_id] = prev_filament_id;
 
     if (prev_extruder_id == next_extruder_id) {
-
         assert(prev_extruder_id != -1);
         process_filaments(CustomGCode::ToolChange);
         m_filament_id[next_extruder_id] = next_filament_id;
@@ -7459,7 +6576,6 @@ void GCodeProcessor::process_filament_change(int id)
     }
     else {
         if (prev_extruder_id == -1) {
-
             m_extruder_id = next_extruder_id;
             m_filament_id[next_extruder_id] = next_filament_id;
             m_time_processor.extruder_unloaded = false;
@@ -7468,12 +6584,9 @@ void GCodeProcessor::process_filament_change(int id)
             filament_load_time_delta += filament_load_time;
         }
         else {
-
             process_filaments(CustomGCode::ToolChange);
-
             m_extruder_id = next_extruder_id;
             if (m_last_filament_id[next_extruder_id] == (unsigned char)(-1)) {
-
                 m_filament_id[next_extruder_id] = next_filament_id;
                 m_time_processor.extruder_unloaded = false;
                 const float filament_load_time = get_filament_load_time(static_cast<size_t>(next_filament_id));
@@ -7481,7 +6594,6 @@ void GCodeProcessor::process_filament_change(int id)
                 filament_load_time_delta += filament_load_time;
             }
             else if (m_last_filament_id[next_extruder_id] != next_filament_id) {
-
                 m_filament_id[next_extruder_id] = next_filament_id;
                 filament_changes_delta += 1;
                 const float filament_unload_time = get_filament_unload_time(static_cast<size_t>(prev_filament_id));
@@ -7511,17 +6623,7 @@ void GCodeProcessor::process_filament_change(int id)
 
     m_cp_color.current = m_extruder_colors[next_filament_id];
 
-
-
-
-
-
     store_move_vertex(EMoveType::Tool_change);
-
-
-
-
-
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -7530,9 +6632,6 @@ void GCodeProcessor::process_filament_change(int id)
         TimeBlock block;
         block.move_id             = static_cast<unsigned int>(m_result.moves.size()) - 1;
         block.move_type           = EMoveType::Tool_change;
-
-
-
         block.skippable_type      = m_skippable_type;
         block.layer_id            = std::max<unsigned int>(1, m_layer_id);
         block.g1_line_id          = m_g1_line_id;
@@ -7552,17 +6651,13 @@ void GCodeProcessor::process_filament_change(int id)
 void GCodeProcessor::set_print(Print* print)
 {
     m_print = print;
-
-
     m_keep_tips = print != nullptr && std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject* object) {
         return object->config().nonplanar_mode.value != NonplanarMode::Off;
     });
-
-
     m_marlin_junctions = print != nullptr && (Nonplanar::requests_conformal_shells(*print) ||
                                               Nonplanar::curved_planar_measurement() ||
                                               std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject *object) {
-                                                  return object->config().nonplanar_mode.value == NonplanarMode::CurvedTops;
+                                                  return curved_tops_mode(object->config().nonplanar_mode.value);
                                               }) ||
                                               print->config().nonplanar_kinematics.value != RotaryLayout::None);
 }
@@ -7624,18 +6719,6 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_result.print_statistics.total_travel_distance += m_travel_dist;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     const float store_z = (m_processing_start_custom_gcode && m_result.belt_tilt_angle == 0.f)
         ? m_first_layer_height
         : m_end_position[Z] - m_z_offset;
@@ -7643,11 +6726,8 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     GCodeProcessorResult::MoveState state;
     state.fan_speed = m_fan_speed;
     state.temperature = m_extruder_temps[filament_id];
-
     state.pressure_advance = m_pressure_advance;
-
     state.acceleration = move_acceleration;
-
     state.jerk = move_jerk;
     state.print_z = m_print_z;
     state.object_label_id = m_object_label_id;
@@ -7663,7 +6743,6 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_extrusion_role,
         static_cast<unsigned char>(filament_id),
         m_cp_color.current,
-
         Vec3f(m_end_position[X] + m_x_offset, m_end_position[Y] + m_y_offset, store_z) + m_extruder_offsets[filament_id],
         static_cast<float>(m_end_position[E] - m_start_position[E]),
         m_feedrate,
@@ -7678,13 +6757,11 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     });
     m_result.moves.back().clearance_pose_known = !m_tool_kinematics || m_rotary_position_known_axes == 7;
     if (keep_joints()) {
-
         m_result.joints.resize(m_result.moves.size() - 1);
         m_result.joints.push_back(m_joints);
         if (!m_tool_kinematics)
             m_result.joints.back().xyz = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]);
     }
-
     if (!internal_only)
         m_result.move_type_distances[size_t(type)] += (type == EMoveType::Retract || type == EMoveType::Unretract) ?
             std::fabs(m_result.moves.back().delta_extruder) : m_travel_dist;
@@ -7692,7 +6769,6 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     if (type == EMoveType::Seam) {
         m_seams_count++;
     }
-
 
     if (type == EMoveType::Color_change || type == EMoveType::Pause_Print) {
         for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
@@ -7715,22 +6791,18 @@ void GCodeProcessorResult::ObjectMass::add(const Sum &sum, const BoundingBoxf3 &
 
 void GCodeProcessor::add_object_mass(int filament_id, float volume)
 {
-
     const ExtrusionRole role = m_extrusion_role;
     if (volume <= 0.f || role == erNone || role == erSkirt || role == erWipeTower || role == erCustom || role == erMixed)
         return;
 
     const bool   has_density = size_t(filament_id) < m_result.filament_densities.size() && m_result.filament_densities[filament_id] > 0.f;
     const double mass        = double(volume) * (has_density ? m_result.filament_densities[filament_id] : DEFAULT_FILAMENT_DENSITY);
-
     const Vec3d half_height = 0.5 * double(m_height) * Vec3d::UnitZ();
     const Vec3d offset      = Vec3d(m_x_offset, m_y_offset, -m_z_offset) - half_height + m_extruder_offsets[filament_id].cast<double>();
     const Vec3d start       = Vec3d(m_start_position[X], m_start_position[Y], m_start_position[Z]) + offset;
     const Vec3d end         = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]) + offset;
-
     const GCodeProcessorResult::ObjectMass::Sum sum{ mass, double(volume), 0.5 * mass * (start + end),
                                                      mass / 3. * (start.cwiseProduct(start) + start.cwiseProduct(end) + end.cwiseProduct(end)) };
-
     BoundingBoxf3 extent;
     extent.merge(start.cwiseMin(end) - half_height);
     extent.merge(start.cwiseMax(end) + half_height);
@@ -7738,7 +6810,6 @@ void GCodeProcessor::add_object_mass(int filament_id, float volume)
     const size_t layer = std::max<unsigned int>(1, m_layer_id) - 1;
 
     m_result.plate_mass.add(sum, extent, layer);
-
     if (role == erBrim || !m_mass_locator)
         return;
     const auto add = [&sum, &extent, layer](std::vector<GCodeProcessorResult::ObjectMass> &masses, int index) {
@@ -7748,7 +6819,6 @@ void GCodeProcessor::add_object_mass(int filament_id, float volume)
             masses.resize(index + 1);
         masses[index].add(sum, extent, layer);
     };
-
     const MassLocation location = m_mass_locator(0.5 * (start + end) + half_height, !part);
     if (part) {
         add(m_result.object_masses, location.object);
@@ -7777,7 +6847,6 @@ void GCodeProcessor::set_extrusion_role(ExtrusionRole role)
     m_used_filaments.process_role_cache(this);
     m_extrusion_role = role;
 }
-
 
 void GCodeProcessor::set_skippable_type(const std::string_view type)
 {
@@ -7809,9 +6878,6 @@ float GCodeProcessor::minimum_travel_feedrate(PrintEstimatedStatistics::ETimeMod
     return std::max(feedrate, get_option_value(m_time_processor.machine_limits.machine_min_travel_rate, static_cast<size_t>(mode)));
 }
 
-
-
-
 int GCodeProcessor::get_machine_config_idx() const
 {
     const int extruder_id = get_extruder_id(false);
@@ -7819,16 +6885,12 @@ int GCodeProcessor::get_machine_config_idx() const
         return 0;
     const int nozzle_id = m_nozzle_status_recorder.get_nozzle_in_extruder(extruder_id);
     auto nozzle_info = m_nozzle_group_result->get_nozzle_from_id(nozzle_id);
-
     if (!nozzle_info || extruder_id >= (int) m_result.extruder_types.size())
         return 0;
     return std::max(0, get_config_index_base(nozzle_info->volume_type, m_result.extruder_types[extruder_id],
                                              extruder_id + 1, m_result.printer_extruder_variant,
                                              m_result.printer_extruder_id));
 }
-
-
-
 
 float GCodeProcessor::get_axis_max_feedrate(PrintEstimatedStatistics::ETimeMode mode, Axis axis) const
 {
@@ -7897,17 +6959,12 @@ float GCodeProcessor::get_junction_deviation(PrintEstimatedStatistics::ETimeMode
 {
     const size_t id = static_cast<size_t>(mode);
 
-
-
-
     if (m_flavor == gcfKlipper) {
-
         const float scv = get_option_value(m_time_processor.machine_limits.machine_max_jerk_x, id);
         if (scv <= 0.0f || acceleration <= 0.0f)
             return 0.0f;
         return sqr(scv) * (std::sqrt(2.0f) - 1.0f) / acceleration;
     }
-
 
     if (m_flavor == gcfMarlinFirmware)
         return get_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, id);
@@ -7929,9 +6986,7 @@ float GCodeProcessor::calc_junction_acceleration(const TimeBlock& block, const V
     return junction_acceleration;
 }
 
-
 static constexpr float KlipperExtruderCornerVelocity = 1.0f;
-
 
 float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const TimeMachine::State& prev,
                                                    const TimeMachine::State& curr, bool has_prev_move,
@@ -7943,13 +6998,6 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
         return -1.0f;
     if (!has_prev_move)
         return 0.0f;
-
-
-
-
-
-
-
     float junction_cos_theta = (-prev.jd_unit_vec).dot(curr.jd_unit_vec);
     if (junction_cos_theta > 0.999999f)
         return 0.0f;
@@ -7965,10 +7013,6 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
     float vmax_junction_sqr = (junction_acceleration * junction_deviation * sin_theta_d2) / (1.0f - sin_theta_d2);
 
     if (m_flavor == gcfKlipper && prev_block != nullptr) {
-
-
-
-
         const float scv = get_option_value(m_time_processor.machine_limits.machine_max_jerk_x, static_cast<size_t>(mode));
         const float toolhead_accel = std::max(get_acceleration(mode), block.acceleration);
         const float cos_theta_d2 = std::sqrt(0.5f * (1.0f + junction_cos_theta));
@@ -7980,8 +7024,6 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
             vmax_junction_sqr  = std::min({ r_jd * jd * accel, 2.0f * block.distance * block.acceleration * q,
                                             2.0f * prev_block->distance * prev_block->acceleration * q });
         }
-
-
         if (curr.feedrate > 0.0f && prev.feedrate > 0.0f) {
             const float diff_r = std::abs(curr.axis_feedrate[E] / curr.feedrate - prev.axis_feedrate[E] / prev.feedrate);
             if (diff_r > 0.0f)
@@ -7989,11 +7031,7 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
         }
     }
 
-
-
     if (m_flavor != gcfKlipper && block.distance < 1.0f && junction_cos_theta < -0.7071067812f) {
-
-
         const float neg = junction_cos_theta < 0.0f ? -1.0f : 1.0f;
         const float t = neg * junction_cos_theta;
         const float asinx = 0.032843707f + t * (-1.451838349f + t * (29.66153956f + t * (-131.1123477f +
@@ -8001,7 +7039,6 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
         const float junction_theta = float(0.5 * M_PI) + neg * asinx;
         vmax_junction_sqr = std::min(vmax_junction_sqr, (block.distance * junction_acceleration) / junction_theta);
     }
-
 
     vmax_junction_sqr = std::min(vmax_junction_sqr, std::min(sqr(block.feedrate_profile.cruise), sqr(prev.feedrate)));
     return std::sqrt(vmax_junction_sqr);
@@ -8027,13 +7064,11 @@ float GCodeProcessor::get_axis_max_jerk(PrintEstimatedStatistics::ETimeMode mode
 
 Vec3f GCodeProcessor::get_xyz_max_jerk(PrintEstimatedStatistics::ETimeMode mode) const
 {
-
     const size_t id = static_cast<size_t>(mode);
     float jx = 0.0f;
     float jy = 0.0f;
     float jz = 0.0f;
     const float jd = get_option_value(m_time_processor.machine_limits.machine_max_junction_deviation, id);
-
 
     if (m_flavor != gcfMarlinFirmware || jd <= 0.0f)
     {
@@ -8062,7 +7097,6 @@ void GCodeProcessor::set_retract_acceleration(PrintEstimatedStatistics::ETimeMod
     size_t id = static_cast<size_t>(mode);
     if (id < m_time_processor.machines.size()) {
         m_time_processor.machines[id].retract_acceleration = (m_time_processor.machines[id].max_retract_acceleration == 0.0f) ? value :
-
             std::min(value, m_time_processor.machines[id].max_retract_acceleration);
     }
 }
@@ -8078,7 +7112,6 @@ void GCodeProcessor::set_acceleration(PrintEstimatedStatistics::ETimeMode mode, 
     size_t id = static_cast<size_t>(mode);
     if (id < m_time_processor.machines.size()) {
         m_time_processor.machines[id].acceleration = (m_time_processor.machines[id].max_acceleration == 0.0f) ? value :
-
             std::min(value, m_time_processor.machines[id].max_acceleration);
     }
 }
@@ -8094,29 +7127,24 @@ void GCodeProcessor::set_travel_acceleration(PrintEstimatedStatistics::ETimeMode
     size_t id = static_cast<size_t>(mode);
     if (id < m_time_processor.machines.size()) {
         m_time_processor.machines[id].travel_acceleration = (m_time_processor.machines[id].max_travel_acceleration == 0.0f) ? value :
-
             std::min(value, m_time_processor.machines[id].max_travel_acceleration);
     }
 }
 
 float GCodeProcessor::get_filament_load_time(size_t extruder_id)
 {
-
     return m_time_processor.extruder_unloaded ? 0.0f : m_time_processor.filament_load_times;
 }
 
 float GCodeProcessor::get_filament_unload_time(size_t extruder_id)
 {
-
     return m_time_processor.extruder_unloaded ? 0.0f : m_time_processor.filament_unload_times;
 }
 
 float GCodeProcessor::get_extruder_change_time(size_t extruder_id)
 {
-
     return m_time_processor.machine_tool_change_time;
 }
-
 
 int GCodeProcessor::get_filament_vitrification_temperature(size_t extrude_id)
 {
@@ -8128,8 +7156,6 @@ int GCodeProcessor::get_filament_vitrification_temperature(size_t extrude_id)
 
 void GCodeProcessor::process_custom_gcode_time(CustomGCode::Type code)
 {
-
-
     simulate_st_synchronize();
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -8154,7 +7180,6 @@ void GCodeProcessor::process_filaments(CustomGCode::Type code)
         m_used_filaments.process_model_cache(this);
         m_used_filaments.process_support_cache(this);
         m_used_filaments.process_total_volume_cache(this);
-
         size_t last_extruder_id = get_extruder_id();
         m_remaining_volume[last_extruder_id] = m_nozzle_volume[last_extruder_id];
     }
@@ -8162,7 +7187,6 @@ void GCodeProcessor::process_filaments(CustomGCode::Type code)
 
 void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_last_n_blocks, float additional_time, EMoveType target_move_type, bool is_final)
 {
-
     std::vector<TimeMachine::ActualSpeedMove> actual_speed_moves;
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -8171,11 +7195,8 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
             actual_speed_moves = std::move(machine.actual_speed_moves);
     }
 
-
-
     assert(&result == &m_result);
     GCodeProcessorResult::Moves& moves = result.moves;
-
     ChunkedVector<JointPose>& joints = result.joints;
     const bool with_joints = !joints.empty();
     size_t inserted_actual_speed_moves_count = 0;
@@ -8185,11 +7206,9 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
         if (actual_speed_moves[i].position.has_value())
             continue;
         const unsigned int move_id = actual_speed_moves[i].move_id;
-
         if (move_id < moves.size() && (kept == 0 || move_id > actual_speed_moves[kept - 1].move_id)) {
             inserted_actual_speed_moves_count += i - group_start;
             moves[move_id].actual_feedrate = actual_speed_moves[i].actual_feedrate;
-
             if (move_id + 1 < moves.size() && moves[move_id + 1].type == EMoveType::Seam)
                 moves[move_id + 1].actual_feedrate = actual_speed_moves[i].actual_feedrate;
             for (size_t j = group_start; j <= i; ++j, ++kept)
@@ -8199,7 +7218,6 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
         group_start = i + 1;
     }
     actual_speed_moves.erase(actual_speed_moves.begin() + kept, actual_speed_moves.end());
-
 
     size_t read  = moves.size();
     moves.resize(moves.size() + inserted_actual_speed_moves_count);
@@ -8246,7 +7264,6 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
     }
     assert(read == write);
 
-
     std::reverse(m_actual_speed_id_map.begin(), m_actual_speed_id_map.end());
     const auto remap_move_id = [&](size_t id) {
         auto it = std::lower_bound(m_actual_speed_id_map.begin(), m_actual_speed_id_map.end(), id,
@@ -8255,8 +7272,6 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
             return size_t(it->second);
         return it == m_actual_speed_id_map.begin() ? id : id + (it - 1)->second - (it - 1)->first;
     };
-
-
     if (const auto id = m_options_z_corrector.move_id())
         m_options_z_corrector.remap_move_id(remap_move_id(*id));
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
@@ -8307,14 +7322,11 @@ double GCodeProcessor::extract_absolute_position_on_axis(Axis axis, const GCodeR
 
         const double lengthsScaleFactor = (m_units == EUnits::Inches) ? double(INCHES_TO_MM) : 1.0;
         double ret = line.value(Slic3r::Axis(axis)) * lengthsScaleFactor;
-
-
         return is_relative ? m_start_position[axis] + ret : m_origin[axis] + ret;
     }
     else
         return m_start_position[axis];
 }
-
 
 void GCodeProcessor::update_slice_warnings()
 {
@@ -8348,12 +7360,10 @@ void GCodeProcessor::update_slice_warnings()
         m_result.warnings.push_back(warning);
     }
 
-
     warning.params.clear();
     warning.level=1;
 
     std::vector<int> nozzle_hrc_lists(m_result.nozzle_type.size(), 0);
-
     for (size_t idx = 0; idx < m_result.nozzle_type.size(); ++idx) {
         nozzle_hrc_lists[idx] = m_result.nozzle_hrc;
         if(nozzle_hrc_lists[idx] <= 0)
@@ -8382,7 +7392,6 @@ void GCodeProcessor::update_slice_warnings()
         m_result.warnings.push_back(warning);
     }
 
-
     warning.params.clear();
     warning.level = 1;
     if (!m_result.support_traditional_timelapse) {
@@ -8390,7 +7399,6 @@ void GCodeProcessor::update_slice_warnings()
         warning.msg        = NOT_SUPPORT_TRADITIONAL_TIMELAPSE;
         warning.error_code = "10018003";
         m_result.warnings.push_back(warning);
-
 
         warning.level      = 3;
         warning.error_code = "1000C003";

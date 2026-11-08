@@ -1,5 +1,3 @@
-
-
 import * as project from '../flow/project';
 import { setState, toast } from '../state/store';
 
@@ -8,9 +6,7 @@ import type { ProjectMeta } from '../flow/project';
 
 export { flushProject, storing, type ProjectMeta } from '../flow/project';
 
-
 export type ListedProject = ProjectMeta & { folderId: string | null };
-
 
 export const clean = (p: Partial<ProjectMeta> | null | undefined): ListedProject | null => (!p || typeof p.id !== 'string' ? null : {
   id: p.id,
@@ -18,17 +14,14 @@ export const clean = (p: Partial<ProjectMeta> | null | undefined): ListedProject
   savedAt: Number.isFinite(p.savedAt) ? Number(p.savedAt) : 0,
   ...(Number.isSafeInteger(p.revision) ? { revision: p.revision } : {}),
   objects: Number.isFinite(p.objects) ? Number(p.objects) : 0,
-
   thumbnail: typeof p.thumbnail === 'string' && (p.thumbnail.startsWith('data:image/') || p.thumbnail.startsWith('/api/project-thumbnails/')) ? p.thumbnail : null,
   folderId: typeof (p as ListedProject).folderId === 'string' ? (p as ListedProject).folderId : null,
 });
-
 
 export function useProjects(): ListedProject[] | null {
   const list = project.useProjects();
   return useMemo(() => (Array.isArray(list) ? list.map(clean).filter((p): p is ListedProject => !!p) : null), [list]);
 }
-
 
 export async function listTrash(): Promise<ListedProject[]> {
   const { projectJson } = await import('../persist/project-wire');
@@ -51,5 +44,4 @@ export const newProject = () => guard('New project failed', async () => {const c
 export const openProject = (id: string) => guard('Open failed', async () => { await project.openProject(id); setState({ tab: 'prepare' }); }, undefined);
 export const renameProject = (id: string, name: string) => guard('Rename failed', () => project.renameProject(id, name), undefined);
 export const duplicateProject = (id: string) => guard('Duplicate failed', () => project.duplicateProject(id), null);
-
 export const deleteProject = (id: string) => guard('Delete failed', () => project.deleteProject(id), null);

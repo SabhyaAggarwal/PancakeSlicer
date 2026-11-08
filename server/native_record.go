@@ -32,7 +32,6 @@ func nativeOutputHashes(raw []byte) (hashes map[string]bool, failed int) {
 		digest := func(h string) bool { b, err := hex.DecodeString(h); return err == nil && len(b) == 32 }
 		zero := func(n *int) bool { return n != nil && *n == 0 }
 		passed := json.Unmarshal(manifest[name], &proof) == nil && proof.Native && proof.Audited && proof.Total > 0 && proof.Passed == proof.Total
-
 		if schema >= 3 && !(passed && digest(proof.Gcode) && digest(proof.Package) && zero(proof.Hits) && proof.Verifier != nil &&
 			zero(proof.Verifier.Hits) && zero(proof.Verifier.MachineHits)) {
 			failed++

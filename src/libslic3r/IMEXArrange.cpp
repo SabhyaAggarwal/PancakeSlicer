@@ -24,11 +24,8 @@ namespace Slic3r {
 
 namespace {
 
-
-
 constexpr const char* kFenceName = "IMEXOutsidePrimaryZone";
 constexpr const char* kStripName = "IMEXCollisionZone";
-
 
 bool same_zone(const BoundingBoxf& a, const BoundingBoxf& b)
 {
@@ -41,8 +38,6 @@ BoundingBox inset(BoundingBox box, const Point& by)
     box.max -= by;
     return box;
 }
-
-
 
 std::vector<BoundingBox> boxes_around(const BoundingBox& bed, const BoundingBox& zone)
 {
@@ -74,14 +69,12 @@ std::optional<ImexArrangeZones> imex_arrange_zones(const ImexZoneLayout& layout)
 
 void ImexArrangeInput::read_config(const DynamicPrintConfig& full_config)
 {
-
     added_plate.reset();
     if (adds_plates) {
         const auto* mode = full_config.option<ConfigOptionString>("imex_parallel_mode");
         added_plate      = imex_arrange_zones(compute_imex_zone_layout(full_config, kImexPrimaryMode, mode ? mode->value : std::string(),
                                                                        get_extents(full_config.opt<ConfigOptionPoints>("printable_area")->values)));
     }
-
 
     const auto* brim_type = full_config.option<ConfigOptionEnum<BrimType>>("brim_type");
     brim = !brim_type || brim_type->value == btNoBrim || brim_type->value == btInnerOnly ?
@@ -99,8 +92,6 @@ ImexArranger::ImexArranger(const ImexArrangeInput& input, const arrangement::Arr
         if (input.beds[i])
             m_beds.push_back({int(i), *input.beds[i]});
 
-
-
     const auto& first = input.beds.empty() ? std::nullopt : input.beds.front();
     if (first &&
         std::all_of(input.beds.begin(), input.beds.end(),
@@ -108,11 +99,9 @@ ImexArranger::ImexArranger(const ImexArrangeInput& input, const arrangement::Arr
         (!input.adds_plates || (input.added_plate && same_zone(input.added_plate->primary_zone, first->primary_zone))))
         m_shared_room = room_in(first->primary_zone);
 
-
     if (input.adds_plates && input.added_plate)
         for (int bed_idx = int(input.beds.size()); bed_idx < MAX_NUM_PLATES; ++bed_idx)
             m_beds.push_back({bed_idx, *input.added_plate});
-
 
     const Point strip_margin = m_margin + Point::Constant(scaled(input.brim));
     for (const Bed& b : m_beds) {
@@ -166,7 +155,6 @@ void ImexArranger::finish(arrangement::ArrangePolygons&       items,
         if (crosses_keep_out(part, part.bed_idx))
             part.bed_idx = arrangement::UNARRANGED;
 
-
     if (m_shared_room || !m_adds_plates)
         return;
 
@@ -182,7 +170,6 @@ void ImexArranger::finish(arrangement::ArrangePolygons&       items,
             continue;
 
         arrangement::ArrangePolygons parts, bed_fixed;
-
         for (size_t i : on_bed) {
             parts.push_back(before[i]);
             parts.back().bed_idx = 0;
@@ -193,17 +180,13 @@ void ImexArranger::finish(arrangement::ArrangePolygons&       items,
                 bed_fixed.back().bed_idx = 0;
             }
         arrangement::arrange(parts, bed_fixed, room->polygon().points, one_plate);
-
         if (one_plate.stopcondition && one_plate.stopcondition())
             return;
-
 
         if (!std::all_of(parts.begin(), parts.end(), [&](const arrangement::ArrangePolygon& part) {
                 return part.bed_idx == 0 && !crosses_keep_out(part, b.bed_idx);
             }))
             continue;
-
-
 
         std::vector<int> ids;
         for (size_t i : on_bed)

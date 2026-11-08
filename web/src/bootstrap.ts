@@ -11,11 +11,11 @@ import { registerServiceWorker } from './sw';
 const root = document.getElementById('root')!;
 registerServiceWorker();
 window.addEventListener('load', () => void import('./build-update').then((m) => m.watchForNewBuild()), { once: true });
-
-
 if (typeof Worker !== 'undefined') void import('./api/worker').then((m) => m.catalogWorker()).catch(() => {});
+const main = import('./main');
+main.catch(() => {});
 checkBrowserSupport().then(() => {
-  import('./main').catch(() => showBrowserNotice(root,
+  main.then((m) => m.start(), () => showBrowserNotice(root,
     'The application could not load. Check your connection and reload the page.', 'Unable to start PancakeSlicer'));
 }, (error: unknown) => showBrowserNotice(root,
   unsupportedBrowserMessage(error instanceof Error ? error.message : String(error))));

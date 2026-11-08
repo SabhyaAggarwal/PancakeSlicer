@@ -1,6 +1,6 @@
 {
 	"name": "Voron",
-	"version": "02.04.00.08",
+	"version": "02.04.00.09",
 	"force_update": "0",
 	"description": "Voron configurations",
 	"machine_model_list": [
@@ -99,20 +99,20 @@
 			"sub_path": "process/fdm_process_voron_common_1_0.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Voron 0.1",
-			"sub_path": "process/0.20mm Non-planar top @Voron 0.1.json"
+			"name": "0.20mm Smoothest tops @Voron 0.1",
+			"sub_path": "process/0.20mm Smoothest tops @Voron 0.1.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Voron 2.4",
-			"sub_path": "process/0.20mm Non-planar top @Voron 2.4.json"
+			"name": "0.20mm Smoothest tops @Voron 2.4",
+			"sub_path": "process/0.20mm Smoothest tops @Voron 2.4.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Voron Switchwire",
-			"sub_path": "process/0.20mm Non-planar top @Voron Switchwire.json"
+			"name": "0.20mm Smoothest tops @Voron Switchwire",
+			"sub_path": "process/0.20mm Smoothest tops @Voron Switchwire.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Voron Trident",
-			"sub_path": "process/0.20mm Non-planar top @Voron Trident.json"
+			"name": "0.20mm Smoothest tops @Voron Trident",
+			"sub_path": "process/0.20mm Smoothest tops @Voron Trident.json"
 		},
 		{
 			"name": "0.05mm Fine 0.15 nozzle @Voron",

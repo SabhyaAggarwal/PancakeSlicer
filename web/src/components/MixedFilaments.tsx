@@ -1,7 +1,5 @@
 import { Check } from './Check';
 import { Range } from './Range';
-
-
 import { Dropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import { ActionMenu } from './Menu';
@@ -9,7 +7,6 @@ import { getState, useStore, type Mix, type State } from '../state/store';
 import { addMix, blend, broken, componentColour, deleteMixes, editMix, filamentType, physicalCount, recommendations, SLOTS_MAX, watchColours } from '../plater/mixed';
 import { filamentColor } from '../plater/filamentColor';
 import { confirmDialog } from '../actions';
-import { IconButton } from './Icon';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import './MixedFilaments.css';
 
@@ -19,8 +16,6 @@ const ramp = (s: State, m: Mix) => {
   return `linear-gradient(to bottom, ${m.gradient ? b : a}, ${m.gradient ? a : b})`;
 };
 const swatch = (s: State, m: Mix, i: number) => (m.gradient !== null && m.components.length === 2 ? ramp(s, m) : filamentColor(s, i + 1));
-
-
 
 export default function MixedFilaments({ close }: { close(): void }) {
   const mixes = useStore((s) => s.mixes);
@@ -50,8 +45,8 @@ export default function MixedFilaments({ close }: { close(): void }) {
                   ))}
                   {m.gradient === null && <em>{m.ratios.map((r) => `${r}%`).join(' ')}</em>}
                 </button>
-                <IconButton icon={bad ? 'error' : 'menu_filament'} title={bad ? 'Broken component references' : 'Edit, merge or delete'}
-                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.slot === i ? null : { slot: i, x: Math.min(r.left, window.innerWidth - 230), y: r.bottom }); }} />
+                <button type="button" className={`icon-btn mixed-more${bad ? ' broken' : ''}`} aria-label={bad ? 'Broken component references' : 'Edit, merge or delete'} title={bad ? 'Broken component references' : 'Edit, merge or delete'}
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.slot === i ? null : { slot: i, x: Math.min(r.left, window.innerWidth - 230), y: r.bottom }); }}>⋯</button>
               </div>
             );
           })}
@@ -72,7 +67,6 @@ export default function MixedFilaments({ close }: { close(): void }) {
     </Modal>
   );
 }
-
 
 function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
   const s = getState();

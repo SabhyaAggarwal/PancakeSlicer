@@ -8,7 +8,6 @@ const choices=[{id:'simple',label:'Simple'},{id:'advanced',label:'Advanced'},{id
 export function VisibilityControl({value,onChange,disabled=false}: {value:OptionMode;onChange(value:'simple'|'advanced'|'develop'):void;disabled?:boolean}) {
   return <div className="visibility-control"><RadioGroup.Root className="seg slant-seg detail-options" aria-label="Settings detail" value={value === 'developer' ? 'develop' : value} onValueChange={v=>onChange(v as 'simple'|'advanced'|'develop')} disabled={disabled}>{choices.map(o=><RadioGroup.Item key={o.id} value={o.id} className="detail-option" data-detail={o.id}>{o.label}</RadioGroup.Item>)}</RadioGroup.Root></div>;
 }
-
 export function SettingsDetail({compact = false}: {compact?: boolean}) {
   const value=useStore(effectiveMode);
   const pick=(mode:'simple'|'advanced'|'develop')=>{

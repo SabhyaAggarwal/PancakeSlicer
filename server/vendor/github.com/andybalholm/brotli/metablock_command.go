@@ -6,6 +6,8 @@ package brotli
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Greedy block splitter for one block category (literal, command or distance).
+ */
 type blockSplitterCommand struct {
 	alphabet_size_     uint
 	min_block_size_    uint
@@ -25,7 +27,8 @@ type blockSplitterCommand struct {
 func initBlockSplitterCommand(self *blockSplitterCommand, alphabet_size uint, min_block_size uint, split_threshold float64, num_symbols uint, split *blockSplit, histograms *[]histogramCommand, histograms_size *uint) {
 	var max_num_blocks uint = num_symbols/min_block_size + 1
 	var max_num_types uint = brotli_min_size_t(max_num_blocks, maxNumberOfBlockTypes+1)
-
+	/* We have to allocate one more histogram than the maximum number of block
+	   types for the current histogram when the meta-block is too big. */
 	self.alphabet_size_ = alphabet_size
 
 	self.min_block_size_ = min_block_size
@@ -48,19 +51,24 @@ func initBlockSplitterCommand(self *blockSplitterCommand, alphabet_size uint, mi
 	}
 	self.histograms_ = *histograms
 
+	/* Clear only current histogram. */
 	histogramClearCommand(&self.histograms_[0])
 
 	self.last_histogram_ix_[1] = 0
 	self.last_histogram_ix_[0] = self.last_histogram_ix_[1]
 }
 
+/* Does either of three things:
+   (1) emits the current block with a new block type;
+   (2) emits the current block with the type of the second last block;
+   (3) merges the current block with the last block. */
 func blockSplitterFinishBlockCommand(self *blockSplitterCommand, is_final bool) {
 	var split *blockSplit = self.split_
 	var last_entropy []float64 = self.last_entropy_[:]
 	var histograms []histogramCommand = self.histograms_
 	self.block_size_ = brotli_max_size_t(self.block_size_, self.min_block_size_)
 	if self.num_blocks_ == 0 {
-
+		/* Create first block. */
 		split.lengths[0] = uint32(self.block_size_)
 
 		split.types[0] = 0
@@ -88,7 +96,7 @@ func blockSplitterFinishBlockCommand(self *blockSplitterCommand, is_final bool) 
 		}
 
 		if split.num_types < maxNumberOfBlockTypes && diff[0] > self.split_threshold_ && diff[1] > self.split_threshold_ {
-
+			/* Create new block. */
 			split.lengths[self.num_blocks_] = uint32(self.block_size_)
 
 			split.types[self.num_blocks_] = byte(split.num_types)
@@ -108,6 +116,7 @@ func blockSplitterFinishBlockCommand(self *blockSplitterCommand, is_final bool) 
 		} else if diff[1] < diff[0]-20.0 {
 			split.lengths[self.num_blocks_] = uint32(self.block_size_)
 			split.types[self.num_blocks_] = split.types[self.num_blocks_-2]
+			/* Combine this block with second last block. */
 
 			var tmp uint = self.last_histogram_ix_[0]
 			self.last_histogram_ix_[0] = self.last_histogram_ix_[1]
@@ -121,7 +130,7 @@ func blockSplitterFinishBlockCommand(self *blockSplitterCommand, is_final bool) 
 			self.merge_last_count_ = 0
 			self.target_block_size_ = self.min_block_size_
 		} else {
-
+			/* Combine this block with last block. */
 			split.lengths[self.num_blocks_-1] += uint32(self.block_size_)
 
 			histograms[self.last_histogram_ix_[0]] = combined_histo[0]
@@ -145,10 +154,12 @@ func blockSplitterFinishBlockCommand(self *blockSplitterCommand, is_final bool) 
 	}
 }
 
+/* Adds the next symbol to the current histogram. When the current histogram
+   reaches the target size, decides on merging the block. */
 func blockSplitterAddSymbolCommand(self *blockSplitterCommand, symbol uint) {
 	histogramAddCommand(&self.histograms_[self.curr_histogram_ix_], symbol)
 	self.block_size_++
 	if self.block_size_ == self.target_block_size_ {
-		blockSplitterFinishBlockCommand(self, false)
+		blockSplitterFinishBlockCommand(self, false) /* is_final = */
 	}
 }

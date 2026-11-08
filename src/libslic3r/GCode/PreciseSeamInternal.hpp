@@ -9,7 +9,6 @@
 
 namespace Slic3r::PreciseSeam::detail {
 
-
 struct ClippedEdgeInterval {
     size_t edge;
     double begin;
@@ -23,17 +22,12 @@ struct FragmentBindingFailure {
     const char *reason = "empty fragment";
 };
 
-
 bool append_projected_fragment(const Polyline &fragment, const Polygon &perimeter,
                                std::vector<ClippedEdgeInterval> &intervals,
                                FragmentBindingFailure &failure);
 
-
-
 bool bind_fragment(const Polyline &fragment, const Polygon &perimeter,
                    std::vector<ClippedEdgeInterval> &intervals, FragmentBindingFailure &failure);
-
-
 
 bool append_fragment(const Polyline &fragment, const Polygon &perimeter,
                      std::vector<ClippedEdgeInterval> &intervals,

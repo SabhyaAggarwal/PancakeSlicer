@@ -1,5 +1,3 @@
-
-
 #ifndef slic3r_KDTreeIndirect_hpp_
 #define slic3r_KDTreeIndirect_hpp_
 
@@ -22,7 +20,6 @@ enum class VisitorReturnMask : unsigned int {
     STOP           = 4,
 };
 
-
 template<size_t ANumDimensions, typename ACoordType, typename ACoordinateFn>
 class KDTreeIndirect
 {
@@ -30,7 +27,6 @@ public:
     static constexpr size_t NumDimensions = ANumDimensions;
     using					CoordinateFn  = ACoordinateFn;
     using					CoordType     = ACoordType;
-
     enum : size_t {
         npos = size_t(-1)
     };
@@ -56,7 +52,6 @@ public:
         if (indices.empty())
             clear();
         else {
-
             m_nodes.assign(next_highest_power_of_2(indices.size() + 1), npos);
             build_recursive(indices, 0, 0, 0, indices.size() - 1);
         }
@@ -68,12 +63,9 @@ public:
     {
         CoordType dist = point_coord - this->coordinate(idx, dimension);
         return (dist * dist < search_radius + CoordType(EPSILON)) ?
-
                    ((unsigned int)(VisitorReturnMask::CONTINUE_LEFT) | (unsigned int)(VisitorReturnMask::CONTINUE_RIGHT)) :
-
                    (dist > CoordType(0)) ? (unsigned int)(VisitorReturnMask::CONTINUE_RIGHT) : (unsigned int)(VisitorReturnMask::CONTINUE_LEFT);
     }
-
 
     template<typename Visitor>
     void visit(Visitor &visitor) const
@@ -84,7 +76,6 @@ public:
     CoordinateFn coordinate;
 
 private:
-
     void build_recursive(std::vector<size_t> &input, size_t node, const size_t dimension, const size_t left, const size_t right)
     {
         if (left > right)
@@ -93,17 +84,13 @@ private:
         assert(node < m_nodes.size());
 
         if (left == right) {
-
             m_nodes[node] = input[left];
             return;
         }
 
-
         size_t center = (left + right) / 2;
         partition_input(input, dimension, left, right, center);
-
         m_nodes[node] = input[center];
-
         size_t next_dimension = dimension;
         if (++ next_dimension == NumDimensions)
             next_dimension = 0;
@@ -112,18 +99,12 @@ private:
         build_recursive(input, node * 2 + 2, next_dimension, center + 1, right);
     }
 
-
-
-
-
     void partition_input(std::vector<size_t> &input, const size_t dimension, size_t left, size_t right, const size_t k) const
     {
         while (left < right) {
             size_t center = (left + right) / 2;
             CoordType pivot;
             {
-
-
                 CoordType left_value   = this->coordinate(input[left],   dimension);
                 CoordType center_value = this->coordinate(input[center], dimension);
                 CoordType right_value  = this->coordinate(input[right],  dimension);
@@ -142,29 +123,21 @@ private:
                 pivot = center_value;
             }
             if (right <= left + 2)
-
                 break;
             size_t i = left;
             size_t j = right - 1;
             std::swap(input[center], input[j]);
-
             for (;;) {
-
-
                 while (this->coordinate(input[++ i], dimension) < pivot) ;
-
                 while (this->coordinate(input[-- j], dimension) > pivot && i < j) ;
                 if (i >= j)
                     break;
                 std::swap(input[i], input[j]);
             }
-
             std::swap(input[i], input[right - 1]);
-
             if (k < i)
                 right = i - 1;
             else if (k == i)
-
                 break;
             else
                 left = i + 1;
@@ -177,7 +150,6 @@ private:
         assert(! m_nodes.empty());
         if (node >= m_nodes.size() || m_nodes[node] == npos)
             return;
-
 
         size_t left  = node * 2 + 1;
         size_t right = left + 1;
@@ -193,8 +165,6 @@ private:
 
     std::vector<size_t> m_nodes;
 };
-
-
 
 template<size_t K,
          typename PointType,
@@ -281,7 +251,6 @@ size_t find_closest_point(const KDTreeIndirectType& kdtree, const PointType& poi
     return find_closest_point(kdtree, point, [](size_t) { return true; });
 }
 
-
 template<typename KDTreeIndirectType, typename PointType, typename FilterFn>
 std::vector<size_t> find_nearby_points(const KDTreeIndirectType &kdtree, const PointType &center,
                                        const typename KDTreeIndirectType::CoordType& max_distance, FilterFn filter)
@@ -326,7 +295,6 @@ std::vector<size_t> find_nearby_points(const KDTreeIndirectType &kdtree, const P
         return true;
     });
 }
-
 
 template<typename KDTreeIndirectType, typename PointType, typename FilterFn>
 std::vector<size_t> find_nearby_points(const KDTreeIndirectType &kdtree,

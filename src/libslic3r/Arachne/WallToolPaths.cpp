@@ -39,8 +39,6 @@
 #include <utility>
 #include <vector>
 
-
-
 namespace Slic3r::Arachne
 {
 
@@ -118,26 +116,10 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
     Point previous_previous = thiss.points.at(thiss.points.size() - 2);
     Point current = thiss.points.at(0);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     int64_t accumulated_area_removed = int64_t(previous.x()) * int64_t(current.y()) - int64_t(previous.y()) * int64_t(current.x());
 
     for (size_t point_idx = 0; point_idx < thiss.points.size(); point_idx++) {
         current = thiss.points.at(point_idx % thiss.points.size());
-
 
         Point next;
         if (point_idx + 1 < thiss.points.size()) {
@@ -153,11 +135,7 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
 
         const int64_t length2 = (current - previous).cast<int64_t>().squaredNorm();
 
-
-
-
         if (length2 < Slic3r::sqr(scaled<coord_t>(0.005))) {
-
             continue;
         }
 
@@ -166,15 +144,7 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
 
         if (base_length_2 == 0)
             continue;
-
-
-
-
-
-
-
         const int64_t height_2 = double(area_removed_so_far) * double(area_removed_so_far) / double(base_length_2);
-
         if ((height_2 <= Slic3r::sqr(colinear_vertex_tolerance())
              && Line::distance_to_infinite(current, previous, next) <= double(colinear_vertex_tolerance())))
             continue;
@@ -184,10 +154,6 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
         {
             const int64_t next_length2 = (current - next).cast<int64_t>().squaredNorm();
             if (next_length2 > 4 * smallest_line_segment_squared) {
-
-
-
-
                 Point intersection_point;
                 bool has_intersection = Line(previous_previous, previous).intersection_infinite(Line(current, next), &intersection_point);
                 if (!has_intersection
@@ -195,13 +161,9 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
                     || (intersection_point - previous).cast<int64_t>().squaredNorm() > smallest_line_segment_squared
                     || (intersection_point - next).cast<int64_t>().squaredNorm() > smallest_line_segment_squared)
                 {
-
-
                 }
                 else {
-
                     current = intersection_point;
-
                     if(!new_path.empty()) {
                         new_path.points.pop_back();
                         previous = previous_previous;
@@ -211,7 +173,6 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
                 continue;
             }
         }
-
         accumulated_area_removed = removed_area_next;
         previous_previous = previous;
         previous = current;
@@ -220,35 +181,6 @@ void simplify(Polygon &thiss, const int64_t smallest_line_segment_squared, const
 
     thiss = new_path;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void simplify(Polygons &thiss, const int64_t smallest_line_segment = scaled<coord_t>(0.01), const int64_t allowed_error_distance = scaled<coord_t>(0.005))
 {
@@ -280,16 +212,12 @@ std::unique_ptr<LocToLineGrid>                                               cre
     return ret;
 }
 
-
-
 void fixSelfIntersections(const coord_t epsilon, Polygons &thiss)
 {
     if (epsilon < 1)
         return;
 
     const int64_t half_epsilon = (epsilon + 1) / 2;
-
-
 
     const coord_t grid_size  = scaled<coord_t>(2.);
     auto              query_grid = createLocToLineGrid(thiss, grid_size);
@@ -325,9 +253,6 @@ void fixSelfIntersections(const coord_t epsilon, Polygons &thiss)
     }
 }
 
-
-
-
 void removeDegenerateVerts(Polygons &thiss)
 {
     for (size_t poly_idx = 0; poly_idx < thiss.size(); poly_idx++) {
@@ -347,7 +272,6 @@ void removeDegenerateVerts(Polygons &thiss)
 
             const Point &next = (idx + 1 == poly.size()) ? result[0] : poly[idx + 1];
             if (isDegenerate(last, poly[idx], next)) {
-
                 isChanged = true;
                 while (result.size() > 1 && isDegenerate(result[result.size() - 2], result.back(), next))
                     result.points.pop_back();
@@ -372,7 +296,6 @@ void removeSmallAreas(Polygons &thiss, const double min_area_size, const bool re
     auto new_end = thiss.end();
     if (remove_holes) {
         for (auto it = thiss.begin(); it < new_end;) {
-
             if (fabs(it->area()) < min_area_size) {
                 --new_end;
                 *it = std::move(*new_end);
@@ -381,7 +304,6 @@ void removeSmallAreas(Polygons &thiss, const double min_area_size, const bool re
             ++it;
         }
     } else {
-
         Polygons small_holes;
         for (auto it = thiss.begin(); it < new_end;) {
             if (double area = it->area(); fabs(area) < min_area_size) {
@@ -400,8 +322,6 @@ void removeSmallAreas(Polygons &thiss, const double min_area_size, const bool re
             ++it;
         }
 
-
-
         const auto removed_outlines_start = new_end;
         for (auto hole_it = small_holes.rbegin(); hole_it < small_holes.rend(); hole_it++)
             for (auto outline_it = removed_outlines_start; outline_it < thiss.end(); outline_it++)
@@ -416,7 +336,6 @@ void removeSmallAreas(Polygons &thiss, const double min_area_size, const bool re
 
 void removeColinearEdges(Polygon &poly, const double max_deviation_angle)
 {
-
     size_t num_removed_in_iteration = 0;
     do {
         num_removed_in_iteration = 0;
@@ -435,13 +354,10 @@ void removeColinearEdges(Polygon &poly, const double max_deviation_angle)
 
             Polygon new_path;
             for (size_t point_idx = 0; point_idx < pathlen; ++point_idx) {
-
-
                 if (!process_indices[point_idx]) {
                     new_path.points.push_back(rpath[point_idx]);
                     continue;
                 }
-
 
                 if (point_idx == (pathlen - 1) && skip_indices[0]) {
                     skip_indices[new_path.size()] = true;
@@ -456,13 +372,9 @@ void removeColinearEdges(Polygon &poly, const double max_deviation_angle)
 
                 float angle = LinearAlg2D::getAngleLeft(prev, pt, next);
                 if (angle >= float(M_PI)) { angle -= float(M_PI); }
-
-
-
                 if (angle > max_deviation_angle && angle < M_PI - max_deviation_angle) {
                     new_path.points.push_back(pt);
                 } else if (point_idx != (pathlen - 1)) {
-
                     skip_indices[new_path.size()] = true;
                     go                            = true;
                     new_path.points.push_back(next);
@@ -500,21 +412,14 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
     const double  transitioning_angle = Geometry::deg2rad(m_params.wall_transition_angle);
     const coord_t discretization_step_size = scaled<coord_t>(0.8);
 
-
-
     Polygons prepared_outline = offset(offset(offset(outline, -epsilon_offset), epsilon_offset * 2), -epsilon_offset);
     simplify(prepared_outline, smallest_segment, allowed_distance);
     fixSelfIntersections(epsilon_offset, prepared_outline);
     removeDegenerateVerts(prepared_outline);
     removeColinearEdges(prepared_outline, 0.005);
-
     fixSelfIntersections(epsilon_offset, prepared_outline);
     removeDegenerateVerts(prepared_outline);
     removeSmallAreas(prepared_outline, small_area_length * small_area_length, false);
-
-
-
-
 
     prepared_outline = union_(prepared_outline);
 
@@ -527,10 +432,10 @@ const std::vector<VariableWidthLines> &WallToolPaths::generate()
     const float perimeter_extrusion_width          = Flow::rounded_rectangle_extrusion_width_from_spacing(unscale<float>(bead_width_x), float(this->layer_height));
 
     const coord_t wall_transition_length = scaled<coord_t>(this->m_params.wall_transition_length);
-
+	
 	const double wall_split_middle_threshold = std::clamp(2. * unscaled<double>(this->min_bead_width) / external_perimeter_extrusion_width - 1., 0.01, 0.99);
     const double wall_add_middle_threshold   = std::clamp(unscaled<double>(this->min_bead_width) / perimeter_extrusion_width, 0.01, 0.99);
-
+    
     const int wall_distribution_count = this->m_params.wall_distribution_count;
     const size_t max_bead_count = (inset_count < std::numeric_limits<coord_t>::max() / 2) ? 2 * inset_count : std::numeric_limits<coord_t>::max();
     const auto beading_strat = BeadingStrategyFactory::makeStrategy
@@ -607,19 +512,14 @@ void WallToolPaths::stitchToolPaths(std::vector<VariableWidthLines> &toolpaths, 
                     for (auto& inset : toolpaths)
                         for (auto& line2 : inset) {
 
-
                             Polygon poly = line2.toPolygon();
                             Point last = poly.front();
                             for (size_t idx = 1 ; idx < poly.size(); idx++) {
                                 Point here = poly[idx];
                                 svg.draw(Line(last, here), colors[color_idx]);
-
                                 last = here;
                             }
                             svg.draw(poly[0], colors[color_idx]);
-
-
-
                             color_idx = (color_idx + 1) % colors.size();
                         }
                 }
@@ -659,9 +559,6 @@ void WallToolPaths::stitchToolPaths(std::vector<VariableWidthLines> &toolpaths, 
                 continue;
             }
 
-
-
-
             if (wall_polygon.junctions.front().p != wall_polygon.junctions.back().p &&
                 (wall_polygon.junctions.back().p - wall_polygon.junctions.front().p).cast<double>().norm() < stitch_distance) {
                 wall_polygon.junctions.emplace_back(wall_polygon.junctions.front());
@@ -699,7 +596,6 @@ void WallToolPaths::removeSmallLines(std::vector<VariableWidthLines> &toolpaths)
             coord_t        min_width = std::numeric_limits<coord_t>::max();
             for (const ExtrusionJunction &j : line)
                 min_width = std::min(min_width, j.w);
-
             if (line.is_odd && !line.is_closed && shorterThan(line, m_params.is_top_or_bottom_layer ? (min_width / 2) : (min_width * m_params.min_length_factor))) {
                 line = std::move(inset.back());
                 inset.erase(--inset.end());
@@ -737,7 +633,6 @@ const std::vector<VariableWidthLines> &WallToolPaths::getToolPaths()
 
 void WallToolPaths::separateOutInnerContour()
 {
-
     std::vector<VariableWidthLines> actual_toolpaths;
     actual_toolpaths.reserve(toolpaths.size());
     std::vector<VariableWidthLines> contour_paths;
@@ -778,11 +673,6 @@ void WallToolPaths::separateOutInnerContour()
     else
         toolpaths.clear();
 
-
-
-
-
-
     inner_contour = union_(inner_contour, pftEvenOdd);
 }
 
@@ -808,36 +698,9 @@ bool WallToolPaths::removeEmptyToolPaths(std::vector<VariableWidthLines> &toolpa
     return toolpaths.empty();
 }
 
-
-
-
-
-
-
-
-
 WallToolPaths::ExtrusionLineSet WallToolPaths::getRegionOrder(const std::vector<ExtrusionLine *> &input, const bool outer_to_inner)
 {
     ExtrusionLineSet order_requirements;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     coord_t max_line_w = 0u;
     for (const ExtrusionLine *line : input)
@@ -855,12 +718,6 @@ WallToolPaths::ExtrusionLineSet WallToolPaths::getRegionOrder(const std::vector<
     {
         Point operator()(const LineLoc &elem) { return elem.j.p; }
     };
-
-
-
-
-
-
 
     constexpr float diagonal_extension = 1.9f;
     const auto      searching_radius   = coord_t(max_line_w * diagonal_extension);

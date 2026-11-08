@@ -1,7 +1,4 @@
 import { Check } from './Check';
-
-
-
 import { useState } from 'react';
 import { newProject, slice } from '../actions';
 import { effectiveConfig, getState, setState, toast, type CalibMenu } from '../state/store';
@@ -19,14 +16,13 @@ interface Calib {
   settings: string;
   fields: Field[];
   note?: string;
+  wiki: string;
   defaults(cfg: ReturnType<typeof printer>): Values;
-
   run(v: Values, cfg: ReturnType<typeof printer>): string | { kind: string; params: Values };
 }
 
 const num = (v: string) => Number(v);
 const first = (v: unknown) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
-
 
 function printer() {
   const s = getState();
@@ -41,10 +37,8 @@ function printer() {
   };
 }
 
-
 const TEMPS: Record<string, [number, number]> = { PLA: [230, 190], 'ABS/ASA': [270, 230], PETG: [250, 230], PCTG: [280, 240], TPU: [240, 210], 'PA-CF': [320, 280], 'PET-CF': [320, 280] };
 const tempType = (filament: string) => filament === 'ABS' || filament === 'ASA' ? 'ABS/ASA' : TEMPS[filament] ? filament : 'PLA';
-
 
 const shapers = (flavor: string): [string, string][] =>
   (flavor === 'klipper' ? ['Default', 'ZV', 'MZV', 'ZVD', 'EI', '2HUMP_EI', '3HUMP_EI']
@@ -53,11 +47,10 @@ const shapers = (flavor: string): [string, string][] =>
 const firmwareNote = (flavor: string) => flavor === 'marlin2' || flavor === 'marlin' ? 'Marlin version => 2.1.2\nFixed-Time motion not yet implemented.'
   : flavor === 'klipper' ? 'Klipper version => 0.9.0'
   : flavor === 'reprapfirmware' ? 'RepRap firmware version => 3.4.0\nCheck your firmware documentation for supported shaper types.'
-  : 'Please ensure the selected type is compatible with your firmware version.';
+  : 'Make sure your printer\'s firmware supports the option you pick here.';
 
 const MODELS: [string, string][] = [['0', 'Ringing Tower'], ['1', 'Fast Tower']];
 const range = (start: string, end: string, step: string, v: Values) => num(v[start]) > 0 && num(v[step]) >= 0 && num(v[end]) > num(v[start]) + num(v[step]);
-
 
 const paDefaults = (method: string, bowden: boolean): Values => ({
   start: '0', end: bowden ? '1' : method === 'pa-pattern' ? '0.08' : '0.1',
@@ -67,7 +60,7 @@ const paDefaults = (method: string, bowden: boolean): Values => ({
 
 export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
   temperature: {
-    title: 'Temperature calibration', settings: 'Settings',
+    title: 'Temperature calibration', settings: 'Settings', wiki: 'temp_calib',
     groups: [{ legend: 'Filament type', key: 'type', options: [...Object.keys(TEMPS), 'Custom'].map((t) => [t, t]),
       preset: (t): Values => (TEMPS[t] ? { start: String(TEMPS[t][0]), end: String(TEMPS[t][1]) } : {}) }],
     fields: [{ key: 'start', label: 'Start temp: ', unit: '℃' }, { key: 'end', label: 'End temp: ', unit: '℃' }, { key: 'resize', label: 'Auto-scale for nozzle', check: true }],
@@ -77,13 +70,13 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
       : { kind: 'temp-tower', params: { start: v.start, end: v.end, resize: v.resize } },
   },
   'max-flowrate': {
-    title: 'Max volumetric speed test', settings: 'Settings',
+    title: 'Max volumetric speed test', settings: 'Settings', wiki: 'volumetric_speed_calib',
     fields: [{ key: 'start', label: 'Start volumetric speed: ', unit: 'mm³/s' }, { key: 'end', label: 'End volumetric speed: ', unit: 'mm³/s' }, { key: 'step', label: 'Step: ', unit: 'mm³/s' }],
     defaults: () => ({ start: '5', end: '20', step: '0.5' }),
     run: (v) => range('start', 'end', 'step', v) ? { kind: 'max-volumetric-speed', params: v } : 'Please input valid values:\nstart > 0\nstep >= 0\nend > start + step',
   },
   'pressure-advance': {
-    title: 'PA Calibration', settings: 'Settings',
+    title: 'PA Calibration', settings: 'Settings', wiki: 'pressure_advance_calib',
     groups: [
       { legend: 'Extruder type', key: 'extruder', options: [['dde', 'DDE'], ['bowden', 'Bowden']], preset: (e, v) => paDefaults(v.method, e === 'bowden') },
       { legend: 'Method', key: 'method', options: [['pa-tower', 'PA Tower'], ['pa-line', 'PA Line'], ['pa-pattern', 'PA Pattern']], preset: (m, v) => paDefaults(m, v.extruder === 'bowden') },
@@ -106,7 +99,7 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
     },
   },
   'flow-ratio': {
-    title: 'Flow Ratio Calibration', settings: 'Settings',
+    title: 'Flow Ratio Calibration', settings: 'Settings', wiki: 'flow_ratio_calib',
     groups: [{ legend: 'Calibration Test Type', key: 'test', options: [['classic-1', 'Pass 1 (Coarse)'], ['classic-2', 'Pass 2 (Fine)'], ['yolo-1', 'YOLO (Recommended)'], ['yolo-2', 'YOLO (Perfectionist)']] },
       { legend: 'Top Surface Pattern', key: 'pattern', options: [['archimedean', 'Archimedean Chords'], ['monotonic', 'Monotonic']] }],
     fields: [],
@@ -114,13 +107,13 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
     run: (v) => { const [type, pass] = v.test.split('-'); return { kind: 'flow-rate', params: { type, pass, pattern: v.pattern } }; },
   },
   retraction: {
-    title: 'Retraction', settings: 'Settings',
+    title: 'Retraction', settings: 'Settings', wiki: 'retraction_calib',
     fields: [{ key: 'start', label: 'Start retraction length: ', unit: 'mm' }, { key: 'end', label: 'End retraction length: ', unit: 'mm' }, { key: 'step', label: 'Step: ', unit: 'mm' }],
     defaults: () => ({ start: '0', end: '2', step: '0.1' }),
     run: (v) => num(v.start) >= 0 && num(v.step) >= 0 && num(v.end) > num(v.start) + num(v.step) ? { kind: 'retraction', params: v } : 'Please input valid values:\nstart > 0\nstep >= 0\nend > start + step',
   },
   cornering: {
-    title: 'Cornering test', settings: 'Cornering settings',
+    title: 'Cornering test', settings: 'Cornering settings', wiki: 'cornering_calib',
     groups: [{ legend: 'Test model', key: 'model', options: [...MODELS, ['2', 'SCV-V2']] }],
     fields: [{ key: 'start', label: 'Start: ' }, { key: 'end', label: 'End: ' }],
     note: 'Note: Lower values = sharper corners but slower speeds.',
@@ -132,7 +125,7 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
     },
   },
   'input-shaping-freq': {
-    title: 'Input shaping Frequency test', settings: 'Frequency settings',
+    title: 'Input shaping Frequency test', settings: 'Frequency settings', wiki: 'input_shaping_calib',
     groups: [{ legend: 'Test model', key: 'model', options: MODELS }],
     fields: [
       { key: 'freq_start_x', label: 'X Start: ', unit: 'Hz' }, { key: 'freq_end_x', label: 'X End: ', unit: 'Hz' },
@@ -145,13 +138,13 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
       const axes = p.reprap ? ['x'] : ['x', 'y'];
       if (axes.some((a) => !(num(v[`freq_start_${a}`]) > 0 && num(v[`freq_start_${a}`]) < num(v[`freq_end_${a}`]) && num(v[`freq_end_${a}`]) < 500)))
         return 'Please input valid values:\n(0 < FreqStart < FreqEnd < 500)';
-      if (!(num(v.damping) >= 0 && num(v.damping) <= 1)) return 'Please input a valid damping factor (0 < Damping/zeta factor <= 1)';
+      if (!(num(v.damping) >= 0 && num(v.damping) <= 1)) return 'Enter a damping factor between 0 and 1 (0 < zeta <= 1).';
       const { freq_start_y, freq_end_y, ...rest } = v;
       return { kind: 'input-shaping-freq', params: p.reprap ? rest : { ...rest, freq_start_y, freq_end_y } };
     },
   },
   'input-shaping-damp': {
-    title: 'Input shaping Damp test', settings: 'Frequency settings',
+    title: 'Input shaping Damp test', settings: 'Frequency settings', wiki: 'input_shaping_calib',
     groups: [{ legend: 'Test model', key: 'model', options: MODELS }],
     fields: [
       { key: 'freq_x', label: 'Frequency X: ', unit: 'Hz' }, { key: 'freq_y', label: 'Frequency Y: ', unit: 'Hz', show: () => !printer().reprap },
@@ -162,13 +155,13 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
     run: (v, p) => {
       if ([v.freq_x, ...(p.reprap ? [] : [v.freq_y])].some((f) => !(num(f) > 0 && num(f) < 500))) return 'Please input valid values:\n(0 < Freq < 500)';
       if (!(num(v.damping_start) >= 0 && num(v.damping_start) < num(v.damping_end) && num(v.damping_end) <= 1))
-        return 'Please input a valid damping factor (0 <= DampingStart < DampingEnd <= 1)';
+        return 'Enter a valid damping range (0 <= Start < End <= 1).';
       const { freq_y, ...rest } = v;
       return { kind: 'input-shaping-damp', params: p.reprap ? rest : { ...rest, freq_y } };
     },
   },
   vfa: {
-    title: 'VFA test', settings: 'Settings',
+    title: 'VFA test', settings: 'Settings', wiki: 'vfa_calib',
     fields: [{ key: 'start', label: 'Start speed: ', unit: 'mm/s' }, { key: 'end', label: 'End speed: ', unit: 'mm/s' }, { key: 'step', label: 'Step: ', unit: 'mm/s' },
       { key: 'resize', label: 'Auto-scale for nozzle', check: true }],
     defaults: () => ({ start: '40', end: '200', step: '10', resize: '1' }),
@@ -176,10 +169,8 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
   },
 };
 
-
 const withShapers = (c: Calib, flavor: string): Calib => c.title.startsWith('Input shaping')
   ? { ...c, groups: [...(c.groups ?? []), { legend: 'Input shaper type', key: 'shaper', options: shapers(flavor) }] } : c;
-
 
 export async function runCalibration(kind: string, params: string, head?: string) {
   const s = getState();
@@ -228,7 +219,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
           ))}
           {c.note && <p className="flush-note">{c.note}</p>}
         </ModalBody>
-        <ModalFooter lead={<a className="btn-ghost" href="/help/calibration.html" target="_blank" rel="noreferrer">Guide</a>}>
+        <ModalFooter lead={<a className="btn-ghost" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Guide</a>}>
           <button type="button" className="btn" onClick={close}>Cancel</button>
           <button type="submit" className="btn-primary">Create test</button>
         </ModalFooter>

@@ -2,6 +2,8 @@ package matchfinder
 
 import "fmt"
 
+// A TextEncoder is an Encoder that produces a human-readable representation of
+// the LZ77 compression. Matches are replaced with <Length,Distance> symbols.
 type TextEncoder struct{}
 
 func (t TextEncoder) Reset() {}
@@ -24,6 +26,9 @@ func (t TextEncoder) Encode(dst []byte, src []byte, matches []Match, lastBlock b
 	return dst
 }
 
+// A NoMatchFinder implements MatchFinder, but doesn't find any matches.
+// It can be used to implement the equivalent of the standard library flate package's
+// HuffmanOnly setting.
 type NoMatchFinder struct{}
 
 func (n NoMatchFinder) Reset() {}
@@ -34,6 +39,10 @@ func (n NoMatchFinder) FindMatches(dst []Match, src []byte) []Match {
 	})
 }
 
+// AutoReset wraps a MatchFinder that can return references to data in previous
+// blocks, and calls Reset before each block. It is useful for (e.g.) using a
+// snappy Encoder with a MatchFinder designed for flate. (Snappy doesn't
+// support references between blocks.)
 type AutoReset struct {
 	MatchFinder
 }

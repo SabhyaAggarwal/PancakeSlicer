@@ -26,7 +26,6 @@ Limits head_limits(const HeadEnvelope &head)
         if (!box.nozzle && box.min.z() > 0.)
             floor = std::min(floor, box.min.z());
     double angle = 0.;
-
     const auto ext = nlohmann::json::parse(head.extensions, nullptr, false);
     if (ext.is_object() && ext.contains("coverage")) {
         const auto &coverage = ext["coverage"];
@@ -41,8 +40,6 @@ Limits head_limits(const HeadEnvelope &head)
             floor = std::min(floor, coverage["duct_limits"].value("z_min", floor));
     }
     if (angle == 0. && std::isfinite(floor)) {
-
-
         std::map<double, double> radii;
         for (const HeadBox &box : head.boxes) {
             if (!box.nozzle || box.max.z() <= 0. || box.max.z() > floor + 1e-6) continue;
@@ -62,8 +59,6 @@ Limits head_limits(const HeadEnvelope &head)
         }
     }
     if (angle == 0.) {
-
-
         angle = pi / 2.;
         for (int i = 0; i < 32; ++i)
             angle = std::min(angle, head.max_slope(2. * pi * i / 32., head.tip_allowance.height, head.reach()));
@@ -97,7 +92,6 @@ std::vector<Region> detect_nonplanar_regions(const ModelVolume &volume, const Tr
         bool eligible = false;
     };
     std::vector<Face> faces(mesh.indices.size());
-
     std::vector<std::vector<int>> neighbors(faces.size());
     std::map<std::pair<int, int>, int> edges;
     for (size_t i = 0; i < faces.size(); ++i) {
@@ -107,7 +101,6 @@ std::vector<Region> detect_nonplanar_regions(const ModelVolume &volume, const Tr
         const Vec3d cross = (b-a).cross(c-a);
         f.area = cross.norm() * 0.5;
         if (f.area < 1e-10) continue;
-
         f.normal = cross.normalized() * (transform.linear().determinant() < 0. ? -1. : 1.);
         f.center = (a+b+c) / 3.;
         f.low = std::min({a.z(), b.z(), c.z()});
@@ -144,8 +137,6 @@ std::vector<Region> detect_nonplanar_regions(const ModelVolume &volume, const Tr
                 if (!visited[next]) { visited[next] = true; component.push_back(next); }
         }
         if (!curved) continue;
-
-
         const int bands = std::max(1, int(std::ceil((component_high-component_low) / limits.span)));
         for (int band = 0; band < bands; ++band) {
             const double high = component_high - band * limits.span;
@@ -210,7 +201,6 @@ std::vector<Region> detect_nonplanar_regions(const ModelVolume &volume, const Tr
                     for (int next : neighbors[i])
                         if (in_band[next] && !grouped[next]) { grouped[next] = true; queue.push_back(next); }
                 }
-
                 if (region.area < 25. || curved_area < 1.) continue;
                 region.centroid /= region.area;
                 region.height_span = region.max_z-region.min_z;

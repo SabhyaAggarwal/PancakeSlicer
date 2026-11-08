@@ -1,6 +1,3 @@
-
-
-
 import * as THREE from 'three';
 import type { State } from '../state/store';
 import { setState } from '../state/store';
@@ -11,29 +8,23 @@ import { canAddPlate, deletePlate, editPlateName, listedPlates, movePlateToFront
 import { arrangeAll, toolbarOperation } from '../actions';
 import { isDark } from '../theme';
 
-
 const GAP = 1 / 5;
-
 const ICON = 16, GAP_LEFT = 3, GAP_Y = 5, GAP_TOP = 3;
-
 
 export function plateColumns(count: number) {
   const v = Math.sqrt(count), r = Math.round(v);
   return v > r ? r + 1 : r;
 }
 
-
 export function gridOrigin(index: number, count: number, area: THREE.Vector2[]): [number, number] {
   const { min, max } = bedBounds(area), cols = plateColumns(Math.max(1, count)), i = index - 1;
   return [(i % cols) * (max.x - min.x) * (1 + GAP), -Math.floor(i / cols) * (max.y - min.y) * (1 + GAP)];
 }
 
-
 export function plateOffset(s: State, area: THREE.Vector2[], index: number): [number, number] {
   const n = s.projectPlates.length, a = gridOrigin(index, n, area), b = gridOrigin(s.plateIndex, n, area);
   return [a[0] - b[0], a[1] - b[1]];
 }
-
 
 const HOVER: Record<string, string> = {
   plate_close: 'plate_close_hover', plate_orient: 'plate_orient_hover', plate_arrange: 'plate_arrange_hover', plate_locked: 'plate_locked_hover',
@@ -53,7 +44,6 @@ export class PlateGrid {
   constructor(private material: (color: string) => THREE.Material) {
     this.layer.className = 'plate-icons';
   }
-
 
   sync(s: State, bed: THREE.Group | null, area: THREE.Vector2[]) {
     const key = [s.projectPlates, s.plateIndex, s.objects.length, bed, s.slotColours, s.filamentSlots, s.project, s.features.mesh_plates, isDark(), s.job.state];
@@ -90,16 +80,13 @@ export class PlateGrid {
 
   private addIcons(s: State, p: ReturnType<typeof listedPlates>[number], dx: number, dy: number, many: boolean) {
     const { min, max } = bedBounds(this.area), w = max.x - min.x, d = max.y - min.y;
-
     const f = Math.min(d / 200, (w * GAP) / (ICON + 2 * GAP_LEFT)), size = ICON * f;
     const editable = canAddPlate(s), idle = s.job.state !== 'running' && s.job.state !== 'submitting';
     const onPlate = (fn: () => void) => () => { if (p.index !== s.plateIndex) selectPlate(p.index); fn(); };
     const locked = !!p.locked;
     const changed = PLATE_KEYS.some((k) => p.settings[k] !== undefined && p.settings[k] !== '');
-
     const slots: ([string, string, () => void, boolean] | null)[] = [
       editable && many ? ['plate_close', 'Remove current plate (if not last one)', () => deletePlate(p.index), idle] : null,
-
       many ? ['plate_orient', 'Auto orient objects on current plate', onPlate(() => void toolbarOperation('orient', true)), !s.project && !locked && p.objects.length > 0] : null,
       many ? ['plate_arrange', 'Arrange objects on current plate', onPlate(() => arrangeAll(false)), !locked && p.objects.length > 0] : null,
       many ? [locked ? 'plate_locked' : 'plate_unlocked', locked ? 'Unlock current plate' : 'Lock current plate', () => toggleLock(p.index), true] : null,
@@ -127,14 +114,12 @@ export class PlateGrid {
       this.anchors.push({ el: b, at: new THREE.Vector3(max.x + dx + GAP_LEFT * f + size / 2, top - size / 2 + dy, 0), size, kind: 'icon' });
       this.layer.append(b);
     });
-
     if (!many) return;
     const n = document.createElement('div');
     n.className = `plate-number ${p.index === s.plateIndex ? 'selected' : ''}`;
     n.textContent = String(p.index);
     this.anchors.push({ el: n, at: new THREE.Vector3(max.x + dx + GAP_LEFT * f + size / 2, min.y + dy + size / 2, 0), size, kind: 'number' });
     this.layer.append(n);
-
     if (editable) {
       const nameRow = document.createElement('button');
       nameRow.type = 'button';
@@ -153,7 +138,6 @@ export class PlateGrid {
     }
   }
 
-
   place(camera: THREE.Camera, width: number, height: number, gridlines: boolean) {
     for (const b of this.beds) showBedFor(b, camera, gridlines);
     const p = new THREE.Vector3(), q = new THREE.Vector3();
@@ -168,7 +152,6 @@ export class PlateGrid {
         a.el.style.transform = `translate(${x}px, ${y}px) translate(0, -100%)`;
         a.el.style.setProperty('--plate-icon', `${px}px`);
       } else {
-
         const cx = a.kind === 'number' || a.kind === 'icon' ? Math.min(x, width - px / 2 - 8) : x;
         a.el.style.transform = `translate(${cx - px / 2}px, ${y - px / 2}px)`;
         a.el.style.width = a.el.style.height = `${px}px`;
@@ -176,7 +159,6 @@ export class PlateGrid {
       }
     }
   }
-
 
   plateAt(s: State, point: THREE.Vector3 | null): number | null {
     if (!point || !this.area.length) return null;
@@ -187,7 +169,6 @@ export class PlateGrid {
     }
     return null;
   }
-
 
   box(s: State): THREE.Box3 {
     const box = new THREE.Box3();

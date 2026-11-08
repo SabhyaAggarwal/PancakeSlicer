@@ -8,6 +8,9 @@ import "math"
    See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
+/* Entropy encoding (Huffman) utilities. */
+
+/* A node of a Huffman tree. */
 type huffmanTree struct {
 	total_count_          uint32
 	index_left_           int16
@@ -20,13 +23,14 @@ func initHuffmanTree(self *huffmanTree, count uint32, left int16, right int16) {
 	self.index_right_or_value_ = right
 }
 
+/* Input size optimized Shell sort. */
 type huffmanTreeComparator func(huffmanTree, huffmanTree) bool
 
 var sortHuffmanTreeItems_gaps = []uint{132, 57, 23, 10, 4, 1}
 
 func sortHuffmanTreeItems(items []huffmanTree, n uint, comparator huffmanTreeComparator) {
 	if n < 13 {
-
+		/* Insertion sort. */
 		var i uint
 		for i = 1; i < n; i++ {
 			var tmp huffmanTree = items[i]
@@ -68,6 +72,7 @@ func sortHuffmanTreeItems(items []huffmanTree, n uint, comparator huffmanTreeCom
 	}
 }
 
+/* Returns 1 if assignment of depths succeeded, otherwise 0. */
 func setDepth(p0 int, pool []huffmanTree, depth []byte, max_depth int) bool {
 	var stack [16]int
 	var level int = 0
@@ -98,6 +103,7 @@ func setDepth(p0 int, pool []huffmanTree, depth []byte, max_depth int) bool {
 	}
 }
 
+/* Sort the root nodes, least popular first. */
 func sortHuffmanTree(v0 huffmanTree, v1 huffmanTree) bool {
 	if v0.total_count_ != v1.total_count_ {
 		return v0.total_count_ < v1.total_count_
@@ -106,11 +112,30 @@ func sortHuffmanTree(v0 huffmanTree, v1 huffmanTree) bool {
 	return v0.index_right_or_value_ > v1.index_right_or_value_
 }
 
+/* This function will create a Huffman tree.
+
+   The catch here is that the tree cannot be arbitrarily deep.
+   Brotli specifies a maximum depth of 15 bits for "code trees"
+   and 7 bits for "code length code trees."
+
+   count_limit is the value that is to be faked as the minimum value
+   and this minimum value is raised until the tree matches the
+   maximum length requirement.
+
+   This algorithm is not of excellent performance for very long data blocks,
+   especially when population counts are longer than 2**tree_limit, but
+   we are not planning to use this with extremely long blocks.
+
+   See http://en.wikipedia.org/wiki/Huffman_coding */
 func createHuffmanTree(data []uint32, length uint, tree_limit int, tree []huffmanTree, depth []byte) {
 	var count_limit uint32
 	var sentinel huffmanTree
 	initHuffmanTree(&sentinel, math.MaxUint32, -1, -1)
 
+	/* For block sizes below 64 kB, we never need to do a second iteration
+	   of this loop. Probably all of our block sizes will be smaller than
+	   that, so this loop is mostly of academic interest. If we actually
+	   would need this, we would be better off with the Katajainen algorithm. */
 	for count_limit = 1; ; count_limit *= 2 {
 		var n uint = 0
 		var i uint
@@ -126,18 +151,25 @@ func createHuffmanTree(data []uint32, length uint, tree_limit int, tree []huffma
 		}
 
 		if n == 1 {
-			depth[tree[0].index_right_or_value_] = 1
+			depth[tree[0].index_right_or_value_] = 1 /* Only one element. */
 			break
 		}
 
 		sortHuffmanTreeItems(tree, n, huffmanTreeComparator(sortHuffmanTree))
 
+		/* The nodes are:
+		   [0, n): the sorted leaf nodes that we start with.
+		   [n]: we add a sentinel here.
+		   [n + 1, 2n): new parent nodes are added here, starting from
+		                (n+1). These are naturally in ascending order.
+		   [2n]: we add a sentinel at the end as well.
+		   There will be (2n+1) elements at the end. */
 		tree[n] = sentinel
 
 		tree[n+1] = sentinel
 
-		i = 0
-		j = n + 1
+		i = 0     /* Points to the next leaf node. */
+		j = n + 1 /* Points to the next non-leaf node. */
 		for k = n - 1; k != 0; k-- {
 			var left uint
 			var right uint
@@ -157,18 +189,20 @@ func createHuffmanTree(data []uint32, length uint, tree_limit int, tree []huffma
 				j++
 			}
 			{
-
+				/* The sentinel node becomes the parent node. */
 				var j_end uint = 2*n - k
 				tree[j_end].total_count_ = tree[left].total_count_ + tree[right].total_count_
 				tree[j_end].index_left_ = int16(left)
 				tree[j_end].index_right_or_value_ = int16(right)
 
+				/* Add back the last sentinel node. */
 				tree[j_end+1] = sentinel
 			}
 		}
 
 		if setDepth(int(2*n-1), tree[0:], depth, tree_limit) {
-
+			/* We need to pack the Huffman tree in tree_limit bits. If this was not
+			   successful, add fake entities to the lowest values and retry. */
 			break
 		}
 	}
@@ -263,6 +297,13 @@ func writeHuffmanTreeRepetitionsZeros(repetitions uint, tree_size *uint, tree []
 	}
 }
 
+/* Change the population counts in a way that the consequent
+   Huffman tree compression, especially its RLE-part will be more
+   likely to compress this data more efficiently.
+
+   length contains the size of the histogram.
+   counts contains the population counts.
+   good_for_rle is a buffer of at least length size */
 func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []byte) {
 	var nonzero_count uint = 0
 	var stride uint
@@ -270,7 +311,7 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 	var sum uint
 	var streak_limit uint = 1240
 	var i uint
-
+	/* Let's make the Huffman code more compatible with RLE encoding. */
 	for i = 0; i < length; i++ {
 		if counts[i] != 0 {
 			nonzero_count++
@@ -286,9 +327,10 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 	}
 
 	if length == 0 {
-		return
+		return /* All zeros. */
 	}
 
+	/* Now counts[0..length - 1] does not have trailing zeros. */
 	{
 		var nonzeros uint = 0
 		var smallest_nonzero uint32 = 1 << 30
@@ -302,7 +344,7 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 		}
 
 		if nonzeros < 5 {
-
+			/* Small histogram will model it well. */
 			return
 		}
 
@@ -322,11 +364,16 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 		}
 	}
 
+	/* 2) Let's mark all population counts that already can be encoded
+	   with an RLE code. */
 	for i := 0; i < int(length); i++ {
 		good_for_rle[i] = 0
 	}
 	{
 		var symbol uint32 = counts[0]
+		/* Let's not spoil any of the existing good RLE codes.
+		   Mark any seq of 0's that is longer as 5 as a good_for_rle.
+		   Mark any seq of non-0's that is longer as 7 as a good_for_rle. */
 
 		var step uint = 0
 		for i = 0; i <= length; i++ {
@@ -348,6 +395,8 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 		}
 	}
 
+	/* 3) Let's replace those population counts that lead to more RLE codes.
+	   Math here is in 24.8 fixed point representation. */
 	stride = 0
 
 	limit = uint(256*(counts[0]+counts[1]+counts[2])/3 + 420)
@@ -357,18 +406,19 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 			if stride >= 4 || (stride >= 3 && sum == 0) {
 				var k uint
 				var count uint = (sum + stride/2) / stride
-
+				/* The stride must end, collapse what we have, if we have enough (4). */
 				if count == 0 {
 					count = 1
 				}
 
 				if sum == 0 {
-
+					/* Don't make an all zeros stride to be upgraded to ones. */
 					count = 0
 				}
 
 				for k = 0; k < stride; k++ {
-
+					/* We don't want to change value at counts[i],
+					   that is already belonging to the next stride. Thus - 1. */
 					counts[i-k-1] = uint32(count)
 				}
 			}
@@ -376,7 +426,8 @@ func optimizeHuffmanCountsForRLE(length uint, counts []uint32, good_for_rle []by
 			stride = 0
 			sum = 0
 			if i < length-2 {
-
+				/* All interesting strides have a count of at least 4, */
+				/* at least when non-zeros. */
 				limit = uint(256*(counts[i]+counts[i+1]+counts[i+2])/3 + 420)
 			} else if i < length {
 				limit = uint(256 * counts[i])
@@ -430,13 +481,16 @@ func decideOverRLEUse(depth []byte, length uint, use_rle_for_non_zero *bool, use
 	*use_rle_for_zero = total_reps_zero > count_reps_zero*2
 }
 
+/* Write a Huffman tree from bit depths into the bit-stream representation
+   of a Huffman tree. The generated Huffman tree is to be compressed once
+   more using a Huffman tree */
 func writeHuffmanTree(depth []byte, length uint, tree_size *uint, tree []byte, extra_bits_data []byte) {
 	var previous_value byte = initialRepeatedCodeLength
 	var i uint
 	var use_rle_for_non_zero bool = false
 	var use_rle_for_zero bool = false
 	var new_length uint = length
-
+	/* Throw away trailing zeros. */
 	for i = 0; i < length; i++ {
 		if depth[length-i-1] == 0 {
 			new_length--
@@ -445,11 +499,14 @@ func writeHuffmanTree(depth []byte, length uint, tree_size *uint, tree []byte, e
 		}
 	}
 
+	/* First gather statistics on if it is a good idea to do RLE. */
 	if length > 50 {
-
+		/* Find RLE coding for longer codes.
+		   Shorter codes seem not to benefit from RLE. */
 		decideOverRLEUse(depth, new_length, &use_rle_for_non_zero, &use_rle_for_zero)
 	}
 
+	/* Actual RLE coding. */
 	for i = 0; i < new_length; {
 		var value byte = depth[i]
 		var reps uint = 1
@@ -503,12 +560,16 @@ func reverseBits(num_bits uint, bits uint16) uint16 {
 	return uint16(retval)
 }
 
+/* 0..15 are values for bits */
 const maxHuffmanBits = 16
 
+/* Get the actual bit values for a tree of bit depths. */
 func convertBitDepthsToSymbols(depth []byte, len uint, bits []uint16) {
 	var bl_count = [maxHuffmanBits]uint16{0}
 	var next_code [maxHuffmanBits]uint16
 	var i uint
+	/* In Brotli, all bit depths are [1..15]
+	   0 bit depth means that the symbol does not exist. */
 
 	var code int = 0
 	for i = 0; i < len; i++ {

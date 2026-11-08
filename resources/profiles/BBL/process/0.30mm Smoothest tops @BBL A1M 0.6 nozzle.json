@@ -1,0 +1,23 @@
+{
+	"type": "process",
+	"name": "0.30mm Smoothest tops @BBL A1M 0.6 nozzle",
+	"renamed_from": "0.30mm Non-planar top @BBL A1M 0.6 nozzle;0.30mm Non-planar top BBL A1M 0.6 nozzle",
+	"inherits": "0.30mm Standard @BBL A1M 0.6 nozzle",
+	"from": "system",
+	"setting_id": "yhJpBJ0njxpenpoe",
+	"instantiation": "true",
+	"top_surface_acceleration": [
+		"5000"
+	],
+	"nonplanar_raised_top_acceleration": [
+		"5000"
+	],
+	"nonplanar_fallback_top_acceleration": [
+		"2000"
+	],
+	"compatible_printers": [
+		"Bambu Lab A1 mini 0.6 nozzle"
+	],
+	"description": "0.30mm Standard for the A1 mini with a 0.6 mm nozzle, with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the A1 mini head.",
+	"include": "fdm_process_nonplanar_top"
+}

@@ -33,7 +33,6 @@ func validatePlatePlacement(raw []byte, saving, native, meshPlates bool) error {
 	if err := json.Unmarshal(raw, &plate); err != nil {
 		return err
 	}
-
 	plates := 1
 	for _, p := range plate.Plates {
 		plates = max(plates, p.Index)
@@ -93,7 +92,7 @@ func probePlatePlacement(c Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	save := func(input []string, output string) error {
-		args := []string{"--profiles", filepath.Join(c.Resources, "profiles"), "--datadir", filepath.Join(dir, "data"), "--vendor", "BBL", "--printer", "Bambu Lab A1 mini 0.4 nozzle", "--process", "0.20mm Non-planar top @BBL A1M", "--filament", "Bambu PLA Basic @BBL A1M", "--save-3mf", output}
+		args := []string{"--profiles", filepath.Join(c.Resources, "profiles"), "--datadir", filepath.Join(dir, "data"), "--vendor", "BBL", "--printer", "Bambu Lab A1 mini 0.4 nozzle", "--process", "0.20mm Smoothest tops @BBL A1M", "--filament", "Bambu PLA Basic @BBL A1M", "--save-3mf", output}
 		cmd := exec.CommandContext(ctx, c.Tool, append(args, input...)...)
 		configureKill(cmd)
 		cmd.WaitDelay = 5 * time.Second

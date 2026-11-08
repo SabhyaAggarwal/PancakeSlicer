@@ -32,7 +32,6 @@
 
 namespace Slic3r {
 
-
 static bool extrusion_entity_has_endpoints(const ExtrusionEntity *entity)
 {
     auto paths_have_endpoints = [](const ExtrusionPaths &paths) {
@@ -56,8 +55,6 @@ static bool extrusion_entity_has_endpoints(const ExtrusionEntity *entity)
     return true;
 }
 
-
-
 template<typename EndPointType, typename KDTreeType, typename CouldReverseFunc>
 std::vector<std::pair<size_t, bool>> chain_segments_closest_point(std::vector<EndPointType> &end_points, KDTreeType &kdtree, CouldReverseFunc &could_reverse_func, EndPointType &first_point)
 {
@@ -74,9 +71,7 @@ std::vector<std::pair<size_t, bool>> chain_segments_closest_point(std::vector<En
 	size_t this_idx = first_point_idx ^ 1;
 	for (int iter = (int)num_segments - 2; iter >= 0; -- iter) {
 		EndPointType &this_point = end_points[this_idx];
-        this_point.chain_id = 1;
-
-
+    	this_point.chain_id = 1;
 		size_t next_idx = find_closest_point(kdtree, this_point.pos,
 			[this_idx, &end_points, &could_reverse_func](size_t idx) {
 				return (idx ^ this_idx) > 1 && end_points[idx].chain_id == 0 && ((idx & 1) == 0 || could_reverse_func(idx >> 1));
@@ -96,41 +91,25 @@ std::vector<std::pair<size_t, bool>> chain_segments_closest_point(std::vector<En
 	return out;
 }
 
-
-
-
-
-
-
-
-
 template<typename PointType, typename SegmentEndPointFunc, bool REVERSE_COULD_FAIL, typename CouldReverseFunc>
 std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals_(SegmentEndPointFunc end_point_func, CouldReverseFunc could_reverse_func, size_t num_segments, const PointType *start_near)
 {
 	std::vector<std::pair<size_t, bool>> out;
 
 	if (num_segments == 0) {
-
-	}
+	} 
 	else if (num_segments == 1)
 	{
-
-		out.emplace_back(0, could_reverse_func(0) && start_near != nullptr &&
+		out.emplace_back(0, could_reverse_func(0) && start_near != nullptr && 
             (end_point_func(0, false) - *start_near).template cast<double>().squaredNorm() < (end_point_func(0, true) - *start_near).template cast<double>().squaredNorm());
-	}
+	} 
 	else
 	{
-
-
 		struct EndPoint {
 			EndPoint(const Vec2d &pos) : pos(pos) {}
 			Vec2d     pos;
-
 			size_t    chain_id = 0;
-
 			EndPoint *edge_out = nullptr;
-
-
 			double    distance_out = std::numeric_limits<double>::max();
 			size_t    heap_idx = std::numeric_limits<size_t>::max();
 		};
@@ -141,23 +120,16 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
             end_points.emplace_back(end_point_func(i, false).template cast<double>());
 	    }
 
-
 		auto coordinate_fn = [&end_points](size_t idx, size_t dimension) -> double { return end_points[idx].pos[dimension]; };
 		KDTreeIndirect<2, double, decltype(coordinate_fn)> kdtree(coordinate_fn, end_points.size());
 
-
-
-
 		class EquivalentChains {
 		public:
-
 			EquivalentChains(size_t reserve) { m_equivalent_with.reserve(reserve); m_equivalent_with.emplace_back(0); }
-
 			size_t 				next() {
 				m_equivalent_with.emplace_back(++ m_last_chain_id);
 				return m_last_chain_id;
 			}
-
 			size_t 				operator()(size_t chain_id) {
 				if (chain_id != 0) {
 					for (size_t last = chain_id;;) {
@@ -198,17 +170,14 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 #endif
 
 		private:
-
 			size_t              m_last_chain_id = 0;
 			std::vector<size_t> m_equivalent_with;
 		} equivalent_chain(num_segments);
-
 
 		EndPoint *first_point = nullptr;
 		size_t    first_point_idx = std::numeric_limits<size_t>::max();
 		if (start_near != nullptr) {
             size_t idx = find_closest_point(kdtree, start_near->template cast<double>(),
-
 				[&could_reverse_func](size_t idx) { return (idx & 1) == 0 || could_reverse_func(idx >> 1); });
 			assert(idx < end_points.size());
 			first_point = &end_points[idx];
@@ -219,14 +188,11 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 		EndPoint *initial_point = first_point;
 		EndPoint *last_point = nullptr;
 
-
 		for (EndPoint &end_point : end_points) {
-            assert(end_point.edge_out == nullptr);
-            if (&end_point != first_point) {
-                size_t this_idx = &end_point - &end_points.front();
-
-
-				size_t next_idx = find_closest_point(kdtree, end_point.pos,
+	    	assert(end_point.edge_out == nullptr);
+	    	if (&end_point != first_point) {
+		    	size_t this_idx = &end_point - &end_points.front();
+				size_t next_idx = find_closest_point(kdtree, end_point.pos, 
 					[this_idx, first_point_idx](size_t idx){ return idx != first_point_idx && (idx ^ this_idx) > 1; });
 				assert(next_idx < end_points.size());
 				EndPoint &end_point2 = end_points[next_idx];
@@ -235,13 +201,12 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 			}
 		}
 
-
 	    auto queue = make_mutable_priority_queue<EndPoint*, false>(
-			[](EndPoint *ep, size_t idx){ ep->heap_idx = idx; },
-            [](EndPoint *l, EndPoint *r){ return l->distance_out < r->distance_out; });
+			[](EndPoint *ep, size_t idx){ ep->heap_idx = idx; }, 
+	    	[](EndPoint *l, EndPoint *r){ return l->distance_out < r->distance_out; });
 		queue.reserve(end_points.size() * 2 - 1);
 	    for (EndPoint &ep : end_points)
-            if (first_point != &ep)
+	    	if (first_point != &ep)
 				queue.push(&ep);
 
 #ifndef NDEBUG
@@ -249,24 +214,19 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 			assert(equivalent_chain.validate());
 			for (EndPoint &ep : end_points) {
 				if (ep.heap_idx < queue.size()) {
-
 					assert(*(queue.cbegin() + ep.heap_idx) == &ep);
 					assert(ep.chain_id == 0);
 				} else {
-
 					assert(ep.heap_idx == std::numeric_limits<size_t>::max());
 					assert(ep.chain_id != 0);
 					if (&ep == first_point) {
 						assert(ep.edge_out == nullptr);
 					} else {
 						assert(ep.edge_out != nullptr);
-
 						for (EndPoint *pt = &ep; pt != nullptr;) {
-
 							assert(pt->heap_idx == std::numeric_limits<size_t>::max());
 							EndPoint *pt_other = &end_points[(pt - &end_points.front()) ^ 1];
 							if (pt_other->heap_idx < queue.size())
-
 								break;
 							pt = pt_other->edge_out;
 						}
@@ -274,65 +234,52 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				}
 			}
 			for (EndPoint *ep : queue)
-
 				assert(ep->chain_id == 0);
 			return true;
 		};
 #endif
-
-
 		assert(num_segments >= 2);
 #ifndef NDEBUG
 		double distance_taken_last = 0.;
 #endif
 		for (int iter = int(num_segments) - 2;; -- iter) {
 			assert(validate_graph_and_queue());
-
-            EndPoint &end_point1 = *queue.top();
+	    	EndPoint &end_point1 = *queue.top();
 #ifndef NDEBUG
-
 			assert(end_point1.distance_out > distance_taken_last - SCALED_EPSILON);
 			distance_taken_last = end_point1.distance_out;
 #endif
 			assert(end_point1.edge_out != nullptr);
-
-            assert(end_point1.chain_id == 0);
-
-            EndPoint &end_point2 = *end_point1.edge_out;
-            bool valid = true;
-            size_t end_point1_other_chain_id = 0;
-            size_t end_point2_other_chain_id = 0;
-            if (end_point2.chain_id > 0) {
-
-                valid = false;
-            } else {
-
+	    	assert(end_point1.chain_id == 0);
+	    	EndPoint &end_point2 = *end_point1.edge_out;
+	    	bool valid = true;
+	    	size_t end_point1_other_chain_id = 0;
+	    	size_t end_point2_other_chain_id = 0;
+	    	if (end_point2.chain_id > 0) {
+	    		valid = false;
+	    	} else {
 				end_point1_other_chain_id = equivalent_chain(end_points[(&end_point1 - &end_points.front()) ^ 1].chain_id);
 				end_point2_other_chain_id = equivalent_chain(end_points[(&end_point2 - &end_points.front()) ^ 1].chain_id);
 				if (end_point1_other_chain_id == end_point2_other_chain_id && end_point1_other_chain_id != 0)
-
 					valid = false;
-            }
-            if (valid) {
-
+	    	}
+	    	if (valid) {
 				queue.pop();
-                queue.remove(end_point2.heap_idx);
-                assert(end_point1.edge_out = &end_point2);
-                end_point2.edge_out = &end_point1;
-                end_point2.distance_out = end_point1.distance_out;
-
-                size_t chain_id =
+		    	queue.remove(end_point2.heap_idx);
+		    	assert(end_point1.edge_out = &end_point2);
+		    	end_point2.edge_out = &end_point1;
+		    	end_point2.distance_out = end_point1.distance_out;
+		    	size_t chain_id =
 					(end_point1_other_chain_id == 0) ?
 						((end_point2_other_chain_id == 0) ? equivalent_chain.next() : end_point2_other_chain_id) :
-						((end_point2_other_chain_id == 0) ? end_point1_other_chain_id :
-							(end_point1_other_chain_id == end_point2_other_chain_id) ?
+						((end_point2_other_chain_id == 0) ? end_point1_other_chain_id : 
+							(end_point1_other_chain_id == end_point2_other_chain_id) ? 
 								end_point1_other_chain_id :
 								equivalent_chain.merge(end_point1_other_chain_id, end_point2_other_chain_id));
 				end_point1.chain_id = chain_id;
 				end_point2.chain_id = chain_id;
 				assert(validate_graph_and_queue());
 				if (iter == 0) {
-
 					assert(queue.size() == ((first_point == nullptr) ? 2 : 1));
 					if (first_point == nullptr) {
 						first_point = queue.top();
@@ -345,40 +292,30 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 					assert(queue.empty());
 					break;
 				}
-            } else {
-
+	    	} else {
 				++ iter;
 				end_point1.edge_out = nullptr;
-
-                size_t this_idx = &end_point1 - &end_points.front();
-
-				size_t next_idx = find_closest_point(kdtree, end_point1.pos, [&end_points, &equivalent_chain, this_idx](size_t idx) {
-                    assert(end_points[this_idx].edge_out == nullptr);
-                    assert(end_points[this_idx].chain_id == 0);
+		    	size_t this_idx = &end_point1 - &end_points.front();
+				size_t next_idx = find_closest_point(kdtree, end_point1.pos, [&end_points, &equivalent_chain, this_idx](size_t idx) { 
+			    	assert(end_points[this_idx].edge_out == nullptr);
+			    	assert(end_points[this_idx].chain_id == 0);
 					if ((idx ^ this_idx) <= 1 || end_points[idx].chain_id != 0)
-
-
 						return false;
-                    size_t chain1 = equivalent_chain(end_points[this_idx ^ 1].chain_id);
-                    size_t chain2 = equivalent_chain(end_points[idx      ^ 1].chain_id);
-                    return chain1 != chain2 || chain1 == 0;
+			    	size_t chain1 = equivalent_chain(end_points[this_idx ^ 1].chain_id);
+			    	size_t chain2 = equivalent_chain(end_points[idx      ^ 1].chain_id);
+			    	return chain1 != chain2 || chain1 == 0;
 				});
 				assert(next_idx < end_points.size());
 				end_point1.edge_out = &end_points[next_idx];
 				end_point1.distance_out = (end_points[next_idx].pos - end_point1.pos).squaredNorm();
 #ifndef NDEBUG
-
 				assert(end_point1.distance_out > distance_taken_last - SCALED_EPSILON);
 #endif
-
 				queue.update(end_point1.heap_idx);
-
-
 				assert(validate_graph_and_queue());
-            }
+	    	}
 		}
 		assert(queue.empty());
-
 
 		assert(first_point != nullptr);
 		out.reserve(num_segments);
@@ -403,7 +340,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 		if (REVERSE_COULD_FAIL) {
 			if (failed) {
 				if (start_near == nullptr) {
-
 					out.clear();
 					first_point = last_point;
 					failed = false;
@@ -423,7 +359,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				}
 			}
 			if (failed)
-
 				out = chain_segments_closest_point<EndPoint, decltype(kdtree), CouldReverseFunc>(end_points, kdtree, could_reverse_func, (initial_point != nullptr) ? *initial_point : end_points.front());
 		} else {
 			assert(! failed);
@@ -437,53 +372,39 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 template<typename QueueType, typename KDTreeType, typename ChainsType, typename EndPointType>
 void update_end_point_in_queue(QueueType &queue, const KDTreeType &kdtree, ChainsType &chains, std::vector<EndPointType> &end_points, EndPointType &end_point, size_t first_point_idx, const EndPointType *first_point)
 {
-
 	size_t this_idx = end_point.index(end_points);
-
 	assert(first_point_idx == this_idx || first_point_idx == (this_idx ^ 1) || end_point.chain_id == 0 || end_point.opposite(end_points).chain_id == 0);
 	end_point.edge_candidate = nullptr;
 	if (first_point_idx == this_idx || (end_point.chain_id > 0 && first_point_idx == (this_idx ^ 1)))
 	{
-
 		if (! end_point.heap_idx_invalid())
 			queue.remove(end_point.heap_idx);
 	}
 	else
 	{
-
 		size_t chain1a    = end_point.chain_id;
 		size_t chain1b    = end_points[this_idx ^ 1].chain_id;
 		size_t this_chain = chains.equivalent(std::max(chain1a, chain1b));
-
 		size_t next_idx = find_closest_point(kdtree, end_point.pos, [&end_points, &chains, this_idx, first_point_idx, first_point, this_chain](size_t idx) {
-            assert(end_points[this_idx].edge_candidate == nullptr);
-
-            assert((end_points[this_idx    ].chain_id == 0 && end_points[this_idx    ].edge_out == nullptr) ||
-                   (end_points[this_idx ^ 1].chain_id == 0 && end_points[this_idx ^ 1].edge_out == nullptr));
+	    	assert(end_points[this_idx].edge_candidate == nullptr);
+	    	assert((end_points[this_idx    ].chain_id == 0 && end_points[this_idx    ].edge_out == nullptr) ||
+	    		   (end_points[this_idx ^ 1].chain_id == 0 && end_points[this_idx ^ 1].edge_out == nullptr));
 			if ((idx ^ this_idx) <= 1 || idx == first_point_idx)
-
-
 				return false;
 			size_t chain2a = end_points[idx].chain_id;
 			size_t chain2b = end_points[idx ^ 1].chain_id;
 			if (chain2a > 0 && chain2b > 0)
-
-
 				return false;
-            assert(chain2a == 0 || chain2b == 0);
-            size_t chain2 = chains.equivalent(std::max(chain2a, chain2b));
-            if (this_chain == chain2)
-
-                return this_chain == 0;
-
+	    	assert(chain2a == 0 || chain2b == 0);
+	    	size_t chain2 = chains.equivalent(std::max(chain2a, chain2b));
+	    	if (this_chain == chain2)
+	    		return this_chain == 0;
 			if (chain2a > 0) {
-
 				assert(chain2b == 0);
 				auto &chain = chains.chain(chain2);
 				if (chain.begin == first_point || chain.end == first_point)
 					return false;
 			}
-
 			return true;
 		});
 		assert(next_idx < end_points.size());
@@ -493,9 +414,7 @@ void update_end_point_in_queue(QueueType &queue, const KDTreeType &kdtree, Chain
 		if (end_point.chain_id > 0)
 			end_point.distance_out += chains.chain_flip_penalty(this_chain);
 		if (end_points[next_idx].chain_id > 0)
-
 			end_point.distance_out += chains.chain_flip_penalty(end_points[next_idx].chain_id);
-
 		if (end_point.heap_idx_invalid())
 			queue.push(&end_point);
 		else
@@ -509,38 +428,28 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 	std::vector<std::pair<size_t, bool>> out;
 
 	if (num_segments == 0) {
-
-	}
+	} 
 	else if (num_segments == 1)
 	{
-
-		out.emplace_back(0, start_near != nullptr &&
+		out.emplace_back(0, start_near != nullptr && 
             (end_point_func(0, true) - *start_near).template cast<double>().squaredNorm() < (end_point_func(0, false) - *start_near).template cast<double>().squaredNorm());
-	}
+	} 
 	else
 	{
-
-
 		struct EndPoint {
 			EndPoint(const Vec2d &pos) : pos(pos) {}
 			Vec2d     pos;
 
-
 			EndPoint *edge_candidate = nullptr;
-
-
 			double    distance_out = std::numeric_limits<double>::max();
 
 			size_t    heap_idx = std::numeric_limits<size_t>::max();
 			bool 	  heap_idx_invalid() const { return this->heap_idx == std::numeric_limits<size_t>::max(); }
 
-
 			size_t    chain_id = 0;
-
 			EndPoint *edge_out = nullptr;
 
 			size_t 				index(std::vector<EndPoint>          &endpoints) const { return this - endpoints.data(); }
-
 			EndPoint& 			opposite(std::vector<EndPoint>       &endpoints)       { return endpoints[(this - endpoints.data()) ^ 1]; }
 			const EndPoint& 	opposite(const std::vector<EndPoint> &endpoints) const { return endpoints[(this - endpoints.data()) ^ 1]; }
 		};
@@ -552,48 +461,38 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
             end_points.emplace_back(end_point_func(i, false).template cast<double>());
 	    }
 
-
 		auto coordinate_fn = [&end_points](size_t idx, size_t dimension) -> double { return end_points[idx].pos[dimension]; };
 		KDTreeIndirect<2, double, decltype(coordinate_fn)> kdtree(coordinate_fn, end_points.size());
 
-
-
-
 	    struct Chain {
-            size_t		 num_segments	 = 0;
-            double 		 cost 			 = 0.;
-            double 		 cost_flipped	 = 0.;
-            EndPoint 	*begin 			 = nullptr;
-            EndPoint 	*end 			 = nullptr;
-            size_t  	 equivalent_with = 0;
+	    	size_t		 num_segments	 = 0;
+	    	double 		 cost 			 = 0.;
+	    	double 		 cost_flipped	 = 0.;
+	    	EndPoint 	*begin 			 = nullptr;
+	    	EndPoint 	*end 			 = nullptr;
+	    	size_t  	 equivalent_with = 0;
 
-
-            void flip(std::vector<EndPoint> &endpoints)
-            {
+	    	void flip(std::vector<EndPoint> &endpoints)
+	    	{
 				assert(this->num_segments > 1);
 				assert(this->begin->edge_out == nullptr);
-                assert(this->end  ->edge_out == nullptr);
+	    		assert(this->end  ->edge_out == nullptr);
 				assert(this->begin->opposite(endpoints).edge_out != nullptr);
 				assert(this->end  ->opposite(endpoints).edge_out != nullptr);
-
-                EndPoint *ept      = this->begin;
-
-                EndPoint *ept_prev = nullptr;
-                do {
-                    EndPoint *ept_end      = &ept->opposite(endpoints);
-                    EndPoint *ept_next     = ept_end->edge_out;
-                    assert(ept_next == nullptr || ept_next->edge_out == ept_end);
-
-                    ept_end->edge_out = ept_prev;
-                    if (ept_prev != nullptr)
-                        ept_prev->edge_out = ept_end;
-                    ept_prev = ept;
-                    ept = ept_next;
-                } while (ept != nullptr);
-                ept_prev->edge_out = nullptr;
-
-                std::swap(this->cost, this->cost_flipped);
-
+	    		EndPoint *ept      = this->begin;
+	    		EndPoint *ept_prev = nullptr;
+	    		do {
+	    			EndPoint *ept_end      = &ept->opposite(endpoints);
+	    			EndPoint *ept_next     = ept_end->edge_out;
+	    			assert(ept_next == nullptr || ept_next->edge_out == ept_end);
+	    			ept_end->edge_out = ept_prev;
+	    			if (ept_prev != nullptr)
+	    				ept_prev->edge_out = ept_end;
+	    			ept_prev = ept;
+	    			ept = ept_next;
+	    		} while (ept != nullptr);
+	    		ept_prev->edge_out = nullptr;
+	    		std::swap(this->cost, this->cost_flipped);
 				EndPoint *new_begin = &this->begin->opposite(endpoints);
 				EndPoint *new_end   = &this->end->opposite(endpoints);
 				std::swap(this->begin->chain_id, new_begin->chain_id);
@@ -601,37 +500,26 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				this->begin = new_begin;
 				this->end   = new_end;
 				assert(this->begin->edge_out == nullptr);
-                assert(this->end  ->edge_out == nullptr);
+	    		assert(this->end  ->edge_out == nullptr);
 				assert(this->begin->opposite(endpoints).edge_out != nullptr);
 				assert(this->end  ->opposite(endpoints).edge_out != nullptr);
 			}
 
-            double flip_penalty() const { return this->cost_flipped - this->cost; }
+	    	double flip_penalty() const { return this->cost_flipped - this->cost; }
 	    };
-
-
-
-
-
-
-
 
 		class Chains {
 		public:
-
-			Chains(size_t reserve) {
+			Chains(size_t reserve) { 
 				m_chains.reserve(reserve / 2);
-
 				m_chains.emplace_back();
 			}
-
 
 			size_t 				next_id() {
 				m_chains.emplace_back();
 				m_chains.back().equivalent_with = ++ m_last_chain_id;
 				return m_last_chain_id;
 			}
-
 
 			size_t 				equivalent(size_t chain_id) {
 				if (chain_id != 0) {
@@ -647,8 +535,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				}
 				return chain_id;
 			}
-
-
 
 			size_t 			  	merge(size_t chain_id1, size_t chain_id2) {
 				if (chain_id1 == 0)
@@ -674,9 +560,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 #ifndef NDEBUG
 			bool				validate()
 			{
-
-
-
 				assert(m_last_chain_id >= 0);
 				assert(m_last_chain_id + 1 == m_chains.size());
 				for (size_t i = 0; i < m_chains.size(); ++ i) {
@@ -694,10 +577,8 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 
 		private:
 			std::vector<Chain> 	m_chains;
-
 			size_t              m_last_chain_id = 0;
 		} chains(num_segments);
-
 
 		EndPoint *first_point = nullptr;
 		size_t    first_point_idx = std::numeric_limits<size_t>::max();
@@ -715,14 +596,11 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 		EndPoint *initial_point = first_point;
 		EndPoint *last_point = nullptr;
 
-
 		for (EndPoint &end_point : end_points) {
-            assert(end_point.edge_candidate == nullptr);
-            if (&end_point != first_point) {
-                size_t this_idx = end_point.index(end_points);
-
-
-				size_t next_idx = find_closest_point(kdtree, end_point.pos,
+	    	assert(end_point.edge_candidate == nullptr);
+	    	if (&end_point != first_point) {
+		    	size_t this_idx = end_point.index(end_points);
+				size_t next_idx = find_closest_point(kdtree, end_point.pos, 
 					[this_idx, first_point_idx](size_t idx){ return idx != first_point_idx && (idx ^ this_idx) > 1; });
 				assert(next_idx < end_points.size());
 				EndPoint &end_point2 = end_points[next_idx];
@@ -731,13 +609,12 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 			}
 		}
 
-
 	    auto queue = make_mutable_priority_queue<EndPoint*, true>(
-			[](EndPoint *ep, size_t idx){ ep->heap_idx = idx; },
-            [](EndPoint *l, EndPoint *r){ return l->distance_out < r->distance_out; });
+			[](EndPoint *ep, size_t idx){ ep->heap_idx = idx; }, 
+	    	[](EndPoint *l, EndPoint *r){ return l->distance_out < r->distance_out; });
 		queue.reserve(end_points.size() * 2);
 	    for (EndPoint &ep : end_points)
-            if (first_point != &ep)
+	    	if (first_point != &ep)
 				queue.push(&ep);
 
 #ifndef NDEBUG
@@ -745,25 +622,18 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 			assert(chains.validate());
 			for (EndPoint &ep : end_points) {
 				if (ep.heap_idx < queue.size()) {
-
 					assert(*(queue.cbegin() + ep.heap_idx) == &ep);
-
 					assert(ep.chain_id == 0 || ep.opposite(end_points).chain_id == 0);
 				} else {
-
 					assert(ep.heap_idx_invalid());
 					assert(ep.chain_id != 0);
 					if (&ep == first_point) {
 						assert(ep.edge_out == nullptr);
 					} else {
 						assert(ep.edge_out != nullptr);
-
 						for (EndPoint *pt = &ep; pt != nullptr;) {
-
 							EndPoint *pt_other = &pt->opposite(end_points);
 							if (pt_other->heap_idx < queue.size()) {
-
-
 								break;
 							}
 							pt = pt_other->edge_out;
@@ -772,78 +642,52 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				}
 			}
 			for (EndPoint *ep : queue)
-
 				assert(ep->chain_id == 0 || ep->opposite(end_points).chain_id == 0);
 			return true;
 		};
 #endif
-
-
 		assert(num_segments >= 2);
 #ifndef NDEBUG
 		double distance_taken_last = 0.;
 #endif
-
-
-
-
-
 		size_t num_iter = num_segments * 16;
 		for (size_t num_connections_to_end = num_segments - 1; num_iter > 0; -- num_iter) {
 			assert(validate_graph_and_queue());
-
-            EndPoint *end_point1       = queue.top();
-            assert(end_point1 != first_point);
-            EndPoint *end_point1_other = &end_point1->opposite(end_points);
-
-
-            bool      chain1_flip      = end_point1->chain_id > 0;
-
-
-
-            assert(  chain1_flip || (end_point1->chain_id == 0 && end_point1->edge_out == nullptr));
-            assert(! chain1_flip || (end_point1_other->chain_id == 0 && end_point1_other->edge_out == nullptr));
+	    	EndPoint *end_point1       = queue.top();
+	    	assert(end_point1 != first_point);
+	    	EndPoint *end_point1_other = &end_point1->opposite(end_points);
+	    	bool      chain1_flip      = end_point1->chain_id > 0;
+	    	assert(  chain1_flip || (end_point1->chain_id == 0 && end_point1->edge_out == nullptr));
+	    	assert(! chain1_flip || (end_point1_other->chain_id == 0 && end_point1_other->edge_out == nullptr));
 			assert(end_point1->edge_candidate != nullptr);
-#ifndef NDEBUG
-
-
+#ifndef NDEBUG 
 			if (end_point1->distance_out < distance_taken_last - SCALED_EPSILON) {
-
 			}
 			distance_taken_last = end_point1->distance_out;
 #endif
-
-            EndPoint *end_point2 	   = end_point1->edge_candidate;
-            EndPoint *end_point2_other = &end_point2->opposite(end_points);
-            bool      chain2_flip      = end_point2->chain_id > 0;
-
-            bool      valid            = true;
-            size_t 	  end_point1_chain_id = 0;
-            size_t    end_point2_chain_id = 0;
-            if (end_point2->chain_id > 0 && end_point2_other->chain_id > 0) {
-
-                valid = false;
-            } else {
-
+	    	EndPoint *end_point2 	   = end_point1->edge_candidate;
+	    	EndPoint *end_point2_other = &end_point2->opposite(end_points);
+	    	bool      chain2_flip      = end_point2->chain_id > 0;
+	    	bool      valid            = true;
+	    	size_t 	  end_point1_chain_id = 0;
+	    	size_t    end_point2_chain_id = 0;
+	    	if (end_point2->chain_id > 0 && end_point2_other->chain_id > 0) {
+	    		valid = false;
+	    	} else {
 				end_point1_chain_id = chains.equivalent((chain1_flip ? end_point1 : end_point1_other)->chain_id);
 				end_point2_chain_id = chains.equivalent((chain2_flip ? end_point2 : end_point2_other)->chain_id);
 				if (end_point1_chain_id == end_point2_chain_id && end_point1_chain_id != 0)
-
 					valid = false;
 				else {
-
-
 					double dist = (end_point2->pos - end_point1->pos).norm();
 					if (chain1_flip)
 						dist += chains.chain_flip_penalty(end_point1_chain_id);
 					if (chain2_flip)
 						dist += chains.chain_flip_penalty(end_point2_chain_id);
 					if (std::abs(dist - end_point1->distance_out) > SCALED_EPSILON)
-
 						valid = false;
 				}
 				if (valid && first_point != nullptr) {
-
 					if (chain1_flip) {
 						Chain &chain = chains.chain(end_point1_chain_id);
 						if (chain.begin == first_point || chain.end == first_point)
@@ -855,32 +699,31 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 							valid = false;
 					}
 				}
-            }
-            if (valid) {
-
+	    	}
+	    	if (valid) {
 				queue.pop();
-                queue.remove(end_point2->heap_idx);
-                assert(end_point1->edge_candidate == end_point2);
-                end_point1->edge_candidate = nullptr;
-                Chain *chain1 = (end_point1_chain_id == 0) ? nullptr : &chains.chain(end_point1_chain_id);
-                Chain *chain2 = (end_point2_chain_id == 0) ? nullptr : &chains.chain(end_point2_chain_id);
+		    	queue.remove(end_point2->heap_idx);
+		    	assert(end_point1->edge_candidate == end_point2);
+		    	end_point1->edge_candidate = nullptr;
+		    	Chain *chain1 = (end_point1_chain_id == 0) ? nullptr : &chains.chain(end_point1_chain_id);
+		    	Chain *chain2 = (end_point2_chain_id == 0) ? nullptr : &chains.chain(end_point2_chain_id);
 				assert(chain1 == nullptr || (chain1_flip ? (chain1->begin == end_point1_other || chain1->end == end_point1_other) : (chain1->begin == end_point1 || chain1->end == end_point1)));
 				assert(chain2 == nullptr || (chain2_flip ? (chain2->begin == end_point2_other || chain2->end == end_point2_other) : (chain2->begin == end_point2 || chain2->end == end_point2)));
 				if (chain1_flip)
-                    chain1->flip(end_points);
-                if (chain2_flip)
-                    chain2->flip(end_points);
+		    		chain1->flip(end_points);
+		    	if (chain2_flip)
+		    		chain2->flip(end_points);
 				assert(chain1 == nullptr || chain1->begin == end_point1 || chain1->end == end_point1);
 				assert(chain2 == nullptr || chain2->begin == end_point2 || chain2->end == end_point2);
-                size_t chain_id = chains.merge(end_point1_chain_id, end_point2_chain_id);
+		    	size_t chain_id = chains.merge(end_point1_chain_id, end_point2_chain_id);
 				Chain &chain    = chains.chain(chain_id);
 				{
 				    Chain chain_dst;
 					chain_dst.begin = (chain1 == nullptr) ? end_point1_other : (chain1->begin == end_point1) ? chain1->end : chain1->begin;
-                    chain_dst.end   = (chain2 == nullptr) ? end_point2_other : (chain2->begin == end_point2) ? chain2->end : chain2->begin;
-                    chain_dst.cost  = (chain1 == 0 ? 0. : chain1->cost) + (chain2 == 0 ? 0. : chain2->cost) + (end_point2->pos - end_point1->pos).norm();
-                    chain_dst.cost_flipped = (chain1 == 0 ? 0. : chain1->cost_flipped) + (chain2 == 0 ? 0. : chain2->cost_flipped) + (end_point2_other->pos - end_point1_other->pos).norm();
-                    chain_dst.num_segments = (chain1 == 0 ? 1 : chain1->num_segments) + (chain2 == 0 ? 1 : chain2->num_segments);
+			    	chain_dst.end   = (chain2 == nullptr) ? end_point2_other : (chain2->begin == end_point2) ? chain2->end : chain2->begin;
+			    	chain_dst.cost  = (chain1 == 0 ? 0. : chain1->cost) + (chain2 == 0 ? 0. : chain2->cost) + (end_point2->pos - end_point1->pos).norm();
+			    	chain_dst.cost_flipped = (chain1 == 0 ? 0. : chain1->cost_flipped) + (chain2 == 0 ? 0. : chain2->cost_flipped) + (end_point2_other->pos - end_point1_other->pos).norm();
+			    	chain_dst.num_segments = (chain1 == 0 ? 1 : chain1->num_segments) + (chain2 == 0 ? 1 : chain2->num_segments);
 				    chain_dst.equivalent_with = chain_id;
 					chain = chain_dst;
 			    }
@@ -900,17 +743,14 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 					chain.end->chain_id = 0;
 				if (-- num_connections_to_end == 0) {
 					assert(validate_graph_and_queue());
-
 					assert(queue.size() <= ((first_point == nullptr) ? 4 : 2));
 					if (first_point == nullptr) {
-
 						do {
 							first_point = queue.top();
 							queue.pop();
 						} while (first_point->edge_out != nullptr);
 						assert(first_point->edge_out == nullptr);
 					}
-
 					do {
 						last_point = queue.top();
 						queue.pop();
@@ -924,15 +764,12 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 #endif
 					break;
 				} else {
-
-
 					update_end_point_in_queue(queue, kdtree, chains, end_points, chain.begin->opposite(end_points), first_point_idx, first_point);
 					update_end_point_in_queue(queue, kdtree, chains, end_points, chain.end->opposite(end_points),   first_point_idx, first_point);
 					if (chain1_flip)
 						update_end_point_in_queue(queue, kdtree, chains, end_points, *chain.begin, first_point_idx, first_point);
 					if (chain2_flip)
 						update_end_point_in_queue(queue, kdtree, chains, end_points, *chain.end,   first_point_idx, first_point);
-
 					assert(chain.begin == first_point || chain.begin->heap_idx < queue.size());
 					assert(chain.end   == first_point || chain.end  ->heap_idx < queue.size());
 					assert(&chain.begin->opposite(end_points) != first_point &&
@@ -942,22 +779,15 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 
 				}
 			} else {
-
 				update_end_point_in_queue(queue, kdtree, chains, end_points, *end_point1, first_point_idx, first_point);
 #ifndef NDEBUG
-
-
 				if (end_point1->distance_out < distance_taken_last - SCALED_EPSILON) {
-
 				}
 #endif
-
-
 		    }
 			assert(validate_graph_and_queue());
 		}
 		assert(queue.empty());
-
 
 		assert(first_point != nullptr);
 		out.reserve(num_segments);
@@ -982,7 +812,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 		if (REVERSE_COULD_FAIL) {
 			if (failed) {
 				if (start_near == nullptr) {
-
 					out.clear();
 					first_point = last_point;
 					failed = false;
@@ -1002,7 +831,6 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 				}
 			}
 			if (failed)
-
 				out = chain_segments_closest_point<EndPoint, decltype(kdtree), CouldReverseFunc>(end_points, kdtree, could_reverse_func, (initial_point != nullptr) ? *initial_point : end_points.front());
 		} else {
 			assert(! failed);
@@ -1022,7 +850,7 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 template<typename PointType, typename SegmentEndPointFunc>
 std::vector<std::pair<size_t, bool>> chain_segments_greedy(SegmentEndPointFunc end_point_func, size_t num_segments, const PointType *start_near)
 {
-	auto could_reverse_func = [](size_t  ) -> bool { return true; };
+	auto could_reverse_func = [](size_t ) -> bool { return true; };
 	return chain_segments_greedy_constrained_reversals_<PointType, SegmentEndPointFunc, false, decltype(could_reverse_func)>(end_point_func, could_reverse_func, num_segments, start_near);
 }
 
@@ -1035,7 +863,7 @@ std::vector<std::pair<size_t, bool>> chain_segments_greedy_constrained_reversals
 template<typename PointType, typename SegmentEndPointFunc>
 std::vector<std::pair<size_t, bool>> chain_segments_greedy2(SegmentEndPointFunc end_point_func, size_t num_segments, const PointType *start_near)
 {
-	auto could_reverse_func = [](size_t  ) -> bool { return true; };
+	auto could_reverse_func = [](size_t ) -> bool { return true; };
 	return chain_segments_greedy_constrained_reversals2_<PointType, SegmentEndPointFunc, false, decltype(could_reverse_func)>(end_point_func, could_reverse_func, num_segments, start_near);
 }
 
@@ -1048,9 +876,7 @@ static std::vector<std::pair<size_t, bool>> chain_extrusion_entities_impl(const 
 	for (std::pair<size_t, bool> &segment : out) {
 		const ExtrusionEntity *ee = entities[segment.first];
 		if (ee->is_loop())
-
 			segment.second = false;
-
 		assert(ee->can_reverse() || ! segment.second);
 	}
 	return out;
@@ -1060,7 +886,6 @@ std::vector<std::pair<size_t, bool>> chain_extrusion_entities(std::vector<Extrus
 {
 	return chain_extrusion_entities_impl(entities, start_near);
 }
-
 
 template<typename EntityPtr>
 static void remove_entities_without_endpoints(std::vector<EntityPtr> &entities)
@@ -1149,7 +974,7 @@ std::vector<size_t> chain_expolygons(const ExPolygons &input_exploy) {
 
 std::vector<size_t> chain_points(const Points &points, const Point *start_near)
 {
-	auto segment_end_point = [&points](size_t idx, bool  ) -> const Point& { return points[idx]; };
+	auto segment_end_point = [&points](size_t idx, bool ) -> const Point& { return points[idx]; };
 	std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy<Point, decltype(segment_end_point)>(segment_end_point, points.size(), start_near);
 	std::vector<size_t> out;
 	out.reserve(ordered.size());
@@ -1162,9 +987,6 @@ std::vector<size_t> chain_points(const Points &points, const Point *start_near)
 std::vector<size_t> chain_points_with_postprocessing(const Points &points, const Point *start_near)
 {
 	std::vector<size_t> path = chain_points(points, start_near);
-
-
-
 	for (int iter = 0; iter < 3; ++iter) {
 		bool improved = tsp_2opt_improve(path, points);
 		improved |= tsp_remove_crossings(path, points);
@@ -1176,7 +998,6 @@ std::vector<size_t> chain_points_with_postprocessing(const Points &points, const
 }
 
 #ifndef NDEBUG
-
 #endif
 
 #ifdef DEBUG_SVG_OUTPUT
@@ -1191,7 +1012,6 @@ void svg_draw_polyline_chain(const char *name, size_t idx, const Polylines &poly
 #endif
 
 #if 0
-
 static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bool fixed_start)
 {
 #ifndef NDEBUG
@@ -1212,22 +1032,20 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 
 	struct Connection {
 		Connection(size_t heap_idx = std::numeric_limits<size_t>::max(), bool flipped = false) : heap_idx(heap_idx), flipped(flipped) {}
-
 		size_t 	heap_idx;
-
 		bool   	flipped;
 
-		double 			squaredNorm(const Polylines &polylines, const std::vector<Connection> &connections) const
+		double 			squaredNorm(const Polylines &polylines, const std::vector<Connection> &connections) const 
 			{ return ((this + 1)->start_point(polylines, connections) - this->end_point(polylines, connections)).squaredNorm(); }
-		double 			norm(const Polylines &polylines, const std::vector<Connection> &connections) const
+		double 			norm(const Polylines &polylines, const std::vector<Connection> &connections) const 
 			{ return sqrt(this->squaredNorm(polylines, connections)); }
-		double 			squaredNorm(const Polylines &polylines, const std::vector<Connection> &connections, bool try_flip1, bool try_flip2) const
+		double 			squaredNorm(const Polylines &polylines, const std::vector<Connection> &connections, bool try_flip1, bool try_flip2) const 
 			{ return ((this + 1)->start_point(polylines, connections, try_flip2) - this->end_point(polylines, connections, try_flip1)).squaredNorm(); }
 		double 			norm(const Polylines &polylines, const std::vector<Connection> &connections, bool try_flip1, bool try_flip2) const
 			{ return sqrt(this->squaredNorm(polylines, connections, try_flip1, try_flip2)); }
-		Vec2d			start_point(const Polylines &polylines, const std::vector<Connection> &connections, bool flip = false) const
+		Vec2d			start_point(const Polylines &polylines, const std::vector<Connection> &connections, bool flip = false) const 
 			{ const Polyline &pl = polylines[this - connections.data()]; return ((this->flipped == flip) ? pl.points.front() : pl.points.back()).cast<double>(); }
-		Vec2d			end_point(const Polylines &polylines, const std::vector<Connection> &connections, bool flip = false) const
+		Vec2d			end_point(const Polylines &polylines, const std::vector<Connection> &connections, bool flip = false) const 
 			{ const Polyline &pl = polylines[this - connections.data()]; return ((this->flipped == flip) ? pl.points.back() : pl.points.front()).cast<double>(); }
 
 		bool 			in_queue() const { return this->heap_idx != std::numeric_limits<size_t>::max(); }
@@ -1260,12 +1078,9 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 	};
 	print_statistics();
 #endif
-
-
     auto queue = make_mutable_priority_queue<Connection*, false>(
 		[](Connection *connection, size_t idx){ connection->heap_idx = idx; },
-
-        [&polylines, &connections](Connection *l, Connection *r){ return l->squaredNorm(polylines, connections) > r->squaredNorm(polylines, connections); });
+    	[&polylines, &connections](Connection *l, Connection *r){ return l->squaredNorm(polylines, connections) > r->squaredNorm(polylines, connections); });
 	queue.reserve(polylines.size() - 1);
     for (size_t i = 0; i + 1 < polylines.size(); ++ i)
 		queue.push(&connections[i]);
@@ -1277,8 +1092,6 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 		queue.pop();
 		connection.heap_idx = std::numeric_limits<size_t>::max();
 		size_t idx_first = &connection - connections.data();
-
-
 		double length_current 			= connection.norm(polylines, connections);
 		double length_flipped 			= connection.norm(polylines, connections, false, true);
 		int    best_idx_forward			= int(idx_first);
@@ -1291,14 +1104,9 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 				best_improvement_forward = this_improvement;
 				best_idx_forward = int(i);
 			}
-
-
 		}
 		if (length_current - length_flipped > best_improvement_forward)
-
 			best_idx_forward = int(connections.size()) - 1;
-
-
 		length_current 					  = connection.norm(polylines, connections);
 		length_flipped					  = connection.norm(polylines, connections, true, false);
 		int    best_idx_backwards		  = int(idx_first);
@@ -1311,16 +1119,12 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 				best_improvement_backwards = this_improvement;
 				best_idx_backwards = int(i);
 			}
-
-
 		}
 		if (! fixed_start && length_current - length_flipped > best_improvement_backwards)
-
 			best_idx_backwards = -1;
 		int update_begin = int(idx_first);
 		int update_end   = best_idx_forward;
 		if (best_improvement_backwards > 0. && best_improvement_backwards > best_improvement_forward) {
-
 			update_begin = best_idx_backwards;
 			update_end   = int(idx_first);
 		}
@@ -1346,7 +1150,6 @@ static inline void improve_ordering_by_segment_flipping(Polylines &polylines, bo
 				queue.push(&c);
 		}
 	}
-
 
 	for (Polyline &pl : polylines)
 		if (connections[&pl - polylines.data()].flipped)
@@ -1394,24 +1197,21 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 		auto first_point = [&edges](const std::pair<size_t, size_t> &span, bool flipped) { return flipped ? edges[span.first].p2 : edges[span.first].p1; };
 		auto last_point  = [&edges](const std::pair<size_t, size_t> &span, bool flipped) { return flipped ? edges[span.second - 1].p1 : edges[span.second - 1].p2; };
 		auto point       = [first_point, last_point](const std::pair<size_t, size_t> &span, bool start, bool flipped) { return start ? first_point(span, flipped) : last_point(span, flipped); };
-		auto cost        = [](const ConnectionCost &acost, bool flipped) {
+		auto cost        = [](const ConnectionCost &acost, bool flipped) { 
 			assert(acost.cost >= 0. && acost.cost_flipped >= 0.);
 			return flipped ? acost.cost_flipped : acost.cost;
 		};
-
 		auto simple_span_ignore = [](const std::pair<size_t, size_t>& span, bool reversed) {
 			return span.first + 1 == span.second && reversed;
 		};
 		assert(span1.first < span1.second);
 		assert(span2.first < span2.second);
 		assert(span3.first < span3.second);
-		return
+		return 
 			simple_span_ignore(span1, reversed1) || simple_span_ignore(span2, reversed2) || simple_span_ignore(span3, reversed3) ?
-
 				std::numeric_limits<double>::max() :
-
 				cost(cost1, flipped1) + cost(cost2, flipped2) + cost(cost3, flipped3) +
-					(point(span2, ! reversed2, flipped2) - point(span1, reversed1, flipped1)).norm() +
+					(point(span2, ! reversed2, flipped2) - point(span1, reversed1, flipped1)).norm() + 
 					(point(span3, ! reversed3, flipped3) - point(span2, reversed2, flipped2)).norm();
 	};
 
@@ -1425,8 +1225,7 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 	double cost_min = cost_current;
 	size_t flip_min = 0;
 	for (size_t i = 0; i < (1 << 6); ++ i) {
-
-		double c1 = (i == 0) ? cost_current :
+		double c1 = (i == 0) ? cost_current : 
 			        connection_cost(span1, cost1, (i & 1) != 0, (i & (1 << 1)) != 0, span2, cost2, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span3, cost3, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0);
 		double c2 = connection_cost(span1, cost1, (i & 1) != 0, (i & (1 << 1)) != 0, span3, cost3, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span2, cost2, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0);
 		double c3 = connection_cost(span2, cost2, (i & 1) != 0, (i & (1 << 1)) != 0, span1, cost1, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span3, cost3, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0);
@@ -1463,11 +1262,10 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 		auto first_point = [&edges](const std::pair<size_t, size_t> &span, bool flipped) { return flipped ? edges[span.first].p2 : edges[span.first].p1; };
 		auto last_point  = [&edges](const std::pair<size_t, size_t> &span, bool flipped) { return flipped ? edges[span.second - 1].p1 : edges[span.second - 1].p2; };
 		auto point       = [first_point, last_point](const std::pair<size_t, size_t> &span, bool start, bool flipped) { return start ? first_point(span, flipped) : last_point(span, flipped); };
-		auto cost        = [](const ConnectionCost &acost, bool flipped) {
+		auto cost        = [](const ConnectionCost &acost, bool flipped) { 
 			assert(acost.cost >= 0. && acost.cost_flipped >= 0.);
 			return flipped ? acost.cost_flipped : acost.cost;
 		};
-
 		auto simple_span_ignore = [](const std::pair<size_t, size_t>& span, bool reversed) {
 			return span.first + 1 == span.second && reversed;
 		};
@@ -1475,13 +1273,11 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 		assert(span2.first < span2.second);
 		assert(span3.first < span3.second);
 		assert(span4.first < span4.second);
-		return
+		return 
 			simple_span_ignore(span1, reversed1) || simple_span_ignore(span2, reversed2) || simple_span_ignore(span3, reversed3) || simple_span_ignore(span4, reversed4) ?
-
 				std::numeric_limits<double>::max() :
-
 				cost(cost1, flipped1) + cost(cost2, flipped2) + cost(cost3, flipped3) + cost(cost4, flipped4) +
-					(point(span2, ! reversed2, flipped2) - point(span1, reversed1, flipped1)).norm() +
+					(point(span2, ! reversed2, flipped2) - point(span1, reversed1, flipped1)).norm() + 
 					(point(span3, ! reversed3, flipped3) - point(span2, reversed2, flipped2)).norm() +
 					(point(span4, ! reversed4, flipped4) - point(span3, reversed3, flipped3)).norm();
 	};
@@ -1496,10 +1292,9 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 	double cost_min = cost_current;
 	size_t flip_min = 0;
 	for (size_t i = 0; i < (1 << 8); ++ i) {
-
 		size_t permutation = 0;
 		for (double c : {
-				(i == 0) ? cost_current :
+				(i == 0) ? cost_current : 
 				connection_cost(span1, cost1, (i & 1) != 0, (i & (1 << 1)) != 0, span2, cost2, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span3, cost3, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, span4, cost4, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
 				connection_cost(span1, cost1, (i & 1) != 0, (i & (1 << 1)) != 0, span2, cost2, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span4, cost4, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, span3, cost3, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
 				connection_cost(span1, cost1, (i & 1) != 0, (i & (1 << 1)) != 0, span3, cost3, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, span2, cost2, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, span4, cost4, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
@@ -1639,11 +1434,6 @@ static inline void do_crossover(const std::vector<FlipEdge> &edges_in, std::vect
 }
 #endif
 
-
-
-
-
-
 static inline void reorder_by_two_exchanges_with_segment_flipping(std::vector<FlipEdge> &edges)
 {
 	if (edges.size() < 2)
@@ -1655,7 +1445,6 @@ static inline void reorder_by_two_exchanges_with_segment_flipping(std::vector<Fl
 	std::vector<char>						connection_tried(edges.size(), false);
 	const size_t 							max_iterations = std::min(edges.size(), size_t(100));
 	for (size_t iter = 0; iter < max_iterations; ++ iter) {
-
 		for (size_t i = 1; i < edges.size(); ++ i) {
 			const FlipEdge   	 &e1 = edges[i - 1];
 			const FlipEdge   	 &e2 = edges[i];
@@ -1674,7 +1463,6 @@ static inline void reorder_by_two_exchanges_with_segment_flipping(std::vector<Fl
         for (const std::pair<double, size_t>& first_crossover_candidate : connection_lengths) {
             size_t longest_connection_idx = first_crossover_candidate.second;
 			connection_tried[longest_connection_idx] = true;
-
 			size_t crossover_pos_min  = std::numeric_limits<size_t>::max();
 			double crossover_cost_min = connections.back().cost;
 			size_t crossover_flip_min = 0;
@@ -1684,7 +1472,7 @@ static inline void reorder_by_two_exchanges_with_segment_flipping(std::vector<Fl
 					size_t b = longest_connection_idx;
 					if (a > b)
 						std::swap(a, b);
-					std::pair<double, size_t> cost_and_flip = minimum_crossover_cost(edges,
+					std::pair<double, size_t> cost_and_flip = minimum_crossover_cost(edges, 
 						std::make_pair(size_t(0), a), connections[a - 1], std::make_pair(a, b), connections[b - 1] - connections[a], std::make_pair(b, edges.size()), connections.back() - connections[b],
 						connections.back().cost);
 					if (cost_and_flip.second > 0 && cost_and_flip.first < crossover_cost_min) {
@@ -1695,31 +1483,25 @@ static inline void reorder_by_two_exchanges_with_segment_flipping(std::vector<Fl
 					}
 				}
 			if (crossover_cost_min < connections.back().cost) {
-
 				crossover1_pos_final = longest_connection_idx;
 				crossover2_pos_final = crossover_pos_min;
 				crossover_flip_final = crossover_flip_min;
 				break;
 			} else {
-
 			}
 		}
 		if (crossover_flip_final > 0) {
-
-
 			if (crossover1_pos_final > crossover2_pos_final)
 				std::swap(crossover1_pos_final, crossover2_pos_final);
 			do_crossover(edges, edges_tmp, std::make_pair(size_t(0), crossover1_pos_final), std::make_pair(crossover1_pos_final, crossover2_pos_final), std::make_pair(crossover2_pos_final, edges.size()), crossover_flip_final);
 			edges.swap(edges_tmp);
 		} else {
-
 			break;
 		}
 	}
 }
 
 #if 0
-
 static inline void reorder_by_three_exchanges_with_segment_flipping(std::vector<FlipEdge> &edges)
 {
 	if (edges.size() < 3) {
@@ -1732,7 +1514,6 @@ static inline void reorder_by_three_exchanges_with_segment_flipping(std::vector<
 	std::vector<std::pair<double, size_t>>	connection_lengths(edges.size() - 1, std::pair<double, size_t>(0., 0));
 	std::vector<char>						connection_tried(edges.size(), false);
 	for (size_t iter = 0; iter < edges.size(); ++ iter) {
-
 		for (size_t i = 1; i < edges.size(); ++ i) {
 			const FlipEdge   	 &e1 = edges[i - 1];
 			const FlipEdge   	 &e2 = edges[i];
@@ -1752,7 +1533,6 @@ static inline void reorder_by_three_exchanges_with_segment_flipping(std::vector<
         for (const std::pair<double, size_t> &first_crossover_candidate : connection_lengths) {
             size_t longest_connection_idx = first_crossover_candidate.second;
             connection_tried[longest_connection_idx] = true;
-
 			double crossover_cost_min = connections.back().cost;
 			for (size_t j = 1; j < connections.size(); ++ j)
 				if (! connection_tried[j]) {
@@ -1767,8 +1547,8 @@ static inline void reorder_by_three_exchanges_with_segment_flipping(std::vector<
 								std::swap(a, b);
 							if (b > c)
 								std::swap(b, c);
-							std::pair<double, size_t> cost_and_flip = minimum_crossover_cost(edges,
-								std::make_pair(size_t(0), a), connections[a - 1], std::make_pair(a, b), connections[b - 1] - connections[a],
+							std::pair<double, size_t> cost_and_flip = minimum_crossover_cost(edges, 
+								std::make_pair(size_t(0), a), connections[a - 1], std::make_pair(a, b), connections[b - 1] - connections[a], 
 								std::make_pair(b, c), connections[c - 1] - connections[b], std::make_pair(c, edges.size()), connections.back() - connections[c],
 								connections.back().cost);
 							if (cost_and_flip.second > 0 && cost_and_flip.first < crossover_cost_min) {
@@ -1782,20 +1562,15 @@ static inline void reorder_by_three_exchanges_with_segment_flipping(std::vector<
 						}
 				}
 			if (crossover_flip_final > 0) {
-
 				break;
 			} else {
-
 			}
 		}
 		if (crossover_flip_final > 0) {
-
-
-			do_crossover(edges, edges_tmp, std::make_pair(size_t(0), crossover1_pos_final), std::make_pair(crossover1_pos_final, crossover2_pos_final),
+			do_crossover(edges, edges_tmp, std::make_pair(size_t(0), crossover1_pos_final), std::make_pair(crossover1_pos_final, crossover2_pos_final), 
 				std::make_pair(crossover2_pos_final, crossover3_pos_final), std::make_pair(crossover3_pos_final, edges.size()), crossover_flip_final);
 			edges.swap(edges_tmp);
 		} else {
-
 			break;
 		}
 	}
@@ -1820,7 +1595,6 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 	const Matrixd 					  &segment_end_point_distance_matrix,
 	const double					   cost_current)
 {
-
 	auto end_point_distance = [&segment_end_point_distance_matrix](size_t span1, bool reversed1, bool flipped1, size_t span2, bool reversed2, bool flipped2) {
 		return segment_end_point_distance_matrix(span1 * 4 + (! reversed1) * 2 + flipped1, span2 * 4 + reversed2 * 2 + flipped2);
 	};
@@ -1829,7 +1603,6 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 		const size_t span2, bool reversed2, bool flipped2,
 		const size_t span3, bool reversed3, bool flipped3,
 		const size_t span4, bool reversed4, bool flipped4) {
-
 		return segment_costs(span1, flipped1) + segment_costs(span2, flipped2) + segment_costs(span3, flipped3) + segment_costs(span4, flipped4) +
 			   end_point_distance(span1, reversed1, flipped1, span2, reversed2, flipped2) +
 			   end_point_distance(span2, reversed2, flipped2, span3, reversed3, flipped3) +
@@ -1846,10 +1619,9 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 	double cost_min = cost_current;
 	size_t flip_min = 0;
 	for (size_t i = 0; i < (1 << 8); ++ i) {
-
 		size_t permutation = 0;
 		for (double c : {
-				(i == 0) ? cost_current :
+				(i == 0) ? cost_current : 
 				connection_cost(0, (i & 1) != 0, (i & (1 << 1)) != 0, 1, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, 2, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, 3, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
 				connection_cost(0, (i & 1) != 0, (i & (1 << 1)) != 0, 1, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, 3, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, 2, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
 				connection_cost(0, (i & 1) != 0, (i & (1 << 1)) != 0, 2, (i & (1 << 2)) != 0, (i & (1 << 3)) != 0, 1, (i & (1 << 4)) != 0, (i & (1 << 5)) != 0, 3, (i & (1 << 6)) != 0, (i & (1 << 7)) != 0),
@@ -1873,7 +1645,6 @@ static inline std::pair<double, size_t> minimum_crossover_cost(
 	return std::make_pair(cost_min, flip_min);
 }
 
-
 static inline void reorder_by_three_exchanges_with_segment_flipping2(std::vector<FlipEdge> &edges)
 {
 	if (edges.size() < 3) {
@@ -1886,7 +1657,6 @@ static inline void reorder_by_three_exchanges_with_segment_flipping2(std::vector
 	std::vector<std::pair<double, size_t>>	connection_lengths(edges.size() - 1, std::pair<double, size_t>(0., 0));
 	std::vector<char>						connection_tried(edges.size(), false);
 	for (size_t iter = 0; iter < edges.size(); ++ iter) {
-
 		for (size_t i = 1; i < edges.size(); ++ i) {
 			const FlipEdge   	 &e1 = edges[i - 1];
 			const FlipEdge   	 &e2 = edges[i];
@@ -1903,7 +1673,6 @@ static inline void reorder_by_three_exchanges_with_segment_flipping2(std::vector
 		size_t crossover2_pos_final = std::numeric_limits<size_t>::max();
 		size_t crossover3_pos_final = std::numeric_limits<size_t>::max();
 		size_t crossover_flip_final = 0;
-
 #ifdef NDEBUG
 		Matrixd segment_end_point_distance_matrix(4 * 4, 4 * 4);
 #else
@@ -1912,7 +1681,6 @@ static inline void reorder_by_three_exchanges_with_segment_flipping2(std::vector
         for (const std::pair<double, size_t> &first_crossover_candidate : connection_lengths) {
             size_t longest_connection_idx = first_crossover_candidate.second;
             connection_tried[longest_connection_idx] = true;
-
 			double crossover_cost_min = connections.back().cost;
 			for (size_t j = 1; j < connections.size(); ++ j)
 				if (! connection_tried[j]) {
@@ -1950,28 +1718,20 @@ static inline void reorder_by_three_exchanges_with_segment_flipping2(std::vector
 						}
 				}
 			if (crossover_flip_final > 0) {
-
 				break;
 			} else {
-
 			}
 		}
 		if (crossover_flip_final > 0) {
-
-
-			do_crossover(edges, edges_tmp, std::make_pair(size_t(0), crossover1_pos_final), std::make_pair(crossover1_pos_final, crossover2_pos_final),
+			do_crossover(edges, edges_tmp, std::make_pair(size_t(0), crossover1_pos_final), std::make_pair(crossover1_pos_final, crossover2_pos_final), 
 				std::make_pair(crossover2_pos_final, crossover3_pos_final), std::make_pair(crossover3_pos_final, edges.size()), crossover_flip_final);
 			edges.swap(edges_tmp);
 		} else {
-
 			break;
 		}
 	}
 }
 #endif
-
-
-
 
 static inline void improve_ordering_by_two_exchanges_with_segment_flipping(Polylines &polylines, bool fixed_start)
 {
@@ -1993,12 +1753,11 @@ static inline void improve_ordering_by_two_exchanges_with_segment_flipping(Polyl
 
 	std::vector<FlipEdge> edges;
 	edges.reserve(polylines.size());
-    std::transform(polylines.begin(), polylines.end(), std::back_inserter(edges),
-        [&polylines](const Polyline &pl){ return FlipEdge(pl.first_point().cast<double>(), pl.last_point().cast<double>(), &pl - polylines.data()); });
+    std::transform(polylines.begin(), polylines.end(), std::back_inserter(edges), 
+    	[&polylines](const Polyline &pl){ return FlipEdge(pl.first_point().cast<double>(), pl.last_point().cast<double>(), &pl - polylines.data()); });
 #if 1
 	reorder_by_two_exchanges_with_segment_flipping(edges);
 #else
-
 	reorder_by_three_exchanges_with_segment_flipping2(edges);
 #endif
 	Polylines out;
@@ -2007,10 +1766,8 @@ static inline void improve_ordering_by_two_exchanges_with_segment_flipping(Polyl
 		Polyline &pl = polylines[edge.source_index];
 		out.emplace_back(std::move(pl));
 		if (edge.p2 == out.back().first_point().cast<double>()) {
-
 			out.back().reverse();
 		} else {
-
 			assert(edge.p1 == out.back().first_point().cast<double>());
 		}
 	}
@@ -2025,7 +1782,6 @@ static inline void improve_ordering_by_two_exchanges_with_segment_flipping(Polyl
 #endif
 }
 
-
 Polylines chain_polylines(Polylines &&polylines, const Point *start_near)
 {
 #ifdef DEBUG_SVG_OUTPUT
@@ -2038,7 +1794,7 @@ Polylines chain_polylines(Polylines &&polylines, const Point *start_near)
 	if (! polylines.empty()) {
 		auto segment_end_point = [&polylines](size_t idx, bool first_point) -> const Point& { return first_point ? polylines[idx].first_point() : polylines[idx].last_point(); };
 		std::vector<std::pair<size_t, bool>> ordered = chain_segments_greedy2<Point, decltype(segment_end_point)>(segment_end_point, polylines.size(), start_near);
-		out.reserve(polylines.size());
+		out.reserve(polylines.size()); 
 		for (auto &segment_and_reversal : ordered) {
 			out.emplace_back(std::move(polylines[segment_and_reversal.first]));
 			if (segment_and_reversal.second)
@@ -2046,7 +1802,6 @@ Polylines chain_polylines(Polylines &&polylines, const Point *start_near)
 		}
 		if (out.size() > 1 && start_near == nullptr) {
 			improve_ordering_by_two_exchanges_with_segment_flipping(out, start_near != nullptr);
-
 		}
 	}
 
@@ -2056,21 +1811,17 @@ Polylines chain_polylines(Polylines &&polylines, const Point *start_near)
 	return out;
 }
 
-
 std::vector<const PrintInstance*> chain_print_object_instances(const std::vector<const PrintObject*>& print_objects, const Point* start_near)
 {
-
 	Points object_reference_points;
 	std::vector<std::pair<size_t, size_t>> instances;
 	for (size_t i = 0; i < print_objects.size(); ++i) {
 		const PrintObject& object = *print_objects[i];
 		for (size_t j = 0; j < object.instances().size(); ++j) {
-
 			object_reference_points.emplace_back(object.instances()[j].shift);
 			instances.emplace_back(i, j);
 		}
 	}
-
 	std::vector<size_t> path = chain_points_with_postprocessing(object_reference_points, start_near);
 
 	std::vector<const PrintInstance*> out;
@@ -2089,11 +1840,9 @@ std::vector<const PrintInstance*> chain_print_object_instances(const Print &prin
 
 Polylines chain_lines(const std::vector<Line> &lines, const double point_distance_epsilon)
 {
-
     struct LineEnd {
         LineEnd(const Line *line, bool start) : line(line), start(start) {}
         const Line      *line;
-
         bool             start;
         const Point&     point() const { return start ? line->a : line->b; }
         const Point&     other_point() const { return start ? line->b : line->a; }
@@ -2110,7 +1859,6 @@ Polylines chain_lines(const std::vector<Line> &lines, const double point_distanc
         closest_end_point_lookup.insert(LineEnd(&line, false));
     }
 
-
     std::vector<char> line_consumed(lines.size(), false);
     static const double point_distance_epsilon2 = point_distance_epsilon * point_distance_epsilon;
     Polylines out;
@@ -2124,17 +1872,13 @@ Polylines chain_lines(const std::vector<Line> &lines, const double point_distanc
                 for (;;) {
                     auto [line_end, dist2] = closest_end_point_lookup.find(pl.last_point());
                     if (line_end == nullptr || dist2 >= point_distance_epsilon2)
-
                         break;
-
                     pl.points.back() = (0.5 * (pl.points.back().cast<double>() + line_end->point().cast<double>())).cast<coord_t>();
-
                     pl.points.emplace_back(line_end->other_point());
                     closest_end_point_lookup.erase(*line_end);
                     closest_end_point_lookup.erase(line_end->other_end());
                     line_consumed[line_end->line - lines.data()] = true;
                 }
-
                 pl.reverse();
             }
             out.emplace_back(std::move(pl));

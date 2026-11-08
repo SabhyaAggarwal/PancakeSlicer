@@ -13,27 +13,17 @@ namespace Algorithm {
 
 struct RegionExpansionParameters
 {
-
     float                  tiny_expansion;
-
     float                  initial_step;
-
     float                  other_step;
-
     size_t                 num_other_steps;
-
-
     float                  max_inflation;
-
 
     double                 arc_tolerance;
 
     static RegionExpansionParameters build(
-
         float                full_expansion,
-
         float                expansion_step,
-
         size_t               max_nr_expansion_steps);
 };
 
@@ -54,14 +44,9 @@ inline bool lower_by_src_and_boundary(const WaveSeed &l, const WaveSeed &r)
     return l.src < r.src || (l.src == r.src && l.boundary < r.boundary);
 }
 
-
-
 WaveSeeds wave_seeds(
-
     const ExPolygons      &src,
-
     const ExPolygons      &boundary,
-
     float                  tiny_expansion,
     bool                   sorted);
 
@@ -76,11 +61,8 @@ std::vector<RegionExpansion> propagate_waves(const WaveSeeds &seeds, const ExPol
 std::vector<RegionExpansion> propagate_waves(const ExPolygons &src, const ExPolygons &boundary, const RegionExpansionParameters &params);
 
 std::vector<RegionExpansion> propagate_waves(const ExPolygons &src, const ExPolygons &boundary,
-
-    float expansion,
-
+    float expansion, 
     float expansion_step,
-
     size_t max_nr_steps);
 
 struct RegionExpansionEx
@@ -93,21 +75,14 @@ struct RegionExpansionEx
 std::vector<RegionExpansionEx> propagate_waves_ex(const WaveSeeds &seeds, const ExPolygons &boundary, const RegionExpansionParameters &params);
 
 std::vector<RegionExpansionEx> propagate_waves_ex(const ExPolygons &src, const ExPolygons &boundary,
-
-    float expansion,
-
+    float expansion, 
     float expansion_step,
-
     size_t max_nr_steps);
 
 std::vector<Polygons> expand_expolygons(const ExPolygons &src, const ExPolygons &boundary,
-
-    float expansion,
-
+    float expansion, 
     float expansion_step,
-
     size_t max_nr_steps);
-
 
 std::vector<ExPolygon> merge_expansions_into_expolygons(ExPolygons &&src, std::vector<RegionExpansion> &&expanded);
 

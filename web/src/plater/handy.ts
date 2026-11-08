@@ -1,6 +1,3 @@
-
-
-
 import { beginBusy } from '../state/busy';
 import { arrangeAll, importFiles } from '../actions';
 import { toast } from '../state/store';
@@ -19,10 +16,6 @@ export const HANDY: [label: string, files: string[], arrange?: boolean][] = [
   ['Orca String Hell', ['Orca_stringhell.drc']],
 ];
 
-
-
-
-
 export async function importFetched(label: string, sources: [url: string, name: string][], arrange = false) {
   const generation = documentGeneration(), busy = beginBusy(`Loading ${label}`);
   try {
@@ -32,7 +25,7 @@ export async function importFetched(label: string, sources: [url: string, name: 
       return new File([await r.blob()], import.meta.env.MODE === 'demo' ? name.replace(/\.(drc|3mf)$/i, '.stl') : name);
     }));
     if (generation !== documentGeneration()) return;
-    await importFiles(files, true);
+    await importFiles(files);
     if (arrange && generation === documentGeneration()) arrangeAll(false);
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e));
@@ -40,7 +33,6 @@ export async function importFetched(label: string, sources: [url: string, name: 
     busy.end();
   }
 }
-
 
 export const handyUrl = (name: string) => `/api/handy-models/${encodeURIComponent(name)}`;
 

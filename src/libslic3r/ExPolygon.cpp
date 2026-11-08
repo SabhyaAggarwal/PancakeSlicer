@@ -112,14 +112,12 @@ bool ExPolygon::contains(const Polylines &polylines) const
     return pl_out.empty();
 }
 
-bool ExPolygon::contains(const Point &point, bool border_result  ) const
+bool ExPolygon::contains(const Point &point, bool border_result ) const
 {
     if (! Slic3r::contains(contour, point, border_result))
-
         return false;
     for (const Polygon &hole : this->holes)
         if (Slic3r::contains(hole, point, ! border_result))
-
             return false;
     return true;
 }
@@ -133,7 +131,6 @@ bool ExPolygon::on_boundary(const Point &point, double eps) const
             return true;
     return false;
 }
-
 
 Point ExPolygon::point_projection(const Point &point) const
 {
@@ -182,10 +179,7 @@ bool ExPolygon::overlaps(const ExPolygon &other) const
     svg.draw(pl_out, "red");
     #endif
 
-
-
     return ! pl_out.empty() ||
-
            other.contains(this->contour.points.front());
 }
 
@@ -238,7 +232,6 @@ Polygons ExPolygon::simplify_p(double tolerance) const
 {
     Polygons pp;
     pp.reserve(this->holes.size() + 1);
-
     {
         Polygon p = this->contour;
         p.points.push_back(p.points.front());
@@ -246,7 +239,6 @@ Polygons ExPolygon::simplify_p(double tolerance) const
         p.points.pop_back();
         pp.emplace_back(std::move(p));
     }
-
     for (Polygon p : this->holes) {
         p.points.push_back(p.points.front());
         p.points = MultiPoint::_douglas_peucker(p.points, tolerance);
@@ -268,65 +260,40 @@ void ExPolygon::simplify(double tolerance, ExPolygons* expolygons) const
 
 void ExPolygon::medial_axis(double min_width, double max_width, ThickPolylines* polylines) const
 {
-
     Slic3r::Geometry::MedialAxis ma(min_width, max_width, *this);
-
-
+    
     ThickPolylines pp;
     ma.build(&pp);
-
-
-
-
-
-
-
-
-
-
+    
     double max_w = 0;
     for (ThickPolylines::const_iterator it = pp.begin(); it != pp.end(); ++it)
         max_w = fmaxf(max_w, *std::max_element(it->width.begin(), it->width.end()));
-
-
-
+    
     bool removed = false;
     for (size_t i = 0; i < pp.size(); ++i) {
         ThickPolyline& polyline = pp[i];
-
-
-
-
-
+        
         Point new_front = polyline.points.front();
         Point new_back  = polyline.points.back();
         if (polyline.endpoints.first && !this->on_boundary(new_front, SCALED_EPSILON)) {
             Vec2d p1 = polyline.points.front().cast<double>();
             Vec2d p2 = polyline.points[1].cast<double>();
-
             if (polyline.points.size() == 2)
                 p2 = (p1 + p2) * 0.5;
-
             p1 -= (p2 - p1).normalized() * max_width;
             this->contour.intersection(Line(p1.cast<coord_t>(), p2.cast<coord_t>()), &new_front);
         }
         if (polyline.endpoints.second && !this->on_boundary(new_back, SCALED_EPSILON)) {
             Vec2d p1 = (polyline.points.end() - 2)->cast<double>();
             Vec2d p2 = polyline.points.back().cast<double>();
-
             if (polyline.points.size() == 2)
                 p1 = (p1 + p2) * 0.5;
-
             p2 += (p2 - p1).normalized() * max_width;
             this->contour.intersection(Line(p1.cast<coord_t>(), p2.cast<coord_t>()), &new_back);
         }
         polyline.points.front() = new_front;
         polyline.points.back()  = new_back;
-
-
-
-
-
+        
         if ((polyline.endpoints.first || polyline.endpoints.second)
             && polyline.length() < max_w*2) {
             pp.erase(pp.begin() + i);
@@ -335,20 +302,11 @@ void ExPolygon::medial_axis(double min_width, double max_width, ThickPolylines* 
             continue;
         }
     }
-
-
-
-
-
-
-
-
+    
     if (removed) {
         for (size_t i = 0; i < pp.size(); ++i) {
             ThickPolyline& polyline = pp[i];
             if (polyline.endpoints.first && polyline.endpoints.second) continue;
-
-
             for (size_t j = i+1; j < pp.size(); ++j) {
                 ThickPolyline& other = pp[j];
                 if (polyline.last_point() == other.last_point()) {
@@ -361,18 +319,18 @@ void ExPolygon::medial_axis(double min_width, double max_width, ThickPolylines* 
                 } else if (polyline.last_point() != other.first_point()) {
                     continue;
                 }
-
+                
                 polyline.points.insert(polyline.points.end(), other.points.begin() + 1, other.points.end());
                 polyline.width.insert(polyline.width.end(), other.width.begin(), other.width.end());
                 polyline.endpoints.second = other.endpoints.second;
                 assert(polyline.width.size() == polyline.points.size()*2 - 2);
-
+                
                 pp.erase(pp.begin() + j);
                 j = i;
             }
         }
     }
-
+    
     polylines->insert(polylines->end(), pp.begin(), pp.end());
 }
 
@@ -394,8 +352,6 @@ Lines ExPolygon::lines() const
     }
     return lines;
 }
-
-
 
 bool expolygons_match(const ExPolygon &l, const ExPolygon &r)
 {
@@ -451,7 +407,6 @@ extern std::vector<BoundingBox> get_extents_vector(const ExPolygons &polygons)
 bool has_duplicate_points(const ExPolygon &expoly)
 {
 #if 1
-
     size_t cnt = expoly.contour.points.size();
     for (const Polygon &hole : expoly.holes)
         cnt += hole.points.size();
@@ -462,7 +417,6 @@ bool has_duplicate_points(const ExPolygon &expoly)
         allpts.insert(allpts.end(), hole.points.begin(), hole.points.end());
     return has_duplicate_points(std::move(allpts));
 #else
-
     if (has_duplicate_points(expoly.contour))
         return true;
     for (const Polygon &hole : expoly.holes)
@@ -475,7 +429,6 @@ bool has_duplicate_points(const ExPolygon &expoly)
 bool has_duplicate_points(const ExPolygons &expolys)
 {
 #if 1
-
     Points allpts;
     allpts.reserve(count_points(expolys));
     for (const ExPolygon &expoly : expolys) {
@@ -485,7 +438,6 @@ bool has_duplicate_points(const ExPolygons &expolys)
     }
     return has_duplicate_points(std::move(allpts));
 #else
-
     for (const ExPolygon &expoly : expolys)
         if (has_duplicate_points(expoly))
             return true;
@@ -503,7 +455,6 @@ bool remove_same_neighbor(ExPolygons &expolygons)
         remove_from_contour |= remove_same_neighbor(expoly.contour);
         remove_from_holes |= remove_same_neighbor(expoly.holes);
     }
-
     if (remove_from_contour)
         expolygons.erase(std::remove_if(expolygons.begin(), expolygons.end(),
                                         [](const ExPolygon &p) { return p.contour.points.size() <= 2; }),
@@ -522,7 +473,6 @@ bool remove_small_and_small_holes(ExPolygons &expolygons, double min_area)
     size_t free_idx = 0;
     for (size_t expoly_idx = 0; expoly_idx < expolygons.size(); ++expoly_idx) {
         if (std::abs(expolygons[expoly_idx].area()) >= min_area) {
-
             modified |= remove_small(expolygons[expoly_idx].holes, min_area);
             if (free_idx < expoly_idx) {
                 std::swap(expolygons[expoly_idx].contour, expolygons[free_idx].contour);

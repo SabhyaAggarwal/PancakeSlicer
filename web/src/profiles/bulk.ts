@@ -1,4 +1,3 @@
-
 import { selectedVisible, type ProfileKey, type ProfileSelection } from './selection';
 
 export interface ProfileReference { readonly kind: 'active' | 'default' | 'project' | 'inheritance'; readonly label: string; readonly owner?: ProfileKey }
@@ -6,7 +5,6 @@ export interface ProfileAccess {
   label(key: ProfileKey): string;
   isInUse(key: ProfileKey): readonly ProfileReference[];
   isDeletable(key: ProfileKey): boolean;
-
   readonly referencesComplete: boolean;
 }
 export interface NamedProfile { readonly key: ProfileKey; readonly name: string }
@@ -21,7 +19,6 @@ export interface DeletePlan {
     readonly deleteNames: readonly string[]; readonly blocked: readonly BlockedProfile[];
   };
 }
-
 export function planDeleteSelected(selection: ProfileSelection, access: ProfileAccess): DeletePlan {
   const selected = selectedVisible(selection).map((key) => ({ key, name: access.label(key) }));
   const deletable: NamedProfile[] = [], blocked: BlockedProfile[] = [];
@@ -36,7 +33,6 @@ export function planDeleteSelected(selection: ProfileSelection, access: ProfileA
     confirmation: { selectedCount: selected.length, deleteCount: deletable.length, blockedCount: blocked.length,
       deleteNames: deletable.map((p) => p.name), blocked } };
 }
-
 export function revalidateDeletePlan(plan: DeletePlan, current: ProfileSelection, access: ProfileAccess): DeletePlan {
   const confirmed = new Set(plan.deletable.map((p) => p.key));
   const visible = plan.scope === current.scope ? selectedVisible(current).filter((key) => confirmed.has(key)) : [];
@@ -51,12 +47,10 @@ export interface DeleteResult {
   readonly state: 'empty' | 'blocked' | 'complete' | 'partial' | 'failed';
   readonly deleted: readonly ProfileKey[];
   readonly failed: readonly { key: ProfileKey; error: string }[];
-
   readonly unknown: readonly { key: ProfileKey; error: string }[];
   readonly notAttempted: readonly ProfileKey[];
   readonly blocked: readonly BlockedProfile[];
 }
-
 export function deleteResult(plan: DeletePlan, outcomes: readonly DeleteOutcome[]): DeleteResult {
   const byKey = new Map<ProfileKey, DeleteOutcome[]>();
   for (const outcome of outcomes) byKey.set(outcome.key, [...byKey.get(outcome.key) ?? [], outcome]);
@@ -77,10 +71,6 @@ export function deleteResult(plan: DeletePlan, outcomes: readonly DeleteOutcome[
     : failed.length === plan.deletable.length && !plan.blocked.length ? 'failed' : 'partial';
   return { state, deleted, failed, unknown, notAttempted, blocked: plan.blocked };
 }
-
-
-
-
 export function applyDeleteResult<T>(current: readonly T[], result: DeleteResult, keyOf: (profile: T) => ProfileKey): T[] {
   const removed = new Set(result.deleted);
   return current.filter((profile) => !removed.has(keyOf(profile)));
@@ -92,7 +82,6 @@ export interface ExportResult {
   readonly files: readonly ExportedProfile[];
   readonly failed: readonly (NamedProfile & { error: string })[];
 }
-
 export function serializeSelected(selection: ProfileSelection, access: {
   label(key: ProfileKey): string; serialize(key: ProfileKey): string;
 }): ExportResult {
@@ -112,7 +101,6 @@ export function serializeSelected(selection: ProfileSelection, access: {
 }
 export type ActionAvailability = { readonly enabled: true } | { readonly enabled: false; readonly reason: string };
 const disabled = (reason: string): ActionAvailability => ({ enabled: false, reason });
-
 export function selectedActions(selection: ProfileSelection, support: {
   canUse(key: ProfileKey): ActionAvailability;
   readonly compareCount: 1 | 2;

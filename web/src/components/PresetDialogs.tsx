@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
@@ -11,8 +9,6 @@ export { display };
 const TAB = { machine: 'printer', filament: 'filament', process: 'process' } as const;
 
 export interface DiffRow { key: string; label: string; group: string; values: (ConfigValue | undefined)[]; differs: boolean }
-
-
 
 export function diffRows(type: PresetType, configs: Config[], all = false): DiffRow[] {
   const rows: DiffRow[] = [];

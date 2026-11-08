@@ -14,9 +14,6 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
                                                   const ModelVolumePtrs &model_volumes,
                                                   double                *out_belt_min_z)
 {
-
-
-
     bool has_rotation = false;
     if (config.belt_printer.value) {
         const Matrix3d rot = BeltTransformPipeline::build_rotation_matrix(config, &has_rotation);
@@ -29,26 +26,6 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
 
     if (!has_rotation)
         return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     BeltTransformPipeline::BeltFloorParams floor;
     const bool has_floor = BeltTransformPipeline::floor_shear(config, floor);
@@ -73,7 +50,6 @@ void BeltSliceStrategy::apply_preslice_transforms(Transform3d           &trafo,
         z_shift.matrix()(2, 3) = z_shift_val;
         trafo = z_shift * trafo;
     }
-
     if (out_belt_min_z && config.belt_printer.value) {
         *out_belt_min_z = (min_z != std::numeric_limits<double>::max()) ? min_z : 0.;
     }

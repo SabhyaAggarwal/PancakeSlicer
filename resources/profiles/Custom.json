@@ -1,6 +1,6 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.21",
+	"version": "02.04.00.22",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
@@ -219,20 +219,20 @@
 			"sub_path": "process/0.20mm Full orientation @FR3.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Hybrid",
-			"sub_path": "process/0.20mm Non-planar top @Hybrid.json"
+			"name": "0.20mm Smoothest tops @Hybrid",
+			"sub_path": "process/0.20mm Smoothest tops @Hybrid.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Prodcan3",
-			"sub_path": "process/0.20mm Non-planar top @Prodcan3.json"
+			"name": "0.20mm Smoothest tops @Prodcan3",
+			"sub_path": "process/0.20mm Smoothest tops @Prodcan3.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Tripod",
-			"sub_path": "process/0.20mm Non-planar top @Tripod.json"
+			"name": "0.20mm Smoothest tops @Tripod",
+			"sub_path": "process/0.20mm Smoothest tops @Tripod.json"
 		},
 		{
-			"name": "0.20mm Non-planar top @Wrist",
-			"sub_path": "process/0.20mm Non-planar top @Wrist.json"
+			"name": "0.20mm Smoothest tops @Wrist",
+			"sub_path": "process/0.20mm Smoothest tops @Wrist.json"
 		}
 	],
 	"filament_list": [

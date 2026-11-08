@@ -1,5 +1,4 @@
 import filamentVariantKeys from '../../../server/filament_variant_keys.json';
-
 export const print_options_with_variant = new Set([
   'initial_layer_speed',
   'initial_layer_infill_speed',

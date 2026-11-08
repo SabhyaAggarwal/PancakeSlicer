@@ -119,13 +119,10 @@ std::vector<ExPolygons> slice_csgmesh_ex(
 
     std::vector<ExPolygons> ret = std::move(opstack.top().slices);
 
-
     execution::for_each(ex_tbb, ret.begin(), ret.end(), [](ExPolygons &slice) {
         auto it = std::remove_if(slice.begin(), slice.end(), [](const ExPolygon &p){
             return p.area() < double(SCALED_EPSILON) * double(SCALED_EPSILON);
         });
-
-
 
         slice.erase(it, slice.end());
         slice = union_ex(slice);

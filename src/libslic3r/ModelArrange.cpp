@@ -31,9 +31,6 @@ arrangement::ArrangePolygons get_arrange_polys(const Model &model, ModelInstance
     for (ModelObject *mo : model.objects)
         for (ModelInstance *minst : mo->instances) {
             minst->get_arrange_polygon(&ap);
-
-
-
             ap.bed_idx = 0;
             input.emplace_back(ap);
             instances.emplace_back(minst);
@@ -77,7 +74,6 @@ Slic3r::arrangement::ArrangePolygon get_arrange_poly(const Model &model)
 void duplicate(Model &model, Slic3r::arrangement::ArrangePolygons &copies, VirtualBedFn vfn)
 {
     for (ModelObject *o : model.objects) {
-
         ModelInstancePtrs instances = o->instances;
         o->instances.clear();
         for (const ModelInstance *i : instances) {
@@ -95,7 +91,6 @@ void duplicate(Model &model, Slic3r::arrangement::ArrangePolygons &copies, Virtu
 void duplicate_objects(Model &model, size_t copies_num)
 {
     for (ModelObject *o : model.objects) {
-
         ModelInstancePtrs instances = o->instances;
         for (const ModelInstance *i : instances)
             for (size_t k = 2; k <= copies_num; ++ k)
@@ -103,22 +98,14 @@ void duplicate_objects(Model &model, size_t copies_num)
     }
 }
 
-
 template<class T>
 arrangement::ArrangePolygon get_arrange_poly(T obj, const Slic3r::DynamicPrintConfig& config)
 {
     ArrangePolygon ap = obj.get_arrange_polygon(config);
-
-
-
     ap.bed_idx = 0;
     ap.setter = [obj](const ArrangePolygon& p) {
         if (p.is_arranged()) {
             Vec2d t = p.translation.cast<double>();
-
-
-
-
             T{ obj }.apply_arrange_result(t, p.rotation, p.itemid);
         }
     };
@@ -135,7 +122,6 @@ arrangement::ArrangePolygon get_arrange_poly(ModelInstance* inst, const Slic3r::
 ArrangePolygon get_instance_arrange_poly(ModelInstance* instance, const Slic3r::DynamicPrintConfig& config)
 {
     ArrangePolygon ap = get_arrange_poly(PtrWrapper{ instance }, config);
-
 
     if (config.has("curr_bed_type")) {
         ap.bed_temp = 0;
@@ -160,7 +146,6 @@ ArrangePolygon get_instance_arrange_poly(ModelInstance* instance, const Slic3r::
         ap.vitrify_temp = config.opt_int("temperature_vitrification", ap.extrude_ids.front() - 1);
     }
 
-
     auto* filament_types_opt = dynamic_cast<const ConfigOptionStrings*>(config.option("filament_type"));
     if (filament_types_opt) {
         std::set<int> filament_temp_types;
@@ -172,13 +157,9 @@ ArrangePolygon get_instance_arrange_poly(ModelInstance* instance, const Slic3r::
         ap.filament_temp_type = Print::get_compatible_filament_type(filament_temp_types);
     }
 
-
     auto obj = instance->get_object();
 
     ap.brim_width = 1.0;
-
-
-
     auto supp_type_ptr = obj->get_config_value<ConfigOptionBool>(config, "enable_support");
     auto support_type_ptr = obj->get_config_value<ConfigOptionEnum<SupportType>>(config, "support_type");
     auto support_type = support_type_ptr->value;

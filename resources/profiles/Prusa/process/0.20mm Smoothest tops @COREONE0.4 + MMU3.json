@@ -1,0 +1,16 @@
+{
+	"type": "process",
+	"name": "0.20mm Smoothest tops @COREONE0.4 + MMU3",
+	"renamed_from": "0.20mm Non-planar top @COREONE0.4 + MMU3;0.20mm Non-planar top COREONE0.4 + MMU3",
+	"inherits": "0.20mm STRUCTURAL @COREONE0.4 + MMU3",
+	"from": "system",
+	"setting_id": "BguK5q4uIhcb1uQI",
+	"instantiation": "true",
+	"top_layer_direction": "45",
+	"nonplanar_mode": "auto",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Prusa CORE One MMU3 0.4 nozzle"
+	],
+	"compatible_printers_condition": ""
+}

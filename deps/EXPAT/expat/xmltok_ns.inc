@@ -58,7 +58,7 @@ static const ENCODING *const NS(encodings)[] = {
     &ns(latin1_encoding).enc, &ns(ascii_encoding).enc,
     &ns(utf8_encoding).enc,   &ns(big2_encoding).enc,
     &ns(big2_encoding).enc,   &ns(little2_encoding).enc,
-    &ns(utf8_encoding).enc
+    &ns(utf8_encoding).enc /* NO_ENC */
 };
 
 static int PTRCALL
@@ -119,4 +119,4 @@ NS(XmlParseXmlDecl)(int isGeneralTextEntity, const ENCODING *enc,
                         encoding, standalone);
 }
 
-#endif
+#endif /* XML_TOK_NS_C */

@@ -22,7 +22,6 @@ class BoundingBox;
 
 namespace arrangement {
 
-
 class CircleBed {
     Point center_;
     double radius_;
@@ -35,25 +34,12 @@ public:
     inline const Point& center() const { return center_; }
 };
 
-
 struct InfiniteBed {
     Point center;
     explicit InfiniteBed(const Point &p = {0, 0}): center{p} {}
 };
 
-
-
-
 static const constexpr int UNARRANGED = -1;
-
-
-
-
-
-
-
-
-
 
 struct ArrangePolygon {
     ExPolygon poly;
@@ -62,13 +48,11 @@ struct ArrangePolygon {
     coord_t   inflation = 0;
     int       bed_idx{UNARRANGED};
     int       priority{0};
-
     int       locked_plate{ -1 };
     bool      is_virt_object{ false };
     bool      is_extrusion_cali_object{ false };
     bool      is_wipe_tower{ false };
     bool      has_tree_support{false};
-
     int       row{0};
     int       col{0};
     std::vector<int> extrude_ids{};
@@ -84,13 +68,9 @@ struct ArrangePolygon {
     double    brim_width{ 0 };
     std::string name;
 
-
-
     std::vector<double> allowed_rotations = {0.};
 
-
     std::function<void(const ArrangePolygon&)> setter = nullptr;
-
 
     void apply() {
         if (setter && !is_applied) {
@@ -98,7 +78,6 @@ struct ArrangePolygon {
             is_applied = 1;
         }
     }
-
 
     bool is_arranged() const { return bed_idx != UNARRANGED; }
 
@@ -116,21 +95,15 @@ using ArrangePolygons = std::vector<ArrangePolygon>;
 
 struct ArrangeParams {
 
-
-
     coord_t min_obj_distance = 0;
 
-
-
     float accuracy = 1.f;
-
 
     bool parallel = true;
 
     bool allow_rotations = false;
 
     bool do_final_align = true;
-
 
     bool  allow_multi_materials_on_same_plate = true;
     bool  avoid_extrusion_cali_region         = true;
@@ -146,9 +119,6 @@ struct ArrangeParams {
     float nozzle_height = 0;
     float printable_height = 256.0;
     Vec2d align_center{ 0.5,0.5 };
-
-
-
     bool  is_belt         = false;
     int   belt_axis       = 1;
     bool  belt_reversed   = false;
@@ -156,21 +126,16 @@ struct ArrangeParams {
 
     ArrangePolygons excluded_regions;
     ArrangePolygons nonprefered_regions;
-
-
-
     std::function<void(unsigned, std::string)> progressind = [](unsigned st, std::string str = "") {
         std::cout << "st=" << st << ", " << str << std::endl;
     };
 
     std::function<void(const ArrangePolygon &)> on_packed;
 
-
     std::function<bool(void)>     stopcondition;
 
     ArrangeParams() = default;
     explicit ArrangeParams(coord_t md) : min_obj_distance(md) {}
-
     std::string to_json() const{
         std::string ret = "{";
         ret += "\"min_obj_distance\":" + std::to_string(min_obj_distance) + ",";
@@ -203,19 +168,7 @@ void update_selected_items_axis_align(ArrangePolygons& selected, const DynamicPr
 
 Points get_shrink_bedpts(const DynamicPrintConfig* print_cfg, const ArrangeParams& params);
 
-
-
-
-
-
-
-
-
-
-
-
 template<class TBed> void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, const TBed &bed, const ArrangeParams &params = {});
-
 
 template<> void arrange(ArrangePolygons &items, const ArrangePolygons &excludes, const Points &bed, const ArrangeParams &params);
 

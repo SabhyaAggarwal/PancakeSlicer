@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { assertNever, createMachine, useMachine, type Machine } from './fsm';
 import { playback } from './playback';
 import { finishSlicePreview } from './preview-navigation';
@@ -23,7 +24,6 @@ export const createViewer = () => createMachine<ViewerState, ViewerEvent, Viewer
 });
 export type ViewerSnapshot = { value: 'empty' } | { value: 'loading' | 'ready' | 'playing'; source: ViewerSource }
   | { value: 'error'; source: ViewerSource; error: string };
-
 export function viewerSnapshot(m: Machine<ViewerState, ViewerEvent, ViewerContext>): ViewerSnapshot {
   const { value, context: c } = m.get();
   if (value === 'empty') return { value };
@@ -46,6 +46,9 @@ export const viewerReady = (id: string, moves?: number) => {
   if (moves !== undefined) playback.send({ type: 'SOURCE', moves });
   viewer.send({ type: 'READY', id });
 };
+export const viewerFirstMoves = (id: string, moves: number) => {
+  if (viewer.get().value === 'loading' && viewer.get().context.source?.id === id) finishSlicePreview(id, moves);
+};
 export const viewerError = (id: string, error: string) => viewer.send({ type: 'FAIL', id, error });
 export const playViewer = () => { if (viewer.can({ type: 'PLAY' })) playback.send({ type: 'PLAY' }); };
 export const pauseViewer = () => playback.send({ type: 'PAUSE' });
@@ -57,3 +60,14 @@ playback.subscribe(({ value }) => {
 viewer.subscribe(({ value }) => {
   if (value !== 'ready' && value !== 'playing' && playback.get().value === 'playing') playback.send({ type: 'PAUSE' });
 });
+
+export type ViewerProgress = { id: string; loaded: number; total: number; bytes: number };
+let progress: ViewerProgress | null = null, progressAt = 0;
+const progressListeners = new Set<() => void>();
+export function noteViewerProgress(next: ViewerProgress) {
+  const now = performance.now(), edge = progress?.id !== next.id || next.loaded === 0 || next.loaded >= next.total;
+  if (!edge && now - progressAt < 100) return;
+  progressAt = now; progress = next;
+  progressListeners.forEach((f) => f());
+}
+export const useViewerProgress = () => useSyncExternalStore((f) => { progressListeners.add(f); return () => { progressListeners.delete(f); }; }, () => progress);

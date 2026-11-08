@@ -9,8 +9,6 @@ namespace Slic3r {
 class PrintConfig;
 namespace Nonplanar {
 
-
-
 struct FirmwareTimedMove {
     Vec3d from, to;
     double seconds = 0.;

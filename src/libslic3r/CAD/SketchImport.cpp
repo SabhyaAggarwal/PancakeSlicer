@@ -20,8 +20,6 @@
 
 namespace Slic3r {
 
-
-
 template<class ToMm>
 static ImportRegion expoly_to_region(const ExPolygon& ex, ToMm to_mm)
 {
@@ -38,8 +36,6 @@ static ImportRegion expoly_to_region(const ExPolygon& ex, ToMm to_mm)
         region.push_back(contour_pts(h));
     return region;
 }
-
-
 
 static void center_regions(ImportRegions& regs)
 {
@@ -93,9 +89,6 @@ ImportRegions text_to_regions(const std::string& utf8, double size_mm,
     if (healed.expolygons.empty())
         return {};
 
-
-
-
     const double s = Emboss::get_text_shape_scale(prop, *fwc.font_file);
     auto to_mm = [s](const Point& p) { return Vec2d(p.x() * s, p.y() * s); };
 
@@ -117,21 +110,12 @@ ImportRegions svg_to_regions(const std::string& svg_path, double scale)
     if (!image)
         return {};
 
-
-
-
-
     for (NSVGshape* s = image->shapes; s != nullptr; s = s->next)
         if (s->fill.type != NSVG_PAINT_NONE)
             s->stroke.type = NSVG_PAINT_NONE;
 
-
-
-
     NSVGLineParams param(0.3);
     ExPolygonsWithIds ids = create_shape_with_ids(*image, param);
-
-
 
     const double s = SCALING_FACTOR * scale;
     auto to_mm = [s](const Point& p) { return Vec2d(p.x() * s, p.y() * s); };

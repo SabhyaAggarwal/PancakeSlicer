@@ -7,15 +7,21 @@ import (
 	"slices"
 )
 
+// Bargain3 is a MatchFinder that attempts to find the encoding with the lowest
+// "bit cost", using 3 hash lengths (5, 8, and 12).
 type Bargain3 struct {
 	MaxDistance int
 
+	// Skip is whether to look for matches at every other byte instead of every
+	// byte (to increase speed but decrease compression).
 	Skip bool
 
 	history []byte
 	table5  [1 << 17]tableEntry
 	table8  [1 << 18]tableEntry
 	table12 [1 << 19]tableEntry
+
+	// holding onto buffers to reduce allocations:
 
 	arrivals []arrival
 	matches  []Match
@@ -43,6 +49,8 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 		byteCost[b] = float32(cost)
 	}
 
+	// Each element in arrivals corresponds to the position just after
+	// the corresponding byte in src.
 	arrivals := z.arrivals
 	if len(arrivals) < len(src) {
 		arrivals = make([]arrival, len(src))
@@ -143,7 +151,7 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 		}
 
 		if i > len(src)-12 {
-
+			// There's no room to check hashes.
 			continue
 		}
 
@@ -161,10 +169,12 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 		z.table8[nextHash8] = entry
 		z.table12[nextHash12] = entry
 
+		// Look for a repeat match, unless there is no previous distance, or a match at
+		// that distance has already been found.
 		if prevDistance != 0 && prevDistance != int(arrivals[i-historyLen-1+4].distance) {
 			repIndex := i - prevDistance
 			if repIndex >= 0 && binary.LittleEndian.Uint32(src[repIndex:]) == uint32(cv) {
-
+				// We have a repeat of the previous match distance.
 				m := extendMatch2(src, i, repIndex, i)
 				addMatch(m, unmatched, true)
 			}
@@ -186,7 +196,7 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 				if delta == 0 {
 					addMatch(m, unmatched, false)
 				} else {
-
+					// The match was extended backwards. Add it with and without the extra.
 					addMatch(m, max(unmatched-delta, 0), false)
 					m.Start += delta
 					m.Match += delta
@@ -202,7 +212,7 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 				if delta == 0 {
 					addMatch(m, unmatched, false)
 				} else {
-
+					// The match was extended backwards. Add it with and without the extra.
 					addMatch(m, max(unmatched-delta, 0), false)
 					m.Start += delta
 					m.Match += delta
@@ -218,7 +228,7 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 				if delta == 0 {
 					addMatch(m, unmatched, false)
 				} else {
-
+					// The match was extended backwards. Add it with and without the extra.
 					addMatch(m, max(unmatched-delta, 0), false)
 					m.Start += delta
 					m.Match += delta
@@ -229,6 +239,7 @@ func (z *Bargain3) FindMatches(dst []Match, src []byte) []Match {
 		}
 	}
 
+	// We've found the shortest path; now walk it backward and store the matches.
 	matches := z.matches[:0]
 	i := len(arrivals) - 1
 	for i >= 0 {

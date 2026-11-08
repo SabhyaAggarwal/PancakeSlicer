@@ -1,67 +1,45 @@
-import { bambuFilamentId } from '../multinozzle/material-checks';
-import { isExternalTray } from '../multinozzle/ams';
-
-
-
-import type { SystemPreset } from '../api/types';
-import { readTrays, type Tray } from '../printers/connections';
-import { compatible, getState, markStale, setState, toast } from '../state/store';
-import { undoable } from '../state/history';
-
-
-
-
-
-
-function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
-  const byId = t.filament_id && fils.find((f) => bambuFilamentId(f.filament_id ?? '') === bambuFilamentId(t.filament_id!));
-  if (byId) return byId;
-  const named = t.name && fils.find((f) => f.name.startsWith(`Bambu ${t.name} @`));
-  if (named) return named;
-  const generic = fils.filter((f) => f.name.startsWith('Generic '));
-  const type = t.type.toUpperCase();
-  return generic.find((f) => f.name.toUpperCase().startsWith(`GENERIC ${type}`)) ??
-    generic.map((f) => ({ f, ft: String(f.config.filament_type ?? '').toUpperCase() }))
-      .filter(({ ft }) => ft && new RegExp(`(^|[^A-Z0-9])${ft.replace(/[^A-Z0-9]/g, '\\$&')}($|[^A-Z0-9])`).test(type))
-      .sort((a, b) => b.ft.length - a.ft.length)[0]?.f;
-}
-
+import { readPrinterSlots, type SlotMatch } from '../printers/slots';
+import { getState, markStale, resolvePreset, setState, toast } from '../state/store';
+import { undo, undoable } from '../state/history';
+import { filamentCatalog } from '../profiles/catalog-reads';
+import { addCatalogFamily } from '../profiles/catalog-add';
 
 export async function syncAms(printer: string) {
-  let trays: Tray[];
+  let slots: SlotMatch[];
   try {
-    trays = await readTrays(printer);
+    slots = (await readPrinterSlots(printer)).slots;
   } catch (e) {
-    toast(`Sync filaments with AMS: ${e instanceof Error ? e.message : String(e)}`);
+    toast(`Set project filaments: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  const loaded = trays.filter((t) => t.type && !isExternalTray(t.id));
-  const used = loaded.length ? loaded : trays.filter((t) => t.type && isExternalTray(t.id));
+  const loaded = slots.filter((m) => !m.slot.startsWith('ext'));
+  const used = loaded.length ? loaded : slots.filter((m) => m.slot.startsWith('ext'));
   if (!used.length) {
-    toast('Sync filaments with AMS: the printer reports no loaded filament.');
+    toast('Set project filaments: the printer reports no loaded filament.');
     return;
   }
-  const s = getState(), fils = compatible(s, 'filament');
-  const picked = used.map((t) => ({ t, preset: presetFor(t, fils) }));
-  const unknown = picked.filter((p) => !p.preset);
-  if (unknown.length === picked.length) {
-    toast('There are no compatible filaments, and sync is not performed.');
-    return;
+  const added: string[] = [];
+  const keys: string[] = [];
+  for (const m of used) {
+    if (m.filament) { keys.push(m.filament); continue; }
+    const vendor = resolvePreset(getState(), 'machine', printer).base?.vendor ?? '';
+    const family = (await filamentCatalog(vendor)).find((f) => Object.values(f.variants).includes(m.catalog ?? ''));
+    if (!family) {
+      toast(`Set project filaments: ${m.label} holds ${m.tray.type}, and the catalog has no ${m.name} for this printer.`, null, null, 'warning');
+      return;
+    }
+    keys.push(await addCatalogFamily(family, m.tray.colour || undefined));
+    added.push(m.name);
   }
-
-  const fallback = fils.find((f) => f.name.startsWith('Generic PLA')) ?? picked.find((p) => p.preset)!.preset!;
-  const slots = picked.map((p) => (p.preset ?? fallback).name);
-  const n = slots.length;
-  undoable('Sync filaments with AMS', () => setState((st) => ({
-    filamentSlots: slots,
-    slotColours: picked.map((p) => p.t.color || undefined),
-    filamentEdits: Object.fromEntries(Object.entries(st.filamentEdits).filter(([name]) => slots.includes(name))),
-
+  const n = keys.length;
+  undoable('Set project filaments', () => setState((st) => ({
+    filamentSlots: keys,
+    slotColours: used.map((m) => m.tray.colour || undefined),
+    filamentEdits: Object.fromEntries(Object.entries(st.filamentEdits).filter(([name]) => keys.includes(name))),
     flush: { ...st.flush, matrix: null }, mixes: {},
     objects: st.objects.map((o) => (o.extruder > n ? { ...o, extruder: 1 } : o)),
     events: st.events.filter((e) => e.type !== 'change' || Number(e.text) <= n),
     job: markStale(st.job),
   })));
-  if (unknown.length)
-    toast(`There are some unknown or incompatible filaments mapped to generic preset:${unknown.map((p) => `\n- ${p.t.name || 'AMS'} (${p.t.type})`).join('')}`);
+  toast(`Using ${n} filament${n === 1 ? '' : 's'} from the printer${added.length ? `; added ${added.join(', ')} to My filaments` : ''}`, { label: 'Undo', run: undo }, 8000, 'success');
 }

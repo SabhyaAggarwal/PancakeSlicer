@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -279,13 +280,14 @@ var resultCaches = struct {
 func init() {
 	jobResultGet = restoreJobResult
 	jobResultPut = storeJobResult
-
 	jobResultWarm = func(m *JobManager) {
 		if _, err := cacheForManager(m); err != nil {
 			log.Printf("result cache unavailable: %v", err)
 		}
-
-		if current := presetCacheDir(m); current != "" {
+		for _, current := range []string{presetCacheDir(m), stageCacheDir(m)} {
+			if current == "" {
+				continue
+			}
 			entries, _ := os.ReadDir(filepath.Dir(current))
 			for _, e := range entries {
 				if e.Name() != filepath.Base(current) {
@@ -331,7 +333,6 @@ func cacheForManager(m *JobManager) (*managerResultCache, error) {
 		return nil, err
 	}
 	artifact := hex.EncodeToString(hash.Sum(nil))
-
 	resourceHasher := &ResultCache{artifact: "resources-v1"}
 	resourceSHA, err := resourceHasher.Key(m.cfg.Resources, nil)
 	if err != nil {
@@ -357,9 +358,34 @@ func presetCacheDir(m *JobManager) string {
 	return filepath.Join(m.cfg.JobRoot, "preset-cache", state.cache.artifact[:16]+"-"+state.resources[:16])
 }
 
+func stageCacheDir(m *JobManager) string {
+	if !m.cfg.Features.StageCache {
+		return ""
+	}
+	state, err := cacheForManager(m)
+	if err != nil || state == nil {
+		return ""
+	}
+	return filepath.Join(m.cfg.JobRoot, "stage-cache", state.cache.artifact[:16])
+}
+
+func stageCacheArgs(m *JobManager) []string {
+	dir := stageCacheDir(m)
+	if dir == "" {
+		return nil
+	}
+	return []string{"--stage-cache", dir, "--stage-cache-max-mb", strconv.FormatUint(stageCacheMaxMB(), 10)}
+}
+
+func stageCacheMaxMB() uint64 {
+	if v, err := strconv.ParseUint(strings.TrimSpace(os.Getenv("PANCAKE_STAGE_CACHE_MAX_MB")), 10, 64); err == nil && v > 0 {
+		return v
+	}
+	return 1024
+}
+
 func cacheableJob(m *JobManager, j *Job) bool {
 	r := j.Request
-
 	if r.Orient || r.Explode || r.Cut != "" || r.MeshOp != "" || r.Arrange || r.WipeTower || r.Output == "patch-preview" {
 		return false
 	}
@@ -395,7 +421,6 @@ func restoreJobResult(m *JobManager, j *Job, args []string) bool {
 		log.Printf("result cache hash: %v", err)
 		return false
 	}
-
 	marker := state.cache.artifact + "\n" + key
 	if err := os.WriteFile(filepath.Join(j.Dir, ".result-cache-key"), []byte(marker), 0600); err != nil {
 		return false

@@ -12,7 +12,6 @@
 
 namespace Slic3r {
 
-
 struct ExecutionSeq {};
 
 template<> struct IsExecutionPolicy_<ExecutionSeq> : public std::true_type {};
@@ -59,7 +58,7 @@ public:
                          It   from,
                          It   to,
                          Fn &&fn,
-                         size_t   = 1)
+                         size_t  = 1)
     {
         loop_(from, to, std::forward<Fn>(fn));
     }
@@ -71,7 +70,7 @@ public:
                     const T & init,
                     MergeFn  &&mergefn,
                     AccessFn &&access,
-                    size_t     = 1
+                    size_t    = 1
                     )
     {
         T acc = init;

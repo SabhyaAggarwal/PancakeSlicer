@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -19,7 +13,6 @@ page.on('pageerror',e=>console.log('pageerror',e.message));
 mkdirSync(out, { recursive: true });
 const tmp = path.join(out, '.png');
 mkdirSync(tmp, { recursive: true });
-
 async function save(name: string, shot: (file: string) => Promise<unknown>) {
   const png = path.join(tmp, `${name}.png`);
   await shot(png);
@@ -50,7 +43,6 @@ await page.getByRole('button',{name:'Start printing',exact:true}).waitFor({timeo
 await full('07-setup-ready');
 await page.getByRole('button',{name:'Start printing',exact:true}).click();
 }
-
 await page.getByRole('button', { name: 'Projects', exact: true }).first().click();
 await page.getByRole('button', { name: 'New project', exact: true }).first().click();
 await page.waitForFunction(() => (window as any).__plater.getState().tab === 'prepare');
@@ -82,7 +74,6 @@ for (const [name, mode] of [['benchy-flat', 'off'], ['benchy-curved', 'curved_to
   await full(name+'-preview');
   const canvas = page.locator('.preview-canvas canvas').first();
   const box = (await canvas.boundingBox())!;
-
   const side = Math.min(box.width, box.height) * 0.62;
   await save(name, (file) => page.screenshot({ path: file, clip: { x: box.x + (box.width - side) / 2 + 60, y: box.y + (box.height - side) / 2, width: side, height: side } }));
 }
@@ -104,7 +95,6 @@ for (const tab of ['Quality','Strength','Support','Multimaterial','Others']) {
  await full('11-settings-'+tab.toLowerCase());
 }
 await page.getByRole('tab',{name:'Quality',exact:true}).first().click();
-
 await page.evaluate(() => (window as any).__plater.setState({ tab: 'prepare', presetUx: { kind: 'presets', type: 'process', name: (window as any).__plater.getState().process } }));
 await full('12-profiles-list');
 await page.getByRole('tab', { name: '✦ Dynamic', exact: true }).first().click();
@@ -115,7 +105,6 @@ await full('13-dynamic-formulas');
 await page.locator('.dyn-table').scrollIntoViewIfNeeded();
 await full('14-dynamic-combinations');
 await page.getByRole('button',{name:'Close profiles',exact:true}).first().click();
-
 
 await page.evaluate(()=>{const p=(window as any).__plater;p.setState({presetUx:{kind:'presets',type:'process',name:p.getState().process}});});
 for (const tab of ['Quality','Strength','Speed','Support']) {
@@ -147,7 +136,6 @@ await full('18-send');
 await page.keyboard.press('Escape');
 await page.getByRole('button',{name:'Projects',exact:true}).first().click();
 await full('19-projects');
-
 const projectId=await page.evaluate(async()=>{const rows=await (await fetch('/api/projects')).json();return rows[0]?.id;});
 if(!projectId)throw new Error('No saved project for lease capture');
 await page.evaluate(async id=>{await (await import('/src/projects/api.ts')).openProject(id);},projectId);
@@ -166,7 +154,6 @@ await page.evaluate(()=>(window as any).__plater.setState({tab:'prepare',presetU
 await full('mobile-profiles');
 await page.setViewportSize({width:1440,height:900});
 await page.evaluate(()=>(window as any).__plater.setState({presetUx:null,tab:'prepare'}));
-
 await page.evaluate(async()=>{ await (await import('/src/projects/api.ts')).newProject(); });
 await page.getByRole('button',{name:'Benchy',exact:true}).click();
 await page.waitForFunction(()=>(window as any).__plater.getState().objects.length===1 && !(window as any).__plater.getState().loading);

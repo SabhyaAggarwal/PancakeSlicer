@@ -25,7 +25,6 @@ namespace Slic3r {
 
 namespace {
 
-
 boost::property_tree::ptree read_ini(const mz_zip_archive_file_stat &entry,
                                      MZ_Archive                     &zip)
 {
@@ -40,7 +39,6 @@ boost::property_tree::ptree read_ini(const mz_zip_archive_file_stat &entry,
     boost::property_tree::read_ini(ss, tree);
     return tree;
 }
-
 
 EntryBuffer read_entry(const mz_zip_archive_file_stat &entry,
                        MZ_Archive                     &zip,
@@ -62,7 +60,6 @@ ZipperArchive read_zipper_archive(const std::string &zipfname,
                                   const std::vector<std::string> &excludes)
 {
     ZipperArchive arch;
-
 
     struct Arch : public MZ_Archive
     {
@@ -129,8 +126,6 @@ std::pair<DynamicPrintConfig, ConfigSubstitutions> extract_profile(
                         ForwardCompatibilitySubstitutionRule::Enable);
 
     if (profile_in.empty()) {
-
-
         if (auto lh_opt = arch.config.find("layerHeight");
             lh_opt != arch.config.not_found()) {
             auto lh_str = lh_opt->second.data();
@@ -143,9 +138,6 @@ std::pair<DynamicPrintConfig, ConfigSubstitutions> extract_profile(
             }
         }
     }
-
-
-
 
     profile_use = profile_in.empty() ? profile_out : profile_in;
     profile_out = profile_in;

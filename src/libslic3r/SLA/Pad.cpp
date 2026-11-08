@@ -2,7 +2,6 @@
 #include <cmath>
 #include <libslic3r/SLA/Pad.hpp>
 #include <libslic3r/SLA/SpatIndex.hpp>
-
 #include <libslic3r/TriangleMeshSlicer.hpp>
 
 #include "ConcaveHull.hpp"
@@ -17,9 +16,6 @@
 
 #include "TriangulateWall.hpp"
 
-
-
-
 #include "SVG.hpp"
 
 #include "I18N.hpp"
@@ -30,8 +26,6 @@
 #include <string>
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Polygon.hpp"
-
-
 
 #define L(s) Slic3r::I18N::translate(s)
 
@@ -48,10 +42,9 @@ indexed_triangle_set walls(
     indexed_triangle_set w;
     triangulate_wall(w.vertices, w.indices, lower, upper, lower_z_mm,
                      upper_z_mm);
-
+    
     return w;
 }
-
 
 inline indexed_triangle_set straight_walls(const Polygon &plate,
                                            double         lo_z,
@@ -59,11 +52,6 @@ inline indexed_triangle_set straight_walls(const Polygon &plate,
 {
     return walls(plate, plate, lo_z, hi_z);
 }
-
-
-
-
-
 
 void breakstick_holes(Points& pts,
                       double padding,
@@ -74,61 +62,40 @@ void breakstick_holes(Points& pts,
     if(stride <= EPSILON || stick_width <= EPSILON || padding <= EPSILON)
         return;
 
-
-
-
-
-
-
-
     Points out;
     out.reserve(2 * pts.size());
-
-
     double sbottom = scaled(stick_width);
     double sright  = scaled(penetration + padding);
-
 
     double sstride = scaled(stride);
     double t       = 0;
 
-
-
     for (size_t i = pts.size() - 1, j = 0; j < pts.size(); i = j, ++j) {
-
         const Point &a = pts[i], &b = pts[j];
         Vec2d        dir = b.cast<double>() - a.cast<double>();
         double       nrm = dir.norm();
         dir /= nrm;
         Vec2d dirp(-dir(Y), dir(X));
 
-
         out.emplace_back(a);
-
 
         while (t < sbottom) t += sbottom;
         double tend = nrm - sbottom;
 
         while (t < tend) {
-
-
-
             Point p1 = a + (t * dir).cast<coord_t>();
             Point p2 = p1 + (sright * dirp).cast<coord_t>();
             Point p3 = p2 + (sbottom * dir).cast<coord_t>();
             Point p4 = p3 + (sright * -dirp).cast<coord_t>();
             out.insert(out.end(), {p1, p2, p3, p4});
 
-
             t += sstride;
         }
 
         t = t - nrm;
 
-
         out.emplace_back(b);
     }
-
 
     out.shrink_to_fit();
     pts.swap(out);
@@ -156,7 +123,6 @@ static inline double get_merge_distance(const PadConfig &c)
     return 2. * (1.8 * c.wall_thickness_mm) + c.max_merge_dist_mm;
 }
 
-
 struct PadConfig3D {
     double thickness, height, wing_height, slope;
 
@@ -173,10 +139,6 @@ struct PadConfig3D {
     }
 };
 
-
-
-
-
 struct PadSkeleton { ExPolygons inner, outer; };
 
 PadSkeleton divide_blueprint(const ExPolygons &bp)
@@ -186,14 +148,11 @@ PadSkeleton divide_blueprint(const ExPolygons &bp)
     return ret;
 }
 
-
-
 class Intersector {
     BoxIndex       m_index;
     ExPolygons     m_polys;
 
 public:
-
 
     void add(const ExPolygon &ep)
     {
@@ -201,14 +160,11 @@ public:
         m_index.insert(get_extents(ep), unsigned(m_index.size()));
     }
 
-
     bool intersects(const ExPolygon &poly)
     {
-
         auto bb = poly.contour.bounding_box();
 
         std::vector<BoxIndexEl> qres = m_index.query(bb, BoxIndex::qtIntersects);
-
 
         bool is_overlap = false;
         auto qit        = qres.begin();
@@ -219,7 +175,6 @@ public:
     }
 };
 
-
 struct DummyIntersector
 {
     inline void add(const ExPolygon &) {}
@@ -229,8 +184,6 @@ struct DummyIntersector
 template<class _Intersector>
 class _AroundPadSkeleton : public PadSkeleton
 {
-
-
     _Intersector m_intersector;
 
 public:
@@ -239,12 +192,6 @@ public:
                        const PadConfig & cfg,
                        ThrowOnCancel     thr)
     {
-
-
-
-
-
-
 
         add_supports_to_index(support_blueprint);
 
@@ -265,7 +212,7 @@ public:
         ExPolygons fullpad = diff_ex(fullcvh, model_bp_sticks);
 
         PadSkeleton divided = divide_blueprint(fullpad);
-
+        
         remove_redundant_parts(divided.outer);
         remove_redundant_parts(divided.inner);
 
@@ -275,13 +222,10 @@ public:
 
 private:
 
-
     void add_supports_to_index(const ExPolygons &supp_bp)
     {
         for (auto &ep : supp_bp) m_intersector.add(ep);
     }
-
-
 
     ExPolygons wafflized_concave_hull(const ExPolygons &supp_bp,
                                        const ExPolygons &model_bp,
@@ -296,7 +240,6 @@ private:
         ConcaveHull cchull{allin, get_merge_distance(cfg), thr};
         return offset_waffle_style_ex(cchull, get_waffle_offset(cfg));
     }
-
 
     void remove_redundant_parts(ExPolygons &parts)
     {
@@ -330,7 +273,6 @@ public:
         outer = offset_waffle_style_ex(ochull, get_waffle_offset(cfg));
     }
 };
-
 
 template<class...Args>
 ExPolygon offset_contour_only(const ExPolygon &poly, coord_t delta, Args...args)
@@ -391,7 +333,7 @@ indexed_triangle_set create_outer_pad_geometry(const ExPolygons & skeleton,
 
         if (bottom_poly.empty()) continue;
         thr();
-
+        
         double z_min = -cfg.height, z_max = 0;
         its_merge(ret, walls(top_poly.contour, bottom_poly.contour, z_max, z_min));
 
@@ -400,7 +342,7 @@ indexed_triangle_set create_outer_pad_geometry(const ExPolygons & skeleton,
 
         for (auto &h : bottom_poly.holes)
             its_merge(ret, straight_walls(h, z_max, z_min));
-
+        
         its_merge(ret, triangulate_expolygon_3d(bottom_poly, z_min, NORMALS_DOWN));
         its_merge(ret, triangulate_expolygon_3d(top_poly, NORMALS_UP));
     }
@@ -421,7 +363,7 @@ indexed_triangle_set create_inner_pad_geometry(const ExPolygons & skeleton,
 
         for (auto &h : pad_part.holes)
             its_merge(ret, straight_walls(h, z_max, z_min));
-
+    
         its_merge(ret, triangulate_expolygon_3d(pad_part, z_min, NORMALS_DOWN));
         its_merge(ret, triangulate_expolygon_3d(pad_part, z_max, NORMALS_UP));
     }
@@ -478,7 +420,6 @@ void pad_blueprint(const indexed_triangle_set &mesh,
 
     size_t count = 0;
     for(auto& o : out) count += o.size();
-
 
     auto tmp = reserve_vector<ExPolygon>(count);
     for(ExPolygons& o : out)

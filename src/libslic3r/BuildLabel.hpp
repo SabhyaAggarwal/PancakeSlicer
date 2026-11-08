@@ -4,8 +4,6 @@
 
 namespace Slic3r {
 
-
-
 std::string nonplanar_build_label();
 
 }

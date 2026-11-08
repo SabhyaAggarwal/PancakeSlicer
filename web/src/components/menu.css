@@ -4,11 +4,12 @@
 :where(.orca-parity) .orca-menu .menu-item:focus-visible { outline-offset: -1px; }
 :where(.orca-parity) .orca-menu .menu-item[data-disabled] { color: var(--disabled); }
 :where(.orca-parity) .orca-menu-label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-:where(.orca-parity) .orca-menu-key { flex: none; margin-left: auto; padding-left: 16px; color: var(--text-dim); white-space: nowrap; }
+:where(.orca-parity) .orca-menu-key { flex: none; margin-left: auto; padding-left: 16px; color: var(--ink-3); white-space: nowrap; }
 :where(.orca-parity) .menu-check { width: 14px; flex: none; color: var(--ink); font-size: 14px; line-height: 1; text-align: center; }
 :where(.orca-parity) .orca-menu .menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
 :where(.orca-parity) .orca-menu-group { padding: 8px 8px 4px; font: var(--t-small); font-weight: 600; color: var(--text-dim); }
-:where(.orca-parity) .menu-position-anchor { width: 0; height: 0; padding: 0; border: 0; pointer-events: none; }
+:where(.orca-parity) button.menu-position-anchor.menu-position-anchor { width: 0; height: 0; min-width: 0; min-height: 0; padding: 0; border: 0; pointer-events: none; }
+
 :where(.orca-parity) .dropdown { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: var(--h-field); height: var(--h-field); min-width: 0; padding: 4px 8px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 3px; text-align: left; font: inherit; cursor: pointer; }
 :where(.orca-parity) .dropdown:hover:not(:disabled) { border-color: var(--ink-3); }
 :where(.orca-parity) .dropdown-value { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -16,7 +17,7 @@
 :where(.orca-parity) .pk-trigger .pk-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 :where(.orca-parity) .dropdown[data-state=open] { border-color: var(--ink-3); }
 :where(.orca-parity) .dropdown:disabled { cursor: default; }
-:where(.orca-parity) .dropdown-list { min-width: max(120px, var(--radix-select-trigger-width, 0px), var(--radix-dropdown-menu-trigger-width, 0px)); }
+:where(.orca-parity) .dropdown-list { min-width: max(120px, var(--radix-select-trigger-width, 0px), var(--radix-dropdown-menu-trigger-width, 0px), var(--radix-popover-trigger-width, 0px)); }
 :where(.orca-parity) .dropdown-list:has(> .dropdown-viewport) { display: flex; flex-direction: column; overflow: hidden; max-height: min(480px, var(--radix-select-content-available-height, calc(100dvh - 16px))); }
 :where(.orca-parity) .dropdown-list .dropdown-viewport { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 

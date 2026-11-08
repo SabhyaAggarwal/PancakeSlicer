@@ -5,7 +5,6 @@ namespace Slic3r {
 
 void
 NonplanarFacet::calculate_stats() {
-
     this->stats.min.x = this->vertex[0].x;
     this->stats.min.y = this->vertex[0].y;
     this->stats.min.z = this->vertex[0].z;
@@ -25,13 +24,11 @@ NonplanarFacet::calculate_stats() {
 void
 NonplanarFacet::translate(float x, float y, float z)
 {
-
     for(int j = 0; j < 3; j++) {
       this->vertex[j].x += x;
       this->vertex[j].y += y;
       this->vertex[j].z += z;
     }
-
 
     this->stats.min.x += x;
     this->stats.min.y += y;
@@ -44,13 +41,11 @@ NonplanarFacet::translate(float x, float y, float z)
 void
 NonplanarFacet::scale(float versor[3])
 {
-
     for(int j = 0; j < 3; j++) {
         this->vertex[j].x *= versor[0];
         this->vertex[j].y *= versor[1];
         this->vertex[j].z *= versor[2];
     }
-
 
     this->stats.min.x *= versor[0];
     this->stats.min.y *= versor[1];

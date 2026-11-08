@@ -36,7 +36,6 @@ struct ThumbnailData;
 #define NO_LIGHT_THUMBNAIL_FILE_FORMAT  "Metadata/plate_no_light_%1%.png"
 #define TOP_FILE_FORMAT                 "Metadata/top_%1%.png"
 #define PICK_FILE_FORMAT                "Metadata/pick_%1%.png"
-
 #define PATTERN_CONFIG_FILE_FORMAT      "Metadata/plate_%1%.json"
 #define NONPLANAR_REPORT_FILE_FORMAT    "Metadata/nonplanar_%1%.json"
 #define EMBEDDED_PRINT_FILE_FORMAT      "Metadata/process_settings_%1%.config"
@@ -47,7 +46,6 @@ struct ThumbnailData;
 #define BBL_DESIGNER_PROFILE_ID_TAG      "DesignProfileId"
 #define BBL_DESIGNER_PROFILE_TITLE_TAG   "ProfileTitle"
 #define BBL_DESIGNER_MODEL_ID_TAG        "DesignModelId"
-
 
 
 class PackingTemporaryData
@@ -61,10 +59,6 @@ public:
 };
 
 
-
-
-
-
 struct PlateMixedFilamentInfo
 {
     int         id{0};
@@ -72,7 +66,6 @@ struct PlateMixedFilamentInfo
     std::string color;
     std::string components;
 };
-
 
 struct PlateData
 {
@@ -106,18 +99,13 @@ struct PlateData
     ThumbnailData   plate_thumbnail;
     std::string     top_file;
     std::string     pick_file;
-
-
     std::string     pattern_bbox_file;
     std::string     gcode_prediction;
     std::string     gcode_weight;
     std::string     first_layer_time;
-
-
     std::string     nonplanar_report;
     std::string     plate_name;
     std::vector<FilamentInfo> slice_filaments_info;
-
     std::vector<PlateMixedFilamentInfo> mixed_filaments_info;
     std::vector<size_t> skipped_objects;
     DynamicPrintConfig config;
@@ -133,17 +121,8 @@ struct PlateData
     std::vector<unsigned int> nozzle_change_sequence;
     std::vector<int> optimal_assignment;
 
-
-
-
-
     std::vector<MultiNozzleUtils::NozzleInfo> nozzles_info;
     std::optional<MultiNozzleUtils::LayeredNozzleGroupResult> nozzle_group_result;
-
-
-
-
-
 
     std::vector<int>          limit_filament_maps;
 
@@ -158,7 +137,6 @@ struct PlateData
     }
     bool locked;
 };
-
 
 enum class SaveStrategy
 {
@@ -175,8 +153,6 @@ enum class SaveStrategy
     SkipAuxiliary       = 1 << 9,
     UseLoadedId         = 1 << 10,
     ShareMesh           = 1 << 11,
-
-
     MinimalPublished    = 1 << 13,
 
     SplitModel = 0x1000 | ProductionExt,
@@ -184,16 +160,10 @@ enum class SaveStrategy
     Backup = 0x10000 | WithGcode | Silence | SkipStatic | SplitModel,
 };
 
-
-
-
-
 inline constexpr const char *ORCA_PUBLISHED_TAG          = "orca_published";
 inline constexpr const char *ORCA_PUBLISHED_KEYS_TAG     = "orca_published_keys";
 inline constexpr const char *ORCA_PUBLISHED_MATERIAL_TAG = "orca_published_material_keys";
 inline constexpr const char *ORCA_PUBLISHED_CONFIG_TAG   = "orca_published_config";
-
-
 
 bool is_published_3mf_flag(const std::string &value);
 
@@ -270,7 +240,6 @@ const int IMPORT_LOAD_CONFIG            = 11;
 const int IMPORT_LOAD_MODEL_OBJECTS     = 12;
 const int IMPORT_STAGE_MAX              = 13;
 
-
 typedef std::function<void(int export_stage, int current, int total, bool& cancel)> Export3mfProgressFn;
 typedef std::function<void(int import_stage, int current, int total, bool& cancel)> Import3mfProgressFn;
 
@@ -301,14 +270,10 @@ struct StoreParams
 };
 
 
-
-
-
 extern bool load_bbs_3mf(const char* path, DynamicPrintConfig* config, ConfigSubstitutionContext* config_substitutions, Model* model, PlateDataPtrs* plate_data_list, std::vector<Preset*>* project_presets,
         bool* is_bbl_3mf, bool* is_orca_3mf, Semver* file_version, Import3mfProgressFn proFn = nullptr, LoadStrategy strategy = LoadStrategy::Default, BBLProject *project = nullptr, int plate_id = 0);
 
 extern std::string bbs_3mf_get_thumbnail(const char * path);
-
 
 extern bool bbs_3mf_is_published(const std::string &path);
 
@@ -316,29 +281,9 @@ extern bool load_gcode_3mf_from_stream(std::istream & data, DynamicPrintConfig* 
        Semver* file_version);
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 extern bool store_bbs_3mf(StoreParams& store_params);
 
 extern void release_PlateData_list(PlateDataPtrs& plate_data_list);
-
-
 
 extern void save_object_mesh(ModelObject& object);
 

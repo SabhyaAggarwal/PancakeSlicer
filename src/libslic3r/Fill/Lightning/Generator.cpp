@@ -34,20 +34,6 @@
 #include "libslic3r/MultiMaterialSegmentation.hpp"
 #include "libslic3r/SurfaceCollection.hpp"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 namespace Slic3r
 {
 static  std::string get_svg_filename(std::string layer_nr_or_z, std::string tag = "bbl_ts")
@@ -60,22 +46,18 @@ static  std::string get_svg_filename(std::string layer_nr_or_z, std::string tag 
     }
 
     int rand_num = rand() % 1000000;
-
     std::string prefix = "./SVG/";
     std::string suffix = ".svg";
-    return prefix + tag + "_" + layer_nr_or_z   + suffix;
+    return prefix + tag + "_" + layer_nr_or_z  + suffix;
 }
 
 Slic3r::SVG draw_two_overhangs_to_svg(size_t ts_layer, const ExPolygons& overhangs1, const ExPolygons& overhangs2)
 {
-
-
     BoundingBox bbox1 = get_extents(overhangs1);
     BoundingBox bbox2 = get_extents(overhangs2);
     bbox1.merge(bbox2);
 
     Slic3r::SVG svg(get_svg_filename(std::to_string(ts_layer), "two_overhangs_generator"), bbox1);
-
 
     svg.draw(union_ex(overhangs1), "blue");
     svg.draw(union_ex(overhangs2), "red");
@@ -95,22 +77,17 @@ Generator::Generator(const PrintObject &print_object, const std::function<void()
     const std::vector<double> &nozzle_diameters     = print_config.nozzle_diameter.values;
     double                     max_nozzle_diameter  = *std::max_element(nozzle_diameters.begin(), nozzle_diameters.end());
     const int                  n_multiline          = region_config.fill_multiline.value;
-
     const double               default_infill_extrusion_width = Flow::auto_extrusion_width(FlowRole::frInfill, float(max_nozzle_diameter));
-
     const double               layer_thickness      = scaled<double>(object_config.layer_height.value);
 
     m_infill_extrusion_width = scaled<float>(region_config.sparse_infill_line_width.get_abs_value(max_nozzle_diameter));
-
-
-
     if (m_infill_extrusion_width < EPSILON)
         m_infill_extrusion_width = scaled<float>(
             object_config.line_width.get_abs_value(max_nozzle_diameter) < EPSILON ?
             default_infill_extrusion_width :
             object_config.line_width.get_abs_value(max_nozzle_diameter)
         );
-
+    
     m_supporting_radius = coord_t(m_infill_extrusion_width) * 100 * n_multiline / region_config.sparse_infill_density;
 
     const double lightning_infill_overhang_angle      = region_config.lightning_overhang_angle.value * M_PI / 180.0;
@@ -131,28 +108,18 @@ Generator::Generator(PrintObject* m_object, std::vector<Polygons>& contours, std
     const PrintRegionConfig   &region_config        = m_object->shared_regions()->all_regions.front()->config();
     const std::vector<double> &nozzle_diameters     = print_config.nozzle_diameter.values;
     double                     max_nozzle_diameter  = *std::max_element(nozzle_diameters.begin(), nozzle_diameters.end());
-
     const double               default_infill_extrusion_width = Flow::auto_extrusion_width(FlowRole::frInfill, float(max_nozzle_diameter));
-
     const double               layer_thickness      = scaled<double>(object_config.layer_height.value);
 
     m_infill_extrusion_width = scaled<float>(region_config.sparse_infill_line_width.get_abs_value(max_nozzle_diameter));
-
-
-
     if (m_infill_extrusion_width < EPSILON)
         m_infill_extrusion_width = scaled<float>(
             object_config.line_width.get_abs_value(max_nozzle_diameter) < EPSILON ?
             default_infill_extrusion_width :
             object_config.line_width.get_abs_value(max_nozzle_diameter)
         );
-
-
-
-
     density = std::max(0.15f, density);
     m_supporting_radius = coord_t(m_infill_extrusion_width) / density;
-
     const double lightning_infill_overhang_angle = M_PI / 4;
     const double lightning_infill_prune_angle = M_PI / 4;
     const double lightning_infill_straightening_angle = M_PI / 4;
@@ -164,12 +131,6 @@ Generator::Generator(PrintObject* m_object, std::vector<Polygons>& contours, std
 
     generateTreesforSupport(contours, throw_on_cancel_callback);
 
-
-
-
-
-
-
 }
 
 void Generator::generateInitialInternalOverhangs(const PrintObject &print_object, const std::function<void()> &throw_on_cancel_callback)
@@ -177,7 +138,6 @@ void Generator::generateInitialInternalOverhangs(const PrintObject &print_object
     m_overhang_per_layer.resize(print_object.layers().size());
 
     Polygons infill_area_above;
-
     for (int layer_nr = int(print_object.layers().size()) - 1; layer_nr >= 0; --layer_nr) {
         throw_on_cancel_callback();
         Polygons infill_area_here;
@@ -185,7 +145,6 @@ void Generator::generateInitialInternalOverhangs(const PrintObject &print_object
             for (const Surface& surface : layerm->fill_surfaces.surfaces)
                 if (surface.surface_type == stInternal || surface.surface_type == stInternalVoid)
                     append(infill_area_here, to_polygons(surface.expolygon));
-
 
         Polygons overhang = diff(offset(infill_area_here, -float(m_wall_supporting_radius)), infill_area_above);
 
@@ -207,7 +166,6 @@ void Generator::generateTrees(const PrintObject &print_object, const std::functi
     bboxs.resize(print_object.layers().size());
     std::vector<Polygons> infill_outlines(print_object.layers().size(), Polygons());
 
-
     for (int layer_id = int(print_object.layers().size()) - 1; layer_id >= 0; layer_id--) {
         throw_on_cancel_callback();
         for (const LayerRegion *layerm : print_object.get_layer(layer_id)->regions())
@@ -216,11 +174,9 @@ void Generator::generateTrees(const PrintObject &print_object, const std::functi
                     append(infill_outlines[layer_id], to_polygons(surface.expolygon));
     }
 
-
     const size_t top_layer_id = print_object.layers().size() - 1;
     EdgeGrid::Grid outlines_locator(get_extents(infill_outlines[top_layer_id]).inflated(SCALED_EPSILON));
     outlines_locator.create(infill_outlines[top_layer_id], _locator_cell_size);
-
 
     for (int layer_id = int(top_layer_id); layer_id >= 0; layer_id--) {
         throw_on_cancel_callback();
@@ -230,12 +186,10 @@ void Generator::generateTrees(const PrintObject &print_object, const std::functi
 
         bboxs[layer_id] = get_extents(current_outlines);
 
-
         std::vector<NodeSPtr> to_be_reconnected_tree_roots = current_lightning_layer.tree_roots;
 
         current_lightning_layer.generateNewTrees(m_overhang_per_layer[layer_id], current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius, throw_on_cancel_callback);
         current_lightning_layer.reconnectRoots(to_be_reconnected_tree_roots, current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius);
-
 
         if (layer_id == 0)
             return;
@@ -265,11 +219,9 @@ void Generator::generateTreesforSupport(std::vector<Polygons>& contours, const s
     bboxs.resize(contours.size());
 
     const auto _locator_cell_size = locator_cell_size();
-
     const size_t top_layer_id = contours.size() - 1;
     EdgeGrid::Grid outlines_locator(get_extents(contours[top_layer_id]).inflated(SCALED_EPSILON));
     outlines_locator.create(contours[top_layer_id], _locator_cell_size);
-
 
     for (int layer_id = int(top_layer_id); layer_id >= 0; layer_id--) {
 		throw_on_cancel_callback();
@@ -279,12 +231,10 @@ void Generator::generateTreesforSupport(std::vector<Polygons>& contours, const s
 
         bboxs[layer_id] = get_extents(current_outlines);
 
-
         std::vector<NodeSPtr> to_be_reconnected_tree_roots = current_lightning_layer.tree_roots;
 
         current_lightning_layer.generateNewTrees(m_overhang_per_layer[layer_id], current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius, throw_on_cancel_callback);
         current_lightning_layer.reconnectRoots(to_be_reconnected_tree_roots, current_outlines, current_outlines_bbox, outlines_locator, m_supporting_radius, m_wall_supporting_radius);
-
 
         if (layer_id == 0)
             return;

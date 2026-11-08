@@ -24,7 +24,7 @@ EigenMesh triangle_mesh_to_eigen(const TriangleMesh &mesh);
 
 void minus(EigenMesh &A, const EigenMesh &B);
 void self_union(EigenMesh &A);
-
+    
 void minus(TriangleMesh& A, const TriangleMesh& B);
 void self_union(TriangleMesh& mesh);
 
@@ -54,7 +54,6 @@ inline CGALMeshPtr triangle_mesh_to_cgal(const TriangleMesh &M)
 TriangleMesh cgal_to_triangle_mesh(const CGALMesh &cgalmesh);
 indexed_triangle_set cgal_to_indexed_triangle_set(const CGALMesh &cgalmesh);
 
-
 void minus(TriangleMesh &A, const TriangleMesh &B);
 void plus(TriangleMesh &A, const TriangleMesh &B);
 void intersect(TriangleMesh &A, const TriangleMesh &B);
@@ -70,32 +69,15 @@ void intersect(CGALMesh &A, CGALMesh &B);
 bool does_self_intersect(const TriangleMesh &mesh);
 bool does_self_intersect(const CGALMesh &mesh);
 
-
 std::vector<TriangleMesh> segment(const TriangleMesh& src, double smoothing_alpha = 0.5, int segment_number = 5);
 TriangleMesh merge(std::vector<TriangleMesh> meshes);
 
 bool does_bound_a_volume(const CGALMesh &mesh);
 bool empty(const CGALMesh &mesh);
 
-
 bool repair(TriangleMesh &mesh, RepairedMeshErrors *repaired_errors = nullptr, std::string *error = nullptr);
 
-
-
-
-
-
 std::optional<std::vector<Vec2f>> parameterize_lscm(const indexed_triangle_set &mesh);
-
-
-
-
-
-
-
-
-
-
 
 indexed_triangle_set remesh_isotropic(const indexed_triangle_set &mesh, double target_edge_length,
                                       unsigned n_iterations = 3, double sharp_angle_deg = 40.0,
@@ -114,13 +96,8 @@ bool empty(const McutMesh &mesh);
 McutMeshPtr  triangle_mesh_to_mcut(const indexed_triangle_set &M);
 TriangleMesh mcut_to_triangle_mesh(const McutMesh &mcutmesh);
 
-
-
 bool do_boolean_single(McutMesh& srcMesh, const McutMesh& cutMesh, const std::string& boolean_opts);
-
-
 void do_boolean(McutMesh &srcMesh, const McutMesh &cutMesh, const std::string &boolean_opts);
-
 
 
 void make_boolean(const TriangleMesh &src_mesh, const TriangleMesh &cut_mesh, std::vector<TriangleMesh> &dst_mesh, const std::string &boolean_opts);

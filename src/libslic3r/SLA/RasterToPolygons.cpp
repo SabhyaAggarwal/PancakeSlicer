@@ -16,16 +16,12 @@
 
 namespace marchsq {
 
-
 template<> struct _RasterTraits<Slic3r::sla::RasterGrayscaleAA> {
     using Rst = Slic3r::sla::RasterGrayscaleAA;
 
-
     using ValueType = uint8_t;
 
-
     static uint8_t get(const Rst &rst, size_t row, size_t col) { return rst.read_pixel(col, row); }
-
 
     static size_t rows(const Rst &rst) { return rst.resolution().height_px; }
     static size_t cols(const Rst &rst) { return rst.resolution().width_px; }
@@ -68,7 +64,6 @@ ExPolygons raster_to_polygons(const RasterGrayscaleAA &rst, Vec2i32 windowsize)
 
         polys.emplace_back(poly);
     }
-
 
     ExPolygons unioned = union_ex(polys);
     coord_t width = scaled(cols * pxd.h_mm), height = scaled(rows * pxd.w_mm);

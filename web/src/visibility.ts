@@ -1,9 +1,7 @@
-
 import { isHidden as permanentlyHidden, modeVisible, OPTIONS, splitKey, type TabDesc, type OptionMode, type OptionDef } from './options';
 import type { Config, PresetType } from './api/types';
 import { effectiveMode, type State } from './state/store';
 import { commonMode, hiddenReason } from './settings/common';
-
 
 export function isHidden(k: string, s?: State, type: PresetType = 'filament', native?: OptionMode, more = false, slot?: number): boolean {
   const key = splitKey(k)[0];
@@ -26,19 +24,16 @@ export type Environment = Record<string, unknown>;
 const ranks: Record<string, number> = { Simple: 0, Advanced: 1, Expert: 2, Develop: 3 };
 const truth = (v: Scalar) => v === undefined ? undefined : !!v;
 
-
 const tokenized = new Map<string, string[] | null>();
 function tokensOf(expression: string): string[] | null {
   let tokens = tokenized.get(expression);
   if (tokens === undefined) {
     const found = expression.match(/"(?:[^"\\]|\\.)*"|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][\w.]*|&&|\|\||==|!=|>=|<=|[()!<>+*/-]/g) ?? [];
-
     tokens = found.join('') === expression.replace(/\s+(?=(?:[^"\\]*"[^"\\]*")*[^"\\]*$)/g, '') ? found : null;
     tokenized.set(expression, tokens);
   }
   return tokens;
 }
-
 const namesOf = (expression: string) => (tokensOf(expression) ?? []).filter((t) => /^[A-Za-z_]/.test(t) && t !== 'true' && t !== 'false' && t !== 'null');
 
 export function condition(expression: string, env: Environment): boolean | undefined {
@@ -90,11 +85,9 @@ export function condition(expression: string, env: Environment): boolean | undef
   catch { return undefined; }
 }
 
-
 function envValue(configs: Config[], key: string): unknown {
   const def = OPTIONS[key];
   let v: unknown;
-
   for (let i = configs.length - 1; i >= 0; i--) if (Object.hasOwn(configs[i], key)) { v = configs[i][key]; break; }
   v ??= def.nullable ? null : def.default;
   if (Array.isArray(v)) v = v[0];
@@ -104,8 +97,6 @@ function envValue(configs: Config[], key: string): unknown {
   else if (/^(float|int|percent)/.test(def.type) && typeof v === 'string') v = Number(v.replace(/%$/, '').split(',')[0]);
   return v;
 }
-
-
 export function environment(configs: Config[], context: Environment, mode: OptionMode): Environment {
   const fixed: Environment = { ...context, mode: mode === 'simple' ? 'Simple' : mode === 'advanced' ? 'Advanced' : mode === 'developer' ? 'Develop' : 'Expert' };
   const values = new Map<string, unknown>();
@@ -120,8 +111,6 @@ export function environment(configs: Config[], context: Environment, mode: Optio
     has: (target, key) => typeof key === 'string' && (Object.hasOwn(target, key) || !!OPTIONS[key]),
   });
 }
-
-
 
 type RuleMemo = { names: string[]; values: unknown[]; result: boolean | undefined };
 const ruleMemos = new WeakMap<object, RuleMemo>();
@@ -144,17 +133,14 @@ export function optionState(desc: TabDesc, env: Environment): Record<string, { v
       (states[base] ??= { visible: true, enabled: true })[rule.effect] = value;
     }
   }
-
   if (env.support_style === 'native') (states.support_on_build_plate_only ??= { visible: true, enabled: true }).enabled = false;
   return states;
 }
-
 
 export function fieldDefinition(key: string, env: Environment): Partial<OptionDef> {
   const def = OPTIONS[key];
   if (!def) return {};
   let values: string[] | undefined;
-
   if (key === 'support_style') values = [...(String(env.support_type).startsWith('tree') ? ['default', 'tree_slim', 'tree_strong', 'tree_hybrid', 'organic'] : ['default', 'grid', 'snug']),
     ...(def.enum_values?.includes('native') && (env.native_support_capable || env.support_style === 'native') ? ['native'] : [])];
   if (key === 'brim_type') values = def.enum_values?.filter((v) => v !== 'leading_edge_only' || env.belt_printer || env.brim_type === v);
@@ -165,7 +151,6 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
       ? ['Default', 'MZV', 'ZVD', 'ZVDD', 'ZVDDD', 'EI2', 'EI3', 'DAA', 'Disable']
       : env.gcode_flavor === 'marlin2' ? ['ZV', 'Disable'] : ['Default', 'Disable'];
   if (values) return { enum_values: values, enum_labels: values.map((v) => def.enum_labels?.[def.enum_values!.indexOf(v)] ?? v) };
-
   if (key === 'nonplanar_mode') return { label: 'Slicing method' };
   if (key === 'brim_width' && env.brim_type === 'brim_ears' && condition('belt_printer == true && (belt_slice_rotation == "x" || belt_slice_rotation == "y") && (belt_slice_rotation_angle >= 1 && belt_slice_rotation_angle <= 85 || belt_slice_rotation_angle <= -1 && belt_slice_rotation_angle >= -85)', env) !== true)
     return { label: 'Brim ear radius' };

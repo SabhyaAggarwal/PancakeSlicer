@@ -87,8 +87,6 @@ double linint(double value, double oldmin, double oldmax, double newmin, double 
 }
 
 #if 0
-
-
 struct ArrangeItem {
     ArrangeItem() {}
     Vec2d    pos;
@@ -101,52 +99,38 @@ struct ArrangeItem {
 
 Pointfs arrange(size_t num_parts, const Vec2d &part_size, coordf_t gap, const BoundingBoxf* bed_bounding_box)
 {
-
     const Vec2d       cell_size(part_size(0) + gap, part_size(1) + gap);
 
-    const BoundingBoxf bed_bbox = (bed_bounding_box != NULL && bed_bounding_box->defined) ?
+    const BoundingBoxf bed_bbox = (bed_bounding_box != NULL && bed_bounding_box->defined) ? 
         *bed_bounding_box :
-
         BoundingBoxf(
             Vec2d(0, 0),
             Vec2d(cell_size(0) * num_parts, cell_size(1) * num_parts));
-
 
     size_t cellw = size_t(floor((bed_bbox.size()(0) + gap) / cell_size(0)));
     size_t cellh = size_t(floor((bed_bbox.size()(1) + gap) / cell_size(1)));
     if (num_parts > cellw * cellh)
         throw Slic3r::InvalidArgument("%zu parts won't fit in your print area!\n", num_parts);
-
-
+    
     Vec2d       cells_size(cellw * cell_size(0) - gap, cellh * cell_size(1) - gap);
     Vec2d       cells_offset(bed_bbox.center() - 0.5 * cells_size);
     BoundingBoxf cells_bb(cells_offset, cells_size + cells_offset);
-
-
+    
     std::vector<ArrangeItem> cellsorder(cellw * cellh, ArrangeItem());
     for (size_t j = 0; j < cellh; ++ j) {
-
         coordf_t cy = linint(j + 0.5, 0., double(cellh), cells_bb.min(1), cells_bb.max(1));
-
         coordf_t yd = cells_bb.center()(1) - cy;
         for (size_t i = 0; i < cellw; ++ i) {
-
             coordf_t cx = linint(i + 0.5, 0., double(cellw), cells_bb.min(0), cells_bb.max(0));
-
             coordf_t xd = cells_bb.center()(0) - cx;
-
             ArrangeItem &ci = cellsorder[j * cellw + i];
-
             ci.pos(0) = cx;
             ci.pos(1) = cy;
-
             ci.weight = xd * xd + yd * yd;
         }
     }
-
     std::sort(cellsorder.begin(), cellsorder.end());
     cellsorder.erase(cellsorder.begin() + num_parts, cellsorder.end());
-
 
     Pointfs positions;
     positions.reserve(num_parts);
@@ -175,59 +159,49 @@ arrange(size_t total_parts, const Vec2d &part_size, coordf_t dist, const Boundin
 
     Vec2d part = part_size;
 
-
     part(0) += dist;
     part(1) += dist;
-
+    
     Vec2d area(Vec2d::Zero());
     if (bb != NULL && bb->defined) {
         area = bb->size();
     } else {
-
         area(0) = part(0) * total_parts;
         area(1) = part(1) * total_parts;
     }
-
-
+    
     size_t cellw = floor((area(0) + dist) / part(0));
     size_t cellh = floor((area(1) + dist) / part(1));
     if (total_parts > (cellw * cellh))
         return false;
-
-
+    
     Vec2d cells(cellw * part(0), cellh * part(1));
-
-
+    
     BoundingBoxf cells_bb;
     cells_bb.merge(Vec2d(0,0));
     cells_bb.merge(cells);
-
-
     cells_bb.translate(
         (area(0) - cells(0)) / 2,
         (area(1) - cells(1)) / 2
     );
-
-
+    
     std::vector<ArrangeItemIndex> cellsorder;
-
-
+    
     for (size_t i = 0; i <= cellw-1; ++i) {
         for (size_t j = 0; j <= cellh-1; ++j) {
             coordf_t cx = linint(i + 0.5, 0, cellw, cells_bb.min(0), cells_bb.max(0));
             coordf_t cy = linint(j + 0.5, 0, cellh, cells_bb.min(1), cells_bb.max(1));
-
+            
             coordf_t xd = fabs((area(0) / 2) - cx);
             coordf_t yd = fabs((area(1) / 2) - cy);
-
+            
             ArrangeItem c;
             c.pos(0) = cx;
             c.pos(1) = cy;
             c.index_x = i;
             c.index_y = j;
             c.dist = xd * xd + yd * yd - fabs((cellw / 2) - (i + 0.5));
-
-
+            
             {
                 coordf_t index = c.dist;
                 size_t low = 0;
@@ -235,7 +209,7 @@ arrange(size_t total_parts, const Vec2d &part_size, coordf_t dist, const Boundin
                 while (low < high) {
                     size_t mid = (low + ((high - low) / 2)) | 0;
                     coordf_t midval = cellsorder[mid].index;
-
+                    
                     if (midval < index) {
                         low = mid + 1;
                     } else if (midval > index) {
@@ -250,13 +224,11 @@ arrange(size_t total_parts, const Vec2d &part_size, coordf_t dist, const Boundin
             ENDSORT: ;
         }
     }
-
-
+    
     coordf_t lx = 0;
     coordf_t ty = 0;
     coordf_t rx = 0;
     coordf_t by = 0;
-
 
     for (size_t i = 1; i <= total_parts; ++i) {
         ArrangeItemIndex c = cellsorder[i - 1];
@@ -272,27 +244,25 @@ arrange(size_t total_parts, const Vec2d &part_size, coordf_t dist, const Boundin
             if (cy < ty) ty = cy;
         }
     }
-
     for (size_t i = 1; i <= total_parts; ++i) {
         ArrangeItemIndex c = cellsorder.front();
         cellsorder.erase(cellsorder.begin());
         coordf_t cx = c.item.index_x - lx;
         coordf_t cy = c.item.index_y - ty;
-
+        
         positions.push_back(Vec2d(cx * part(0), cy * part(1)));
     }
-
+    
     if (bb != NULL && bb->defined) {
         for (Pointfs::iterator p = positions.begin(); p != positions.end(); ++p) {
             p->x() += bb->min(0);
             p->y() += bb->min(1);
         }
     }
-
+    
     return true;
 }
 #endif
-
 
 template<typename T>
 T dist(const boost::polygon::point_data<T> &p1,const boost::polygon::point_data<T> &p2)
@@ -301,7 +271,6 @@ T dist(const boost::polygon::point_data<T> &p1,const boost::polygon::point_data<
 	T dy = p2(1) - p1(1);
 	return sqrt(dx*dx+dy*dy);
 }
-
 
 template<typename segment_type, typename point_type>
 inline point_type project_point_to_segment(segment_type &seg, point_type &px)
@@ -394,9 +363,6 @@ Transform3d scale_transform(const Vec3d& scale)
 
 Vec3d extract_euler_angles(const Eigen::Matrix<double, 3, 3, Eigen::DontAlign>& rotation_matrix)
 {
-
-
-
     Vec3d angles = rotation_matrix.eulerAngles(2,1,0);
     std::swap(angles(0), angles(2));
     return angles;
@@ -404,9 +370,7 @@ Vec3d extract_euler_angles(const Eigen::Matrix<double, 3, 3, Eigen::DontAlign>& 
 
 Vec3d extract_euler_angles(const Transform3d& transform)
 {
-
     Eigen::Matrix<double, 3, 3, Eigen::DontAlign> m = transform.matrix().block(0, 0, 3, 3);
-
     m.col(0).normalize();
     m.col(1).normalize();
     m.col(2).normalize();
@@ -428,7 +392,6 @@ Transform3d Transformation::get_offset_matrix() const
     return translation_transform(get_offset());
 }
 
-
 static std::pair<Transform3d, Transform3d> extract_rotation_scale(const Transform3d& trafo)
 {
     Matrix3d rotation;
@@ -443,7 +406,6 @@ static std::pair<Transform3d, Transform3d> extract_rotation_scale(const Transfor
         Matrix3d r;
         Matrix3d s;
         flipped.computeRotationScaling(&r, &s);
-
         if (axis == 0 || r.trace() > rotation.trace() + EPSILON) {
             rotation = r;
             scale    = s;
@@ -539,7 +501,6 @@ void Transformation::set_scaling_factor(Axis axis, double scaling_factor)
     assert(scaling_factor > 0.0);
 
     auto [rotation, scale] = extract_rotation_scale(m_matrix);
-
     scale(axis, axis) = std::copysign(scaling_factor, scale(axis, axis));
 
     const Vec3d offset = get_offset();
@@ -651,7 +612,6 @@ Transform3d Transformation::get_matrix_no_scaling_factor() const
     return copy.get_matrix();
 }
 
-
 Transform3d Transformation::get_matrix_with_applied_shrinkage_compensation(const Vec3d &shrinkage_compensation) const {
      const Transform3d shrinkage_trafo = Geometry::scale_transform(shrinkage_compensation);
      const Vec3d trafo_offset         = this->get_offset();
@@ -677,12 +637,9 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
     Transformation out;
 
     if (instance_transformation.is_scaling_uniform()) {
-
-
         out.set_matrix(instance_transformation.get_matrix_no_offset().inverse());
     }
     else if (is_rotation_ninety_degrees(instance_transformation.get_rotation())) {
-
         Eigen::Matrix3d instance_rotation_trafo =
             (Eigen::AngleAxisd(instance_transformation.get_rotation().z(), Vec3d::UnitZ()) *
             Eigen::AngleAxisd(instance_transformation.get_rotation().y(), Vec3d::UnitY()) *
@@ -691,7 +648,6 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
             (Eigen::AngleAxisd(-instance_transformation.get_rotation().x(), Vec3d::UnitX()) *
             Eigen::AngleAxisd(-instance_transformation.get_rotation().y(), Vec3d::UnitY()) *
             Eigen::AngleAxisd(-instance_transformation.get_rotation().z(), Vec3d::UnitZ())).toRotationMatrix();
-
 
         auto pts = Eigen::MatrixXd(8, 3);
         pts(0, 0) = bbox.min.x(); pts(0, 1) = bbox.min.y(); pts(0, 2) = bbox.min.z();
@@ -703,12 +659,10 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
         pts(6, 0) = bbox.max.x(); pts(6, 1) = bbox.max.y(); pts(6, 2) = bbox.min.z();
         pts(7, 0) = bbox.max.x(); pts(7, 1) = bbox.max.y(); pts(7, 2) = bbox.max.z();
 
-
         auto qs = (pts *
             (instance_rotation_trafo *
             Eigen::Scaling(instance_transformation.get_scaling_factor().cwiseProduct(instance_transformation.get_mirror())) *
             volume_rotation_trafo).inverse().transpose()).eval();
-
         Vec3d scale;
         for (int i = 0; i < 3; ++i)
             scale(i) = pts.col(i).dot(qs.col(i)) / pts.col(i).dot(pts.col(i));
@@ -719,15 +673,11 @@ Transformation Transformation::volume_to_bed_transformation(const Transformation
     }
     else
     {
-
-
-
         out.set_scaling_factor(instance_transformation.get_scaling_factor().cwiseInverse());
     }
 
     return out;
 }
-
 
 Transform3d transform3d_from_string(const std::string& transform_str)
 {
@@ -755,12 +705,9 @@ Transform3d transform3d_from_string(const std::string& transform_str)
 Eigen::Quaterniond rotation_xyz_diff(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to)
 {
     return
-
         Eigen::AngleAxisd(rot_xyz_to.z(), Vec3d::UnitZ()) * Eigen::AngleAxisd(rot_xyz_to.y(), Vec3d::UnitY()) * Eigen::AngleAxisd(rot_xyz_to.x(), Vec3d::UnitX()) *
-
         Eigen::AngleAxisd(-rot_xyz_from.x(), Vec3d::UnitX()) * Eigen::AngleAxisd(-rot_xyz_from.y(), Vec3d::UnitY()) * Eigen::AngleAxisd(-rot_xyz_from.z(), Vec3d::UnitZ());
 }
-
 
 double rotation_diff_z(const Vec3d &rot_xyz_from, const Vec3d &rot_xyz_to)
 {
@@ -806,7 +753,6 @@ TransformationSVD::TransformationSVD(const Transform3d& trafo)
                 break;
             }
         }
-
         const Matrix3d trafo_linear = trafo.linear();
         const std::array<Vec3d, 3> axes = { Vec3d::UnitX(), Vec3d::UnitY(), Vec3d::UnitZ() };
         std::array<Vec3d, 3> transformed_axes;
@@ -816,8 +762,6 @@ TransformationSVD::TransformationSVD(const Transform3d& trafo)
         skew = std::abs(transformed_axes[0].dot(transformed_axes[1])) > EPSILON ||
                std::abs(transformed_axes[1].dot(transformed_axes[2])) > EPSILON ||
                std::abs(transformed_axes[2].dot(transformed_axes[0])) > EPSILON;
-
-
 
     } else
         skew = false;
@@ -837,7 +781,6 @@ TransformationSVD::TransformationSVD(const Transform3d& trafo)
     rotateMat4.set_matrix(cur_matrix.fromPositionOrientationScale(Vec3d(0., 0., 0.), qua, Vec3d(1., 1., 1.)));
 
     curMat = rotateMat4 * curMat;
-
     Transformation temp_world;
     auto           qua_world = Eigen::Quaterniond(Eigen::AngleAxisd(0, axis));
     qua_world.normalize();
@@ -862,47 +805,27 @@ Transformation generate_transform(const Vec3d& x_dir, const Vec3d& y_dir, const 
 }
 
 bool is_point_inside_polygon_corner(const Point &a, const Point &b, const Point &c, const Point &query_point) {
-
     const Vec2i64 a_i64           = a.cast<int64_t>();
     const Vec2i64 b_i64           = b.cast<int64_t>();
     const Vec2i64 c_i64           = c.cast<int64_t>();
     const Vec2i64 query_point_i64 = query_point.cast<int64_t>();
 
-
-
     const Vec2d ba = (a_i64 - b_i64).cast<double>().normalized();
     const Vec2d bc = (c_i64 - b_i64).cast<double>().normalized();
     const Vec2d bq = (query_point_i64 - b_i64).cast<double>().normalized();
 
-
     assert(ba != bc);
-
 
     const Vec2d bq_left_normal = perp(bq);
 
     const double proj_a_on_bq_normal = ba.dot(bq_left_normal);
     const double proj_c_on_bq_normal = bc.dot(bq_left_normal);
     if ((proj_a_on_bq_normal > 0. && proj_c_on_bq_normal <= 0.) || (proj_a_on_bq_normal <= 0. && proj_c_on_bq_normal > 0.)) {
-
-
-
-
         return proj_a_on_bq_normal > 0.;
     } else {
 
-
         const double proj_a_on_bq = ba.dot(bq);
         const double proj_c_on_bq = bc.dot(bq);
-
-
-
-
-
-
-
-
-
-
         return (proj_a_on_bq_normal > 0. && proj_c_on_bq < proj_a_on_bq) || (proj_a_on_bq_normal <= 0. && proj_c_on_bq >= proj_a_on_bq);
     }
 }

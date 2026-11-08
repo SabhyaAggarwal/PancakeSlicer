@@ -2,11 +2,9 @@ import { mutation, responseError } from '../api/access';
 import { documentText, parseDocument } from './wire';
 import { readHealth } from '../api/health';
 
-
 export async function serviceRequest(path: string, init: RequestInit = {}, missing = false): Promise<Response | null> {
   try {
     const write = init.method && init.method !== 'GET' && init.method !== 'HEAD';
-
     const request = { cache: write ? 'no-store' as const : 'no-cache' as const, ...init, signal: init.signal ?? AbortSignal.timeout(30_000) };
     const response = write ? await mutation(path, request) : await fetch(path, request);
     if (missing && response.status === 404) return null;
@@ -29,11 +27,23 @@ export function jsonWrite(method: 'PUT' | 'POST' | 'PATCH' | 'DELETE', value: un
 }
 export const routeKey = (key: string) => encodeURIComponent(key);
 
-let workspaceService: Promise<void> | null = null;
+const assets = new Map<string, Promise<unknown>>();
+const assetPath = (key: string) => `/api/assets/${routeKey(key)}`;
+export function putAsset(key: string, blob: Blob): Promise<unknown> {
+  let sent = assets.get(key);
+  if (!sent) assets.set(key, (sent = serviceRequest(assetPath(key), { method: 'PUT', body: blob }).catch((error) => { assets.delete(key); throw error; })));
+  return sent;
+}
+export async function readAsset(key: string): Promise<Blob | null> {
+  const response = await serviceRequest(assetPath(key), undefined, true);
+  if (!response) return null;
+  assets.set(key, Promise.resolve());
+  return response.blob();
+}
 
+let workspaceService: Promise<void> | null = null;
 export function requireWorkspaceService(): Promise<void> {
   workspaceService ??= readHealth(15_000).then(async response => {
-
     if (!response.ok) throw Object.assign(new Error('The slicing service is unavailable.'), { status: response.status });
     if ((await response.json()).workspace_schema !== 1)
       throw new Error('The updated storage service is required. Your projects, drafts and preference changes are kept; retry after the service update.');

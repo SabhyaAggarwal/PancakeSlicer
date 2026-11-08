@@ -1,5 +1,6 @@
 :where(.orca-parity) .num { font: var(--t-num); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .label-caps { font: var(--t-label); text-transform: none; color: var(--ink-2); }
+
 :where(.orca-parity) :is(.btn, .btn-primary, .btn-danger) { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--control-pad-x); border: 1px solid var(--border-control); border-radius: var(--control-radius); background: var(--control-bg); color: var(--ink);
   font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
 :where(.orca-parity) .btn:hover:not(:disabled) { background: var(--hover); }
@@ -20,6 +21,7 @@
 :where(.orca-parity) .icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .icon-btn:disabled { opacity: 0.35; cursor: default; }
 :where(.orca-parity) .icon-btn img { filter: var(--icon-filter); }
+
 :where(.orca-parity) .seg { display: inline-flex; flex: none; border: 0; font: var(--t-body); overflow: visible; }
 :where(.orca-parity) .seg:not(.slant-seg) { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 100%; height: var(--seg-h, var(--h-control)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--sunken); overflow: hidden; }
 :where(.orca-parity) .seg > button { padding: 0 var(--control-pad-x); border: 0; border-radius: 0; background: none; color: var(--ink-2); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
@@ -32,11 +34,13 @@
 :where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 34px; padding: 0 var(--s-3); }
 @media (pointer: coarse) { :where(.orca-parity) .seg:not(.slant-seg) { --seg-h: 44px; } }
 :where(.orca-parity) .seg-unit { font: var(--t-small); color: var(--ink-3); margin-left: var(--s-2); }
+
 :where(.orca-parity) .chip { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 30px; padding: 0 var(--s-3); border: 1px solid var(--line-strong); border-radius: var(--r-2); background: none; color: var(--ink-2); font: var(--t-small); white-space: nowrap; cursor: pointer; }
 :where(.orca-parity) .chip:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 :where(.orca-parity) .chip:is([aria-pressed=true], [aria-checked=true], [data-state=on]) { border-color: var(--segment-active); background: var(--segment-active); color: var(--on-accent); }
 :where(.orca-parity) .chip:disabled { color: var(--ink-3); cursor: not-allowed; }
 :where(.orca-parity) .chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button) { --slant-bg: var(--slant-fill); --slant-line: var(--slant-border); position: relative; isolation: isolate; border: 0; border-radius: 0; background: none; }
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button)::before { content: ''; position: absolute; inset: var(--slant-inset, 0px) 0; z-index: -1; box-sizing: border-box;
   border: 1px solid var(--slant-line); border-radius: var(--slant-radius); background: var(--slant-bg); transform: skewX(calc(-1 * var(--slant-angle))); transition: background var(--dur-1) var(--ease); }
@@ -57,6 +61,7 @@
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button, .page-tab, .slant-tab):focus-visible { outline: none; }
 :root.orca-parity:not([data-input=pointer]) :is(.slant, .seg.slant-seg > button):focus-visible::before { outline: 2px solid var(--focus); outline-offset: 1px; }
 @media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) :is(.slant, .seg.slant-seg > button) { --slant-inset: 4px; } }
+
 :where(.orca-parity) :is(.slant-tab, .page-tab) { --slant-bg: var(--slant-fill-tab); --slant-line: var(--slant-border); position: relative; isolation: isolate; cursor: pointer; }
 :where(.orca-parity) :is(.slant-tab, .page-tab)::before, :where(.orca-parity) :is(.slant-tab, .page-tab)::after { content: ''; position: absolute; top: var(--slant-inset, 0px); bottom: 1px; width: 55%; z-index: -1; box-sizing: border-box;
   border: 1px solid var(--slant-line); border-bottom: 0; background: var(--slant-bg); transition: background var(--dur-1) var(--ease); }
@@ -67,10 +72,17 @@
 :where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true]) > img { filter: brightness(0) invert(1); }
 :where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true])::before, :where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true])::after { bottom: 0; }
 :root.orca-parity:not([data-input=pointer]) :is(.slant-tab, .page-tab):focus-visible { --slant-line: var(--focus); }
-:where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-@media (pointer: coarse), (hover: none) {
+
+
+:where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+@media (pointer: coarse), (hover: none), (max-width: 599px) {
   :where(.orca-parity) .icon-btn { min-width: 44px; min-height: 44px; }
+  :where(.orca-parity) .seg:not(.slant-seg) { --seg-h: 44px; }
   :where(.orca-parity) .seg > button, :where(.orca-parity) .seg.slant-seg > button { min-height: 44px; }
   :where(.orca-parity) :is(.btn, .btn-primary, .btn-danger, .btn-ghost, .chip) { min-height: 44px; }
   :where(.orca-parity) :is(input.text, textarea.text, .dropdown) { min-height: 44px; }
 }
+
+:where(.orca-parity) .sep { color: var(--ink-3); white-space: pre; }
+:where(.orca-parity) .more-toggle { align-self: flex-start; justify-content: flex-start; min-height: var(--h-compact); padding: 0 var(--s-2); margin-left: calc(-1 * var(--s-2)); color: var(--ink-2); }

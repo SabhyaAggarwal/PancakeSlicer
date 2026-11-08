@@ -1,4 +1,3 @@
-
 import { sessionId } from './session';
 let token = '';
 export type AccessNotice = { status: number; message: string };
@@ -25,7 +24,6 @@ export function bootstrapAccessToken() {
   }
 }
 
-
 function sendWithProgress(path: string, init: RequestInit, headers: Headers, onUpload: (fraction: number) => void): Promise<Response> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -46,8 +44,6 @@ function sendWithProgress(path: string, init: RequestInit, headers: Headers, onU
   });
 }
 
-
-
 const GZIP_MIN = 16 << 10;
 async function gzipBody(init: RequestInit): Promise<RequestInit> {
   const body = typeof init.body === 'string' ? new Blob([init.body]) : init.body instanceof Blob ? init.body : null;
@@ -59,10 +55,7 @@ async function gzipBody(init: RequestInit): Promise<RequestInit> {
   return { ...init, headers, body: await new Response(body.stream().pipeThrough(new CompressionStream('gzip'))).blob() };
 }
 
-
 const showNotice = (value: AccessNotice | null) => accessNotice(value);
-
-
 
 let discarding = false;
 export const discardPendingWrites = (on = true) => { discarding = on; };
@@ -83,7 +76,6 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     const seconds = /^\d+$/.test(raw) ? Math.min(86400, Number(raw)) : 1;
     const current = { status: response.status, message: `Server busy. Retry after ${seconds} seconds. Retrying once automatically.` };
     accessNotice(current);
-
     try {
       await new Promise<void>((resolve, reject) => {
         const abort = () => {
@@ -120,15 +112,11 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   }
   if (!response.ok) {
     const error = await responseError(response);
-
-
     if (error.code !== 'revision_conflict' && error.code !== 'draft_conflict' && error.code !== 'blob_missing' && error.code !== 'project_not_archived') accessNotice({ status: response.status, message: error.message });
     throw error;
   }
   return response;
 }
-
-
 
 export interface ApiError extends Error { status:number; code?:string; recovery?:string; profile?:{kind:string;name:string;vendor:string;slot?:number}; revision?:number; missing?:string[]; document?:Record<string,unknown> }
 export async function responseError(response: Response): Promise<ApiError> {
@@ -144,6 +132,6 @@ export async function responseError(response: Response): Promise<ApiError> {
     if(Array.isArray(j.missing))details.missing=j.missing;
     if(j.document && typeof j.document === 'object' && !Array.isArray(j.document))details.document=j.document;
     if(j.profile && typeof j.profile.kind === 'string' && typeof j.profile.name === 'string')details.profile=j.profile;
-  } catch {                }
+  } catch {  }
   return Object.assign(new Error(message), { status: response.status },details);
 }
