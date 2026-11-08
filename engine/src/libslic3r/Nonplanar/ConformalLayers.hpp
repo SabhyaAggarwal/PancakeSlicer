@@ -64,9 +64,9 @@ private:
 
 std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const indexed_triangle_set &mesh, const ConformalLayersParams &params);
 
-struct ConformalVariant { double round_sigma = 8.; bool level_bridges = true, cap15 = false, flat = false; };
+struct ConformalVariant { double round_sigma = 8.; bool cap15 = false, flat = false; };
 ConformalVariant conformal_variant(int step);
-constexpr int    ConformalSteps = 7;
+constexpr int    ConformalSteps = 4;
 std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObject &object, std::string *summary = nullptr);
 
 double conformal_band_height(const HeadEnvelope &head, double layer_height);

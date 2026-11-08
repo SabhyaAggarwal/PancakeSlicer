@@ -539,9 +539,8 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
 
 ConformalVariant conformal_variant(int step)
 {
-    static const ConformalVariant ladder[] = { { 8., true, false, false }, { 2., true, false, false }, { 0., true, false, false },
-                                               { 8., false, false, false }, { 2., false, false, false }, { 0., false, false, false },
-                                               { 0., false, true, false }, { 0., false, false, true } };
+    static const ConformalVariant ladder[] = { { 8., false, false }, { 2., false, false }, { 2., true, false }, { 8., true, false },
+                                               { 0., false, true } };
     static_assert(std::size(ladder) == ConformalSteps + 1);
     return ladder[std::clamp(step, 0, int(std::size(ladder)) - 1)];
 }
