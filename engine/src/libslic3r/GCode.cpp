@@ -9378,6 +9378,13 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 const bool reseed = rotary != nullptr && ! chains(m_writer.get_joints(), road, 0) && road_seed(road, seed);
                 gcode += this->retract();
                 gcode += this->rotary_move_safely(&start, reseed ? &seed : nullptr);
+                if (rotary == nullptr && (m_writer.get_position() - start.tip).norm() > EPSILON) {
+                    const Vec3d  here = m_writer.get_position();
+                    const double z    = std::max(here.z(), start.tip.z()) + hop;
+                    gcode += m_writer.travel_to_pose({ Vec3d(here.x(), here.y(), z), Vec3d::UnitZ() }, "lift to enter the curved layers");
+                    gcode += m_writer.travel_to_pose({ Vec3d(start.tip.x(), start.tip.y(), z), Vec3d::UnitZ() }, "travel to the curved layers");
+                    gcode += m_writer.travel_to_pose(start, "lower onto the curved layer");
+                }
                 entered = true;
             } else if ((m_writer.get_position() - start.tip).norm() > EPSILON || rotary != nullptr) {
                 std::vector<ToolPose> travel;
