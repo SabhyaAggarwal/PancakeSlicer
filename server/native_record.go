@@ -153,9 +153,68 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			record["nonplanar_report"], _ = json.Marshal(report)
 		}
 	}
+	if failures := uncurvedObjects(record["nonplanar_report"]); len(failures) > 0 {
+		record["could_not_curve"], _ = json.Marshal(failures)
+	} else {
+		delete(record, "could_not_curve")
+	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return raw
 	}
 	return encoded
+}
+
+var methodLabels = map[string]string{"nonplanar_top": "Smoothest tops", "curved_tops": "Fast curved tops", "smooth_morph": "Smooth morph",
+	"slant": "Slant", "conformal_layers": "Conformal layers", "multiplanar": "Multiplanar", "field": "Rotary curved layers"}
+
+func uncurvedObjects(raw json.RawMessage) []map[string]any {
+	var report struct {
+		Objects []map[string]any `json:"objects"`
+	}
+	if json.Unmarshal(raw, &report) != nil {
+		return nil
+	}
+	var out []map[string]any
+	for i, o := range report.Objects {
+		mode, _ := o["mode"].(string)
+		share, measured := o["curved_share"].(float64)
+		limit, _ := o["planar_limit"].(string)
+		reason, _ := o["planar_fallback_reason"].(string)
+		if mode == "" || mode == "off" || !measured || share > 0 || (limit == "" && reason == "") {
+			continue
+		}
+		method := methodLabels[mode]
+		if method == "" {
+			method = mode
+		}
+		entry := map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": limit, "reason": reason}
+		for _, k := range []string{"curved_max_angle_deg", "reachable_slope_deg"} {
+			if v, ok := o[k].(float64); ok {
+				entry[k] = v
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func (j *Job) curveRefusal() string {
+	var record struct {
+		Failures []struct {
+			Name   string `json:"name"`
+			Method string `json:"method"`
+			Reason string `json:"reason"`
+			Limit  string `json:"planar_limit"`
+		} `json:"could_not_curve"`
+	}
+	if json.Unmarshal(j.Record(), &record) != nil || len(record.Failures) == 0 {
+		return ""
+	}
+	f := record.Failures[0]
+	why := f.Reason
+	if why == "" {
+		why = "no top surface could be curved (" + f.Limit + ")"
+	}
+	return "Could not slice " + f.Name + " with " + f.Method + ": " + why
 }

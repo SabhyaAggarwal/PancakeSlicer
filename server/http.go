@@ -78,6 +78,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	})
 	mux.HandleFunc("POST /api/jobs", s.createJob)
 	mux.HandleFunc("POST /api/patch-preview", s.createJob)
+	mux.HandleFunc("POST /api/top-surfaces", s.topSurfaces)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
@@ -908,6 +909,10 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	if j.AwaitFinished(r.Context()) != StateDone {
 		fail(w, 409, "job has no completed download")
+		return
+	}
+	if refusal := j.curveRefusal(); refusal != "" && previewableRequest(j.Request) {
+		writeJSON(w, 409, map[string]string{"error": refusal, "code": "could_not_curve"})
 		return
 	}
 	path, name := j.OutputPath(j.Request.Output), j.DownloadName()

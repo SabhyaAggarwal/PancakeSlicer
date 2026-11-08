@@ -506,6 +506,10 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "only a finished sliced job can be sent")
 		return
 	}
+	if refusal := j.curveRefusal(); refusal != "" {
+		writeJSON(w, 409, map[string]string{"error": refusal, "code": "could_not_curve"})
+		return
+	}
 	if want := map[bool]string{true: "gcode.3mf", false: "gcode"}[p.Kind == "bambu-lan"]; j.Request.Output != want {
 		fail(w, 400, fmt.Sprintf("%s needs a .%s export; this job produced .%s", connectionKinds[p.Kind], want, j.Request.Output))
 		return
