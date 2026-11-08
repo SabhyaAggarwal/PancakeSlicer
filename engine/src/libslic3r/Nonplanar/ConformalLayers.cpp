@@ -278,10 +278,19 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     std::vector<int>                 comp;
     std::vector<std::vector<size_t>> comps;
     label(comp, comps);
+    std::vector<double> floor_z(N, ident);
+    for (const std::vector<size_t> &cells : comps) {
+        double tmin = std::numeric_limits<double>::infinity(), tmax = -tmin, shell_floor = tmin;
+        for (size_t k : cells)
+            tmin = std::min(tmin, T[k]), tmax = std::max(tmax, T[k]), shell_floor = std::min(shell_floor, T[k] - D[k] / c[k]);
+        const double fz = std::max(ident, shell_floor - std::max(1., (tmax - tmin) / 4.));
+        for (size_t k : cells)
+            floor_z[k] = fz;
+    }
     std::vector<double> L(N, 0.), zb(N, 0.);
     const auto level_of = [&](double z) { return P.first_layer + std::round((z - P.first_layer) / h) * h; };
     const auto bounds = [&](size_t k) {
-        const double wa = T[k] - D[k] / c[k] - ident, base = T[k] - D[k] * (1. / c[k] - 1.);
+        const double wa = T[k] - D[k] / c[k] - floor_z[k], base = T[k] - D[k] * (1. / c[k] - 1.);
         return std::make_pair(base + s_lo * wa, base + s_hi * wa);
     };
     auto envelopes = [&](const std::vector<size_t> &cells, int ci, std::vector<double> &up, std::vector<double> &dn) {
@@ -392,9 +401,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             L[k] = dn[k] <= up[k] ? std::clamp(target, dn[k], up[k]) : 0.5 * (dn[k] + up[k]);
             const auto [lo, hi] = bounds(k);
             L[k] = std::clamp(L[k], lo, hi);
-            const double M  = L[k] - T[k] + D[k] * (1. / c[k] - 1.);
-            const double wa = T[k] - D[k] / c[k] - ident;
-            const double W = std::min(wa, std::max({ 1., M / (0.5 * s_hi), M / (0.5 * s_lo) }));
+            const double W = std::max(T[k] - D[k] / c[k] - floor_z[k], 1e-3);
             zb[k]          = T[k] - D[k] / c[k] - W;
             top.ramp       = std::max(top.ramp, W);
         }
@@ -506,7 +513,7 @@ double conformal_band_height(const HeadEnvelope &head, double layer_height)
 }
 
 std::string contour_solid_angles(const LayerField &field, const std::vector<ExPolygons> &domains, const std::vector<double> &levels,
-                                 double flat_angle)
+                                 double flat_angle, bool sparse)
 {
     constexpr double Step = 2., Eps = 0.25, MinSlope = 0.035;
     std::ostringstream out;
@@ -527,7 +534,7 @@ std::string contour_solid_angles(const LayerField &field, const std::vector<ExPo
         double angle = flat_angle + 90. * double(k % 2);
         if (n > 0 && slope / double(n) > MinSlope) {
             const double steepest = 0.5 * std::atan2(2. * sxy, sxx - syy) * 180. / M_PI;
-            angle = steepest + 90.;
+            angle = steepest + 90. + (sparse ? (k % 2 ? 45. : -45.) : 0.);
         }
         angle = std::fmod(std::fmod(angle, 180.) + 180., 180.);
         out << (k ? "," : "") << std::lround(angle);
@@ -767,6 +774,22 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                 }
                 s = e;
             }
+        }
+        constexpr double LinkMax = 1.5, LinkRise = 0.3;
+        for (size_t i = 1; i < group.entities.size(); ++i) {
+            auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);
+            auto *next = static_cast<ExtrusionPathConformal *>(group.entities[i]);
+            const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
+            const Vec3d   d = unscale(b) - unscale(a);
+            if (d.head<2>().norm() > LinkMax || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
+                continue;
+            next->polyline.points.insert(next->polyline.points.begin(), a);
+            if (!next->bead_height.empty())
+                next->bead_height.insert(next->bead_height.begin(), next->bead_height.front());
+            if (!next->tool_axis.empty())
+                next->tool_axis.insert(next->tool_axis.begin(), next->tool_axis.front());
+            if (!next->bead_width.empty())
+                next->bead_width.insert(next->bead_width.begin(), next->bead_width.front());
         }
         out.groups.push_back(std::move(group));
         out.group_layers.push_back(key.second);

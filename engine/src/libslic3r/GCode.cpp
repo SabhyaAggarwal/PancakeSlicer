@@ -9429,10 +9429,12 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             for (size_t kk = k, ee = e + 1; kk < patch.shell_paths.size() && next == nullptr; ++kk, ee = 0)
                 for (; ee < patch.shell_paths[kk].entities.size() && next == nullptr; ++ee)
                     next = printable(patch.shell_paths[kk].entities[ee]);
-            const bool flows_on = field.given() && next != nullptr &&
+            const bool flows_on = (field.given() || fixed_conformal) && next != nullptr &&
                                   (next->polyline.points.front() - path->polyline.points.back()).cast<double>().norm() < scaled<double>(0.01);
             m_conformal_open_end = flows_on || field.given();
             gcode += this->_extrude(*path, "orientation field");
+            if (fixed_conformal)
+                m_wipe.reset_path();
             m_conformal_open_end = false;
             for (const Point3 &p : path->polyline.points) {
                 m_max_layer_z = std::max(m_max_layer_z, float(unscale<double>(p.z()) + host_z));
@@ -9451,7 +9453,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 glide = glide_inside || (same && (qb - qa).head<2>().norm() < glide_length && top_along(qa, qb) <= ends + 0.1);
             }
             glide = glide || flows_on;
-            if (!glide && (!field.given() || FILAMENT_CONFIG(wipe)))
+            if (!glide && !fixed_conformal && (!field.given() || FILAMENT_CONFIG(wipe)))
                 gcode += this->wipe_conformal_path();
             gcode += m_writer.end_inverse_time();
             m_conformal_points.clear();
@@ -12324,13 +12326,16 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
 {
     std::string gcode;
 
-    if (curved_tops_mode(m_config.nonplanar_mode.value))
+    const bool conformal_layers = m_layer != nullptr && m_layer->object() != nullptr &&
+                                  m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
+    const bool curved_wipes = curved_tops_mode(m_config.nonplanar_mode.value) || conformal_layers;
+    if (curved_wipes)
         lift_type = LiftType::NormalLift;
 
     if (m_writer.filament() == nullptr)
         return gcode;
 
-    if ((curved_tops_mode(m_config.nonplanar_mode.value)) && m_wipe.has_path()) {
+    if (curved_wipes && m_wipe.has_path()) {
         Polyline wipe_path;
         wipe_path.append(this->last_pos());
         wipe_path.append(m_wipe.path.points.begin() + 1, m_wipe.path.points.end());
@@ -12345,6 +12350,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     }
 
     if (m_nonplanar_ceiling > 0.)
+        m_wipe.reset_path();
+    if (conformal_layers)
         m_wipe.reset_path();
 
     if (FILAMENT_CONFIG(wipe) && m_wipe.has_path() && scale_(FILAMENT_CONFIG(wipe_distance)) > SCALED_EPSILON &&

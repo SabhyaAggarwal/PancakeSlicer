@@ -67,7 +67,7 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
 double conformal_band_height(const HeadEnvelope &head, double layer_height);
 
 std::string contour_solid_angles(const LayerField &field, const std::vector<ExPolygons> &domains, const std::vector<double> &levels,
-                                 double flat_angle);
+                                 double flat_angle, bool sparse = false);
 
 size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t layers, const HeadEnvelope &head);
 

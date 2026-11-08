@@ -859,7 +859,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     if (conformal) {
         config.set_deserialize_strict("top_surface_pattern", "rectilinear");
         config.set_deserialize_strict("internal_solid_infill_pattern", "rectilinear");
-        config.set_deserialize_strict("infill_wall_overlap", "-5%");
+        config.set_deserialize_strict("infill_wall_overlap", "-30%");
         config.set_deserialize_strict("top_bottom_infill_wall_overlap", "-5%");
         if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
             pattern != nullptr && (pattern->value == ipGrid || pattern->value == ipTriangles || pattern->value == ipStars || pattern->value == ipCubic))
@@ -868,6 +868,10 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         config.set_deserialize_strict("bottom_layer_direction", "-1");
         config.set_deserialize_strict("solid_infill_rotate_template",
                                       contour_solid_angles(*field, domains, tops, object.printing_region(0).config().solid_infill_direction.value));
+        if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
+            pattern != nullptr && (pattern->value == ipRectilinear || pattern->value == ipAlignedRectilinear || pattern->value == ipLine))
+            config.set_deserialize_strict("sparse_infill_rotate_template",
+                                          contour_solid_angles(*field, domains, tops, object.printing_region(0).config().infill_direction.value, true));
     }
     for (const std::string &key : object.config().keys())
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
