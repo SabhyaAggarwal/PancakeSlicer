@@ -1,0 +1,12 @@
+{$PANCAKE_DOMAIN} {
+	request_body {
+		max_size 512MiB
+	}
+	reverse_proxy pancakeslicer:8080 {
+		# Slice progress and printer status use Server-Sent Events: stream them unbuffered.
+		flush_interval -1
+		transport http {
+			response_header_timeout 40m
+		}
+	}
+}

@@ -201,6 +201,16 @@ jobs:
           npm ci --prefix web
           npm run build --prefix web
           npm ci --prefix desktop
+      - name: Bundle engine shared libraries (Linux desktop)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends patchelf
+          mkdir -p build-native/tool/lib
+          ldd build-native/tool/nonplanar_slice_tool | awk '/=> \// {print $3}' | while read l; do
+            case "$(basename "$l")" in libc.so*|libm.so*|libpthread.so*|libdl.so*|librt.so*|ld-linux*) ;; *) cp -L "$l" build-native/tool/lib/ ;; esac
+          done
+          for l in build-native/tool/lib/*; do patchelf --set-rpath '$ORIGIN' "$l"; done
+          patchelf --set-rpath '$ORIGIN/lib' build-native/tool/nonplanar_slice_tool
       - name: Stage and qualify the bundled payload
         run: |
           suffix=''; [ "${{ matrix.os }}" = win ] && suffix=.exe
@@ -210,6 +220,7 @@ jobs:
       - name: Package installers
         run: |
           cp web/public/logo-256.png desktop/build/icon.png
+          if [ "${{ matrix.os }}" = linux ]; then cp -a build-native/tool/lib desktop/build/engine-linux-x64/lib; chmod -R a+rX desktop/build/engine-linux-x64/lib; fi
           case "${{ matrix.target }}" in
             mac-x64) npm run dist:mac-x64 --prefix desktop ;;
             *) npm run dist:${{ matrix.os }} --prefix desktop ;;
@@ -243,6 +254,7 @@ jobs:
         if: matrix.target == 'linux-x64'
         run: |
           cp desktop/build/source.tar.gz desktop/build/engine-linux-x64/source.tar.gz 2>/dev/null || git archive --format=tar.gz -o desktop/build/engine-linux-x64/source.tar.gz HEAD
+          chmod 0644 desktop/build/engine-linux-x64/source.tar.gz
           printf '**\n!engine-linux-x64/\n!engine-linux-x64/**\n!web/\n!web/**\n' > desktop/build/.dockerignore
           docker build --file deploy/Dockerfile --build-arg VERSION="${TAG#v}" --build-arg REVISION="$GITHUB_SHA" \
             --build-arg SOURCE_SHA256="$(sha256sum desktop/build/engine-linux-x64/source.tar.gz | cut -d' ' -f1)" \

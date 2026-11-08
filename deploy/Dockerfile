@@ -16,7 +16,7 @@ COPY engine-linux-x64/ /app/engine/
 COPY web/ /app/web/
 USER 65532:65532
 WORKDIR /app
-ENV PATH=/usr/bin:/bin HOME=/data TZ=UTC ORCA_WEB_LISTEN=0.0.0.0:8080 ORCA_WEB_DATA_DIR=/data/library ORCA_WEB_JOB_ROOT=/data/jobs ORCA_WEB_STATIC=/app/web ORCA_WEB_TOOL=/app/engine/nonplanar_slice_tool ORCA_WEB_RESOURCES=/app/engine/resources ORCA_WEB_SURFACE_MANIFEST=/app/engine/surface-manifest.json ORCA_WEB_ARTIFACT_QUALIFICATION=/app/engine/artifact-qualification.ready ORCA_WEB_SOURCE_ARCHIVE=/app/engine/source.tar.gz ORCA_WEB_SOURCE_URL= ORCA_BUILD_SOURCE_SHA256=${SOURCE_SHA256}
+ENV PATH=/usr/bin:/bin HOME=/data TZ=UTC ORCA_WEB_LISTEN=0.0.0.0:8080 ORCA_WEB_DATA_DIR=/data/library ORCA_WEB_JOB_ROOT=/data/jobs ORCA_WEB_STATIC=/app/web ORCA_WEB_TOOL=/app/engine/nonplanar_slice_tool ORCA_WEB_RESOURCES=/app/engine/resources ORCA_WEB_SURFACE_MANIFEST=/app/engine/surface-manifest.json ORCA_WEB_ARTIFACT_QUALIFICATION=/app/engine/artifact-qualification.ready ORCA_WEB_SOURCE_ARCHIVE=/app/engine/source.tar.gz ORCA_WEB_SOURCE_URL= ORCA_BUILD_SOURCE_SHA256=${SOURCE_SHA256} ORCA_BUILD_IMAGE=zimengxiong/pancakeslicer:${VERSION}
 EXPOSE 8080
 VOLUME ["/data"]
 ENTRYPOINT ["/app/engine/orca-webapp-server"]

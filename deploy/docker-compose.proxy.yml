@@ -1,0 +1,45 @@
+# PancakeSlicer behind Caddy with automatic HTTPS.
+#   PANCAKE_DOMAIN=slicer.example.com docker compose -f deploy/docker-compose.proxy.yml up -d
+# The domain's DNS must point at this host and ports 80/443 must be reachable for certificates.
+name: pancakeslicer
+services:
+  pancakeslicer:
+    image: zimengxiong/pancakeslicer:latest
+    container_name: pancakeslicer
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      ORCA_WEB_MAX_JOBS: "2"
+      ORCA_WEB_PRINTER_NETWORK: lan
+      ORCA_WEB_TRUSTED_PROXIES: 172.16.0.0/12  # Docker bridge range; Caddy's X-Forwarded-For is trusted
+      ORCA_WEB_BEARER_TOKEN: ${PANCAKE_TOKEN:-}
+    volumes:
+      - pancakeslicer-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 8g
+
+  caddy:
+    image: caddy:2
+    container_name: pancakeslicer-caddy
+    restart: unless-stopped
+    depends_on:
+      - pancakeslicer
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PANCAKE_DOMAIN: ${PANCAKE_DOMAIN:?set PANCAKE_DOMAIN to your host name}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  pancakeslicer-data:
+  caddy-data:
+  caddy-config:
