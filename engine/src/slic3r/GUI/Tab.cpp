@@ -2556,6 +2556,8 @@ void TabPrint::build()
         optgroup->append_single_option_line("nonplanar_mode");
         optgroup->append_single_option_line("nonplanar_region_source");
         optgroup->append_single_option_line("nonplanar_curved_max_angle");
+        optgroup->append_single_option_line("nonplanar_ignore_duct");
+        optgroup->append_single_option_line("nonplanar_clearance_margin");
         optgroup->append_single_option_line("nonplanar_curved_max_height");
         optgroup->append_single_option_line("nonplanar_curved_shells");
         optgroup->append_single_option_line("nonplanar_curved_cone_tolerance");

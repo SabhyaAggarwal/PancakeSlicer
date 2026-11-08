@@ -6942,6 +6942,7 @@ LayerResult GCode::process_layer(
                     m_layer = layer_to_print.layer();
                     m_object_layer_over_raft = object_layer_over_raft;
                 }
+                gcode += this->emit_deferred_before_layer(extruder_id);
                 std::vector<ObjectByExtruder::Island> &islands = instance_to_print.object_by_extruder.islands;
                 std::vector<size_t> island_order;
                 island_order.reserve(visit.islands.size());
@@ -8301,6 +8302,25 @@ std::string GCode::emit_deferred_material(int slot, unsigned int extruder_id)
         m_deferral_plan = plan;
     }
     m_force_safe_travel_once = true;
+    return gcode;
+}
+
+std::string GCode::emit_deferred_before_layer(unsigned int extruder_id)
+{
+    std::string gcode;
+    if (m_deferral_plan == nullptr)
+        return gcode;
+    const int before = 2 * int(m_deferral_layer_id);
+    auto it = m_deferred_extrusions.find(m_deferral_key);
+    while (it != m_deferred_extrusions.end()) {
+        int next = std::numeric_limits<int>::max();
+        for (const DeferredExtrusion &d : it->second)
+            if (d.extruder == extruder_id && d.slot < before)
+                next = std::min(next, d.slot);
+        if (next == std::numeric_limits<int>::max())
+            break;
+        gcode += this->emit_deferred_material(next, extruder_id);
+    }
     return gcode;
 }
 

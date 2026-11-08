@@ -1762,6 +1762,20 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         report.omissions.emplace_back("Rotary homing poses are undefined; the first explicit XYZ endpoint is checked without inventing its incoming sweep.");
     return report;
 }
+void count_duct_grazes(Print &print, GCodeProcessorResult &result, const ClearanceParams &params, const ToolKinematics &kinematics)
+{
+    if (!Nonplanar::clearance_override_active(print.config()))
+        return;
+    ClearanceParams full = params;
+    full.head = Nonplanar::resolve_full_head_envelope(print.config());
+    const size_t grazes = verify_clearance(result, full, kinematics, [&print] { if (print.canceled()) throw CanceledException(); }).hit_moves;
+    result.clearance_report.clearance_override = true;
+    result.clearance_report.duct_graze_moves   = grazes;
+    print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+        Slic3r::format(_u8L("Experimental: cooling duct not checked. %1% moves would graze the part-cooling duct or fan shroud."), grazes),
+        PrintStateBase::SlicingDuctGrazes);
+}
+
 void check_export_clearance(Print &print, GCodeProcessorResult &result)
 {
     const auto mode = Nonplanar::effective_collision_check(print);
@@ -1773,6 +1787,7 @@ void check_export_clearance(Print &print, GCodeProcessorResult &result)
     auto kinematics = make_tool_kinematics(print.config());
     result.clearance_report = verify_clearance(result, params, *kinematics, [&print] { if (print.canceled()) throw CanceledException(); });
     result.clearance = result.clearance_report.per_move;
+    count_duct_grazes(print, result, params, *kinematics);
     if (result.clearance_report.hit_moves == 0) return;
     const auto &hit = result.clearance_report.worst.front();
     const std::string message = Slic3r::format(_u8L("Moves that would hit printed material: %1% (worst %2$.3f mm, %3%, layer %4%, G-code line %5%)."),

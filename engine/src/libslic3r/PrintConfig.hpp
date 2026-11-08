@@ -1829,6 +1829,8 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_z))
     ((ConfigOptionString,                   nonplanar_head))
     ((ConfigOptionString,                   nonplanar_head_snapshot))
+    ((ConfigOptionBool,                     nonplanar_ignore_duct))
+    ((ConfigOptionFloat,                    nonplanar_clearance_margin))
     ((ConfigOptionFloat,                    nonplanar_segment_rate))
     ((ConfigOptionEnum<RotaryLayout>,       nonplanar_kinematics))
     ((ConfigOptionFloats,                   rotary_axis_limits))

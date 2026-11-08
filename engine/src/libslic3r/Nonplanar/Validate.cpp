@@ -93,6 +93,12 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
     if (StringObjectException err = validate_native_support(print, warnings); !err.string.empty())
         return err;
     const PrintConfig &config = print.config();
+    if (warnings != nullptr && config.nonplanar_ignore_duct.value && !clearance_override_active(config)) {
+        StringObjectException w{ _u8L("Ignore cooling duct has no effect on this printer: its print head does not mark the heater block, "
+                                      "so the whole head is checked."), nullptr, "nonplanar_ignore_duct" };
+        w.is_warning = true;
+        warnings->push_back(std::move(w));
+    }
 
     double min_nozzle = 0.;
     for (double d : config.nozzle_diameter.values)
@@ -125,6 +131,18 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                            "with their own settings, or use another slicing method."),
                          object, "nonplanar_mode" };
             multiplanar_instances += object->instances().size();
+        }
+        if (mode == NonplanarMode::NonplanarTop && warnings != nullptr) {
+            std::string unknown;
+            resolve_head_envelope(config, &unknown);
+            if (!unknown.empty() && std::none_of(warnings->begin(), warnings->end(), [](const StringObjectException &w) {
+                    return w.opt_key == "nonplanar_head"; })) {
+                StringObjectException w{ _u8L("Smoothest tops can't plan head access without this printer's print head model, so its "
+                                              "tops print flat. Select the printer's head on its Non-planar page."),
+                                         nullptr, "nonplanar_head" };
+                w.is_warning = true;
+                warnings->push_back(std::move(w));
+            }
         }
         const double curved_angle = object->config().nonplanar_curved_max_angle.value;
         const double max_angle    = curved_max_angle_limit(mode);

@@ -421,7 +421,9 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
         std::lock_guard<std::mutex> lock(rejections_mutex);
         if (const auto it = rejections_of.find(&object); it != rejections_of.end()) rejections = it->second;
     }
-    if (mode == NonplanarMode::NonplanarTop && Nonplanar::wide_tops_refused(*object.model_object()) &&
+    if (rejections.head_unknown)
+        out.planar_limit = "head_unknown";
+    else if (mode == NonplanarMode::NonplanarTop && Nonplanar::wide_tops_refused(*object.model_object()) &&
         upward_area_between(object, out.max_angle_deg, limit) >= seen) {
         out.planar_limit        = "access";
         out.reachable_slope_deg = out.max_angle_deg;

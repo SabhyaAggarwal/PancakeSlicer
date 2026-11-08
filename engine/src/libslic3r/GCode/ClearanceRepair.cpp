@@ -460,6 +460,7 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
             ++conformal_hits;
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
+    count_duct_grazes(print, result, params, ThreeAxisKinematics());
     if (self->m_pass == 0 && hits == 0)
         return;
     if (params.contact_bar && hits > 0 && self->contact_guard(result, hits))
@@ -1209,6 +1210,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
         m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     result.clearance_report = std::move(report);
     result.clearance = result.clearance_report.per_move;
+    count_duct_grazes(m_print, result, params, ThreeAxisKinematics());
     return true;
 }
 

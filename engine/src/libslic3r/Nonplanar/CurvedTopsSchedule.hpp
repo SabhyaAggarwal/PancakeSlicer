@@ -49,7 +49,6 @@ struct NonplanarClearanceModel
     std::vector<Box> boxes;
     std::vector<Ring> rings() const { return nozzle; }
     static NonplanarClearanceModel from_print(const PrintConfig &config, double height = 0.2);
-    static NonplanarClearanceModel fichl();
     static NonplanarClearanceModel for_object(const PrintObject &object, double height);
 };
 

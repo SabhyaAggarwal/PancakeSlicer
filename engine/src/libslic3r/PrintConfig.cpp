@@ -5813,6 +5813,24 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionString(""));
 
+    def = this->add("nonplanar_ignore_duct", coBool);
+    def->label    = L("Ignore cooling duct (experimental)");
+    def->category = L("Quality");
+    def->tooltip  = L("Checks only the nozzle and heater block. Allows steeper curved tops; the fan duct may brush the part. "
+                      "Needs a print head whose heater block is marked. Default: off.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("nonplanar_clearance_margin", coFloat);
+    def->label    = L("Clearance margin");
+    def->category = L("Quality");
+    def->tooltip  = L("Clearance kept around the nozzle and heater block when Ignore cooling duct is on. Default: 0.3. Unit: mm.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->max      = 2;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.3));
+
     def = this->add("nonplanar_head_snapshot", coString);
     def->tooltip = L("Project-owned resolved print-head envelope. Default: empty. Unit: serialized head JSON. "
                      "Auto retains the saved envelope; changing the head selection clears it.");

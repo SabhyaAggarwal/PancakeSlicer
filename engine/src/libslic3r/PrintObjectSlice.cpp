@@ -26,6 +26,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "Model.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/Wave.hpp"
 #include "Nonplanar/ConformalShells.hpp"
@@ -958,6 +959,13 @@ void PrintObject::slice()
     this->set_done(posSlice);
 }
 
+static bool smoothest_tops_head_known(const PrintConfig &config)
+{
+    std::string warning;
+    Nonplanar::resolve_head_envelope(config, &warning);
+    return warning.empty();
+}
+
 void
 PrintObject::find_nonplanar_surfaces()
 {
@@ -973,6 +981,16 @@ PrintObject::find_nonplanar_surfaces()
                                             "Disable one of them for this object."));
 
     BOOST_LOG_TRIVIAL(info) << "Find nonplanar surfaces - start";
+
+    if (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && !smoothest_tops_head_known(m_print->config())) {
+        m_nonplanar_surfaces.clear();
+        m_curved_upward_area = 0.;
+        CurvedSurfaceRejections rejections;
+        rejections.head_unknown = true;
+        note_curved_surface_rejections(*this, rejections);
+        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no print head model for this printer; Smoothest tops prints flat tops";
+        return;
+    }
 
     m_nonplanar_surfaces.clear();
     m_curved_upward_area = 0.;
@@ -1092,7 +1110,8 @@ PrintObject::find_nonplanar_surfaces()
     m_nonplanar_surfaces.erase(std::remove_if(m_nonplanar_surfaces.begin(), m_nonplanar_surfaces.end(),
         [this](const NonplanarSurface &surface) { return m_curved_planar_surfaces.count(surface.stable_id) != 0; }),
         m_nonplanar_surfaces.end());
-    if (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && m_curved_candidates == 0 && !m_curved_fallback_off) {
+    if (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && m_curved_candidates == 0 && !m_curved_fallback_off &&
+        smoothest_tops_head_known(m_print->config())) {
         bool walls = false;
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
             walls |= this->printing_region(region_id).config().nonplanar_sublayer_walls.value;

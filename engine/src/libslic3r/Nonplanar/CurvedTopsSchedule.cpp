@@ -11,6 +11,7 @@
 #include "libslic3r/libslic3r.h"
 #include "CurvedTopsSurface.hpp"
 #include "HeadEnvelope.hpp"
+#include <nlohmann/json.hpp>
 #include "StageCache.hpp"
 #include <map>
 #include <memory>
@@ -65,39 +66,50 @@ NonplanarClearanceModel NonplanarClearanceModel::from_print(const PrintConfig &c
     return out;
 }
 
-NonplanarClearanceModel NonplanarClearanceModel::fichl()
+static bool access_model_of(const Nonplanar::HeadEnvelope &head, NonplanarClearanceModel &out)
 {
-    NonplanarClearanceModel out;
-    out.tip_radius_mm        = 0.5504;
-    out.contact_allowance_mm = 0.12;
-    out.safety_mm            = 0.03;
-    out.bead_margin          = 0.02;
-    out.sample_step          = 0.1;
+    if (head.extensions.empty())
+        return false;
+    const nlohmann::json extensions = nlohmann::json::parse(head.extensions);
+    const auto it = extensions.find("access_model");
+    if (it == extensions.end())
+        return false;
+    const nlohmann::json &m = *it;
+    out = NonplanarClearanceModel();
+    out.tip_radius_mm        = m.at("tip_radius").get<double>();
+    out.contact_allowance_mm = m.at("contact_allowance").get<double>();
+    out.safety_mm            = m.at("safety").get<double>();
+    out.bead_margin          = m.at("bead_margin").get<double>();
+    out.sample_step          = m.at("sample_step").get<double>();
     out.nozzle.push_back({out.contact_allowance_mm, out.tip_radius_mm});
-    constexpr double cone_bottom = 0.15, cone_top = 2.5, r_bottom = 0.613, r_top = 1.5979, inflation = 0.02;
-    constexpr int    slices = 24;
-    const double     step   = (cone_top - cone_bottom) / slices;
+    const nlohmann::json &cone = m.at("cone");
+    const double cone_bottom = cone.at("bottom").get<double>(), cone_top = cone.at("top").get<double>(),
+                 r_bottom = cone.at("r_bottom").get<double>(), r_top = cone.at("r_top").get<double>(),
+                 inflation = cone.at("inflation").get<double>();
+    const int    slices = cone.at("slices").get<int>();
+    if (slices <= 0 || !(cone_top > cone_bottom))
+        throw Slic3r::SlicingError("Head " + head.id + ": its access_model cone is empty.");
+    const double step = (cone_top - cone_bottom) / slices;
     for (int k = 0; k < slices; ++k) {
         const double low = cone_bottom + k * step, high = low + step;
         out.nozzle.push_back({low - inflation, r_bottom + (r_top - r_bottom) * (high - cone_bottom) / (cone_top - cone_bottom) + inflation});
     }
-    const double block[][5] = {
-        {2.3500, -7.0379, 7.0379, -9.4243, 9.4243},     {2.6500, -8.4493, 8.4493, -10.8357, 10.8357},
-        {2.9500, -9.8606, 9.8606, -12.2470, 12.2470},   {3.2500, -11.2720, 11.2720, -13.6584, 13.6584},
-        {3.5500, -12.6834, 12.6834, -15.0698, 15.0698}, {3.8500, -14.0948, 14.0948, -16.4812, 16.4812},
-        {4.1500, -15.5062, 15.5062, -17.8926, 17.8926}, {4.4500, -16.9176, 16.9176, -19.3040, 19.3040},
-        {4.7500, -18.3290, 18.3290, -20.7154, 20.7154}, {5.0500, -19.7404, 19.7404, -22.1268, 22.1268},
-        {5.3500, -21.1518, 21.1518, -23.5382, 23.5382}, {5.6500, -22.5631, 22.5631, -24.9495, 24.9495},
-        {5.9500, -23.9745, 23.9745, -26.3609, 26.3609}, {6.2500, -25.3859, 25.3859, -27.7723, 27.7723},
-        {6.5500, -26.7973, 26.7973, -29.1837, 29.1837}, {6.8500, -28.2087, 28.2087, -30.5951, 30.5951},
-        {7.1500, -29.1496, 29.1496, -31.5360, 31.5360}, {7.2000, -29.2996, 29.2996, -31.6860, 31.6860}};
-    for (const auto &b : block) out.boxes.push_back({b[0], b[1], b[2], b[3], b[4]});
-    return out;
+    for (const nlohmann::json &b : m.at("blocks"))
+        out.boxes.push_back({b.at(0).get<double>(), b.at(1).get<double>(), b.at(2).get<double>(), b.at(3).get<double>(), b.at(4).get<double>()});
+    return true;
 }
 
 NonplanarClearanceModel NonplanarClearanceModel::for_object(const PrintObject &object, double height)
 {
-    return object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop ? fichl() : from_print(object.print()->config(), height);
+    if (object.config().nonplanar_mode.value != NonplanarMode::NonplanarTop)
+        return from_print(object.print()->config(), height);
+    std::string warning;
+    const Nonplanar::HeadEnvelope head = Nonplanar::resolve_head_envelope(object.print()->config(), &warning);
+    if (!warning.empty())
+        throw Slic3r::SlicingError(object.model_object()->name + ": Smoothest tops needs this printer's print head model to plan head access. " + warning);
+    NonplanarClearanceModel model;
+    return !Nonplanar::clearance_override_active(object.print()->config()) && access_model_of(head, model) ? model
+                                                                                                        : from_print(object.print()->config(), height);
 }
 
 const NonplanarDeferral::PathPlan* NonplanarDeferral::find(size_t layer_id, size_t source_path_id,
@@ -854,6 +866,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     bool rebuild_units = true;
     const bool wide_cap = object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop &&
         object.config().nonplanar_curved_max_angle.value > 12. + EPSILON;
+    constexpr size_t MaxWork = 2000000000;
+    size_t work = 0;
+    bool   out_of_work = false;
     for (int attempt = 0;; ++ attempt) {
         throw_if_canceled();
         if (rebuild_units || verify_dependents) {
@@ -1094,6 +1109,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         tbb::enumerable_thread_specific<std::pair<std::vector<int>, std::vector<int>>> workers(
             [&]() { return std::make_pair(std::vector<int>(collected_for.size(), -1), std::vector<int>()); });
         auto collect_dependents = [&](int u, bool only_changed, Slot from, Slot to, std::vector<int> &out) {
+            work += members.size() + members[size_t(u)].size();
             std::vector<char> eligible(members.size(), 0);
             double material_top = -std::numeric_limits<double>::max();
             for (size_t v = 0; v < members.size(); ++v) {
@@ -1214,7 +1230,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     std::hypot(upper.x - lower.x, upper.y - lower.y) < 0.5 * (upper.half_width + lower.half_width);
             };
             const double below_margin = std::min(block_dz_min, 0.1 - 1e-6);
-            std::set<std::pair<int, int>> tried;
+            std::vector<int> tried(all.size(), -1);
             for (size_t T = 0; T < members.size() && conflict_a < 0; ++ T) {
                 const int t0 = members[T].front();
                 if (! i_is_conformal(t0))
@@ -1232,8 +1248,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     throw_if_canceled();
                     const Sample &st = all[size_t(t)];
                     auto candidate = [&](int p) {
-                        if (conflict_a >= 0 || i_is_conformal(p) || ! tried.insert({ int(T), p }).second)
+                        if (conflict_a >= 0 || i_is_conformal(p) || tried[size_t(p)] == int(T))
                             return;
+                        tried[size_t(p)] = int(T);
                         const int v = unit_of[size_t(p)];
                         if (unit_after(v, int(T)))
                             return;
@@ -1256,11 +1273,11 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     const double r = reach(t);
                     if (r > 0)
                         grid.visit_z(st.x, st.y, r, st.z + block_dz_min, p_zmax, z_of, [&](int p) {
-                            if (p != t && ! i_is_conformal(p) && blocks(all[size_t(p)], st, true))
+                            if (p != t && tried[size_t(p)] != int(T) && ! i_is_conformal(p) && blocks(all[size_t(p)], st, true))
                                 candidate(p);
                         });
                     grid.visit_z(st.x, st.y, 2. * st.half_width, st.z + 0.1 - 1e-6, std::min(st.z + 0.35 + 1e-6, p_zmax), z_of, [&](int p) {
-                        if (p != t && ! i_is_conformal(p) && rests_on(all[size_t(p)], st))
+                        if (p != t && tried[size_t(p)] != int(T) && ! i_is_conformal(p) && rests_on(all[size_t(p)], st))
                             candidate(p);
                     });
                 }
@@ -1301,6 +1318,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 worklist.push_back(v);
             }
         }
+        work += visited;
         if (cycle.empty())
             break;
         if (! banded) {
@@ -1325,7 +1343,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             }
         }
         bool progress = false;
-        const bool exhausted = wide_cap && attempt >= 200;
+        out_of_work = work > MaxWork;
+        const bool exhausted = (wide_cap && attempt >= 200) || out_of_work;
         for (size_t k = 0; k < cycle.size() && ! exhausted; ++ k) {
             throw_if_canceled();
             const int c = cycle[k];
@@ -1493,6 +1512,13 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     std::find(surfaces.begin(), surfaces.end(), path.source_surface_id) == surfaces.end())
                     surfaces.push_back(path.source_surface_id);
             }
+        if (out_of_work && ! wide_cap) {
+            BOOST_LOG_TRIVIAL(warning) << object.model_object()->name << ": the deposition order search ran past its work budget; its curved tops print planar";
+            for (const Sampled &s : sampled)
+                if (s.path->nonplanar_source && s.path->source_surface_id >= 0 &&
+                    std::find(surfaces.begin(), surfaces.end(), s.path->source_surface_id) == surfaces.end())
+                    surfaces.push_back(s.path->source_surface_id);
+        }
         if (!surfaces.empty() || wide_cap)
             throw CurvedTopsAccessError(message, object.id().id, std::move(surfaces));
         throw Slic3r::SlicingError(message, object.id().id);

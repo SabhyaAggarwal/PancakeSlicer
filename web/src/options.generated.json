@@ -9484,6 +9484,44 @@
     "source": "src/libslic3r/PrintConfig.cpp:6020",
     "type_id": 3
   },
+  "nonplanar_ignore_duct": {
+    "key": "nonplanar_ignore_duct",
+    "type": "Bool",
+    "label": "Ignore cooling duct (experimental)",
+    "full_label": "",
+    "tooltip": "Checks only the nozzle and heater block. Allows steeper curved tops; the fan duct may brush the part. Needs a print head whose heater block is marked. Default: off.",
+    "category": "Quality",
+    "sidetext": "",
+    "enum_values": [],
+    "enum_labels": [],
+    "min": -3.4028234663852886e+38,
+    "max": 3.4028234663852886e+38,
+    "mode": "Advanced",
+    "default": "0",
+    "nullable": false,
+    "readonly": false,
+    "source": "src/libslic3r/PrintConfig.cpp:6032",
+    "type_id": 8
+  },
+  "nonplanar_clearance_margin": {
+    "key": "nonplanar_clearance_margin",
+    "type": "Float",
+    "label": "Clearance margin",
+    "full_label": "",
+    "tooltip": "Clearance kept around the nozzle and heater block when Ignore cooling duct is on. Default: 0.3. Unit: mm.",
+    "category": "Quality",
+    "sidetext": "mm",
+    "enum_values": [],
+    "enum_labels": [],
+    "min": 0,
+    "max": 2,
+    "mode": "Advanced",
+    "default": "0.3",
+    "nullable": false,
+    "readonly": false,
+    "source": "src/libslic3r/PrintConfig.cpp:6040",
+    "type_id": 1
+  },
   "nonplanar_head_snapshot": {
     "key": "nonplanar_head_snapshot",
     "type": "String",
@@ -9500,7 +9538,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6030",
+    "source": "src/libslic3r/PrintConfig.cpp:6050",
     "type_id": 3
   },
   "nonplanar_segment_rate": {
@@ -9519,7 +9557,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6035",
+    "source": "src/libslic3r/PrintConfig.cpp:6055",
     "type_id": 1
   },
   "nonplanar_kinematics": {
@@ -9552,7 +9590,7 @@
     "default": "none",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6047",
+    "source": "src/libslic3r/PrintConfig.cpp:6067",
     "type_id": 9
   },
   "rotary_axis_limits": {
@@ -9571,7 +9609,7 @@
     "default": "-90,90,-180,180",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6069",
+    "source": "src/libslic3r/PrintConfig.cpp:6089",
     "type_id": 16385
   },
   "rotary_axis_continuous": {
@@ -9590,7 +9628,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6078",
+    "source": "src/libslic3r/PrintConfig.cpp:6098",
     "type_id": 16392
   },
   "rotary_max_speed": {
@@ -9609,7 +9647,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6086",
+    "source": "src/libslic3r/PrintConfig.cpp:6106",
     "type_id": 16385
   },
   "rotary_pivot": {
@@ -9628,7 +9666,7 @@
     "default": "0,0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6096",
+    "source": "src/libslic3r/PrintConfig.cpp:6116",
     "type_id": 16385
   },
   "rotary_tool_length": {
@@ -9647,7 +9685,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6105",
+    "source": "src/libslic3r/PrintConfig.cpp:6125",
     "type_id": 1
   },
   "rotary_tool_mount": {
@@ -9666,7 +9704,7 @@
     "default": "0,0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6115",
+    "source": "src/libslic3r/PrintConfig.cpp:6135",
     "type_id": 16385
   },
   "rotary_table_height": {
@@ -9685,7 +9723,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6124",
+    "source": "src/libslic3r/PrintConfig.cpp:6144",
     "type_id": 1
   },
   "rotary_linear_moves_table": {
@@ -9704,7 +9742,7 @@
     "default": "0,0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6133",
+    "source": "src/libslic3r/PrintConfig.cpp:6153",
     "type_id": 16392
   },
   "rotary_axis_home": {
@@ -9723,7 +9761,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6141",
+    "source": "src/libslic3r/PrintConfig.cpp:6161",
     "type_id": 16385
   },
   "rotary_axis_reversed": {
@@ -9742,7 +9780,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6150",
+    "source": "src/libslic3r/PrintConfig.cpp:6170",
     "type_id": 16392
   },
   "rotary_firmware_rtcp": {
@@ -9761,7 +9799,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6158",
+    "source": "src/libslic3r/PrintConfig.cpp:6178",
     "type_id": 8
   },
   "rotary_inverse_time_feed": {
@@ -9780,7 +9818,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6166",
+    "source": "src/libslic3r/PrintConfig.cpp:6186",
     "type_id": 8
   },
   "nonplanar_max_tilt": {
@@ -9799,7 +9837,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6174",
+    "source": "src/libslic3r/PrintConfig.cpp:6194",
     "type_id": 1
   },
   "layer_change_gcode": {
@@ -9818,7 +9856,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6190",
+    "source": "src/libslic3r/PrintConfig.cpp:6210",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -9839,7 +9877,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6199",
+    "source": "src/libslic3r/PrintConfig.cpp:6219",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -9860,7 +9898,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6207",
+    "source": "src/libslic3r/PrintConfig.cpp:6227",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -9881,7 +9919,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6215",
+    "source": "src/libslic3r/PrintConfig.cpp:6235",
     "type_id": 8
   },
   "emit_machine_limits_to_gcode": {
@@ -9900,7 +9938,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6221",
+    "source": "src/libslic3r/PrintConfig.cpp:6241",
     "type_id": 8
   },
   "machine_pause_gcode": {
@@ -9919,7 +9957,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6229",
+    "source": "src/libslic3r/PrintConfig.cpp:6249",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -9940,7 +9978,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6238",
+    "source": "src/libslic3r/PrintConfig.cpp:6258",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -9961,7 +9999,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6247",
+    "source": "src/libslic3r/PrintConfig.cpp:6267",
     "type_id": 8
   },
   "small_area_infill_flow_compensation_model": {
@@ -9991,7 +10029,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6254",
+    "source": "src/libslic3r/PrintConfig.cpp:6274",
     "multiline": true,
     "full_width": true,
     "type_id": 16387
@@ -10012,7 +10050,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6268",
+    "source": "src/libslic3r/PrintConfig.cpp:6288",
     "type_id": 8
   },
   "machine_max_speed_x": {
@@ -10031,7 +10069,7 @@
     "default": "500,200",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6289",
+    "source": "src/libslic3r/PrintConfig.cpp:6309",
     "type_id": 16385
   },
   "machine_max_acceleration_x": {
@@ -10050,7 +10088,7 @@
     "default": "1000,1000",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6307",
+    "source": "src/libslic3r/PrintConfig.cpp:6327",
     "type_id": 16385
   },
   "machine_max_jerk_x": {
@@ -10069,7 +10107,7 @@
     "default": "10,10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6325",
+    "source": "src/libslic3r/PrintConfig.cpp:6345",
     "type_id": 16385
   },
   "machine_max_speed_y": {
@@ -10088,7 +10126,7 @@
     "default": "500,200",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6289",
+    "source": "src/libslic3r/PrintConfig.cpp:6309",
     "type_id": 16385
   },
   "machine_max_acceleration_y": {
@@ -10107,7 +10145,7 @@
     "default": "1000,1000",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6307",
+    "source": "src/libslic3r/PrintConfig.cpp:6327",
     "type_id": 16385
   },
   "machine_max_jerk_y": {
@@ -10126,7 +10164,7 @@
     "default": "10,10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6325",
+    "source": "src/libslic3r/PrintConfig.cpp:6345",
     "type_id": 16385
   },
   "machine_max_speed_z": {
@@ -10145,7 +10183,7 @@
     "default": "12,12",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6289",
+    "source": "src/libslic3r/PrintConfig.cpp:6309",
     "type_id": 16385
   },
   "machine_max_acceleration_z": {
@@ -10164,7 +10202,7 @@
     "default": "500,200",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6307",
+    "source": "src/libslic3r/PrintConfig.cpp:6327",
     "type_id": 16385
   },
   "machine_max_jerk_z": {
@@ -10183,7 +10221,7 @@
     "default": "0.2,0.4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6325",
+    "source": "src/libslic3r/PrintConfig.cpp:6345",
     "type_id": 16385
   },
   "machine_max_speed_e": {
@@ -10202,7 +10240,7 @@
     "default": "120,120",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6289",
+    "source": "src/libslic3r/PrintConfig.cpp:6309",
     "type_id": 16385
   },
   "machine_max_acceleration_e": {
@@ -10221,7 +10259,7 @@
     "default": "5000,5000",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6307",
+    "source": "src/libslic3r/PrintConfig.cpp:6327",
     "type_id": 16385
   },
   "machine_max_jerk_e": {
@@ -10240,7 +10278,7 @@
     "default": "2.5,2.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6325",
+    "source": "src/libslic3r/PrintConfig.cpp:6345",
     "type_id": 16385
   },
   "machine_max_junction_deviation": {
@@ -10259,7 +10297,7 @@
     "default": "0.01",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6345",
+    "source": "src/libslic3r/PrintConfig.cpp:6365",
     "type_id": 16385
   },
   "machine_min_extruding_rate": {
@@ -10278,7 +10316,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6356",
+    "source": "src/libslic3r/PrintConfig.cpp:6376",
     "type_id": 16385
   },
   "machine_min_travel_rate": {
@@ -10297,7 +10335,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6366",
+    "source": "src/libslic3r/PrintConfig.cpp:6386",
     "type_id": 16385
   },
   "machine_max_force_Y": {
@@ -10316,7 +10354,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6378",
+    "source": "src/libslic3r/PrintConfig.cpp:6398",
     "type_id": 1
   },
   "machine_bed_mass_Y": {
@@ -10335,7 +10373,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6388",
+    "source": "src/libslic3r/PrintConfig.cpp:6408",
     "type_id": 1
   },
   "machine_max_printed_mass": {
@@ -10354,7 +10392,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6398",
+    "source": "src/libslic3r/PrintConfig.cpp:6418",
     "type_id": 1
   },
   "machine_max_acceleration_extruding": {
@@ -10373,7 +10411,7 @@
     "default": "1500,1250",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6409",
+    "source": "src/libslic3r/PrintConfig.cpp:6429",
     "type_id": 16385
   },
   "machine_max_acceleration_retracting": {
@@ -10392,7 +10430,7 @@
     "default": "1500,1250",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6423",
+    "source": "src/libslic3r/PrintConfig.cpp:6443",
     "type_id": 16385
   },
   "machine_max_acceleration_travel": {
@@ -10411,7 +10449,7 @@
     "default": "0,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6434",
+    "source": "src/libslic3r/PrintConfig.cpp:6454",
     "type_id": 16385
   },
   "resonance_avoidance": {
@@ -10430,7 +10468,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6445",
+    "source": "src/libslic3r/PrintConfig.cpp:6465",
     "type_id": 8
   },
   "min_resonance_avoidance_speed": {
@@ -10449,7 +10487,7 @@
     "default": "70",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6453",
+    "source": "src/libslic3r/PrintConfig.cpp:6473",
     "type_id": 1
   },
   "max_resonance_avoidance_speed": {
@@ -10468,7 +10506,7 @@
     "default": "120",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6461",
+    "source": "src/libslic3r/PrintConfig.cpp:6481",
     "type_id": 1
   },
   "input_shaping_emit": {
@@ -10487,7 +10525,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6470",
+    "source": "src/libslic3r/PrintConfig.cpp:6490",
     "type_id": 8
   },
   "input_shaping_type": {
@@ -10534,7 +10572,7 @@
     "default": "Default",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6476",
+    "source": "src/libslic3r/PrintConfig.cpp:6496",
     "type_id": 9
   },
   "input_shaping_freq_x": {
@@ -10553,7 +10591,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6485",
+    "source": "src/libslic3r/PrintConfig.cpp:6505",
     "type_id": 1
   },
   "input_shaping_freq_y": {
@@ -10572,7 +10610,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6494",
+    "source": "src/libslic3r/PrintConfig.cpp:6514",
     "type_id": 1
   },
   "input_shaping_damp_x": {
@@ -10591,7 +10629,7 @@
     "default": "0.1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6503",
+    "source": "src/libslic3r/PrintConfig.cpp:6523",
     "type_id": 1
   },
   "input_shaping_damp_y": {
@@ -10610,7 +10648,7 @@
     "default": "0.1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6511",
+    "source": "src/libslic3r/PrintConfig.cpp:6531",
     "type_id": 1
   },
   "fan_max_speed": {
@@ -10629,7 +10667,7 @@
     "default": "100",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6519",
+    "source": "src/libslic3r/PrintConfig.cpp:6539",
     "type_id": 16385
   },
   "max_layer_height": {
@@ -10648,7 +10686,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6528",
+    "source": "src/libslic3r/PrintConfig.cpp:6548",
     "type_id": 16385
   },
   "max_volumetric_extrusion_rate_slope": {
@@ -10667,7 +10705,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6537",
+    "source": "src/libslic3r/PrintConfig.cpp:6557",
     "type_id": 1
   },
   "max_volumetric_extrusion_rate_slope_segment_length": {
@@ -10686,7 +10724,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6558",
+    "source": "src/libslic3r/PrintConfig.cpp:6578",
     "type_id": 1
   },
   "extrusion_rate_smoothing_external_perimeter_only": {
@@ -10705,7 +10743,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6570",
+    "source": "src/libslic3r/PrintConfig.cpp:6590",
     "type_id": 8
   },
   "fan_min_speed": {
@@ -10724,7 +10762,7 @@
     "default": "20",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6578",
+    "source": "src/libslic3r/PrintConfig.cpp:6598",
     "type_id": 16385
   },
   "additional_cooling_fan_speed": {
@@ -10743,7 +10781,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6587",
+    "source": "src/libslic3r/PrintConfig.cpp:6607",
     "type_id": 16386
   },
   "close_additional_fan_first_x_layers": {
@@ -10762,7 +10800,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6622",
+    "source": "src/libslic3r/PrintConfig.cpp:6642",
     "type_id": 16386
   },
   "additional_fan_full_speed_layer": {
@@ -10781,7 +10819,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6631",
+    "source": "src/libslic3r/PrintConfig.cpp:6651",
     "type_id": 16386
   },
   "first_x_layer_fan_speed": {
@@ -10800,7 +10838,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6640",
+    "source": "src/libslic3r/PrintConfig.cpp:6660",
     "type_id": 16385
   },
   "min_layer_height": {
@@ -10819,7 +10857,7 @@
     "default": "0.07",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6649",
+    "source": "src/libslic3r/PrintConfig.cpp:6669",
     "type_id": 16385
   },
   "slow_down_min_speed": {
@@ -10838,7 +10876,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6658",
+    "source": "src/libslic3r/PrintConfig.cpp:6678",
     "type_id": 16385
   },
   "nozzle_diameter": {
@@ -10857,7 +10895,7 @@
     "default": "0.4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6667",
+    "source": "src/libslic3r/PrintConfig.cpp:6687",
     "type_id": 16385
   },
   "notes": {
@@ -10876,7 +10914,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6675",
+    "source": "src/libslic3r/PrintConfig.cpp:6695",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -10933,7 +10971,7 @@
     "default": "octoprint",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6685"
+    "source": "src/libslic3r/PrintConfig.cpp:6705"
   },
   "nozzle_volume": {
     "key": "nozzle_volume",
@@ -10951,7 +10989,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6728",
+    "source": "src/libslic3r/PrintConfig.cpp:6748",
     "type_id": 16385
   },
   "cooling_tube_retraction": {
@@ -10970,7 +11008,7 @@
     "default": "91.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6737",
+    "source": "src/libslic3r/PrintConfig.cpp:6757",
     "type_id": 1
   },
   "cooling_tube_length": {
@@ -10989,7 +11027,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6745",
+    "source": "src/libslic3r/PrintConfig.cpp:6765",
     "type_id": 1
   },
   "high_current_on_filament_swap": {
@@ -11008,7 +11046,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6753",
+    "source": "src/libslic3r/PrintConfig.cpp:6773",
     "type_id": 8
   },
   "parking_pos_retraction": {
@@ -11027,7 +11065,7 @@
     "default": "92",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6761",
+    "source": "src/libslic3r/PrintConfig.cpp:6781",
     "type_id": 1
   },
   "extra_loading_move": {
@@ -11046,7 +11084,7 @@
     "default": "-2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6770",
+    "source": "src/libslic3r/PrintConfig.cpp:6790",
     "type_id": 1
   },
   "start_end_points": {
@@ -11065,7 +11103,7 @@
     "default": "30x-3,54x245",
     "nullable": false,
     "readonly": true,
-    "source": "src/libslic3r/PrintConfig.cpp:6779",
+    "source": "src/libslic3r/PrintConfig.cpp:6799",
     "type_id": 16390
   },
   "reduce_infill_retraction": {
@@ -11084,7 +11122,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6787",
+    "source": "src/libslic3r/PrintConfig.cpp:6807",
     "type_id": 8
   },
   "ooze_prevention": {
@@ -11103,7 +11141,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6793",
+    "source": "src/libslic3r/PrintConfig.cpp:6813",
     "type_id": 8
   },
   "filename_format": {
@@ -11122,7 +11160,7 @@
     "default": "{input_filename_base}_{filament_type[initial_tool]}_{print_time}.gcode",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6799",
+    "source": "src/libslic3r/PrintConfig.cpp:6819",
     "full_width": true,
     "type_id": 3
   },
@@ -11142,7 +11180,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6806",
+    "source": "src/libslic3r/PrintConfig.cpp:6826",
     "type_id": 8
   },
   "make_overhang_printable_angle": {
@@ -11161,7 +11199,7 @@
     "default": "55",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6813",
+    "source": "src/libslic3r/PrintConfig.cpp:6833",
     "type_id": 1
   },
   "make_overhang_printable_hole_size": {
@@ -11180,7 +11218,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6825",
+    "source": "src/libslic3r/PrintConfig.cpp:6845",
     "type_id": 1
   },
   "detect_overhang_wall": {
@@ -11199,7 +11237,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6835",
+    "source": "src/libslic3r/PrintConfig.cpp:6855",
     "type_id": 8
   },
   "wave_overhangs": {
@@ -11218,7 +11256,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6843",
+    "source": "src/libslic3r/PrintConfig.cpp:6863",
     "type_id": 8
   },
   "wave_overhangs_instead_of_bridges": {
@@ -11237,7 +11275,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6853",
+    "source": "src/libslic3r/PrintConfig.cpp:6873",
     "type_id": 8
   },
   "wave_overhang_outer_perimeters": {
@@ -11256,7 +11294,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6864",
+    "source": "src/libslic3r/PrintConfig.cpp:6884",
     "type_id": 2
   },
   "wave_overhang_perimeter_overlap": {
@@ -11275,7 +11313,7 @@
     "default": "0.1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6878",
+    "source": "src/libslic3r/PrintConfig.cpp:6898",
     "type_id": 1
   },
   "wave_overhang_minimum_width": {
@@ -11294,7 +11332,7 @@
     "default": "0.7",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6889",
+    "source": "src/libslic3r/PrintConfig.cpp:6909",
     "type_id": 1
   },
   "wave_overhang_pattern": {
@@ -11321,7 +11359,7 @@
     "default": "smart",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6899",
+    "source": "src/libslic3r/PrintConfig.cpp:6919",
     "type_id": 9
   },
   "wave_overhang_line_spacing": {
@@ -11340,7 +11378,7 @@
     "default": "0.35",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6914",
+    "source": "src/libslic3r/PrintConfig.cpp:6934",
     "type_id": 1
   },
   "wave_overhang_flow_mm3_per_mm": {
@@ -11359,7 +11397,7 @@
     "default": "0.15",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6923",
+    "source": "src/libslic3r/PrintConfig.cpp:6943",
     "type_id": 1
   },
   "wave_overhang_print_speed": {
@@ -11378,7 +11416,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6938",
+    "source": "src/libslic3r/PrintConfig.cpp:6958",
     "type_id": 1
   },
   "wave_overhang_perimeter_speed": {
@@ -11397,7 +11435,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6949",
+    "source": "src/libslic3r/PrintConfig.cpp:6969",
     "type_id": 1
   },
   "wave_overhang_corner_taper_enable": {
@@ -11416,7 +11454,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6962",
+    "source": "src/libslic3r/PrintConfig.cpp:6982",
     "type_id": 8
   },
   "wave_overhang_line_spacing_corner": {
@@ -11435,7 +11473,7 @@
     "default": "0.18",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6975",
+    "source": "src/libslic3r/PrintConfig.cpp:6995",
     "type_id": 1
   },
   "wave_overhang_corner_taper_distance": {
@@ -11454,7 +11492,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6986",
+    "source": "src/libslic3r/PrintConfig.cpp:7006",
     "type_id": 1
   },
   "wave_overhang_corner_angle_threshold": {
@@ -11473,7 +11511,7 @@
     "default": "90",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:6999",
+    "source": "src/libslic3r/PrintConfig.cpp:7019",
     "type_id": 1
   },
   "wave_overhang_floor_layers": {
@@ -11492,7 +11530,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7012",
+    "source": "src/libslic3r/PrintConfig.cpp:7032",
     "type_id": 2
   },
   "wave_overhang_floor_use_hilbert": {
@@ -11511,7 +11549,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7024",
+    "source": "src/libslic3r/PrintConfig.cpp:7044",
     "type_id": 8
   },
   "wave_overhang_floor_hilbert_layers": {
@@ -11530,7 +11568,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7035",
+    "source": "src/libslic3r/PrintConfig.cpp:7055",
     "type_id": 2
   },
   "wave_overhang_floor_hilbert_density": {
@@ -11549,7 +11587,7 @@
     "default": "100",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7048",
+    "source": "src/libslic3r/PrintConfig.cpp:7068",
     "type_id": 2
   },
   "wave_overhang_floor_print_speed": {
@@ -11568,7 +11606,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7061",
+    "source": "src/libslic3r/PrintConfig.cpp:7081",
     "type_id": 1
   },
   "wave_overhang_floor_perimeter_speed": {
@@ -11587,7 +11625,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7074",
+    "source": "src/libslic3r/PrintConfig.cpp:7094",
     "type_id": 1
   },
   "wave_overhang_floor_speed_ramp": {
@@ -11606,7 +11644,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7087",
+    "source": "src/libslic3r/PrintConfig.cpp:7107",
     "type_id": 2
   },
   "wave_overhang_min_angle": {
@@ -11625,7 +11663,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7110",
+    "source": "src/libslic3r/PrintConfig.cpp:7130",
     "type_id": 1
   },
   "wave_overhang_spacing_mode": {
@@ -11650,7 +11688,7 @@
     "default": "uniform",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7121",
+    "source": "src/libslic3r/PrintConfig.cpp:7141",
     "type_id": 9
   },
   "wave_overhang_seam_mode": {
@@ -11677,7 +11715,7 @@
     "default": "alternating",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7133",
+    "source": "src/libslic3r/PrintConfig.cpp:7153",
     "type_id": 9
   },
   "wave_overhang_min_length": {
@@ -11696,7 +11734,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7147",
+    "source": "src/libslic3r/PrintConfig.cpp:7167",
     "type_id": 1
   },
   "wave_overhang_max_iterations": {
@@ -11715,7 +11753,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7158",
+    "source": "src/libslic3r/PrintConfig.cpp:7178",
     "type_id": 2
   },
   "wave_overhang_min_new_area": {
@@ -11734,7 +11772,7 @@
     "default": "0.01",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7169",
+    "source": "src/libslic3r/PrintConfig.cpp:7189",
     "type_id": 1
   },
   "support_remaining_areas_after_wave_overhangs": {
@@ -11753,7 +11791,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7183",
+    "source": "src/libslic3r/PrintConfig.cpp:7203",
     "type_id": 8
   },
   "unsupported_wall_last": {
@@ -11772,7 +11810,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7193",
+    "source": "src/libslic3r/PrintConfig.cpp:7213",
     "type_id": 8
   },
   "outer_wall_filament_id": {
@@ -11791,7 +11829,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7203",
+    "source": "src/libslic3r/PrintConfig.cpp:7223",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -11811,7 +11849,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7212",
+    "source": "src/libslic3r/PrintConfig.cpp:7232",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -11831,7 +11869,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7221",
+    "source": "src/libslic3r/PrintConfig.cpp:7241",
     "type_id": 5
   },
   "inner_wall_speed": {
@@ -11850,7 +11888,7 @@
     "default": "60",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7233",
+    "source": "src/libslic3r/PrintConfig.cpp:7253",
     "type_id": 16385
   },
   "wall_loops": {
@@ -11869,7 +11907,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7244",
+    "source": "src/libslic3r/PrintConfig.cpp:7264",
     "type_id": 2
   },
   "alternate_extra_wall": {
@@ -11888,7 +11926,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7252",
+    "source": "src/libslic3r/PrintConfig.cpp:7272",
     "type_id": 8
   },
   "post_process": {
@@ -11907,7 +11945,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7259",
+    "source": "src/libslic3r/PrintConfig.cpp:7279",
     "multiline": true,
     "full_width": true,
     "type_id": 16387
@@ -11928,7 +11966,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7272",
+    "source": "src/libslic3r/PrintConfig.cpp:7292",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -11949,7 +11987,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7281",
+    "source": "src/libslic3r/PrintConfig.cpp:7301",
     "type_id": 16387
   },
   "slicing_pipeline_plugin": {
@@ -11968,7 +12006,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7287",
+    "source": "src/libslic3r/PrintConfig.cpp:7307",
     "gui_type": "plugin_picker",
     "full_width": true,
     "type_id": 16387
@@ -11989,7 +12027,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7297",
+    "source": "src/libslic3r/PrintConfig.cpp:7317",
     "type_id": 3
   },
   "printer_notes": {
@@ -12008,7 +12046,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7303",
+    "source": "src/libslic3r/PrintConfig.cpp:7323",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -12029,7 +12067,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7312",
+    "source": "src/libslic3r/PrintConfig.cpp:7332",
     "type_id": 3
   },
   "print_settings_id": {
@@ -12048,7 +12086,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7318",
+    "source": "src/libslic3r/PrintConfig.cpp:7338",
     "type_id": 3
   },
   "printer_settings_id": {
@@ -12067,7 +12105,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7323",
+    "source": "src/libslic3r/PrintConfig.cpp:7343",
     "type_id": 3
   },
   "raft_contact_distance": {
@@ -12086,7 +12124,7 @@
     "default": "0.1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7328",
+    "source": "src/libslic3r/PrintConfig.cpp:7348",
     "type_id": 1
   },
   "raft_expansion": {
@@ -12105,7 +12143,7 @@
     "default": "1.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7337",
+    "source": "src/libslic3r/PrintConfig.cpp:7357",
     "type_id": 1
   },
   "raft_first_layer_density": {
@@ -12124,7 +12162,7 @@
     "default": "90%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7346",
+    "source": "src/libslic3r/PrintConfig.cpp:7366",
     "type_id": 4
   },
   "raft_first_layer_expansion": {
@@ -12143,7 +12181,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7356",
+    "source": "src/libslic3r/PrintConfig.cpp:7376",
     "type_id": 1
   },
   "raft_layers": {
@@ -12162,7 +12200,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7366",
+    "source": "src/libslic3r/PrintConfig.cpp:7386",
     "type_id": 2
   },
   "resolution": {
@@ -12181,7 +12219,7 @@
     "default": "0.01",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7377",
+    "source": "src/libslic3r/PrintConfig.cpp:7397",
     "type_id": 1
   },
   "retraction_minimum_travel": {
@@ -12200,7 +12238,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7385",
+    "source": "src/libslic3r/PrintConfig.cpp:7405",
     "type_id": 16385
   },
   "retract_before_wipe": {
@@ -12219,7 +12257,7 @@
     "default": "100%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7392",
+    "source": "src/libslic3r/PrintConfig.cpp:7412",
     "type_id": 16388
   },
   "retract_after_wipe": {
@@ -12238,7 +12276,7 @@
     "default": "0%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7400",
+    "source": "src/libslic3r/PrintConfig.cpp:7420",
     "type_id": 16388
   },
   "retract_when_changing_layer": {
@@ -12257,7 +12295,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7409",
+    "source": "src/libslic3r/PrintConfig.cpp:7429",
     "type_id": 16392
   },
   "retraction_length": {
@@ -12276,7 +12314,7 @@
     "default": "0.8",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7415",
+    "source": "src/libslic3r/PrintConfig.cpp:7435",
     "type_id": 16385
   },
   "enable_long_retraction_when_cut": {
@@ -12295,7 +12333,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7424",
+    "source": "src/libslic3r/PrintConfig.cpp:7444",
     "type_id": 2
   },
   "long_retractions_when_cut": {
@@ -12314,7 +12352,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7428",
+    "source": "src/libslic3r/PrintConfig.cpp:7448",
     "type_id": 16392
   },
   "retraction_distances_when_cut": {
@@ -12333,7 +12371,7 @@
     "default": "18",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7435",
+    "source": "src/libslic3r/PrintConfig.cpp:7455",
     "type_id": 16385
   },
   "long_retractions_when_ec": {
@@ -12352,7 +12390,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7443",
+    "source": "src/libslic3r/PrintConfig.cpp:7463",
     "type_id": 16392
   },
   "retraction_distances_when_ec": {
@@ -12371,7 +12409,7 @@
     "default": "10",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7449",
+    "source": "src/libslic3r/PrintConfig.cpp:7469",
     "type_id": 16385
   },
   "retract_length_toolchange": {
@@ -12390,7 +12428,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7458",
+    "source": "src/libslic3r/PrintConfig.cpp:7478",
     "type_id": 16385
   },
   "z_hop": {
@@ -12409,7 +12447,7 @@
     "default": "0.4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7467",
+    "source": "src/libslic3r/PrintConfig.cpp:7487",
     "type_id": 16385
   },
   "retract_lift_above": {
@@ -12428,7 +12466,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7516",
+    "source": "src/libslic3r/PrintConfig.cpp:7536",
     "type_id": 16385
   },
   "retract_lift_below": {
@@ -12447,7 +12485,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7523",
+    "source": "src/libslic3r/PrintConfig.cpp:7543",
     "type_id": 16385
   },
   "z_hop_types": {
@@ -12476,7 +12514,7 @@
     "default": "Slope Lift",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7492",
+    "source": "src/libslic3r/PrintConfig.cpp:7512",
     "type_id": 16393
   },
   "travel_slope": {
@@ -12495,7 +12533,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7507",
+    "source": "src/libslic3r/PrintConfig.cpp:7527",
     "type_id": 16385
   },
   "retract_lift_enforce": {
@@ -12524,7 +12562,7 @@
     "default": "All Surfaces",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7530",
+    "source": "src/libslic3r/PrintConfig.cpp:7550",
     "type_id": 16393
   },
   "extruder_type": {
@@ -12549,7 +12587,7 @@
     "default": "Direct Drive",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7545",
+    "source": "src/libslic3r/PrintConfig.cpp:7565",
     "type_id": 16393
   },
   "nozzle_volume_type": {
@@ -12582,7 +12620,7 @@
     "default": "Standard",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7558",
+    "source": "src/libslic3r/PrintConfig.cpp:7578",
     "type_id": 16393
   },
   "default_nozzle_volume_type": {
@@ -12615,7 +12653,7 @@
     "default": "Standard",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7580",
+    "source": "src/libslic3r/PrintConfig.cpp:7600",
     "type_id": 16393
   },
   "extruder_variant_list": {
@@ -12636,7 +12674,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7600",
+    "source": "src/libslic3r/PrintConfig.cpp:7620",
     "type_id": 16387
   },
   "extruder_ams_count": {
@@ -12655,7 +12693,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7607",
+    "source": "src/libslic3r/PrintConfig.cpp:7627",
     "type_id": 16387
   },
   "extruder_nozzle_stats": {
@@ -12674,7 +12712,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7615",
+    "source": "src/libslic3r/PrintConfig.cpp:7635",
     "type_id": 16387
   },
   "extruder_nozzle_count": {
@@ -12693,7 +12731,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7626",
+    "source": "src/libslic3r/PrintConfig.cpp:7646",
     "type_id": 16386
   },
   "extruder_nozzle_volume_type": {
@@ -12724,7 +12762,7 @@
     "default": "Standard",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7637",
+    "source": "src/libslic3r/PrintConfig.cpp:7657",
     "type_id": 16393
   },
   "enable_filament_dynamic_map": {
@@ -12743,7 +12781,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7654",
+    "source": "src/libslic3r/PrintConfig.cpp:7674",
     "type_id": 8
   },
   "has_filament_switcher": {
@@ -12762,7 +12800,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7660",
+    "source": "src/libslic3r/PrintConfig.cpp:7680",
     "type_id": 8
   },
   "printer_extruder_id": {
@@ -12781,7 +12819,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7666",
+    "source": "src/libslic3r/PrintConfig.cpp:7686",
     "type_id": 16386
   },
   "printer_extruder_variant": {
@@ -12802,7 +12840,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7673",
+    "source": "src/libslic3r/PrintConfig.cpp:7693",
     "type_id": 16387
   },
   "master_extruder_id": {
@@ -12821,7 +12859,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7680",
+    "source": "src/libslic3r/PrintConfig.cpp:7700",
     "type_id": 2
   },
   "print_extruder_id": {
@@ -12840,7 +12878,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7686",
+    "source": "src/libslic3r/PrintConfig.cpp:7706",
     "type_id": 16386
   },
   "print_extruder_variant": {
@@ -12861,7 +12899,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7693",
+    "source": "src/libslic3r/PrintConfig.cpp:7713",
     "type_id": 16387
   },
   "filament_extruder_variant": {
@@ -12882,7 +12920,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7706",
+    "source": "src/libslic3r/PrintConfig.cpp:7726",
     "type_id": 16387
   },
   "filament_self_index": {
@@ -12901,7 +12939,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7713",
+    "source": "src/libslic3r/PrintConfig.cpp:7733",
     "type_id": 16386
   },
   "retract_restart_extra": {
@@ -12920,7 +12958,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7720",
+    "source": "src/libslic3r/PrintConfig.cpp:7740",
     "type_id": 16385
   },
   "retract_restart_extra_toolchange": {
@@ -12939,7 +12977,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7728",
+    "source": "src/libslic3r/PrintConfig.cpp:7748",
     "type_id": 16385
   },
   "retraction_speed": {
@@ -12958,7 +12996,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7736",
+    "source": "src/libslic3r/PrintConfig.cpp:7756",
     "type_id": 16385
   },
   "deretraction_speed": {
@@ -12977,7 +13015,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7744",
+    "source": "src/libslic3r/PrintConfig.cpp:7764",
     "type_id": 16385
   },
   "deretract_speed_extruder_change": {
@@ -12996,7 +13034,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7757",
+    "source": "src/libslic3r/PrintConfig.cpp:7777",
     "type_id": 16385
   },
   "use_firmware_retraction": {
@@ -13015,7 +13053,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7765",
+    "source": "src/libslic3r/PrintConfig.cpp:7785",
     "type_id": 8
   },
   "bbl_calib_mark_logo": {
@@ -13034,7 +13072,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7772",
+    "source": "src/libslic3r/PrintConfig.cpp:7792",
     "type_id": 8
   },
   "disable_m73": {
@@ -13053,7 +13091,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7778",
+    "source": "src/libslic3r/PrintConfig.cpp:7798",
     "type_id": 8
   },
   "seam_position": {
@@ -13084,7 +13122,7 @@
     "default": "aligned",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7784",
+    "source": "src/libslic3r/PrintConfig.cpp:7804",
     "type_id": 9
   },
   "staggered_inner_seams": {
@@ -13103,7 +13141,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7802",
+    "source": "src/libslic3r/PrintConfig.cpp:7822",
     "type_id": 8
   },
   "seam_gap": {
@@ -13122,7 +13160,7 @@
     "default": "10%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7809",
+    "source": "src/libslic3r/PrintConfig.cpp:7829",
     "type_id": 5
   },
   "seam_slope_type": {
@@ -13149,7 +13187,7 @@
     "default": "none",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7819",
+    "source": "src/libslic3r/PrintConfig.cpp:7839",
     "type_id": 9
   },
   "seam_slope_conditional": {
@@ -13168,7 +13206,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7833",
+    "source": "src/libslic3r/PrintConfig.cpp:7853",
     "type_id": 8
   },
   "scarf_angle_threshold": {
@@ -13187,7 +13225,7 @@
     "default": "155",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7840",
+    "source": "src/libslic3r/PrintConfig.cpp:7860",
     "type_id": 2
   },
   "scarf_overhang_threshold": {
@@ -13206,7 +13244,7 @@
     "default": "40%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7852",
+    "source": "src/libslic3r/PrintConfig.cpp:7872",
     "type_id": 4
   },
   "scarf_joint_speed": {
@@ -13225,7 +13263,7 @@
     "default": "100%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7864",
+    "source": "src/libslic3r/PrintConfig.cpp:7884",
     "type_id": 5
   },
   "scarf_joint_flow_ratio": {
@@ -13244,7 +13282,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7878",
+    "source": "src/libslic3r/PrintConfig.cpp:7898",
     "type_id": 1
   },
   "seam_slope_start_height": {
@@ -13263,7 +13301,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7887",
+    "source": "src/libslic3r/PrintConfig.cpp:7907",
     "type_id": 5
   },
   "seam_slope_entire_loop": {
@@ -13282,7 +13320,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7898",
+    "source": "src/libslic3r/PrintConfig.cpp:7918",
     "type_id": 8
   },
   "seam_slope_min_length": {
@@ -13301,7 +13339,7 @@
     "default": "20",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7905",
+    "source": "src/libslic3r/PrintConfig.cpp:7925",
     "type_id": 1
   },
   "seam_slope_steps": {
@@ -13320,7 +13358,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7914",
+    "source": "src/libslic3r/PrintConfig.cpp:7934",
     "type_id": 2
   },
   "seam_slope_inner_walls": {
@@ -13339,7 +13377,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7922",
+    "source": "src/libslic3r/PrintConfig.cpp:7942",
     "type_id": 8
   },
   "role_based_wipe_speed": {
@@ -13358,7 +13396,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7929",
+    "source": "src/libslic3r/PrintConfig.cpp:7949",
     "type_id": 8
   },
   "wipe_on_loops": {
@@ -13377,7 +13415,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7937",
+    "source": "src/libslic3r/PrintConfig.cpp:7957",
     "type_id": 8
   },
   "wipe_inward": {
@@ -13396,7 +13434,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7944",
+    "source": "src/libslic3r/PrintConfig.cpp:7964",
     "type_id": 8
   },
   "wipe_inward_distance": {
@@ -13415,7 +13453,7 @@
     "default": "50%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7956",
+    "source": "src/libslic3r/PrintConfig.cpp:7976",
     "type_id": 5
   },
   "wipe_before_external_loop": {
@@ -13434,7 +13472,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7974",
+    "source": "src/libslic3r/PrintConfig.cpp:7994",
     "type_id": 8
   },
   "wipe_speed": {
@@ -13453,7 +13491,7 @@
     "default": "80%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7985",
+    "source": "src/libslic3r/PrintConfig.cpp:8005",
     "type_id": 5
   },
   "skirt_distance": {
@@ -13472,7 +13510,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:7997",
+    "source": "src/libslic3r/PrintConfig.cpp:8017",
     "type_id": 1
   },
   "skirt_start_angle": {
@@ -13491,7 +13529,7 @@
     "default": "-135",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8006",
+    "source": "src/libslic3r/PrintConfig.cpp:8026",
     "type_id": 1
   },
   "skirt_height": {
@@ -13510,7 +13548,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8016",
+    "source": "src/libslic3r/PrintConfig.cpp:8036",
     "type_id": 2
   },
   "single_loop_draft_shield": {
@@ -13529,7 +13567,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8024",
+    "source": "src/libslic3r/PrintConfig.cpp:8044",
     "type_id": 8
   },
   "draft_shield": {
@@ -13554,7 +13592,7 @@
     "default": "disabled",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8030",
+    "source": "src/libslic3r/PrintConfig.cpp:8050",
     "type_id": 9
   },
   "skirt_type": {
@@ -13579,7 +13617,7 @@
     "default": "combined",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8045",
+    "source": "src/libslic3r/PrintConfig.cpp:8065",
     "type_id": 9
   },
   "skirt_loops": {
@@ -13598,7 +13636,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8057",
+    "source": "src/libslic3r/PrintConfig.cpp:8077",
     "type_id": 2
   },
   "skirt_speed": {
@@ -13617,7 +13655,7 @@
     "default": "50",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8066",
+    "source": "src/libslic3r/PrintConfig.cpp:8086",
     "type_id": 1
   },
   "min_skirt_length": {
@@ -13636,7 +13674,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8075",
+    "source": "src/libslic3r/PrintConfig.cpp:8095",
     "type_id": 1
   },
   "slow_down_layer_time": {
@@ -13655,7 +13693,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8086",
+    "source": "src/libslic3r/PrintConfig.cpp:8106",
     "type_id": 16385
   },
   "minimum_sparse_infill_area": {
@@ -13674,7 +13712,7 @@
     "default": "15",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8096",
+    "source": "src/libslic3r/PrintConfig.cpp:8116",
     "type_id": 1
   },
   "internal_solid_filament_id": {
@@ -13693,7 +13731,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8105",
+    "source": "src/libslic3r/PrintConfig.cpp:8125",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -13713,7 +13751,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8114",
+    "source": "src/libslic3r/PrintConfig.cpp:8134",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -13733,7 +13771,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8123",
+    "source": "src/libslic3r/PrintConfig.cpp:8143",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -13753,7 +13791,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8132",
+    "source": "src/libslic3r/PrintConfig.cpp:8152",
     "type_id": 5
   },
   "internal_solid_infill_speed": {
@@ -13772,7 +13810,7 @@
     "default": "100",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8144",
+    "source": "src/libslic3r/PrintConfig.cpp:8164",
     "type_id": 16385
   },
   "spiral_mode": {
@@ -13791,7 +13829,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8154",
+    "source": "src/libslic3r/PrintConfig.cpp:8174",
     "type_id": 8
   },
   "spiral_mode_smooth": {
@@ -13810,7 +13848,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8160",
+    "source": "src/libslic3r/PrintConfig.cpp:8180",
     "type_id": 8
   },
   "spiral_mode_max_xy_smoothing": {
@@ -13829,7 +13867,7 @@
     "default": "200%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8167",
+    "source": "src/libslic3r/PrintConfig.cpp:8187",
     "type_id": 5
   },
   "spiral_starting_flow_ratio": {
@@ -13848,7 +13886,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8180",
+    "source": "src/libslic3r/PrintConfig.cpp:8200",
     "type_id": 1
   },
   "spiral_finishing_flow_ratio": {
@@ -13867,7 +13905,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8191",
+    "source": "src/libslic3r/PrintConfig.cpp:8211",
     "type_id": 1
   },
   "timelapse_type": {
@@ -13892,7 +13930,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8202",
+    "source": "src/libslic3r/PrintConfig.cpp:8222",
     "type_id": 9
   },
   "farthest_point_timelapse": {
@@ -13911,7 +13949,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8219",
+    "source": "src/libslic3r/PrintConfig.cpp:8239",
     "type_id": 8
   },
   "standby_temperature_delta": {
@@ -13930,7 +13968,7 @@
     "default": "-5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8227",
+    "source": "src/libslic3r/PrintConfig.cpp:8247",
     "type_id": 2
   },
   "preheat_time": {
@@ -13949,7 +13987,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8239",
+    "source": "src/libslic3r/PrintConfig.cpp:8259",
     "type_id": 1
   },
   "preheat_steps": {
@@ -13968,7 +14006,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8249",
+    "source": "src/libslic3r/PrintConfig.cpp:8269",
     "type_id": 2
   },
   "file_start_gcode": {
@@ -13987,7 +14025,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8259",
+    "source": "src/libslic3r/PrintConfig.cpp:8279",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -14008,7 +14046,7 @@
     "default": "G28 ; home all axes\\nG1 Z5 F5000 ; lift nozzle\\n",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8271",
+    "source": "src/libslic3r/PrintConfig.cpp:8291",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -14031,7 +14069,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8280",
+    "source": "src/libslic3r/PrintConfig.cpp:8300",
     "multiline": true,
     "full_width": true,
     "type_id": 16387
@@ -14052,7 +14090,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8289",
+    "source": "src/libslic3r/PrintConfig.cpp:8309",
     "type_id": 8
   },
   "is_imex": {
@@ -14071,7 +14109,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8301",
+    "source": "src/libslic3r/PrintConfig.cpp:8321",
     "type_id": 8
   },
   "imex_firmware_managed_zones": {
@@ -14090,7 +14128,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8311",
+    "source": "src/libslic3r/PrintConfig.cpp:8331",
     "type_id": 8
   },
   "imex_gantry_count": {
@@ -14109,7 +14147,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8322",
+    "source": "src/libslic3r/PrintConfig.cpp:8342",
     "type_id": 2
   },
   "imex_tools_per_gantry": {
@@ -14128,7 +14166,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8330",
+    "source": "src/libslic3r/PrintConfig.cpp:8350",
     "type_id": 2
   },
   "imex_tool_layout": {
@@ -14157,7 +14195,7 @@
     "default": "front-left",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8338",
+    "source": "src/libslic3r/PrintConfig.cpp:8358",
     "type_id": 9
   },
   "imex_nozzle_clearance_x": {
@@ -14176,7 +14214,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8357",
+    "source": "src/libslic3r/PrintConfig.cpp:8377",
     "type_id": 1
   },
   "imex_nozzle_clearance_y": {
@@ -14195,7 +14233,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8365",
+    "source": "src/libslic3r/PrintConfig.cpp:8385",
     "type_id": 1
   },
   "imex_carriage_margin": {
@@ -14214,7 +14252,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8373",
+    "source": "src/libslic3r/PrintConfig.cpp:8393",
     "type_id": 1
   },
   "imex_viz_theme": {
@@ -14243,7 +14281,7 @@
     "default": "standard",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8382",
+    "source": "src/libslic3r/PrintConfig.cpp:8402",
     "type_id": 9
   },
   "imex_parallel_mode": {
@@ -14262,7 +14300,7 @@
     "default": "primary",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8397",
+    "source": "src/libslic3r/PrintConfig.cpp:8417",
     "type_id": 3
   },
   "imex_head_filament_map": {
@@ -14281,7 +14319,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8403",
+    "source": "src/libslic3r/PrintConfig.cpp:8423",
     "type_id": 3
   },
   "imex_mode_names": {
@@ -14300,7 +14338,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8410",
+    "source": "src/libslic3r/PrintConfig.cpp:8430",
     "type_id": 16387
   },
   "imex_mode_active_tools": {
@@ -14319,7 +14357,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8416",
+    "source": "src/libslic3r/PrintConfig.cpp:8436",
     "type_id": 16387
   },
   "imex_mode_gcodes": {
@@ -14338,7 +14376,7 @@
     "default": [],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8422",
+    "source": "src/libslic3r/PrintConfig.cpp:8442",
     "type_id": 16387
   },
   "manual_filament_change": {
@@ -14357,7 +14395,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8428",
+    "source": "src/libslic3r/PrintConfig.cpp:8448",
     "type_id": 8
   },
   "wipe_tower_type": {
@@ -14382,7 +14420,7 @@
     "default": "type2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8436",
+    "source": "src/libslic3r/PrintConfig.cpp:8456",
     "type_id": 9
   },
   "purge_in_prime_tower": {
@@ -14401,7 +14439,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8447",
+    "source": "src/libslic3r/PrintConfig.cpp:8467",
     "type_id": 8
   },
   "enable_filament_ramming": {
@@ -14420,7 +14458,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8453",
+    "source": "src/libslic3r/PrintConfig.cpp:8473",
     "type_id": 8
   },
   "tool_change_on_wipe_tower": {
@@ -14439,7 +14477,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8459",
+    "source": "src/libslic3r/PrintConfig.cpp:8479",
     "type_id": 8
   },
   "wait_for_temp_on_wipe_tower": {
@@ -14458,7 +14496,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8469",
+    "source": "src/libslic3r/PrintConfig.cpp:8489",
     "type_id": 8
   },
   "wipe_tower_no_sparse_layers": {
@@ -14477,7 +14515,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8481",
+    "source": "src/libslic3r/PrintConfig.cpp:8501",
     "type_id": 8
   },
   "wipe_tower_sparse_layers_combination": {
@@ -14496,7 +14534,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8491",
+    "source": "src/libslic3r/PrintConfig.cpp:8511",
     "type_id": 8
   },
   "single_extruder_multi_material_priming": {
@@ -14515,7 +14553,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8505",
+    "source": "src/libslic3r/PrintConfig.cpp:8525",
     "type_id": 8
   },
   "toolchange_ordering": {
@@ -14540,7 +14578,7 @@
     "default": "default",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8511",
+    "source": "src/libslic3r/PrintConfig.cpp:8531",
     "type_id": 9
   },
   "toolchange_cyclic_order": {
@@ -14559,7 +14597,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8527",
+    "source": "src/libslic3r/PrintConfig.cpp:8547",
     "type_id": 3
   },
   "toolchange_cyclic_first_layer": {
@@ -14578,7 +14616,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8538",
+    "source": "src/libslic3r/PrintConfig.cpp:8558",
     "type_id": 8
   },
   "slice_closing_radius": {
@@ -14597,7 +14635,7 @@
     "default": "0.049",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8555",
+    "source": "src/libslic3r/PrintConfig.cpp:8575",
     "type_id": 1
   },
   "slicing_mode": {
@@ -14624,7 +14662,7 @@
     "default": "regular",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8565",
+    "source": "src/libslic3r/PrintConfig.cpp:8585",
     "type_id": 9
   },
   "z_offset": {
@@ -14643,7 +14681,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8579",
+    "source": "src/libslic3r/PrintConfig.cpp:8599",
     "type_id": 1
   },
   "enable_support": {
@@ -14662,7 +14700,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8589",
+    "source": "src/libslic3r/PrintConfig.cpp:8609",
     "type_id": 8
   },
   "support_type": {
@@ -14691,7 +14729,7 @@
     "default": "normal(auto)",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8596",
+    "source": "src/libslic3r/PrintConfig.cpp:8616",
     "type_id": 9
   },
   "support_object_xy_distance": {
@@ -14710,7 +14748,7 @@
     "default": "0.35",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8613",
+    "source": "src/libslic3r/PrintConfig.cpp:8633",
     "type_id": 1
   },
   "support_object_first_layer_gap": {
@@ -14729,7 +14767,7 @@
     "default": "0.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8624",
+    "source": "src/libslic3r/PrintConfig.cpp:8644",
     "type_id": 1
   },
   "support_angle": {
@@ -14748,7 +14786,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8635",
+    "source": "src/libslic3r/PrintConfig.cpp:8655",
     "type_id": 1
   },
   "support_on_build_plate_only": {
@@ -14767,7 +14805,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8645",
+    "source": "src/libslic3r/PrintConfig.cpp:8665",
     "type_id": 8
   },
   "support_critical_regions_only": {
@@ -14786,7 +14824,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8653",
+    "source": "src/libslic3r/PrintConfig.cpp:8673",
     "type_id": 8
   },
   "support_remove_small_overhang": {
@@ -14805,7 +14843,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8660",
+    "source": "src/libslic3r/PrintConfig.cpp:8680",
     "type_id": 8
   },
   "support_top_z_distance": {
@@ -14824,7 +14862,7 @@
     "default": "0.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8669",
+    "source": "src/libslic3r/PrintConfig.cpp:8689",
     "type_id": 1
   },
   "support_bottom_z_distance": {
@@ -14843,7 +14881,7 @@
     "default": "0.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8688",
+    "source": "src/libslic3r/PrintConfig.cpp:8708",
     "type_id": 1
   },
   "enforce_support_layers": {
@@ -14862,7 +14900,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8697",
+    "source": "src/libslic3r/PrintConfig.cpp:8717",
     "type_id": 2
   },
   "support_filament": {
@@ -14881,7 +14919,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8711",
+    "source": "src/libslic3r/PrintConfig.cpp:8731",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -14901,7 +14939,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8720",
+    "source": "src/libslic3r/PrintConfig.cpp:8740",
     "type_id": 8
   },
   "support_line_width": {
@@ -14920,7 +14958,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8727",
+    "source": "src/libslic3r/PrintConfig.cpp:8747",
     "type_id": 5
   },
   "support_interface_loop_pattern": {
@@ -14939,7 +14977,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8739",
+    "source": "src/libslic3r/PrintConfig.cpp:8759",
     "type_id": 8
   },
   "support_interface_filament": {
@@ -14958,7 +14996,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8746",
+    "source": "src/libslic3r/PrintConfig.cpp:8766",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -14988,7 +15026,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8756",
+    "source": "src/libslic3r/PrintConfig.cpp:8776",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -15020,7 +15058,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8774",
+    "source": "src/libslic3r/PrintConfig.cpp:8794",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -15040,7 +15078,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8788",
+    "source": "src/libslic3r/PrintConfig.cpp:8808",
     "type_id": 1
   },
   "support_bottom_interface_spacing": {
@@ -15059,7 +15097,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8799",
+    "source": "src/libslic3r/PrintConfig.cpp:8819",
     "type_id": 1
   },
   "support_interface_speed": {
@@ -15078,7 +15116,7 @@
     "default": "80",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8808",
+    "source": "src/libslic3r/PrintConfig.cpp:8828",
     "type_id": 16385
   },
   "support_base_pattern": {
@@ -15111,7 +15149,7 @@
     "default": "default",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8818",
+    "source": "src/libslic3r/PrintConfig.cpp:8838",
     "type_id": 9
   },
   "support_interface_pattern": {
@@ -15144,7 +15182,7 @@
     "default": "auto",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8843",
+    "source": "src/libslic3r/PrintConfig.cpp:8863",
     "type_id": 9
   },
   "support_base_pattern_spacing": {
@@ -15163,7 +15201,7 @@
     "default": "2.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8863",
+    "source": "src/libslic3r/PrintConfig.cpp:8883",
     "type_id": 1
   },
   "support_expansion": {
@@ -15182,7 +15220,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8872",
+    "source": "src/libslic3r/PrintConfig.cpp:8892",
     "type_id": 1
   },
   "support_speed": {
@@ -15201,7 +15239,7 @@
     "default": "80",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8880",
+    "source": "src/libslic3r/PrintConfig.cpp:8900",
     "type_id": 16385
   },
   "support_style": {
@@ -15238,7 +15276,7 @@
     "default": "default",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8890",
+    "source": "src/libslic3r/PrintConfig.cpp:8910",
     "type_id": 9
   },
   "native_support_base_pad": {
@@ -15257,7 +15295,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8921",
+    "source": "src/libslic3r/PrintConfig.cpp:8941",
     "type_id": 1
   },
   "native_support_base_pad_min_ratio": {
@@ -15276,7 +15314,7 @@
     "default": "4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8932",
+    "source": "src/libslic3r/PrintConfig.cpp:8952",
     "type_id": 1
   },
   "independent_support_layer_height": {
@@ -15295,7 +15333,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8943",
+    "source": "src/libslic3r/PrintConfig.cpp:8963",
     "type_id": 8
   },
   "support_threshold_angle": {
@@ -15314,7 +15352,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8951",
+    "source": "src/libslic3r/PrintConfig.cpp:8971",
     "type_id": 2
   },
   "support_threshold_overlap": {
@@ -15333,7 +15371,7 @@
     "default": "50%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8961",
+    "source": "src/libslic3r/PrintConfig.cpp:8981",
     "type_id": 5
   },
   "build_plate_tilt_x": {
@@ -15352,7 +15390,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8972",
+    "source": "src/libslic3r/PrintConfig.cpp:8992",
     "type_id": 1
   },
   "build_plate_tilt_y": {
@@ -15371,7 +15409,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8985",
+    "source": "src/libslic3r/PrintConfig.cpp:9005",
     "type_id": 1
   },
   "belt_printer": {
@@ -15390,7 +15428,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:8997",
+    "source": "src/libslic3r/PrintConfig.cpp:9017",
     "type_id": 8
   },
   "belt_printer_infinite_y": {
@@ -15409,7 +15447,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9004",
+    "source": "src/libslic3r/PrintConfig.cpp:9024",
     "type_id": 8
   },
   "belt_slice_rotation": {
@@ -15438,7 +15476,7 @@
     "default": "x",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9014",
+    "source": "src/libslic3r/PrintConfig.cpp:9034",
     "type_id": 9
   },
   "belt_slice_rotation_angle": {
@@ -15457,7 +15495,7 @@
     "default": "45",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9024",
+    "source": "src/libslic3r/PrintConfig.cpp:9044",
     "type_id": 1
   },
   "belt_frame_tilt_decouple": {
@@ -15476,7 +15514,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9034",
+    "source": "src/libslic3r/PrintConfig.cpp:9054",
     "type_id": 8
   },
   "belt_frame_tilt_angle": {
@@ -15495,7 +15533,7 @@
     "default": "45",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9041",
+    "source": "src/libslic3r/PrintConfig.cpp:9061",
     "type_id": 1
   },
   "gcode_remap_x": {
@@ -15534,7 +15572,7 @@
     "default": "pos_x",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9054",
+    "source": "src/libslic3r/PrintConfig.cpp:9074",
     "type_id": 9
   },
   "gcode_remap_y": {
@@ -15573,7 +15611,7 @@
     "default": "pos_y",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9054",
+    "source": "src/libslic3r/PrintConfig.cpp:9074",
     "type_id": 9
   },
   "gcode_remap_z": {
@@ -15612,7 +15650,7 @@
     "default": "pos_z",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9054",
+    "source": "src/libslic3r/PrintConfig.cpp:9074",
     "type_id": 9
   },
   "belt_support_floor_offset": {
@@ -15631,7 +15669,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9080",
+    "source": "src/libslic3r/PrintConfig.cpp:9100",
     "type_id": 1
   },
   "enable_belt_purge_tower": {
@@ -15650,7 +15688,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9090",
+    "source": "src/libslic3r/PrintConfig.cpp:9110",
     "type_id": 8
   },
   "belt_purge_tower_width": {
@@ -15669,7 +15707,7 @@
     "default": "35",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9101",
+    "source": "src/libslic3r/PrintConfig.cpp:9121",
     "type_id": 1
   },
   "tree_support_branch_angle": {
@@ -15688,7 +15726,7 @@
     "default": "40",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9110",
+    "source": "src/libslic3r/PrintConfig.cpp:9130",
     "type_id": 1
   },
   "tree_support_branch_angle_organic": {
@@ -15707,7 +15745,7 @@
     "default": "40",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9121",
+    "source": "src/libslic3r/PrintConfig.cpp:9141",
     "type_id": 1
   },
   "tree_support_angle_slow": {
@@ -15726,7 +15764,7 @@
     "default": "25",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9132",
+    "source": "src/libslic3r/PrintConfig.cpp:9152",
     "type_id": 1
   },
   "tree_support_branch_distance": {
@@ -15745,7 +15783,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9144",
+    "source": "src/libslic3r/PrintConfig.cpp:9164",
     "type_id": 1
   },
   "tree_support_branch_distance_organic": {
@@ -15764,7 +15802,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9154",
+    "source": "src/libslic3r/PrintConfig.cpp:9174",
     "type_id": 1
   },
   "tree_support_top_rate": {
@@ -15783,7 +15821,7 @@
     "default": "30%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9164",
+    "source": "src/libslic3r/PrintConfig.cpp:9184",
     "type_id": 4
   },
   "tree_support_auto_brim": {
@@ -15802,7 +15840,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9178",
+    "source": "src/libslic3r/PrintConfig.cpp:9198",
     "type_id": 8
   },
   "tree_support_brim_width": {
@@ -15821,7 +15859,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9184",
+    "source": "src/libslic3r/PrintConfig.cpp:9204",
     "type_id": 1
   },
   "tree_support_tip_diameter": {
@@ -15840,7 +15878,7 @@
     "default": "0.8",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9191",
+    "source": "src/libslic3r/PrintConfig.cpp:9211",
     "type_id": 1
   },
   "tree_support_branch_diameter": {
@@ -15859,7 +15897,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9202",
+    "source": "src/libslic3r/PrintConfig.cpp:9222",
     "type_id": 1
   },
   "tree_support_branch_diameter_angle": {
@@ -15878,7 +15916,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9212",
+    "source": "src/libslic3r/PrintConfig.cpp:9232",
     "type_id": 1
   },
   "tree_support_branch_diameter_organic": {
@@ -15897,7 +15935,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9226",
+    "source": "src/libslic3r/PrintConfig.cpp:9246",
     "type_id": 1
   },
   "tree_support_wall_count": {
@@ -15916,7 +15954,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9236",
+    "source": "src/libslic3r/PrintConfig.cpp:9256",
     "type_id": 2
   },
   "tree_support_with_infill": {
@@ -15935,7 +15973,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9245",
+    "source": "src/libslic3r/PrintConfig.cpp:9265",
     "type_id": 8
   },
   "support_ironing": {
@@ -15954,7 +15992,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9252",
+    "source": "src/libslic3r/PrintConfig.cpp:9272",
     "type_id": 8
   },
   "support_ironing_pattern": {
@@ -15979,7 +16017,7 @@
     "default": "rectilinear",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9260",
+    "source": "src/libslic3r/PrintConfig.cpp:9280",
     "type_id": 9
   },
   "support_ironing_flow": {
@@ -15998,7 +16036,7 @@
     "default": "10%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9272",
+    "source": "src/libslic3r/PrintConfig.cpp:9292",
     "type_id": 4
   },
   "support_ironing_spacing": {
@@ -16017,7 +16055,7 @@
     "default": "0.1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9284",
+    "source": "src/libslic3r/PrintConfig.cpp:9304",
     "type_id": 1
   },
   "activate_chamber_temp_control": {
@@ -16036,7 +16074,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9294",
+    "source": "src/libslic3r/PrintConfig.cpp:9314",
     "type_id": 16392
   },
   "chamber_temperature": {
@@ -16055,7 +16093,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9300",
+    "source": "src/libslic3r/PrintConfig.cpp:9320",
     "type_id": 16386
   },
   "chamber_minimal_temperature": {
@@ -16074,7 +16112,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9321",
+    "source": "src/libslic3r/PrintConfig.cpp:9341",
     "type_id": 16386
   },
   "nozzle_temperature": {
@@ -16093,7 +16131,7 @@
     "default": "200",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9336",
+    "source": "src/libslic3r/PrintConfig.cpp:9356",
     "type_id": 16386
   },
   "nozzle_temperature_range_low": {
@@ -16112,7 +16150,7 @@
     "default": "190",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9345",
+    "source": "src/libslic3r/PrintConfig.cpp:9365",
     "type_id": 16386
   },
   "nozzle_temperature_range_high": {
@@ -16131,7 +16169,7 @@
     "default": "240",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9353",
+    "source": "src/libslic3r/PrintConfig.cpp:9373",
     "type_id": 16386
   },
   "head_wrap_detect_zone": {
@@ -16150,7 +16188,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9361",
+    "source": "src/libslic3r/PrintConfig.cpp:9381",
     "type_id": 16390
   },
   "detect_thin_wall": {
@@ -16169,7 +16207,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9366",
+    "source": "src/libslic3r/PrintConfig.cpp:9386",
     "type_id": 8
   },
   "change_filament_gcode": {
@@ -16188,7 +16226,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9373",
+    "source": "src/libslic3r/PrintConfig.cpp:9393",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -16209,7 +16247,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9382",
+    "source": "src/libslic3r/PrintConfig.cpp:9402",
     "multiline": true,
     "full_width": true,
     "type_id": 3
@@ -16232,7 +16270,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9391",
+    "source": "src/libslic3r/PrintConfig.cpp:9411",
     "multiline": true,
     "full_width": true,
     "type_id": 16387
@@ -16253,7 +16291,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9400",
+    "source": "src/libslic3r/PrintConfig.cpp:9420",
     "type_id": 5
   },
   "top_surface_speed": {
@@ -16272,7 +16310,7 @@
     "default": "100",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9412",
+    "source": "src/libslic3r/PrintConfig.cpp:9432",
     "type_id": 16385
   },
   "top_shell_layers": {
@@ -16291,7 +16329,7 @@
     "default": "4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9422",
+    "source": "src/libslic3r/PrintConfig.cpp:9442",
     "type_id": 2
   },
   "top_shell_thickness": {
@@ -16310,7 +16348,7 @@
     "default": "0.6",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9431",
+    "source": "src/libslic3r/PrintConfig.cpp:9451",
     "type_id": 1
   },
   "separated_infills": {
@@ -16329,7 +16367,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9440",
+    "source": "src/libslic3r/PrintConfig.cpp:9460",
     "type_id": 8
   },
   "center_of_surface_pattern": {
@@ -16356,7 +16394,7 @@
     "default": "each_surface",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9452",
+    "source": "src/libslic3r/PrintConfig.cpp:9472",
     "type_id": 9
   },
   "travel_speed": {
@@ -16375,7 +16413,7 @@
     "default": "120",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9471",
+    "source": "src/libslic3r/PrintConfig.cpp:9491",
     "type_id": 16385
   },
   "travel_speed_z": {
@@ -16394,7 +16432,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9480",
+    "source": "src/libslic3r/PrintConfig.cpp:9500",
     "type_id": 16385
   },
   "wipe": {
@@ -16413,7 +16451,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9491",
+    "source": "src/libslic3r/PrintConfig.cpp:9511",
     "type_id": 16392
   },
   "wipe_distance": {
@@ -16432,7 +16470,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9497",
+    "source": "src/libslic3r/PrintConfig.cpp:9517",
     "type_id": 16385
   },
   "enable_mixed_color_sublayer": {
@@ -16451,7 +16489,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9508",
+    "source": "src/libslic3r/PrintConfig.cpp:9528",
     "type_id": 8
   },
   "enable_prime_tower": {
@@ -16470,7 +16508,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9516",
+    "source": "src/libslic3r/PrintConfig.cpp:9536",
     "type_id": 8
   },
   "prime_tower_enable_framework": {
@@ -16489,7 +16527,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9522",
+    "source": "src/libslic3r/PrintConfig.cpp:9542",
     "type_id": 8
   },
   "flush_volumes_vector": {
@@ -16508,7 +16546,7 @@
     "default": "140,140,140,140,140,140,140,140",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9528",
+    "source": "src/libslic3r/PrintConfig.cpp:9548",
     "type_id": 16385
   },
   "flush_volumes_matrix": {
@@ -16527,7 +16565,7 @@
     "default": "0,280,280,280,280,0,280,280,280,280,0,280,280,280,280,0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9538",
+    "source": "src/libslic3r/PrintConfig.cpp:9558",
     "type_id": 16385
   },
   "flush_multiplier": {
@@ -16546,7 +16584,7 @@
     "default": "0.3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9548",
+    "source": "src/libslic3r/PrintConfig.cpp:9568",
     "type_id": 16385
   },
   "flush_multiplier_fast": {
@@ -16565,7 +16603,7 @@
     "default": "1.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9557",
+    "source": "src/libslic3r/PrintConfig.cpp:9577",
     "type_id": 16385
   },
   "prime_volume": {
@@ -16584,7 +16622,7 @@
     "default": "45",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9563",
+    "source": "src/libslic3r/PrintConfig.cpp:9583",
     "type_id": 1
   },
   "prime_volume_mode": {
@@ -16611,7 +16649,7 @@
     "default": "Default",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9574",
+    "source": "src/libslic3r/PrintConfig.cpp:9594",
     "type_id": 9
   },
   "wipe_tower_x": {
@@ -16630,7 +16668,7 @@
     "default": "15",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9587",
+    "source": "src/libslic3r/PrintConfig.cpp:9607",
     "type_id": 16385
   },
   "wipe_tower_y": {
@@ -16649,7 +16687,7 @@
     "default": "220",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9595",
+    "source": "src/libslic3r/PrintConfig.cpp:9615",
     "type_id": 16385
   },
   "prime_tower_width": {
@@ -16668,7 +16706,7 @@
     "default": "60",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9603",
+    "source": "src/libslic3r/PrintConfig.cpp:9623",
     "type_id": 1
   },
   "wipe_tower_rotation_angle": {
@@ -16687,7 +16725,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9611",
+    "source": "src/libslic3r/PrintConfig.cpp:9631",
     "type_id": 1
   },
   "prime_tower_brim_width": {
@@ -16710,7 +16748,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9618",
+    "source": "src/libslic3r/PrintConfig.cpp:9638",
     "gui_type": "f_enum_open",
     "type_id": 1
   },
@@ -16730,7 +16768,7 @@
     "default": "30",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9629",
+    "source": "src/libslic3r/PrintConfig.cpp:9649",
     "type_id": 1
   },
   "wipe_tower_max_purge_speed": {
@@ -16749,7 +16787,7 @@
     "default": "90",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9639",
+    "source": "src/libslic3r/PrintConfig.cpp:9659",
     "type_id": 1
   },
   "wipe_tower_wall_type": {
@@ -16776,7 +16814,7 @@
     "default": "rib",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9652",
+    "source": "src/libslic3r/PrintConfig.cpp:9672",
     "type_id": 9
   },
   "wipe_tower_extra_rib_length": {
@@ -16795,7 +16833,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9668",
+    "source": "src/libslic3r/PrintConfig.cpp:9688",
     "type_id": 1
   },
   "wipe_tower_rib_width": {
@@ -16814,7 +16852,7 @@
     "default": "8",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9677",
+    "source": "src/libslic3r/PrintConfig.cpp:9697",
     "type_id": 1
   },
   "wipe_tower_fillet_wall": {
@@ -16833,7 +16871,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9686",
+    "source": "src/libslic3r/PrintConfig.cpp:9706",
     "type_id": 8
   },
   "wipe_tower_filament": {
@@ -16852,7 +16890,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9693",
+    "source": "src/libslic3r/PrintConfig.cpp:9713",
     "gui_type": "i_enum_open",
     "type_id": 2
   },
@@ -16872,7 +16910,7 @@
     "default": "70,70,70,70,70,70,70,70,70,70",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9703",
+    "source": "src/libslic3r/PrintConfig.cpp:9723",
     "type_id": 16385
   },
   "prime_tower_skip_points": {
@@ -16891,7 +16929,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9710",
+    "source": "src/libslic3r/PrintConfig.cpp:9730",
     "type_id": 8
   },
   "prime_tower_flat_ironing": {
@@ -16910,7 +16948,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9716",
+    "source": "src/libslic3r/PrintConfig.cpp:9736",
     "type_id": 8
   },
   "enable_tower_interface_features": {
@@ -16929,7 +16967,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9720",
+    "source": "src/libslic3r/PrintConfig.cpp:9740",
     "type_id": 8
   },
   "enable_tower_interface_cooldown_during_tower": {
@@ -16948,7 +16986,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9726",
+    "source": "src/libslic3r/PrintConfig.cpp:9746",
     "type_id": 8
   },
   "prime_tower_infill_gap": {
@@ -16967,7 +17005,7 @@
     "default": "150%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9732",
+    "source": "src/libslic3r/PrintConfig.cpp:9752",
     "type_id": 4
   },
   "flush_into_infill": {
@@ -16986,7 +17024,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9740",
+    "source": "src/libslic3r/PrintConfig.cpp:9760",
     "type_id": 8
   },
   "flush_into_support": {
@@ -17005,7 +17043,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9746",
+    "source": "src/libslic3r/PrintConfig.cpp:9766",
     "type_id": 8
   },
   "flush_into_objects": {
@@ -17024,7 +17062,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9752",
+    "source": "src/libslic3r/PrintConfig.cpp:9772",
     "type_id": 8
   },
   "belt_purge_tower_object": {
@@ -17043,7 +17081,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9763",
+    "source": "src/libslic3r/PrintConfig.cpp:9783",
     "type_id": 8
   },
   "wipe_tower_bridging": {
@@ -17062,7 +17100,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9770",
+    "source": "src/libslic3r/PrintConfig.cpp:9790",
     "type_id": 1
   },
   "wipe_tower_extra_spacing": {
@@ -17081,7 +17119,7 @@
     "default": "100%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9777",
+    "source": "src/libslic3r/PrintConfig.cpp:9797",
     "type_id": 4
   },
   "wipe_tower_extra_flow": {
@@ -17100,7 +17138,7 @@
     "default": "100%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9786",
+    "source": "src/libslic3r/PrintConfig.cpp:9806",
     "type_id": 4
   },
   "idle_temperature": {
@@ -17119,7 +17157,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9796",
+    "source": "src/libslic3r/PrintConfig.cpp:9816",
     "type_id": 16386
   },
   "xy_hole_compensation": {
@@ -17138,7 +17176,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9805",
+    "source": "src/libslic3r/PrintConfig.cpp:9825",
     "type_id": 1
   },
   "xy_contour_compensation": {
@@ -17157,7 +17195,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9813",
+    "source": "src/libslic3r/PrintConfig.cpp:9833",
     "type_id": 1
   },
   "hole_to_polyhole": {
@@ -17176,7 +17214,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9821",
+    "source": "src/libslic3r/PrintConfig.cpp:9841",
     "type_id": 8
   },
   "hole_to_polyhole_threshold": {
@@ -17195,7 +17233,7 @@
     "default": "0.01",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9830",
+    "source": "src/libslic3r/PrintConfig.cpp:9850",
     "type_id": 5
   },
   "hole_to_polyhole_twisted": {
@@ -17214,7 +17252,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9843",
+    "source": "src/libslic3r/PrintConfig.cpp:9863",
     "type_id": 8
   },
   "hole_to_polyhole_max_edges": {
@@ -17233,7 +17271,7 @@
     "default": "50",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9850",
+    "source": "src/libslic3r/PrintConfig.cpp:9870",
     "type_id": 2
   },
   "thumbnails": {
@@ -17252,7 +17290,7 @@
     "default": "48x48/PNG,300x300/PNG",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9859",
+    "source": "src/libslic3r/PrintConfig.cpp:9879",
     "gui_type": "one_string",
     "type_id": 3
   },
@@ -17284,7 +17322,7 @@
     "default": "PNG",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9866",
+    "source": "src/libslic3r/PrintConfig.cpp:9886",
     "type_id": 9
   },
   "use_relative_e_distances": {
@@ -17303,7 +17341,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9883",
+    "source": "src/libslic3r/PrintConfig.cpp:9903",
     "type_id": 8
   },
   "wall_generator": {
@@ -17328,7 +17366,7 @@
     "default": "arachne",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9892",
+    "source": "src/libslic3r/PrintConfig.cpp:9912",
     "type_id": 9
   },
   "wall_transition_length": {
@@ -17347,7 +17385,7 @@
     "default": "100%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9904",
+    "source": "src/libslic3r/PrintConfig.cpp:9924",
     "type_id": 4
   },
   "wall_transition_filter_deviation": {
@@ -17366,7 +17404,7 @@
     "default": "25%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9913",
+    "source": "src/libslic3r/PrintConfig.cpp:9933",
     "type_id": 4
   },
   "wall_transition_angle": {
@@ -17385,7 +17423,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9928",
+    "source": "src/libslic3r/PrintConfig.cpp:9948",
     "type_id": 1
   },
   "wall_distribution_count": {
@@ -17404,7 +17442,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9941",
+    "source": "src/libslic3r/PrintConfig.cpp:9961",
     "type_id": 2
   },
   "min_feature_size": {
@@ -17423,7 +17461,7 @@
     "default": "25%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9950",
+    "source": "src/libslic3r/PrintConfig.cpp:9970",
     "type_id": 4
   },
   "min_length_factor": {
@@ -17442,7 +17480,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9961",
+    "source": "src/libslic3r/PrintConfig.cpp:9981",
     "type_id": 1
   },
   "wall_maximum_resolution": {
@@ -17461,7 +17499,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9975",
+    "source": "src/libslic3r/PrintConfig.cpp:9995",
     "type_id": 1
   },
   "wall_maximum_deviation": {
@@ -17480,7 +17518,7 @@
     "default": "0.025",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9986",
+    "source": "src/libslic3r/PrintConfig.cpp:10006",
     "type_id": 1
   },
   "initial_layer_min_bead_width": {
@@ -17499,7 +17537,7 @@
     "default": "85%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:9998",
+    "source": "src/libslic3r/PrintConfig.cpp:10018",
     "type_id": 4
   },
   "min_bead_width": {
@@ -17518,7 +17556,7 @@
     "default": "85%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10008",
+    "source": "src/libslic3r/PrintConfig.cpp:10028",
     "type_id": 4
   },
   "filament_dev_ams_drying_ams_limitations": {
@@ -17539,7 +17577,7 @@
     ],
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10020",
+    "source": "src/libslic3r/PrintConfig.cpp:10040",
     "type_id": 16387
   },
   "filament_dev_ams_drying_temperature": {
@@ -17558,7 +17596,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10023",
+    "source": "src/libslic3r/PrintConfig.cpp:10043",
     "type_id": 16385
   },
   "filament_dev_ams_drying_time": {
@@ -17577,7 +17615,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10026",
+    "source": "src/libslic3r/PrintConfig.cpp:10046",
     "type_id": 16385
   },
   "filament_dev_ams_drying_heat_distortion_temperature": {
@@ -17596,7 +17634,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10029",
+    "source": "src/libslic3r/PrintConfig.cpp:10049",
     "type_id": 16385
   },
   "filament_dev_chamber_drying_bed_temperature": {
@@ -17615,7 +17653,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10032",
+    "source": "src/libslic3r/PrintConfig.cpp:10052",
     "type_id": 16385
   },
   "filament_dev_chamber_drying_time": {
@@ -17634,7 +17672,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10035",
+    "source": "src/libslic3r/PrintConfig.cpp:10055",
     "type_id": 16385
   },
   "filament_dev_drying_softening_temperature": {
@@ -17653,7 +17691,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10038",
+    "source": "src/libslic3r/PrintConfig.cpp:10058",
     "type_id": 16385
   },
   "filament_dev_drying_cooling_temperature": {
@@ -17672,7 +17710,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10041",
+    "source": "src/libslic3r/PrintConfig.cpp:10061",
     "type_id": 16385
   },
   "filament_retraction_length": {
@@ -17691,7 +17729,7 @@
     "default": "0.8",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_z_hop": {
@@ -17710,7 +17748,7 @@
     "default": "0.4",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_z_hop_types": {
@@ -17739,7 +17777,7 @@
     "default": "Slope Lift",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16393
   },
   "filament_retract_lift_above": {
@@ -17758,7 +17796,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_lift_below": {
@@ -17777,7 +17815,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_lift_enforce": {
@@ -17806,7 +17844,7 @@
     "default": "All Surfaces",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16393
   },
   "filament_retraction_speed": {
@@ -17825,7 +17863,7 @@
     "default": "30",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_deretraction_speed": {
@@ -17844,7 +17882,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_restart_extra": {
@@ -17863,7 +17901,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retraction_minimum_travel": {
@@ -17882,7 +17920,7 @@
     "default": "2",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_length_toolchange": {
@@ -17901,7 +17939,7 @@
     "default": "10",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_restart_extra_toolchange": {
@@ -17920,7 +17958,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_wipe_distance": {
@@ -17939,7 +17977,7 @@
     "default": "1",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "filament_retract_when_changing_layer": {
@@ -17958,7 +17996,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16392
   },
   "filament_wipe": {
@@ -17977,7 +18015,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16392
   },
   "filament_retract_before_wipe": {
@@ -17996,7 +18034,7 @@
     "default": "100%",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16388
   },
   "filament_retract_after_wipe": {
@@ -18015,7 +18053,7 @@
     "default": "0%",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16388
   },
   "filament_long_retractions_when_cut": {
@@ -18034,7 +18072,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16392
   },
   "filament_retraction_distances_when_cut": {
@@ -18053,7 +18091,7 @@
     "default": "18",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10045",
+    "source": "src/libslic3r/PrintConfig.cpp:10065",
     "type_id": 16385
   },
   "machine_hotend_change_time": {
@@ -18072,7 +18110,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10081",
+    "source": "src/libslic3r/PrintConfig.cpp:10101",
     "type_id": 1
   },
   "group_algo_with_time": {
@@ -18091,7 +18129,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10094",
+    "source": "src/libslic3r/PrintConfig.cpp:10114",
     "type_id": 8
   },
   "machine_prepare_compensation_time": {
@@ -18110,7 +18148,7 @@
     "default": "260",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10098",
+    "source": "src/libslic3r/PrintConfig.cpp:10118",
     "type_id": 1
   },
   "enable_pre_heating": {
@@ -18129,7 +18167,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10102",
+    "source": "src/libslic3r/PrintConfig.cpp:10122",
     "type_id": 8
   },
   "handle_hotend_as_extruder": {
@@ -18148,7 +18186,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10107",
+    "source": "src/libslic3r/PrintConfig.cpp:10127",
     "type_id": 8
   },
   "filament_max_temperature_drop_when_ec": {
@@ -18167,7 +18205,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10114",
+    "source": "src/libslic3r/PrintConfig.cpp:10134",
     "type_id": 16385
   },
   "hotend_cooling_rate": {
@@ -18186,7 +18224,7 @@
     "default": "2",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10118",
+    "source": "src/libslic3r/PrintConfig.cpp:10138",
     "type_id": 16385
   },
   "hotend_heating_rate": {
@@ -18205,7 +18243,7 @@
     "default": "2",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10122",
+    "source": "src/libslic3r/PrintConfig.cpp:10142",
     "type_id": 16385
   },
   "filament_change_length_nc": {
@@ -18224,7 +18262,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10126",
+    "source": "src/libslic3r/PrintConfig.cpp:10146",
     "type_id": 16385
   },
   "filament_ramming_travel_time": {
@@ -18243,7 +18281,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10134",
+    "source": "src/libslic3r/PrintConfig.cpp:10154",
     "type_id": 16385
   },
   "filament_pre_cooling_temperature": {
@@ -18262,7 +18300,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10144",
+    "source": "src/libslic3r/PrintConfig.cpp:10164",
     "type_id": 16386
   },
   "filament_ramming_volumetric_speed": {
@@ -18281,7 +18319,7 @@
     "default": "-1",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10153",
+    "source": "src/libslic3r/PrintConfig.cpp:10173",
     "type_id": 16385
   },
   "filament_ramming_travel_time_nc": {
@@ -18300,7 +18338,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10163",
+    "source": "src/libslic3r/PrintConfig.cpp:10183",
     "type_id": 16385
   },
   "filament_pre_cooling_temperature_nc": {
@@ -18319,7 +18357,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10173",
+    "source": "src/libslic3r/PrintConfig.cpp:10193",
     "type_id": 16386
   },
   "filament_ramming_volumetric_speed_nc": {
@@ -18338,7 +18376,7 @@
     "default": "-1",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10183",
+    "source": "src/libslic3r/PrintConfig.cpp:10203",
     "type_id": 16385
   },
   "filament_retract_length_nc": {
@@ -18357,7 +18395,7 @@
     "default": "10",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10193",
+    "source": "src/libslic3r/PrintConfig.cpp:10213",
     "type_id": 16385
   },
   "extruder_max_nozzle_count": {
@@ -18376,7 +18414,7 @@
     "default": "1",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10204",
+    "source": "src/libslic3r/PrintConfig.cpp:10224",
     "type_id": 16386
   },
   "support_fast_purge_mode": {
@@ -18395,7 +18433,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10212",
+    "source": "src/libslic3r/PrintConfig.cpp:10232",
     "type_id": 8
   },
   "filament_prime_volume": {
@@ -18414,7 +18452,7 @@
     "default": "45",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10220",
+    "source": "src/libslic3r/PrintConfig.cpp:10240",
     "type_id": 16385
   },
   "filament_prime_volume_nc": {
@@ -18433,7 +18471,7 @@
     "default": "60",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10228",
+    "source": "src/libslic3r/PrintConfig.cpp:10248",
     "type_id": 16385
   },
   "filament_preheat_temperature_delta": {
@@ -18452,7 +18490,7 @@
     "default": "0",
     "nullable": true,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10236",
+    "source": "src/libslic3r/PrintConfig.cpp:10256",
     "type_id": 16385
   },
   "detect_narrow_internal_solid_infill": {
@@ -18471,7 +18509,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10244",
+    "source": "src/libslic3r/PrintConfig.cpp:10264",
     "type_id": 8
   },
   "display_width": {
@@ -18490,7 +18528,7 @@
     "default": "120",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10378",
+    "source": "src/libslic3r/PrintConfig.cpp:10398",
     "type_id": 1
   },
   "display_height": {
@@ -18509,7 +18547,7 @@
     "default": "68",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10384",
+    "source": "src/libslic3r/PrintConfig.cpp:10404",
     "type_id": 1
   },
   "display_pixels_x": {
@@ -18528,7 +18566,7 @@
     "default": "2560",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10390",
+    "source": "src/libslic3r/PrintConfig.cpp:10410",
     "type_id": 2
   },
   "display_pixels_y": {
@@ -18547,7 +18585,7 @@
     "default": "1440",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10397",
+    "source": "src/libslic3r/PrintConfig.cpp:10417",
     "type_id": 2
   },
   "display_mirror_x": {
@@ -18566,7 +18604,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10404",
+    "source": "src/libslic3r/PrintConfig.cpp:10424",
     "type_id": 8
   },
   "display_mirror_y": {
@@ -18585,7 +18623,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10411",
+    "source": "src/libslic3r/PrintConfig.cpp:10431",
     "type_id": 8
   },
   "display_orientation": {
@@ -18610,7 +18648,7 @@
     "default": "portrait",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10418",
+    "source": "src/libslic3r/PrintConfig.cpp:10438",
     "type_id": 9
   },
   "fast_tilt_time": {
@@ -18629,7 +18667,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10429",
+    "source": "src/libslic3r/PrintConfig.cpp:10449",
     "type_id": 1
   },
   "slow_tilt_time": {
@@ -18648,7 +18686,7 @@
     "default": "8",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10438",
+    "source": "src/libslic3r/PrintConfig.cpp:10458",
     "type_id": 1
   },
   "area_fill": {
@@ -18667,7 +18705,7 @@
     "default": "50",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10447",
+    "source": "src/libslic3r/PrintConfig.cpp:10467",
     "type_id": 1
   },
   "relative_correction": {
@@ -18686,7 +18724,7 @@
     "default": "1,1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10455",
+    "source": "src/libslic3r/PrintConfig.cpp:10475",
     "type_id": 16385
   },
   "relative_correction_x": {
@@ -18705,7 +18743,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10463",
+    "source": "src/libslic3r/PrintConfig.cpp:10483",
     "type_id": 1
   },
   "relative_correction_y": {
@@ -18724,7 +18762,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10471",
+    "source": "src/libslic3r/PrintConfig.cpp:10491",
     "type_id": 1
   },
   "relative_correction_z": {
@@ -18743,7 +18781,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10479",
+    "source": "src/libslic3r/PrintConfig.cpp:10499",
     "type_id": 1
   },
   "absolute_correction": {
@@ -18762,7 +18800,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10487",
+    "source": "src/libslic3r/PrintConfig.cpp:10507",
     "type_id": 1
   },
   "elefant_foot_min_width": {
@@ -18781,7 +18819,7 @@
     "default": "0.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10494",
+    "source": "src/libslic3r/PrintConfig.cpp:10514",
     "type_id": 1
   },
   "gamma_correction": {
@@ -18800,7 +18838,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10503",
+    "source": "src/libslic3r/PrintConfig.cpp:10523",
     "type_id": 1
   },
   "material_colour": {
@@ -18819,7 +18857,7 @@
     "default": "#29B2B2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10515",
+    "source": "src/libslic3r/PrintConfig.cpp:10535",
     "gui_type": "color",
     "type_id": 3
   },
@@ -18845,7 +18883,7 @@
     "default": "Tough",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10521",
+    "source": "src/libslic3r/PrintConfig.cpp:10541",
     "gui_type": "f_enum_open",
     "type_id": 3
   },
@@ -18865,7 +18903,7 @@
     "default": "0.3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10533",
+    "source": "src/libslic3r/PrintConfig.cpp:10553",
     "type_id": 1
   },
   "bottle_volume": {
@@ -18884,7 +18922,7 @@
     "default": "1000",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10540",
+    "source": "src/libslic3r/PrintConfig.cpp:10560",
     "type_id": 1
   },
   "bottle_weight": {
@@ -18903,7 +18941,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10547",
+    "source": "src/libslic3r/PrintConfig.cpp:10567",
     "type_id": 1
   },
   "material_density": {
@@ -18922,7 +18960,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10554",
+    "source": "src/libslic3r/PrintConfig.cpp:10574",
     "type_id": 1
   },
   "bottle_cost": {
@@ -18941,7 +18979,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10561",
+    "source": "src/libslic3r/PrintConfig.cpp:10581",
     "type_id": 1
   },
   "faded_layers": {
@@ -18960,7 +18998,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10568",
+    "source": "src/libslic3r/PrintConfig.cpp:10588",
     "type_id": 2
   },
   "min_exposure_time": {
@@ -18979,7 +19017,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10576",
+    "source": "src/libslic3r/PrintConfig.cpp:10596",
     "type_id": 1
   },
   "max_exposure_time": {
@@ -18998,7 +19036,7 @@
     "default": "100",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10584",
+    "source": "src/libslic3r/PrintConfig.cpp:10604",
     "type_id": 1
   },
   "exposure_time": {
@@ -19017,7 +19055,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10592",
+    "source": "src/libslic3r/PrintConfig.cpp:10612",
     "type_id": 1
   },
   "min_initial_exposure_time": {
@@ -19036,7 +19074,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10599",
+    "source": "src/libslic3r/PrintConfig.cpp:10619",
     "type_id": 1
   },
   "max_initial_exposure_time": {
@@ -19055,7 +19093,7 @@
     "default": "150",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10607",
+    "source": "src/libslic3r/PrintConfig.cpp:10627",
     "type_id": 1
   },
   "initial_exposure_time": {
@@ -19074,7 +19112,7 @@
     "default": "15",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10615",
+    "source": "src/libslic3r/PrintConfig.cpp:10635",
     "type_id": 1
   },
   "material_correction": {
@@ -19093,7 +19131,7 @@
     "default": "1,1,1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10622",
+    "source": "src/libslic3r/PrintConfig.cpp:10642",
     "type_id": 16385
   },
   "material_correction_x": {
@@ -19112,7 +19150,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10629",
+    "source": "src/libslic3r/PrintConfig.cpp:10649",
     "type_id": 1
   },
   "material_correction_y": {
@@ -19131,7 +19169,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10636",
+    "source": "src/libslic3r/PrintConfig.cpp:10656",
     "type_id": 1
   },
   "material_correction_z": {
@@ -19150,7 +19188,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10643",
+    "source": "src/libslic3r/PrintConfig.cpp:10663",
     "type_id": 1
   },
   "material_vendor": {
@@ -19169,7 +19207,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10650",
+    "source": "src/libslic3r/PrintConfig.cpp:10670",
     "type_id": 3
   },
   "default_sla_material_profile": {
@@ -19188,7 +19226,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10656",
+    "source": "src/libslic3r/PrintConfig.cpp:10676",
     "type_id": 3
   },
   "sla_material_settings_id": {
@@ -19207,7 +19245,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10662",
+    "source": "src/libslic3r/PrintConfig.cpp:10682",
     "type_id": 3
   },
   "default_sla_print_profile": {
@@ -19226,7 +19264,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10668",
+    "source": "src/libslic3r/PrintConfig.cpp:10688",
     "type_id": 3
   },
   "sla_print_settings_id": {
@@ -19245,7 +19283,7 @@
     "default": "",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10674",
+    "source": "src/libslic3r/PrintConfig.cpp:10694",
     "type_id": 3
   },
   "supports_enable": {
@@ -19264,7 +19302,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10680",
+    "source": "src/libslic3r/PrintConfig.cpp:10700",
     "type_id": 8
   },
   "support_head_front_diameter": {
@@ -19283,7 +19321,7 @@
     "default": "0.4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10687",
+    "source": "src/libslic3r/PrintConfig.cpp:10707",
     "type_id": 1
   },
   "support_head_penetration": {
@@ -19302,7 +19340,7 @@
     "default": "0.2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10696",
+    "source": "src/libslic3r/PrintConfig.cpp:10716",
     "type_id": 1
   },
   "support_head_width": {
@@ -19321,7 +19359,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10705",
+    "source": "src/libslic3r/PrintConfig.cpp:10725",
     "type_id": 1
   },
   "support_pillar_diameter": {
@@ -19340,7 +19378,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10715",
+    "source": "src/libslic3r/PrintConfig.cpp:10735",
     "type_id": 1
   },
   "support_small_pillar_diameter_percent": {
@@ -19359,7 +19397,7 @@
     "default": "50%",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10725",
+    "source": "src/libslic3r/PrintConfig.cpp:10745",
     "type_id": 4
   },
   "support_max_bridges_on_pillar": {
@@ -19378,7 +19416,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10735",
+    "source": "src/libslic3r/PrintConfig.cpp:10755",
     "type_id": 2
   },
   "support_pillar_connection_mode": {
@@ -19405,7 +19443,7 @@
     "default": "dynamic",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10743",
+    "source": "src/libslic3r/PrintConfig.cpp:10763",
     "type_id": 9
   },
   "support_buildplate_only": {
@@ -19424,7 +19462,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10756",
+    "source": "src/libslic3r/PrintConfig.cpp:10776",
     "type_id": 8
   },
   "support_pillar_widening_factor": {
@@ -19443,7 +19481,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10763",
+    "source": "src/libslic3r/PrintConfig.cpp:10783",
     "type_id": 1
   },
   "support_base_diameter": {
@@ -19462,7 +19500,7 @@
     "default": "4",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10772",
+    "source": "src/libslic3r/PrintConfig.cpp:10792",
     "type_id": 1
   },
   "support_base_height": {
@@ -19481,7 +19519,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10782",
+    "source": "src/libslic3r/PrintConfig.cpp:10802",
     "type_id": 1
   },
   "support_base_safety_distance": {
@@ -19500,7 +19538,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10791",
+    "source": "src/libslic3r/PrintConfig.cpp:10811",
     "type_id": 1
   },
   "support_critical_angle": {
@@ -19519,7 +19557,7 @@
     "default": "45",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10801",
+    "source": "src/libslic3r/PrintConfig.cpp:10821",
     "type_id": 1
   },
   "support_max_bridge_length": {
@@ -19538,7 +19576,7 @@
     "default": "15",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10811",
+    "source": "src/libslic3r/PrintConfig.cpp:10831",
     "type_id": 1
   },
   "support_max_pillar_link_distance": {
@@ -19557,7 +19595,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10820",
+    "source": "src/libslic3r/PrintConfig.cpp:10840",
     "type_id": 1
   },
   "support_object_elevation": {
@@ -19576,7 +19614,7 @@
     "default": "5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10829",
+    "source": "src/libslic3r/PrintConfig.cpp:10849",
     "type_id": 1
   },
   "support_points_density_relative": {
@@ -19595,7 +19633,7 @@
     "default": "100",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10839",
+    "source": "src/libslic3r/PrintConfig.cpp:10859",
     "type_id": 2
   },
   "support_points_minimal_distance": {
@@ -19614,7 +19652,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10847",
+    "source": "src/libslic3r/PrintConfig.cpp:10867",
     "type_id": 1
   },
   "pad_enable": {
@@ -19633,7 +19671,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10855",
+    "source": "src/libslic3r/PrintConfig.cpp:10875",
     "type_id": 8
   },
   "pad_wall_thickness": {
@@ -19652,7 +19690,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10862",
+    "source": "src/libslic3r/PrintConfig.cpp:10882",
     "type_id": 1
   },
   "pad_wall_height": {
@@ -19671,7 +19709,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10872",
+    "source": "src/libslic3r/PrintConfig.cpp:10892",
     "type_id": 1
   },
   "pad_brim_size": {
@@ -19690,7 +19728,7 @@
     "default": "1.6",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10882",
+    "source": "src/libslic3r/PrintConfig.cpp:10902",
     "type_id": 1
   },
   "pad_max_merge_distance": {
@@ -19709,7 +19747,7 @@
     "default": "50",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10892",
+    "source": "src/libslic3r/PrintConfig.cpp:10912",
     "type_id": 1
   },
   "pad_wall_slope": {
@@ -19728,7 +19766,7 @@
     "default": "90",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10901",
+    "source": "src/libslic3r/PrintConfig.cpp:10921",
     "type_id": 1
   },
   "pad_around_object": {
@@ -19747,7 +19785,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10911",
+    "source": "src/libslic3r/PrintConfig.cpp:10931",
     "type_id": 8
   },
   "pad_around_object_everywhere": {
@@ -19766,7 +19804,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10918",
+    "source": "src/libslic3r/PrintConfig.cpp:10938",
     "type_id": 8
   },
   "pad_object_gap": {
@@ -19785,7 +19823,7 @@
     "default": "1",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10925",
+    "source": "src/libslic3r/PrintConfig.cpp:10945",
     "type_id": 1
   },
   "pad_object_connector_stride": {
@@ -19804,7 +19842,7 @@
     "default": "10",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10935",
+    "source": "src/libslic3r/PrintConfig.cpp:10955",
     "type_id": 1
   },
   "pad_object_connector_width": {
@@ -19823,7 +19861,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10944",
+    "source": "src/libslic3r/PrintConfig.cpp:10964",
     "type_id": 1
   },
   "pad_object_connector_penetration": {
@@ -19842,7 +19880,7 @@
     "default": "0.3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10953",
+    "source": "src/libslic3r/PrintConfig.cpp:10973",
     "type_id": 1
   },
   "hollowing_enable": {
@@ -19861,7 +19899,7 @@
     "default": "0",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10962",
+    "source": "src/libslic3r/PrintConfig.cpp:10982",
     "type_id": 8
   },
   "hollowing_min_thickness": {
@@ -19880,7 +19918,7 @@
     "default": "3",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10969",
+    "source": "src/libslic3r/PrintConfig.cpp:10989",
     "type_id": 1
   },
   "hollowing_quality": {
@@ -19899,7 +19937,7 @@
     "default": "0.5",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10979",
+    "source": "src/libslic3r/PrintConfig.cpp:10999",
     "type_id": 1
   },
   "hollowing_closing_distance": {
@@ -19918,7 +19956,7 @@
     "default": "2",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10988",
+    "source": "src/libslic3r/PrintConfig.cpp:11008",
     "type_id": 1
   },
   "material_print_speed": {
@@ -19943,7 +19981,7 @@
     "default": "fast",
     "nullable": false,
     "readonly": false,
-    "source": "src/libslic3r/PrintConfig.cpp:10998",
+    "source": "src/libslic3r/PrintConfig.cpp:11018",
     "type_id": 9
   }
 }

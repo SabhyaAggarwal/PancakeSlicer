@@ -1418,7 +1418,7 @@ static std::vector<std::string> s_Preset_print_options{
     "nonplanar_fallback", "nonplanar_full_conformal_max_thickness", "nonplanar_surface_resolution", "nonplanar_max_patch_height", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_road_cooling", "nonplanar_steep_skin", "nonplanar_oneshot_routes", "nonplanar_oneshot_fan_step", "nonplanar_sublayer_walls", "nonplanar_auto_support", "nonplanar_support_interface",
     "nonplanar_atom_toolpath", "nonplanar_field_file",
     "nonplanar_overhangs", "nonplanar_bridges",
-    "nonplanar_continuous_top", "nonplanar_time_budget", "nonplanar_curved_cone_tolerance", "nonplanar_curved_max_angle", "nonplanar_curved_max_height", "nonplanar_curved_shells",
+    "nonplanar_continuous_top", "nonplanar_time_budget", "nonplanar_curved_cone_tolerance", "nonplanar_curved_max_angle", "nonplanar_ignore_duct", "nonplanar_clearance_margin", "nonplanar_curved_max_height", "nonplanar_curved_shells",
     "nonplanar_wave", "nonplanar_wave_amplitude", "nonplanar_wave_wavelength",
     "nonplanar_wave_pattern", "nonplanar_wave_direction",
     "nonplanar_mode", "nonplanar_region_source", "nonplanar_deform", "multiplanar_max_planes", "multiplanar_overhang_threshold",

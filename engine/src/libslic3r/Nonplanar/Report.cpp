@@ -309,6 +309,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     report.body_hits    = report_clearance.hit_body_moves;
     report.cone_grazes  = report_clearance.cone_graze_moves;
     report.machine_hits = report_clearance.machine_hit_moves;
+    report.clearance_override = report_clearance.clearance_override;
+    report.duct_grazes  = report_clearance.duct_graze_moves;
     const size_t normal = size_t(PrintEstimatedStatistics::ETimeMode::Normal);
     report.time_s       = result.print_statistics.modes[normal].time;
     for (const GCodeProcessorResult::MoveVertex &move : result.moves)
@@ -339,6 +341,10 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
     j["version"] = 1;
     j["head"]    = head;
     j["clearance"] = verified ? json{ { "checked", true }, { "hits", hits }, { "body_hits", body_hits }, { "cone_graze_moves", cone_grazes }, { "machine_hits", machine_hits } } : json{ { "checked", false } };
+    if (clearance_override) {
+        j["clearance"]["clearance_override"] = true;
+        j["clearance"]["duct_graze_moves"]   = duct_grazes;
+    }
     j["time_s"]        = time_s;
     j["curved_time_s"] = curved_time_s;
     json objects_json  = json::array();

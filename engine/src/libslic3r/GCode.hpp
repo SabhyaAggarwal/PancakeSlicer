@@ -773,6 +773,7 @@ protected:
                                                               double speed, std::string &gcode, std::vector<ExtrusionPath> *curved_current = nullptr);
     void                                queue_advanced_conformal(const Print &print);
     std::string                         emit_deferred_material(int slot, unsigned int extruder_id);
+    std::string                         emit_deferred_before_layer(unsigned int extruder_id);
     std::string                         emit_deferred_after_layer(const PrintObject &print_object, unsigned int extruder_id);
 
     std::unique_ptr<CoolingBuffer>      m_cooling_buffer;

@@ -1030,6 +1030,8 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
     const NonplanarMode nonplanar_mode   = config->opt_enum<NonplanarMode>("nonplanar_mode");
     for (auto key : {"nonplanar_curved_max_angle", "nonplanar_curved_max_height", "nonplanar_curved_shells", "nonplanar_curved_cone_tolerance"})
         toggle_line(key, curved_tops_mode(nonplanar_mode));
+    toggle_line("nonplanar_ignore_duct", curved_tops_mode(nonplanar_mode));
+    toggle_line("nonplanar_clearance_margin", curved_tops_mode(nonplanar_mode) && config->opt_bool("nonplanar_ignore_duct"));
     const bool          nonplanar_manual = nonplanar_mode == NonplanarMode::Manual || nonplanar_mode == NonplanarMode::Multiplanar;
     const bool has_nonplanar_shells = nonplanar_mode == NonplanarMode::Auto ||
                                       (nonplanar_manual && (config->opt_int("nonplanar_top_shells") != 0 ||

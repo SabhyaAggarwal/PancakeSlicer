@@ -94,13 +94,16 @@ struct NonplanarReport
     size_t      body_hits    = 0;
     size_t      hits         = 0;
     size_t      machine_hits = 0;
+    bool        clearance_override = false;
+    size_t      duct_grazes  = 0;
     double      time_s        = 0.;
     double      curved_time_s = 0.;
     bool empty() const {
         if (!patches.empty() || !fallbacks.empty()) return false;
         for (const auto &object : objects)
             if ((object.mode == "curved_tops" || object.mode == "nonplanar_top") && (object.curved_budget.measured ||
-                !object.curved_budget.patches.empty() || !object.curved_budget.reason.empty())) return false;
+                !object.curved_budget.patches.empty() || !object.curved_budget.reason.empty() ||
+                !object.curved_tops.planar_limit.empty())) return false;
         return true;
     }
     const ReportPatch *find_patch(int id, const Point &pos) const;

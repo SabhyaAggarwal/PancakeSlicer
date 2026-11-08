@@ -19,6 +19,7 @@ struct HeadBox
     bool        infinite_x = false;
     bool        infinite_y = false;
     bool        nozzle     = false;
+    bool        block      = false;
 };
 
 struct TipAllowance
@@ -100,6 +101,8 @@ private:
 };
 
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning = nullptr);
+HeadEnvelope resolve_full_head_envelope(const PrintConfig &config, std::string *warning = nullptr);
+bool clearance_override_active(const PrintConfig &config);
 
 bool native_support_capable(const PrintConfig &config);
 

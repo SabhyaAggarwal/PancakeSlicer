@@ -39,7 +39,7 @@ struct CurvedTopsStats {
     double reachable_slope_deg = 0.;
 };
 CurvedTopsStats curved_tops_stats(const PrintObject &object);
-struct CurvedSurfaceRejections { size_t height = 0, area = 0, collision = 0; };
+struct CurvedSurfaceRejections { size_t height = 0, area = 0, collision = 0; bool head_unknown = false; };
 void note_curved_surface_rejections(const PrintObject &object, const CurvedSurfaceRejections &rejections);
 
 class NonplanarSurface;

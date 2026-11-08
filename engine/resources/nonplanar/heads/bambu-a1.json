@@ -11,6 +11,7 @@
   },
   "margin": 0.3,
   "lateral_margin": 0.3,
+  "access_model": {"provenance": "fich-l's OrcaSlicer-Nonplanar v0.1 clearance model of the A1-series hotend (its NonplanarClearanceModel): flat tip 0.5504 mm with a 0.12 mm contact allowance, a cone from 0.15 mm (r 0.613) to 2.5 mm (r 1.5979) in 24 slices inflated 0.02 mm, and the heater block as a truncated pyramid with 12-degree flanks in 0.3 mm bands. Smoothest tops plans head access with it on this head.", "tip_radius": 0.5504, "contact_allowance": 0.12, "safety": 0.03, "bead_margin": 0.02, "sample_step": 0.1, "cone": {"bottom": 0.15, "top": 2.5, "r_bottom": 0.613, "r_top": 1.5979, "inflation": 0.02, "slices": 24}, "blocks": [[2.35, -7.0379, 7.0379, -9.4243, 9.4243], [2.65, -8.4493, 8.4493, -10.8357, 10.8357], [2.95, -9.8606, 9.8606, -12.247, 12.247], [3.25, -11.272, 11.272, -13.6584, 13.6584], [3.55, -12.6834, 12.6834, -15.0698, 15.0698], [3.85, -14.0948, 14.0948, -16.4812, 16.4812], [4.15, -15.5062, 15.5062, -17.8926, 17.8926], [4.45, -16.9176, 16.9176, -19.304, 19.304], [4.75, -18.329, 18.329, -20.7154, 20.7154], [5.05, -19.7404, 19.7404, -22.1268, 22.1268], [5.35, -21.1518, 21.1518, -23.5382, 23.5382], [5.65, -22.5631, 22.5631, -24.9495, 24.9495], [5.95, -23.9745, 23.9745, -26.3609, 26.3609], [6.25, -25.3859, 25.3859, -27.7723, 27.7723], [6.55, -26.7973, 26.7973, -29.1837, 29.1837], [6.85, -28.2087, 28.2087, -30.5951, 30.5951], [7.15, -29.1496, 29.1496, -31.536, 31.536], [7.2, -29.2996, 29.2996, -31.686, 31.686]]},
   "boxes": [
     {"name": "nozzle_land_00", "min": [-0.105, -0.3, 0.0], "max": [0.105, -0.281, 0.05], "nozzle": true},
     {"name": "nozzle_land_01", "min": [-0.146, -0.282, 0.0], "max": [0.146, -0.262, 0.05], "nozzle": true},
@@ -124,8 +125,8 @@
     {"name": "nozzle_body_05", "min": [-1.937, 0.5, 2.477], "max": [1.937, 1.0, 4.76], "nozzle": true},
     {"name": "nozzle_body_06", "min": [-1.733, 1.0, 2.477], "max": [1.733, 1.5, 4.76], "nozzle": true},
     {"name": "nozzle_body_07", "min": [-1.323, 1.5, 2.477], "max": [1.323, 2.0, 4.76], "nozzle": true},
-    {"name": "silicone_sock_lower", "min": [-4.5, -4.5, 4.76], "max": [4.5, 4.5, 6.5]},
-    {"name": "silicone_sock_body", "min": [-9.0, -7.0, 6.5], "max": [9.0, 7.0, 24.0]},
+    {"name": "silicone_sock_lower", "min": [-4.5, -4.5, 4.76], "max": [4.5, 4.5, 6.5], "block": true},
+    {"name": "silicone_sock_body", "min": [-9.0, -7.0, 6.5], "max": [9.0, 7.0, 24.0], "block": true},
     {"name": "left_duct_outlet", "min": [-24.0, -8.0, 4.76], "max": [-8.0, 8.0, 9.0]},
     {"name": "right_duct_outlet", "min": [8.0, -8.0, 4.76], "max": [24.0, 8.0, 9.0]},
     {"name": "left_duct_outer_wall", "min": [-26.0, -10.0, 6.0], "max": [-24.0, 10.0, 15.0]},

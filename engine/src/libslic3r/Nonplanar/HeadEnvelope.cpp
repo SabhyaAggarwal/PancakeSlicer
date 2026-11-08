@@ -328,7 +328,7 @@ double HeadEnvelope::reach() const
 bool operator==(const HeadBox &lhs, const HeadBox &rhs)
 {
     return lhs.name == rhs.name && lhs.min == rhs.min && lhs.max == rhs.max && lhs.infinite_x == rhs.infinite_x &&
-           lhs.infinite_y == rhs.infinite_y && lhs.nozzle == rhs.nozzle;
+           lhs.infinite_y == rhs.infinite_y && lhs.nozzle == rhs.nozzle && lhs.block == rhs.block;
 }
 
 bool operator==(const TipAllowance &lhs, const TipAllowance &rhs) { return lhs.radius == rhs.radius && lhs.height == rhs.height; }
@@ -404,7 +404,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
     if (schema != SchemaV1)
         bad_field("schema", "is \"" + schema + "\", expected \"" + SchemaV1 + "\"");
     warn_unknown(j, { "schema", "id", "name", "provenance", "calibrated", "nozzle", "margin", "lateral_margin", "side_profile",
-                      "side_profile_top", "boxes", "sides", "table_obstacles", "coverage" }, {});
+                      "side_profile_top", "boxes", "sides", "table_obstacles", "coverage", "access_model" }, {});
 
     HeadEnvelope out;
     auto extensions = j;
@@ -483,7 +483,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
             const auto       &b = (*it)[i];
             if (!b.is_object())
                 bad_field(p, "must be an object");
-            warn_unknown(b, { "name", "min", "max", "infinite_x", "infinite_y", "nozzle" }, p);
+            warn_unknown(b, { "name", "min", "max", "infinite_x", "infinite_y", "nozzle", "block" }, p);
             HeadBox box;
             box.name       = get_string(b, "name", p, false);
             box.min        = get_vec3(b, "min", p);
@@ -491,6 +491,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
             box.infinite_x = get_bool(b, "infinite_x", p, false);
             box.infinite_y = get_bool(b, "infinite_y", p, false);
             box.nozzle     = get_bool(b, "nozzle", p, false);
+            box.block      = get_bool(b, "block", p, false);
             for (int a = 0; a < 3; ++a)
                 if (box.min[a] > box.max[a] && !(a == 0 && box.infinite_x) && !(a == 1 && box.infinite_y))
                     bad_field(p + ".min", "must not exceed max");
@@ -528,6 +529,8 @@ std::string save_head_envelope(const HeadEnvelope &envelope)
             b["infinite_y"] = true;
         if (box.nozzle)
             b["nozzle"] = true;
+        if (box.block)
+            b["block"] = true;
         boxes.emplace_back(std::move(b));
     }
     j["boxes"] = std::move(boxes);
@@ -678,6 +681,26 @@ const HeadEnvelope &HeadLibrary::generic_conservative()
 }
 
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning)
+{
+    HeadEnvelope head = resolve_full_head_envelope(config, warning);
+    if (!config.nonplanar_ignore_duct.value ||
+        std::none_of(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.block; }))
+        return head;
+    head.boxes.erase(std::remove_if(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return !box.nozzle && !box.block; }),
+                     head.boxes.end());
+    head.margin = head.lateral_margin = config.nonplanar_clearance_margin.value;
+    return head;
+}
+
+bool clearance_override_active(const PrintConfig &config)
+{
+    if (!config.nonplanar_ignore_duct.value)
+        return false;
+    const HeadEnvelope head = resolve_full_head_envelope(config);
+    return std::any_of(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.block; });
+}
+
+HeadEnvelope resolve_full_head_envelope(const PrintConfig &config, std::string *warning)
 {
     if (warning != nullptr)
         warning->clear();
