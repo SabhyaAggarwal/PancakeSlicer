@@ -907,6 +907,52 @@ void refuse_wide_tops(const ModelObject &object)
     wide_refused.insert(object.id().id);
 }
 
+namespace {
+std::mutex                                  conformal_step_mutex;
+std::map<size_t, int>                       conformal_steps;
+}
+
+int conformal_cap_step(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+    const auto it = conformal_steps.find(object.id().id);
+    return it == conformal_steps.end() ? 0 : it->second;
+}
+
+bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
+{
+    std::vector<PrintObject *> picked;
+    for (PrintObject *object : m_print.m_objects)
+        if (object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers && conformal_cap_step(*object->model_object()) < 3)
+            picked.push_back(object);
+    static const bool no_fallback = std::getenv("NP_CONFORMAL_NO_FALLBACK") != nullptr;
+    if (picked.empty() || !result.nonplanar || no_fallback)
+        return false;
+    ClearanceParams params;
+    params.head           = resolve_head_envelope(m_print.config());
+    params.contact_bar    = true;
+    params.cone_tolerance = curved_tops_cone_tolerance(m_print);
+    const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
+    if (report.hit_moves == 0)
+        return false;
+    static const char *const next_step[] = { "", "with unrounded shells", "with tops up to 15 degrees", "with flat layers" };
+    bool changed = false;
+    for (PrintObject *object : picked) {
+        int step;
+        {
+            const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+            step = ++conformal_steps[object->model_object()->id().id];
+        }
+        object->invalidate_step(posSlice);
+        changed = true;
+        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Conformal layers met the print head in %2% moves; sliced again %3%."),
+                                                  object->model_object()->name, report.hit_moves, next_step[std::clamp(step, 1, 3)]));
+        BOOST_LOG_TRIVIAL(warning) << "Conformal layers fallback: " << object->model_object()->name << ", " << report.hit_moves
+                                   << " contact-bar hits, step " << step << (step >= 3 ? ", printed flat" : "");
+    }
+    return changed;
+}
+
 bool ClearanceRepair::refuse_auto_morph(const GCodeProcessorResult &result)
 {
     std::vector<PrintObject *> picked;

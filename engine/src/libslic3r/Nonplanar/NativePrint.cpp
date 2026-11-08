@@ -860,7 +860,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         config.set_deserialize_strict("top_surface_pattern", "rectilinear");
         config.set_deserialize_strict("internal_solid_infill_pattern", "rectilinear");
         config.set_deserialize_strict("infill_wall_overlap", "-30%");
-        config.set_deserialize_strict("top_bottom_infill_wall_overlap", "-5%");
+        config.set_deserialize_strict("top_bottom_infill_wall_overlap", "-15%");
         if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
             pattern != nullptr && (pattern->value == ipGrid || pattern->value == ipTriangles || pattern->value == ipStars || pattern->value == ipCubic))
             config.set_deserialize_strict("sparse_infill_pattern", "rectilinear");

@@ -9293,6 +9293,13 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
         const double ends  = std::max(qa.z(), qb.z());
         const double above = top_along(qa, qb);
         const bool   banded = fixed_conformal && patch.banded;
+        bool planar_stretch = std::abs(qa.z() - a.z()) < 1e-3 && std::abs(qb.z() - b.z()) < 1e-3 && std::abs(a.z() - b.z()) < 1e-3;
+        for (int s = 1; s < 8 && planar_stretch; ++s) {
+            const Vec3d m = a + (b - a) * (double(s) / 8.);
+            planar_stretch = std::abs(field.forward(m).z() - m.z()) < 1e-3;
+        }
+        if (fixed_conformal && !planar_stretch && (b - a).head<2>().norm() >= 1.)
+            return false;
         const bool   flat  = (in_layer || (qb - qa).head<2>().norm() < 3.) && above <= ends + 0.1;
         if (banded && !flat)
             return false;
@@ -12327,7 +12334,9 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     std::string gcode;
 
     const bool conformal_layers = m_layer != nullptr && m_layer->object() != nullptr &&
-                                  m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
+                                  m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers &&
+                                  std::any_of(m_layer->object()->conformal().patches.begin(), m_layer->object()->conformal().patches.end(),
+                                              [](const Nonplanar::ConformalPatch &patch) { return patch.native; });
     const bool curved_wipes = curved_tops_mode(m_config.nonplanar_mode.value) || conformal_layers;
     if (curved_wipes)
         lift_type = LiftType::NormalLift;

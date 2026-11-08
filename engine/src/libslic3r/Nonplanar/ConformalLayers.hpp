@@ -7,6 +7,7 @@
 #include "LayerField.hpp"
 
 #include <memory>
+#include <vector>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ struct ConformalLayersParams
     int    flat_layers  = 3;
     double pitch        = 0.25;
     double min_area     = 20.;
+    double round_sigma  = 2.;
 };
 
 struct ConformalTop
@@ -47,7 +49,7 @@ public:
 
 private:
     friend std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const indexed_triangle_set &, const ConformalLayersParams &);
-    struct Column { double T = 0., c = 1., L = 0., zb = 0., d = 0., omega = 0.; };
+    struct Column { double T = 0., c = 1., L = 0., zb = 0., d = 0., tf = 0., omega = 0.; };
     double column_phi(const Column &col, double z) const;
     double column_z(const Column &col, double level) const;
     Column        column(const Vec2d &xy) const;

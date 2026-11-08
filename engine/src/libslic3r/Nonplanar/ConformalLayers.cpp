@@ -6,6 +6,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "Multiplanar.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 
 #include <boost/log/trivial.hpp>
 
@@ -26,12 +27,12 @@ double ConformalLayerField::column_phi(const Column &col, double z) const
 {
     if (col.omega <= 0. || z <= col.zb)
         return z;
-    const double zt = col.T - col.d / col.c;
+    const double zt = col.tf;
     double       f;
     if (z < zt)
         f = col.zb + (z - col.zb) * (col.L - col.d - col.zb) / std::max(zt - col.zb, 1e-9);
     else
-        f = col.L - (col.T - z) * col.c;
+        f = col.L - col.d + col.d * (z - zt) / std::max(col.T - zt, 1e-9);
     return col.omega * f + (1. - col.omega) * z;
 }
 
@@ -39,12 +40,12 @@ double ConformalLayerField::column_z(const Column &col, double level) const
 {
     if (col.omega <= 0. || level <= col.zb)
         return level;
-    const double zt   = col.T - col.d / col.c;
+    const double zt   = col.tf;
     const double s    = (col.L - col.d - col.zb) / std::max(zt - col.zb, 1e-9);
     const double phit = col.omega * (col.L - col.d) + (1. - col.omega) * zt;
     if (level <= phit)
         return col.zb + (level - col.zb) / (col.omega * s + (1. - col.omega));
-    return zt + (level - phit) / (col.omega * col.c + (1. - col.omega));
+    return zt + (level - phit) / (col.omega * col.d / std::max(col.T - zt, 1e-9) + (1. - col.omega));
 }
 
 ConformalLayerField::Column ConformalLayerField::column(const Vec2d &xy) const
@@ -62,6 +63,7 @@ ConformalLayerField::Column ConformalLayerField::column(const Vec2d &xy) const
     out.L     = wa * a.L + wb * b.L + wc * c.L + wd * d.L;
     out.zb    = wa * a.zb + wb * b.zb + wc * c.zb + wd * d.zb;
     out.d     = wa * a.d + wb * b.d + wc * c.d + wd * d.d;
+    out.tf    = wa * a.tf + wb * b.tf + wc * c.tf + wd * d.tf;
     out.omega = wa * a.omega + wb * b.omega + wc * c.omega + wd * d.omega;
     return out;
 }
@@ -444,12 +446,47 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         }
         const size_t s = nearest[k];
         if (core[k]) {
-            col.T = T[k], col.c = std::max(c[k], 0.5), col.L = L[k], col.zb = zb[k], col.d = D[k], col.omega = 1.;
+            col.T = T[k], col.c = std::max(c[k], 0.5), col.L = L[k], col.zb = zb[k], col.d = D[k], col.tf = T[k] - D[k] / col.c, col.omega = 1.;
             continue;
         }
-        col.T = T[s], col.c = std::max(c[s], 0.5), col.L = L[s], col.zb = zb[s], col.d = D[s];
+        col.T = T[s], col.c = std::max(c[s], 0.5), col.L = L[s], col.zb = zb[s], col.d = D[s], col.tf = T[s] - D[s] / col.c;
         const double rho = std::clamp(std::abs(L[s] - T[s]) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
         col.omega        = std::clamp(1. - dist[k] / rho, 0., 1.);
+    }
+    if (P.round_sigma > 0.) {
+        const double RoundSigma = P.round_sigma;
+        const long r = long(std::ceil(2. * RoundSigma / g));
+        std::vector<double> w(size_t(2 * r + 1));
+        for (long d = -r; d <= r; ++d)
+            w[size_t(d + r)] = std::exp(-0.5 * sqr(double(d) * g / RoundSigma));
+        std::vector<double> sum(N, 0.), wsum(N, 0.), tmp(N), wtmp(N);
+        for (size_t k = 0; k < N; ++k)
+            if (core[k])
+                sum[k] = F->m_cols[k].tf, wsum[k] = 1.;
+        for (int axis = 0; axis < 2; ++axis) {
+            for (size_t i = 0; i < nx; ++i)
+                for (size_t j = 0; j < ny; ++j) {
+                    double a = 0., b = 0.;
+                    for (long d = -r; d <= r; ++d) {
+                        const long ii = long(i) + (axis == 0 ? d : 0), jj = long(j) + (axis == 1 ? d : 0);
+                        if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
+                            continue;
+                        const size_t q = size_t(ii) * ny + size_t(jj);
+                        a += w[size_t(d + r)] * sum[q], b += w[size_t(d + r)] * wsum[q];
+                    }
+                    tmp[i * ny + j] = a, wtmp[i * ny + j] = b;
+                }
+            sum.swap(tmp), wsum.swap(wtmp);
+        }
+        std::vector<double> tf(N);
+        for (size_t k = 0; k < N; ++k) {
+            ConformalLayerField::Column &col = F->m_cols[k];
+            tf[k] = col.tf;
+            if (core[k] && wsum[k] > 0.)
+                tf[k] = std::clamp(sum[k] / wsum[k], col.zb + 0.05, col.T - 0.6 * col.d / col.c);
+        }
+        for (size_t k = 0; k < N; ++k)
+            F->m_cols[k].tf = core[k] || nearest[k] == size_t(-1) ? tf[k] : tf[nearest[k]];
     }
     if (const char *dump = std::getenv("NP_CONFORMAL_DUMP"); dump != nullptr && *dump != 0) {
         FILE *f = std::fopen(dump, "w");
@@ -478,7 +515,16 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
     ConformalLayersParams    P;
     P.layer_height = oc.layer_height.value;
     P.first_layer  = object.print()->config().initial_layer_print_height.value;
-    P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value > 12. + 1e-9 ? oc.nonplanar_curved_max_angle.value : 30., 1., 45.);
+    const int step = conformal_cap_step(*object.model_object());
+    P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value > 12. + 1e-9 ? oc.nonplanar_curved_max_angle.value : 20., 1., 45.);
+    if (step >= 2)
+        P.max_angle = std::min(P.max_angle, 15.);
+    P.round_sigma = step >= 1 ? 0. : 2.;
+    if (step >= 3) {
+        if (summary)
+            *summary = "conformal layers: flat (the export check found the head meeting the curved layers)";
+        return nullptr;
+    }
     P.shells       = std::max(rc.top_shell_layers.value, int(std::ceil(rc.top_shell_thickness.value / P.layer_height - 1e-6)));
     P.shells       = std::clamp(P.shells, 2, 8);
     std::shared_ptr<const ConformalLayerField> field = build_conformal_layer_field(slicing_frame_mesh(object), P);
@@ -677,25 +723,23 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
     for (auto &[key, entities] : groups) {
         if (key.first != last_band)
             ++bands, last_band = key.first;
-        ExtrusionEntitiesPtr outer, inner, rest;
+        ExtrusionEntitiesPtr outer, inner, solid, rest;
         for (ExtrusionEntity *e : entities)
-            (e->role() == erExternalPerimeter ? outer : is_perimeter(e->role()) ? inner : rest).push_back(e);
-        const std::array<std::array<ExtrusionEntitiesPtr *, 3>, 4> orders { { { &outer, &inner, &rest }, { &inner, &outer, &rest },
-                                                                             { &rest, &inner, &outer }, { &outer, &rest, &inner } } };
-        std::array<ExtrusionEntitiesPtr *, 3> chosen = orders[0];
-        if (!rest.empty() && (!outer.empty() || !inner.empty())) {
-            constexpr double Reach = 0.5, Rise = 0.03;
+            (e->role() == erExternalPerimeter ? outer : is_perimeter(e->role()) ? inner : is_solid_infill(e->role()) ? solid : rest).push_back(e);
+        const std::array<ExtrusionEntitiesPtr *, 4> sets { &outer, &inner, &solid, &rest };
+        std::array<ExtrusionEntitiesPtr *, 4>       chosen = sets;
+        if (std::count_if(sets.begin(), sets.end(), [](const ExtrusionEntitiesPtr *p) { return !p->empty(); }) > 1) {
+            constexpr double Reach = 0.55, Rise = 0.03;
             const auto key = [](double x, double y) { return (int64_t(std::floor(x / Reach)) << 32) ^ (int64_t(std::floor(y / Reach)) & 0xffffffff); };
-            std::array<std::unordered_map<int64_t, std::vector<Vec3d>>, 3> pts;
-            const std::array<ExtrusionEntitiesPtr *, 3> sets { &outer, &inner, &rest };
-            for (size_t si = 0; si < 3; ++si)
+            std::array<std::unordered_map<int64_t, std::vector<Vec3d>>, 4> pts;
+            for (size_t si = 0; si < 4; ++si)
                 for (const ExtrusionEntity *e : *sets[si]) {
                     const auto &pl = static_cast<const ExtrusionPathConformal *>(e)->polyline.points;
                     for (size_t i = 1; i < pl.size(); ++i) {
                         const Vec3d a = unscale(pl[i - 1]), b = unscale(pl[i]);
-                        const int   n = std::max(1, int(std::ceil((b - a).head<2>().norm() / 0.25)));
-                        for (int j = 0; j <= n; ++j) {
-                            const Vec3d q = a + (b - a) * (double(j) / n);
+                        const int   m = std::max(1, int(std::ceil((b - a).head<2>().norm() / 0.25)));
+                        for (int j = 0; j <= m; ++j) {
+                            const Vec3d q = a + (b - a) * (double(j) / m);
                             pts[si][key(q.x(), q.y())].push_back(q);
                         }
                     }
@@ -717,19 +761,23 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                     }
                 return n;
             };
-            std::array<std::array<size_t, 3>, 3> c {};
-            for (size_t a = 0; a < 3; ++a)
-                for (size_t b = 0; b < 3; ++b)
-                    if (a != b)
-                        c[a][b] = conflicts(a, b);
-            const auto index = [&](const ExtrusionEntitiesPtr *p) { return size_t(p == &outer ? 0 : p == &inner ? 1 : 2); };
+            std::array<std::array<size_t, 4>, 4> c {};
+            for (size_t x = 0; x < 4; ++x)
+                for (size_t y = 0; y < 4; ++y)
+                    if (x != y && !sets[x]->empty() && !sets[y]->empty())
+                        c[x][y] = conflicts(x, y);
+            std::array<size_t, 4> perm { 0, 1, 2, 3 }, best_perm = perm;
             size_t best = std::numeric_limits<size_t>::max();
-            for (const auto &o : orders) {
-                const size_t i0 = index(o[0]), i1 = index(o[1]), i2 = index(o[2]);
-                const size_t n  = c[i0][i1] + c[i0][i2] + c[i1][i2];
+            do {
+                size_t n = 0;
+                for (size_t x = 0; x < 4; ++x)
+                    for (size_t y = x + 1; y < 4; ++y)
+                        n += c[perm[x]][perm[y]];
                 if (n < best)
-                    best = n, chosen = o;
-            }
+                    best = n, best_perm = perm;
+            } while (std::next_permutation(perm.begin(), perm.end()));
+            for (size_t x = 0; x < 4; ++x)
+                chosen[x] = sets[best_perm[x]];
         }
         ExtrusionEntityCollection group;
         for (ExtrusionEntitiesPtr *part : chosen) {

@@ -3542,6 +3542,10 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
             this->process();
             continue;
         }
+        if (result != nullptr && repair.step_down_conformal(*result)) {
+            this->process();
+            continue;
+        }
         if (!repair.apply())
             break;
         this->process();

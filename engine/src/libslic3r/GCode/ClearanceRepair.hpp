@@ -36,6 +36,7 @@ public:
     static size_t curved_contacts(const Print &print, const GCodeProcessorResult &result);
 
     bool refuse_auto_morph(const GCodeProcessorResult &result);
+    bool step_down_conformal(const GCodeProcessorResult &result);
 
     bool restore_planar_remainders();
 
@@ -80,6 +81,7 @@ bool auto_morph_refused(const ModelObject &object);
 bool top_picks_morph();
 bool wide_tops_refused(const ModelObject &object);
 void refuse_wide_tops(const ModelObject &object);
+int conformal_cap_step(const ModelObject &object);
 struct WideTopsRetry : std::runtime_error
 {
     explicit WideTopsRetry(size_t id) : std::runtime_error("Smoothest tops: retry at 12 degrees"), object_id(id) {}
