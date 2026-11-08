@@ -21,6 +21,7 @@
 #include <array>
 #include <map>
 #include <set>
+#include <iterator>
 #include <unordered_map>
 #include <sstream>
 
@@ -796,11 +797,37 @@ size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t la
     return conflicts;
 }
 
-FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats)
+FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats,
+                            const std::vector<std::pair<Vec3d, Vec3d>> *precede)
 {
     FieldOrder out;
     if (layers == 0)
         return out;
+    std::vector<std::pair<size_t, size_t>> before;
+    if (precede != nullptr && !precede->empty()) {
+        const auto road_at = [&](const Vec3d &p) {
+            size_t best = size_t(-1);
+            double bd   = sqr(0.4);
+            for (size_t r = 0; r < roads.size(); ++r) {
+                const std::vector<Vec3d> &tip = roads[r].tip;
+                if (!roads[r].path)
+                    continue;
+                for (size_t i = 0; i + 1 < tip.size(); ++i) {
+                    const Vec3d  ab = tip[i + 1] - tip[i];
+                    const double l2 = ab.head<2>().squaredNorm();
+                    const double t  = l2 > 0. ? std::clamp((p - tip[i]).head<2>().dot(ab.head<2>()) / l2, 0., 1.) : 0.;
+                    const Vec3d  q  = tip[i] + t * ab;
+                    if (const double d = (q - p).head<2>().squaredNorm(); d < bd && std::abs(q.z() - p.z()) < 0.12)
+                        bd = d, best = r;
+                }
+            }
+            return best;
+        };
+        for (const auto &[hit, struck] : *precede)
+            if (const size_t h = road_at(hit), s = road_at(struck); h != size_t(-1) && s != size_t(-1) && h != s)
+                before.emplace_back(h, s);
+    }
+    std::unordered_map<const ExtrusionEntity *, size_t> road_of;
     const bool banded = std::isfinite(band) && band > 0.;
     double offset = 0.;
     if (banded) {
@@ -868,13 +895,18 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                 runs.emplace_back(s, e);
             s = e;
         }
+        const size_t ri = size_t(&road - roads.data());
         if (runs.size() <= 1) {
+            road_of[road.path.get()] = ri;
             groups[{ m >= 2 ? seg_band(0) : band_of(road.tip.front().z()), k }].push_back(road.path.release());
             continue;
         }
         ++cut_roads;
-        for (const auto &[s0, e0] : runs)
-            groups[{ seg_band(s0), k }].push_back(field_sub_path(*road.path, s0, e0));
+        for (const auto &[s0, e0] : runs) {
+            ExtrusionEntity *piece = field_sub_path(*road.path, s0, e0);
+            road_of[piece] = ri;
+            groups[{ seg_band(s0), k }].push_back(piece);
+        }
         road.path.reset();
     }
     const auto mean_z = [](const ExtrusionEntity *e) {
@@ -990,6 +1022,19 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
                 }
                 s = e;
             }
+        }
+        for (const auto &[h, s] : before) {
+            auto &v = group.entities;
+            const auto road_is = [&](size_t r) { return [&road_of, r](const ExtrusionEntity *e) { auto it = road_of.find(e); return it != road_of.end() && it->second == r; }; };
+            const auto first_s = std::find_if(v.begin(), v.end(), road_is(s));
+            if (first_s == v.end())
+                continue;
+            ExtrusionEntitiesPtr moved;
+            std::copy_if(first_s, v.end(), std::back_inserter(moved), road_is(h));
+            if (moved.empty())
+                continue;
+            v.erase(std::remove_if(first_s, v.end(), road_is(h)), v.end());
+            v.insert(std::find_if(v.begin(), v.end(), road_is(s)), moved.begin(), moved.end());
         }
         constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
         for (size_t i = 1; i < group.entities.size(); ++i) {

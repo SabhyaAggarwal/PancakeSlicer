@@ -415,7 +415,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
         if (o.slant) {
             const SlantChoice &c = *o.slant;
             jo["slant"] = json{ { "angle_deg", c.angle_deg }, { "direction_deg", c.direction_deg }, { "head_limit_deg", c.budget_deg },
-                                { "start_mm", c.start_mm }, { "morph_layers", c.morph_layers }, { "full_tilt_mm", c.full_tilt_mm },
+                                { "start_mm", c.start_mm }, { "morph_layers", c.morph_layers }, { "angle_lowered_steps", c.lowered }, { "full_tilt_mm", c.full_tilt_mm },
                                 { "morph_min_gap_mm", c.min_gap_mm }, { "morph_max_gap_mm", c.max_gap_mm },
                                 { "stair_step_mm2", c.steps }, { "overhang_mm2", c.overhang },
                                 { "planar_stair_step_mm2", c.planar_steps }, { "planar_overhang_mm2", c.planar_overhang } };

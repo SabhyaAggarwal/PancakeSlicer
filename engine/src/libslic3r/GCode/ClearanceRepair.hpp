@@ -37,6 +37,7 @@ public:
 
     bool refuse_auto_morph(const GCodeProcessorResult &result);
     bool step_down_conformal(const GCodeProcessorResult &result);
+    bool step_down_slant(const GCodeProcessorResult &result);
 
     bool restore_planar_remainders();
 
@@ -83,6 +84,11 @@ bool wide_tops_refused(const ModelObject &object);
 void refuse_wide_tops(const ModelObject &object);
 int conformal_cap_step(const ModelObject &object);
 void conformal_ladder_slice(const ModelObject &object);
+constexpr int SlantSteps = 4;
+int    slant_step(const ModelObject &object);
+size_t slant_step_hits(const ModelObject &object);
+void   slant_ladder_slice(const ModelObject &object);
+std::vector<std::pair<Vec3d, Vec3d>> conformal_precedence(const ModelObject &object);
 size_t conformal_flat_hits(const ModelObject &object);
 std::vector<Vec3d> conformal_struck_points(const ModelObject &object);
 struct WideTopsRetry : std::runtime_error

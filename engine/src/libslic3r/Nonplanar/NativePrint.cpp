@@ -1115,8 +1115,10 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     if (conformal)
         BOOST_LOG_TRIVIAL(info) << "Conformal layers " << object.model_object()->name << ": " << conflicts
                                 << " cells where whole layers would meet the head";
+    const std::vector<std::pair<Vec3d, Vec3d>> precede = conformal ? conformal_precedence(*object.model_object()) :
+                                                                     std::vector<std::pair<Vec3d, Vec3d>>();
     FieldOrder     order = conformal ? band_order_roads(roads, n - 1, conflicts > 0 ? conformal_band_height(op.head, h) :
-                                                                                      std::numeric_limits<double>::infinity(), &band_stats) :
+                                                                                      std::numeric_limits<double>::infinity(), &band_stats, &precede) :
                                        layer_order_field_roads(roads, op);
     if (conformal)
         BOOST_LOG_TRIVIAL(info) << "Conformal layers " << object.model_object()->name << ": band " << band_stats.band << " mm from z "

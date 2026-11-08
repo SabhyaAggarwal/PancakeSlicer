@@ -1611,9 +1611,10 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 hits->min_clearance = std::min(hits->min_clearance, clearance);
             if (clearance < -ContactTolerance) {
                 hit.penetration = land_hit && best_land + land_allow < best ? -best_land : -best;
+                const uint32_t s = land_hit && best_land + land_allow < best ? best_land_struck : hit_struck;
+                hit.struck_move  = s;
                 if (static const char *path = std::getenv("NP_VERIFY_STRUCK"); path != nullptr) {
                     static std::mutex struck_mutex;
-                    const uint32_t s = land_hit && best_land + land_allow < best ? best_land_struck : hit_struck;
                     const std::lock_guard<std::mutex> lock(struck_mutex);
                     std::ofstream out(path, std::ios::app);
                     out << hit.gcode_line << ' ' << c.move << ' ' << (s == uint32_t(-1) ? -1 : long(s)) << ' '

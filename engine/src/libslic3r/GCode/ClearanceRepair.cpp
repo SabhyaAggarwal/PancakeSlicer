@@ -916,6 +916,9 @@ std::map<size_t, std::vector<Vec3d>>        conformal_struck;
 std::map<size_t, int>                       conformal_refusals;
 std::map<size_t, size_t>                    conformal_refused_at;
 std::set<size_t>                            conformal_pending;
+std::map<size_t, std::vector<std::pair<Vec3d, Vec3d>>> conformal_precede;
+std::map<size_t, int>                       conformal_order_rounds;
+std::map<size_t, size_t>                    conformal_order_hits;
 }
 
 size_t conformal_flat_hits(const ModelObject &object)
@@ -932,6 +935,14 @@ void conformal_ladder_slice(const ModelObject &object)
     if (conformal_pending.erase(id) != 0)
         return;
     conformal_steps.erase(id), conformal_flat.erase(id), conformal_struck.erase(id), conformal_refusals.erase(id), conformal_refused_at.erase(id);
+    conformal_precede.erase(id), conformal_order_rounds.erase(id), conformal_order_hits.erase(id);
+}
+
+std::vector<std::pair<Vec3d, Vec3d>> conformal_precedence(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+    const auto it = conformal_precede.find(object.id().id);
+    return it == conformal_precede.end() ? std::vector<std::pair<Vec3d, Vec3d>>() : it->second;
 }
 
 std::vector<Vec3d> conformal_struck_points(const ModelObject &object)
@@ -1010,11 +1021,44 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
                             seen[object].emplace(int(std::floor(q.x() / 0.5)), int(std::floor(q.y() / 0.5))).second)
                             struck[object].push_back(q);
     }
+    std::map<const PrintObject *, std::vector<std::pair<Vec3d, Vec3d>>> contacts;
+    for (const ClearanceHit &hit : report.worst)
+        if (hit.struck_move < result.moves.size())
+            for (const PrintObject *object : picked)
+                for (size_t instance = 0; instance < object->instances().size(); ++instance) {
+                    const unsigned extruder = result.moves[hit.move_id].extruder_id;
+                    const Vec3d    s        = tip_of(result, hit.struck_move);
+                    if (const Vec2d a = locator.to_object(hit.tip, *object, instance, extruder), b = locator.to_object(s, *object, instance, extruder);
+                        unscaled(object->bounding_box()).contains(a)) {
+                        contacts[object].emplace_back(Vec3d(a.x(), a.y(), locator.to_object_z(hit.tip.z())),
+                                                      Vec3d(b.x(), b.y(), locator.to_object_z(s.z())));
+                        break;
+                    }
+                }
     constexpr int Refusals = 6;
+    constexpr size_t OrderHits   = 30;
+    constexpr int    OrderRounds = 1;
     for (PrintObject *object : picked) {
         const size_t id = object->model_object()->id().id;
         int  step;
-        bool refused = false;
+        bool refused = false, ordered = false;
+        {
+            const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+            int &taken = conformal_steps[id];
+            if (const auto it = contacts.find(object); it != contacts.end() && report.hit_moves <= OrderHits &&
+                conformal_order_rounds[id] < OrderRounds && (conformal_order_rounds[id] == 0 || report.hit_moves < conformal_order_hits[id])) {
+                append(conformal_precede[id], it->second);
+                ++conformal_order_rounds[id];
+                conformal_order_hits[id] = report.hit_moves;
+                ordered = true;
+            }
+        }
+        if (ordered) {
+            replan(object);
+            BOOST_LOG_TRIVIAL(warning) << "Conformal layers fallback: " << object->model_object()->name << ", " << report.hit_moves
+                                       << " contact-bar hits, step " << conformal_cap_step(*object->model_object()) << ", roads reordered";
+            continue;
+        }
         {
             const std::lock_guard<std::mutex> lock(conformal_step_mutex);
             int &taken = conformal_steps[id];
@@ -1029,6 +1073,8 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
                 next    = std::min(taken, ConformalSteps - 1);
                 refused = true;
             }
+            if (next != taken)
+                conformal_precede.erase(id), conformal_order_rounds.erase(id), conformal_order_hits.erase(id);
             taken = next;
             step  = taken;
             conformal_flat[id] = report.hit_moves;
@@ -1041,6 +1087,63 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
                                    << (step >= ConformalSteps ? ", printed flat" : "");
     }
     return changed;
+}
+
+namespace {
+std::mutex               slant_step_mutex;
+std::map<size_t, int>    slant_steps;
+std::map<size_t, size_t> slant_hits;
+std::set<size_t>         slant_pending;
+}
+
+void slant_ladder_slice(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(slant_step_mutex);
+    const size_t id = object.id().id;
+    if (slant_pending.erase(id) != 0)
+        return;
+    slant_steps.erase(id), slant_hits.erase(id);
+}
+
+int slant_step(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(slant_step_mutex);
+    const auto it = slant_steps.find(object.id().id);
+    return it == slant_steps.end() ? 0 : it->second;
+}
+
+size_t slant_step_hits(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(slant_step_mutex);
+    const auto it = slant_hits.find(object.id().id);
+    return it == slant_hits.end() ? 0 : it->second;
+}
+
+bool ClearanceRepair::step_down_slant(const GCodeProcessorResult &result)
+{
+    std::vector<PrintObject *> picked;
+    for (PrintObject *object : m_print.m_objects)
+        if (object->config().nonplanar_mode.value == NonplanarMode::Slant && object->slant_choice() && object->slant_choice()->angle_deg > 0. &&
+            slant_step(*object->model_object()) < SlantSteps)
+            picked.push_back(object);
+    const ClearanceReport &report = result.clearance_report;
+    if (picked.empty() || !result.nonplanar || report.hit_moves == 0)
+        return false;
+    for (PrintObject *object : picked) {
+        int step;
+        {
+            const std::lock_guard<std::mutex> lock(slant_step_mutex);
+            step = ++slant_steps[object->model_object()->id().id];
+            slant_hits[object->model_object()->id().id] = report.hit_moves;
+            slant_pending.insert(object->model_object()->id().id);
+        }
+        m_planned.erase(std::remove_if(m_planned.begin(), m_planned.end(), [object](const Planned &p) { return p.object == object; }),
+                        m_planned.end());
+        object->invalidate_step(posSlice);
+        BOOST_LOG_TRIVIAL(warning) << "Slant fallback: " << object->model_object()->name << ", " << report.hit_moves << " head contacts at "
+                                   << object->slant_choice()->angle_deg << " deg, step " << step;
+    }
+    return true;
 }
 
 bool ClearanceRepair::refuse_auto_morph(const GCodeProcessorResult &result)

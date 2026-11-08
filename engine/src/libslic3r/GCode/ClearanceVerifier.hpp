@@ -68,6 +68,7 @@ struct ClearanceHit
     double penetration = 0.;
     Vec3d tip { Vec3d::Zero() };
     unsigned int layer = 0;
+    uint32_t struck_move = uint32_t(-1);
 };
 struct ClearanceParams
 {

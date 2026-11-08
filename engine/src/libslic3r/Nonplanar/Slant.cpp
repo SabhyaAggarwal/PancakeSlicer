@@ -1,6 +1,7 @@
 #include "Slant.hpp"
 #include "HeadEnvelope.hpp"
 #include "Multiplanar.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -147,6 +148,17 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
         choice.planar_overhang = planar.overhang;
     }
     const double start = std::max(first, config.nonplanar_slant_start_height.value);
+    const int    step  = slant_step(*object.model_object());
+    const double scale = std::pow(0.75, step);
+    if (step >= SlantSteps) {
+        std::ostringstream why;
+        why << "its tilted layers met the print head in " << slant_step_hits(*object.model_object()) << " moves at every angle tried";
+        choice.planar_limit = "access";
+        choice.reason       = why.str();
+        choice.steps        = choice.planar_steps;
+        choice.overhang     = choice.planar_overhang;
+        return {};
+    }
 
     struct Option
     {
@@ -172,7 +184,7 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
         sh.width    = std::max(hi - lo, EPSILON);
         o.budget    = slant_budget(head, psi, sh.width, h);
         best_budget = std::max(best_budget, o.budget);
-        const double alpha = config.nonplanar_slant_angle.value > 0. ? std::min(Geometry::deg2rad(config.nonplanar_slant_angle.value), o.budget) : o.budget;
+        const double alpha = scale * (config.nonplanar_slant_angle.value > 0. ? std::min(Geometry::deg2rad(config.nonplanar_slant_angle.value), o.budget) : o.budget);
         if (alpha < MinTilt)
             continue;
         sh.tilt  = std::tan(alpha);
@@ -206,6 +218,7 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
     choice.budget_deg   = Geometry::rad2deg(o.budget);
     choice.start_mm     = sh.start;
     choice.morph_layers = sh.morph;
+    choice.lowered      = step;
     choice.min_gap_mm   = sh.h - 0.5 * dt * sh.width;
     choice.max_gap_mm   = sh.h + 0.5 * dt * sh.width;
     choice.full_tilt_mm = sh.start + sh.morph * choice.min_gap_mm;

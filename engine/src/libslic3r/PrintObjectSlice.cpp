@@ -1524,6 +1524,7 @@ void PrintObject::slice_volumes()
         Nonplanar::conformal_ladder_slice(*this->model_object());
     m_slant.reset();
     if (m_config.nonplanar_mode.value == NonplanarMode::Slant && !m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
+        Nonplanar::slant_ladder_slice(*this->model_object());
         Nonplanar::SlantChoice choice;
         m_native_field = Nonplanar::slant_field(*this, choice);
         m_slant        = choice;
