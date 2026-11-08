@@ -911,6 +911,14 @@ void refuse_wide_tops(const ModelObject &object)
 namespace {
 std::mutex                                  conformal_step_mutex;
 std::map<size_t, int>                       conformal_steps;
+std::map<size_t, size_t>                    conformal_flat;
+}
+
+size_t conformal_flat_hits(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+    const auto it = conformal_flat.find(object.id().id);
+    return it == conformal_flat.end() ? 0 : it->second;
 }
 
 int conformal_cap_step(const ModelObject &object)
@@ -945,6 +953,8 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
             int &taken = conformal_steps[object->model_object()->id().id];
             taken = report.hit_moves > 200 ? ConformalSteps : taken + 1;
             step  = taken;
+            if (step >= ConformalSteps)
+                conformal_flat[object->model_object()->id().id] = report.hit_moves;
         }
         if (step >= ConformalSteps) {
             object->m_config.nonplanar_mode.value = NonplanarMode::Off;

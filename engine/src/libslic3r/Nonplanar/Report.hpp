@@ -76,9 +76,12 @@ struct ReportObject
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
     std::optional<SlantChoice> slant;
+    int         conformal_rung = -1;
+    std::string planar_limit, planar_reason;
 
     double curved_share() const {
         if (mode == "curved_tops" || mode == "nonplanar_top") return curved_tops.area_fraction;
+        if (!planar_limit.empty()) return 0.;
         return curved_top + planar_top > 0. ? curved_top / (curved_top + planar_top) : 1.;
     }
 };

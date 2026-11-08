@@ -59,6 +59,7 @@ function topFact(r: ObjectResult, o: PlateObject, process: Config): string {
     return `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit, prints as Standard`;
   }
   if (kind === 'area') return 'Top too small for a curved top, prints as Standard';
+  if (kind === 'base') return 'Top too close to the bed for curved layers, prints as Standard';
   if (kind === 'budget') return 'A curved top would cost too much time or quality, prints as Standard';
   return r.fact;
 }

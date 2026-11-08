@@ -4,6 +4,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
+#include "libslic3r/Nonplanar/ConformalLayers.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
@@ -398,7 +399,7 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         totals[config.opt_bool("zaa_enabled") ? "zaa_rms_mm" : "planar_rms_mm"] = totals["whole_top_rms_mm"];
     size_t object_id = 0;
     for (const PrintObject *object : print.objects()) {
-        Json entry = {{"id", object_id}, {"name", object->model_object()->name}, {"mode", object->config().nonplanar_mode.serialize()}, {"deform", object->config().nonplanar_deform.serialize()}, {"instances", Json::array()}, {"patches", Json::array()}};
+        Json entry = {{"id", object_id}, {"name", object->model_object()->name}, {"mode", Nonplanar::conformal_requested(*object) ? std::string("conformal_layers") : object->config().nonplanar_mode.serialize()}, {"deform", object->config().nonplanar_deform.serialize()}, {"instances", Json::array()}, {"patches", Json::array()}};
         if (const auto &c = object->conformal(); !c.layer_source.empty())
             entry["curved_layers"] = {{"source", c.layer_source == "on" ? "column" : c.layer_source}};
         else if (!c.layer_source_refused.empty())

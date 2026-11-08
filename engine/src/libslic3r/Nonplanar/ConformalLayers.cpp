@@ -2,10 +2,12 @@
 
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "Multiplanar.hpp"
+#include "ConformalShells.hpp"
 #include "libslic3r/GCode/ClearanceRepair.hpp"
 
 #include <boost/log/trivial.hpp>
@@ -583,6 +585,29 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
         *summary = out.str();
     BOOST_LOG_TRIVIAL(info) << object.model_object()->name << ": " << out.str();
     return followed > 0 ? field : nullptr;
+}
+
+bool conformal_requested(const PrintObject &object)
+{
+    const auto *set = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+    return (set ? set->value : object.print()->default_object_config().nonplanar_mode.value) == NonplanarMode::ConformalLayers;
+}
+
+std::string conformal_planar_limit(const PrintObject &object, std::string &reason)
+{
+    if (conformal_cap_step(*object.model_object()) >= ConformalSteps) {
+        reason = "Conformal layers met the print head in " + std::to_string(conformal_flat_hits(*object.model_object())) +
+                 " moves; printed with flat layers";
+        return "access";
+    }
+    if (object.config().nonplanar_mode.value != NonplanarMode::ConformalLayers || !object.conformal().patches.empty())
+        return {};
+    std::string summary;
+    conformal_layers_field(object, &summary);
+    const bool base = summary.find("too close to the flat base") != std::string::npos;
+    reason = base ? "Conformal layers: no top stands far enough above the flat base layers for a shell and a ramp" :
+                    "Conformal layers: no top is large enough to follow (20 mm2)";
+    return base ? "base" : "area";
 }
 
 double conformal_band_height(const HeadEnvelope &head, double layer_height)

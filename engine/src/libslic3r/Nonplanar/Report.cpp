@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "AutoMode.hpp"
+#include "ConformalLayers.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
@@ -177,6 +178,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     NonplanarReport report;
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
             return !curved_tops_mode(object->config().nonplanar_mode.value) && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
+                   !conformal_requested(*object) &&
                    (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
         }))
         return report;
@@ -189,6 +191,11 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.name            = object->model_object()->name;
         out.model_object_id = object->model_object()->id().id;
         out.mode            = object->config().nonplanar_mode.serialize();
+        if (conformal_requested(*object)) {
+            out.mode           = "conformal_layers";
+            out.conformal_rung = std::min(conformal_cap_step(*object->model_object()), ConformalSteps);
+            out.planar_limit   = conformal_planar_limit(*object, out.planar_reason);
+        }
         out.layer_source         = conformal.layer_source;
         out.layer_source_refused = conformal.layer_source_refused;
         if (const OneShotState *oneshot = object->oneshot_state(); oneshot != nullptr) {
@@ -391,6 +398,16 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                     {"time_model", "firmware_sim 3-axis Marlin/Bambu/RRF replay"},
                     {"time_scope", "whole program for one instance; object motion plus shared outside time for multiple instances"},
                     {"reason", budget.reason}, {"patches", std::move(patches)}};
+            }
+        }
+        if (o.conformal_rung >= 0) {
+            const ConformalVariant v = conformal_variant(o.conformal_rung);
+            jo["conformal_rung"]    = o.conformal_rung;
+            jo["conformal_variant"] = v.flat ? std::string("flat") :
+                                               "shells rounded over " + std::to_string(int(v.round_sigma)) + " mm" + (v.cap15 ? ", 15 degree cap" : "");
+            if (!o.planar_limit.empty()) {
+                jo["planar_limit"]           = o.planar_limit;
+                jo["planar_fallback_reason"] = o.planar_reason;
             }
         }
         if (o.slant) {

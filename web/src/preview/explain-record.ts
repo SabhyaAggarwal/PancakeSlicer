@@ -110,7 +110,7 @@ export const grams = (g: number | null) => (g == null ? '–' : `${g.toFixed(2)}
 export const supportText = (g: number | null) => (g == null ? '–' : g > 0 ? `${g.toFixed(2)} g` : '0 g');
 export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(mm2)} mm²`;
 
-export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget';
+export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget' | 'base';
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null;
   topMm2: number;
   limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null } }
@@ -302,7 +302,10 @@ export function nativeSurfaceSummary(record: Rec): string | null {
     curved_extrusion_length_mm?: number; planar_fallback_reason?: string;
   }[] } | undefined;
   const objects = report?.objects?.filter((o) => o.mode === 'curved_tops');
-  if (!objects?.length) return null;
+  if (!objects?.length) {
+    const why = report?.objects?.find((o) => o.mode === 'conformal_layers' && o.planar_fallback_reason)?.planar_fallback_reason;
+    return why ? `Printed flat: ${why}` : null;
+  }
   const roads = objects.reduce((sum, o) => sum + (Number(o.curved_extrusion_length_mm) || 0), 0);
   if (roads <= 0) return `Printed flat: ${objects.map((o) => o.planar_fallback_reason).find(Boolean) || 'No top surfaces could be curved with the current clearance limits'}`;
   const valid = objects.every((o) => Number.isFinite(o.curved_top_area_fraction));
