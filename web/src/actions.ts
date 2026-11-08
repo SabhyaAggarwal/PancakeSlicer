@@ -1,3 +1,4 @@
+import { responseError, type ApiError } from './api/access';
 import { savePreferences } from './saved-preferences';
 import { beginBusy, startupBusy, withBusy, type BusyToken } from './state/busy';
 import { findProfile } from './profiles/identity';
@@ -570,8 +571,10 @@ export function exportFilename(s = getState()): string {
 
 export function canExport(s = getState()): boolean {
   return s.job.state === 'done' && !!s.job.id && !!s.job.plateSignature && !s.job.stale &&
-    s.job.plateSignature === plateSignature(s) && !outsideVolumeWarning(s);
+    s.job.plateSignature === plateSignature(s) && !outsideVolumeWarning(s) && !curveRefused(s);
 }
+
+export const curveRefused = (s: State) => !!(s.job.status?.record as { could_not_curve?: unknown[] } | undefined)?.could_not_curve?.length;
 
 export function fileUse(machine = printerPreset(getState())) {
   const printer = machine?.model?.replace(/^Bambu Lab /, '') ?? 'printer';
@@ -587,6 +590,7 @@ function exportBlocker(s: State) {
   const outside = outsideVolumeWarning(s);
   if (outside) return outside;
   if (s.job.state === 'running' || s.job.state === 'submitting') return 'Still slicing. Export when it finishes.';
+  if (s.job.state === 'done' && !s.job.stale && curveRefused(s)) return 'Could not slice with the curved method. Slice flat instead, or change its settings.';
   return s.job.state === 'done' ? 'The plate changed since the last slice. Slice again.' : 'Slice the plate first.';
 }
 
@@ -598,12 +602,12 @@ export async function download() {
   let href: string;
   try {
     const r = await fetch(s.api.downloadUrl(s.job.id), { signal: task.signal });
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    if (!r.ok) throw r.status === 409 ? await responseError(r) : new Error(`${r.status} ${r.statusText}`);
     href = URL.createObjectURL(await r.blob());
   } catch (e) {
     if (!task.current()) return;
     task.fail(e);
-    toast(`Export failed: ${e instanceof Error ? e.message : e}`);
+    toast((e as ApiError).code === 'could_not_curve' ? (e as ApiError).message : `Export failed: ${e instanceof Error ? e.message : e}`);
     return;
   }
   if (!task.current() || getState().job.id !== s.job.id || !canExport()) {

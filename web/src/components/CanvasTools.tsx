@@ -1,6 +1,7 @@
 import { Range } from './Range';
 import { useSyncExternalStore } from 'react';
 import { alignSection, sectionView, setSection, subscribeSection } from '../plater/section';
+import { SURFACE_LEGEND, toggleTopSurfaces, useSurfacesSliced, useTopSurfaces } from '../top-surfaces';
 import { IconButton } from './Icon';
 
 let lastRatio = 0.5;
@@ -8,6 +9,8 @@ let lastRatio = 0.5;
 export default function CanvasTools() {
   const s = useSyncExternalStore(subscribeSection, sectionView);
   const active = s.ratio > 0;
+  const surfaces = useTopSurfaces();
+  const sliced = useSurfacesSliced();
   const toggle = () => { if (active) { lastRatio = s.ratio; setSection({ ratio: 0 }); } else setSection({ ratio: lastRatio }); };
   return (
     <div className="canvas-tools">
@@ -23,6 +26,16 @@ export default function CanvasTools() {
       <span onContextMenu={(e) => { e.preventDefault(); toggle(); }} onWheel={(e) => setSection({ ratio: s.ratio + (e.deltaY > 0 ? -0.01 : 0.01) })}
         onAuxClick={(e) => e.button === 1 && alignSection()}>
         <IconButton icon={active ? 'canvas_section_active' : 'canvas_section'} size={28} title="Section view" active={s.open} onClick={() => setSection({ open: !s.open })} />
+      </span>
+      <span className="canvas-surfaces">
+        <IconButton icon={surfaces === 'off' ? 'canvas_top_surfaces' : 'canvas_top_surfaces_active'} size={28} title="Top surfaces" active={surfaces !== 'off'}
+          className={surfaces === 'loading' ? 'loading' : ''} onClick={() => toggleTopSurfaces()} />
+        {surfaces !== 'off' && (
+          <span className="canvas-surface-legend" role="status">
+            {SURFACE_LEGEND.map(([colour, label]) => <span key={label}><i style={{ background: colour }} />{label}</span>)}
+            <span className="canvas-surface-source">{sliced ? 'From the slice' : 'Estimate until sliced'}</span>
+          </span>
+        )}
       </span>
       <IconButton icon="canvas_zoom" size={28} title="Fit camera to scene or selected object." onClick={() => window.dispatchEvent(new CustomEvent('camera-fit'))} />
     </div>

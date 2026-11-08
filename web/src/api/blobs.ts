@@ -63,3 +63,18 @@ export async function postJob(fd: FormData, url = '/api/jobs', init: { headers?:
     return post();
   }
 }
+
+export async function withBlobs<T>(meshes: Blob[], post: (sums: string[]) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  await attachFiles(new FormData(), meshes.map((blob, i) => ({ name: `mesh${i}.stl`, blob })), signal);
+  const sums = await Promise.all(meshes.map(blobDigest));
+  try {
+    return await post(sums);
+  } catch (error) {
+    if ((error as ApiError).code !== 'blob_missing') throw error;
+    const blobs = new Map(sums.map((sum, i) => [sum, meshes[i]]));
+    const missing = ((error as ApiError).missing ?? sums).filter((sum) => blobs.has(sum));
+    missing.forEach((sum) => present.delete(sum));
+    await upload(new Map(missing.map((sum) => [sum, blobs.get(sum)!])), signal);
+    return post(sums);
+  }
+}

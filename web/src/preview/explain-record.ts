@@ -115,7 +115,8 @@ export interface ObjectResult { name: string; style: string; fact: string; curve
   topMm2: number;
   printedFlat: boolean;
   flatWhy?: string;
-  limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null } }
+  limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null };
+  tops?: { candidates: number; kept: number; dropped: string[] } }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
   if (!record || record.status === 'error') return [];
@@ -125,7 +126,8 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];
   const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number;
     planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number; curved_extrusion_length_mm?: number;
-    planar_fallback_reason?: string }[];
+    planar_fallback_reason?: string; curved_surfaces_candidates?: number; curved_surfaces_kept?: number;
+    curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] } }[];
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
     const name = String(o.name ?? '');
@@ -166,8 +168,10 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);
     const printedFlat = !!why && !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason);
+    const candidates = num(why?.curved_surfaces_candidates), kept = num(why?.curved_surfaces_kept);
+    const tops = candidates != null && kept != null ? { candidates, kept, dropped: (why?.curved_top_budget?.patches ?? []).filter((p) => p.dropped).map((p) => String(p.reason ?? '')) } : undefined;
     out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, printedFlat,
-      ...(printedFlat && why?.planar_fallback_reason ? { flatWhy: why.planar_fallback_reason } : {}), ...(limit ? { limit } : {}) });
+      ...(printedFlat && why?.planar_fallback_reason ? { flatWhy: why.planar_fallback_reason } : {}), ...(limit ? { limit } : {}), ...(tops ? { tops } : {}) });
   }
   return out;
 }

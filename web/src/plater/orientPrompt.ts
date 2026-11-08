@@ -70,6 +70,13 @@ function check() {
   for (const o of s.objects) {
     const key = `${s.printer}|${pose(o)}`;
     if (o.project?.placeholder || fromProject(o) || s.orientDismissed.includes(o.id) || scored.get(o.id) === key) continue;
+    const cfg = { ...effectiveConfig(s, 'process'), ...o.settings } as Record<string, unknown>;
+    const on = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
+    const mode = String(Array.isArray(cfg.nonplanar_mode) ? cfg.nonplanar_mode[0] : cfg.nonplanar_mode ?? 'off');
+    if (!on(cfg.enable_support) || mode !== 'off') {
+      if (s.orientPrompts[o.id]) setState((st) => ({ orientPrompts: without(st, o.id) }));
+      continue;
+    }
     scored.set(o.id, key);
     if (s.orientPrompts[o.id] && s.orientPrompts[o.id].pose !== pose(o)) setState((st) => ({ orientPrompts: without(st, o.id) }));
     const printer = s.printer;

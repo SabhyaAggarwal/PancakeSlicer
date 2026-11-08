@@ -34,11 +34,12 @@ function curvedShare(s: RecordSummary): number | null {
 
 function flatLines(results: PlateResult[]): string[] {
   const flat = results.filter((r) => r.flat);
-  if (!flat.length) return [];
+  const partial = results.filter((r) => r.partial).map((r) => `${results.length > 1 ? `${r.label}: ` : ''}${r.partial![0].toUpperCase()}${r.partial!.slice(1)}`);
+  if (!flat.length) return partial;
   const byReason = new Map<string, string[]>();
   for (const r of flat) byReason.set(r.flat!, [...(byReason.get(r.flat!) ?? []), r.label]);
   const named = byReason.size > 1 || flat.length < results.length;
-  return [...byReason].map(([why, labels]) => `Printed flat: ${named ? `${labels.join(', ')}: ` : ''}${why}`);
+  return [...[...byReason].map(([why, labels]) => `Printed flat: ${named ? `${labels.join(', ')}: ` : ''}${why}`), ...partial];
 }
 
 const time = (s: number | null) => (s == null ? '–' : shortTime(s));

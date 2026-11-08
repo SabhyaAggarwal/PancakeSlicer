@@ -33,6 +33,7 @@ import { measureState, setMeasure, subscribeMeasure } from './measureState';
 import { layerCursor, layerParams, layerProfileOf, subscribeLayerCursor } from '../components/LayerHeight';
 import { layerMaterial } from './layerTexture';
 import { getPatchPreview, inFootprint, nonplanarViewShown, overlayFits, planarReason, subscribePatchPreview, type InstanceOverlay } from '../patch-preview';
+import { hoverSurface, selectSurface, subscribeTopSurfaces, surfaceAt, surfaceText, topSurfaces, topSurfacesShown } from '../top-surfaces';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
 const WHITE = new THREE.Color(0xffffff);
@@ -213,6 +214,7 @@ export default function Plater3D() {
       return c;
     };
     scene.add(viewExtras);
+    const surfaceTint = new THREE.MeshBasicMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     const overhangTint = new THREE.MeshBasicMaterial({ color: 0xc70000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     const outlineLine = new THREE.LineBasicMaterial({ color: SELECTION_COLOR });
     const wireLine = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.45 });
@@ -273,6 +275,15 @@ export default function Plater3D() {
             ball.renderOrder = 4;
             viewExtras.add(ball);
           }
+        }
+      if (topSurfacesShown())
+        for (const ts of topSurfaces()) {
+          const o = s.objects.find((ob) => ob.id === ts.objectId), inst = o?.instances.find((i) => i.id === ts.instanceId);
+          if (!o || !inst || ts.source !== o.geometry || !ts.geometry.attributes.position.count) continue;
+          const mesh = new THREE.Mesh(ts.geometry, surfaceTint);
+          mesh.matrixAutoUpdate = false;
+          mesh.matrix.copy(instanceMatrix(o, inst));
+          viewExtras.add(mesh);
         }
       labelLayer.replaceChildren(...(opt.labels ? s.objects.flatMap((o) => o.instances.map((inst, i) => {
         const d = document.createElement('div');
@@ -357,7 +368,7 @@ export default function Plater3D() {
       selectionBounds.begin();
       const dimmed = (o: number, i: number) => link?.source === 'list' && (o !== link.object || (link.instance !== undefined && i !== link.instance));
       for (const o of s.objects) {
-        const color = filamentColor(s, o.extruder);
+        const color = topSurfacesShown() ? '#A8A8A8' : filamentColor(s, o.extruder);
         for (const inst of o.instances) {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
@@ -977,6 +988,11 @@ void main() {
       }
       downAt = { x: ev.clientX, y: ev.clientY };
       const hit = pick(ev);
+      if (topSurfacesShown()) {
+        const sf = hit && surfaceAt((hit.object.userData as { instance: number }).instance, hit.tri);
+        selectSurface(sf ? sf.inst.instanceId : null, sf ? sf.region : -1);
+        render();
+      }
       const towerHit = tower.hit(ray);
       if (towerHit && (!hit || towerHit.distance < hit.distance)) {
         const p = bedPoint(), at = tower.corner(getState());
@@ -1309,6 +1325,10 @@ void main() {
       if (hoverMs.length > 4096) hoverMs.splice(0, 2048);
       hoverMs.push(performance.now() - t0);
       setHover(hit ? (hit.object.userData as { instance: number }).instance : null, hit?.object.userData.volume);
+      if (topSurfacesShown()) {
+        const sf = hit && surfaceAt((hit.object.userData as { instance: number }).instance, hit.tri);
+        if (hoverSurface(sf ? sf.inst.instanceId : null, sf ? sf.region : -1)) render();
+      }
       planarTip(hit, hoverAt);
       if (flatten) setHoverPlane(pickPlane(hoverAt));
       if (getState().gizmo === 'measure') {
@@ -1331,6 +1351,7 @@ void main() {
     };
     const onLeave = () => {
       hoverAt = null;
+      if (hoverSurface(null)) render();
       setHover(null);
       tip.hidden = true;
       setHoverPlane(-1);
@@ -1434,7 +1455,7 @@ void main() {
       render();
     };
     const syncOverlay = (s: State) => {
-      overlayRoot.visible = nonplanarViewShown();
+      overlayRoot.visible = nonplanarViewShown() && !topSurfacesShown();
       for (const { group, ov } of overlays.values()) {
         const o = s.objects.find((ob) => ob.id === ov.objectId);
         const inst = o?.instances.find((i) => i.id === ov.instanceId);
@@ -1450,11 +1471,31 @@ void main() {
         render();
       }
     });
+    const unsubSurfaces = subscribeTopSurfaces(() => {
+      tint(getState());
+      syncView(getState());
+      syncOverlay(getState());
+      render();
+    });
     const tip = document.createElement('div');
     tip.className = 'canvas-tip';
     tip.hidden = true;
     el.appendChild(tip);
-    const planarTip = (hit: { object: THREE.Object3D; distance: number } | undefined, at: { clientX: number; clientY: number } | null) => {
+    const planarTip = (hit: { object: THREE.Object3D; distance: number; tri?: number } | undefined, at: { clientX: number; clientY: number } | null) => {
+      const sf = hit && topSurfacesShown() ? surfaceAt((hit.object.userData as { instance: number }).instance, hit.tri) : null;
+      if (sf && at) {
+        const r = el.getBoundingClientRect();
+        tip.replaceChildren(...surfaceText(sf.inst.surfaces[sf.region]).map((line, i) => {
+          const d = document.createElement('div');
+          d.textContent = line;
+          if (i) d.className = 'canvas-tip-sub';
+          return d;
+        }));
+        tip.hidden = false;
+        tip.style.left = `${at.clientX - r.left + 12}px`;
+        tip.style.top = `${at.clientY - r.top + 16}px`;
+        return;
+      }
       const entry = hit && overlayRoot.visible ? overlays.get((hit.object.userData as { instance: number }).instance) : undefined;
       let text = '';
       if (entry?.group.visible && entry.ov.planar.length) {
@@ -1554,6 +1595,7 @@ void main() {
       unsubPaintTool();
       unsubTheme();
       unsubPreview();
+      unsubSurfaces();
       unwatchRatio();
       window.removeEventListener('pointerup', onTouchUp);
       window.removeEventListener('pointermove', onRightMove);

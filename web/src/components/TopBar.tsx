@@ -100,7 +100,7 @@ export function TopBar() {
         ];
   const devReset = useDevReset();
   const update = useUpdate();
-  useEffect(() => startUpdateChecks(devReset), [devReset]);
+  useEffect(() => startUpdateChecks(), []);
   const projectId = useProject((p) => p.context.id), projectState = useProject((p) => p.value);
   const renameHere = async () => {
     const next = await promptDialog('Rename project', name ?? 'Untitled');

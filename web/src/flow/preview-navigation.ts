@@ -24,5 +24,6 @@ export function finishSlicePreview(source: string, moves: number) {
   if (s.tab !== 'prepare' || s.job.state !== 'done' || s.job.id !== intent.job || s.job.stale ||
       project.get().context.id !== intent.project || documentGeneration() !== intent.generation || s.plateIndex !== intent.plate ||
       s.job.plateSignature !== intent.signature || plateSignature(s) !== intent.signature) return;
+  if ((s.job.status?.record as { could_not_curve?: unknown[] } | undefined)?.could_not_curve?.length) return;
   setState({tab: 'preview'});
 }

@@ -51,11 +51,11 @@ async function latest(): Promise<Release | null> {
   } catch { return null; }
 }
 
-let timer = 0, demoDefault = false, generation = 0;
+let timer = 0, generation = 0;
 async function check() {
   const mine = ++generation;
   const demo = read(DEMO);
-  if (demo === '1' || (demo === null && demoDefault)) {
+  if (demo === '1') {
     const [major, minor] = semver(current) ?? [0, 0];
     return publish({ version: `${major}.${minor + 1}.0`, url: RELEASES });
   }
@@ -64,8 +64,7 @@ async function check() {
   publish(release?.tag_name && newer(release.tag_name, current) ? { version: release.tag_name.replace(/^v/, ''), url: target(release) } : null);
 }
 
-export function startUpdateChecks(demo: boolean) {
-  demoDefault = demo;
+export function startUpdateChecks() {
   void check();
   if (!timer) timer = window.setInterval(() => void check(), EVERY_MS);
 }

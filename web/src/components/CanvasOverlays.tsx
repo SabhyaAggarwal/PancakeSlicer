@@ -11,8 +11,8 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyn
 import { createPortal } from 'react-dom';
 import { addInstance, arrangeAll, cancelSlice, fileUse, openFileDialog, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
-import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
-import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
+import { toggleNonplanarView, useNonplanarView, usePatchPreview } from '../patch-preview';
+import { applyRecommended, curveFailures, pendingRecommendations, plateResults, sliceFlatInstead, tryIgnoreDuct } from '../recommend';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
 import { IconButton } from './Icon';
 import { Caret } from './Caret';
@@ -20,6 +20,7 @@ import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../pla
 import { InTopLayer } from './Modal';
 import { useTier } from '../breakpoints';
 import { SliceFailed } from './Notices';
+import { bareName, plainWarnings, type PlainWarning } from '../engine-warnings';
 import './prepare.css';
 
 const OrientConfirm = preloadable(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
@@ -181,23 +182,14 @@ export function AccessNotification() {
   );
 }
 
-function previewFact(facts: PreviewFact[]) {
-  if (facts.length === 1) return facts[0].ledge ? 'No support under ledges' : facts[0].curved ? `Curved top ${facts[0].curved}%` : 'Flat top, prints as Standard';
-  if (facts.some((f) => f.ledge)) return 'No support under ledges';
-  const curved = facts.filter((f) => f.curved > 0).length;
-  return curved ? `Curved tops on ${curved} of ${facts.length}` : 'Flat tops, prints as Standard';
-}
-
-function plateFact(results: PlateResult[]) {
-  if (results.length === 1) return results[0].fact;
-  if (results.some((r) => r.fact.startsWith('No support'))) return 'No support under ledges';
-  const curved = results.filter((r) => r.curved).length;
-  return curved ? `Curved tops on ${curved} of ${results.length}` : 'Flat tops, prints as Standard';
-}
-
-function FileName({ name }: { name: string }) {
-  const cut = Math.max(0, name.length - 10);
-  return <span className="notif-file"><span>{name.slice(0, cut)}</span><span>{name.slice(cut)}</span></span>;
+function WarningLines({ warnings, open, onToggle }: { warnings: PlainWarning[]; open: boolean; onToggle(): void }) {
+  const lines = [...new Set(warnings.flatMap((w) => (w.text ? [w.text] : [])))];
+  const unknown = warnings.filter((w) => w.text === undefined);
+  return <>
+    {lines.map((l) => <div key={l} className="notif-body">{l}</div>)}
+    {unknown.length > 0 && <div className="notif-body notif-actions"><button type="button" className="notif-link" aria-expanded={open} onClick={onToggle}>Details</button></div>}
+    {open && unknown.map((w) => <div key={w.raw} className="notif-body notif-detail">{w.raw}</div>)}
+  </>;
 }
 
 const TRANSIENT_MS = 8000;
@@ -234,20 +226,30 @@ export function SliceNotification() {
       <Glyph name="close" size={14} />
     </button>
   );
-  const warnings = job.state === 'done' && !job.stale ? (job.warnings ?? []) : [];
   const sliced = useStore(plateResults);
-  const patchPreview = usePatchPreview();
-  const fresh = job.state === 'done' && !job.stale;
-  const results = done ? sliced : [];
+  const failures = useStore(curveFailures);
+  const failedIds = new Set(failures.map((f) => f.objectId));
+  const results = done ? sliced.filter((r) => !failedIds.has(r.objectId)) : [];
   const suggestIds = useStore((s) => pendingRecommendations(s).map((o) => o.id).join(','));
   const plateObjects = useStore((s) => s.objects);
   const orientPrompts = useStore((s) => s.orientPrompts);
   const orientConfirm = useStore((s) => s.orientConfirm !== null);
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
-  const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
-  const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
+  const raw = job.state === 'done' && !job.stale ? job.warnings : undefined;
+  const names = plateObjects.map((o) => o.name).join('\n');
+  const plain = useMemo(() => plainWarnings(raw ?? [], names.split('\n')), [raw, names]);
+  const [details, setDetails] = useState<Set<string>>(new Set());
+  const toggleDetails = (k: string) => setDetails((d) => { const n = new Set(d); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const perObject = plateObjects.flatMap((o) => {
+    const bare = bareName(o.name), key = `${done ?? job.id}:o${o.id}`;
+    const r = results.find((x) => x.objectId === o.id), f = failures.find((x) => x.objectId === o.id);
+    const ws = plain.filter((w) => w.object === bare && w.text !== null);
+    return r || f || ws.length ? [{ o, bare, key, r, f, ws }] : [];
+  });
+  const known = new Set(plateObjects.map((o) => bareName(o.name)));
+  const loose = plain.filter((w) => (!w.object || !known.has(w.object)) && w.text !== null);
   const [held, setHeld] = useState(false);
-  const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,
+  const transient = [exported, ...perObject.filter((n) => n.r && !n.f && !n.ws.length).map((n) => n.key),
     ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
   useEffect(() => {
     if (held) return;
@@ -266,7 +268,7 @@ export function SliceNotification() {
           <button className="notif-close icon-btn" aria-label="Close" onClick={() => dismissOrientPrompt(o.id)}>
             <Glyph name="close" size={14} />
           </button>
-          <div className="notif-title">{o.name}</div>
+          <div className="notif-title">{bareName(o.name)}</div>
           <div className="notif-body">Stand this part up: less support<Sep/><button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
         </div>
       );
@@ -283,24 +285,15 @@ export function SliceNotification() {
         <div className="notif-title">Slicing Canceled</div>
       </div>
     ),
-    facts.length > 0 && !closed.has(factsKey) && !expired.has(factsKey) && (
-      <div key="facts" className="notification done">
-        {close(factsKey)}
-        <div className="notif-title">{facts.length === 1 ? <><FileName name={facts[0].name}/><span className="notif-what">: Auto</span></> : 'Auto'}</div>
-        <div className="notif-body">{previewFact(facts)}</div>
+    ...perObject.filter((n) => !n.f && !closed.has(n.key) && !expired.has(n.key)).map(({ bare, key, r, ws }) => (
+      <div key={key} className={`notification ${ws.length && !r ? 'warning' : 'done'}`}>
+        {close(key)}
+        <div className="notif-title notif-sentence">{r ? `${bare}: ${r.style}` : bare}</div>
+        {r && <div className="notif-body">{r.fact}{r.curved && <><Sep/>{compareLink}</>}</div>}
+        {r?.partial && <div className="notif-body">{r.partial[0].toUpperCase() + r.partial.slice(1)}</div>}
+        <WarningLines warnings={ws} open={details.has(key)} onToggle={() => toggleDetails(key)} />
       </div>
-    ),
-    done && results.length > 0 && !closed.has(`${done}:r`) && !expired.has(`${done}:r`) && (
-      <div key="results" className="notification done">
-        {close(`${done}:r`)}
-        <div className="notif-title">{results.length === 1 ? <><FileName name={results[0].label}/><span className="notif-what">: {results[0].style}</span></>
-          : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
-        <div className="notif-body">
-          {plateFact(results)}
-          {results.some((r) => r.curved) && <><Sep/>{compareLink}</>}
-        </div>
-      </div>
-    ),
+    )),
   ].filter((el): el is ReactElement => !!el);
   useEffect(() => { if (tips.length < 2) setTipsOpen(false); }, [tips.length]);
   return (
@@ -322,19 +315,28 @@ export function SliceNotification() {
       {suggest.length > 0 && !closed.has(`pip${suggestIds}`) && (
         <div className="notification warning">
           {close(`pip${suggestIds}`)}
-          <div className="notif-title">{suggest.length === 1 ? suggest[0].name : `${suggest.length} objects`}: Standard suggested</div>
+          <div className="notif-title">{suggest.length === 1 ? bareName(suggest[0].name) : `${suggest.length} objects`}: Standard suggested</div>
           <div className="notif-body">Print-in-place gaps<Sep/><button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
         </div>
       )}
       {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}
-      {warnings.map((w, i) =>
-        closed.has(`w${i}`) ? null : (
-          <div key={`w${i}`} className="notification warning">
-            {close(`w${i}`)}
-            <div className="notif-title">Warning:</div>
-            <div className="notif-body">{w}</div>
+      {perObject.flatMap(({ f, key, ws }) => f ? [(
+        <div key={`cnc${key}`} className="notification curve-failed" role="alert">
+          <div className="notif-title notif-sentence">Could not slice {f.label} with {f.method}</div>
+          <div className="notif-body">{f.why[0].toUpperCase() + f.why.slice(1)}</div>
+          <WarningLines warnings={ws.filter((w) => !/^Printed flat/.test(w.text ?? ''))} open={details.has(key)} onToggle={() => toggleDetails(key)} />
+          <div className="notif-body notif-actions">
+            <button type="button" className="notif-link" onClick={() => sliceFlatInstead([f])}>Slice flat instead</button>
+            {f.tryDuct && <button type="button" className="notif-link" onClick={() => tryIgnoreDuct([f])}>Try Ignore cooling duct</button>}
           </div>
-        ),
+        </div>
+      )] : [])}
+      {loose.length > 0 && !closed.has(`${job.id}:w`) && (
+        <div className="notification warning">
+          {close(`${job.id}:w`)}
+          <div className="notif-title">Warning</div>
+          <WarningLines warnings={loose} open={details.has(`${job.id}:w`)} onToggle={() => toggleDetails(`${job.id}:w`)} />
+        </div>
       )}
       {busy && (
         <div className="notification running">
