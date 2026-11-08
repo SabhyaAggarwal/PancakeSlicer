@@ -457,7 +457,7 @@ async function prepareQuit() {
     ]);
 
 
-    if (!finished) throw new Error('Saving is still in progress or has not been confirmed. The window remains open. Try closing again after saving finishes.');
+    if (!finished) throw new Error('Still saving: the window stays open. Close it again when saving finishes.');
     quitReady = true;
     app.quit();
   } catch (e) {

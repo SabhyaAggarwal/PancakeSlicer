@@ -1,0 +1,269 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (created on the dispatched commit when publishing)
+        type: string
+        default: v0.3.0
+      publish:
+        description: Attach artifacts to the GitHub Release and push Docker images
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create or update the release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=.github/release-notes/$TAG.md
+          [ -f "$notes" ] || notes=/dev/null
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$notes"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes-file "$notes"
+          fi
+          git archive --format=tar.gz --prefix="PancakeSlicer-${TAG#v}/" -o "PancakeSlicer-${TAG#v}-source.tar.gz" HEAD
+          gh release upload "$TAG" "PancakeSlicer-${TAG#v}-source.tar.gz" --clobber
+
+  desktop:
+    name: ${{ matrix.target }}
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: mac-arm64, os: mac, arch: arm64, runner: macos-15, ext: dmg }
+          - { target: mac-x64, os: mac, arch: x64, runner: macos-15-intel, ext: dmg }
+          - { target: win-x64, os: win, arch: x64, runner: windows-2025, ext: exe }
+          - { target: linux-x64, os: linux, arch: x64, runner: ubuntu-24.04, ext: AppImage }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    permissions:
+      contents: write
+      packages: write
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: '3.10'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      PYTHONUTF8: '1'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+      CCACHE_DEPEND: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: scripts/qualification/requirements.txt
+      - run: python -m pip install -r scripts/qualification/requirements.txt
+      - name: Read engine source identity
+        run: python -c "import json; print('git_commit_hash=' + json.load(open('scripts/engine-source.json'))['engine_source_sha'])" >> "$GITHUB_ENV"
+
+      - name: Restore compiled engine
+        id: tool
+        uses: actions/cache/restore@v6
+        with:
+          path: build-native/tool
+          key: tool-v2-${{ matrix.runner }}-${{ matrix.arch }}-${{ hashFiles('src/**', 'tests/fff_print/**', 'deps/**', 'deps_src/**', 'cmake/**', 'CMakeLists.txt') }}
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install automake texinfo libtool pkgconf nasm ninja xz ccache
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build autoconf automake libtool texinfo \
+            pkgconf nasm yasm gettext ccache libcurl4-openssl-dev libssl-dev libgl-dev libdbus-1-dev libfontconfig1-dev \
+            libfreetype-dev libx11-dev libudev-dev libva-dev libjpeg-turbo8-dev liblzma-dev rpm fakeroot
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install build tools (Windows)
+        if: runner.os == 'Windows' && steps.tool.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          choco install nasm ninja --no-progress -y
+          'C:\Program Files\NASM' >> $env:GITHUB_PATH
+
+      - name: Restore native dependencies
+        id: deps
+        uses: actions/cache/restore@v6
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: native-v2-${{ matrix.runner }}-${{ matrix.arch }}-${{ hashFiles('deps/**', 'deps_src/**') }}
+          restore-keys: |
+            native-v2-${{ matrix.runner }}-${{ matrix.arch }}-
+            native-v1-${{ matrix.runner }}-${{ matrix.arch }}-
+      - name: Build native dependencies
+        if: steps.deps.outputs.cache-matched-key == ''
+        run: |
+          case "${{ matrix.os }}" in
+            mac) cmake -S deps -B deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                   -DCMAKE_OSX_ARCHITECTURES=$([ "${{ matrix.arch }}" = x64 ] && echo x86_64 || echo arm64) -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+                   '-DCMAKE_IGNORE_PREFIX_PATH=/opt/local;/usr/local;/opt/homebrew' -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF ;;
+            win) cmake -S deps -B deps/build -G 'Visual Studio 18 2026' -A x64 -DDEPS_ARCH=x64 -DCMAKE_BUILD_TYPE=Release \
+                   -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF ;;
+            linux) cmake -S deps -B deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF ;;
+          esac
+          cmake --build deps/build --config Release --target deps --parallel 4
+      - name: Cache native dependencies
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: ${{ steps.deps.outputs.cache-primary-key }}
+
+      - name: Restore compiler cache
+        if: runner.os != 'Windows' && steps.tool.outputs.cache-hit != 'true'
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: ccache-v2-${{ matrix.runner }}-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: ccache-v2-${{ matrix.runner }}-${{ matrix.arch }}-
+      - name: Build Release engine
+        if: steps.tool.outputs.cache-hit != 'true'
+        run: |
+          common=(-DCMAKE_BUILD_TYPE=Release -DSLIC3R_GUI=OFF -DSLIC3R_CAD=OFF -DBUILD_TESTS=ON -DDEP_BUILD_DIR="$GITHUB_WORKSPACE/deps/build")
+          case "${{ matrix.os }}" in
+            mac) ccache --max-size=1500M
+                 cmake -S . -B build-native -G 'Ninja Multi-Config' "${common[@]}" \
+                   -DCMAKE_OSX_ARCHITECTURES=$([ "${{ matrix.arch }}" = x64 ] && echo x86_64 || echo arm64) -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+                   '-DCMAKE_IGNORE_PREFIX_PATH=/opt/local;/usr/local;/opt/homebrew' -DLIBLZMA_INCLUDE_DIR="$(brew --prefix xz)/include" \
+                   -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ;;
+            win) cmake -S . -B build-native -G 'Visual Studio 18 2026' -A x64 "${common[@]}" ;;
+            linux) ccache --max-size=1500M
+                 cmake -S . -B build-native -G 'Ninja Multi-Config' "${common[@]}" \
+                   -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ;;
+          esac
+          cmake --build build-native --config Release --target nonplanar_slice_tool --parallel 4
+          mkdir -p build-native/tool
+          cp build-native/tests/fff_print/Release/nonplanar_slice_tool* build-native/tool/
+      - name: Save compiler cache
+        if: always() && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+      - name: Cache compiled engine
+        if: steps.tool.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: build-native/tool
+          key: ${{ steps.tool.outputs.cache-primary-key }}
+
+      - name: Fetch the audited Linux engine reference
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python desktop/scripts/fetch-reference.py --output desktop/build/reference
+      - name: Build web UI and desktop shell dependencies
+        run: |
+          npm ci --prefix web
+          npm run build --prefix web
+          npm ci --prefix desktop
+      - name: Stage and qualify the bundled payload
+        run: |
+          suffix=''; [ "${{ matrix.os }}" = win ] && suffix=.exe
+          python desktop/scripts/stage-ci.py --os ${{ matrix.os }} --arch ${{ matrix.arch }} \
+            --tool "build-native/tool/nonplanar_slice_tool${suffix}" --reference desktop/build/reference \
+            --image "pancakeslicer-qualify:${GITHUB_SHA::10}"
+      - name: Package installers
+        run: |
+          cp web/public/logo-256.png desktop/build/icon.png
+          case "${{ matrix.target }}" in
+            mac-x64) npm run dist:mac-x64 --prefix desktop ;;
+            *) npm run dist:${{ matrix.os }} --prefix desktop ;;
+          esac
+          ls -la desktop/dist
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: PancakeSlicer-${{ matrix.target }}
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+            desktop/dist/*.zip
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/*.tar.gz
+            desktop/build/PancakeSlicer-*-qualification.zip
+      - name: Attach installers to the release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(desktop/dist/*.dmg desktop/dist/*.exe desktop/dist/*.zip desktop/dist/*.AppImage desktop/dist/*.deb desktop/dist/*.tar.gz desktop/build/PancakeSlicer-*-qualification.zip)
+          gh release upload "$TAG" "${files[@]}" --clobber
+
+      - name: Build Docker image
+        if: matrix.target == 'linux-x64'
+        run: |
+          cp desktop/build/source.tar.gz desktop/build/engine-linux-x64/source.tar.gz 2>/dev/null || git archive --format=tar.gz -o desktop/build/engine-linux-x64/source.tar.gz HEAD
+          printf '**\n!engine-linux-x64/\n!engine-linux-x64/**\n!web/\n!web/**\n' > desktop/build/.dockerignore
+          docker build --file deploy/Dockerfile --build-arg VERSION="${TAG#v}" --build-arg REVISION="$GITHUB_SHA" \
+            --build-arg SOURCE_SHA256="$(sha256sum desktop/build/engine-linux-x64/source.tar.gz | cut -d' ' -f1)" \
+            --tag pancakeslicer:ci desktop/build
+          docker run -d --name smoke -p 8080:8080 pancakeslicer:ci
+          for i in $(seq 30); do curl -fsS http://127.0.0.1:8080/api/healthz && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8080/api/healthz
+          docker rm -f smoke
+      - name: Push Docker image
+        if: matrix.target == 'linux-x64' && env.PUBLISH == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          version="${TAG#v}"
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          targets=(ghcr.io/zimengxiong/pancakeslicer)
+          if [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            targets+=(docker.io/zimengxiong/pancakeslicer)
+          fi
+          for repo in "${targets[@]}"; do
+            for t in "$version" latest; do docker tag pancakeslicer:ci "$repo:$t"; docker push "$repo:$t"; done
+          done

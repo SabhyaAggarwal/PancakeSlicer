@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (tsc + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+
+  server:
+    name: Service (go vet + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache-dependency-path: server/go.sum
+      - working-directory: server
+        run: |
+          go vet -mod=vendor ./...
+          go test -mod=vendor -count=1 ./...
+
+  desktop:
+    name: Desktop shell (tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci --prefix desktop
+      - run: npm run compile --prefix desktop
+
+  engine:
+    name: Engine (Linux Release + smoke slice)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: '3.10'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build autoconf automake libtool texinfo \
+            pkgconf nasm yasm gettext ccache libcurl4-openssl-dev libssl-dev libgl-dev libdbus-1-dev libfontconfig1-dev \
+            libfreetype-dev libx11-dev libudev-dev libva-dev libjpeg-turbo8-dev liblzma-dev
+      - name: Restore native dependencies
+        id: deps
+        uses: actions/cache/restore@v6
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: native-v2-ubuntu-24.04-x64-${{ hashFiles('deps/**', 'deps_src/**') }}
+          restore-keys: native-v2-ubuntu-24.04-x64-
+      - name: Build native dependencies
+        if: steps.deps.outputs.cache-matched-key == ''
+        run: |
+          cmake -S deps -B deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF
+          cmake --build deps/build --target deps --parallel 4
+      - name: Cache native dependencies
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: deps/build/OrcaSlicer_dep
+          key: ${{ steps.deps.outputs.cache-primary-key }}
+      - name: Restore compiler cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: ccache-v2-ubuntu-24.04-x64-${{ github.run_id }}
+          restore-keys: ccache-v2-ubuntu-24.04-x64-
+      - name: Build nonplanar_slice_tool
+        run: |
+          ccache --max-size=1500M
+          cmake -S . -B build-native -G 'Ninja Multi-Config' -DCMAKE_BUILD_TYPE=Release -DSLIC3R_GUI=OFF -DSLIC3R_CAD=OFF \
+            -DBUILD_TESTS=ON -DDEP_BUILD_DIR="$GITHUB_WORKSPACE/deps/build" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build-native --config Release --target nonplanar_slice_tool --parallel 4
+      - name: Save compiler cache
+        if: always() && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+      - name: Smoke-check the engine
+        run: ldd build-native/tests/fff_print/Release/nonplanar_slice_tool && (build-native/tests/fff_print/Release/nonplanar_slice_tool --help || true) | head -20

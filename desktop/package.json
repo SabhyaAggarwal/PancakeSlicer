@@ -1,7 +1,7 @@
 {
   "name": "pancakeslicer-desktop",
   "productName": "PancakeSlicer",
-  "version": "0.3.0-rc.1",
+  "version": "0.3.0",
   "private": true,
   "description": "PancakeSlicer desktop with a local slicing service and native engine",
   "author": "Zimeng Xiong",
@@ -11,7 +11,9 @@
     "compile": "tsc -p .",
     "start": "tsc -p . && electron .",
     "dist:mac": "tsc -p . && electron-builder --mac --arm64 --publish never",
-    "dist:win": "tsc -p . && electron-builder --win --x64 --publish never"
+    "dist:win": "tsc -p . && electron-builder --win --x64 --publish never",
+    "dist:mac-x64": "tsc -p . && electron-builder --mac --x64 --publish never",
+    "dist:linux": "tsc -p . && electron-builder --linux --x64 --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
@@ -85,6 +87,28 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Graphics",
+      "icon": "build/icon.png",
+      "executableName": "pancakeslicer",
+      "synopsis": "Non-planar 3D printing slicer",
+      "maintainer": "Zimeng Xiong <zxzimeng@gmail.com>"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0 | libgtk-3-0t64",
+        "libnss3",
+        "libxss1",
+        "libasound2 | libasound2t64",
+        "libgbm1"
+      ]
     }
-  }
+  },
+  "homepage": "https://github.com/ZimengXiong/PancakeSlicer"
 }
