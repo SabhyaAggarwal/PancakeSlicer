@@ -70,3 +70,8 @@ GEMINI.md
 **/AGENTS.md
 
 /web/dist-demo/
+
+# release build outputs
+desktop/build/
+desktop/dist/
+desktop/out/
