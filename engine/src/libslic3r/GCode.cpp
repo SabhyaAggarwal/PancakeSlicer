@@ -9287,7 +9287,8 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
         return hi;
     };
     const bool fixed_conformal = rotary == nullptr && patch.native && m_layer != nullptr &&
-                                 m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
+                                 (m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers ||
+                                  m_layer->object()->config().nonplanar_mode.value == NonplanarMode::Slant);
     auto field_travel = [&](const Vec3d &a, const Vec3d &b, const ToolPose &target, bool in_layer, bool upright, std::vector<ToolPose> &poses) -> bool {
         const Vec3d  qa = field.forward(a), qb = field.forward(b);
         const double ends  = std::max(qa.z(), qb.z());
@@ -12352,7 +12353,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     std::string gcode;
 
     const bool conformal_layers = m_layer != nullptr && m_layer->object() != nullptr &&
-                                  m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers &&
+                                  (m_layer->object()->config().nonplanar_mode.value == NonplanarMode::ConformalLayers ||
+                                   m_layer->object()->config().nonplanar_mode.value == NonplanarMode::Slant) &&
                                   std::any_of(m_layer->object()->conformal().patches.begin(), m_layer->object()->conformal().patches.end(),
                                               [](const Nonplanar::ConformalPatch &patch) { return patch.native; });
     const bool curved_wipes = curved_tops_mode(m_config.nonplanar_mode.value) || conformal_layers;

@@ -1422,7 +1422,7 @@ static std::vector<std::string> s_Preset_print_options{
     "nonplanar_wave", "nonplanar_wave_amplitude", "nonplanar_wave_wavelength",
     "nonplanar_wave_pattern", "nonplanar_wave_direction",
     "nonplanar_mode", "nonplanar_region_source", "nonplanar_deform", "multiplanar_max_planes", "multiplanar_overhang_threshold",
-    "nonplanar_slant_angle", "nonplanar_slant_direction",
+    "nonplanar_slant_angle", "nonplanar_slant_direction", "nonplanar_slant_start_height", "nonplanar_slant_morph_layers",
     "ironing_expansion",
 };
 

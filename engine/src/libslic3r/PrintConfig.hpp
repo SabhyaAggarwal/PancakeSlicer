@@ -1292,6 +1292,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
     ((ConfigOptionFloat,               nonplanar_slant_angle))
     ((ConfigOptionFloat,               nonplanar_slant_direction))
+    ((ConfigOptionFloat,               nonplanar_slant_start_height))
+    ((ConfigOptionInt,                 nonplanar_slant_morph_layers))
     ((ConfigOptionBool,                nonplanar_auto_support))
     ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionBool,                nonplanar_steep_skin))

@@ -29,6 +29,7 @@
 #include "GCode/GCodeProcessor.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "Nonplanar/CurvedTopsSurface.hpp"
+#include "Nonplanar/SlantChoice.hpp"
 #include "BeltBrim.hpp"
 #include "BeltTransform.hpp"
 #include "ObjectID.hpp"
@@ -369,7 +370,7 @@ public:
     static const std::unordered_set<std::string>& gcode_only_options();
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
-    const Nonplanar::MultiplanarPlan* multiplanar_plan() const { return m_multiplanar.get(); }
+    const std::optional<Nonplanar::SlantChoice>& slant_choice() const { return m_slant; }
     bool                              auto_support() const { return m_auto_support; }
     bool                              auto_support_applied() const { return m_auto_support_applied; }
     SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }
@@ -614,6 +615,7 @@ private:
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
     std::shared_ptr<const Nonplanar::OrientationField> m_field;
     std::shared_ptr<const Nonplanar::LayerField>       m_native_field;
+    std::optional<Nonplanar::SlantChoice>              m_slant;
     std::string                                        m_native_summary;
 
     bool                    				m_typed_slices = false;

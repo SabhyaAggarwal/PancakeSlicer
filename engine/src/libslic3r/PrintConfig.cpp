@@ -5521,8 +5521,9 @@ void PrintConfigDef::init_fff_params()
                       "method); lowest top error, 10-50 % slower than flat.\n"
                       "Smooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to "
                       "about 1.4x flat time.\n"
-                      "Slant: the whole part in parallel flat layers tilted from the bed, as on a belt printer, on a fixed 3-axis head; "
-                      "smoother faces that slope the same way as the layers, flat tops step.\n"
+                      "Slant: the whole part in layers tilted from the bed, as on a belt printer, on a fixed 3-axis head: a flat first "
+                      "layer, then each layer tilts a little more up to the slant angle; smoother faces that slope the same way as the "
+                      "layers, flat tops step.\n"
                       "Conformal layers (experimental): the top shells follow every top up to 20 degrees at a constant thickness, "
                       "each top one whole layer, sliced on the model itself; flat layers elsewhere, printed in bands the head clears.\n"
                       " Default: Flat layers. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not "
@@ -5672,8 +5673,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_slant_angle", coFloat);
     def->label    = L("Slant angle");
     def->category = L("Quality");
-    def->tooltip  = L("Tilt of Slant's layers from the bed. 0: the steepest the print head clears over this part (about 10° on "
-                      "an A1 mini). A larger angle is lowered to that limit. Default: 0. Unit: degrees.");
+    def->tooltip  = L("Tilt of Slant's layers from the bed. 0: the steepest the print head clears over this part (on an A1 "
+                      "mini about 25° front to back, 7° left to right). A larger angle is lowered to that limit. Default: 0. Unit: degrees.");
     def->sidetext = u8"°";
     def->min      = 0;
     def->max      = 45;
@@ -5690,6 +5691,28 @@ void PrintConfigDef::init_fff_params()
     def->max      = 360;
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(-1));
+
+    def = this->add("nonplanar_slant_start_height", coFloat);
+    def->label    = L("Slant start height");
+    def->category = L("Quality");
+    def->tooltip  = L("Height of the last flat layer before Slant's layers start to tilt. 0: right after the first layer, as low "
+                      "as the print head allows (an upright head stays above everything it prints). Default: 0. Unit: mm.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->max      = 1000;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_slant_morph_layers", coInt);
+    def->label    = L("Slant morph layers");
+    def->category = L("Quality");
+    def->tooltip  = L("Layers over which Slant tilts from flat to the full angle, each a little more than the one below. A wide "
+                      "part or a steep angle takes more, so that no layer is thinner or thicker than the printer's layer height "
+                      "limits. Default: 10.");
+    def->min      = 1;
+    def->max      = 1000;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionInt(10));
     def = this->add("nonplanar_auto_support", coBool);
     def->label    = L("Add support where a part would float");
     def->category = L("Support");

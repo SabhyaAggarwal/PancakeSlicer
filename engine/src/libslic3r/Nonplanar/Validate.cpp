@@ -134,13 +134,10 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             needs_head = enabled = true;
             if (config.nonplanar_kinematics.value != RotaryLayout::None || config.spiral_mode || config.belt_printer)
                 return { L("Slant requires a fixed 3-axis printer without spiral vase or belt printing."), object, "nonplanar_mode" };
-            const ModelObject &model = *object->model_object();
-            if (object->num_printing_regions() > 1 || model.is_mm_painted() ||
-                std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_negative_volume() || v->is_modifier(); }))
-                return { L("Slant prints one part with one set of settings. Remove negative volumes, modifiers, painting and parts "
-                           "with their own settings, or use another slicing method."),
-                         object, "nonplanar_mode" };
-            multiplanar_instances += object->instances().size();
+            if (object->num_printing_regions() != 1 || object->model_object()->is_mm_painted())
+                return { L("Slant requires one material and one set of part settings."), object, "nonplanar_mode" };
+            if (object->config().raft_layers.value > 0)
+                return { L("Slant cannot be printed on a raft."), object, "raft_layers" };
         }
         if (mode == NonplanarMode::NonplanarTop && warnings != nullptr) {
             std::string unknown;

@@ -26,6 +26,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "Model.hpp"
+#include "GCode/ClearanceRepair.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/Wave.hpp"
@@ -36,6 +37,7 @@
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/LayerSchedule.hpp"
 #include "Nonplanar/Multiplanar.hpp"
+#include "Nonplanar/Slant.hpp"
 #include "Nonplanar/MultiplanarConfirm.hpp"
 #include "Nonplanar/NpField.hpp"
 #include "Nonplanar/OneShotField.hpp"
@@ -1518,14 +1520,22 @@ void PrintObject::slice_volumes()
                                                            m_config.line_width.get_abs_value(m_print->config().nozzle_diameter.get_at(0)));
     }
     m_native_summary.clear();
-    m_native_field = !m_multiplanar && (Nonplanar::native_requested() || m_config.nonplanar_mode.value == NonplanarMode::ConformalLayers) ?
-                         Nonplanar::native_field(*this) : nullptr;
+    if (!m_multiplanar && m_config.nonplanar_mode.value == NonplanarMode::ConformalLayers)
+        Nonplanar::conformal_ladder_slice(*this->model_object());
+    m_slant.reset();
+    if (m_config.nonplanar_mode.value == NonplanarMode::Slant && !m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
+        Nonplanar::SlantChoice choice;
+        m_native_field = Nonplanar::slant_field(*this, choice);
+        m_slant        = choice;
+        if (!choice.planar_limit.empty())
+            this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                          (boost::format(_u8L("Slant prints %1% in flat layers: %2%.")) % m_model_object->name % choice.reason).str());
+    } else
+        m_native_field = !m_multiplanar && (Nonplanar::native_requested() || m_config.nonplanar_mode.value == NonplanarMode::ConformalLayers) ?
+                             Nonplanar::native_field(*this) : nullptr;
     m_field        = m_multiplanar || m_native_field ? nullptr : Nonplanar::clip_field_slices(*this);
     if (m_multiplanar && !m_multiplanar->auto_reason.empty())
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);
-    if (m_multiplanar && m_multiplanar->slant && !m_multiplanar->slant->planar_limit.empty())
-        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
-                                      (boost::format(_u8L("Slant prints %1% in flat layers: %2%.")) % m_model_object->name % m_multiplanar->slant->reason).str());
 
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
     const bool grounded = m_multiplanar != nullptr && !Nonplanar::grounded_route_slices(*this).empty();

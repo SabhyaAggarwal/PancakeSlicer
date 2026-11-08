@@ -240,6 +240,8 @@ set(lisbslic3r_sources
     Nonplanar/MultiplanarConfirm.cpp
     Nonplanar/MultiplanarConfirm.hpp
     Nonplanar/Multiplanar.hpp
+    Nonplanar/Slant.cpp
+    Nonplanar/Slant.hpp
     Nonplanar/SlantChoice.hpp
     Nonplanar/StrengthRoads.cpp
     Nonplanar/StrengthRoads.hpp

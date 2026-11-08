@@ -856,7 +856,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     DynamicPrintConfig      config = chunk_print_config(object);
     config.set_deserialize_strict("initial_layer_print_height", object.print()->config().opt_serialize("initial_layer_print_height"));
     config.set_deserialize_strict("ironing_type", "no ironing");
-    const bool conformal = object.config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
+    const bool conformal = object.config().nonplanar_mode.value == NonplanarMode::ConformalLayers ||
+                           object.config().nonplanar_mode.value == NonplanarMode::Slant;
     if (conformal) {
         config.set_deserialize_strict("top_surface_pattern", "rectilinear");
         config.set_deserialize_strict("internal_solid_infill_pattern", "rectilinear");

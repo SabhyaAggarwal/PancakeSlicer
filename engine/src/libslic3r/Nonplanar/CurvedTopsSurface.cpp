@@ -313,7 +313,7 @@ double curved_tops_cone_tolerance(const Print &print)
     bool any = false;
     for (const PrintObject *object : print.objects())
         if (curved_tops_mode(object->config().nonplanar_mode.value) || object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph ||
-            object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers) {
+            object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers || object->config().nonplanar_mode.value == NonplanarMode::Slant) {
             if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops)
                 tolerance = std::min(tolerance, object->config().nonplanar_curved_cone_tolerance.value);
             any = true;

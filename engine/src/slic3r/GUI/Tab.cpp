@@ -2566,6 +2566,8 @@ void TabPrint::build()
         optgroup->append_single_option_line("multiplanar_overhang_threshold");
         optgroup->append_single_option_line("nonplanar_slant_angle");
         optgroup->append_single_option_line("nonplanar_slant_direction");
+        optgroup->append_single_option_line("nonplanar_slant_start_height");
+        optgroup->append_single_option_line("nonplanar_slant_morph_layers");
         optgroup->append_single_option_line("nonplanar_top_shells");
         optgroup->append_single_option_line("nonplanar_bottom_shells");
         optgroup->append_single_option_line("nonplanar_overhangs");

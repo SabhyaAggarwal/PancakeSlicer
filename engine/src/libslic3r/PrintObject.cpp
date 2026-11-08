@@ -586,7 +586,6 @@ void PrintObject::prepare_infill()
     }
 
     this->detect_surfaces_type();
-    Nonplanar::uncover_slant_cut_tops(*this);
     m_print->throw_if_canceled();
 
     BOOST_LOG_TRIVIAL(info) << "Preparing fill surfaces..." << log_memory_info();
@@ -2047,6 +2046,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "multiplanar_overhang_threshold"
             || opt_key == "nonplanar_slant_angle"
             || opt_key == "nonplanar_slant_direction"
+            || opt_key == "nonplanar_slant_start_height"
+            || opt_key == "nonplanar_slant_morph_layers"
             || opt_key == "nonplanar_atom_toolpath"
             || opt_key == "nonplanar_steep_skin"
             || opt_key == "nonplanar_oneshot_routes" || opt_key == "nonplanar_oneshot_fan_step"

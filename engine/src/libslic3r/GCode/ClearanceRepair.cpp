@@ -915,6 +915,7 @@ std::map<size_t, size_t>                    conformal_flat;
 std::map<size_t, std::vector<Vec3d>>        conformal_struck;
 std::map<size_t, int>                       conformal_refusals;
 std::map<size_t, size_t>                    conformal_refused_at;
+std::set<size_t>                            conformal_pending;
 }
 
 size_t conformal_flat_hits(const ModelObject &object)
@@ -922,6 +923,15 @@ size_t conformal_flat_hits(const ModelObject &object)
     const std::lock_guard<std::mutex> lock(conformal_step_mutex);
     const auto it = conformal_flat.find(object.id().id);
     return it == conformal_flat.end() ? 0 : it->second;
+}
+
+void conformal_ladder_slice(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+    const size_t id = object.id().id;
+    if (conformal_pending.erase(id) != 0)
+        return;
+    conformal_steps.erase(id), conformal_flat.erase(id), conformal_struck.erase(id), conformal_refusals.erase(id), conformal_refused_at.erase(id);
 }
 
 std::vector<Vec3d> conformal_struck_points(const ModelObject &object)
@@ -961,6 +971,10 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
                                                   object->model_object()->name, hits));
     };
     const auto replan = [this, &changed](PrintObject *object) {
+        {
+            const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+            conformal_pending.insert(object->model_object()->id().id);
+        }
         m_planned.erase(std::remove_if(m_planned.begin(), m_planned.end(), [object](const Planned &p) { return p.object == object; }),
                         m_planned.end());
         object->invalidate_step(posSlice);

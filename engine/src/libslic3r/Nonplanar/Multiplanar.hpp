@@ -1,7 +1,6 @@
 #pragma once
 #include <math.h>
 #include "HeadEnvelope.hpp"
-#include "SlantChoice.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
@@ -95,14 +94,10 @@ struct MultiplanarPlan
     std::vector<std::string>      notes;
     std::string                   auto_reason;
     bool                          lip = false;
-    std::optional<SlantChoice>    slant;
 };
 
 MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const MultiplanarParams &params,
                                  const std::function<void()> &throw_if_canceled = {});
-
-MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarParams &params, double angle_deg, double direction_deg,
-                           bool support);
 
 std::vector<int> multiplanar_cut_parents(const MultiplanarPlan &plan);
 MultiplanarPlan multiplanar_subset(const MultiplanarPlan &plan, const std::vector<bool> &keep);
@@ -140,8 +135,6 @@ MultiplanarPlan   object_multiplanar_plan(const PrintObject &object, const index
                                           const std::function<void()> &check = {});
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
-
-void uncover_slant_cut_tops(PrintObject &object);
 
 void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, ConformalResult &result);
 
