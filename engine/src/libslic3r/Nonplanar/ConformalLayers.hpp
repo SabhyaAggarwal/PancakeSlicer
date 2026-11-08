@@ -27,6 +27,7 @@ struct ConformalLayersParams
     double pitch        = 0.25;
     double min_area     = 20.;
     double round_sigma  = 8.;
+    std::vector<Vec3d> struck;
 };
 
 struct ConformalTop

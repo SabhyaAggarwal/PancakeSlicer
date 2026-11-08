@@ -83,6 +83,7 @@ bool wide_tops_refused(const ModelObject &object);
 void refuse_wide_tops(const ModelObject &object);
 int conformal_cap_step(const ModelObject &object);
 size_t conformal_flat_hits(const ModelObject &object);
+std::vector<Vec3d> conformal_struck_points(const ModelObject &object);
 struct WideTopsRetry : std::runtime_error
 {
     explicit WideTopsRetry(size_t id) : std::runtime_error("Smoothest tops: retry at 12 degrees"), object_id(id) {}

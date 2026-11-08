@@ -195,6 +195,10 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
             out.mode           = "conformal_layers";
             out.conformal_rung = std::min(conformal_cap_step(*object->model_object()), ConformalSteps);
             out.planar_limit   = conformal_planar_limit(*object, out.planar_reason);
+            if (out.planar_limit.empty())
+                if (const auto field = conformal_layers_field(*object))
+                    for (const ConformalTop &t : field->tops)
+                        (t.fallback.empty() ? out.curved_top : out.planar_top) += t.area_mm2;
         }
         out.layer_source         = conformal.layer_source;
         out.layer_source_refused = conformal.layer_source_refused;

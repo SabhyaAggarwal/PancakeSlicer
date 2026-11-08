@@ -26,26 +26,31 @@ type libraryV4Envelope struct {
 
 const libraryV4File = "library.json"
 
+func starterRecord(i int) map[string]any {
+	s := starterProfiles[i]
+	values := map[string]string{}
+	for k, v := range starterValues {
+		values[k] = v
+	}
+	for k, v := range s.values {
+		values[k] = v
+	}
+	p := map[string]any{"id": "profile:starter-" + s.id, "type": "print", "name": s.name, "revision": 1, "values": values, "scales": defaultScales}
+	speedSeed := map[string]string{"everyday": "standard", "strong": "strength", "fine-detail": "fine", "draft": "draft"}[s.id]
+	p["speedModel"] = newSpeedModel(speedSeed)
+	for _, f := range profileRules.SpeedFeatures {
+		delete(values, f.Key)
+	}
+	if s.auto.PreferredHeight != nil {
+		p["preferredHeight"] = *s.auto.PreferredHeight
+	}
+	return p
+}
+
 func seededLibraryV4(epoch string) map[string]json.RawMessage {
 	profiles := []map[string]any{}
-	for _, s := range starterProfiles {
-		values := map[string]string{}
-		for k, v := range starterValues {
-			values[k] = v
-		}
-		for k, v := range s.values {
-			values[k] = v
-		}
-		p := map[string]any{"id": "profile:starter-" + s.id, "type": "print", "name": s.name, "revision": 1, "values": values, "scales": defaultScales}
-		speedSeed := map[string]string{"everyday": "standard", "strong": "strength", "fine-detail": "fine", "draft": "draft"}[s.id]
-		p["speedModel"] = newSpeedModel(speedSeed)
-		for _, f := range profileRules.SpeedFeatures {
-			delete(values, f.Key)
-		}
-		if s.auto.PreferredHeight != nil {
-			p["preferredHeight"] = *s.auto.PreferredHeight
-		}
-		profiles = append(profiles, p)
+	for i := range starterProfiles {
+		profiles = append(profiles, starterRecord(i))
 	}
 	doc := map[string]json.RawMessage{"schema": json.RawMessage(`4`), "revision": json.RawMessage(`1`), "setups": json.RawMessage(`{}`)}
 	doc["profiles"], _ = json.Marshal(profiles)
@@ -53,6 +58,14 @@ func seededLibraryV4(epoch string) map[string]json.RawMessage {
 		doc["epoch"], _ = json.Marshal(epoch)
 	}
 	return doc
+}
+
+func printCatalog() []map[string]any {
+	out := []map[string]any{}
+	for i, s := range starterProfiles {
+		out = append(out, map[string]any{"id": "profile:starter-" + s.id, "name": s.name, "description": s.description, "layers": s.layers, "record": starterRecord(i)})
+	}
+	return out
 }
 
 type v4Record struct {
@@ -247,6 +260,9 @@ func (l *libraryStore) reset(epoch string) error {
 
 func (s *Server) libraryRoutes(mux *http.ServeMux) {
 	l := s.libraryV4
+	mux.HandleFunc("GET /api/print-catalog", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, printCatalog())
+	})
 	mux.HandleFunc("GET /api/library", func(w http.ResponseWriter, r *http.Request) {
 		l.mu.Lock()
 		e, err := l.read()

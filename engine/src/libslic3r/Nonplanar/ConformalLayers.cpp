@@ -20,6 +20,7 @@
 #include <limits>
 #include <array>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <sstream>
 
@@ -279,6 +280,30 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             }
         }
     };
+    if (!P.struck.empty()) {
+        constexpr double Reach = 4., Grow = 2., GrowMax = 8.;
+        size_t     kept_flat = 0;
+        double     z_max     = 0.;
+        for (const Vec3d &p : P.struck) {
+            std::set<int> rounds;
+            for (const Vec3d &e : P.struck)
+                if (e.z() < p.z() && (e.head<2>() - p.head<2>()).squaredNorm() < sqr(Reach))
+                    rounds.insert(int(e.z()));
+            const double reach = Reach + std::min(Grow * std::max(0., double(rounds.size()) - 2.), GrowMax);
+            const long r = long(std::ceil(reach / g));
+            const long i0 = long(std::floor((p.x() - F->m_origin.x()) / g)), j0 = long(std::floor((p.y() - F->m_origin.y()) / g));
+            for (long i = std::max(0L, i0 - r); i <= std::min(long(nx) - 1, i0 + r); ++i)
+                for (long j = std::max(0L, j0 - r); j <= std::min(long(ny) - 1, j0 + r); ++j)
+                    if (const size_t q = size_t(i) * ny + size_t(j); follow[q] && sqr(double(i - i0)) + sqr(double(j - j0)) <= sqr(double(r)))
+                        follow[q] = 0, ++kept_flat, z_max = std::max(z_max, T[q]);
+        }
+        if (kept_flat > 0) {
+            ConformalTop top;
+            top.area_mm2 = double(kept_flat) * g * g, top.z_max = z_max;
+            top.fallback = "the print head met its curved layers there";
+            F->tops.push_back(top);
+        }
+    }
     std::vector<int>                 comp;
     std::vector<std::vector<size_t>> comps;
     label(comp, comps);
@@ -455,6 +480,26 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         const double rho = std::clamp(std::abs(L[s] - T[s]) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
         col.omega        = std::clamp(1. - dist[k] / rho, 0., 1.);
     }
+    {
+        constexpr double StandClear = 1.;
+        std::vector<char> standing(N, 0);
+        bool any = false;
+        for (size_t k = 0; k < N; ++k)
+            if (!core[k] && T[k] != Unset && nearest[k] != size_t(-1) && T[k] > T[nearest[k]] + StandClear)
+                standing[k] = 1, any = true;
+        if (any) {
+            std::vector<size_t> by;
+            std::vector<double> away;
+            nearest_source(standing, nx, ny, g, by, away);
+            for (size_t k = 0; k < N; ++k) {
+                ConformalLayerField::Column &col = F->m_cols[k];
+                if (col.omega > 0. && by[k] != size_t(-1)) {
+                    const double rho = std::clamp(std::abs(col.L - col.T) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
+                    col.omega        = std::min(col.omega, std::clamp(away[k] / rho, 0., 1.));
+                }
+            }
+        }
+    }
     const auto blur_core = [&](double ConformalLayerField::Column::*field, double sigma) {
         const long r = long(std::ceil(2. * sigma / g));
         std::vector<double> w(size_t(2 * r + 1));
@@ -579,6 +624,7 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
     if (variant.cap15)
         P.max_angle = std::min(P.max_angle, 15.);
     P.round_sigma = variant.round_sigma;
+    P.struck      = conformal_struck_points(*object.model_object());
     if (variant.flat) {
         if (summary)
             *summary = "conformal layers: flat (the export check found the head meeting the curved layers)";

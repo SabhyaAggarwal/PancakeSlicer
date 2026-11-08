@@ -912,6 +912,9 @@ namespace {
 std::mutex                                  conformal_step_mutex;
 std::map<size_t, int>                       conformal_steps;
 std::map<size_t, size_t>                    conformal_flat;
+std::map<size_t, std::vector<Vec3d>>        conformal_struck;
+std::map<size_t, int>                       conformal_refusals;
+std::map<size_t, size_t>                    conformal_refused_at;
 }
 
 size_t conformal_flat_hits(const ModelObject &object)
@@ -919,6 +922,13 @@ size_t conformal_flat_hits(const ModelObject &object)
     const std::lock_guard<std::mutex> lock(conformal_step_mutex);
     const auto it = conformal_flat.find(object.id().id);
     return it == conformal_flat.end() ? 0 : it->second;
+}
+
+std::vector<Vec3d> conformal_struck_points(const ModelObject &object)
+{
+    const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+    const auto it = conformal_struck.find(object.id().id);
+    return it == conformal_struck.end() ? std::vector<Vec3d>() : it->second;
 }
 
 int conformal_cap_step(const ModelObject &object)
@@ -936,39 +946,85 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
         if (object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers && conformal_cap_step(*object->model_object()) < ConformalSteps)
             picked.push_back(object);
     static const bool no_fallback = std::getenv("NP_CONFORMAL_NO_FALLBACK") != nullptr;
-    if (picked.empty() || !result.nonplanar || no_fallback)
+    if (picked.empty() || no_fallback)
         return false;
+    bool changed = false;
+    const auto go_flat = [this](PrintObject *object, size_t hits) {
+        {
+            const std::lock_guard<std::mutex> lock(conformal_step_mutex);
+            conformal_steps[object->model_object()->id().id] = ConformalSteps;
+            conformal_flat[object->model_object()->id().id]  = hits;
+        }
+        object->m_config.nonplanar_mode.value = NonplanarMode::Off;
+        object->m_nonplanar_repair.reset();
+        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Conformal layers met the print head in %2% moves; printed with flat layers."),
+                                                  object->model_object()->name, hits));
+    };
+    const auto replan = [this, &changed](PrintObject *object) {
+        m_planned.erase(std::remove_if(m_planned.begin(), m_planned.end(), [object](const Planned &p) { return p.object == object; }),
+                        m_planned.end());
+        object->invalidate_step(posSlice);
+        changed = true;
+    };
+    for (PrintObject *&object : picked)
+        if (object->conformal().patches.empty() && !conformal_struck_points(*object->model_object()).empty()) {
+            go_flat(object, conformal_flat_hits(*object->model_object()));
+            replan(object);
+            BOOST_LOG_TRIVIAL(warning) << "Conformal layers fallback: " << object->model_object()->name << ", every top struck, printed flat";
+            object = nullptr;
+        }
+    picked.erase(std::remove(picked.begin(), picked.end(), nullptr), picked.end());
+    if (picked.empty() || !result.nonplanar)
+        return changed;
     ClearanceParams params;
     params.head           = resolve_head_envelope(m_print.config());
     params.contact_bar    = true;
     params.cone_tolerance = curved_tops_cone_tolerance(m_print);
     const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
     if (report.hit_moves == 0)
-        return false;
-    bool changed = false;
+        return changed;
+    const Locator locator(m_print);
+    std::map<const PrintObject *, std::vector<Vec2d>> struck;
+    {
+        std::map<const PrintObject *, std::set<std::pair<int, int>>> seen;
+        for (size_t i = 0; i < report.per_move.size() && i < result.moves.size(); ++i)
+            if (report.per_move[i] < 0.f)
+                for (const PrintObject *object : picked)
+                    for (size_t instance = 0; instance < object->instances().size(); ++instance)
+                        if (const Vec2d q = locator.to_object(tip_of(result, i), *object, instance, result.moves[i].extruder_id);
+                            unscaled(object->bounding_box()).contains(q) &&
+                            seen[object].emplace(int(std::floor(q.x() / 0.5)), int(std::floor(q.y() / 0.5))).second)
+                            struck[object].push_back(q);
+    }
+    constexpr int Refusals = 6;
     for (PrintObject *object : picked) {
-        int step;
+        const size_t id = object->model_object()->id().id;
+        int  step;
+        bool refused = false;
         {
             const std::lock_guard<std::mutex> lock(conformal_step_mutex);
-            int &taken = conformal_steps[object->model_object()->id().id];
-            taken = report.hit_moves > 200 ? ConformalSteps : taken + 1;
+            int &taken = conformal_steps[id];
+            int  next  = report.hit_moves <= 200 ? taken + 1 : taken < 2 ? 2 : ConformalSteps;
+            const bool converging = conformal_refusals[id] == 0 || report.hit_moves <= 2 * conformal_refused_at[id] + 5;
+            if (const auto it = struck.find(object);
+                next >= ConformalSteps && it != struck.end() && conformal_refusals[id] < Refusals && converging) {
+                for (const Vec2d &q : it->second)
+                    conformal_struck[id].emplace_back(q.x(), q.y(), double(conformal_refusals[id]));
+                ++conformal_refusals[id];
+                conformal_refused_at[id] = report.hit_moves;
+                next    = std::min(taken, ConformalSteps - 1);
+                refused = true;
+            }
+            taken = next;
             step  = taken;
-            if (step >= ConformalSteps)
-                conformal_flat[object->model_object()->id().id] = report.hit_moves;
+            conformal_flat[id] = report.hit_moves;
         }
-        if (step >= ConformalSteps) {
-            object->m_config.nonplanar_mode.value = NonplanarMode::Off;
-            object->m_nonplanar_repair.reset();
-        }
-        m_planned.erase(std::remove_if(m_planned.begin(), m_planned.end(), [object](const Planned &p) { return p.object == object; }),
-                        m_planned.end());
-        object->invalidate_step(posSlice);
-        changed = true;
         if (step >= ConformalSteps)
-            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Conformal layers met the print head in %2% moves in every variant; printed "
-                                                           "with flat layers."), object->model_object()->name, report.hit_moves));
+            go_flat(object, report.hit_moves);
+        replan(object);
         BOOST_LOG_TRIVIAL(warning) << "Conformal layers fallback: " << object->model_object()->name << ", " << report.hit_moves
-                                   << " contact-bar hits, step " << step << (step >= ConformalSteps ? ", printed flat" : "");
+                                   << " contact-bar hits, step " << step << (refused ? ", struck tops flat" : "")
+                                   << (step >= ConformalSteps ? ", printed flat" : "");
     }
     return changed;
 }
