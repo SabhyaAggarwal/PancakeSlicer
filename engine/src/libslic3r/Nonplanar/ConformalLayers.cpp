@@ -539,8 +539,10 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
 
 ConformalVariant conformal_variant(int step)
 {
-    static const ConformalVariant ladder[] = { { true, true, false, false },  { false, true, false, false }, { true, false, false, false },
-                                               { false, false, false, false }, { false, false, true, false }, { false, false, false, true } };
+    static const ConformalVariant ladder[] = { { 8., true, false, false }, { 2., true, false, false }, { 0., true, false, false },
+                                               { 8., false, false, false }, { 2., false, false, false }, { 0., false, false, false },
+                                               { 0., false, true, false }, { 0., false, false, true } };
+    static_assert(std::size(ladder) == ConformalSteps + 1);
     return ladder[std::clamp(step, 0, int(std::size(ladder)) - 1)];
 }
 
@@ -556,7 +558,7 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
     P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value > 12. + 1e-9 ? oc.nonplanar_curved_max_angle.value : 20., 1., 45.);
     if (variant.cap15)
         P.max_angle = std::min(P.max_angle, 15.);
-    P.round_sigma = variant.rounded ? 2. : 0.;
+    P.round_sigma = variant.round_sigma;
     if (variant.flat) {
         if (summary)
             *summary = "conformal layers: flat (the export check found the head meeting the curved layers)";
@@ -592,7 +594,7 @@ double conformal_band_height(const HeadEnvelope &head, double layer_height)
             lowest = std::min(lowest, b.min.z());
     if (!std::isfinite(lowest))
         return std::numeric_limits<double>::infinity();
-    return std::max(layer_height, lowest - head.margin - layer_height);
+    return std::max(layer_height, lowest - head.margin - layer_height - 0.4);
 }
 
 std::string contour_solid_angles(const LayerField &field, const std::vector<ExPolygons> &domains, const std::vector<double> &levels,
@@ -733,27 +735,57 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
         if (!road.path || n < 2)
             continue;
         const size_t k = std::min(road.layer, layers - 1);
+        if (banded) {
+            const ExtrusionPathConformal &src = *road.path;
+            ExtrusionPathConformal dense(src);
+            dense.polyline.points.clear(), dense.bead_height.clear(), dense.tool_axis.clear(), dense.bead_width.clear();
+            std::vector<Vec3d> tips;
+            const auto push = [&](size_t i, size_t j, double t) {
+                const Point3 &a = src.polyline.points[i], &b = src.polyline.points[j];
+                dense.polyline.points.emplace_back(Point3((a.cast<double>() + t * (b - a).cast<double>()).cast<coord_t>()));
+                tips.push_back(road.tip[i] + t * (road.tip[j] - road.tip[i]));
+                if (!src.bead_height.empty()) dense.bead_height.push_back(float((1. - t) * src.bead_height[i] + t * src.bead_height[j]));
+                if (!src.tool_axis.empty()) dense.tool_axis.push_back(((1.f - float(t)) * src.tool_axis[i] + float(t) * src.tool_axis[j]).normalized());
+                if (!src.bead_width.empty()) dense.bead_width.push_back(float((1. - t) * src.bead_width[i] + t * src.bead_width[j]));
+            };
+            for (size_t i = 0; i < n; ++i) {
+                push(i, i, 0.);
+                if (i + 1 == n)
+                    break;
+                const double za = road.tip[i].z(), zb = road.tip[i + 1].z();
+                long         ba = band_of(za), bb = band_of(zb);
+                for (long b = std::min(ba, bb) + 1; b <= std::max(ba, bb); ++b) {
+                    const double zc = offset + double(b) * band;
+                    const double t  = (zc - za) / (zb - za);
+                    if (t > 1e-6 && t < 1. - 1e-6)
+                        push(i, i + 1, t);
+                }
+            }
+            if (tips.size() > n) {
+                *road.path = std::move(dense);
+                road.tip   = std::move(tips);
+            }
+        }
+        const size_t m = road.tip.size();
         std::vector<std::pair<size_t, size_t>> runs;
-        for (size_t s = 0; s < n;) {
+        const auto seg_band = [&](size_t i) { return band_of(0.5 * (road.tip[i].z() + road.tip[i + 1].z())); };
+        for (size_t s = 0; s + 1 < m;) {
             size_t e = s + 1;
-            while (e < n && band_of(road.tip[e].z()) == band_of(road.tip[s].z()))
+            while (e + 1 < m && seg_band(e) == seg_band(s))
                 ++e;
-            if (!runs.empty() && e - s < 3)
+            if (!runs.empty() && e - s < 2)
                 runs.back().second = e;
             else
                 runs.emplace_back(s, e);
             s = e;
         }
-        if (runs.size() == 1) {
-            groups[{ band_of(road.tip.front().z()), k }].push_back(road.path.release());
+        if (runs.size() <= 1) {
+            groups[{ m >= 2 ? seg_band(0) : band_of(road.tip.front().z()), k }].push_back(road.path.release());
             continue;
         }
         ++cut_roads;
-        for (size_t j = 0; j < runs.size(); ++j) {
-            const size_t i0 = j == 0 ? 0 : runs[j].first - 1, i1 = runs[j].second - 1;
-            if (i1 > i0)
-                groups[{ band_of(road.tip[runs[j].first].z()), k }].push_back(field_sub_path(*road.path, i0, i1));
-        }
+        for (const auto &[s0, e0] : runs)
+            groups[{ seg_band(s0), k }].push_back(field_sub_path(*road.path, s0, e0));
         road.path.reset();
     }
     const auto mean_z = [](const ExtrusionEntity *e) {

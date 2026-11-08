@@ -941,7 +941,9 @@ bool ClearanceRepair::step_down_conformal(const GCodeProcessorResult &result)
         int step;
         {
             const std::lock_guard<std::mutex> lock(conformal_step_mutex);
-            step = ++conformal_steps[object->model_object()->id().id];
+            int &taken = conformal_steps[object->model_object()->id().id];
+            taken = report.hit_moves > 200 ? ConformalSteps : taken + 1;
+            step  = taken;
         }
         object->invalidate_step(posSlice);
         changed = true;
