@@ -9072,7 +9072,13 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
     };
     const double in_layer_travel = (full_orientation(m_config) || patch.free_travel) && m_writer.filament() != nullptr ?
         m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()) : 0.;
+    const double plane_travel = !rotary && patch.layer_normal.z() > EPSILON && m_writer.filament() != nullptr ?
+        m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()) : 0.;
     auto in_layer = [&](const Vec3d &from, const ExtrusionPathConformal *next) {
+        if (next != nullptr && plane_travel > 0.) {
+            const Vec3d to = to_writer(next->polyline.points.front());
+            return (to - from).norm() < plane_travel && std::abs(patch.layer_normal.dot(to - from)) < 1e-3;
+        }
         if (next == nullptr || in_layer_travel <= 0.)
             return false;
         const Vec3d to   = to_writer(next->polyline.points.front());
@@ -9101,7 +9107,15 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
                     gcode += m_writer.travel_to_pose(start, "move in the layer");
             } else if (! entered || (here - start.tip).norm() > EPSILON) {
                 gcode += this->retract();
-                if (axis.z() > 1. - EPSILON) {
+                if (axis.z() > 1. - EPSILON && patch.layer_normal.z() > EPSILON) {
+                    const Vec3d &n     = patch.layer_normal;
+                    const double level = n.dot(start.tip);
+                    auto over = [&](const Vec3d &p) { return (level - n.x() * p.x() - n.y() * p.y()) / n.z() + hop; };
+                    gcode += m_writer.travel_to_z(std::max(here.z(), over(here)), "lift over the layer", true, this->conformal_max_speed_z());
+                    gcode += m_writer.travel_to_xyz(Vec3d(start.tip.x(), start.tip.y(), std::max(start.tip.z(), over(start.tip))), "move over the layer",
+                                                    true, this->conformal_max_speed_z());
+                    gcode += m_writer.travel_to_z(start.tip.z(), "lower onto the layer", true, this->conformal_max_speed_z());
+                } else if (axis.z() > 1. - EPSILON) {
                     const double travel_z = m_material_columns ?
                         safe_travel_z(*m_material_columns, this->nonplanar_head(), here.head<2>(), start.tip.head<2>(), hop) :
                         std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;

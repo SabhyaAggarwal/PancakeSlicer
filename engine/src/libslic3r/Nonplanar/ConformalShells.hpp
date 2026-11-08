@@ -100,6 +100,7 @@ struct ConformalPatch
     int        band = -1;
     bool       from_support = false;
     bool       free_travel = false;
+    Vec3d      layer_normal { Vec3d::Zero() };
     bool       native = false;
     std::shared_ptr<const AutoPatchSettings> automatic;
     std::shared_ptr<const FieldChart> field;

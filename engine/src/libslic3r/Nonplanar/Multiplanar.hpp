@@ -141,6 +141,8 @@ MultiplanarPlan   object_multiplanar_plan(const PrintObject &object, const index
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
 
+void uncover_slant_cut_tops(PrintObject &object);
+
 void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, ConformalResult &result);
 
 int  route_clear_mode();

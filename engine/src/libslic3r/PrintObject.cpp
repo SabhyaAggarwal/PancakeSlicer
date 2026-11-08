@@ -586,6 +586,7 @@ void PrintObject::prepare_infill()
     }
 
     this->detect_surfaces_type();
+    Nonplanar::uncover_slant_cut_tops(*this);
     m_print->throw_if_canceled();
 
     BOOST_LOG_TRIVIAL(info) << "Preparing fill surfaces..." << log_memory_info();

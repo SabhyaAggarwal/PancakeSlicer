@@ -1020,6 +1020,10 @@ constexpr double SlantMinTilt        = 2. * M_PI / 180.;
 constexpr double SlantTransitionStep = 4. * M_PI / 180.;
 constexpr int    SlantTransitionLayers = 4;
 constexpr int    SlantDirections       = 8;
+constexpr double SlantMinShare         = 0.5;
+constexpr int    SlantMaxFan           = 3;
+
+int slant_fan(double alpha) { return std::clamp(int(std::ceil(alpha / SlantTransitionStep - 1e-9)), 1, SlantMaxFan); }
 
 Frame chunk_score_frame(const MultiplanarChunk &c) { return Frame{ c.build_dir, c.parent < 0 ? 0. : c.base, c.parent < 0 }; }
 
@@ -1107,6 +1111,7 @@ MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarPa
     const double    h          = params.layer_height;
     const double    sin_thresh = std::sin(0.5 * M_PI - params.overhang_threshold);
     const double    floor_z    = params.first_layer_height + h;
+    const double    volume     = its_volume(mesh);
 
     MultiplanarChunk root;
     root.piece = mesh;
@@ -1156,7 +1161,7 @@ MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarPa
         o.alpha     = angle_deg > 0. ? std::min(Geometry::deg2rad(angle_deg), o.budget) : o.budget;
         if (o.alpha < SlantMinTilt)
             continue;
-        o.fan    = std::max(1, int(std::ceil(o.alpha / SlantTransitionStep - 1e-9)));
+        o.fan    = slant_fan(o.alpha);
         o.chunks = slant_chunks(mesh, o.alpha, o.psi, o.fan, floor_z, h);
         std::tie(o.all, o.tilted) = score_chunks(mesh, f, o.chunks, sin_thresh, h);
         o.score = o.all.overhang + StepWeight * o.all.steps;
@@ -1185,12 +1190,12 @@ MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarPa
         }
         bool placed = false;
         for (double alpha = o.alpha; alpha >= SlantMinTilt - 1e-9 && !placed; alpha *= 0.8)
-            for (int fan = std::max(1, int(std::ceil(alpha / SlantTransitionStep - 1e-9))); fan >= 1 && !placed; --fan) {
+            for (int fan = slant_fan(alpha); fan >= 1 && !placed; --fan) {
                 std::vector<MultiplanarChunk> chunks = slant_chunks(mesh, alpha, o.psi, fan, floor_z, h);
                 placed = std::all_of(chunks.begin(), chunks.end(), [&](MultiplanarChunk &c) {
                     c.piece = clip_mesh(mesh, c.clips);
                     return printable_layers(chunk_piece(mesh, c, h), c, h) >= MinChunkLayers;
-                });
+                }) && its_volume(chunks.back().piece) >= SlantMinShare * volume;
                 if (placed) {
                     o.alpha  = alpha;
                     o.fan    = fan;
@@ -1199,7 +1204,7 @@ MultiplanarPlan plan_slant(const indexed_triangle_set &mesh, const MultiplanarPa
             }
         if (!placed) {
             if (refused.empty())
-                refused = "the part is too short for a layer tilted 2 deg to clear its base";
+                refused = "the part is too short for layers tilted 2 deg to hold half of it";
             continue;
         }
         std::tie(o.all, o.tilted) = score_chunks(mesh, f, o.chunks, sin_thresh, h);
@@ -1915,6 +1920,39 @@ void clear_route_support(PrintObject &object, const MultiplanarPlan &plan)
                             << " layers within the tilted head's band of " << clips.size() << " planes";
 }
 
+void uncover_slant_cut_tops(PrintObject &object)
+{
+    const MultiplanarPlan *plan = object.multiplanar_plan();
+    LayerPtrs             &layers = object.layers();
+    if (plan == nullptr || !plan->slant || plan->chunks.size() < 2 || layers.empty())
+        return;
+    std::vector<float> zs;
+    for (size_t i = 0; i < layers.size(); ++i)
+        zs.push_back(float(i + 1 < layers.size() ? layers[i + 1]->slice_z : layers[i]->slice_z + layers[i]->height));
+    const std::vector<ExPolygons> above = slice_mesh_ex(slicing_frame_mesh(object), zs);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            if (i >= above.size() || above[i].empty())
+                continue;
+            for (LayerRegion *region : layers[i]->regions())
+                for (SurfaceCollection *collection : { &region->slices, &region->fill_surfaces }) {
+                    Surfaces out;
+                    for (Surface &surface : collection->surfaces) {
+                        if (surface.surface_type != stTop) {
+                            out.push_back(std::move(surface));
+                            continue;
+                        }
+                        for (ExPolygon &e : intersection_ex(ExPolygons { surface.expolygon }, above[i]))
+                            out.emplace_back(Surface(surface, std::move(e))).surface_type = stInternal;
+                        for (ExPolygon &e : diff_ex(ExPolygons { surface.expolygon }, above[i]))
+                            out.emplace_back(Surface(surface, std::move(e)));
+                    }
+                    collection->surfaces = std::move(out);
+                }
+        }
+    });
+}
+
 void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, ConformalResult &result)
 {
     if (plan.chunks.size() < 2 || object.layers().empty())
@@ -1949,6 +1987,20 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         for (stl_vertex &v : piece.vertices)
             v = (chunk.frame * v.cast<double>() - Vec3d(0., 0., chunk.base)).cast<float>();
 
+        DynamicPrintConfig chunk_config = config;
+        if (plan.slant && ci + 1 < plan.chunks.size()) {
+            double top_area = 0.;
+            for (const stl_triangle_vertex_indices &t : mesh.indices) {
+                const Vec3d a = mesh.vertices[t[0]].cast<double>(), b = mesh.vertices[t[1]].cast<double>(), c = mesh.vertices[t[2]].cast<double>();
+                const Vec3d n = (b - a).cross(c - a);
+                if (n.norm() > 0. && n.normalized().dot(chunk.build_dir) > std::cos(Geometry::deg2rad(70.)) && inside(chunk.clips, (a + b + c) / 3.))
+                    top_area += 0.5 * n.norm();
+            }
+            if (top_area < 1.) {
+                chunk_config.set_deserialize_strict("top_shell_layers", "0");
+                chunk_config.set_deserialize_strict("top_shell_thickness", "0");
+            }
+        }
         Model model;
         ModelObject *model_object = model.add_object();
         model_object->name        = object.model_object()->name + " chunk " + std::to_string(ci);
@@ -1956,7 +2008,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         model_object->add_instance();
         Print print;
         try {
-            print.apply(model, config);
+            print.apply(model, chunk_config);
             print.set_status_silent();
             print.process();
         } catch (const std::exception &ex) {
@@ -1979,6 +2031,8 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         patch.id           = int(result.patches.size());
         patch.kind         = PatchKind::Chunk;
         patch.free_travel  = route;
+        if (!rotary)
+            patch.layer_normal = chunk.build_dir;
         patch.shell_height = h;
         patch.host_layer   = host_id;
         patch.region_id    = 0;
