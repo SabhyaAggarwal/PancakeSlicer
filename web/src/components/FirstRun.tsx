@@ -15,12 +15,14 @@ const assets = import.meta.glob<string>('../samples/*.{drc,webp}', { eager: true
 type Variant = { slope?: number; file: string; model: string; preview: string };
 type SampleDef = { label: string; variants: Variant[] };
 const asset = (name: string) => assets[`../samples/${name}`];
-const relief = (label: string, name: string): SampleDef => ({ label, variants: ([[10, ''], [15, '-15'], [30, '-30']] as const).map(([slope, suffix]) =>
-  ({ slope, file: `${name}${suffix}.drc`, model: asset(`${name}${suffix}.drc`), preview: asset(`${name}${suffix}.webp`) })) });
+const relief = (label: string, name: string, slopes = [10, 15]): SampleDef => ({ label, variants: slopes.map((slope) => {
+  const file = `${name}${slope === 10 ? '' : `-${slope}`}`;
+  return { slope, file: `${file}.drc`, model: asset(`${file}.drc`), preview: asset(`${file}.webp`) };
+}) });
 const SAMPLES: SampleDef[] = [
   { label: 'Benchy', variants: [{ file: '3DBenchy.drc', model: asset('benchy.drc'), preview: asset('benchy.webp') }] },
   relief('Waves', 'serpentine_waves'), relief('Pyramids', 'four_pyramids'), relief('Ridges', 'chevron_ridges'),
-  relief('Ripples', 'ripple_cylinder'), relief('Cylinder', 'wavy_cylinder'),
+  relief('Ripples', 'ripple_cylinder'), relief('Cylinder', 'wavy_cylinder', [10, 15, 20]),
 ];
 const models = new Map<string, Promise<string>>();
 function modelBlobUrl(url: string) {
