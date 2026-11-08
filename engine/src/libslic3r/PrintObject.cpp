@@ -1482,7 +1482,7 @@ void PrintObject::estimate_curled_extrusions()
 void PrintObject::plan_wide_tops()
 {
     m_wide_plan.reset();
-    if (m_config.nonplanar_mode.value != NonplanarMode::NonplanarTop || m_config.nonplanar_curved_max_angle.value <= 12. + EPSILON)
+    if (!curved_tops_mode(m_config.nonplanar_mode.value) || m_config.nonplanar_curved_max_angle.value <= 12. + EPSILON)
         return;
     const bool simplified = this->is_step_done(posSimplifyPath) && this->is_step_done(posSimplifyInfill);
     if (! simplified && (this->is_step_done(posSimplifyPath) || this->is_step_done(posSimplifyInfill)))
@@ -1519,7 +1519,7 @@ void PrintObject::plan_wide_tops()
         m_wide_plan = std::move(plan);
     } catch (const CurvedTopsAccessError &) {
         Nonplanar::refuse_wide_tops(*this->model_object());
-        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no collision-free deposition order at the wide slope cap; Smoothest tops at 12 degrees";
+        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no collision-free deposition order at the wide slope cap; curved tops at 12 degrees";
         throw Nonplanar::WideTopsRetry(this->id().id);
     }
 }

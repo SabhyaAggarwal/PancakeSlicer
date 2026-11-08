@@ -864,7 +864,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     std::set<std::pair<int, int>> dropped;
     size_t dropped_edges = 0;
     bool rebuild_units = true;
-    const bool wide_cap = object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop &&
+    const bool wide_cap = curved_tops_mode(object.config().nonplanar_mode.value) &&
         object.config().nonplanar_curved_max_angle.value > 12. + EPSILON;
     const bool duct_ignored = Nonplanar::clearance_override_active(object.print()->config());
     constexpr size_t MaxWork = 2000000000;

@@ -1248,7 +1248,7 @@ static void check_nonplanar_projected(const ExtrusionEntity *entity, const Layer
         for (const Point3 &p : path.polyline.points)
             if (p.z() <= 0) {
                 const PrintObject &object = *layer.object();
-                if (object.config().nonplanar_mode.value == NonplanarMode::NonplanarTop && object.config().nonplanar_curved_max_angle.value > 12.) {
+                if (curved_tops_mode(object.config().nonplanar_mode.value) && object.config().nonplanar_curved_max_angle.value > 12.) {
                     Nonplanar::refuse_wide_tops(*object.model_object());
                     throw Nonplanar::WideTopsRetry(object.id().id);
                 }
@@ -1442,9 +1442,7 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
                 const double xy = std::hypot(unscale<double>(p1.x() - p0.x()),
                                              unscale<double>(p1.y() - p0.y()));
                 const double dz = std::abs(unscale<double>(p1.z() - p0.z()));
-                const PrintObjectConfig &oc = this->layer()->object()->config();
-                const double steepest = oc.nonplanar_mode.value == NonplanarMode::NonplanarTop ?
-                    std::max(12., oc.nonplanar_curved_max_angle.value) : 12.;
+                const double steepest = std::max(12., this->layer()->object()->config().nonplanar_curved_max_angle.value);
                 if (dz > std::tan(steepest * M_PI / 180.0) * xy + 0.03)
                     throw_nonplanar_too_steep(unscale<double>(std::max(p0.z(), p1.z())), this->layer()->id(),
                         this->layer()->object()->config().nonplanar_curved_max_angle.value, this->layer()->object()->id().id,

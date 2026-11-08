@@ -85,7 +85,7 @@ static StringObjectException validate_native_support(const Print &print, std::ve
 
 double curved_max_angle_limit(NonplanarMode mode)
 {
-    return mode == NonplanarMode::NonplanarTop ? 30. : mode == NonplanarMode::CurvedTops ? 12. : 0.;
+    return curved_tops_mode(mode) ? 30. : 0.;
 }
 
 StringObjectException validate(const Print &print, std::vector<StringObjectException> *warnings)

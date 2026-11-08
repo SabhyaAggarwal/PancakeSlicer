@@ -5576,7 +5576,7 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_curved_max_angle", coFloat);
     def->label = L("Maximum curved top angle");
     def->category = L("Quality");
-    def->tooltip = L("Largest slope of a mesh surface selected for curved top shells on a fixed print head. Supported range: 0–12 degrees for Fast curved tops, 0–30 for Smoothest tops. Default: 12. Unit: degrees.");
+    def->tooltip = L("Largest slope of a mesh surface selected for curved top shells on a fixed print head. The print head's reach still limits what curves; Ignore cooling duct lifts it. Supported range: 0–30 degrees. Default: 12. Unit: degrees.");
     def->sidetext = L("°");
     def->min = 0;
     def->max = 30;
@@ -5844,7 +5844,7 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_ignore_duct", coBool);
     def->label    = L("Ignore cooling duct (experimental)");
     def->category = L("Quality");
-    def->tooltip  = L("Checks only the nozzle and heater block. Allows steeper curved tops; the fan duct may brush the part. "
+    def->tooltip  = L("Checks only the nozzle and heater block in every curved slicing method. Allows steeper curved surfaces; the fan duct may brush the part. "
                       "Needs a print head whose heater block is marked. Default: off.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));

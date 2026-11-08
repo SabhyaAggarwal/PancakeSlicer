@@ -10850,8 +10850,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             return;
         const double dxy = std::hypot(to.x() - from.x(), to.y() - from.y());
         const double dz = std::abs(to.z() - from.z());
-        const double max_gradient = m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop ?
-            std::tan(std::max(12., m_config.nonplanar_curved_max_angle.value) * M_PI / 180.) : 0.21255656167002213;
+        const double max_gradient = m_config.nonplanar_curved_max_angle.value > 12. ?
+            std::tan(m_config.nonplanar_curved_max_angle.value * M_PI / 180.) : 0.21255656167002213;
         constexpr double quantized_z_delta = 0.001;
         constexpr double quantized_xy_delta = 0.0014142135623730951;
         const double source_xy_upper_bound = dxy + quantized_xy_delta;

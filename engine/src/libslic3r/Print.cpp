@@ -3452,7 +3452,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 if (o->id().id == retry.object_id) object = o;
             if (object == nullptr)
                 throw;
-            BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no road or deposition order at the wide slope cap; Smoothest tops at 12 degrees";
+            BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no road or deposition order at the wide slope cap; curved tops at 12 degrees";
             object->m_config.nonplanar_curved_max_angle.value = 12.;
             object->invalidate_step(posSlice);
         } catch (const Nonplanar::PlanarTopsRetry &retry) {
@@ -3505,12 +3505,12 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
             for (PrintObject *object : m_objects) {
                 if (object->id().id != error.objectId() || !curved_tops_mode(object->config().nonplanar_mode.value))
                     continue;
-                if (object->config().nonplanar_mode.value == NonplanarMode::NonplanarTop && object->config().nonplanar_curved_max_angle.value > 12. &&
+                if (object->config().nonplanar_curved_max_angle.value > 12. &&
                     !Nonplanar::wide_tops_refused(*object->model_object())) {
                     Nonplanar::refuse_wide_tops(*object->model_object());
                     object->m_config.nonplanar_curved_max_angle.value = 12.;
                     object->invalidate_step(posSlice);
-                    BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no collision-free deposition order at the wide slope cap; Smoothest tops at 12 degrees";
+                    BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no collision-free deposition order at the wide slope cap; curved tops at 12 degrees";
                     changed = true;
                     continue;
                 }

@@ -424,7 +424,7 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
     }
     if (rejections.head_unknown)
         out.planar_limit = "head_unknown";
-    else if (mode == NonplanarMode::NonplanarTop && Nonplanar::wide_tops_refused(*object.model_object()) &&
+    else if (Nonplanar::wide_tops_refused(*object.model_object()) &&
         upward_area_between(object, out.max_angle_deg, limit) >= seen) {
         out.planar_limit        = "access";
         out.reachable_slope_deg = out.max_angle_deg;
