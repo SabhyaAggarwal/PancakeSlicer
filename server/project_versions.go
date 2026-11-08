@@ -58,6 +58,72 @@ type versionIndex struct {
 	Versions []projectVersion `json:"versions"`
 }
 
+func (st *workspaceStore) versionOfJob(job string) (string, uint64) {
+	if st == nil {
+		return "", 0
+	}
+	dirs, _ := os.ReadDir(filepath.Join(st.root, "versions"))
+	for _, d := range dirs {
+		x, err := st.readVersions(d.Name())
+		if err != nil {
+			continue
+		}
+		for _, v := range x.Versions {
+			if v.Slice != nil && v.Slice.Job == job {
+				return d.Name(), v.ID
+			}
+		}
+	}
+	return "", 0
+}
+
+type versionSend struct {
+	ID      string `json:"id"`
+	Printer string `json:"printer"`
+	Name    string `json:"name"`
+	At      int64  `json:"at"`
+	State   string `json:"state"`
+	End     int64  `json:"end,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+func sendOfTransfer(t Transfer) versionSend {
+	v := versionSend{ID: t.ID, Printer: t.Printer, Name: t.Name, At: t.Started.UnixMilli(), Error: t.Error}
+	switch {
+	case t.active():
+		v.State = "sending"
+	case t.State != TransferDone:
+		v.State = "failed"
+	case t.JobEnd == "finished":
+		v.State = "printed"
+	case t.JobEnd != "":
+		v.State = "print_failed"
+	case t.Outcome == "printing":
+		v.State = "printing"
+	default:
+		v.State = "received"
+	}
+	if t.JobEndAt != nil {
+		v.End = t.JobEndAt.UnixMilli()
+	}
+	return v
+}
+
+func (h *sendHistory) sendsByVersion(project string) map[uint64][]versionSend {
+	out := map[uint64][]versionSend{}
+	if h == nil {
+		return out
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, t := range h.list {
+		if t.Project == project && t.Version != 0 {
+			out[t.Version] = append(out[t.Version], sendOfTransfer(t))
+		}
+	}
+	return out
+}
+
 func (st *workspaceStore) versionDir(id string) string { return filepath.Join(st.root, "versions", id) }
 func (st *workspaceStore) readVersions(id string) (*versionIndex, error) {
 	raw, err := os.ReadFile(filepath.Join(st.versionDir(id), "index.json"))
@@ -293,9 +359,14 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 				workspaceFailure(w, 503, "versions_unavailable", "Version history could not be read.", "retry_storage", 0)
 				return
 			}
-			out := make([]projectVersion, 0, len(x.Versions))
+			type listed struct {
+				projectVersion
+				Sends []versionSend `json:"sends,omitempty"`
+			}
+			sends := s.sends.history.sendsByVersion(id)
+			out := make([]listed, 0, len(x.Versions))
 			for i := len(x.Versions) - 1; i >= 0; i-- {
-				out = append(out, x.Versions[i])
+				out = append(out, listed{x.Versions[i], sends[x.Versions[i].ID]})
 			}
 			writeJSON(w, 200, map[string]any{"revision": d.Projects[id].Revision, "versions": out})
 		})

@@ -9,9 +9,11 @@ import { project, flushProject, leaveProjectVersion, restoreProjectVersion, view
 import { versionShown, versionView, versionWanted } from '../flow/version-view';
 import { changeParts, describeChange, profileName, type VersionChange } from './version-change';
 
+export type SendState = 'sending' | 'received' | 'printing' | 'printed' | 'failed' | 'print_failed';
+export interface VersionSend { id: string; printer: string; name: string; at: number; state: SendState; end?: number; error?: string }
 export interface ProjectVersion {
   id: number; revision: number; at: number; until: number; record: string; name: string; objects: number;
-  change: VersionChange[]; sealed?: boolean;
+  change: VersionChange[]; sealed?: boolean; sends?: VersionSend[];
   slice?: { at: number; timeS?: number; grams?: number; layers?: number; mm?: number; supportG?: number };
 }
 export interface HistoryState {
@@ -158,6 +160,13 @@ export function startVersionTracking() {
       void attachSlice(finished).catch((e: unknown) => console.warn('Version slice not kept', e));
     }
   });
+  let sends = '';
+  subscribeStore(() => {
+    const now = getState().printerConnections.transfers.map((t) => `${t.id}:${t.state}:${t.outcome ?? ''}:${t.job_end ?? ''}`).join();
+    if (now === sends) return;
+    sends = now;
+    if (state.open && state.projectId) void refreshHistory(state.projectId);
+  });
   let revision = project.get().context.revision, id = project.get().context.id;
   project.subscribe((snap) => {
     if (snap.value === 'opening' || snap.context.id !== id) versionView.send({ type: 'LATEST' });
@@ -212,3 +221,16 @@ export function versionSetup(id: string, v: ProjectVersion): Promise<VersionSetu
   return found;
 }
 export const prefetchSetup = (id: string, v: ProjectVersion) => void versionSetup(id, v).catch(() => {});
+
+const reached: Record<SendState, number> = { failed: 0, sending: 1, received: 2, print_failed: 3, printing: 4, printed: 5 };
+export const furthestSend = (sends: readonly VersionSend[]) => sends.reduce((a, b) => (reached[b.state] >= reached[a.state] ? b : a));
+export const sendsLive = (versions: readonly ProjectVersion[] | null, now = Date.now()) =>
+  !!versions?.some((v) => v.sends?.some((s) => s.state === 'sending' || s.state === 'printing' || s.state === 'received' && now - s.at < 600_000));
+const sendWhat: Record<SendState, (name: string) => string> = {
+  sending: (n) => `Sending to ${n}`, received: (n) => `Sent to ${n}`, printing: (n) => `Printing on ${n}`,
+  printed: (n) => `Printed on ${n}`, failed: (n) => `Send to ${n} failed`, print_failed: (n) => `Print on ${n} failed`,
+};
+export function sendLabel(s: VersionSend) {
+  const t = s.state === 'printed' || s.state === 'print_failed' ? s.end ?? s.at : s.at;
+  return `${sendWhat[s.state](s.name.replace(/^Bambu Lab /, ''))} ${dayOf(t) === 'Today' ? '' : `${shortDate(t)} `}at ${clock(t)}`;
+}

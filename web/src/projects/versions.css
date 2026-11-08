@@ -21,6 +21,15 @@
 :where(.orca-parity) .vh-time { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .vh-print { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink-3); white-space: nowrap; }
 :where(.orca-parity) .vh-sliced { flex: none; color: var(--accent-text); }
+:where(.orca-parity) .vh-send { display: inline-flex; align-items: center; gap: 2px; color: var(--ink-3); white-space: nowrap; }
+:where(.orca-parity) .vh-send-count { font: var(--t-small); }
+:where(.orca-parity) .vh-send-mark { flex: none; }
+:where(.orca-parity) .vh-send-bad { color: var(--danger); opacity: .85; }
+:where(.orca-parity) .vh-card-sends { margin: var(--s-4); }
+:where(.orca-parity) .vh-card-sends h3 { margin: 0 0 var(--s-2); font: var(--t-small); font-weight: 400; color: var(--ink-3); }
+:where(.orca-parity) .vh-card-sends ul { margin: 0; padding: 0; list-style: none; display: grid; row-gap: var(--s-2); }
+:where(.orca-parity) .vh-card-sends li { display: flex; align-items: center; gap: var(--s-3); min-width: 0; color: var(--ink); }
+:where(.orca-parity) .vh-card-sends li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .vh-info { position: absolute; top: 50%; right: var(--s-1); translate: 0 -50%; width: 28px; height: 28px; min-height: 0; padding: 0; display: grid; place-items: center; color: var(--ink-3); opacity: .45; }
 :where(.orca-parity) :is(.vh-item:hover, .vh-item:has([aria-selected=true])) .vh-info, :where(.orca-parity) .vh-info:is(:focus-visible, [data-state=open]) { opacity: 1; }
 :where(.orca-parity) .vh-info[data-state=open] { color: var(--ink); }

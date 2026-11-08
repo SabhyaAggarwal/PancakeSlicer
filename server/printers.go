@@ -293,6 +293,9 @@ type Transfer struct {
 	Reason   string        `json:"reason,omitempty"`
 	Recovery string        `json:"recovery,omitempty"`
 	JobEnd   string        `json:"job_end,omitempty"`
+	JobEndAt *time.Time    `json:"job_end_at,omitempty"`
+	Project  string        `json:"project,omitempty"`
+	Version  uint64        `json:"version,omitempty"`
 	Started  time.Time     `json:"started"`
 	Finished *time.Time    `json:"finished,omitempty"`
 
@@ -568,6 +571,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancelCause(base)
 	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: TransferUploading,
 		Total: st.Size(), Started: time.Now().UTC(), sent: &atomic.Int64{}, cancel: cancel}
+	t.Project, t.Version = s.workspace.versionOfJob(j.ID)
 	j.send = t
 	view := *t
 	j.mu.Unlock()

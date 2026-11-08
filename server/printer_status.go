@@ -309,7 +309,7 @@ type sendHistory struct {
 	list []Transfer
 }
 
-const sendHistoryCap = 200
+const sendHistoryCap = 5000
 
 func loadSendHistory(dir string) *sendHistory {
 	h := &sendHistory{path: filepath.Join(dir, "sends.json")}
@@ -447,6 +447,8 @@ func (h *sendHistory) recordEnd(st PrinterStatus) bool {
 			return false
 		}
 		t.JobEnd = end
+		at := st.At
+		t.JobEndAt = &at
 		h.writeLocked()
 		return true
 	}

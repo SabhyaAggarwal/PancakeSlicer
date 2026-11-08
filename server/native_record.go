@@ -153,7 +153,7 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			record["nonplanar_report"], _ = json.Marshal(report)
 		}
 	}
-	if failures := uncurvedObjects(record["nonplanar_report"]); len(failures) > 0 {
+	if failures := uncurvedObjects(record["nonplanar_report"], record["inputs"]); len(failures) > 0 {
 		record["could_not_curve"], _ = json.Marshal(failures)
 	} else {
 		delete(record, "could_not_curve")
@@ -168,12 +168,34 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 var methodLabels = map[string]string{"nonplanar_top": "Smoothest tops", "curved_tops": "Fast curved tops", "smooth_morph": "Smooth morph",
 	"slant": "Slant", "conformal_layers": "Conformal layers", "multiplanar": "Multiplanar", "field": "Rotary curved layers"}
 
-func uncurvedObjects(raw json.RawMessage) []map[string]any {
+func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {
 	var report struct {
-		Objects []map[string]any `json:"objects"`
+		Objects   []map[string]any `json:"objects"`
+		Clearance struct {
+			Override bool `json:"clearance_override"`
+		} `json:"clearance"`
 	}
 	if json.Unmarshal(raw, &report) != nil {
 		return nil
+	}
+	var inputs struct {
+		Head struct {
+			File string `json:"file"`
+		} `json:"head"`
+	}
+	json.Unmarshal(rawInputs, &inputs)
+	marked := false
+	if inputs.Head.File != "" {
+		var head struct {
+			Boxes []struct {
+				Block bool `json:"block"`
+			} `json:"boxes"`
+		}
+		if b, err := os.ReadFile(inputs.Head.File); err == nil && json.Unmarshal(b, &head) == nil {
+			for _, box := range head.Boxes {
+				marked = marked || box.Block
+			}
+		}
 	}
 	var out []map[string]any
 	for i, o := range report.Objects {
@@ -188,7 +210,8 @@ func uncurvedObjects(raw json.RawMessage) []map[string]any {
 		if method == "" {
 			method = mode
 		}
-		entry := map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": limit, "reason": reason}
+		entry := map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": limit, "reason": reason,
+			"try_ignore_duct": marked && !report.Clearance.Override && (limit == "access" || strings.Contains(reason, "print head"))}
 		for _, k := range []string{"curved_max_angle_deg", "reachable_slope_deg"} {
 			if v, ok := o[k].(float64); ok {
 				entry[k] = v

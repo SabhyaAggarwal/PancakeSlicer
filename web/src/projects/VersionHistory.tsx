@@ -3,7 +3,8 @@ import { Glyph } from '../components/Glyph';
 import { createPortal } from 'react-dom';
 import { Popover } from 'radix-ui';
 import { Sep } from '../separator';
-import { backToLatest, changeLine, clockTime, closeHistory, dayOf, historyState, prefetchSetup, restoreVersion, rowTimes, shortDate, useHistory, versionSetup,
+import { SendMark } from './SendMark';
+import { backToLatest, changeLine, clockTime, closeHistory, dayOf, furthestSend, historyState, prefetchSetup, refreshHistory, restoreVersion, rowTimes, sendLabel, sendsLive, shortDate, useHistory, versionSetup,
   versionTime, viewVersion, type ProjectVersion, type VersionSetup } from './versions';
 
 const short = (s: number) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
@@ -60,6 +61,8 @@ function Card({ projectId, v, current, close }: { projectId: string; v: ProjectV
     </div>)}</dl>}
     {stats.length ? <dl className="vh-card-stats">{stats.map(([value, caption]) => <div key={caption}><dd>{value}</dd><dt>{caption}</dt></div>)}</dl>
       : <p className="vh-card-none">Not sliced</p>}
+    {v.sends?.length ? <section className="vh-card-sends" aria-label="Sent to printers"><h3>Sent to printers</h3><ul>{[...v.sends].reverse().map((x) =>
+      <li key={x.id} title={x.error}><SendMark state={x.state} /><span>{sendLabel(x)}</span></li>)}</ul></section> : null}
     {!current && <footer className="vh-card-foot"><button type="button" className="btn vh-card-restore" onClick={() => void restore()}>Restore this version</button></footer>}
   </>;
 }
@@ -80,6 +83,8 @@ function Panel() {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   useEffect(() => { if (h.projectId) list?.slice(0, 3).forEach((v) => prefetchSetup(h.projectId!, v)); }, [list, h.projectId]);
+  const following = sendsLive(list, now);
+  useEffect(() => { if (!following || !h.projectId) return; const id = h.projectId, t = setInterval(() => void refreshHistory(id), 5000); return () => clearInterval(t); }, [following, h.projectId]);
   const times = useMemo(() => rowTimes(list?.slice(1) ?? [], now), [list, now]);
   const days = useMemo(() => {
     const out: [string, ProjectVersion[]][] = [];
@@ -122,13 +127,15 @@ function Panel() {
           {days.map(([day, rows]) => <li key={day} role="presentation"><span className="vh-day-name" aria-hidden="true">{day}</span><ul role="group" aria-label={day}>
             {rows.map((v) => {
               const current = v.id === list[0].id, open = card?.id === v.id, time = current ? 'Current' : times.get(v.id);
+              const send = v.sends?.length ? furthestSend(v.sends) : null;
               const print = v.slice?.timeS != null ? short(v.slice.timeS) : v.slice ? 'Sliced' : '';
               return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><li role="presentation" className="vh-item"
                 onPointerEnter={() => h.projectId && prefetchSetup(h.projectId, v)} onFocus={() => h.projectId && prefetchSetup(h.projectId, v)}>
                 <button type="button" role="option" className="vh-row" data-version={v.id} data-current={current || undefined} aria-selected={v.id === shown}
-                  aria-busy={h.loading === v.id || undefined} aria-label={print ? `${time}. Sliced, ${print}` : time} onClick={() => void viewVersion(v)}>
+                  aria-busy={h.loading === v.id || undefined} aria-label={[time, print && `Sliced, ${print}`, send && sendLabel(send)].filter(Boolean).join('. ')} onClick={() => void viewVersion(v)}>
                   <time className="vh-time" id={`vh-t-${v.id}`} dateTime={new Date(v.until).toISOString()}>{time}</time>
                   {print && <span className="vh-print">{sliced}{print}</span>}
+                  {send && <span className="vh-send" data-state={send.state} title={`${sendLabel(send)}${v.sends!.length > 1 ? `\n${v.sends!.length} sends` : ''}`}><SendMark state={send.state} />{v.sends!.length > 1 && <span className="vh-send-count">{v.sends!.length}</span>}</span>}
                 </button>
                 <Popover.Trigger asChild>
                   <button type="button" className="btn-ghost vh-info" aria-labelledby={`vh-about vh-t-${v.id}`} onPointerEnter={hover(v.id)} onPointerLeave={hover(null)}
