@@ -443,6 +443,8 @@
     "mmu_segmented_region_max_width",
     "multiplanar_max_planes",
     "multiplanar_overhang_threshold",
+    "nonplanar_slant_angle",
+    "nonplanar_slant_direction",
     "native_support_base_pad",
     "native_support_base_pad_min_ratio",
     "nonplanar_adaptive_bands",

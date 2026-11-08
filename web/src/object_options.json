@@ -139,6 +139,8 @@
 "nonplanar_deform",
 "multiplanar_max_planes",
 "multiplanar_overhang_threshold",
+"nonplanar_slant_angle",
+"nonplanar_slant_direction",
 "nonplanar_support_interface",
 "nonplanar_atom_toolpath"
 ],

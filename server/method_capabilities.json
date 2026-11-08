@@ -63,6 +63,14 @@
       "readiness": "curved_tops"
     },
     {
+      "id": "slant",
+      "target": "mode",
+      "hardware": "known",
+      "settingPrefixes": [
+        "nonplanar_slant_"
+      ]
+    },
+    {
       "id": "oneshot",
       "target": "mode",
       "hardware": "known",

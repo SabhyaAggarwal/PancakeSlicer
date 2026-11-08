@@ -656,6 +656,8 @@
             "nonplanar_deform",
             "multiplanar_max_planes",
             "multiplanar_overhang_threshold",
+            "nonplanar_slant_angle",
+            "nonplanar_slant_direction",
             "nonplanar_top_shells",
             "nonplanar_bottom_shells",
             "nonplanar_overhangs",
@@ -701,6 +703,24 @@
               "source": "src/slic3r/GUI/Tab.cpp:2883",
               "modes": {
                 "multiplanar_overhang_threshold": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "nonplanar_slant_angle"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:2900",
+              "modes": {
+                "nonplanar_slant_angle": "Expert"
+              }
+            },
+            {
+              "options": [
+                "nonplanar_slant_direction"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:2901",
+              "modes": {
+                "nonplanar_slant_direction": "Expert"
               }
             },
             {
@@ -4825,6 +4845,8 @@
     "nonplanar_deform": "Advanced",
     "multiplanar_max_planes": "Advanced",
     "multiplanar_overhang_threshold": "Advanced",
+    "nonplanar_slant_angle": "Expert",
+    "nonplanar_slant_direction": "Expert",
     "nonplanar_top_shells": "Simple",
     "nonplanar_bottom_shells": "Advanced",
     "nonplanar_overhangs": "Advanced",
@@ -7413,6 +7435,16 @@
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:1160",
       "condition_source": "nonplanar_mode == NonplanarMode::Multiplanar || nonplanar_mode == NonplanarMode::Field ||\n                            nonplanar_mode == NonplanarMode::OneShot"
+    },
+    {
+      "options": [
+        "nonplanar_slant_angle",
+        "nonplanar_slant_direction"
+      ],
+      "condition": "nonplanar_mode == \"slant\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/ConfigManipulation.cpp:1179",
+      "condition_source": "nonplanar_mode == NonplanarMode::Slant"
     },
     {
       "options": [
