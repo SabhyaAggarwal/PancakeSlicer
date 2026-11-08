@@ -64,6 +64,10 @@ function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config
   if (kind === 'area') return { why: 'Top too small for a curved top' };
   if (kind === 'base') return { why: 'Top too close to the bed for curved layers' };
   if (kind === 'budget') return { why: 'A curved top would cost too much time or quality' };
+  if (kind === 'hits') {
+    const moves = r.flatWhy?.match(/(\d+) moves/)?.[1];
+    return { why: moves ? `The print head would hit the part in ${Number(moves).toLocaleString('en-US')} moves` : 'The print head would hit the part' };
+  }
   return null;
 }
 
@@ -95,8 +99,9 @@ function partialLine(r: ObjectResult, process: Config, o: PlateObject | undefine
   return `${n} ${n === 1 ? 'top' : 'tops'} flat${reasons.length ? `: ${reasons.join('; ')}` : ''}`;
 }
 
-export interface CurveFailure { objectId?: number; label: string; method: string; why: string; tryDuct: boolean }
-type RecordFailure = { name?: string; method?: string; reason?: string; try_ignore_duct?: boolean };
+export interface CurveFailure { objectId?: number; label: string; method: string; why: string; tryDuct: boolean;
+  mode: string; kind: string }
+type RecordFailure = { name?: string; method?: string; mode?: string; planar_limit?: string; reason?: string; try_ignore_duct?: boolean };
 const NO_FAILURES: CurveFailure[] = [];
 let keptFailures: { results: PlateResult[]; record: unknown; out: CurveFailure[] } | null = null;
 export function curveFailures(s: State): CurveFailure[] {
@@ -111,8 +116,9 @@ export function curveFailures(s: State): CurveFailure[] {
     const r = results.find((p) => bare(p.name) === bare(name)) ?? (results.length === 1 && listed.length === 1 ? results[0] : undefined);
     const o = r?.objectId != null ? s.objects.find((p) => p.id === r.objectId) : s.objects.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(name));
     const engine = String(f.reason ?? '').replace(/;\s*printed with flat layers\.?$/, '');
-    const why = r?.flat ?? (engine || 'no top surface could be curved with the current limits');
-    return { objectId: o?.id, label: bare(o?.name ?? r?.label ?? name), method: String(f.method ?? r?.style ?? 'this method'), why: why[0].toLowerCase() + why.slice(1), tryDuct: f.try_ignore_duct === true };
+    const why = r?.flat ?? (r?.limit ? flatReason(r, o, effectiveConfig(s, 'process'))?.why : undefined) ?? (engine || 'no top surface could be curved with the current limits');
+    return { objectId: o?.id, label: bare(o?.name ?? r?.label ?? name), method: String(f.method ?? r?.style ?? 'this method'), why: why[0].toLowerCase() + why.slice(1), tryDuct: f.try_ignore_duct === true,
+      mode: String(f.mode ?? ''), kind: String(f.planar_limit ?? '') };
   });
   keptFailures = { results, record, out };
   return out;
@@ -139,6 +145,12 @@ export function sliceFlatInstead(failures: CurveFailure[]) {
   } finally {
     end();
   }
+  sliceAgain();
+}
+
+export function trySmoothest(f: CurveFailure) {
+  if (f.objectId != null) applyStyle('smooth', f.objectId);
+  else applyStyle('smooth');
   sliceAgain();
 }
 

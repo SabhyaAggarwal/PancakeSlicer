@@ -9,8 +9,10 @@ const KNOWN: [RegExp, ((m: RegExpMatchArray) => string) | null][] = [
   [/^Conformal layers met the print head in (\d+) moves; sliced again with unrounded shells/i, () => 'Sliced again with sharper shells to keep the head clear'],
   [/^Conformal layers met the print head in (\d+) moves.*printed with flat layers/i, (m) => `Printed flat: the print head would hit the part in ${n(m[1])} moves`],
   [/^no nonflat top surface meets/i, null],
+  [/^Smooth morph would hit the part in \d+ moves; printed flat/i, null],
   [/^Experimental: cooling duct not checked\. (\d+) moves would graze/i, (m) => `Cooling duct not checked: ${n(m[1])} moves may brush the fan duct`],
   [/^mesh repaired on load/i, () => 'Model repaired on load'],
+  [/^Clearance repair passes: \d+\..*Curved moves that still hit printed material: (\d+)/i, (m) => `${n(m[1])} curved moves still brush the printed part`],
   [/^Looks like .* has floating regions/i, () => 'Floating regions: rotate it or turn on supports'],
 ];
 

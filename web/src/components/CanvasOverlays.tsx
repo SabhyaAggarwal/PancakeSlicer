@@ -12,7 +12,8 @@ import { createPortal } from 'react-dom';
 import { addInstance, arrangeAll, cancelSlice, fileUse, openFileDialog, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview } from '../patch-preview';
-import { applyRecommended, curveFailures, pendingRecommendations, plateResults, sliceFlatInstead, tryIgnoreDuct } from '../recommend';
+import { applyRecommended, curveFailures, pendingRecommendations, plateResults, sliceFlatInstead, tryIgnoreDuct, trySmoothest, type CurveFailure } from '../recommend';
+import { useSmoothestShare } from '../smoothest-alternative';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
 import { IconButton } from './Icon';
 import { Caret } from './Caret';
@@ -183,6 +184,12 @@ export function AccessNotification() {
   );
 }
 
+function TrySmoothest({ f }: { f: CurveFailure }) {
+  const share = useSmoothestShare(f.objectId);
+  if (share == null) return null;
+  return <button type="button" className="notif-link" onClick={() => trySmoothest(f)}>Try Smoothest tops (plan: {Math.max(1, Math.round(share * 100))}% curved)</button>;
+}
+
 function WarningLines({ warnings, open, onToggle }: { warnings: PlainWarning[]; open: boolean; onToggle(): void }) {
   const lines = [...new Set(warnings.flatMap((w) => (w.text ? [w.text] : [])))];
   const unknown = warnings.filter((w) => w.text === undefined);
@@ -329,6 +336,7 @@ export function SliceNotification() {
           <div className="notif-body notif-actions">
             <button type="button" className="notif-link" onClick={() => sliceFlatInstead([f])}>Slice flat instead</button>
             {f.tryDuct && <button type="button" className="notif-link" onClick={() => tryIgnoreDuct([f])}>Try Ignore cooling duct</button>}
+            {f.mode === 'smooth_morph' && f.kind === 'hits' && <TrySmoothest f={f} />}
           </div>
         </div>
       )] : [])}

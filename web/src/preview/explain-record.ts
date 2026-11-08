@@ -110,7 +110,7 @@ export const grams = (g: number | null) => (g == null ? '–' : `${g.toFixed(2)}
 export const supportText = (g: number | null) => (g == null ? '–' : g > 0 ? `${g.toFixed(2)} g` : '0 g');
 export const area = (mm2: number) => `${mm2 < 10 ? mm2.toFixed(1) : Math.round(mm2)} mm²`;
 
-export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget' | 'base';
+export type PlanarLimit = 'access' | 'angle' | 'height' | 'area' | 'budget' | 'base' | 'hits';
 export interface ObjectResult { name: string; style: string; fact: string; curved: boolean; ledge: boolean; pct: number | null;
   topMm2: number;
   printedFlat: boolean;
@@ -169,7 +169,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     const accessBy = why?.access_by === 'nozzle' || why?.access_by === 'head' ? (why.access_by as 'nozzle' | 'head') : undefined;
     const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);
-    const printedFlat = !!why && !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason);
+    const printedFlat = !!why && (why.planar_limit === 'hits' || !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason));
     const candidates = num(why?.curved_surfaces_candidates), kept = num(why?.curved_surfaces_kept);
     const tops = candidates != null && kept != null ? { candidates, kept, dropped: (why?.curved_top_budget?.patches ?? []).filter((p) => p.dropped).map((p) => String(p.reason ?? '')) } : undefined;
     out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, printedFlat,
