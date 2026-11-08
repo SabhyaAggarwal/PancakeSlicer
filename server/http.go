@@ -128,7 +128,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
 	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
-	mux.Handle("/", spaFiles(c.StaticDir))
+	mux.Handle("/", spaFiles(c.StaticDir, c.Resources))
 	if c.Metrics {
 		mux.HandleFunc("GET /metrics", s.metrics)
 	}
@@ -1073,7 +1073,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func spaFiles(dir string) http.Handler {
+func spaFiles(dir, resources string) http.Handler {
 	cache := &staticCache{files: map[string]staticEntry{}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -1098,6 +1098,12 @@ func spaFiles(dir string) http.Handler {
 		if err == nil && st.IsDir() {
 			file = filepath.Join(file, "index.html")
 			st, err = os.Stat(file)
+		}
+		if err != nil && resources != "" && strings.HasPrefix(clean, "/profiles/") {
+			if ext := strings.ToLower(path.Ext(clean)); ext == ".png" || ext == ".stl" {
+				file = filepath.Join(resources, relative)
+				st, err = os.Stat(file)
+			}
 		}
 		if err != nil {
 			if strings.HasPrefix(clean, "/images/") || strings.HasPrefix(clean, "/profiles/") || filepath.Ext(clean) != "" {
