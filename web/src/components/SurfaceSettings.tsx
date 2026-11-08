@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { probeEngine, useEngineHealth } from '../flow/engine-health';
 import type { Config } from '../api/types';
-import { OPTIONS } from '../options';
+import { OPTIONS, modeVisible, type OptionMode } from '../options';
 import { CURVED_DEFAULTS, WAVE_DEFAULTS } from '../intent/surface';
 import { methodSelectionProblem, type MethodAvailability, type MethodAvailabilityResult } from '../profiles/capabilities';
 import { getState, setState } from '../state/store';
@@ -34,8 +34,9 @@ export function methodModes(current: string, availability: MethodAvailabilityRes
   return {enum_values: values, enum_labels: values.map(v => MODE_LABELS[v] ?? def?.enum_labels?.[def.enum_values?.indexOf(v) ?? -1] ?? v),
     tooltip: offered.map(v => MODE_HELP[v]).join('\n')};
 }
-export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Object.keys(CURVED_DEFAULTS),...Object.keys(WAVE_DEFAULTS)]);
-export function SurfaceSettings({config,system,availability,editor,dirty,readOnly = false}: {config:Config;system:Config;availability:MethodAvailabilityResult;editor?:ProfileFields;dirty:Config;readOnly?:boolean}) {
+const DUCT_KEYS = ['nonplanar_ignore_duct', 'nonplanar_clearance_margin'];
+export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Object.keys(CURVED_DEFAULTS),...DUCT_KEYS,...Object.keys(WAVE_DEFAULTS)]);
+export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,readOnly = false}: {config:Config;system:Config;availability:MethodAvailabilityResult;editor?:ProfileFields;dirty:Config;uiMode:OptionMode;readOnly?:boolean}) {
   const engine = useEngineHealth();
   useEffect(() => {void probeEngine();}, []);
   const mode = canonicalMode(String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off'));
@@ -62,10 +63,13 @@ export function SurfaceSettings({config,system,availability,editor,dirty,readOnl
         : <button type="button" className="link" onClick={() => openMethodChoice(key)}>Choose another method</button>}
     </div>;
   };
+  const curved = (mode === 'curved_tops' || mode === 'nonplanar_top') && availability.allowedModes.includes(mode);
+  const ductOn = ['1', 'true'].includes(String(config.nonplanar_ignore_duct ?? OPTIONS.nonplanar_ignore_duct?.default ?? '0'));
+  const duct = modeVisible('develop', uiMode) ? [field('nonplanar_ignore_duct'), ductOn && field('nonplanar_clearance_margin')] : [];
   return <section className="optgroup surface-settings" data-engine-state={engine.value}>
     {field('nonplanar_mode','Slicing method','mode')}
     {notice('mode')}
-    {(mode === 'curved_tops' || mode === 'nonplanar_top') && availability.allowedModes.includes(mode) && Object.keys(CURVED_DEFAULTS).map(key=>field(key))}
+    {curved && Object.keys(CURVED_DEFAULTS).flatMap(key => key === 'nonplanar_curved_max_angle' ? [field(key), ...duct] : [field(key)])}
     {(availability.allowedWaveModes.length > 0 || wave !== 'off') && field('nonplanar_wave','Wave pattern','wave')}
     {notice('wave')}
     {wave !== 'off' && availability.allowedWaveModes.includes(wave) && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}

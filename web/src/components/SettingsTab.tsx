@@ -186,7 +186,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
         {type === 'machine' && !editor && <><NozzleField /><PlateTypeField /></>}
         {type === 'machine' && !overrides && <ExtruderRows config={editor ? config : undefined} onSet={editor?.set} disabled={readOnly} />}
         {type === 'filament' && !fields && <FilamentNozzleAssignment slot={slot} disabled={readOnly} />}
-        {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
+        {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} uiMode={uiMode} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && !overrides && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {groups.map((g) => {

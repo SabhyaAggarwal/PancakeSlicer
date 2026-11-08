@@ -132,6 +132,9 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			json.Unmarshal(record["text_summary"], &summary)
 			if summary["clearance_checked"] == "1" {
 				clearance := map[string]any{"checked": true}
+				if previous, ok := report["clearance"].(map[string]any); ok && previous["clearance_override"] == true {
+					clearance["clearance_override"], clearance["duct_graze_moves"] = true, previous["duct_graze_moves"]
+				}
 				for target, key := range map[string]string{"hits": "clearance_hit_moves", "body_hits": "clearance_body_hit_moves", "machine_hits": "clearance_machine_hit_moves", "cone_graze_moves": "clearance_cone_graze_moves"} {
 					if n, err := strconv.ParseUint(summary[key], 10, 64); err == nil {
 						clearance[target] = n
