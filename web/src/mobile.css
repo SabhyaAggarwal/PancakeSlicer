@@ -14,6 +14,7 @@
   :where(.orca-parity) .app-menu-button > .app-menu-caret { display: inline-flex; }
   :where(.orca-parity) .compact-topbar .tabbar { height: 48px; gap: 4px; }
   :where(.orca-parity) .compact-topbar .tabbar-actions { gap: 4px; }
+  :where(.orca-parity) .compact-topbar .tabbar-actions > :is(.slant, .export-actions) + :is(.slant, .export-actions) { margin-left: -2px; }
   :where(.orca-parity) .compact-topbar :is(.view-switch > .view-tab, .tabbar-actions > button) { --slant-inset: 4px; min-height: 44px; }
   :where(.orca-parity) .compact-topbar .view-switch > .view-tab { min-width: 44px; padding: 0 var(--s-3); }
   :where(.orca-parity) .compact-topbar .title-zone { padding: 0 var(--s-2); }

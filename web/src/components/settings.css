@@ -155,11 +155,11 @@
 :where(.orca-parity) .detail-menu { color: var(--ink-3); }
 
 :where(.orca-parity) .settings-tab, :where(.orca-parity) .settings-pages { min-width: 0; min-height: 0; display: flex; flex-direction: column; flex: 1; gap: 0; }
-:where(.orca-parity) .page-bar { --tab-h: 28px; --tab-run: calc(var(--tab-h) * tan(var(--slant-angle))); display: flex; flex: none; flex-wrap: nowrap; row-gap: var(--s-2); margin: 0; padding: var(--s-3) calc(var(--space-section) + var(--tab-run) / 2) 0; min-width: 0; overflow: visible; border: 0; background: none; box-shadow: inset 0 -1px var(--slant-border); }
-:where(.orca-parity) .page-tab { flex: none; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); box-sizing: border-box; height: var(--tab-h); min-height: var(--tab-h); margin: 0 calc(-0.5 * var(--tab-run)); padding: 0 calc(var(--s-3) + var(--tab-run)); border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-3); font: 600 13px/18px var(--font-ui); white-space: nowrap; text-align: center; }
+:where(.orca-parity) .page-bar { --tab-h: 28px; --tab-run: calc(var(--tab-h) * tan(var(--slant-angle))); --tab-seam: 1px; display: flex; flex: none; flex-wrap: nowrap; row-gap: var(--s-2); margin: 0; padding: var(--s-3) calc(var(--space-section) + var(--tab-run) - var(--tab-seam)) 0; min-width: 0; overflow: visible; border: 0; background: none; box-shadow: inset 0 -1px var(--slant-border); }
+:where(.orca-parity) .page-tab { flex: none; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); box-sizing: border-box; height: var(--tab-h); min-height: var(--tab-h); margin: 0 calc(var(--tab-seam) - var(--tab-run)); padding: 0 calc(var(--s-3) + var(--tab-run)); border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-3); font: 600 13px/18px var(--font-ui); white-space: nowrap; text-align: center; }
 :where(.orca-parity) .page-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :where(.orca-parity) .page-bar[data-fit=wrap] { flex-wrap: wrap; row-gap: 0; }
-:where(.orca-parity) .page-bar[data-fit] .page-tab { padding: 0 calc(5px + var(--tab-run)); }
+:where(.orca-parity) .page-bar[data-fit] .page-tab { padding: 0 calc(8px + var(--tab-run)); }
 :where(.orca-parity) .tab-break { flex: 0 0 100%; height: 0; margin-top: -1px; }
 :where(.orca-parity) .page-bar[data-fit=wrap] .page-tab[data-row-fill] { flex: 1 1 0; min-width: max-content; }
 :where(.orca-parity) .page-bar[data-fit=wrap] .page-tab:is([data-state=active], [aria-selected=true]) { z-index: 3; }
@@ -167,7 +167,7 @@
 :where(.orca-parity) .page-bar[data-measure] { width: max-content; max-width: none; flex-wrap: nowrap; }
 :where(.orca-parity) .page-tab.modified:not(.active) { color: var(--changed); }
 :where(.orca-parity) .page-tab:disabled { color: var(--label); cursor: default; }
-@media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .page-bar { --tab-h: 44px; } :where(.orca-parity) .page-tab { --slant-inset: 8px; padding: 0 calc(var(--s-3) + var(--tab-run)); } }
+@media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .page-bar { --tab-h: 44px; } :where(.orca-parity) .page-tab { --slant-inset: 8px; padding: 0 calc(var(--s-3) + 2px + var(--tab-run)); } }
 :where(.orca-parity) .page-body { flex: 1; min-width: 0; min-height: 0; margin: 0; padding: 0 0 8px; border: 0; background: var(--sunken); overflow: auto; }
 
 :where(.orca-parity) .profile-library-notice { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 13px; overflow-wrap: break-word; }
