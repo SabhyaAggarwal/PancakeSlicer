@@ -9,6 +9,7 @@ import { openSlantPlane, slantTarget } from '../plater/slant';
 import { toolArtifactManifest } from '../api/client';
 import type { ProfileFields } from './SettingsTab';
 import { Field } from './Field';
+import { GroupHead, isGroupOpen, useSettingsGroups } from './SettingsGroup';
 import { canonicalMode } from '../nonplanar-mode';
 import './process-settings.css';
 
@@ -35,8 +36,16 @@ export function methodModes(current: string, availability: MethodAvailabilityRes
   return {enum_values: values, enum_labels: values.map(v => MODE_LABELS[v] ?? def?.enum_labels?.[def.enum_values?.indexOf(v) ?? -1] ?? v),
     tooltip: offered.map(v => MODE_HELP[v]).join('\n')};
 }
-const DUCT_KEYS = ['nonplanar_ignore_duct', 'nonplanar_clearance_margin'];
-export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Object.keys(CURVED_DEFAULTS),...DUCT_KEYS,...Object.keys(WAVE_DEFAULTS)]);
+const HEAD_CLEARANCE = ['nonplanar_ignore_duct', 'nonplanar_collision_tolerance', 'nonplanar_duct_graze_limit', 'nonplanar_curved_max_angle'];
+const CLEARANCE_GROUP = 'process/Quality/Head clearance';
+const TOP_FLOW = 'nonplanar_top_finish_flow', TOP_DIRECTION = 'nonplanar_top_direction';
+const CURVED_TUNING = [TOP_FLOW, TOP_DIRECTION, 'nonplanar_curved_shell_flow', 'nonplanar_curved_shell_speed', 'nonplanar_curved_min_area'];
+const METHOD_KEYS: Record<string, string[]> = {
+  curved_tops: CURVED_TUNING, nonplanar_top: CURVED_TUNING, smooth_morph: [TOP_FLOW, TOP_DIRECTION, 'nonplanar_morph_layers'],
+  slant: [TOP_FLOW, TOP_DIRECTION],
+  conformal_layers: [TOP_FLOW, TOP_DIRECTION, 'nonplanar_curved_min_area', 'nonplanar_conformal_rounding', 'nonplanar_conformal_fallback_angle'],
+};
+export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Object.keys(CURVED_DEFAULTS),...HEAD_CLEARANCE,...Object.keys(WAVE_DEFAULTS),...Object.values(METHOD_KEYS).flat()]);
 export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,readOnly = false}: {config:Config;system:Config;availability:MethodAvailabilityResult;editor?:ProfileFields;dirty:Config;uiMode:OptionMode;readOnly?:boolean}) {
   const engine = useEngineHealth();
   useEffect(() => {void probeEngine();}, []);
@@ -55,6 +64,15 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
     return <Field key={key} type="process" optKey={key} label={label} value={key === 'nonplanar_mode' ? mode : config[key]} systemValue={system[key]} dirty={key in dirty} onSet={editor?.set} onReset={editor?.reset} disabled={readOnly} mode={mode}
       definition={values ? {...modes?.tooltip && {tooltip:modes.tooltip},enum_values:values,enum_labels:labels,enum_disabled:values.filter((_,i) => blocked![i]),enum_notes:blocked!.map((m, i) => m && values[i] !== current ? shortReason(m) : undefined)} : undefined}/>;
   };
+  const direction = () => {
+    const def = OPTIONS[TOP_DIRECTION]; if (!def) return [];
+    const value = Number(config[TOP_DIRECTION] ?? def.default ?? -2), custom = value >= 0 ? String(config[TOP_DIRECTION]) : '45';
+    const choice = <Field key={TOP_DIRECTION} type="process" optKey={TOP_DIRECTION} value={value <= -2 ? '-2' : value < 0 ? '-1' : custom} systemValue={system[TOP_DIRECTION]}
+      dirty={TOP_DIRECTION in dirty} onSet={editor?.set} onReset={editor?.reset} disabled={readOnly} mode={mode}
+      definition={{enum_values: ['-2', '-1', custom], enum_labels: ['Auto', 'Follow level lines', 'Custom angle']}}/>;
+    return value >= 0 ? [choice, <Field key={`${TOP_DIRECTION}-angle`} type="process" optKey={TOP_DIRECTION} label="Angle" value={config[TOP_DIRECTION]}
+      systemValue={system[TOP_DIRECTION]} dirty={TOP_DIRECTION in dirty} onSet={editor?.set} onReset={editor?.reset} disabled={readOnly} mode={mode}/>] : [choice];
+  };
   const notice = (target:'mode'|'wave') => {
     if (!problem || (target === 'mode' ? mode : wave) !== problem.method) return null;
     const method = availability.methods.find(m => m.target === target && m.id === problem.method);
@@ -65,14 +83,22 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
         : <button type="button" className="link" onClick={() => openMethodChoice(key)}>Choose another method</button>}
     </div>;
   };
+  const curved = (mode === 'curved_tops' || mode === 'nonplanar_top') && availability.allowedModes.includes(mode);
+  useSettingsGroups();
   const method = mode !== 'off' && availability.allowedModes.includes(mode);
   const waved = wave !== 'off' && availability.allowedWaveModes.includes(wave);
-  const curved = method && (mode === 'curved_tops' || mode === 'nonplanar_top');
-  const ductOn = ['1', 'true'].includes(String(config.nonplanar_ignore_duct ?? OPTIONS.nonplanar_ignore_duct?.default ?? '0'));
-  const duct = (method || waved) && modeVisible('develop', uiMode) ? [field('nonplanar_ignore_duct'), ductOn && field('nonplanar_clearance_margin')] : [];
-  return <section className="optgroup surface-settings" data-engine-state={engine.value}>
+  const clearanceKeys = method || waved ? HEAD_CLEARANCE.filter(key => OPTIONS[key] && modeVisible(OPTIONS[key].mode, uiMode)) : [];
+  const clearanceOpen = isGroupOpen(CLEARANCE_GROUP);
+  return <>
+  <section className="optgroup surface-settings" data-engine-state={engine.value}>
     {field('nonplanar_mode','Slicing method','mode')}
     {notice('mode')}
+  </section>
+  {clearanceKeys.length > 0 && <section className="optgroup" data-collapsed={clearanceOpen ? undefined : ''}>
+    <GroupHead id={CLEARANCE_GROUP} title="Head clearance" modified={clearanceKeys.some(key => key in dirty)} open={clearanceOpen}/>
+    {clearanceOpen && clearanceKeys.map(key => field(key))}
+  </section>}
+  <section className="optgroup surface-settings">
     {curved && Object.keys(CURVED_DEFAULTS).map(key => field(key))}
     {mode === 'slant' && availability.allowedModes.includes(mode) && <>
       {field('nonplanar_slant_angle')}
@@ -83,10 +109,10 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
       </div>
       {modeVisible('develop', uiMode) && [field('nonplanar_slant_start_height'), field('nonplanar_slant_morph_layers')]}
     </>}
-    {method && duct}
+    {availability.allowedModes.includes(mode) && (METHOD_KEYS[mode] ?? []).filter(key => OPTIONS[key] && modeVisible(OPTIONS[key].mode, uiMode)).flatMap(key => key === TOP_DIRECTION ? direction() : [field(key)])}
     {(availability.allowedWaveModes.length > 0 || wave !== 'off') && field('nonplanar_wave','Wave pattern','wave')}
     {notice('wave')}
-    {waved && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}
-    {!method && waved && duct}
-  </section>;
+    {wave !== 'off' && availability.allowedWaveModes.includes(wave) && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}
+  </section>
+  </>;
 }

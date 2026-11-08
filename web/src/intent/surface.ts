@@ -13,7 +13,7 @@ export const WAVES_COMING = 'Needs a newer slicing engine';
 export const text = (v: ConfigValue | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(text(v));
 
-export const CURVED_DEFAULTS: Config = { nonplanar_curved_max_angle: '12', nonplanar_curved_max_height: '5', nonplanar_curved_shells: '3', nonplanar_curved_cone_tolerance: '0.05' };
+export const CURVED_DEFAULTS: Config = { nonplanar_curved_max_height: '5', nonplanar_curved_shells: '3' };
 export const WAVE_DEFAULTS: Config = { nonplanar_wave_amplitude: '0.4', nonplanar_wave_wavelength: '30', nonplanar_wave_direction: '45' };
 export const SURFACE_KEYS = ['nonplanar_mode', 'nonplanar_wave', 'nonplanar_deform', 'zaa_enabled'];
 
