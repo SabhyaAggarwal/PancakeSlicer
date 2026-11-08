@@ -163,6 +163,6 @@ const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_pri
 const REMOVED_KEYS = new Set(removed);
 export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);
 
-export const isDeferred = (key: string) => key === 'post_process' || key === 'slicing_pipeline_plugin' || key.includes('_plugin_config');
+export const DESKTOP_ONLY = new Set(['post_process', 'slicing_pipeline_plugin']);
 
 export { toolValue, jobValue } from './config-values';

@@ -13,7 +13,7 @@ const PartManipulation = preloadable(() => import('./PartManipulation'));
 
 let moveCoordinates: 'world' | 'object' = 'world';
 const DEG = Math.PI / 180;
-const AX = ['X', 'Y', 'Z'];
+const AX = ['X', 'Y', 'Z'] as const;
 const rotationOf = (rot: [number, number, number]) => new THREE.Matrix4().makeRotationZ(rot[2] * DEG)
   .multiply(new THREE.Matrix4().makeRotationY(rot[1] * DEG)).multiply(new THREE.Matrix4().makeRotationX(rot[0] * DEG));
 
@@ -50,7 +50,7 @@ export function Row({ label, values, onCommit, names, action }: { label: string;
   return (
     <>
       <span className="xf-key">{label}</span>
-      {[0, 1, 2].map((a) => <Num key={a} label={`${names} ${AX[a]}`} value={values?.[a]} onCommit={(v) => onCommit(a, v)} />)}
+      {[0, 1, 2].map((a) => <Num key={a} axis={AX[a]} label={`${names} ${AX[a]}`} value={values?.[a]} onCommit={(v) => onCommit(a, v)} />)}
       <span className="xf-act">{action}</span>
     </>
   );
@@ -96,10 +96,10 @@ export function TransformPanel() {
         <div className="xf-actions"><button type="button" className="btn" onClick={centreSelection}>Center on bed</button>
           <button type="button" className="btn" disabled={!canDrop()} onClick={dropSelection}>Drop to bed</button>
           <button type="button" className="btn" onClick={() => arrangeAll()}>Arrange</button></div>
-        <div className="xf-grid"><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">{more ? 'Z' : ''}</span><span/>
+        <div className="xf-grid">
           <span className="xf-key">{local ? 'Relative' : 'Position'}</span>
-          {[0, 1].map((a) => <Num key={a} label={`Position ${AX[a]}`} value={at[a]} onCommit={(val) => moveTo(a, val)} />)}
-          {more ? <Num label="Position Z" value={at[2]} onCommit={(val) => moveTo(2, val)} /> : <span/>}<span/></div>
+          {[0, 1].map((a) => <Num key={a} axis={AX[a]} label={`Position ${AX[a]}`} value={at[a]} onCommit={(val) => moveTo(a, val)} />)}
+          {more ? <Num axis="Z" label="Position Z" value={at[2]} onCommit={(val) => moveTo(2, val)} /> : <span/>}<span/></div>
         <div className="xf-foot"><button type="button" className="btn-ghost xf-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>
           {more && <CoordToggle value={coordinates} enabled onChange={(c) => { moveCoordinates = c; setCoordinates(c); }} />}</div>
       </>;
@@ -129,15 +129,13 @@ export function TransformPanel() {
       const setAll = (p: number) => updateObject(o.id, { scale: o.scale.map((sc) => Math.sign(sc || 1) * p / 100) as [number, number, number] }, 'Scale');
       body = <>
         <div className="xf-grid">
-          {perAxis ? <><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/></> : null}
-          <span className="xf-key">Scale %</span>
-          {perAxis ? [0, 1, 2].map((a) => <Num key={a} label={`Scale ${AX[a]}`} value={pct[a]} onCommit={(val) => rescale(a, Math.max(0.1, val) / 100 / Math.abs(o.scale[a]))} />)
+                    <span className="xf-key">Scale %</span>
+          {perAxis ? [0, 1, 2].map((a) => <Num key={a} axis={AX[a]} label={`Scale ${AX[a]}`} value={pct[a]} onCommit={(val) => rescale(a, Math.max(0.1, val) / 100 / Math.abs(o.scale[a]))} />)
             : <><Num label="Scale" value={pct[0]} onCommit={(val) => setAll(Math.max(0.1, val))} />
               <span className="seg xf-steps" role="group" aria-label="Scale steps">{[50, 100, 200].map((p) => <button key={p} type="button" aria-pressed={Math.abs(pct[0] - p) < 1e-6} onClick={() => setAll(p)}>{p}%</button>)}</span></>}
           <span/>
-          {perAxis ? null : <><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/></>}
           <span className="xf-key">Size mm</span>
-          {[0, 1, 2].map((a) => <Num key={a} label={`Size ${AX[a]}`} value={Math.abs(o.scale[a]) * mesh.getComponent(a)}
+          {[0, 1, 2].map((a) => <Num key={a} axis={AX[a]} label={`Size ${AX[a]}`} value={Math.abs(o.scale[a]) * mesh.getComponent(a)}
             onCommit={(val) => rescale(a, Math.max(0.01, val) / Math.max(1e-6, Math.abs(o.scale[a]) * mesh.getComponent(a)))} />)}
           <span className="xf-act">{lock}</span>
         </div>
@@ -154,7 +152,7 @@ export function TransformPanel() {
       onInteractOutside={e => e.preventDefault()} onEscapeKeyDown={e => { e.stopPropagation(); close(); }}>
       <div className="xf-head"><span className="xf-label">{title}</span><button type="button" className="xf-fold" aria-label="Close transform" onClick={close}><Glyph name="close" size={14} /></button></div>
       <div className="xf-selection">{v?.name ?? o.name}</div>
-      {v ? <div className="xf-grid"><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/>{body}</div> : body}
+      {v ? <div className="xf-grid">{body}</div> : body}
     </Popover.Content></Popover.Portal>
   </Popover.Root>;
 }

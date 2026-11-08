@@ -68,15 +68,17 @@
 :where(.orca-parity) .printer-live:hover .printer-live-text { color: var(--ink); }
 :where(.orca-parity) .printer-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-:where(.orca-parity) .printing-chip { position: relative; display: inline-flex; align-items: center; gap: var(--s-2); flex: 0 1 auto; align-self: center; min-width: 0; max-width: 240px; height: 26px; padding: 0 var(--s-3); overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface, transparent); color: var(--ink); font: var(--t-small); cursor: pointer; }
-:where(.orca-parity) .printing-chip:hover { border-color: var(--line-strong); }
-:where(.orca-parity) .printing-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:where(.orca-parity) .printing-chip-percent { flex: none; font-variant-numeric: tabular-nums; }
-:where(.orca-parity) .printing-chip-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
-:where(.orca-parity) .printing-chip-bar > span { display: block; height: 100%; background: var(--success); transition: width .4s ease-out; }
-:where(.orca-parity) .printing-chip[data-paused] .printing-chip-bar > span { background: var(--changed); }
-@media (max-width: 599px) { :where(.orca-parity) .printing-chip, :where(.orca-parity) .printer-live-wide { display: none; } }
+:where(.orca-parity) .print-rings { display: inline-flex; flex: none; align-items: center; gap: var(--s-1); }
+:where(.orca-parity) .print-ring { position: relative; display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: var(--sunken); color: var(--ink); font: var(--t-small); font-size: 10px; line-height: 1; letter-spacing: 0; cursor: pointer; }
+:where(.orca-parity) .print-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+:where(.orca-parity) .print-ring circle { fill: none; stroke-width: 2.5; }
+:where(.orca-parity) .print-ring-track { stroke: var(--line-strong); }
+:where(.orca-parity) .print-ring-done { stroke: var(--success); transition: stroke-dashoffset .4s ease-out; }
+:where(.orca-parity) .print-ring[data-paused] .print-ring-done { stroke: var(--changed); }
+:where(.orca-parity) .print-ring:hover .print-ring-track { stroke: var(--ink-3); }
+:where(.orca-parity) .print-ring-name { position: relative; max-width: 22px; overflow: hidden; white-space: nowrap; }
+:where(.orca-parity) .print-ring-name[data-long] { font-size: 8px; }
+@media (max-width: 599px) { :where(.orca-parity) .print-rings, :where(.orca-parity) .printer-live-wide { display: none; } }
 @media (min-width: 600px) { :where(.orca-parity) .printer-live-narrow { display: none; } }
-@media (min-width: 600px) and (max-width: 899px) { :where(.orca-parity) .printing-chip-name { display: none; } }
 :where(.orca-parity) .tray-filament { color: var(--ink-2); }
 :where(.orca-parity) .tray-dot { margin-right: var(--s-2); vertical-align: -2px; }

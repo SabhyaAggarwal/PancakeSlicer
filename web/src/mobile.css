@@ -22,6 +22,8 @@
   :where(.orca-parity) .compact-topbar .pt-box { flex: 0 1 auto; max-width: 100%; padding-inline: var(--s-2); }
   :where(.orca-parity) .compact-topbar .pt-end { flex: none; }
   :where(.orca-parity) .compact-topbar .pt-pencil { display: none; }
+  :where(.orca-parity) .compact-topbar .pt-box.pt-name { padding-inline: 0; }
+  :where(.orca-parity) .compact-topbar .pt-name > .pt-text { padding-inline: calc(var(--s-2) + 1px); }
   :where(.orca-parity) .compact-topbar .pt-status { padding-inline: var(--s-1); }
   :where(.orca-parity) .canvas-area { isolation: isolate; }
   :where(.orca-parity) .workspace-settings-launch { position: absolute; z-index: 8; top: 8px; left: max(8px,env(safe-area-inset-left)); }

@@ -1,35 +1,79 @@
 import { openUrlImport } from '../url-import';
 import { UrlImportInline } from './UrlImport';
 import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { HoverCard } from 'radix-ui';
 import { openFileDialog, openProjectDialog } from '../actions';
-import { handyUrl, importFetched } from '../plater/handy';
-import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
+import { importFetched } from '../plater/handy';
+import { getState, resolvePreset, subscribeStore, toast, useStore } from '../state/store';
+import benchyModel from '../samples/benchy.drc?url';
+import benchyPreview from '../samples/benchy.webp?url';
+import wavesModel from '../samples/serpentine_waves.drc?url';
+import wavesPreview from '../samples/serpentine_waves.webp?url';
+import pyramidsModel from '../samples/four_pyramids.drc?url';
+import pyramidsPreview from '../samples/four_pyramids.webp?url';
+import ridgesModel from '../samples/chevron_ridges.drc?url';
+import ridgesPreview from '../samples/chevron_ridges.webp?url';
+import ripplesModel from '../samples/ripple_cylinder.drc?url';
+import ripplesPreview from '../samples/ripple_cylinder.webp?url';
+import cylinderModel from '../samples/wavy_cylinder.drc?url';
+import cylinderPreview from '../samples/wavy_cylinder.webp?url';
 import { openSetup } from '../onboarding/setup-flow';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
-const SAMPLES: { file: string; label: string }[] = [
-  { file: '3DBenchy.drc', label: 'Benchy' },
-  { file: 'serpentine_waves.drc', label: 'Serpentine waves' },
-  { file: 'four_pyramids.drc', label: 'Four pyramids' },
-  { file: 'chevron_ridges.drc', label: 'Chevron ridges' },
-  { file: 'ripple_cylinder.drc', label: 'Ripple cylinder' },
-  { file: 'wavy_cylinder.drc', label: 'Wavy cylinder' },
+const SAMPLES: { file: string; label: string; model: string; preview: string }[] = [
+  { file: '3DBenchy.drc', label: 'Benchy', model: benchyModel, preview: benchyPreview },
+  { file: 'serpentine_waves.drc', label: 'Waves', model: wavesModel, preview: wavesPreview },
+  { file: 'four_pyramids.drc', label: 'Pyramids', model: pyramidsModel, preview: pyramidsPreview },
+  { file: 'chevron_ridges.drc', label: 'Ridges', model: ridgesModel, preview: ridgesPreview },
+  { file: 'ripple_cylinder.drc', label: 'Ripples', model: ripplesModel, preview: ripplesPreview },
+  { file: 'wavy_cylinder.drc', label: 'Cylinder', model: cylinderModel, preview: cylinderPreview },
 ];
-const SamplePreview = lazy(() => import('./SamplePreview'));
-function Sample({ file, label }: { file: string; label: string }) {
-  const [open, setOpen] = useState(false), picked = useRef(false);
-  return <HoverCard.Root open={open} onOpenChange={(v) => setOpen(v && !picked.current)} openDelay={250} closeDelay={80}>
+const models = new Map<string, Promise<string>>();
+function modelBlobUrl(url: string) {
+  let p = models.get(url);
+  if (!p) {
+    p = fetch(url).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      return URL.createObjectURL(await r.blob());
+    });
+    p.catch(() => models.delete(url));
+    models.set(url, p);
+  }
+  return p;
+}
+let warmed = false;
+function warmSamples() {
+  if (warmed) return;
+  warmed = true;
+  for (const s of SAMPLES) { const img = new Image(); img.src = s.preview; void img.decode().catch(() => {}); }
+  const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+  idle(() => { for (const s of SAMPLES) modelBlobUrl(s.model).catch(() => {}); });
+}
+function Sample({ file, label, model, preview }: (typeof SAMPLES)[number]) {
+  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), picked = useRef(false);
+  const pick = async () => {
+    picked.current = true; setOpen(false);
+    if (busy) return;
+    setBusy(true);
+    try {
+      await importFetched(label, [[await modelBlobUrl(model), file]]);
+    } catch (e) {
+      toast(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return <HoverCard.Root open={open} onOpenChange={(v) => setOpen(v && !picked.current)} openDelay={30} closeDelay={60}>
     <HoverCard.Trigger asChild>
-      <button type="button" className="fr-sample" onPointerLeave={() => { picked.current = false; }} onBlur={() => { picked.current = false; }}
-        onClick={() => { picked.current = true; setOpen(false); void importFetched(label, [[handyUrl(file), file]]); }}>{label}</button>
+      <button type="button" className="fr-sample" data-busy={busy || undefined} aria-busy={busy || undefined}
+        onPointerLeave={() => { picked.current = false; }} onBlur={() => { picked.current = false; }} onClick={() => void pick()}>{label}</button>
     </HoverCard.Trigger>
     <HoverCard.Portal>
       <HoverCard.Content className="fr-preview" side="top" sideOffset={8} collisionPadding={8} aria-hidden>
-        <Suspense fallback={<div className="sample-preview" />}><SamplePreview url={handyUrl(file)} /></Suspense>
+        <div className="sample-preview" style={{ backgroundImage: `url(${preview})` }} />
       </HoverCard.Content>
     </HoverCard.Portal>
   </HoverCard.Root>;
@@ -39,6 +83,7 @@ function Sample({ file, label }: { file: string; label: string }) {
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
 function DropZone() {
+  useEffect(warmSamples, []);
   return (
     <div className="fr-drop">
       <div className="fr-drop-title">Drop a model</div>

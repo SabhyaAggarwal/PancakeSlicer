@@ -11,7 +11,7 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { preloadable } from '../preloadable';
 import { canonicalMode } from '../nonplanar-mode';
 import type { Config, ConfigValue, PresetType } from '../api/types';
-import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
+import { isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
 import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
 import { condition, environment, fieldDefinition, optionState } from '../visibility';
 import { hiddenReason } from '../settings/common';
@@ -203,7 +203,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : undefined} key={`${k}:${i}`} optKey={indexedKey} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined} mode={method}
               source={source} sourceText={editor?.sourceText?.[key]} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
-              disabled={readOnly || editor?.readOnlyKeys?.has(key) || isDeferred(key) || states[key]?.enabled === false}
+              disabled={readOnly || editor?.readOnlyKeys?.has(key) || states[key]?.enabled === false}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
               overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}

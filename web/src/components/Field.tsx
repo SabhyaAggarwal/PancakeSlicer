@@ -4,7 +4,7 @@ import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
-import { OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
+import { DESKTOP_ONLY, OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, toast, useStore } from '../state/store';
 import { fieldIssue, fieldNumber, fieldRange } from './field-validation';
 import { Glyph } from './Glyph';
@@ -203,9 +203,9 @@ function Widget({ def, label, value, onCommit, glyph }: { def: OptionDef; label:
     return <ColorPicker {...named} label={def.label || def.full_label || "Color"} value={v.slice(0, 7)} onCommit={onCommit} disabled={def.readonly}/>;
   }
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
-    return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
+    return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} placeholder={DESKTOP_ONLY.has(def.key) ? DESKTOP_ONLY_HINT : undefined} />;
   }
-  return <TextBox value={asText(value)} label={label} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} />;
+  return <TextBox value={asText(value)} label={label} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} placeholder={DESKTOP_ONLY.has(def.key) ? DESKTOP_ONLY_HINT : undefined} />;
 }
 
 function OpenNumber({ def, label, value, onCommit }: { def: OptionDef; label: string; value: string; onCommit: (v: ConfigValue) => void }) {
@@ -236,7 +236,9 @@ export function NumberBox({ labelledBy, label, value, min, max, unit, readOnly, 
   return <LabelId.Provider value={labelledBy}><span className="opt-field number-box"><TextBox numeric spin value={String(Math.round(value))} label={label} def={def} readOnly={readOnly} onCommit={(v) => onCommit(Number(v))} /></span></LabelId.Provider>;
 }
 
-function TextBox(props: { value: string; label?: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; onCommit: (v: ConfigValue) => void }) {
+const DESKTOP_ONLY_HINT = 'Runs in OrcaSlicer desktop';
+
+function TextBox(props: { value: string; label?: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; placeholder?: string; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
   const errorId = useId();
   const label = props.label ?? props.def?.label ?? 'Value';
@@ -281,10 +283,10 @@ function TextBox(props: { value: string; label?: string; multiline?: boolean; nu
     return () => el.removeEventListener('wheel', wheel);
   }, [props.numeric]);
   if (props.multiline)
-    return <textarea className="text multiline" {...named} value={text} readOnly={props.readOnly} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+    return <textarea className="text multiline" {...named} value={text} readOnly={props.readOnly} placeholder={props.placeholder} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
   if (!props.numeric) return (
     <span className="control-text">
-      <input {...named} className="text" value={text} readOnly={props.readOnly} list={props.list}
+      <input {...named} className="text" value={text} readOnly={props.readOnly} placeholder={props.placeholder} list={props.list}
         onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
     </span>
   );

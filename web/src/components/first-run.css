@@ -36,6 +36,10 @@
 }
 :where(.orca-parity) [data-radix-popper-content-wrapper]:has(> .fr-preview) { pointer-events: none; }
 :where(.orca-parity) .fr-preview { z-index: 60; padding: var(--s-2); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--shadow-pop); pointer-events: none; }
-:where(.orca-parity) .sample-preview { width: 220px; height: 160px; border-radius: var(--r-2); background: var(--sunken); }
-:where(.orca-parity) .sample-preview[data-ready] { background: none; }
-:where(.orca-parity) .sample-preview > canvas { display: block; }
+:where(.orca-parity) .sample-preview { width: 160px; height: 120px; background: 0 0 / 3840px 120px no-repeat; animation: fr-turn 6s steps(24) infinite; }
+@keyframes fr-turn { to { background-position: -3840px 0; } }
+:where(.orca-parity) .fr-sample[data-busy] { position: relative; color: transparent; text-decoration-color: transparent; cursor: progress; }
+:where(.orca-parity) .fr-sample[data-busy]::after { content: ''; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; box-sizing: border-box;
+  border: 2px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: fr-spin 0.7s linear infinite; }
+@keyframes fr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .sample-preview { animation: none; } }

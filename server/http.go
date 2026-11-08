@@ -1154,8 +1154,7 @@ func validCutPlane(plane string) bool {
 
 var handyModels = map[string]bool{"OrcaCube_v2.drc": true, "OrcaPlug_v2.drc": true, "OrcaSliced.3mf": true, "OrcaBadge.3mf": true,
 	"OrcaToleranceTest.drc": true, "3DBenchy.drc": true, "calicat.drc": true, "ksr_fdmtest_v4.drc": true, "Voron_Design_Cube_v7.drc": true,
-	"Stanford_Bunny.drc": true, "Orca_stringhell.drc": true,
-	"serpentine_waves.drc": true, "four_pyramids.drc": true, "chevron_ridges.drc": true, "ripple_cylinder.drc": true, "wavy_cylinder.drc": true}
+	"Stanford_Bunny.drc": true, "Orca_stringhell.drc": true}
 
 func allSTL(files []string) bool {
 	for _, f := range files {

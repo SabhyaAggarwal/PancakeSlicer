@@ -1,7 +1,15 @@
-:where(.orca-parity) .url-import { display: grid; gap: var(--s-3); width: 100%; min-width: 0; text-align: left; }
-:where(.orca-parity) .fr-drop > .url-import { margin-top: var(--s-4); }
-:where(.orca-parity) .url-import-entry { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-:where(.orca-parity) .url-import-entry > input { flex: 1; min-width: 0; }
-:where(.orca-parity) .url-import-progress { color: var(--ink-2); font: var(--t-small); }
+:where(.orca-parity) .url-import { display: flex; flex-direction: column; gap: var(--s-4); width: 100%; min-width: 0; text-align: left; }
+:where(.orca-parity) .fr-drop > .url-import { margin-top: var(--s-5); }
+:where(.orca-parity) .url-import > input { width: 100%; min-width: 0; box-sizing: border-box; }
+:where(.orca-parity) .url-import-pick { display: flex; flex-direction: column; min-width: 0; }
+:where(.orca-parity) .url-import-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-width: 0;
+  padding-bottom: var(--s-1); border-bottom: 1px solid var(--line); color: var(--ink-3); font: var(--t-small); }
+:where(.orca-parity) .url-import-head > .btn-ghost { min-height: 0; padding: var(--s-1) 0; font: var(--t-small); color: var(--ink-2); }
+:where(.orca-parity) .url-import-list { max-height: min(36dvh, 280px); overflow: auto; }
+:where(.orca-parity) .url-import-file { display: flex; align-items: center; gap: var(--s-3); min-width: 0; min-height: var(--h-control); cursor: pointer; }
+:where(.orca-parity) .url-import-file > :first-child { flex: none; }
+:where(.orca-parity) .url-import-file > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .url-import-progress { color: var(--ink-2); font: var(--t-small); overflow-wrap: anywhere; }
 :where(.orca-parity) .url-import-error { color: var(--danger); font: var(--t-small); overflow-wrap: anywhere; }
-:where(.orca-parity) .url-import .modal-pick { min-height: 0; max-height: min(40dvh, 320px); overflow: auto; }
+:where(.orca-parity) .url-import-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: var(--s-2); }
+:where(.orca-parity) .url-import-actions > .btn-ghost { color: var(--ink-2); }

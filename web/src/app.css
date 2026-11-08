@@ -433,12 +433,11 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .update-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 599.98px) { :where(.orca-parity) .topbar .update-pill { display: none; } }
 :where(.orca-parity) .app-menu-button > .app-menu-caret { display: none; }
-:where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 1 calc(var(--workspace-rail-width) - 16px); min-width: 0; }
+:where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: none; min-width: 0; margin-right: 8px; }
 :where(.orca-parity) .compact-topbar .tabbar { height: 32px; min-height: 0; border: 0; padding: 0; display: flex; flex: 1 1 auto; min-width: 0; gap: 8px; align-items: center; justify-content: flex-start; background: transparent; }
 :where(.orca-parity) .compact-topbar .tabbar-actions { flex: none; padding: 0; gap: 8px; margin-left: auto; }
 :where(.orca-parity) .export-actions { display: inline-flex; align-items: center; gap: 8px; }
 :where(.orca-parity) .output-overflow { min-width: var(--h-control); padding: 0 var(--s-3); }
-@media (max-width: 1199px) { :where(.orca-parity) .topbar-project-context { flex: none; } }
 :where(.orca-parity) .canvas-toolbar > .icon-btn, :where(.orca-parity) .canvas-toolbar > span > .icon-btn { width: 40px; height: 40px; }
 :where(.orca-parity) .canvas-more { padding: 0 var(--s-3); height: 40px; }
 
