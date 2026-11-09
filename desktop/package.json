@@ -1,7 +1,7 @@
 {
   "name": "pancakeslicer-desktop",
   "productName": "PancakeSlicer",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "PancakeSlicer desktop with a local slicing service and native engine",
   "author": "Zimeng Xiong",
