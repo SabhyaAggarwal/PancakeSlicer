@@ -273,14 +273,14 @@ double full_conformal_thickness(const PrintRegionConfig &config, const PrintObje
 
 bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
-    return is_auto(object) || (is_manual(object) && config.nonplanar_overhangs.value);
+    return is_auto(object) || ((is_manual(object) || curved_tops_mode(object.nonplanar_mode.value)) && config.nonplanar_overhangs.value);
 }
 
 bool support_free(const PrintObjectConfig &object) { return is_auto(object); }
 
 bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
-    return is_auto(object) || (is_manual(object) && config.nonplanar_bridges.value);
+    return is_auto(object) || ((is_manual(object) || curved_tops_mode(object.nonplanar_mode.value)) && config.nonplanar_bridges.value);
 }
 
 double infill_depth(const PrintRegionConfig &config, const PrintObject &object)
