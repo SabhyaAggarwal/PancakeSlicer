@@ -55,7 +55,7 @@ jobs:
       - run: npm run compile --prefix desktop
 
   engine:
-    name: Engine (Linux Release + smoke slice)
+    name: Engine (Linux Release + test slice)
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     env:
@@ -108,5 +108,5 @@ jobs:
         with:
           path: .ccache
           key: ${{ steps.ccache.outputs.cache-primary-key }}
-      - name: Smoke-check the engine
+      - name: Check that the engine starts
         run: ldd build-native/tests/fff_print/Release/nonplanar_slice_tool && (build-native/tests/fff_print/Release/nonplanar_slice_tool --help || true) | head -20

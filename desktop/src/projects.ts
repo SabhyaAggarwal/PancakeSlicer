@@ -14,11 +14,11 @@ type Tombstone = { revision: number; deletedAt: number };
 
 export class ProjectConflictError extends Error {
   name = 'ProjectConflictError';
-  constructor() { super('This project changed in another tab. Reload latest or keep this version.'); }
+  constructor() { super('Heads up: this project was updated in another tab. Would you like to load the latest version or keep your current version?'); }
 }
 export class ProjectDeletedError extends Error {
   name = 'ProjectDeletedError';
-  constructor() { super('This project was deleted. Export a copy or return to Projects.'); }
+  constructor() { super('Heads up: this project was deleted elsewhere. You can export a copy of your work or head back to Projects.'); }
 }
 
 const ID = /^[A-Za-z0-9._-]{1,64}$/;
@@ -61,7 +61,7 @@ export class ProjectStore {
 
   private serial<T>(id: string, op: () => Promise<T>): Promise<T> {
     id = this.canonical(id);
-    if (!ID.test(id) || id.startsWith('.')) return Promise.reject(new Error(`bad project id: ${id}`));
+    if (!ID.test(id) || id.startsWith('.')) return Promise.reject(new Error(`Invalid project ID: ${id}`));
     const next = (this.chains.get(id) ?? Promise.resolve()).catch(() => undefined).then(op);
     this.chains.set(id, next);
     next.finally(() => { if (this.chains.get(id) === next) this.chains.delete(id); }).catch(() => undefined);
@@ -72,7 +72,7 @@ export class ProjectStore {
   private dir(id: string) { return path.join(this.root, this.canonical(id)); }
   private tombstone(id: string) { return path.join(this.tombstones, `${this.canonical(id)}.json`); }
   private blob(id: string, key: string) {
-    if (!KEY.test(key) || key.startsWith('.')) throw new Error(`bad blob key: ${key}`);
+    if (!KEY.test(key) || key.startsWith('.')) throw new Error(`Invalid file key: ${key}`);
     return path.join(this.dir(id), 'blobs', key);
   }
 
@@ -145,12 +145,12 @@ export class ProjectStore {
   }
 
   duplicate(id: string, newId: string, name: string): Promise<Meta> {
-    if (this.canonical(newId) === this.canonical(id)) return Promise.reject(new Error('duplicate needs a new id'));
+    if (this.canonical(newId) === this.canonical(id)) return Promise.reject(new Error('Duplicating a project requires a new project ID.'));
     return this.serial(id, () => this.serial(newId, async () => {
       if (await exists(this.tombstone(id)) || await exists(this.tombstone(newId))) throw new ProjectDeletedError();
       const from = this.dir(id);
       const to = this.dir(newId);
-      if (await exists(to)) throw new Error(`project exists: ${newId}`);
+      if (await exists(to)) throw new Error(`A project with this ID already exists: ${newId}`);
       const tmp = path.join(this.root, `.dup-${newId}-${randomBytes(4).toString('hex')}`);
       await fs.mkdir(path.join(tmp, 'blobs'), { recursive: true });
       for (const key of await fs.readdir(path.join(from, 'blobs')).catch(() => [] as string[])) {
@@ -189,7 +189,7 @@ export class ProjectStore {
       const bin = path.join(this.trash, this.canonical(id));
 
       const from = await exists(bin) ? bin : marker ? this.dir(id) : bin;
-      if (from !== this.dir(id) && await exists(this.dir(id))) throw new Error(`project exists: ${id}`);
+      if (from !== this.dir(id) && await exists(this.dir(id))) throw new Error(`A project with this ID already exists: ${id}`);
       const file = path.join(from, 'project.json');
       const body = JSON.parse(await fs.readFile(file, 'utf8'));
       body.meta.revision = Math.max(body.meta.revision ?? 0, marker?.revision ?? 0) + 1;
@@ -267,7 +267,7 @@ async function writeAtomic(file: string, data: string | Uint8Array) {
 
 function fromDataUrl(url: string): Buffer {
   const m = /^data:[^;,]*(;base64)?,(.*)$/s.exec(url);
-  if (!m) throw new Error('thumbnail is not a data URL');
+  if (!m) throw new Error('Project thumbnail must be a valid image data URL.');
   return m[1] ? Buffer.from(m[2], 'base64') : Buffer.from(decodeURIComponent(m[2]));
 }
 
@@ -276,7 +276,7 @@ async function encode(v: unknown, put: (bytes: Buffer) => Promise<string>): Prom
   if (v === null || typeof v !== 'object') return v;
   if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) {
     const type = v instanceof ArrayBuffer ? 'ArrayBuffer' : v.constructor.name;
-    if (type !== 'ArrayBuffer' && !(type in TYPED)) throw new Error(`cannot store ${type}`);
+    if (type !== 'ArrayBuffer' && !(type in TYPED)) throw new Error(`Can't store data of type ${type}`);
     const bytes = v instanceof ArrayBuffer ? Buffer.from(v) : Buffer.from(v.buffer, v.byteOffset, v.byteLength);
     return bytes.byteLength > INLINE_MAX ? { $typed: type, blob: await put(bytes) } : { $typed: type, b64: bytes.toString('base64') };
   }
@@ -296,7 +296,7 @@ async function decode(v: unknown, get: (key: string) => Promise<Buffer>): Promis
     const buf = src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength) as ArrayBuffer;
     if (o.$typed === 'ArrayBuffer') return buf;
     const T = TYPED[o.$typed];
-    if (!T) throw new Error(`unknown typed array ${o.$typed}`);
+    if (!T) throw new Error(`Unsupported array type: ${o.$typed}`);
     return new T(buf, 0, buf.byteLength / (T as unknown as { BYTES_PER_ELEMENT: number }).BYTES_PER_ELEMENT);
   }
   if (typeof o.$date === 'number' && Object.keys(o).length === 1) return new Date(o.$date);

@@ -18,8 +18,8 @@ def main():
     parser.add_argument('--revision',required=True)
     parser.add_argument('--engine-source',required=True)
     args=parser.parse_args()
-    if sys.platform!='win32':raise RuntimeError('This installer smoke requires Windows')
-    report=Path(__file__).resolve().parents[2]/'desktop/build/installer-smoke'
+    if sys.platform!='win32':raise RuntimeError('This installer test requires Windows')
+    report=Path(__file__).resolve().parents[2]/'desktop/build/installer-test'
     report.mkdir(parents=True,exist_ok=True)
     root=Path(tempfile.mkdtemp(prefix='pancake-install-'))
     destination=root/'application'

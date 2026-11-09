@@ -166,7 +166,7 @@ def main():
     for name in ['profiles', 'nonplanar', 'info', 'printers', 'filament_mixing', 'fonts', 'handy_models', 'calib', 'cert', 'flush']:
         shutil.copytree(ROOT / 'engine/resources' / name, resources / name)
     run(sys.executable, ROOT / 'desktop/scripts/compact-profiles.py', resources)
-    run(sys.executable, ROOT / 'desktop/scripts/bundle-help.py', '--root', ROOT, '--web', web)
+    shutil.copy2(ROOT / 'LICENSE', web / 'licence.txt')
     run(sys.executable, ROOT / 'desktop/scripts/bundle-native-notices.py', '--root', ROOT, '--web', web, '--prefix', prefix)
     duplicate_bytes = 0
     for asset in (web / 'profiles').rglob('*'):

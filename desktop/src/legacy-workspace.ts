@@ -18,7 +18,7 @@ export interface LegacyWorkspaceInventory {
 }
 export interface LegacyRead { fingerprint: string; path: string; offset: number; length: number }
 const stamp = (s: BigIntStats) => [s.dev, s.ino, s.size, s.mode, s.mtimeNs, s.ctimeNs].join(':');
-const incomplete = (reason: string) => new Error(`Desktop legacy inventory incomplete: ${reason}`);
+const incomplete = (reason: string) => new Error(`Oops! We couldn't finish importing your older desktop workspace: ${reason}`);
 
 export class LegacyWorkspaceSource {
   private snapshot: { fingerprint: string; stamps: Map<string, string>; files: Map<string, LegacyFile> } | null = null;

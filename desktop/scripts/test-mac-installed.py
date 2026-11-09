@@ -29,7 +29,7 @@ def main():
         finally:
             subprocess.run(['hdiutil','detach',str(mount)],check=True,timeout=60)
         subprocess.run([sys.executable,str(ROOT/'desktop/scripts/installed-slices.py'),'--engine',str(application/'Contents/Resources/engine'),
-                        '--qualification',str(args.qualification.resolve()),'--output',str(ROOT/'desktop/build/installer-smoke/mac')],check=True)
+                        '--qualification',str(args.qualification.resolve()),'--output',str(ROOT/'desktop/build/installer-test/mac')],check=True)
 
 
 if __name__=='__main__':

@@ -84,7 +84,7 @@ export class LegacyRendererSource {
     if (this.scanning) return this.scanning;
     if (this.changed) return Promise.resolve(incomplete(this.sourceProfileId, 'source_changed', 'Historical source changed or could not be reverified. Restart explicit recovery; original files are retained.'));
     if (this.originalRoots.userData !== this.originalRoots.sessionData || !this.ownsOriginalSingleton())
-      return Promise.resolve(incomplete(this.sourceProfileId, 'source_locked', 'Same-root legacy layout and original-userData singleton exclusion are not established.'));
+      return Promise.resolve(incomplete(this.sourceProfileId, 'source_locked', 'Oops! We couldn\'t lock the legacy workspace folder for exclusive access. Make sure another copy of the app isn\'t running.'));
 
 
     this.scanning = this.enqueue(async () => (await this.scan()).inventory).finally(() => { this.scanning = null; });
@@ -95,7 +95,7 @@ export class LegacyRendererSource {
     const next = this.serial.then(work); this.serial = next.then(() => undefined, () => undefined); return next;
   }
   private async scan(part?: PrivatePartRead): Promise<WorkerResult> {
-    if (this.changed || !this.ownsOriginalSingleton()) return { inventory: incomplete(this.sourceProfileId, 'source_locked', 'Original-source exclusion or freshness is not established.') };
+    if (this.changed || !this.ownsOriginalSingleton()) return { inventory: incomplete(this.sourceProfileId, 'source_locked', 'Oops! We couldn\'t verify that the legacy workspace files are unlocked and up to date.') };
     const result = await new Promise<WorkerResult>((resolve) => {
       let worker: Worker;
       try {
@@ -104,7 +104,7 @@ export class LegacyRendererSource {
           ...(part ? { part, expectedPhysical: this.physicalFingerprint } : {}) },
           resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 } });
       } catch {
-        resolve({ inventory: incomplete(this.sourceProfileId, 'unsupported_layout', 'Read-only decoder worker is unavailable.') }); return;
+        resolve({ inventory: incomplete(this.sourceProfileId, 'unsupported_layout', 'Oops! The background file reader couldn\'t start.') }); return;
       }
       let finished = false;
       const finish = async (r: WorkerResult) => {
@@ -118,7 +118,7 @@ export class LegacyRendererSource {
       worker.once('error', () => void finish(failed()));
       worker.once('exit', () => void finish(failed()));
     });
-    if (!this.ownsOriginalSingleton()) { this.approved.clear(); return { inventory: incomplete(this.sourceProfileId, 'source_locked', 'Original-userData singleton exclusion was lost.') }; }
+    if (!this.ownsOriginalSingleton()) { this.approved.clear(); return { inventory: incomplete(this.sourceProfileId, 'source_locked', 'Oops! Another window or process took over the legacy data folder while we were reading it.') }; }
     if (result.inventory.status === 'COMPLETE') {
       if (!result.physicalFingerprint || this.physicalFingerprint !== null && this.physicalFingerprint !== result.physicalFingerprint) {
         this.changed = true;
@@ -138,11 +138,11 @@ export class LegacyRendererSource {
       if (!descriptor || this.changed || !this.physicalFingerprint || request.inventoryFingerprint !== this.latestInventory
         || !Number.isSafeInteger(request.offset) || !Number.isSafeInteger(request.length) || request.offset < 0 || request.length < 0
         || request.length > 4 * 1024 * 1024 || request.offset > descriptor.size || request.length > descriptor.size - request.offset)
-        throw new Error('Historical binary descriptor or range is not approved.');
+        throw new Error('Oops! A saved model file in your older workspace didn\'t pass our safety check.');
       const result = await this.scan({ ...request, ...descriptor });
       if (result.inventory.status !== 'COMPLETE' || result.inventory.inventoryFingerprint !== request.inventoryFingerprint
         || !(result.chunk instanceof Uint8Array) || result.chunk.length !== request.length)
-        throw new Error('Historical binary source could not be reverified completely.');
+        throw new Error('Oops! We couldn\'t finish reading one of your older model files because it changed on disk.');
       return result.chunk;
     });
   }
@@ -178,14 +178,14 @@ if (!isMainThread && workerData?.kind === 'orca-legacy-renderer-v1') {
           || approved.origin !== part.origin || approved.sha256 !== part.sha256 || approved.size !== part.size
           || !Number.isSafeInteger(part.offset) || !Number.isSafeInteger(part.length) || part.offset < 0 || part.length < 0
           || part.length > 4 * 1024 * 1024 || part.offset > approved.size || part.length > approved.size - part.offset)
-          throw new Incomplete('source_changed', 'Approved binary ownership, hash or physical snapshot changed.');
+          throw new Incomplete('source_changed', 'Oops! A saved model file changed on disk while we were importing it.');
 
         result.chunk = new Uint8Array(approved.bytes.subarray(part.offset, part.offset + part.length));
       }
     } catch (error) {
 
       result = { inventory: error instanceof Incomplete ? incomplete(id, error.code, error.message)
-        : incomplete(id, 'unsupported_layout', 'Original storage could not be read completely in a supported layout.') };
+        : incomplete(id, 'unsupported_layout', 'Oops! We couldn\'t read your older workspace data because the storage format isn\'t supported.') };
     }
     parentPort?.postMessage(result);
   })().catch(() => { parentPort?.close(); });

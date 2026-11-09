@@ -69,12 +69,12 @@ try {
   const directory = fs.mkdtempSync(path.join(sessionCacheRoot, 'session-'));
   const stat = fs.lstatSync(directory);
   if ([originalUserData, originalSessionData].some((old) => path.resolve(old) === directory))
-    throw new Error('Session isolation cannot use an original storage root.');
+    throw new Error('Oops! The app needs a separate folder for browser session data and can\'t use your main storage folder directly.');
   ownedSessionDirectory = { path: directory, dev: stat.dev, ino: stat.ino };
   app.setPath('sessionData', directory);
 } catch {
   cleanSessionDirectory();
-  throw new Error('Chromium session-data isolation failed; no renderer was started.');
+  throw new Error('Oops! We couldn\'t set up a clean browser session, so the app window couldn\'t start.');
 }
 process.once('exit', cleanSessionDirectory);
 
@@ -120,18 +120,18 @@ async function bundleIdentity(web: string, engine: string): Promise<BundleIdenti
   const expected = JSON.parse(fs.readFileSync(path.join(engine, 'COMPONENTS.json'), 'utf8')) as BundleIdentity;
   const webIdentity = JSON.parse(fs.readFileSync(path.join(web, 'COMPONENTS.json'), 'utf8')) as BundleIdentity;
   for (const key of ['client_source', 'server_source', 'native_source'] as const) {
-    if (!/^[a-f0-9]{40}$/.test(expected[key]) || expected[key] !== webIdentity[key]) throw new Error('Bundled source identity is incomplete or inconsistent.');
+    if (!/^[a-f0-9]{40}$/.test(expected[key]) || expected[key] !== webIdentity[key]) throw new Error('Oops! This app bundle is missing some build info or looks corrupted. Try reinstalling PancakeSlicer.');
   }
-  if (fs.readFileSync(path.join(web, 'REVISION.txt'), 'utf8').trim() !== expected.client_source) throw new Error('Bundled web revision differs from its component stamp.');
+  if (fs.readFileSync(path.join(web, 'REVISION.txt'), 'utf8').trim() !== expected.client_source) throw new Error('Oops! The bundled web interface doesn\'t match this app version. Try reinstalling PancakeSlicer.');
   for (const [name, key] of [
     [`orca-webapp-server${EXE}`, 'server_binary_sha256'], [`nonplanar_slice_tool${EXE}`, 'native_binary_sha256'],
     ['surface-manifest.json', 'native_manifest_sha256'], ['artifact-qualification.ready', 'native_qualification_sha256'],
   ] as const) {
-    if (!/^[a-f0-9]{64}$/.test(expected[key]) || await fileHash(path.join(engine, name)) !== expected[key]) throw new Error('A bundled payload differs from its component stamp.');
+    if (!/^[a-f0-9]{64}$/.test(expected[key]) || await fileHash(path.join(engine, name)) !== expected[key]) throw new Error('Oops! One of the app\'s bundled files looks modified or corrupted. Try reinstalling PancakeSlicer.');
   }
-  if (!/^[a-f0-9]{64}$/.test(expected.native_resources_sha256)) throw new Error('Bundled resource identity is missing.');
+  if (!/^[a-f0-9]{64}$/.test(expected.native_resources_sha256)) throw new Error('Oops! Required app resources are missing from this installation. Try reinstalling PancakeSlicer.');
   const schemas = JSON.parse(fs.readFileSync(path.join(engine, 'schemas.json'), 'utf8')) as Record<string, number>;
-  if (!Object.keys(schemas).length || !Object.values(schemas).every((v) => Number.isInteger(v) && v > 0)) throw new Error('Bundled server schemas are missing.');
+  if (!Object.keys(schemas).length || !Object.values(schemas).every((v) => Number.isInteger(v) && v > 0)) throw new Error('Oops! Bundled server configuration files are missing. Try reinstalling PancakeSlicer.');
   return { ...expected, schemas };
 }
 
@@ -189,7 +189,7 @@ async function startServer(): Promise<string> {
   if (fs.existsSync(qualification)) env.ORCA_WEB_ARTIFACT_QUALIFICATION = qualification;
 
   if (process.platform === 'linux' && fs.existsSync(lib)) env.LD_LIBRARY_PATH = [lib, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  let lastError = 'The bundled service did not prove readiness at the fixed desktop origin.';
+  let lastError = 'Oops! The local slicing service took too long to start up.';
   const child = spawn(path.join(engine, `orca-webapp-server${EXE}`), [
     '--listen', '127.0.0.1:29731',
     '--static', web,
@@ -206,9 +206,9 @@ async function startServer(): Promise<string> {
   child.on('exit', (code, signal) => {
     exited = true;
     lastError = `Bundled service exited (${signal ?? code}); the fixed desktop origin may be occupied.`;
-    if (ready && server === child && !quitting) fail('The bundled slicing service stopped.');
+    if (ready && server === child && !quitting) fail('Oops! The local slicing service stopped unexpectedly.');
   });
-  child.on('error', () => { exited = true; lastError = 'The bundled slicing service could not be started.'; });
+  child.on('error', () => { exited = true; lastError = 'Oops! We couldn\'t start the local slicing service.'; });
   const deadline = Date.now() + 30000;
   while (!exited && Date.now() < deadline) {
     if (await healthy(nonce, expected) && !exited) { ready = true; return DESKTOP_ORIGIN; }
@@ -299,7 +299,7 @@ function storage() {
   for (const op of ops) {
     ipcMain.handle(`orca-desktop:projects:${op}`, async (e, ...args: unknown[]) => {
       if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-      if (exporting && !readers.has(op)) throw new Error('Legacy desktop writes are disabled during workspace adoption. Retry service adoption; source files are retained.');
+      if (exporting && !readers.has(op)) throw new Error('Hang tight—saving to the old workspace is paused while we migrate your files. Try migrating again (your original files are safe!).');
 
       const operation = (legacyReady ??= store.init()).then(() => (store[op] as (...a: unknown[]) => Promise<unknown>).apply(store, args));
       if (!readers.has(op)) pendingWrites.add(operation);
@@ -342,14 +342,14 @@ function storage() {
 
 
 async function openInBambuConnect(jobId: unknown, filename: unknown) {
-  if (typeof jobId !== 'string' || !/^[0-9a-f]{16,64}$/.test(jobId)) throw new Error('Invalid job.');
-  if (typeof filename !== 'string' || !/\.gcode\.3mf$/i.test(filename) || /[\\/\u0000-\u001f]/.test(filename) || filename.length > 240) throw new Error('Invalid file name.');
+  if (typeof jobId !== 'string' || !/^[0-9a-f]{16,64}$/.test(jobId)) throw new Error('Oops! That slice job isn\'t valid.');
+  if (typeof filename !== 'string' || !/\.gcode\.3mf$/i.test(filename) || /[\\/\u0000-\u001f]/.test(filename) || filename.length > 240) throw new Error('Oops! That file name isn\'t valid.');
   const dir = path.join(app.getPath('temp'), 'orca-bambu-connect');
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, filename);
   await new Promise<void>((resolve, reject) => {
     http.get(`${DESKTOP_ORIGIN}/api/jobs/${jobId}/download`, (res) => {
-      if (res.statusCode !== 200) { res.resume(); reject(new Error(`The sliced file is unavailable (HTTP ${res.statusCode}). Slice again.`)); return; }
+      if (res.statusCode !== 200) { res.resume(); reject(new Error(`Oops! The sliced file isn't available anymore (HTTP ${res.statusCode}). Please slice the plate again.`)); return; }
       const out = fs.createWriteStream(target);
       res.pipe(out);
       out.on('finish', () => resolve());
@@ -359,7 +359,7 @@ async function openInBambuConnect(jobId: unknown, filename: unknown) {
   const name = filename.replace(/\.gcode\.3mf$/i, '');
   const url = `bambu-connect://import-file?path=${encodeURIComponent(process.platform === 'win32' ? target.replace(/\\/g, '/') : target)}&name=${encodeURIComponent(name)}&version=1.0.0`;
   try { await shell.openExternal(url); }
-  catch { throw new Error('Bambu Connect is not installed on this computer. Install it from bambulab.com, then send again.'); }
+  catch { throw new Error('Bambu Connect isn\'t installed on this computer yet. Download it from bambulab.com, then try sending again.'); }
 }
 
 
@@ -385,7 +385,7 @@ async function start() {
   if (app.commandLine.hasSwitch('service-only')) return;
   const rendererSession = session.fromPartition('orca-service-renderer', { cache: false });
   restrictNetwork(rendererSession);
-  if (rendererSession.isPersistent() || rendererSession.getStoragePath() !== null) throw new Error('The renderer requires an isolated in-memory session.');
+  if (rendererSession.isPersistent() || rendererSession.getStoragePath() !== null) throw new Error('Oops! The app window needs an isolated in-memory session to run safely.');
   win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -457,14 +457,14 @@ async function prepareQuit() {
     ]);
 
 
-    if (!finished) throw new Error('Still saving: the window stays open. Close it again when saving finishes.');
+    if (!finished) throw new Error('Still saving your work! We\'ll keep the window open for a moment—try closing it again once saving finishes.');
     quitReady = true;
     app.quit();
   } catch (e) {
     quitting = false;
     closing = false;
     win?.setEnabled(true);
-    dialog.showErrorBox('Close not confirmed', String(e));
+    dialog.showErrorBox('Window close canceled', String(e));
   } finally {
     if (timer) clearTimeout(timer);
   }
