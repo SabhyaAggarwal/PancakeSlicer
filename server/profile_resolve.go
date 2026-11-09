@@ -141,7 +141,6 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	set(printer.Machine, "printer")
 	set(process.Config, "catalog")
 	for _, k := range []string{"nonplanar_mode", "nonplanar_wave"} {
-		out.Config[k], out.Sources[k] = json.RawMessage(`"off"`), "catalog"
 		out.engineOverrides[k] = true
 	}
 	set(print.Values, "print")
