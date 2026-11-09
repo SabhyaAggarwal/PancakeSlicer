@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "engine_source_sha": "23682556ed17e0cc1181bfaa2f2ce864fa0bb3d8",
-  "source_snapshot_sha": "23682556ed17e0cc1181bfaa2f2ce864fa0bb3d8",
+  "engine_source_sha": "dd53aec9d3564d8c037faea98791399aaff5bfc2",
+  "source_snapshot_sha": "dd53aec9d3564d8c037faea98791399aaff5bfc2",
   "source_overlays": {},
-  "reference_release": "engine-reference-23682556ed",
-  "reference_asset": "engine-reference-23682556ed.tar.gz",
-  "reference_sha256": "8bff4ed46b07f4a56b520be6c4d8e193b2386bddf7a40d794ac29014de087b7c",
-  "reference_binary_sha256": "68edd399166e3475eafafab9b15c3e0c773151f383c995a06a6229f7b2d2d546",
+  "reference_release": "engine-reference-dd53aec9d3",
+  "reference_asset": "engine-reference-dd53aec9d3.tar.gz",
+  "reference_sha256": "f956ad54f8aaf63ece79c29a2c3733e48068c01fc8b671e3b6e9ec278052033b",
+  "reference_binary_sha256": "0bdc189a5523bcdafdef242cee63b63bfc29da0a388860db6dbc54ae2e81a8b1",
   "reference_live_resources_sha256": "c466e33d44e52657456b628fff608d28c7adc8350b24301f08ed24fac4d50977"
 }

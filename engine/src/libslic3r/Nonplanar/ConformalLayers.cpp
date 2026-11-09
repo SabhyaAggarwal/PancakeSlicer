@@ -29,16 +29,30 @@
 
 namespace Slic3r::Nonplanar {
 
+static double smoothstep(double t) { return t * t * (3. - 2. * t); }
+
+static double ramp_rise(double t, double a)
+{
+    if (a <= 1e-6)
+        return t;
+    const double p = 1. / (1. - a);
+    if (t < a)
+        return p * t * t / (2. * a);
+    if (t > 1. - a)
+        return 1. - p * sqr(1. - t) / (2. * a);
+    return p * (t - 0.5 * a);
+}
+
 double ConformalLayerField::column_phi(const Column &col, double z) const
 {
     if (col.omega <= 0. || z <= col.zb)
         return z;
     const double zt = col.tf;
-    double       f;
-    if (z < zt)
-        f = col.zb + (z - col.zb) * (col.L - col.d - col.zb) / std::max(zt - col.zb, 1e-9);
-    else
-        f = col.L - col.d + col.d * (z - zt) / std::max(col.T - zt, 1e-9);
+    if (z < zt) {
+        const double W = std::max(zt - col.zb, 1e-9);
+        return z + col.omega * (col.L - col.d - zt) * ramp_rise((z - col.zb) / W, col.ease);
+    }
+    const double f = col.L - col.d + col.d * (z - zt) / std::max(col.T - zt, 1e-9);
     return col.omega * f + (1. - col.omega) * z;
 }
 
@@ -47,10 +61,26 @@ double ConformalLayerField::column_z(const Column &col, double level) const
     if (col.omega <= 0. || level <= col.zb)
         return level;
     const double zt   = col.tf;
-    const double s    = (col.L - col.d - col.zb) / std::max(zt - col.zb, 1e-9);
-    const double phit = col.omega * (col.L - col.d) + (1. - col.omega) * zt;
-    if (level <= phit)
-        return col.zb + (level - col.zb) / (col.omega * s + (1. - col.omega));
+    const double W    = std::max(zt - col.zb, 1e-9);
+    const double mw   = col.omega * (col.L - col.d - zt);
+    const double phit = zt + mw;
+    if (level <= phit) {
+        const double r = level - col.zb, a = col.ease;
+        double       t;
+        if (a <= 1e-6)
+            t = r / (W + mw);
+        else {
+            const double p = 1. / (1. - a), A = mw * p / (2. * a);
+            const auto   solve = [&](double rr) { return 2. * rr / (W + std::sqrt(std::max(W * W + 4. * A * rr, 0.))); };
+            if (r <= a * W + 0.5 * mw * p * a)
+                t = solve(r);
+            else if (r <= (1. - a) * W + mw * (1. - 0.5 * p * a))
+                t = (r + 0.5 * mw * p * a) / (W + mw * p);
+            else
+                t = 1. - solve(W + mw - r);
+        }
+        return col.zb + std::clamp(t, 0., 1.) * W;
+    }
     return zt + (level - phit) / (col.omega * col.d / std::max(col.T - zt, 1e-9) + (1. - col.omega));
 }
 
@@ -71,6 +101,7 @@ ConformalLayerField::Column ConformalLayerField::column(const Vec2d &xy) const
     out.d     = wa * a.d + wb * b.d + wc * c.d + wd * d.d;
     out.tf    = wa * a.tf + wb * b.tf + wc * c.tf + wd * d.tf;
     out.omega = wa * a.omega + wb * b.omega + wc * c.omega + wd * d.omega;
+    out.ease  = wa * a.ease + wb * b.ease + wc * c.ease + wd * d.ease;
     return out;
 }
 
@@ -199,6 +230,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     std::vector<double> D(N, 0.);
     std::vector<char>   follow(N, 0);
     std::vector<char>   low(N, 0);
+    std::vector<char>   unmet(N, 0);
     for (size_t k = 0; k < N; ++k) {
         if (T[k] == Unset || c[k] < cos_max - 1e-9)
             continue;
@@ -244,7 +276,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                         if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
                             continue;
                         const size_t q = size_t(ii) * ny + size_t(jj);
-                        if (follow[q] && comp[q] < 0)
+                        if (follow[q] && comp[q] < 0 && std::abs(T[q] - T[k]) <= g * std::hypot(double(di), double(dj)) * tan_max + 0.05)
                             comp[q] = comp[k], stack.push_back(q);
                     }
             }
@@ -278,14 +310,18 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     std::vector<std::vector<size_t>> comps;
     label(comp, comps);
     std::vector<double> floor_z(N, ident);
-    for (const std::vector<size_t> &cells : comps) {
-        double tmin = std::numeric_limits<double>::infinity(), tmax = -tmin, shell_floor = tmin;
-        for (size_t k : cells)
-            tmin = std::min(tmin, T[k]), tmax = std::max(tmax, T[k]), shell_floor = std::min(shell_floor, T[k] - D[k] / c[k]);
-        const double fz = std::max(ident, shell_floor - std::max(1., (tmax - tmin) / 4.));
-        for (size_t k : cells)
-            floor_z[k] = fz;
-    }
+    const auto floors = [&]() {
+        std::fill(floor_z.begin(), floor_z.end(), ident);
+        for (const std::vector<size_t> &cells : comps) {
+            double tmin = std::numeric_limits<double>::infinity(), tmax = -tmin, shell_floor = tmin;
+            for (size_t k : cells)
+                tmin = std::min(tmin, T[k]), tmax = std::max(tmax, T[k]), shell_floor = std::min(shell_floor, T[k] - D[k] / c[k]);
+            const double fz = std::max(ident, shell_floor - std::max(1., (tmax - tmin) / 4.));
+            for (size_t k : cells)
+                floor_z[k] = fz;
+        }
+    };
+    floors();
     std::vector<double> L(N, 0.), zb(N, 0.);
     const auto level_of = [&](double z) { return P.first_layer + std::round((z - P.first_layer) / h) * h; };
     const auto bounds = [&](size_t k) {
@@ -372,13 +408,23 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 if (dn[k] > up[k] + 1e-6) {
                     const auto [lo, hi] = bounds(k);
                     if (hi < dn[k] + 1e-6 || lo > up[k] - 1e-6)
-                        follow[k] = 0, low[k] = 1, ++dropped;
+                        follow[k] = 0, unmet[k] = 1, ++dropped;
                 }
         }
         if (dropped == 0)
             break;
         label(comp, comps);
+        floors();
     }
+    std::vector<double> edge_dist;
+    {
+        std::vector<char> off(N);
+        for (size_t k = 0; k < N; ++k)
+            off[k] = !follow[k];
+        std::vector<size_t> by;
+        nearest_source(off, nx, ny, g, by, edge_dist);
+    }
+    constexpr double WallBand = 1.5;
     for (size_t ci = 0; ci < comps.size(); ++ci) {
         const std::vector<size_t> &cells = comps[ci];
         ConformalTop               top;
@@ -400,8 +446,12 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             L[k] = dn[k] <= up[k] ? std::clamp(target, dn[k], up[k]) : 0.5 * (dn[k] + up[k]);
             const auto [lo, hi] = bounds(k);
             L[k] = std::clamp(L[k], lo, hi);
-            const double W = std::max(T[k] - D[k] / c[k] - floor_z[k], 1e-3);
-            zb[k]          = T[k] - D[k] / c[k] - W;
+            const double full = std::max(T[k] - D[k] / c[k] - floor_z[k], 1e-3);
+            const double m    = L[k] - (T[k] - D[k] * (1. / c[k] - 1.));
+            const double need = std::min(full, std::max(MinRamp, 1.6 * (m >= 0. ? m / s_hi : m / s_lo)));
+            const double rho  = WallBand + (full - need) / tan_max;
+            const double W    = need + (full - need) * smoothstep(std::clamp((edge_dist[k] - WallBand) / (rho - WallBand + 1e-9), 0., 1.));
+            zb[k]             = T[k] - D[k] / c[k] - W;
             top.ramp       = std::max(top.ramp, W);
         }
         F->tops.push_back(top);
@@ -417,8 +467,22 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             top.fallback = "too close to the flat base layers for a shell and a ramp";
             F->tops.push_back(top);
         }
+        double unmet_area = 0., unmet_z = 0.;
+        for (size_t k = 0; k < N; ++k)
+            if (unmet[k] && !follow[k])
+                unmet_area += g * g, unmet_z = std::max(unmet_z, T[k]);
+        if (unmet_area > 0.) {
+            ConformalTop top;
+            top.area_mm2 = unmet_area, top.z_max = unmet_z;
+            top.fallback = "its top's level could not reach it within the layers' thickness bounds";
+            F->tops.push_back(top);
+        }
     }
     std::vector<char> core(follow);
+    std::vector<int>  top_of(N, -1);
+    for (size_t k = 0; k < N; ++k)
+        if (follow[k])
+            top_of[k] = comp[k];
     {
         std::vector<size_t> nearest;
         std::vector<double> dist;
@@ -427,8 +491,8 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             if (!core[k] && T[k] != Unset && c[k] >= cos_max - 1e-9 && dist[k] <= 4. * g && nearest[k] != size_t(-1)) {
                 const size_t s = nearest[k];
                 const double dk = D[s];
-                if (T[k] - dk / c[k] > zb[s] + 0.05)
-                    core[k] = 1, D[k] = dk, L[k] = L[s], zb[k] = std::min(zb[s], T[k] - dk / c[k] - 0.05);
+                if (T[k] - dk / c[k] > zb[s] + 0.05 && std::abs(T[k] - T[s]) <= dist[k] * tan_max + 0.05)
+                    core[k] = 1, D[k] = dk, L[k] = L[s], zb[k] = std::min(zb[s], T[k] - dk / c[k] - 0.05), top_of[k] = comp[s];
             }
     }
     std::vector<size_t> nearest;
@@ -448,56 +512,100 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         }
         col.T = T[s], col.c = std::max(c[s], 0.5), col.L = L[s], col.zb = zb[s], col.d = D[s], col.tf = T[s] - D[s] / col.c;
         const double rho = std::clamp(std::abs(L[s] - T[s]) / tan_max + 1., 1.5, 25.);
-        col.omega        = std::clamp(1. - dist[k] / rho, 0., 1.);
+        col.omega        = smoothstep(std::clamp(1. - dist[k] / rho, 0., 1.));
     }
     {
         constexpr double StandClear = 1.;
-        std::vector<char> standing(N, 0);
-        bool any = false;
+        std::vector<char> standing(N, 0), higher(N, 0);
+        bool any = false, any_higher = false;
         for (size_t k = 0; k < N; ++k)
-            if (!core[k] && T[k] != Unset && nearest[k] != size_t(-1) && std::abs(T[k] - T[nearest[k]]) > StandClear)
+            if (const size_t s = nearest[k]; !core[k] && T[k] != Unset && s != size_t(-1) &&
+                (T[k] > T[s] + StandClear || (T[k] < T[s] - StandClear && T[k] > zb[s])))
                 standing[k] = 1, any = true;
-        if (any) {
+        for (size_t k = 0; k < N; ++k) {
+            if (!core[k])
+                continue;
+            const long i = long(k / ny), j = long(k % ny);
+            for (long di = -1; di <= 1; ++di)
+                for (long dj = -1; dj <= 1; ++dj) {
+                    const long ii = i + di, jj = j + dj;
+                    if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
+                        continue;
+                    if (const size_t q = size_t(ii) * ny + size_t(jj); core[q] && top_of[q] != top_of[k] && T[q] > T[k] + StandClear)
+                        higher[q] = 1, any_higher = true;
+                }
+        }
+        const auto fade_toward = [&](const std::vector<char> &source, bool lower_only) {
             std::vector<size_t> by;
             std::vector<double> away;
-            nearest_source(standing, nx, ny, g, by, away);
+            nearest_source(source, nx, ny, g, by, away);
             for (size_t k = 0; k < N; ++k) {
                 ConformalLayerField::Column &col = F->m_cols[k];
-                if (col.omega > 0. && by[k] != size_t(-1)) {
+                if (col.omega > 0. && by[k] != size_t(-1) && (!lower_only || col.T < T[by[k]] - StandClear)) {
                     const double rho = std::clamp(std::abs(col.L - col.T) / tan_max + 1., 1.5, 25.);
-                    col.omega        = std::min(col.omega, std::clamp(away[k] / rho, 0., 1.));
+                    col.omega        = std::min(col.omega, smoothstep(std::clamp(away[k] / rho, 0., 1.)));
                 }
             }
-        }
+        };
+        if (any)
+            fade_toward(standing, false);
+        if (any_higher)
+            fade_toward(higher, true);
     }
+    int n_tops = 0;
+    for (size_t k = 0; k < N; ++k)
+        if (core[k])
+            n_tops = std::max(n_tops, top_of[k] + 1);
+    std::vector<std::array<long, 4>> top_box(size_t(n_tops), { long(nx), -1L, long(ny), -1L });
+    for (size_t k = 0; k < N; ++k)
+        if (core[k]) {
+            auto &bx = top_box[size_t(top_of[k])];
+            const long i = long(k / ny), j = long(k % ny);
+            bx[0] = std::min(bx[0], i), bx[1] = std::max(bx[1], i), bx[2] = std::min(bx[2], j), bx[3] = std::max(bx[3], j);
+        }
     const auto blur_core = [&](double ConformalLayerField::Column::*field, double sigma) {
         const long r = long(std::ceil(2. * sigma / g));
         std::vector<double> w(size_t(2 * r + 1));
         for (long d = -r; d <= r; ++d)
             w[size_t(d + r)] = std::exp(-0.5 * sqr(double(d) * g / sigma));
-        std::vector<double> sum(N, 0.), wsum(N, 0.), tmp(N), wtmp(N);
-        for (size_t k = 0; k < N; ++k)
-            if (core[k])
-                sum[k] = F->m_cols[k].*field, wsum[k] = 1.;
-        for (int axis = 0; axis < 2; ++axis) {
-            for (size_t i = 0; i < nx; ++i)
-                for (size_t j = 0; j < ny; ++j) {
-                    double a = 0., b = 0.;
-                    for (long d = -r; d <= r; ++d) {
-                        const long ii = long(i) + (axis == 0 ? d : 0), jj = long(j) + (axis == 1 ? d : 0);
-                        if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
-                            continue;
-                        const size_t q = size_t(ii) * ny + size_t(jj);
-                        a += w[size_t(d + r)] * sum[q], b += w[size_t(d + r)] * wsum[q];
-                    }
-                    tmp[i * ny + j] = a, wtmp[i * ny + j] = b;
+        std::vector<double> out(N, 0.), sum(N), wsum(N), tmp(N), wtmp(N);
+        for (int t = 0; t < n_tops; ++t) {
+            const auto &bx = top_box[size_t(t)];
+            if (bx[1] < bx[0])
+                continue;
+            const long i0 = std::max(0L, bx[0] - r), i1 = std::min(long(nx) - 1, bx[1] + r);
+            const long j0 = std::max(0L, bx[2] - r), j1 = std::min(long(ny) - 1, bx[3] + r);
+            for (long i = i0; i <= i1; ++i)
+                for (long j = j0; j <= j1; ++j) {
+                    const size_t k = size_t(i) * ny + size_t(j);
+                    const bool   own = core[k] && top_of[k] == t;
+                    sum[k] = own ? F->m_cols[k].*field : 0., wsum[k] = own ? 1. : 0.;
                 }
-            sum.swap(tmp), wsum.swap(wtmp);
+            for (int axis = 0; axis < 2; ++axis) {
+                for (long i = i0; i <= i1; ++i)
+                    for (long j = j0; j <= j1; ++j) {
+                        double a = 0., b = 0.;
+                        for (long d = -r; d <= r; ++d) {
+                            const long ii = i + (axis == 0 ? d : 0), jj = j + (axis == 1 ? d : 0);
+                            if (ii < i0 || jj < j0 || ii > i1 || jj > j1)
+                                continue;
+                            const size_t q = size_t(ii) * ny + size_t(jj);
+                            a += w[size_t(d + r)] * sum[q], b += w[size_t(d + r)] * wsum[q];
+                        }
+                        tmp[size_t(i) * ny + size_t(j)] = a, wtmp[size_t(i) * ny + size_t(j)] = b;
+                    }
+                for (long i = i0; i <= i1; ++i)
+                    for (long j = j0; j <= j1; ++j) {
+                        const size_t k = size_t(i) * ny + size_t(j);
+                        sum[k] = tmp[k], wsum[k] = wtmp[k];
+                    }
+            }
+            for (long i = i0; i <= i1; ++i)
+                for (long j = j0; j <= j1; ++j)
+                    if (const size_t k = size_t(i) * ny + size_t(j); core[k] && top_of[k] == t && wsum[k] > 0.)
+                        out[k] = sum[k] / wsum[k];
         }
-        for (size_t k = 0; k < N; ++k)
-            if (core[k] && wsum[k] > 0.)
-                sum[k] /= wsum[k];
-        return sum;
+        return out;
     };
     {
         const auto ramp_ok = [&](const ConformalLayerField::Column &col, double d) {
@@ -531,6 +639,41 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 col.tf = lo <= hi ? std::clamp(tf[k], lo, hi) : col.T - col.d / col.c;
             }
     }
+    const auto joins = [&](size_t a, size_t b) {
+        const size_t sa = nearest[a], sb = nearest[b];
+        return top_of[sa] == top_of[sb] || (std::abs(L[sa] - L[sb]) <= 0.5 * h && std::abs(T[sa] - T[sb]) <= 1.);
+    };
+    {
+        std::vector<char> seam(N, 0);
+        bool              any = false;
+        for (size_t k = 0; k < N; ++k) {
+            if (nearest[k] == size_t(-1) || core[k])
+                continue;
+            const long i = long(k / ny), j = long(k % ny);
+            for (long di = -1; di <= 1 && !seam[k]; ++di)
+                for (long dj = -1; dj <= 1; ++dj) {
+                    const long ii = i + di, jj = j + dj;
+                    if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
+                        continue;
+                    if (const size_t q = size_t(ii) * ny + size_t(jj); nearest[q] != size_t(-1) && !joins(k, q)) {
+                        seam[k] = 1, any = true;
+                        break;
+                    }
+                }
+        }
+        if (any) {
+            std::vector<size_t> by;
+            std::vector<double> away;
+            nearest_source(seam, nx, ny, g, by, away);
+            for (size_t k = 0; k < N; ++k) {
+                ConformalLayerField::Column &col = F->m_cols[k];
+                if (!core[k] && col.omega > 0. && by[k] != size_t(-1)) {
+                    const double rho = std::clamp(std::abs(col.L - col.T) / tan_max + 1., 1.5, 25.);
+                    col.omega        = std::min(col.omega, smoothstep(std::clamp(away[k] / rho, 0., 1.)));
+                }
+            }
+        }
+    }
     {
         std::vector<size_t> free;
         for (size_t k = 0; k < N; ++k)
@@ -548,7 +691,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                         if ((di == 0 && dj == 0) || ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
                             continue;
                         const size_t q = size_t(ii) * ny + size_t(jj);
-                        if (nearest[q] == size_t(-1))
+                        if (nearest[q] == size_t(-1) || !joins(k, q))
                             continue;
                         const ConformalLayerField::Column &o = F->m_cols[q];
                         sum.T += o.T, sum.c += o.c, sum.L += o.L, sum.zb += o.zb, sum.d += o.d, sum.tf += o.tf, ++n;
@@ -559,6 +702,12 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 col.T = sum.T / n, col.c = sum.c / n, col.L = sum.L / n, col.zb = sum.zb / n, col.d = sum.d / n, col.tf = sum.tf / n;
             }
     }
+    for (ConformalLayerField::Column &col : F->m_cols)
+        if (col.omega > 0.) {
+            const double rr   = (col.L - col.d - col.tf) / std::max(col.tf - col.zb, 1e-9);
+            const double pmax = rr > 1e-9 ? s_hi / rr : rr < -1e-9 ? s_lo / rr : 1e9;
+            col.ease          = std::clamp(1. - 1. / std::max(pmax, 1.), 0., 0.25);
+        }
     if (const char *dump = std::getenv("NP_CONFORMAL_DUMP"); dump != nullptr && *dump != 0) {
         FILE *f = std::fopen(dump, "w");
         if (f) {
@@ -663,6 +812,10 @@ std::string conformal_planar_limit(const PrintObject &object, std::string &reaso
     std::string summary;
     conformal_layers_field(object, &summary);
     const bool base = summary.find("too close to the flat base") != std::string::npos;
+    if (!base && summary.find("could not reach") != std::string::npos) {
+        reason = "Conformal layers: no top's level stays within the layers' thickness bounds across it";
+        return "bounds";
+    }
     reason = base ? "Conformal layers: no top stands far enough above the flat base layers for a shell and a ramp" :
                     "Conformal layers: no top is large enough to follow (" +
                         float_to_string_decimal_point(object.config().nonplanar_curved_min_area.value) + " mm2)";
@@ -1029,34 +1182,9 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
             v.erase(std::remove_if(first_s, v.end(), road_is(h)), v.end());
             v.insert(std::find_if(v.begin(), v.end(), road_is(s)), moved.begin(), moved.end());
         }
-        constexpr double SimplifyTolerance = 0.01, ZSmooth = 1.;
-        for (ExtrusionEntity *e : group.entities) {
-            auto    *path = static_cast<ExtrusionPathConformal *>(e);
-            Points3 &pts  = path->polyline.points;
-            if (path->role() != erTopSolidInfill && pts.size() > 2) {
-                std::vector<double> s(pts.size(), 0.), z(pts.size());
-                for (size_t i = 0; i < pts.size(); ++i) {
-                    z[i] = unscale<double>(pts[i].z());
-                    if (i > 0)
-                        s[i] = s[i - 1] + (unscale(pts[i]) - unscale(pts[i - 1])).head<2>().norm();
-                }
-                size_t lo = 0, hi = 0;
-                for (size_t i = 0; i < pts.size(); ++i) {
-                    while (s[i] - s[lo] > 2. * ZSmooth)
-                        ++lo;
-                    while (hi + 1 < pts.size() && s[hi + 1] - s[i] <= 2. * ZSmooth)
-                        ++hi;
-                    double a = 0., w = 0.;
-                    for (size_t k = lo; k <= hi; ++k) {
-                        const double wk = std::exp(-0.5 * sqr((s[k] - s[i]) / ZSmooth));
-                        a += wk * z[k], w += wk;
-                    }
-                    const double fade = std::min({ 1., s[i] / ZSmooth, (s.back() - s[i]) / ZSmooth });
-                    pts[i].z() = scale_(z[i] + fade * std::clamp(a / w - z[i], -ConformalZSmoothMax, ConformalZSmoothMax));
-                }
-            }
-            path->simplify(SimplifyTolerance);
-        }
+        constexpr double SimplifyTolerance = 0.01;
+        for (ExtrusionEntity *e : group.entities)
+            static_cast<ExtrusionPathConformal *>(e)->simplify(SimplifyTolerance);
         constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
         for (size_t i = 1; i < group.entities.size(); ++i) {
             auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);

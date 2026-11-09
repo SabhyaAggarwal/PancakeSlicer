@@ -53,7 +53,7 @@ public:
 
 private:
     friend std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const indexed_triangle_set &, const ConformalLayersParams &);
-    struct Column { double T = 0., c = 1., L = 0., zb = 0., d = 0., tf = 0., omega = 0.; };
+    struct Column { double T = 0., c = 1., L = 0., zb = 0., d = 0., tf = 0., omega = 0., ease = 0.; };
     double column_phi(const Column &col, double z) const;
     double column_z(const Column &col, double level) const;
     Column        column(const Vec2d &xy) const;
@@ -89,8 +89,6 @@ struct BandOrderStats
     double band = 0., offset = 0.;
     size_t bands = 0, groups = 0, cut_roads = 0;
 };
-
-constexpr double ConformalZSmoothMax = 0.08;
 
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats = nullptr,
                             const std::vector<std::pair<Vec3d, Vec3d>> *precede = nullptr,

@@ -20,7 +20,6 @@
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/MaterialRules.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
-#include "Nonplanar/ConformalLayers.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/FieldChart.hpp"
 #include "Nonplanar/OrientationField.hpp"
@@ -9298,7 +9297,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             planar_stretch = std::abs(field.forward(m).z() - m.z()) < 1e-3;
         }
         if (fixed_conformal && !planar_stretch && (b - a).head<2>().norm() >= 1.) {
-            if (!in_layer || (b - a).head<2>().norm() > 15. || above > ends + 0.1 + Nonplanar::ConformalZSmoothMax)
+            if (!in_layer || (b - a).head<2>().norm() > 15. || above > ends + 0.1)
                 return false;
             const double level = 0.5 * (qa.z() + qb.z());
             double       sag   = 0.;
