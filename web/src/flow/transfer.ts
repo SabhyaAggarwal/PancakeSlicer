@@ -6,7 +6,8 @@ export type Transfer = { id: string; job: string; printer: string; name: string;
   state: 'uploading' | 'starting' | 'done' | 'failed' | 'cancelled'; sent: number; total: number; message?: string; error?: string;
   outcome?: 'uploaded' | 'printing' | 'waiting_for_printer' | 'failed';
   reason?: string; recovery?: string; started: string; finished?: string;
-  job_end?: 'finished' | 'failed' | 'cancelled' };
+  job_end?: 'finished' | 'failed' | 'cancelled';
+  job_errors?: { code: string; message?: string }[] };
 export type TransferState = 'idle' | 'connecting' | 'sending' | 'sent' | 'failed';
 type TransferEvent = { type: 'START'; jobId: string; target: string } | { type: 'STATUS'; transfer: Transfer }
   | { type: 'FAIL'; error: string } | { type: 'RESET' } | { type: 'CANCEL' } | { type: 'RETRY' };

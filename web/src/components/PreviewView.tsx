@@ -1,10 +1,12 @@
 import { OrderBar } from './OrderBar';
 import { loadSource, noteViewerProgress, viewerFirstMoves, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
 import { Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { effectiveConfig, getState, printerPreset, setState, subscribeStore, useStore, type State } from '../state/store';
+import { getState, printerPreset, setState, subscribeStore, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
-import { setCompareWanted, useCompareWanted } from '../compare';
-import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
+import { setCompareWanted, useCompareWanted, useStandardData } from '../compare';
+import { wholePartLayers } from '../preview/explain-record';
+import { useMethods } from '../methods';
+import { computeRanges, drawMasks, mergeRanges, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
 import { loadMoves, type PreviewData } from '../preview/data';
 import { NonplanarHover, explain, type HoverInfo } from '../preview/hover';
 import { PreviewScene } from '../preview/PreviewScene';
@@ -24,9 +26,12 @@ import './preview.css';
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 const ExplainLegend = preloadable(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const CompareView = preloadable(() => import('./PreviewExplain').then((m) => ({ default: m.CompareView })));
+const ViewSwitches = preloadable(() => import('./PreviewExplain').then((m) => ({ default: m.ViewSwitches })));
 const SliceDiff = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.SliceDiff })));
 const SliceDiffSummary = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.SliceDiffSummary })));
 const DoneComparing = preloadable(() => import('./SliceDiff').then((m) => ({ default: m.DoneComparing })));
+const MethodsCompare = preloadable(() => import('./MethodsCompare').then((m) => ({ default: m.MethodsCompare })));
+const DoneMethods = preloadable(() => import('./MethodsCompare').then((m) => ({ default: m.DoneMethods })));
 const setStandardCompare = (on: boolean) => setCompareWanted(on ? 'standard' : null);
 const GcodeWindow = preloadable(() => import('./GcodeWindow'));
 const ToolPosition = preloadable(() => import('./ToolPosition'));
@@ -73,12 +78,23 @@ function source(): { key: string; url?: string; file?: File; shellLayers?: boole
   const s = getState();
   if (s.job.state !== 'done' || !s.job.id || !s.api) return null;
   const ext = extendedJobs.has(s.job.id) || (extendedView && !!s.features.moves_extended);
-  return { key: `job:${s.job.id}${ext ? ':extended' : ''}`, url: s.api.movesUrl(s.job.id) + (ext ? '?extended=1' : ''), shellLayers: wholePartCurved(s) };
+  return { key: `job:${s.job.id}${ext ? ':extended' : ''}`, url: s.api.movesUrl(s.job.id) + (ext ? '?extended=1' : ''), shellLayers: wholePartLayers(s.job.status?.record) };
 }
 
-function wholePartCurved(s: State) {
-  const mode = effectiveConfig(s, 'process').nonplanar_mode;
-  return s.objects.some((o) => ['slant', 'smooth_morph'].includes(String(o.settings.nonplanar_mode ?? mode)));
+const layerShare = (d: PreviewData, k: number) => {
+  const L = d.layers, last = L.length - 1;
+  if (k <= 0 || last <= 0) return 0;
+  if (k >= last) return 1;
+  const z0 = L[0].z, z1 = L[last].z;
+  return z1 > z0 ? Math.min(1, Math.max(0, (L[k].z - z0) / (z1 - z0))) : k / last;
+};
+
+export function sharedRanges(d: PreviewData, other: PreviewData | null, ui: Pick<PreviewUi, 'view' | 'nonplanar' | 'vis'>): Ranges {
+  const slope = ui.view === 'nonplanar' && ui.nonplanar === 'slope';
+  if (slope) d.computeSlope();
+  if (!other?.header) return computeRanges(d, ui.vis);
+  if (slope) other.computeSlope();
+  return mergeRanges(computeRanges(d, ui.vis), computeRanges(other, ui.vis));
 }
 
 export interface PreviewUi {
@@ -149,7 +165,9 @@ export function PreviewView() {
   const [eventMenu, setEventMenu] = useState<{ anchor: DOMRect; layer: number } | null>(null);
   const [oneLayer, setOneLayer] = useState(false);
   const oneBackup = useRef<number | null>(null);
-  const compare = useCompareWanted();
+  const methods = !!useMethods();
+  const wantedCompare = useCompareWanted();
+  const compare = methods ? null : wantedCompare;
   const setCompare = setStandardCompare;
 
   const [epoch, setEpoch] = useState(0);
@@ -186,9 +204,10 @@ export function PreviewView() {
   useEffect(() => sceneRef.current?.setShells(objects, ui.shells), [objects, ui.shells, epoch]);
 
   const colorCtx = (d: PreviewData) => colorContext(d, ui, ranges.current!);
+  const other = useStandardData();
+  const comparingRef = useRef(false);
   const recolor = (d: PreviewData) => {
-    if (ui.view === 'nonplanar' && ui.nonplanar === 'slope') d.computeSlope();
-    ranges.current = computeRanges(d, ui.vis);
+    ranges.current = sharedRanges(d, comparingRef.current ? other : null, ui);
     lastRanges.current = performance.now();
     sceneRef.current?.setColors(colorCtx(d));
   };
@@ -377,14 +396,21 @@ export function PreviewView() {
 
   const record = ownStatus?.record;
   const comparing = !!compare && !!record && !job.stale;
+  comparingRef.current = comparing;
+  useEffect(() => {
+    if (!data?.header) return;
+    recolor(data);
+    bump();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [other, other?.done, comparing]);
   const hasGrid = !!ownStatus?.has_surface_grid;
   const before = comparing && compare === 'previous';
-  const explainKey = useMemo(() => data && record && (
+  const explainKey = useMemo(() => methods ? <Suspense fallback={null}><MethodsCompare /></Suspense> : data && record && (
     <Suspense fallback={null}>
-      {comparing && compare === 'previous' ? <SliceDiff data={data} record={record} />
+      {comparing && compare === 'previous' ? <><SliceDiff data={data} record={record} /><div className="np-toggles"><ViewSwitches ui={ui} setUi={setUi} hasSurfaceGrid={hasGrid} /></div></>
         : <ExplainLegend data={data} record={record} hasSurfaceGrid={hasGrid} ui={ui} setUi={setUi} compare={comparing && compare === 'standard'} setCompare={setCompare} />}
     </Suspense>
-  ), [data, data?.done, record, hasGrid, ui, comparing, compare, setCompare]);
+  ), [data, data?.done, record, hasGrid, ui, comparing, compare, setCompare, methods]);
   useEffect(() => sceneRef.current?.setSurface(grid), [grid, epoch]);
   useEffect(() => {
     void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
@@ -402,7 +428,7 @@ export function PreviewView() {
   const status = job.state === 'running' || job.state === 'submitting'
     ? null
     : !data && !source() && !dropped
-    ? job.state === 'done' ? null : objects.length ? 'Not sliced yet' : 'Plate is empty'
+    ? job.state === 'done' || methods ? null : objects.length ? 'Not sliced yet' : 'Plate is empty'
     : data?.error
       ? /^404 /.test(data.error)
         ? 'This slicing service did not produce preview data for the job. The sliced file can still be exported.'
@@ -459,16 +485,22 @@ export function PreviewView() {
           loaded={data.loaded}
           ranges={ranges.current}
           scene={sceneRef.current}
-          explainOnly={comparing || !!grid}
+          explainOnly={!!grid || methods}
           summary={before ? <Suspense fallback={null}><SliceDiffSummary record={record!} /></Suspense> : undefined}
-          headAction={before && <Suspense fallback={null}><DoneComparing /></Suspense>}
+          headAction={methods ? <Suspense fallback={null}><DoneMethods /></Suspense> : before && <Suspense fallback={null}><DoneComparing /></Suspense>}
           explain={explainKey}
         />
+      )}
+      {methods && !data?.header && (
+        <div className="legend" aria-label="Legend">
+          <div className="lg-head"><Suspense fallback={null}><DoneMethods /></Suspense></div>
+          <div className="lg-scroll">{explainKey}</div>
+        </div>
       )}
       {comparing && data?.header && (
         <Suspense fallback={null}>
           <CompareView source={compare!} data={data} record={record!} scene={sceneRef.current} ui={ui}
-            zRange={layerCount ? [data.layers[lo].z, data.layers[hi].z] : [0, 0]} />
+            span={[layerShare(data, lo), layerShare(data, hi)]} />
         </Suspense>
       )}
       {layerCount > 0 && (

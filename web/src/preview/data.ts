@@ -43,6 +43,7 @@ export class PreviewData {
   gcode = new Uint32Array(0);
   layer = new Uint32Array(0);
   slope: Float32Array | null = null;
+  private slopeLoaded = 0;
 
   lod: Uint32Array[] = [];
   lodBlocks: number[] = [];
@@ -166,7 +167,8 @@ export class PreviewData {
   }
 
   computeSlope() {
-    if (this.slope) return;
+    if (this.slope && this.slopeLoaded === this.loaded) return;
+    this.slopeLoaded = this.loaded;
     const st = this.states!;
     const out = new Float32Array(this.n);
     const CELL = 0.5;

@@ -17,13 +17,24 @@ def write(path, value):
     path.write_text(json.dumps(value, indent=2)+'\n', encoding='utf-8')
 
 
+def relative_to_stage(value, root):
+    if isinstance(value, str):
+        return value.replace(root + '/', '')
+    if isinstance(value, list):
+        return [relative_to_stage(item, root) for item in value]
+    if isinstance(value, dict):
+        return {key: relative_to_stage(item, root) for key, item in value.items()}
+    return value
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--engine', required=True, type=Path)
     ap.add_argument('--qualification', required=True, type=Path)
     ap.add_argument('--evidence-archive', required=True, type=Path)
     args = ap.parse_args()
-    proof = json.loads((args.qualification/'qualification.json').read_text())
+    stage_root = str(args.engine.resolve().parent)
+    proof = relative_to_stage(json.loads((args.qualification/'qualification.json').read_text()), stage_root)
     if not proof.get('ready'):
         raise RuntimeError('Qualification did not pass; no ready manifest is written')
     cross_os = proof['platform']['os'] != 'linux'
@@ -72,7 +83,7 @@ def main():
             info=zipfile.ZipInfo(path.relative_to(args.qualification).as_posix(),(2020,1,1,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
             info.external_attr=0o100644<<16
-            archive.writestr(info,path.read_bytes())
+            archive.writestr(info,path.read_bytes().replace((stage_root+'/').encode(),b''))
     ready = {**binding,'schema':'orca.ns7.qualification.v2','ready':True,'manifest_sha256':digest(manifest_path),
              'outputs':{name:entries[alias] for name,alias in [('benchy','benchy'),('dome_lid','dome'),('coaster','wave')]},
              'evidence':{'archive_sha256':digest(args.evidence_archive)}}

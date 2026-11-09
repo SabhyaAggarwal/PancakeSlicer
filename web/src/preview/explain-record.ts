@@ -49,6 +49,19 @@ export interface RecordSummary {
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
 
+type ReportTop = { curved_top_mm2?: number; curved_share?: number; planar_top_mm2?: number; flat_top_mm2?: number };
+function reportTop(o: ReportTop): { curved: number; total: number } | null {
+  const curved = num(o.curved_top_mm2), share = num(o.curved_share);
+  if (curved == null || share == null) return null;
+  return share > 0 ? { curved, total: curved / share } : { curved: 0, total: curved + (num(o.planar_top_mm2) ?? 0) + (num(o.flat_top_mm2) ?? 0) };
+}
+const reportedObjects = (record: Rec) => ((((record.nonplanar_report ?? {}) as Rec).objects ?? []) as ReportTop[]);
+
+export function wholePartLayers(record: Rec | undefined): boolean {
+  const objects = ((record?.nonplanar_report as Rec | undefined)?.objects ?? []) as { patches?: { kind?: string }[] }[];
+  return objects.some((o) => o.patches?.some((p) => p.kind === 'volume' || p.kind === 'field'));
+}
+
 export function readRecord(record: Rec | undefined): RecordSummary | null {
   if (!record || record.status === 'error') return null;
   const inputs = (record.inputs ?? {}) as Rec;
@@ -79,13 +92,16 @@ export function readRecord(record: Rec | undefined): RecordSummary | null {
   const v = totals.verifier as Rec | undefined;
   const names = [...new Set(objects.map((o) => String(o.name ?? '').replace(/\.[^.]+$/, '')).filter(Boolean))];
   const stats = record.statistics as Rec | undefined;
+  const native = reportedObjects(record).map(reportTop).filter((t) => t != null);
+  const topCurved = native.length ? native.reduce((a, t) => a + t.curved, 0) : sum(top);
+  const topFlat = native.length ? native.reduce((a, t) => a + t.total - t.curved, 0) : [...flatByTag.values()].reduce((a, b) => a + b, 0);
   return {
     mode,
     style,
     curved: timed ? curvedTime > 0 : accepted.length > 0,
     part: names.length === 1 ? `your ${names[0]}` : 'your parts',
-    topCurved: sum(top),
-    topFlat: [...flatByTag.values()].reduce((a, b) => a + b, 0),
+    topCurved,
+    topFlat,
     shells: top.reduce((m, p) => Math.max(m, num(p.shells) ?? 0), 0),
     overhangs: accepted.filter((p) => p.kind === 'overhang').length,
     bridges: accepted.filter((p) => p.kind === 'bridge').length,
@@ -126,10 +142,10 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const base = recordConfig(inputs);
   const patches = (((record.results ?? {}) as Rec).patches ?? []) as Patch[];
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string; deform?: string; curved_layers?: CurvedLayers }[];
-  const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number;
+  const reported = reportedObjects(record) as (ReportTop & { name?: string; patches?: Patch[];
     planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number; curved_extrusion_length_mm?: number;
     planar_fallback_reason?: string; access_by?: string; curved_surfaces_candidates?: number; curved_surfaces_kept?: number;
-    curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] }; slant?: SlantReport }[];
+    curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] }; slant?: SlantReport })[];
   const contexts = ((((record.model_context ?? {}) as Rec).objects ?? []) as { name?: string; effective_settings?: Rec }[]);
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
@@ -156,18 +172,19 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
       }
       return total;
     };
-    const top = mine.filter((p) => p.kind === 'top').reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
     const ledge = footprints(['overhang', 'bridge']);
-    const flat = mine.filter((p) => p.kind === 'fallback' && !overhangTag(p.reason_tags?.length ? p.reason_tags : ['untagged']) && (num(p.area_mm2) ?? 0) >= 0.05)
-      .reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
-    const share = native && Number.isFinite(native.curved_top_area_fraction) ? native.curved_top_area_fraction! : top / (top + flat);
+    const why = reported.find((r) => r.name === name), reportedTop = why && reportTop(why);
+    const top = reportedTop ? reportedTop.curved : mine.filter((p) => p.kind === 'top').reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
+    const flat = reportedTop ? reportedTop.total - reportedTop.curved
+      : mine.filter((p) => p.kind === 'fallback' && !overhangTag(p.reason_tags?.length ? p.reason_tags : ['untagged']) && (num(p.area_mm2) ?? 0) >= 0.05)
+        .reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0);
+    const share = top / (top + flat);
     const pct = top >= 1 ? Math.min(flat > 0 || share < 1 ? 99 : 100, Math.max(1, Math.round(100 * share))) : 0;
     let fact: string;
     if (o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) fact = 'Whole part in curved layers';
     else if (ledge >= 1 && ledge > top) fact = 'No support under ledge';
     else if (top >= 1) fact = `Curved top ${pct}%`;
     else fact = 'Flat top, prints as Standard';
-    const why = reported.find((r) => r.name === name);
     const accessBy = why?.access_by === 'nozzle' || why?.access_by === 'head' ? (why.access_by as 'nozzle' | 'head') : undefined;
     const limit = why?.planar_limit && o.mode !== 'slant' ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);

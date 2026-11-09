@@ -5,7 +5,6 @@ import { SEP } from './separator';
 
 export const APP_VERSION = version;
 export const GITHUB_URL = 'https://github.com/ZimengXiong/PancakeSlicer';
-export const DOCS_URL = 'https://github.com/ZimengXiong/PancakeSlicer';
 
 export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
 export interface BuildInfo { state: 'loading' | 'ready' | 'failed'; about?: BuildAbout; engine?: string; engineSha?: string }

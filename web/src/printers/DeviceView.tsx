@@ -95,10 +95,38 @@ function PrinterRender({ cover }: { cover?: string }) {
   return cover && failed !== cover ? <img src={cover} alt="" onError={() => fail(cover)} /> : null;
 }
 
+const HISTORY_PAGE = 20;
+const jobReason = (job: History) => job.job_end === 'failed' ? (job.job_errors ?? []).map((e) => e.message ? `${e.message} (${e.code})` : `Error ${e.code}`).join(' · ') : '';
+
+function HistoryRow({ job, running, printer }: { job: History; running: boolean; printer?: boolean }) {
+  const reason = jobReason(job);
+  return <li>
+    <strong title={job.filename}>{jobName(job.filename)}</strong>{printer && <span className="device-history-printer" title={job.name}>{job.name}</span>}<time dateTime={job.started}>{when(job.started)}</time>
+    <span className="status-text" data-tone={outcomeTone(job, running)} title={reason || undefined}>{outcomeLabel(job, running)}</span>
+    {(job.error || reason) && <p className="device-error">{reason || [job.error, job.recovery].filter(Boolean).join('. ')}</p>}
+  </li>;
+}
+
+function AllJobs({ runningId, version, collapse }: { runningId?: string; version: string; collapse(): void }) {
+  const [pages, setPages] = useState<{ sends: History[]; total: number }>({ sends: [], total: 0 }), [count, setCount] = useState(HISTORY_PAGE), [error, setError] = useState('');
+  useEffect(() => {
+    const abort = new AbortController();
+    void fetch(`/api/printer-sends?limit=${count}`, { signal: abort.signal }).then(async (r) => {
+      if (!r.ok) throw await responseError(r);
+      const body = await r.json() as { sends: History[]; total: number }; if (!abort.signal.aborted) { setPages(body); setError(''); }
+    }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Cannot read the job history'); });
+    return () => abort.abort();
+  }, [count, version]);
+  return <>{error && <p role="status" className="device-error">{error}</p>}
+    <ol className="device-history" data-printers="true">{pages.sends.map((job) => <HistoryRow key={job.id} job={job} running={job.id === runningId} printer />)}</ol>
+    <div className="device-history-more">{pages.sends.length < pages.total && <button type="button" className="btn-ghost" onClick={() => setCount((n) => n + HISTORY_PAGE)}>Show more</button>}
+      <button type="button" className="btn-ghost" onClick={collapse}>Show less</button><span>{pages.sends.length} of {pages.total}</span></div></>;
+}
+
 function DevicePanel({ connection, model, cover, status, live }: { connection: PrinterConnection; model: string; cover?: string; status?: PrinterStatus; live: boolean }) {
   const [thumbnailFailed, failThumbnail] = useState(false);
   const [error, setError] = useState(''), [pending, setPending] = useState(false), [history, setHistory] = useState<History[]>([]), [historyError, setHistoryError] = useState('');
-  const transfers = useStore((s) => s.printerConnections.transfers);
+  const transfers = useStore((s) => s.printerConnections.transfers), [allJobs, showAllJobs] = useState(false);
   const historyVersion = transfers.filter((t) => t.printer === connection.printer).map((t) => `${t.id}:${t.state}:${t.outcome}`).join(',');
   useEffect(() => {
     const abort = new AbortController();
@@ -177,11 +205,10 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
         </Card>}
         {!!status?.messages?.length && <Card title={`Printer messages (${status.messages.length})`} className="device-messages"><ul>{status.messages.map((message, i) => <li key={`${message.code}:${i}`}><p>{message.message || message.code}</p>{message.message && <span>{message.code}</span>}</li>)}</ul></Card>}
       </div>
-      {(history.length > 0 || historyError) && <Card title="Recent jobs" className="device-recent">{historyError && <p role="status" className="device-error">{historyError}</p>}
-        <ol className="device-history">{history.slice(0, 5).map((job) => <li key={job.id}>
-          <strong title={job.filename}>{jobName(job.filename)}</strong><time dateTime={job.started}>{when(job.started)}</time><span className="status-text" data-tone={outcomeTone(job, job.id === runningId)}>{outcomeLabel(job, job.id === runningId)}</span>
-          {job.error && <p className="device-error">{[job.error, job.recovery].filter(Boolean).join('. ')}</p>}
-        </li>)}</ol></Card>}
+      {(history.length > 0 || historyError) && <Card title={allJobs ? 'All jobs' : 'Recent jobs'} className="device-recent">{historyError && <p role="status" className="device-error">{historyError}</p>}
+        {allJobs ? <AllJobs runningId={runningId} version={transfers.map((t) => `${t.id}:${t.state}:${t.outcome}`).join(',')} collapse={() => showAllJobs(false)} /> : <>
+          <ol className="device-history">{history.slice(0, 5).map((job) => <HistoryRow key={job.id} job={job} running={job.id === runningId} />)}</ol>
+          <div className="device-history-more"><button type="button" className="btn-ghost" onClick={() => showAllJobs(true)}>Show all</button></div></>}</Card>}
     </div>
   </article>;
 }

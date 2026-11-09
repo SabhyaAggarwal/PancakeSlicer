@@ -298,6 +298,18 @@ export function hexToRgb(h: string | undefined): RGB {
 
 const packRGB = (col: RGB) => col[0] | (col[1] << 8) | (col[2] << 16) | 0xff000000;
 
+export function mergeRanges(a: Ranges, b: Ranges): Ranges {
+  const out = {} as Record<keyof Ranges, ColorRange>;
+  for (const k of Object.keys(a) as (keyof Ranges)[]) {
+    const x = a[k], y = b[k], r = new ColorRange(x.log);
+    r.min = Math.min(x.min, y.min);
+    r.max = Math.max(x.max, y.max);
+    r.count = Math.max(x.count, y.count, x.min === y.min && x.max === y.max ? 0 : 2);
+    out[k] = r;
+  }
+  return out;
+}
+
 export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, from: number, to: number) {
   const s = d.states!;
   const { ranges: r, view } = c;

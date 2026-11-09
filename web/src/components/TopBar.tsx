@@ -1,6 +1,7 @@
 import { openUrlImport } from '../url-import';
 import { preloadable } from '../preloadable';
-import { DEMO, DOCS_URL } from '../demo/config';
+import { DEMO } from '../demo/config';
+import { hasWhatYouCanDo } from './what-you-can-do-page';
 import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
@@ -32,6 +33,7 @@ import { useTier } from '../breakpoints';
 import { Glyph } from './Glyph';
 import { PrintingChip } from '../printers/PrintingChip';
 import { sliceAndCompare } from '../compare';
+import { sliceAllMethods, useMethods } from '../methods';
 import { settingsChangedSinceSlice } from '../compare-settings';
 
 type MenuItem = MenuEntry;
@@ -170,7 +172,7 @@ export function TopBar() {
           'sep',
           { label: 'Calibration guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
         ]} as MenuItem] : []), {label: 'Help', sub: [
-          { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
+          ...(hasWhatYouCanDo ? [{ label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'What the web app does, with screenshots' }] : []),
           { label: 'Keyboard shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, profiles, connection and filaments' },
         ]}];
@@ -180,7 +182,7 @@ export function TopBar() {
     <Menu title="File" items={fileItems}/>
     {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><span>Update</span></button>}
     </div>
-    {DEMO ? <a className="mock-badge demo-chip" href={DOCS_URL} target="_blank" rel="noopener noreferrer" title="PancakeSlicer documentation">Demo</a> : mock && <span className="mock-badge">Demo</span>}
+    {(DEMO || mock) && <span className="mock-badge">Demo</span>}
     {DEMO && <DemoResultNotice/>}
     {tab !== 'projects' && <TabBar/>}
     {tab === 'projects' && <div id="topbar-slot" className="topbar-slot"/>}
@@ -188,8 +190,9 @@ export function TopBar() {
   </header>;
 }
 
-function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
-  return <span className="side-options"><MenuButton className="btn slant side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
+function SideOptions({ options, value, onChange, actions = [], className = 'btn', disabled }: { options: string[]; value?: string; onChange?(v: string): void; actions?: MenuEntry[]; className?: string; disabled?: boolean }) {
+  const items: MenuEntry[] = [...options.map(o => ({label: o, checked: o === value, action: () => onChange?.(o)})), ...(options.length && actions.length ? ['sep' as const] : []), ...actions];
+  return <span className="side-options"><MenuButton className={`${className} slant side-drop`} label="Output options" items={items} disabled={disabled}><Caret/></MenuButton></span>;
 }
 
 export function TabBar() {
@@ -212,10 +215,12 @@ export function TabBar() {
   const sliceClass = `${ready ? 'btn' : 'btn-primary'} slant${busy ? ' slicing' : ''}`, exportClass = `${ready ? 'btn-primary' : 'btn'} slant`;
   const progress = busy ? { '--p': `${Math.round(job.pct)}%` } as CSSProperties : undefined;
   const allSlice = wide && plates && sliceMode === 'Slice all';
-  const changed = useStore(settingsChangedSinceSlice);
+  const methods = useMethods(), changed = useStore(settingsChangedSinceSlice) && !methods;
   const compareSlice = () => { sliceAndCompare(slice); setState({ tab: 'preview' }); };
+  const sliceMethods: MenuEntry = {label: 'Slice all methods', action: () => void sliceAllMethods(), disabled: !hasObjects || !printer || busy || !!outside};
   const allExport = wide && plates && exportMode === 'all';
   const more: MenuEntry[] = [
+    ...(folded ? [sliceMethods] : []),
     ...(folded && changed ? [{label: 'Slice and compare', action: compareSlice, disabled: !printer || busy || !!outside, tip: 'Slice with the new settings and compare with the previous slice'}] : []),
     ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
     ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
@@ -245,8 +250,9 @@ export function TabBar() {
             {tier === 'phone' ? 'Slice' : 'Slice plate'}
           </button>
         )}
+        {!folded && <SideOptions className={ready ? 'btn' : 'btn-primary'} options={wide && plates ? ['Slice all', 'Slice plate'] : []} value={sliceMode} onChange={setSliceMode}
+          actions={[sliceMethods]} disabled={!printer || busy || (!plates && !hasObjects)} />}
         {!allSlice && !folded && changed && <button className="btn slant" disabled={!printer || busy || !!outside} onClick={compareSlice}>Slice and compare</button>}
-        {wide && plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         {!folded && <span className="export-actions">{allExport ? (
           <button className={exportClass} disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (

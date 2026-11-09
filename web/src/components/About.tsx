@@ -1,4 +1,4 @@
-import { APP_VERSION, DOCS_URL, GITHUB_URL, reloadBuildInfo, shortSha, useBuildInfo, type BuildInfo } from '../build-info';
+import { APP_VERSION, GITHUB_URL, reloadBuildInfo, shortSha, useBuildInfo, type BuildInfo } from '../build-info';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { Sep } from '../separator';
 
@@ -12,7 +12,7 @@ export function AboutContent({ info }: { info: BuildInfo }) {
     {about && <><dt>Build</dt><dd data-truncated="true" data-full-text={about.revision}>{shortSha(about.revision)}</dd></>}
     {info.engine && <><dt>Engine</dt><dd data-truncated="true" data-full-text={info.engineSha}>{info.engine}{info.engineSha ? ` ${shortSha(info.engineSha)}` : ''}</dd></>}
     {about?.image && <><dt>Image</dt><dd>{about.image}</dd></>}
-    <dt>Links</dt><dd className="about-links">{link(GITHUB_URL, 'GitHub')}{link(DOCS_URL, 'User guide')}</dd>
+    <dt>Links</dt><dd className="about-links">{link(GITHUB_URL, 'GitHub')}</dd>
     <dt>Licence</dt><dd>{link('https://www.gnu.org/licenses/agpl-3.0.html', about?.license || 'AGPL-3.0')}<Sep/>{link('/third-party-licences.txt', 'Third-party licences')}</dd>
     {source && <><dt>Source</dt><dd>{link(source, source.replace(/^https?:\/\//, ''))}</dd></>}
   </dl>;

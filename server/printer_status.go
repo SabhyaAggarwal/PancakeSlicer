@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -311,6 +312,15 @@ type sendHistory struct {
 
 const sendHistoryCap = 5000
 
+const jobEndStale = 5 * time.Second
+
+func backupOnce(path string, b []byte) error {
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return writeFileAtomic(path, b)
+}
+
 func loadSendHistory(dir string) *sendHistory {
 	h := &sendHistory{path: filepath.Join(dir, "sends.json")}
 	b, err := os.ReadFile(h.path)
@@ -344,6 +354,33 @@ func loadSendHistory(dir string) *sendHistory {
 				t.Reason = "unknown"
 			}
 			migrated++
+		}
+	}
+	stale, ran := 0, 0
+	for i := range h.list {
+		t := &h.list[i]
+		if t.JobEnd == "" || t.Running || t.JobEndAt == nil {
+			continue
+		}
+		if t.Finished != nil && t.JobEndAt.Sub(*t.Finished) < jobEndStale {
+			log.Printf("send history: cleared %s of %s on %s (%s): reported %s after the send, before the job ran", t.JobEnd, t.Filename, t.Name, t.ID, t.JobEndAt.Sub(*t.Finished).Round(time.Second))
+			t.JobEnd, t.JobEndAt = "", nil
+			stale++
+		} else {
+			t.Running = true
+		}
+		ran++
+	}
+	if stale > 0 {
+		log.Printf("send history: cleared %d job ends reported before their job ran", stale)
+	}
+	if ran > 0 {
+		if err := backupOnce(h.path+".pre-running", b); err != nil {
+			log.Printf("warning: send history: cannot back up %s before migrating it: %v", h.path, err)
+			return h
+		}
+		if migrated == 0 {
+			h.writeLocked()
 		}
 	}
 	if migrated > 0 {
@@ -433,7 +470,8 @@ func (h *sendHistory) recordEnd(st PrinterStatus) bool {
 	if st.State == "idle" && st.Detail == "cancelled" {
 		end = "cancelled"
 	}
-	if h == nil || !st.Online || end == "" || st.File == "" {
+	running := st.State == "printing" || st.State == "paused" || st.State == "busy"
+	if h == nil || !st.Online || end == "" && !running || st.File == "" {
 		return false
 	}
 	h.mu.Lock()
@@ -446,9 +484,20 @@ func (h *sendHistory) recordEnd(st PrinterStatus) bool {
 		if t.Outcome != "printing" || t.JobEnd != "" || st.At.Before(t.Started) || sendStem(t.Filename) != sendStem(st.File) {
 			return false
 		}
+		if running || !t.Running {
+			changed := running && !t.Running
+			t.Running = t.Running || running
+			if changed {
+				h.writeLocked()
+			}
+			return changed
+		}
 		t.JobEnd = end
 		at := st.At
 		t.JobEndAt = &at
+		if end == "failed" {
+			t.JobErrors = st.Messages
+		}
 		h.writeLocked()
 		return true
 	}
@@ -494,14 +543,24 @@ func (h *sendHistory) recent(age time.Duration) []Transfer {
 func (s *Server) listSends(w http.ResponseWriter, r *http.Request) {
 	h := s.sends.history
 	out := []Transfer{}
+	q := r.URL.Query()
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	limit, err := strconv.Atoi(q.Get("limit"))
+	if err != nil || limit <= 0 {
+		limit = sendHistoryCap
+	}
+	total := 0
 	if h != nil {
 		h.mu.Lock()
 		for i := len(h.list) - 1; i >= 0; i-- {
-			if key := r.URL.Query().Get("printer"); key == "" || h.list[i].Printer == key {
-				out = append(out, h.list[i])
+			if key := q.Get("printer"); key == "" || h.list[i].Printer == key {
+				if total >= offset && len(out) < limit {
+					out = append(out, h.list[i])
+				}
+				total++
 			}
 		}
 		h.mu.Unlock()
 	}
-	writeJSON(w, 200, map[string]any{"sends": out})
+	writeJSON(w, 200, map[string]any{"sends": out, "total": total})
 }

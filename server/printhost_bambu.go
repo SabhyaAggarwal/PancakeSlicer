@@ -807,6 +807,7 @@ func (b *bambuReport) status() PrinterStatus {
 	if b.Error != 0 && b.Error != bambuCancelled {
 		st.Messages = append(st.Messages, PrinterMessage{Code: fmt.Sprintf("%08X", b.Error)})
 	}
+	st.Messages = describeHMS(st.Messages)
 	st.State = map[string]string{"IDLE": "idle", "PREPARE": "busy", "SLICING": "busy", "RUNNING": "printing", "PAUSE": "paused", "FINISH": "finished", "FAILED": "failed"}[b.State]
 	if st.State == "" {
 		st.State = "busy"

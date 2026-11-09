@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { forgetCompare, setStandardData, showPrevious, startCompare, stopCompare, useCompare, useStandardData, type CompareSource } from '../compare';
-import { computeRanges, drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
+import { drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
 import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
-import { area, curvedTopPercent, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
+import { area, curvedTopPercent, wholePartLayers, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
 import { plateResults, type PlateResult } from '../recommend';
 import { getState, printerPreset, useStore } from '../state/store';
-import { colorContext, jobColours, type PreviewUi } from './PreviewView';
+import { colorContext, jobColours, sharedRanges, type PreviewUi } from './PreviewView';
 import { Switch } from './fields';
 
 const TWO_SCENE_VERTICES = 8e6;
@@ -44,6 +44,24 @@ function flatLines(results: PlateResult[]): string[] {
 
 const time = (s: number | null) => (s == null ? '–' : shortTime(s));
 
+export function ViewSwitches({ ui, setUi, hasSurfaceGrid }: { ui: PreviewUi; setUi(f: (u: PreviewUi) => PreviewUi): void; hasSurfaceGrid: boolean }) {
+  const previous = useRef<Pick<PreviewUi, 'view' | 'nonplanar'>>({ view: 'feature', nonplanar: 'shell' });
+  const highlight = ui.view === 'nonplanar' && ui.nonplanar === 'curved';
+  return <>
+    <label className="lg-switch">
+      <Switch checked={highlight} onChange={(on) => {
+        if (on) previous.current = { view: ui.view, nonplanar: ui.nonplanar };
+        setUi((u) => ({ ...u, ...(on ? { view: 'nonplanar', nonplanar: 'curved' } : previous.current) }));
+      }} />Highlight curved
+    </label>
+    {hasSurfaceGrid && (
+      <label className="lg-switch">
+        <Switch checked={ui.surface} onChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
+      </label>
+    )}
+  </>;
+}
+
 export function ExplainLegend(props: {
   data: PreviewData;
   record: Record<string, unknown>;
@@ -58,9 +76,7 @@ export function ExplainLegend(props: {
   const results = useStore(plateResults);
   const cmp = useCompare();
   const stdData = useStandardData();
-  const previous = useRef<Pick<PreviewUi, 'view' | 'nonplanar'>>({ view: 'feature', nonplanar: 'shell' });
   if (!s || (!s.curved && s.mode === 'off')) return null;
-  const highlight = ui.view === 'nonplanar' && ui.nonplanar === 'curved';
   const std = compare && cmp.state === 'done' ? readRecord(cmp.status.record) : null;
   const curvedPct = curvedShare(s) ?? curvedTopPercent(record);
   const better = (a: number | null | undefined, b: number | null | undefined) => a != null && b != null && b < a / 1.15;
@@ -76,7 +92,7 @@ export function ExplainLegend(props: {
   rows.push(['Top error', std ? microns(std.topErrorMm) : pending ?? '', microns(s.topErrorMm), better(std?.topErrorMm, s.topErrorMm),
     better(std?.topErrorMm, s.topErrorMm) ? `${(std!.topErrorMm! / s.topErrorMm!).toFixed(1)}× smoother than Standard` : undefined]);
   const stdPct = std ? curvedShare(std) ?? 0 : null;
-  if (s.mode !== 'off') rows.push(['Curved top', stdPct != null ? `${stdPct}%` : '', `${curvedPct ?? 0}%`, stdPct != null && (curvedPct ?? 0) > stdPct]);
+  if (s.mode !== 'off' && !s.wholePart) rows.push(['Curved top', stdPct != null ? `${stdPct}%` : '', `${curvedPct ?? 0}%`, stdPct != null && (curvedPct ?? 0) > stdPct]);
   if (s.shells) rows.push(['Curved shells', std ? String(std.shells) : '', String(s.shells)]);
   if (s.overhangs + s.bridges) rows.push(['Curved overhangs', std ? String(std.overhangs + std.bridges) : '', String(s.overhangs + s.bridges), false, `${s.overhangs} overhangs, ${s.bridges} bridges`]);
   rows.push(['Time', std ? time(std.timeS) : '', time(s.timeS) + (timeDelta != null ? ` (${timeDelta >= 0 ? '+' : ''}${Math.round(timeDelta * 100)}%)` : '')]);
@@ -101,18 +117,7 @@ export function ExplainLegend(props: {
       {summary && <div className="np-summary-line" role="status">{summary}</div>}
       <div className="np-toggles">
         <label className="lg-switch"><Switch checked={compare} onChange={(next) => setCompare(next)} />Compare with Standard</label>
-        <label className="lg-switch">
-          <Switch checked={highlight} onChange={(next) => {
-            const on = next;
-            if (on) previous.current = { view: ui.view, nonplanar: ui.nonplanar };
-            setUi((u) => ({ ...u, ...(on ? { view: 'nonplanar', nonplanar: 'curved' } : previous.current) }));
-          }} />Highlight curved
-        </label>
-        {hasSurfaceGrid && (
-          <label className="lg-switch">
-            <Switch checked={ui.surface} onChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
-          </label>
-        )}
+        <ViewSwitches ui={ui} setUi={setUi} hasSurfaceGrid={hasSurfaceGrid} />
       </div>
       </div>
       {flat.map((line) => <div className="lg-row np-flat" role="status" key={line}>{line}</div>)}
@@ -186,7 +191,7 @@ export function CompareView(props: {
   record: Record<string, unknown>;
   scene: PreviewScene | null;
   ui: PreviewUi;
-  zRange: [number, number];
+  span: [number, number];
 }) {
   const { source, data, record, scene, ui } = props;
   const cmp = useCompare();
@@ -203,7 +208,7 @@ export function CompareView(props: {
   }, [scene, data, data.done]);
   return (
     <>
-      <StandardPane main={scene} cmp={cmp} ui={ui} vis={ui.vis} zRange={props.zRange} mainVertices={data.n} />
+      <StandardPane main={scene} mainData={data} cmp={cmp} ui={ui} vis={ui.vis} span={props.span} />
       <div className="cmp-label cmp-left label-caps">{source === 'previous' ? 'Before' : 'Standard'}</div>
       <div className="cmp-label cmp-right label-caps">{source === 'previous' ? 'After' : style}</div>
     </>
@@ -213,12 +218,12 @@ export function CompareView(props: {
 function StandardPane(props: {
   main: PreviewScene | null;
   cmp: ReturnType<typeof useCompare>;
+  mainData: PreviewData;
   ui: PreviewUi;
   vis: Visibility;
-  zRange: [number, number];
-  mainVertices: number;
+  span: [number, number];
 }) {
-  const { main, cmp, ui, vis, zRange } = props;
+  const { main, mainData, cmp, ui, vis, span } = props;
   const host = useRef<HTMLDivElement>(null);
   const [scene, setScene] = useState<PreviewScene | null>(null);
   const [data, setData] = useState<PreviewData | null>(null);
@@ -259,9 +264,9 @@ function StandardPane(props: {
     if (!scene || !id || cmp.state !== 'done') return;
     const api = getState().api!;
     let skip = false;
-    const h = loadMoves({ url: api.movesUrl(id) }, {
+    const h = loadMoves({ url: api.movesUrl(id), shellLayers: wholePartLayers(cmp.status.record) }, {
       header: (d) => {
-        skip = d.n + props.mainVertices > TWO_SCENE_VERTICES;
+        skip = d.n + mainData.n > TWO_SCENE_VERTICES;
         setTooLarge(skip);
         if (skip) return;
         scene.setData(d);
@@ -271,7 +276,7 @@ function StandardPane(props: {
       done: (d) => {
         setStandardData(d);
         if (skip) return;
-        scene.setColors(colorContext(d, ui, computeRanges(d, vis)));
+        scene.setColors(colorContext(d, ui, sharedRanges(d, mainData, ui)));
         scene.sync();
         bump();
       },
@@ -291,19 +296,19 @@ function StandardPane(props: {
   }, [scene, id]);
 
   useEffect(() => {
-    if (scene && data?.done) scene.setColors(colorContext(data, ui, computeRanges(data, vis)));
+    if (scene && data?.done) scene.setColors(colorContext(data, ui, sharedRanges(data, mainData, ui)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ui.view, ui.nonplanar, vis]);
+  }, [ui.view, ui.nonplanar, vis, mainData, mainData.done]);
 
   useEffect(() => {
     if (!scene || !data?.layers.length) return;
-    const L = data.layers;
-    let lo = L.findIndex((l) => l.z >= zRange[0] - 1e-3);
-    if (lo < 0) lo = L.length - 1;
-    let hi = lo;
-    while (hi + 1 < L.length && L[hi + 1].z <= zRange[1] + 1e-3) ++hi;
+    const L = data.layers, z0 = L[0].z, z1 = L[L.length - 1].z;
+    const at = (f: number) => z0 + f * (z1 - z0);
+    const lo = span[0] <= 0 ? 0 : Math.max(0, L.findIndex((l) => l.z >= at(span[0]) - 1e-3));
+    let hi = L.length - 1;
+    if (span[1] < 1) while (hi > lo && L[hi].z > at(span[1]) + 1e-3) --hi;
     scene.setDrawState({ range: data.layerSpan(lo, hi), ...drawMasks(vis, !!grid) }, null);
-  }, [scene, data, data?.loaded, data?.done, zRange[0], zRange[1], vis, grid]);
+  }, [scene, data, data?.loaded, data?.done, span[0], span[1], vis, grid]);
 
   return (
     <div ref={host} className="preview-canvas cmp-std" onPointerLeave={() => setTip(null)} onPointerMove={(e) => {

@@ -102,6 +102,10 @@
 .device-history time { font: var(--t-small); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .device-history .status-text { font: var(--t-small); }
 .device-history li > p { grid-column: 1 / -1; font: var(--t-small); }
+.device-history[data-printers] li { grid-template-columns: minmax(0, 1fr) minmax(0, 12em) 9.5em 8em; }
+.device-history-printer { font: var(--t-small); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-history-more { display: flex; align-items: baseline; gap: var(--s-4); padding-top: var(--s-2); border-top: 1px solid var(--line); }
+.device-history-more > span { margin-left: auto; font: var(--t-small); color: var(--ink-3); }
 .device-error { color: var(--danger); }
 .device-command-error { margin-bottom: var(--s-5) !important; color: var(--danger); }
 .device-muted { font: var(--t-small); color: var(--ink-3); padding: var(--s-3); }
@@ -137,6 +141,8 @@
   .device-job:not(:has(> .device-job-art)) { grid-template-columns: minmax(0,1fr); }
   .device-history li { grid-template-columns: minmax(0, 1fr) auto; }
   .device-history time { grid-row: 2; }
+  .device-history[data-printers] li { grid-template-columns: minmax(0, 1fr) auto; }
+  .device-history[data-printers] time { grid-row: 3; }
   .device-job-actions .btn { min-height: 36px; }
   .device-job-meta { gap: var(--s-2) var(--s-3); }
   .device-camera-toolbar button { width: 36px; height: 36px; }

@@ -1,0 +1,12 @@
+:where(.orca-parity) .methods-compare .mc-rows { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+:where(.orca-parity) .methods-compare .mc-row { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--s-3); width: 100%; padding: var(--s-2) var(--s-3);
+  border: 0; border-left: 2px solid transparent; border-radius: 0; background: none; color: var(--ink); font: var(--t-small); text-align: left; cursor: pointer; }
+:where(.orca-parity) .methods-compare .mc-row:hover:not(:disabled) { background: var(--sunken); }
+:where(.orca-parity) .methods-compare .mc-row[aria-current] { border-left-color: var(--accent); background: var(--sunken); }
+:where(.orca-parity) .methods-compare .mc-row:disabled { cursor: default; }
+:where(.orca-parity) .methods-compare .mc-name { font-weight: 600; }
+:where(.orca-parity) .methods-compare .mc-main { font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .methods-compare .mc-detail { grid-column: 1 / -1; overflow: hidden; color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .methods-compare .mc-detail[data-warn] { color: var(--status-warn); }
+:where(.orca-parity) .methods-compare .mc-actions { display: flex; align-items: center; gap: var(--s-3); }
+:where(.orca-parity) .methods-compare .mc-keep { margin-top: var(--s-3); min-height: var(--h-compact); padding: 0 var(--s-4); font: var(--t-small); }
