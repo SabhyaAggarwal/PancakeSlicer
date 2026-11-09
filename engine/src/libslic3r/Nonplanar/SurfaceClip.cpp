@@ -78,7 +78,7 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
         k.j1    = k.inf_y ? 0 : offset(std::floor((box.max.y() + grow) / pitch + eps));
         if ((!k.inf_x && k.i0 > k.i1) || (!k.inf_y && k.j0 > k.j1))
             continue;
-        const double height = zmin - (box.nozzle ? 0. : head.margin);
+        const double height = zmin - (box.nozzle ? 0. : head.margin) + head.contact_tolerance;
         if (!std::isfinite(height) || std::abs(height) > std::numeric_limits<float>::max())
             throw RuntimeError("Head envelope clearance height is too large. Check the head dimensions and margin.");
         k.z = float(height);

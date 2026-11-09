@@ -487,7 +487,6 @@ HeadEnvelope morph_body(const HeadEnvelope &head, double inflation, bool mirror)
     out.boxes.clear();
     for (HeadBox box : head.boxes)
         if (!box.nozzle && !box.infinite_x && !box.infinite_y) {
-            box.min.z() += head.contact_tolerance;
             if (mirror) {
                 const Vec3d lo = box.min;
                 box.min.head<2>() = -box.max.head<2>();
