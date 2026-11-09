@@ -1,5 +1,5 @@
 import { Dropdown } from './Dropdown';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { effectiveConfig, getState, markStale, presetEdits, setOption, setState, toast, useStore } from '../state/store';
 import type { ConfigValue } from '../api/types';
 import { undoable } from '../state/history';
@@ -121,7 +121,7 @@ export default function NonplanarCalibDialog() {
   const [head, setHead] = useState<Head | null>(null);
   const [newId, setNewId] = useState(`${headId || 'generic-conservative'}-calibrated`);
   useEffect(() => setNewId(`${headId || 'generic-conservative'}-calibrated`), [headId]);
-  const [result, setResult] = useState<Record<number, string>>({});
+  const [result, setResult] = useState<Record<number, [string, string][]>>({});
   Object.assign(memo, { page, lastClean, tilt, speed, fan, verifyHead });
   useEffect(() => void loadHeadIndex().catch(() => undefined), []);
   useEffect(() => void loadHead(headId).then(setHead), [headId]);
@@ -141,7 +141,8 @@ export default function NonplanarCalibDialog() {
       await saveUserHead(fit.json);
       setOption('machine', 'nonplanar_head', newId);
       setVerifyHead(newId);
-      setResult({ ...result, 0: `Saved ${newId} and selected it for the printer. Body moved ${fit.shift.toFixed(2)} mm; steepest plane ${fit.slopeCap.toFixed(1)}°, relief at ${STEPS[STEPS.length - 1].slope}°: ${fit.band.toFixed(2)} mm, gantry floor ${fit.gantryFloor.toFixed(1)} mm. Save the printer preset to keep it.` });
+      setResult({ ...result, 0: [['Head', newId], ['Body moved', `${fit.shift.toFixed(2)} mm`], ['Steepest plane', `${fit.slopeCap.toFixed(1)}°`],
+        [`Relief at ${STEPS[STEPS.length - 1].slope}°`, `${fit.band.toFixed(2)} mm`], ['Gantry floor', `${fit.gantryFloor.toFixed(1)} mm`]] });
     } catch (e) {
       toast(`Could not write the calibrated head.\n${e instanceof Error ? e.message : String(e)}`);
     }
@@ -152,11 +153,11 @@ export default function NonplanarCalibDialog() {
     const curve = tilt.map((p, i) => Math.round(Math.min(1.5, Math.max(0.5, base[i] * TILT_MULTIPLIERS[p])) * 1000) / 1000);
     const value = curve.map(fmt).join(',');
     writeProcess('Change setting "Curved top flow by slope"', { nonplanar_tilt_flow: value });
-    setResult({ ...result, 1: `Tilt flow ${value} written to the process preset. Save it to keep it.` });
+    setResult({ ...result, 1: [['Tilt flow', value]] });
   };
   const writeTop = () => {
     writeProcess('Non-planar calibration - Curved-top quality', { nonplanar_top_speed_factor: `${TOP_SPEEDS[speed]}%`, nonplanar_top_fan_boost: `${TOP_FANS[fan]}%` });
-    setResult({ ...result, 2: `Applied ${TOP_SPEEDS[speed]}% curved top speed and ${TOP_FANS[fan]}% fan boost to your process preset. Save the preset to keep it.` });
+    setResult({ ...result, 2: [['Curved top speed', `${TOP_SPEEDS[speed]}%`], ['Fan boost', `${TOP_FANS[fan]}%`]] });
   };
   const check = () => {
     const job = getState().job, log = job.calibLog;
@@ -166,8 +167,8 @@ export default function NonplanarCalibDialog() {
     const expected = verifyHead || 'generic-conservative';
     if (logValue(log, 'calib_head') !== expected) return toast(`That plate was sliced with ${logValue(log, 'calib_head')}: generate and slice it again with ${expected}.`);
     const measured = lastClean + 1;
-    setResult({ ...result, 3: `First touch: clearance check ${firstTouchText(verified)}, head model ${firstTouchText(model)}, your print ${firstTouchText(measured)}.\n` +
-      (verified === measured ? 'The clearance check agrees with your print.' : 'The clearance check disagrees with your print: calibrate the head on the Head clearance page.') });
+    setResult({ ...result, 3: [['First touch, clearance check', firstTouchText(verified)], ['First touch, head model', firstTouchText(model)],
+      ['First touch, your print', firstTouchText(measured)], ['Clearance check', verified === measured ? 'Agrees' : 'Disagrees']] });
   };
   const sliced = s.job.calib === 'nonplanar-clearance' && logValue(s.job.calibLog, 'calib_head') === (headId || 'generic-conservative') ? s.job.calibLog!.filter((l) => l.startsWith('calib_step ')) : [];
   const verdict = (k: number) => {
@@ -177,10 +178,10 @@ export default function NonplanarCalibDialog() {
   const steps = [`Head ${headId || 'generic-conservative'}, layer height ${layerHeight} mm:`, ...STEPS.map((_, k) => stepText(k + 1) + verdict(k))].join('\n');
   const heads = (s.heads ?? []).map((h) => h.id).filter((id) => id !== 'calibration-probe');
   const intro = [
-    "Prints eight cones, each steeper and taller than the last, with clearance safety turned off so you can see exactly where your nozzle sock, fan duct, or gantry starts scuffing the plastic. Pick the highest cone that printed completely clean, then click Write head to save a custom head profile tuned to your printer.",
-    "Prints five rows of curved swatches at 0°, 10°, 20°, 30°, and 40° slopes, stepping flow from 0.90× to 1.10× across each row. Pick the smoothest swatch without gaps or ridges for each angle, then click Write tilt flow to save them to your preset.",
-    'Prints five dome-and-saddle pairs in a cross. Front row tests curved top speed at 60%, 80%, and 100% (left to right); right column tests fan boost at 0%, 50%, and 100% (front to back at full speed). Pick the cleanest speed from the front row and the cleanest fan setting from the right column to update your preset.',
-    'Runs the clearance check with the selected head over the sliced clearance plate. The first cone it finds the head touching should be the one after the last clean cone on your print. Generate the plate, slice it, then check.',
+    'Eight cones, each steeper than the last: pick the highest one that printed clean.',
+    'Curved swatches at 0–40°, flow 0.90× to 1.10×: pick the smoothest at each angle.',
+    'Front row: curved top speed 60–100%; right column: fan boost 0–100%; pick the cleanest of each.',
+    "The clearance check's first touch on the sliced plate should be the cone after your last clean one.",
   ][page];
   return (
     <Modal size="l" label="Non-planar calibration" onClose={close}>
@@ -207,7 +208,7 @@ export default function NonplanarCalibDialog() {
         {page === 3 && <label className="form-row"><span>Head</span>
           <Dropdown className="combo" value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
         </label>}
-        {result[page] && <p className="ask-message" role="status">{result[page]}</p>}
+        {result[page] && <dl className="modal-grid" role="status">{result[page].map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{v}</dd></Fragment>)}</dl>}
       </ModalBody>
       <ModalFooter>
         <button type="button" className="btn" onClick={close}>Close</button>

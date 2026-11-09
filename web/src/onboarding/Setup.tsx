@@ -13,6 +13,7 @@ import { profileKey } from '../profiles/identity';
 import { nozzleOf } from '../profiles/machines';
 import { discoverPrinters, saveConnection, testConnection, type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered } from '../printers/connections';
 import { setup, TOUR_PAGES, useSetup } from './setup-flow';
+import { TOUR } from './tour';
 import { FacetGroup, FacetsHead } from '../components/Facets';
 import { Check } from '../components/Check';
 import { materialRank } from '../profiles/Pickers';
@@ -67,15 +68,18 @@ const Next = ({ disabled, label = 'Next', onClick }: { disabled?: boolean; label
 
 function Welcome() {
   const ready = useStore((s) => !!printerPreset(s));
+  const idle = ready && !TOUR_PAGES;
+  useEffect(() => { if (idle) send({ type: 'CLOSE' }); }, [idle]);
+  if (idle) return null;
   return ready
-    ? <Frame step="welcome" title="Take a 1-minute tour?">
+    ? <Frame step="welcome" title="Take the tour?">
       <div className="setup-welcome">
         <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'CLOSE' })}>Not now</button><Next label="Start tour" /></div>
       </div>
     </Frame>
     : <Frame step="welcome" title="Welcome to PancakeSlicer">
       <div className="setup-welcome">
-        <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'NEXT' })}>Show me around</button><Next label="Set up printer" onClick={() => send({ type: 'SKIP' })} /></div>
+        <div className="setup-welcome-actions">{TOUR_PAGES > 0 && <button type="button" className="btn-ghost" onClick={() => send({ type: 'NEXT' })}>Show me around</button>}<Next label="Set up printer" onClick={() => send({ type: 'SKIP' })} /></div>
       </div>
     </Frame>;
 }
@@ -87,20 +91,13 @@ function Shot({ src, caption }: { src: string; caption: string }) {
     <figcaption>{caption}</figcaption>
   </figure>;
 }
-const TOUR: { title: string; points: string[]; art: ReactNode }[] = [
-  { title: 'One profile for every setup', points: [],
-    art: <Shot src="/tour/dynamic.webp" caption="Everyday: formulas worked out for the nozzle and layer height" /> },
-  { title: 'Curved tops', points: [],
-    art: <><Shot src="/tour/roof-flat.webp" caption="Flat layers | 0.20 mm" /><Shot src="/tour/roof-curved.webp" caption="Curved tops | 0.20 mm" /></> },
-  { title: 'Your workflow', points: [],
-    art: <Shot src="/tour/workflow.webp" caption="Projects, on any device" /> },
-];
 function Tour({ page }: { page: number }) {
   const t = TOUR[page];
+  if (!t) return null;
   return <Frame step="tour" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip</button><span className="setup-grow" />
     <span className="setup-count">{page + 1}/{TOUR_PAGES}</span><Next /></>}>
     <div className="setup-tour">
-      <div className="setup-tour-art">{t.art}</div>
+      <div className="setup-tour-art">{t.shots.map(([src, caption]) => <Shot key={src} src={src} caption={caption} />)}</div>
       <div className="setup-tour-text"><h2>{t.title}</h2>{t.points.map((x) => <p key={x}>{x}</p>)}</div>
     </div>
   </Frame>;

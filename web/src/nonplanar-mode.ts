@@ -7,6 +7,6 @@ export const MODE_HELP: Record<string, string> = {
   auto: 'Auto: the slicer compares the methods for each part and prints the one it measures best.',
   nonplanar_top: 'Curved tops: bends the top layers over every gentle top the head clears (3 by default).',
   smooth_morph: 'Smooth morph: bends every layer from the bed up. Best for domes and lids, up to 1.4× slower.',
-  conformal_layers: 'Conformal layers (experimental): the top shells follow each gentle top (up to 20°) at one thickness, so a top prints as one unbroken layer; walls and fill stay Orca\'s. 1.1–1.4× flat time.',
-  slant: 'Slant (experimental): a flat first layer, then each layer tilts a little more, as a belt printer\'s do, up to the head\'s limit. Smoother on faces sloping with it; flat tops step.',
+  conformal_layers: 'Conformal layers (experimental): the top shells follow each gentle top at one thickness, as one unbroken layer.',
+  slant: 'Slant (experimental): a flat first layer, then each layer tilts a little more, up to the head\'s limit.',
 };

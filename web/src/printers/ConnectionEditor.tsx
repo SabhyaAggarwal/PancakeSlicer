@@ -98,8 +98,8 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
         <div className="hint-text connection-hint">On the printer: Settings › Network › LAN Only, then Developer Mode. The access code is shown there.</div>
       </>}
       {kind === 'bambu-connect' && <div className="hint-text">{DESKTOP
-        ? 'Send hands the sliced file to Bambu Connect on this computer, which prints through your Bambu account. Use it when the printer stays in cloud mode.'
-        : 'Bambu Connect runs on your computer: sending through it needs the desktop app. In the browser, download the .gcode.3mf and open it in Bambu Connect.'}</div>}
+        ? 'Send hands the sliced file to Bambu Connect, which prints through your Bambu account.'
+        : 'In the browser, download the .gcode.3mf and open it in Bambu Connect.'}</div>}
       {http && <>
         <label className="form-row"><span>Hostname, IP or URL</span><input className="text" value={url} placeholder={kind === 'moonraker' ? '192.168.1.70:7125' : '192.168.1.70'} spellCheck={false} onChange={(e) => changed(setUrl)(e.target.value)} /></label>
         {kind === 'prusalink' && (

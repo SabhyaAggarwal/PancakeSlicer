@@ -115,7 +115,7 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
     [SLANT_DIRECTION]: () => autoOrValue(SLANT_DIRECTION, [['-1', 'Auto']], n => n < 0 ? '-1' : undefined, '0', 'Angle'),
     [MORPH]: () => {
       const layers = Number(value(MORPH)) || 0;
-      const toggle = row(MORPH, {label: 'Morphing', rowKey: `${MORPH}-on`, value: layers > 0 ? '1' : '0', definition: {type: 'bool', tooltip: 'Off: the part is cut by the tilted start plane, flat layers below it finished to the plane, tilted layers above. On: the layers bend from flat into the tilt over the morph layers.'},
+      const toggle = row(MORPH, {label: 'Morphing', rowKey: `${MORPH}-on`, value: layers > 0 ? '1' : '0', definition: {type: 'bool', tooltip: 'On: the layers bend from flat into the tilt; off: the part is cut by the tilted start plane.'},
         onSet: (_, v) => write(MORPH, ['1', 'true'].includes(String(v)) ? '10' : '0')});
       return layers > 0 ? [toggle, row(MORPH)] : [toggle];
     },

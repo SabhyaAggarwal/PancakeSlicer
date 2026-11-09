@@ -114,7 +114,7 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
         <label>Outer-wall ceiling <span><input className="text num" type="number" min="1" max="2000" step="5" aria-label="Outer-wall ceiling" value={speedModel.outerWallCeiling} disabled={readOnly}
           onChange={e => {const n = Number(e.target.value); if (n > 0 && n <= 2000) onSpeedModel?.({...speedModel, outerWallCeiling: n});}}/> mm/s</span></label>
       </div>
-      {!missingReference && <p className="hint-text">Speed = base × multiplier, then capped by what the nozzle can melt or the printer's max. Change a multiplier to print faster or slower.</p>}
+      {!missingReference && <p className="hint-text">Speed = base × multiplier, capped by what the nozzle can melt or the printer's max.</p>}
       {missingReference ? <p role="status">This printer has no reference for dynamic speeds. Choose a regular print profile.</p> : <div className="dyn-speed-scroll"><table className="dyn-table dyn-speed-table">
         <thead><tr><th>Feature</th>{SPEED_HEADS.map(([label, tip, n]) => <th key={label} className={n ? 'n' : undefined} data-truncated="true" data-full-text={tip}>{label}</th>)}</tr></thead>
         <tbody>{SPEED_FEATURES.map(f => {const d = speeds[f.key]; if (!d) return null; return <tr key={f.key}>
