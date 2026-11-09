@@ -380,8 +380,8 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
         const Vec3d         ms = mesh.size(), ts = source.size();
         const double        tol = std::max(1., 4. * width);
         if (std::abs(std::max(ms.x(), ms.y()) - std::max(ts.x(), ts.y())) > tol || std::abs(ms.z() - source.max.z()) > tol)
-            warnings.push_back((boost::format("The Atomizer toolpath %1% spans %2$.1f x %3$.1f x %4$.1f mm, the object %5$.1f x %6$.1f x %7$.1f mm. "
-                                              "Was it sliced from this model?") % filename % ts.x() % ts.y() % source.max.z() % ms.x() % ms.y() % ms.z()).str());
+            warnings.push_back((boost::format("Hmm, the Atomizer toolpath %1% measures %2$.1f × %3$.1f × %4$.1f mm, while the model is %5$.1f × %6$.1f × %7$.1f mm. "
+                                              "Are you sure it was sliced from this model?") % filename % ts.x() % ts.y() % source.max.z() % ms.x() % ms.y() % ms.z()).str());
     }
 
     host_ordered_plan(object, toolpath, placement, result);

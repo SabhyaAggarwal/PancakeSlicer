@@ -196,7 +196,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
             out.mode            = "smooth_morph";
             out.morph_hit_moves = hits;
             out.planar_limit    = "hits";
-            out.planar_reason   = "Smooth morph would hit the part in " + std::to_string(hits) + " moves";
+            out.planar_reason   = "Smooth morph would make the print head bump the part in " + std::to_string(hits) + " moves";
         }
         if (conformal_requested(*object)) {
             out.mode           = "conformal_layers";

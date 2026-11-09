@@ -616,18 +616,18 @@ std::string describe_top_patch(const PrintObject &object, const ConformalPatch &
                                   d.material_cap != d.object_cap                ? _u8L("a filament change") :
                                   d.object_cap > 0. && d.object_cap < d.head_reach ? (d.automatic ? _u8L("the gantry") : _u8L("the maximum curved band height")) :
                                                                                   _u8L("how far the head reaches");
-        out += format(_u8L("Height band %1%, %2$.2f mm high, set by %3%."), patch.band + 1, d.pitch + d.tolerance, limit) + "\n";
+        out += format(_u8L("Height band %1% (%2$.2f mm tall), set by %3%."), patch.band + 1, d.pitch + d.tolerance, limit) + "\n";
     } else
-        out += format(_u8L("One pass over %1$.2f mm of relief."), patch.z_max - patch.z_min) + "\n";
+        out += format(_u8L("Single pass over %1$.2f mm of height change."), patch.z_max - patch.z_min) + "\n";
     const bool ironed = !patch.ironing.entities.empty();
     if (ironed)
-        out += patch.automatic ? _u8L("Ironed: the flat nozzle tip fits this curvature.") : _u8L("Ironed, as set in the process.");
+        out += patch.automatic ? _u8L("Ironed: gentle enough for the flat nozzle tip.") : _u8L("Ironed (enabled in print settings).");
     else if (d.requested)
-        out += d.flexible ? _u8L("Not ironed: flexible filament.") : _u8L("Not ironed: no ironing line fits this area.");
+        out += d.flexible ? _u8L("Skipped ironing: flexible filament.") : _u8L("Skipped ironing: area is too narrow for ironing passes.");
     else if (patch.automatic && d.region_irons)
-        out += _u8L("Not ironed: too curved for the flat nozzle tip.");
+        out += _u8L("Skipped ironing: curve is too steep for the flat nozzle tip.");
     else
-        out += _u8L("Not ironed: ironing is off in the process.");
+        out += _u8L("Skipped ironing: turned off in print settings.");
     return out;
 }
 

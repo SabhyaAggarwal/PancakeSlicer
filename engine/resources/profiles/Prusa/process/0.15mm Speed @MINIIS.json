@@ -6,8 +6,6 @@
 	"setting_id": "CFEud5GPN2iXshnt",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"nonplanar_overhangs": "1",
-	"nonplanar_bridges": "1",
 	"line_width": "0.45",
 	"inner_wall_line_width": "0.45",
 	"outer_wall_line_width": "0.45",

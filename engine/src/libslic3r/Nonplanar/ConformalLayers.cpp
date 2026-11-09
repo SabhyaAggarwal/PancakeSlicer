@@ -388,7 +388,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         double lo = std::numeric_limits<double>::infinity(), hi = -lo;
         for (size_t k : cells)
             lo = std::min(lo, T[k]), hi = std::max(hi, T[k]);
-        const double balanced = level_of(0.25 * lo + 0.75 * hi);
+        const double balanced = level_of(0.5 * (lo + hi));
         std::map<long, size_t> votes;
         for (size_t k : cells) {
             const double d0 = D[k];
@@ -843,7 +843,7 @@ bool conformal_requested(const PrintObject &object)
 std::string conformal_planar_limit(const PrintObject &object, std::string &reason)
 {
     if (conformal_cap_step(*object.model_object()) >= ConformalSteps) {
-        reason = "Conformal layers met the print head in " + std::to_string(conformal_flat_hits(*object.model_object())) +
+        reason = "Conformal layers would bump the print head in " + std::to_string(conformal_flat_hits(*object.model_object())) +
                  " moves; printed with flat layers";
         return "access";
     }
@@ -853,11 +853,11 @@ std::string conformal_planar_limit(const PrintObject &object, std::string &reaso
     conformal_layers_field(object, &summary);
     const bool base = summary.find("too close to the flat base") != std::string::npos;
     if (!base && summary.find("could not reach") != std::string::npos) {
-        reason = "Conformal layers: no top's level stays within the layers' thickness bounds across it";
+        reason = "Conformal layers: top surface height varies too much to stay within a single layer's thickness limits";
         return "bounds";
     }
-    reason = base ? "Conformal layers: no top stands far enough above the flat base layers for a shell and a ramp" :
-                    "Conformal layers: no top is large enough to follow (" +
+    reason = base ? "Conformal layers: top surfaces are too close to the flat base layers to fit a curved shell and transition ramp" :
+                    "Conformal layers: no top surface is large enough to curve (" +
                         float_to_string_decimal_point(object.config().nonplanar_curved_min_area.value) + " mm2)";
     return base ? "base" : "area";
 }

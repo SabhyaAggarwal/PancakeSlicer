@@ -1468,8 +1468,8 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
             const Sample &a = all[size_t(conflict_a)];
             const std::string ka = kind(conflict_a), kb = kind(conflict_b);
             message += nonplanar_location(a.z, size_t(std::max(0, a.layer))) + ": no print order avoids a hotend collision there. " +
-                (ka == kb ? "Two parts of the " + ka : "The " + ka + " and the " + kb) +
-                " would each have to be printed before the other.";
+                (ka == kb ? "Print order conflict in " + ka + ": " + ka + " and " + kb : ka + " and " + kb) +
+                " each need the other to be printed first so the print head can clear.";
         } else
             message += ": no print order avoids a hotend collision.";
         char hint[160];

@@ -2665,7 +2665,7 @@ bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step
         f.terms.emplace_back("stat_route_ps_time_s", t_ps);
     if (chosen) {
         auto route = std::make_shared<MultiplanarPlan>(chosen->plan);
-        route->auto_reason = Slic3r::format("One-shot prints %1% with %2% tilted chunks%5%: J %3$.0f against %4$.0f in planar layers.", name,
+        route->auto_reason = Slic3r::format("One-shot prints %1% using %2% tilted chunks%5%: J %3$.0f vs. %4$.0f with flat layers.", name,
                                             route->chunks.size() - 1, J_chosen, J0,
                                             chosen->plinth > 0 ? Slic3r::format(" on a %1%-layer raft that lifts it clear of the bed", chosen->plinth) : std::string());
         state.route        = std::move(route);

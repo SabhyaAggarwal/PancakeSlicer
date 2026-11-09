@@ -39,7 +39,7 @@ static StringObjectException validate_native_support(const Print &print, std::ve
             return object->config().enable_support.value &&
                    (style != nullptr ? style->value : print.default_object_config().support_style.value) == smsNative;
         })) {
-        StringObjectException w{ Slic3r::format(_u8L("Native support isn't available on this printer; using %1%."),
+        StringObjectException w{ Slic3r::format(_u8L("Native supports aren't available for this printer—using %1% instead."),
                                                 _u8L(print_config_def.get("support_style")->enum_labels[size_t(smsDefault)].c_str())),
                                  nullptr, "support_style" };
         w.is_warning = true;
@@ -51,34 +51,34 @@ static StringObjectException validate_native_support(const Print &print, std::ve
             continue;
         const ModelObject &model = *object->model_object();
         auto refuse = [&](const std::string &setting, const char *fix, const std::string &opt_key) {
-            return StringObjectException{ Slic3r::format(_u8L("Native support doesn't support %1% (object: %2%). %3%"), setting, model.name, _u8L(fix)),
+            return StringObjectException{ Slic3r::format(_u8L("Native supports don't work with %1% (on %2%). %3%"), setting, model.name, _u8L(fix)),
                                           object, opt_key };
         };
         static const char *other_style = L("Turn it off or choose another support style.");
         if (config.nonplanar_mode.value != NonplanarMode::Off)
-            return refuse(_u8L("non-planar printing"), L("Set the non-planar mode to Off or choose another support style."), "nonplanar_mode");
+            return refuse(_u8L("non-planar printing"), L("Switch the slicing method to Flat layers, or pick a different support style."), "nonplanar_mode");
         if (config.nonplanar_steep_skin.value && print.config().nonplanar_kinematics.value != RotaryLayout::None)
-            return refuse(_u8L("the steep-face skin"), L("Turn off the steep-face skin or choose another support style."), "nonplanar_steep_skin");
+            return refuse(_u8L("the steep-face skin"), L("Turn off steep-face skin, or pick a different support style."), "nonplanar_steep_skin");
         if (!is_auto(config.support_type.value))
             return refuse("'" + _u8L(print_config_def.get("support_type")->enum_labels[size_t(config.support_type.value)].c_str()) + "'",
-                          L("Choose 'Normal (auto)' or 'Tree (auto)', or another support style."), "support_type");
+                          L("Switch support type to 'Normal (auto)' or 'Tree (auto)', or pick a different support style."), "support_type");
         if (config.support_on_build_plate_only.value)
             return refuse(_u8L("'On build plate only'"), other_style, "support_on_build_plate_only");
         if (config.support_critical_regions_only.value)
             return refuse(_u8L("'Support critical regions only'"), other_style, "support_critical_regions_only");
         if (object->has_raft())
-            return refuse(_u8L("a raft"), L("Set the raft layers to 0 or choose another support style."), "raft_layers");
+            return refuse(_u8L("a raft"), L("Set raft layers to 0, or pick a different support style."), "raft_layers");
         if (std::abs(config.support_bottom_z_distance.value - config.support_top_z_distance.value) > EPSILON)
             return refuse(_u8L("a bottom Z distance different from the top Z distance"),
-                          L("Set both Z distances equal or choose another support style."), "support_bottom_z_distance");
+                          L("Make the top and bottom support Z distances equal, or pick a different support style."), "support_bottom_z_distance");
         if (std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_support_modifier(); }))
-            return refuse(_u8L("support enforcers or blockers"), L("Remove them or choose another support style."), "support_style");
+            return refuse(_u8L("support enforcers or blockers"), L("Remove them, or pick a different support style."), "support_style");
         if (std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_fdm_support_painted(); }))
-            return refuse(_u8L("painted support"), L("Erase the support painting or choose another support style."), "support_style");
+            return refuse(_u8L("painted support"), L("Clear your painted supports, or pick a different support style."), "support_style");
         if (!model.layer_height_profile.empty() ||
             std::any_of(model.layer_config_ranges.begin(), model.layer_config_ranges.end(),
                         [](const auto &range) { return range.second.has("layer_height"); }))
-            return refuse(_u8L("variable layer height"), L("Reset the layer height to uniform or choose another support style."), "layer_height");
+            return refuse(_u8L("variable layer height"), L("Reset variable layer height to uniform layers, or pick a different support style."), "layer_height");
     }
     return {};
 }
@@ -94,7 +94,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         return err;
     const PrintConfig &config = print.config();
     if (warnings != nullptr && config.nonplanar_ignore_duct.value && !clearance_override_active(config)) {
-        StringObjectException w{ _u8L("Ignore cooling duct has no effect on this printer: its print head model has no cooling duct."),
+        StringObjectException w{ _u8L("Note: 'Ignore cooling duct' doesn't change anything on this printer because its print head model doesn't include a fan duct."),
                                  nullptr, "nonplanar_ignore_duct" };
         w.is_warning = true;
         warnings->push_back(std::move(w));
@@ -144,8 +144,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             resolve_head_envelope(config, &unknown);
             if (!unknown.empty() && std::none_of(warnings->begin(), warnings->end(), [](const StringObjectException &w) {
                     return w.opt_key == "nonplanar_head"; })) {
-                StringObjectException w{ _u8L("Curved tops can't plan head access without this printer's print head model, so its "
-                                              "tops print flat. Select the printer's head on its Non-planar page."),
+                StringObjectException w{ _u8L("Curved tops needs a print head model to check for collisions, so top surfaces will print flat for now. "
+                                              "Pick a print head model in your printer's Non-planar settings."),
                                          nullptr, "nonplanar_head" };
                 w.is_warning = true;
                 warnings->push_back(std::move(w));
@@ -155,8 +155,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         const double max_angle    = curved_max_angle_limit(mode);
         if (curved_tops_mode(mode) &&
             (!std::isfinite(curved_angle) || curved_angle < 0. || curved_angle > max_angle))
-            return { (boost::format(_u8L("Maximum curved top angle must be a finite value from 0 to %1% degrees. Steeper curved tops are "
-                                        "not supported.")) % max_angle).str(),
+            return { (boost::format(_u8L("Max curved top angle must be between 0° and %1%°. Steeper angles "
+                                        "aren't supported.")) % max_angle).str(),
                      object, "nonplanar_curved_max_angle" };
         if (mode == NonplanarMode::Multiplanar || field) {
             multiplanar_instances += object->instances().size();
@@ -221,7 +221,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                     return warning.object == object && warning.opt_key == "nonplanar_max_patch_height";
                 })) {
                 StringObjectException warning {
-                    Slic3r::format(_u8L("Maximum curved band height %1$.3f mm is below the layer or shell height; using %2$.3f mm."),
+                    Slic3r::format(_u8L("Max curved band height (%1$.3f mm) is thinner than a single layer or shell—using %2$.3f mm instead."),
                                    cap, clamped), object, "nonplanar_max_patch_height" };
                 warning.is_warning = true;
                 warnings->push_back(std::move(warning));
@@ -273,7 +273,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
     if (!config.nonplanar_head.value.empty())
         resolve_head_envelope(config, &head_warning);
     if (!head_warning.empty()) {
-        const std::string message = (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded. Select a valid head.")) %
+        const std::string message = (boost::format(_u8L("Couldn't find or load print head profile \"%1%\". Please pick a valid print head in your printer settings.")) %
                                      config.nonplanar_head.value).str();
         if (enabled || config.nonplanar_collision_check.value != NonplanarCollisionCheck::Off)
             return { message, nullptr, "nonplanar_head" };
@@ -303,14 +303,14 @@ StringObjectException validate_layer_gcodes(const Print &print, std::vector<Stri
                 if (patch.host_layer < layer_idx || patch.z_min >= (*layer)->bottom_z() - EPSILON)
                     continue;
                 if (item.type == CustomGCode::PausePrint || item.type == CustomGCode::Custom || item.type == CustomGCode::Template)
-                    return { Slic3r::format(_u8L("The pause or custom G-code at %1$.2f mm falls inside the curved shells of %2%, which print "
-                                                 "after it but reach below it. Move it above %3$.2f mm or below %4$.2f mm."),
+                    return { Slic3r::format(_u8L("Heads up: the pause or custom G-code at %1$.2f mm lands inside the curved top shells of %2%, which dip below "
+                                                 "that height later in the print. Move it above %3$.2f mm or below %4$.2f mm."),
                                             item.print_z, object->model_object()->name, object->get_layer(int(patch.host_layer))->print_z,
                                             patch.z_min),
                              object, "nonplanar_top_shells" };
                 if (warnings != nullptr) {
-                    StringObjectException w { Slic3r::format(_u8L("The filament change at %1$.2f mm falls inside the curved shells of %2%: "
-                                                                  "their part below it prints in the new filament."),
+                    StringObjectException w { Slic3r::format(_u8L("Heads up: the filament change at %1$.2f mm lands inside the curved top shells of %2%, "
+                                                                  "so the lower part of those curved shells will print in the new filament."),
                                                              item.print_z, object->model_object()->name),
                                               object, "nonplanar_top_shells" };
                     w.is_warning = true;
@@ -346,7 +346,7 @@ void report_head(const Print &print)
     const HeadEnvelope head = resolve_head_envelope(config);
     const std::vector<double> slopes = head.slope_map(360, gap);
     const double limit = Geometry::rad2deg(*std::min_element(slopes.begin(), slopes.end()));
-    const std::string message = (boost::format(_u8L("Non-planar: head %1% (%2%), slope limit %3$.1f° at %4% mm")) % head.id %
+    const std::string message = (boost::format(_u8L("Non-planar — Head: %1% (%2%), max slope %3$.1f° at %4% mm")) % head.id %
                                  (head.calibrated ? _u8L("calibrated") : _u8L("uncalibrated")) % limit % gap).str();
     BOOST_LOG_TRIVIAL(info) << message;
     print.set_status(0, message);

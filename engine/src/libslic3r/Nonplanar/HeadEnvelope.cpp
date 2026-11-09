@@ -724,15 +724,15 @@ static HeadEnvelope resolve_head_shape(const PrintConfig &config, std::string *w
     } catch (const std::exception &err) {
         BOOST_LOG_TRIVIAL(error) << "Cannot load non-planar head " << id << ": " << err.what();
         if (warning != nullptr)
-            *warning = (boost::format(_u8L("Non-planar head \"%1%\" could not be loaded: %2%")) % id % err.what()).str();
+            *warning = (boost::format(_u8L("Oops! Couldn't load print head profile \"%1%\": %2%")) % id % err.what()).str();
         return HeadLibrary::generic_conservative();
     }
     if (!id.empty())
         if (const HeadEnvelope *head = HeadLibrary::instance().find(id))
             return *head;
     if (warning != nullptr)
-        *warning = id.empty() ? _u8L("This printer has no print head profile. Using the generic conservative head.")
-                              : (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded; using the generic conservative head.")) % id).str();
+        *warning = id.empty() ? _u8L("This printer doesn't have a specific print head profile yet, so we're using the safe generic print head.")
+                              : (boost::format(_u8L("Couldn't find or load print head profile \"%1%\", so we're using the safe generic print head instead.")) % id).str();
     return HeadLibrary::generic_conservative();
 }
 
