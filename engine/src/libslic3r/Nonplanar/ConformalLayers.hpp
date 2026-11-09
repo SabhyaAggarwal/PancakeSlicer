@@ -1,6 +1,7 @@
 #pragma once
 
 #include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Point.hpp"
 #include "FieldOrder.hpp"
 #include "HeadEnvelope.hpp"
@@ -89,6 +90,8 @@ struct BandOrderStats
     double band = 0., offset = 0.;
     size_t bands = 0, groups = 0, cut_roads = 0;
 };
+
+void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area);
 
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats = nullptr,
                             const std::vector<std::pair<Vec3d, Vec3d>> *precede = nullptr,

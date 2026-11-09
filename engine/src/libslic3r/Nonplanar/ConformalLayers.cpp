@@ -943,6 +943,36 @@ size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t la
     return conflicts;
 }
 
+void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area)
+{
+    constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
+    for (size_t i = 1; i < roads.size(); ++i) {
+        auto *prev = static_cast<ExtrusionPathConformal *>(roads[i - 1]);
+        auto *next = static_cast<ExtrusionPathConformal *>(roads[i]);
+        const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
+        const Vec3d   d = unscale(b) - unscale(a);
+        const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls : LinkMax;
+        if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
+            continue;
+        if (area != nullptr) {
+            bool over = true;
+            for (double t = 0.15; t < 0.9 && over; t += 0.1) {
+                const Point p((a.cast<double>() + t * (b - a).cast<double>()).head<2>().cast<coord_t>());
+                over = std::any_of(area->begin(), area->end(), [&p](const ExPolygon &e) { return e.contains(p); });
+            }
+            if (!over)
+                continue;
+        }
+        next->polyline.points.insert(next->polyline.points.begin(), a);
+        if (!next->bead_height.empty())
+            next->bead_height.insert(next->bead_height.begin(), next->bead_height.front());
+        if (!next->tool_axis.empty())
+            next->tool_axis.insert(next->tool_axis.begin(), next->tool_axis.front());
+        if (!next->bead_width.empty())
+            next->bead_width.insert(next->bead_width.begin(), next->bead_width.front());
+    }
+}
+
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats,
                             const std::vector<std::pair<Vec3d, Vec3d>> *precede, const std::vector<ExPolygons> *domains)
 {
@@ -1185,33 +1215,7 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
         constexpr double SimplifyTolerance = 0.01;
         for (ExtrusionEntity *e : group.entities)
             static_cast<ExtrusionPathConformal *>(e)->simplify(SimplifyTolerance);
-        constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
-        for (size_t i = 1; i < group.entities.size(); ++i) {
-            auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);
-            auto *next = static_cast<ExtrusionPathConformal *>(group.entities[i]);
-            const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
-            const Vec3d   d = unscale(b) - unscale(a);
-            const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls : LinkMax;
-            if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
-                continue;
-            if (domains != nullptr && key.second + 1 < domains->size()) {
-                const ExPolygons &area = (*domains)[key.second + 1];
-                bool              over = true;
-                for (double t = 0.15; t < 0.9 && over; t += 0.1) {
-                    const Point p((a.cast<double>() + t * (b - a).cast<double>()).head<2>().cast<coord_t>());
-                    over = std::any_of(area.begin(), area.end(), [&p](const ExPolygon &e) { return e.contains(p); });
-                }
-                if (!over)
-                    continue;
-            }
-            next->polyline.points.insert(next->polyline.points.begin(), a);
-            if (!next->bead_height.empty())
-                next->bead_height.insert(next->bead_height.begin(), next->bead_height.front());
-            if (!next->tool_axis.empty())
-                next->tool_axis.insert(next->tool_axis.begin(), next->tool_axis.front());
-            if (!next->bead_width.empty())
-                next->bead_width.insert(next->bead_width.begin(), next->bead_width.front());
-        }
+        link_roads(group.entities, domains != nullptr && key.second + 1 < domains->size() ? &(*domains)[key.second + 1] : nullptr);
         out.groups.push_back(std::move(group));
         out.group_layers.push_back(key.second);
     }

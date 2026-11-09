@@ -25,6 +25,7 @@
 #include "SurfaceClip.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#include "ConformalLayers.hpp"
 #include "FieldOrder.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Exception.hpp"
@@ -371,38 +372,75 @@ void overlap_cut(ExtrusionPathConformal &a, ExtrusionPathConformal &b)
         b.bead_width.insert(b.bead_width.begin(), tail.widths.rbegin(), tail.widths.rend());
 }
 
-void link_pieces(ExtrusionEntityCollection &shell, Point &last, bool connect = true)
+void link_pieces(ExtrusionEntityCollection &shell, Point &last, bool connect = true, const ExPolygons *islands = nullptr)
 {
     auto is_wall = [](const ExtrusionEntity *e) {
         const ExtrusionRole r = e->role();
         return r == erExternalPerimeter || r == erPerimeter || r == erOverhangPerimeter;
     };
-    ExtrusionEntitiesPtr walls, rest;
-    for (ExtrusionEntity *e : shell.entities)
-        (is_wall(e) ? walls : rest).push_back(e);
-    if (!walls.empty())
-        last = walls.back()->last_point();
-    if (!rest.empty())
-        chain_and_reorder_extrusion_entities(rest, last);
+    std::vector<ExtrusionEntitiesPtr> groups(1, shell.entities);
+    if (islands != nullptr && islands->size() > 1) {
+        std::vector<ExtrusionEntitiesPtr> by(islands->size());
+        for (ExtrusionEntity *e : shell.entities) {
+            const Point p    = e->first_point();
+            size_t      best = 0;
+            double      bd   = std::numeric_limits<double>::max();
+            for (size_t i = 0; i < islands->size() && bd > 0.; ++i) {
+                const ExPolygon &island = (*islands)[i];
+                if (island.contains(p))
+                    best = i, bd = 0.;
+                else if (const double d = (island.point_projection(p) - p).cast<double>().squaredNorm(); d < bd)
+                    best = i, bd = d;
+            }
+            by[best].push_back(e);
+        }
+        groups.clear();
+        for (ExtrusionEntitiesPtr &g : by)
+            if (!g.empty())
+                groups.push_back(std::move(g));
+        std::vector<ExtrusionEntitiesPtr> ordered;
+        Point                             at = last;
+        while (!groups.empty()) {
+            size_t best = 0;
+            double bd   = std::numeric_limits<double>::max();
+            for (size_t g = 0; g < groups.size(); ++g)
+                for (const ExtrusionEntity *e : groups[g])
+                    if (const double d = (e->first_point() - at).cast<double>().squaredNorm(); d < bd)
+                        bd = d, best = g;
+            ordered.push_back(std::move(groups[best]));
+            groups.erase(groups.begin() + std::ptrdiff_t(best));
+            at = ordered.back().back()->last_point();
+        }
+        groups = std::move(ordered);
+    }
     ExtrusionEntitiesPtr out;
     out.reserve(shell.entities.size());
-    for (ExtrusionEntitiesPtr *group : { &walls, &rest })
-        for (ExtrusionEntity *e : *group) {
-            auto *cur  = static_cast<ExtrusionPathConformal *>(e);
-            auto *prev = out.empty() ? nullptr : static_cast<ExtrusionPathConformal *>(out.back());
-            if (connect && prev != nullptr && group == &rest && !is_wall(prev) && prev->role() == cur->role() && prev->width == cur->width &&
-                prev->mm3_per_mm == cur->mm3_per_mm && prev->bead_width.empty() && cur->bead_width.empty() &&
-                (prev->last_point() - cur->first_point()).cast<double>().norm() <= scale_(1.5 * cur->width)) {
-                prev->polyline.points.insert(prev->polyline.points.end(), cur->polyline.points.begin(), cur->polyline.points.end());
-                prev->bead_height.insert(prev->bead_height.end(), cur->bead_height.begin(), cur->bead_height.end());
-                delete cur;
-                continue;
+    for (ExtrusionEntitiesPtr &group : groups) {
+        ExtrusionEntitiesPtr walls, rest;
+        for (ExtrusionEntity *e : group)
+            (is_wall(e) ? walls : rest).push_back(e);
+        if (!walls.empty())
+            last = walls.back()->last_point();
+        if (!rest.empty())
+            chain_and_reorder_extrusion_entities(rest, last);
+        for (ExtrusionEntitiesPtr *part : { &walls, &rest })
+            for (ExtrusionEntity *e : *part) {
+                auto *cur  = static_cast<ExtrusionPathConformal *>(e);
+                auto *prev = out.empty() ? nullptr : static_cast<ExtrusionPathConformal *>(out.back());
+                if (connect && prev != nullptr && part == &rest && !is_wall(prev) && prev->role() == cur->role() && prev->width == cur->width &&
+                    prev->mm3_per_mm == cur->mm3_per_mm && prev->bead_width.empty() && cur->bead_width.empty() &&
+                    (prev->last_point() - cur->first_point()).cast<double>().norm() <= scale_(1.5 * cur->width)) {
+                    prev->polyline.points.insert(prev->polyline.points.end(), cur->polyline.points.begin(), cur->polyline.points.end());
+                    prev->bead_height.insert(prev->bead_height.end(), cur->bead_height.begin(), cur->bead_height.end());
+                    delete cur;
+                    continue;
+                }
+                out.push_back(e);
             }
-            out.push_back(e);
-        }
+        if (!out.empty())
+            last = out.back()->last_point();
+    }
     shell.entities = std::move(out);
-    if (!shell.entities.empty())
-        last = shell.entities.back()->last_point();
 }
 
 bool outer_wall(ExtrusionRole role) { return role == erExternalPerimeter || role == erOverhangPerimeter; }
@@ -1232,6 +1270,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     const std::vector<double>                     cuts = event_cuts(object);
     std::map<std::pair<int, int>, ConformalPatch> bands;
     std::map<std::pair<int, int>, size_t>         band_layer;
+    std::map<std::pair<int, int>, std::vector<size_t>> shell_layer;
     for (size_t k = 0; k < curved.size(); ++k) {
         if (curved[k].empty())
             continue;
@@ -1257,6 +1296,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
                     patch.shell_paths.emplace_back();
                     patch.shell_paths.back().no_sort = true;
                     it->second                       = k;
+                    shell_layer[{ b, slab }].push_back(k);
                 }
                 if (inserted) {
                     patch.z_min = Inf;
@@ -1277,8 +1317,17 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     for (auto &[key, patch] : bands) {
         const auto [b, slab] = key;
         Point last(0, 0);
-        for (ExtrusionEntityCollection &shell : patch.shell_paths)
-            link_pieces(shell, last, !morph);
+        for (size_t si = 0; si < patch.shell_paths.size(); ++si) {
+            ExtrusionEntityCollection &shell = patch.shell_paths[si];
+            if (!morph) {
+                link_pieces(shell, last);
+                continue;
+            }
+            ExPolygons area = sliced.layers()[shell_layer[key][si]]->lslices;
+            translate(area, sliced.center_offset());
+            link_pieces(shell, last, false, &area);
+            link_roads(shell.entities, &area);
+        }
         patch.kind         = PatchKind::Volume;
         patch.band         = b;
         patch.region_id    = 0;
