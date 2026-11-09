@@ -69,9 +69,6 @@ func overrides(raw string) ([][2]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("override %s: %w", key, err)
 		}
-		if key == "nonplanar_mode" {
-			value = canonicalNonplanarMode(value)
-		}
 		out = append(out, [2]string{key, value})
 	}
 	return out, nil

@@ -10,7 +10,6 @@ import { toolArtifactManifest } from '../api/client';
 import type { ProfileFields } from './SettingsTab';
 import { Field } from './Field';
 import { GroupHead, isGroupOpen, useSettingsGroups } from './SettingsGroup';
-import { canonicalMode } from '../nonplanar-mode';
 import './process-settings.css';
 
 const shortReason = (m: MethodAvailability) => m.recovery === 'update_engine' ? (toolArtifactManifest ? 'Not in this engine build' : 'Engine still starting')
@@ -21,9 +20,8 @@ const openMethodChoice = (key: string) => {
   const trigger = document.querySelector<HTMLElement>(`.opt-line[data-opt="${key}"] .dropdown`);
   trigger?.focus(); trigger?.click();
 };
-export { canonicalMode } from '../nonplanar-mode';
 import { MODE_LABELS, MODE_HELP as BASE_MODE_HELP } from '../nonplanar-mode';
-const OFFERED_MODES = ['off', 'curved_tops', 'nonplanar_top', 'smooth_morph', 'slant', 'conformal_layers'], ROTARY_MODES = ['multiplanar', 'field'];
+const OFFERED_MODES = ['off', 'curved_tops', 'nonplanar_top', 'smooth_morph', 'slant', 'conformal_layers', 'auto'], ROTARY_MODES = ['multiplanar', 'field'];
 const MODE_HELP: Record<string, string> = {
   ...BASE_MODE_HELP,
   multiplanar: 'Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.',
@@ -49,7 +47,7 @@ export const TOP_METHOD_KEYS = new Set(['nonplanar_mode','nonplanar_wave',...Obj
 export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,readOnly = false}: {config:Config;system:Config;availability:MethodAvailabilityResult;editor?:ProfileFields;dirty:Config;uiMode:OptionMode;readOnly?:boolean}) {
   const engine = useEngineHealth();
   useEffect(() => {void probeEngine();}, []);
-  const mode = canonicalMode(String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off'));
+  const mode = String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off');
   const slantObject = useStore((s) => !!slantTarget(s));
   const wave = String(config.nonplanar_wave ?? OPTIONS.nonplanar_wave?.default ?? 'off');
   const problem = methodSelectionProblem(availability,config);

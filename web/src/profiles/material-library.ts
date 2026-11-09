@@ -142,7 +142,7 @@ export function reconcilePrinterSelection(previous:State,incoming:State,{definit
   const oldProcess=effectiveProfileValues(previous,'process',previous.process),base=resolveProfile(next,'machine',next.printer).base;
   const availability=methodAvailability(next),label=(type:'process'|'filament',key:string)=>resolveProfile(next,type,key).name ?? key;
   const kept=(c:{ok:boolean;unknown?:boolean})=>c.ok || definiteOnly && !!c.unknown;
-  const methodKept=(problem:ReturnType<typeof methodSelectionProblem>)=>!problem || definiteOnly && problem.recovery==='update_engine';
+  const methodKept=(problem:ReturnType<typeof methodSelectionProblem>)=>!problem || problem.recovery==='update_engine';
   const processValid=(key:string,raw=false,strict=false)=>(strict?selectCompatibility(next,'process',key).ok:kept(selectCompatibility(next,'process',key))) && methodKept(methodSelectionProblem(availability,raw?resolveProfile(next,'process',key).config:effectiveProfileValues(next,'process',key)));
   const setup=next.printerLibrary.setups[next.printer],remembered=setup?.processId;
   if(remembered && !processValid(next.process) && processValid(remembered))next.process=remembered;

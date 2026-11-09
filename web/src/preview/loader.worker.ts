@@ -5,7 +5,7 @@ import { BLOCK, CHUNK, MAGIC, PLANES_MAGIC, TRANSFER_FORM, TRANSFER_MAGIC, readH
 const LOD_TOLERANCE = 0.05;
 const CUSTOM_ROLE = 18;
 
-export type WorkerIn = { url?: string; file?: Blob };
+export type WorkerIn = { url?: string; file?: Blob; shellLayers?: boolean };
 export type WorkerOut =
   | { kind: 'header'; header: Header; states: States; bytesTotal: number }
   | { kind: 'chunk'; chunk: MoveChunk; layers: LayerRec[]; lod: Uint32Array; lodBlocks: Uint32Array; bytes: number }
@@ -213,6 +213,7 @@ async function run(src: WorkerIn) {
   let stage: 'header' | 'states' | 'moves' | 'layers' | 'meta' | 'end' = 'header';
   const layers: LayerRec[] = [];
   const fileLayers: LayerRec[] = [];
+  let layerOf = -1, lastShell = 0xff;
   const vgcodeZ: number[] = [];
   let meta: StreamMeta = {};
   let prev: [number, number, number] = [0, 0, 0];
@@ -274,13 +275,16 @@ async function run(src: WorkerIn) {
         if (z <= 0 && (type & 0x7f) === MoveType.Extrude && states!.shell[st] === 0xff) z = c.pos[i * 4 + 2];
         const last = layers[layers.length - 1];
         const extrusionZ = (type & 0x7f) === MoveType.Extrude && c.role[i] !== CUSTOM_ROLE ? c.pos[i * 4 + 2] : null;
-        if (!last || last.id !== layerId) {
-          layers.push({ id: layerId, first: v, z });
+        const curved = !!src.shellLayers && states!.shell[st] !== 0xff;
+        if (!last || layerOf !== layerId || curved && states!.shell[st] !== lastShell) {
+          layers.push({ id: src.shellLayers ? layers.length : layerId, first: v, z: curved ? extrusionZ ?? 0 : z });
           vgcodeZ.push(extrusionZ ?? 0);
+          layerOf = layerId;
         } else {
-          if (z > last.z) last.z = z;
+          if (curved ? extrusionZ != null && extrusionZ > last.z : z > last.z) last.z = curved ? extrusionZ! : z;
           if (extrusionZ != null) vgcodeZ[vgcodeZ.length - 1] = extrusionZ;
         }
+        if (curved) lastShell = states!.shell[st];
         c.layer[i] = layers.length - 1;
       }
       q.pos += size;

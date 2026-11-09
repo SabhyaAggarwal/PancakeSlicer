@@ -158,6 +158,7 @@ export interface SlantEdit {
   z: number;
   tilt: number;
   dir: number;
+  dirAuto?: boolean;
   auto: boolean;
   limit?: number;
 }

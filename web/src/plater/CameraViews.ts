@@ -175,7 +175,7 @@ export class CameraViews {
   }
 
   private onOrbit = () => {
-    if (this.adjusting) return;
+    if (this.adjusting || !this.ensureFinite()) return;
     this.constrainZoom();
     this.clip();
     if (this.axisView && autoPerspective) {
@@ -358,6 +358,13 @@ export class CameraViews {
     this.camera.updateProjectionMatrix();
   }
   isActive() { return this.active(); }
+  ensureFinite(): boolean {
+    const c = this.camera, pose = [...c.position.toArray(), ...c.quaternion.toArray(), ...this.controls.target.toArray(), c.zoom];
+    if (pose.every(Number.isFinite)) return true;
+    console.error('Camera pose was not finite; framing the plate', pose);
+    this.view('plate');
+    return false;
+  }
   dispose() {
     registry.delete(this);
     if (lastActive === this) lastActive = null;

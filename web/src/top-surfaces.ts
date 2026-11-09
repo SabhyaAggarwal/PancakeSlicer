@@ -4,7 +4,6 @@ import { mutation } from './api/access';
 import { toolFeatures } from './api/client';
 import { jobRequest } from './actions';
 import { withBlobs } from './api/blobs';
-import { canonicalMode } from './nonplanar-mode';
 import { bakeStl, instanceMatrix } from './plater/geometry';
 import { loadMoves, type PreviewData } from './preview/data';
 import { MoveType } from './preview/format';
@@ -73,7 +72,7 @@ window.addEventListener('keydown', (e) => {
 function settingsOf(s: State, o: PlateObject) {
   const c = { ...effectiveConfig(s, 'process'), ...o.settings };
   const num = (k: string) => Number(Array.isArray(c[k]) ? (c[k] as unknown[])[0] : c[k]);
-  return { mode: canonicalMode(String(c.nonplanar_mode ?? 'off')), max_angle: num('nonplanar_curved_max_angle') || 12, max_height: num('nonplanar_curved_max_height') || 0,
+  return { mode: String(c.nonplanar_mode ?? 'off'), max_angle: num('nonplanar_curved_max_angle') || 12, max_height: num('nonplanar_curved_max_height') || 0,
     min_area: num('nonplanar_min_patch_area') || 0, ignore_duct: ['1', 'true'].includes(String(c.nonplanar_ignore_duct ?? '0')) };
 }
 

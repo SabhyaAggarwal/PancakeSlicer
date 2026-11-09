@@ -77,8 +77,9 @@ export default function Plater3D() {
       fill.position.copy(fillFrom).applyQuaternion(camera.quaternion);
     };
 
+    const followers: { tc?: TransformControls } = {};
     const views = new CameraViews(renderer.domElement, () => getState().tab === 'prepare', () => {
-      tc.camera = views.camera;
+      if (followers.tc) followers.tc.camera = views.camera;
       render();
     });
     const controls = views.controls;
@@ -107,6 +108,7 @@ export default function Plater3D() {
         if (bed) bed.visible = !assembly().on;
         grid.group.visible = !assembly().on;
         grid.layer.hidden = assembly().on;
+        views.ensureFinite();
         rotateGizmo?.update();
         slantRingsRef?.update();
         renderer.render(scene, views.camera);
@@ -728,6 +730,7 @@ void main() {
     const proxy = new THREE.Object3D();
     scene.add(proxy);
     const tc = new TransformControls(views.camera, renderer.domElement);
+    followers.tc = tc;
     tc.setSize(0.9);
     const tcHelper = tc.getHelper();
     scene.add(tcHelper);
@@ -1703,6 +1706,7 @@ void main() {
       views.dispose();
       tc.dispose();
       rotateGizmo?.dispose();
+      slantRings.dispose();
       unsubMeasure();
       measuring.dispose();
 

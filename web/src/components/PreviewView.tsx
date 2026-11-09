@@ -1,7 +1,7 @@
 import { OrderBar } from './OrderBar';
 import { loadSource, noteViewerProgress, viewerFirstMoves, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
 import { Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { getState, printerPreset, setState, subscribeStore, useStore } from '../state/store';
+import { effectiveConfig, getState, printerPreset, setState, subscribeStore, useStore, type State } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
 import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
@@ -45,7 +45,7 @@ const extendedJobs = new Set<string>();
 let extendedView = false;
 export const canExtend = (d: PreviewData) => !!getState().features.moves_extended && !!d.sourceUrl && d.sourceUrl === getState().api?.movesUrl(getState().job.id ?? '');
 
-function startLoad(src: { key: string; url?: string; file?: File }) {
+function startLoad(src: { key: string; url?: string; file?: File; shellLayers?: boolean }) {
   current?.cancel();
   loadSource({ id: src.key });
   const mine = (d: PreviewData) => current?.data === d;
@@ -67,13 +67,18 @@ subscribeStore(() => {
   if (src?.key.startsWith('job:')) startLoad(src);
 });
 
-function source(): { key: string; url?: string; file?: File } | null {
+function source(): { key: string; url?: string; file?: File; shellLayers?: boolean } | null {
   const q = new URLSearchParams(location.search).get('moves');
   if (q) return { key: `url:${q}`, url: q };
   const s = getState();
   if (s.job.state !== 'done' || !s.job.id || !s.api) return null;
   const ext = extendedJobs.has(s.job.id) || (extendedView && !!s.features.moves_extended);
-  return { key: `job:${s.job.id}${ext ? ':extended' : ''}`, url: s.api.movesUrl(s.job.id) + (ext ? '?extended=1' : '') };
+  return { key: `job:${s.job.id}${ext ? ':extended' : ''}`, url: s.api.movesUrl(s.job.id) + (ext ? '?extended=1' : ''), shellLayers: wholePartCurved(s) };
+}
+
+function wholePartCurved(s: State) {
+  const mode = effectiveConfig(s, 'process').nonplanar_mode;
+  return s.objects.some((o) => ['slant', 'smooth_morph'].includes(String(o.settings.nonplanar_mode ?? mode)));
 }
 
 export interface PreviewUi {

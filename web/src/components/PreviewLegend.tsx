@@ -1,5 +1,5 @@
 import { Check } from './Check';
-import { canonicalMode, MODE_LABELS } from '../nonplanar-mode';
+import { MODE_LABELS } from '../nonplanar-mode';
 import { Dropdown } from './Dropdown';
 import { Caret } from './Caret';
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -207,7 +207,7 @@ export const Legend = memo(function Legend(props: {
           </table>
         );
       }
-      case 'nonplanar': return <NonplanarKey d={d} ui={ui} setUi={setUi} ranges={ranges} mode={canonicalMode(String((record as { inputs?: { mode?: unknown } } | undefined)?.inputs?.mode ?? ''))} />;
+      case 'nonplanar': return <NonplanarKey d={d} ui={ui} setUi={setUi} ranges={ranges} mode={String((record as { inputs?: { mode?: unknown } } | undefined)?.inputs?.mode ?? '')} />;
     }
   };
 

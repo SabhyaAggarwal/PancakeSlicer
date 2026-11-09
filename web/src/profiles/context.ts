@@ -5,7 +5,6 @@ import { clampHeight, heightsFor, scaleValues, scalesOf, type AutoRecord } from 
 import { chainApplicability, type ChainLink } from './chain';
 import { findProfile } from './identity';
 import { dynamicSpeedBase, resolveDynamicSpeeds, speedModelOf, SPEED_FEATURES } from './speed-rules';
-import { canonicalModeConfig } from '../nonplanar-mode';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
   printer: string; process: string; filamentSlots?: string[];
@@ -148,7 +147,7 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   const prior = editsCache.get(edits);
   if (prior) { const value = type === 'process' ? withSpeeds(s, resolved, prior, {...project, ...plate, ...edits}) : prior; snapshot.set(selection, value); return value; }
   const chosen = type === 'process' && s.processVariant && key === s.process ? { layer_height: config.layer_height } : empty;
-  const merged = {...config, ...project, ...plate, ...edits, ...chosen}, value = type === 'process' ? canonicalModeConfig(merged) : merged; editsCache.set(edits,value); const final = type === 'process' ? withSpeeds(s, resolved, value, {...project, ...plate, ...edits}) : value; snapshot.set(selection,final); return final;
+  const merged = {...config, ...project, ...plate, ...edits, ...chosen}, value = type === 'process' ? merged : merged; editsCache.set(edits,value); const final = type === 'process' ? withSpeeds(s, resolved, value, {...project, ...plate, ...edits}) : value; snapshot.set(selection,final); return final;
 }
 export interface ContextProfile extends ResolvedProfile { id?: string; revision: number; baseName?: string; baseVendor?: string; parentName?: string }
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');

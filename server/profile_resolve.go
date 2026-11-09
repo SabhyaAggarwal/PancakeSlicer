@@ -17,11 +17,11 @@ type resolveRequest struct {
 	Project     map[string]json.RawMessage `json:"project,omitempty"`
 }
 type sliceConfig struct {
-	Config          map[string]json.RawMessage `json:"config"`
-	Sources         map[string]string          `json:"sources"`
-	Speeds          map[string]resolvedSpeed   `json:"speeds,omitempty"`
+	Config  map[string]json.RawMessage `json:"config"`
+	Sources map[string]string          `json:"sources"`
+	Speeds  map[string]resolvedSpeed   `json:"speeds,omitempty"`
 	engineOverrides map[string]bool
-	Engine          struct {
+	Engine struct {
 		Vendor    string   `json:"vendor"`
 		Printer   string   `json:"printer"`
 		Process   string   `json:"process"`
@@ -240,12 +240,6 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 			out.engineOverrides[k] = true
 		}
 	}
-	if mode := firstConfigText(out.Config["nonplanar_mode"]); canonicalNonplanarMode(mode) != mode {
-		if out.Sources["nonplanar_mode"] == "catalog" || out.Sources["nonplanar_mode"] == "" {
-			out.Sources["nonplanar_mode"] = "print"
-		}
-		out.Config["nonplanar_mode"] = json.RawMessage(`"` + canonicalNonplanarMode(mode) + `"`)
-	}
 	return out, nil
 }
 
@@ -302,12 +296,4 @@ func vectorOptions(dictionary []byte) map[string]bool {
 		}
 	}
 	return out
-}
-
-func canonicalNonplanarMode(mode string) string {
-	switch mode {
-	case "auto", "manual", "oneshot", "":
-		return "nonplanar_top"
-	}
-	return mode
 }

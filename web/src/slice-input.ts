@@ -8,7 +8,6 @@ import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
 import { effectiveLayerHeight } from './profiles/context';
-import { canonicalModeConfig } from './nonplanar-mode';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
 function eventArg(e: LayerEvent): string {
@@ -105,7 +104,7 @@ export function appendLibrary(fd: FormData, s: State, settings: Config = {}) {
   if (!library.printer) throw new Error('Choose a printer first.');
   if (!library.print) throw new Error('Choose print settings first.');
   if (!library.filaments.length || library.filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
-  fd.append('library', JSON.stringify({ ...library, project: canonicalModeConfig({ ...overrides(s), ...settings }) }));
+  fd.append('library', JSON.stringify({ ...library, project: { ...overrides(s), ...settings } }));
 }
 
 export function jobFields(s: State, saving = false) {

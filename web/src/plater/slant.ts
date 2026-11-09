@@ -7,6 +7,7 @@ import { loadHead, type Head } from '../heads';
 
 const DEG = Math.PI / 180;
 const KEYS = ['nonplanar_slant_angle', 'nonplanar_slant_direction', 'nonplanar_slant_start_height'] as const;
+export const MAX_TILT = 45;
 
 export function slantTarget(s: State = getState()): { o: PlateObject; inst: Instance } | null {
   const sel = s.selected;
@@ -43,7 +44,7 @@ export function initialSlant(s: State = getState()): SlantEdit | null {
   if (!t) return null;
   const angle = num(objectValue(s, t.o, 'nonplanar_slant_angle'), 0), dir = num(objectValue(s, t.o, 'nonplanar_slant_direction'), -1);
   const start = num(objectValue(s, t.o, 'nonplanar_slant_start_height'), 0);
-  return { z: start, tilt: angle > 0 ? angle : 10, dir: dir >= 0 ? dir : 90, auto: angle <= 0 && dir < 0 && start <= 0 };
+  return { z: start, tilt: angle > 0 ? Math.min(angle, MAX_TILT) : 10, dir: dir >= 0 ? dir : 90, dirAuto: dir < 0, auto: angle <= 0 && dir < 0 && start <= 0 };
 }
 
 export function openSlantPlane() {
@@ -58,7 +59,12 @@ export function openSlantPlane() {
 export const closeSlantPlane = () => setState({ gizmo: 'none', slant: null });
 
 export function setSlant(patch: Partial<SlantEdit>) {
-  setState((s) => (s.slant ? { slant: { ...s.slant, ...patch, auto: false } } : {}));
+  const p: Partial<SlantEdit> = { ...patch };
+  for (const k of ['z', 'tilt', 'dir'] as const) if (p[k] !== undefined && !Number.isFinite(p[k])) delete p[k];
+  if (p.tilt !== undefined) p.tilt = Math.max(0, Math.min(MAX_TILT, p.tilt));
+  if (p.z !== undefined) p.z = Math.max(0, p.z);
+  if (p.dir !== undefined) { p.dir = ((p.dir % 360) + 360) % 360; p.dirAuto ??= false; }
+  setState((s) => (s.slant ? { slant: { ...s.slant, ...p, auto: false } } : {}));
   void refreshSlantLimit();
 }
 
@@ -69,7 +75,7 @@ export function commitSlant() {
   if (e.auto) for (const k of KEYS) delete settings[k];
   else {
     settings.nonplanar_slant_angle = String(Math.round(e.tilt * 100) / 100);
-    settings.nonplanar_slant_direction = String(Math.round((((e.dir % 360) + 360) % 360) * 100) / 100);
+    settings.nonplanar_slant_direction = e.dirAuto ? '-1' : String(Math.round((((e.dir % 360) + 360) % 360) * 100) / 100);
     settings.nonplanar_slant_start_height = String(Math.max(0, Math.round(e.z * 100) / 100));
   }
   settings.nonplanar_mode = 'slant';
@@ -78,13 +84,16 @@ export function commitSlant() {
 }
 
 export function resetSlantAuto() {
-  setState((s) => (s.slant ? { slant: { z: 0, tilt: 10, dir: 90, auto: true } } : {}));
+  setState((s) => (s.slant ? { slant: { z: 0, tilt: 10, dir: 90, dirAuto: true, auto: true } } : {}));
   void refreshSlantLimit();
 }
 
-export function slantLimit(head: Head, dirDeg: number, width: number, h: number, ignoreDuct: boolean): number {
-  const blocks = head.boxes.some((b) => (b as { block?: boolean }).block);
-  const boxes = ignoreDuct && blocks ? head.boxes.filter((b) => b.nozzle || (b as { block?: boolean }).block) : head.boxes;
+export function slantLimit(head: Head, dirDeg: number, width: number, h: number, ignoreDuct: boolean, tol = 0): number {
+  const isDuct = (b: Head['boxes'][number]) => {
+    const x = b as { duct?: boolean; block?: boolean; name?: string };
+    return x.duct ?? (!b.nozzle && !x.block && /duct|shroud/i.test(x.name ?? ''));
+  };
+  const boxes = ignoreDuct ? head.boxes.filter((b) => !isDuct(b)) : head.boxes;
   const rise = dirDeg * DEG + Math.PI, u = [Math.cos(rise), Math.sin(rise)];
   const slope = (gap: number, nozzle: boolean) => {
     let tan = Infinity;
@@ -104,9 +113,10 @@ export function slantLimit(head: Head, dirDeg: number, width: number, h: number,
     }
     return tan === Infinity ? Math.PI / 2 : Math.atan(Math.max(0, tan));
   };
-  let limit = Math.min(slope(h, true), slope(0, false));
+  tol = Math.max(0, tol);
+  let limit = Math.min(slope(h + tol, true), slope(tol, false));
   const gantry = Math.min(...boxes.filter((b) => b.infinite_x || b.infinite_y).map((b) => b.min[2]));
-  if (Number.isFinite(gantry)) limit = Math.min(limit, Math.atan(Math.max(0, gantry - head.margin) / width));
+  if (Number.isFinite(gantry)) limit = Math.min(limit, Math.atan(Math.max(0, gantry + tol - head.margin) / width));
   return Math.max(0, limit / DEG - 3);
 }
 
@@ -126,6 +136,7 @@ export async function refreshSlantLimit() {
     hi = Math.max(hi, p);
   }
   const duct = ['1', 'true'].includes(String(objectValue(s, t.o, 'nonplanar_ignore_duct') ?? process.nonplanar_ignore_duct ?? '0'));
-  const limit = slantLimit(head, now.dir, Math.max(hi - lo, 1e-3), num(objectValue(s, t.o, 'layer_height'), 0.2), duct);
+  const limit = slantLimit(head, now.dir, Math.max(hi - lo, 1e-3), num(objectValue(s, t.o, 'layer_height'), 0.2), duct,
+    num(objectValue(s, t.o, 'nonplanar_collision_tolerance'), 0));
   setState({ slant: { ...now, limit } });
 }

@@ -1,7 +1,6 @@
 import type { Config, ConfigValue } from '../api/types';
 import { canCurvedTops, canSurfaceWaves } from '../api/client';
 import { OPTIONS } from '../options';
-import { canonicalMode } from '../nonplanar-mode';
 import { same, takeValue } from '../profiles/stack';
 import { undoable } from '../state/history';
 import { effectiveConfig, getState } from '../state/store';
@@ -18,7 +17,7 @@ export const WAVE_DEFAULTS: Config = { nonplanar_wave_amplitude: '0.4', nonplana
 export const SURFACE_KEYS = ['nonplanar_mode', 'nonplanar_wave', 'nonplanar_deform', 'zaa_enabled'];
 
 export function surfaceOf(config: Config): SurfaceId | 'custom' {
-  const mode = canonicalMode(text(config.nonplanar_mode) || 'off');
+  const mode = text(config.nonplanar_mode) || 'off';
   const wave = text(config.nonplanar_wave) || 'off';
   if (on(config.zaa_enabled)) return 'custom';
   if (wave !== 'off') return ['top', 'whole', 'infill'].includes(wave) && mode === 'off' ? 'waves' : 'custom';

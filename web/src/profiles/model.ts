@@ -177,8 +177,7 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const constraints = Object.fromEntries(Object.entries(user.metadata ?? {}).filter(([key]) => /^compatible_(printers|prints)(_condition)?$/.test(key)));
   const owned = { ...master?.user?.overrides, ...parent?.user?.overrides, ...constraints, ...(user.overlay ?? user.overrides) };
   const pinned = type === 'filament' && user.printerId && user.snapshot && user.base?.version !== baseVersion(base);
-  const root = auto ? { ...base.config, nonplanar_mode: 'off', nonplanar_wave: 'off' } : base.config;
-  const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...root, ...owned };
+  const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...base.config, ...owned };
   if (user.archived) {
     const retained = user.snapshot?.config ?? config;
     return {base,source:user,user:{...user,overrides:changedKeys(retained,base.config)},key:identity,name:user.name,config:retained,status:'archived',

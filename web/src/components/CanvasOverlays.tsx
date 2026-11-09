@@ -257,7 +257,7 @@ export function SliceNotification() {
   const known = new Set(plateObjects.map((o) => bareName(o.name)));
   const loose = plain.filter((w) => (!w.object || !known.has(w.object)) && w.text !== null);
   const [held, setHeld] = useState(false);
-  const transient = [exported, ...perObject.filter((n) => n.r && !n.f && !n.ws.length).map((n) => n.key),
+  const transient = [exported, ...perObject.filter((n) => n.r && !n.f && !n.ws.length && !n.r.slant?.why && !n.r.printedFlat).map((n) => n.key),
     ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
   useEffect(() => {
     if (held) return;
@@ -380,11 +380,11 @@ export function SlantPanel() {
   return (
     <div className="manip-panel slant-panel">
       <div className="manip-title">Slant plane</div>
-      <div className="slant-readout" aria-live="polite">{e.auto ? 'Auto: ' : ''}tilt {deg(e.tilt)} toward {deg(((e.dir % 360) + 360) % 360)}</div>
+      <div className="slant-readout" aria-live="polite">{e.auto ? 'Auto: ' : ''}tilt {deg(e.tilt)} toward {e.dirAuto ? 'the best direction' : deg(e.dir)}</div>
       <div className="slant-grid">
-        <span>Tilt</span><Num label="Tilt" value={e.tilt} onCommit={(tilt) => setSlant({ tilt: Math.max(0, Math.min(45, tilt)) })} /><span>°</span>
-        <span>Direction</span><Num label="Direction" value={e.dir} onCommit={(dir) => setSlant({ dir: ((dir % 360) + 360) % 360 })} /><span>°</span>
-        <span>Start height</span><Num label="Start height" value={e.z} onCommit={(z) => setSlant({ z: Math.max(0, z) })} /><span>mm</span>
+        <span>Tilt</span><Num label="Tilt" value={e.tilt} onCommit={(tilt) => setSlant({ tilt })} /><span>°</span>
+        <span>Direction</span><Num label="Direction" value={e.dir} onCommit={(dir) => (dir < 0 ? setSlant({ dirAuto: true }) : setSlant({ dir }))} /><span>°</span>
+        <span>Start height</span><Num label="Start height" value={e.z} onCommit={(z) => setSlant({ z })} /><span>mm</span>
       </div>
       {e.limit !== undefined && (over
         ? <div className="slant-warn" role="alert">Steeper than the head reaches ({deg(e.limit)}) in this direction</div>

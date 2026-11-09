@@ -117,7 +117,8 @@ export interface ObjectResult { name: string; style: string; fact: string; curve
   flatWhy?: string;
   limit?: { kind: PlanarLimit; capDeg: number | null; reachableDeg: number | null;
     accessBy?: 'nozzle' | 'head' };
-  tops?: { candidates: number; kept: number; dropped: string[] } }
+  tops?: { candidates: number; kept: number; dropped: string[] };
+  slant?: { angle: number; dir: number; asked: number; why?: string } }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
   if (!record || record.status === 'error') return [];
@@ -128,7 +129,8 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   const reported = (((record.nonplanar_report ?? {}) as Rec).objects ?? []) as { name?: string; patches?: Patch[]; curved_top_area_fraction?: number;
     planar_limit?: PlanarLimit; curved_max_angle_deg?: number; reachable_slope_deg?: number; curved_extrusion_length_mm?: number;
     planar_fallback_reason?: string; access_by?: string; curved_surfaces_candidates?: number; curved_surfaces_kept?: number;
-    curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] } }[];
+    curved_top_budget?: { patches?: { dropped?: boolean; reason?: string }[] }; slant?: SlantReport }[];
+  const contexts = ((((record.model_context ?? {}) as Rec).objects ?? []) as { name?: string; effective_settings?: Rec }[]);
   const byName = new Map<string, { ids: Set<number>; mode: string; deform?: string; cl?: CurvedLayers }>();
   for (const o of objects) {
     const name = String(o.name ?? '');
@@ -172,10 +174,38 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     const printedFlat = !!why && (why.planar_limit === 'hits' || !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason));
     const candidates = num(why?.curved_surfaces_candidates), kept = num(why?.curved_surfaces_kept);
     const tops = candidates != null && kept != null ? { candidates, kept, dropped: (why?.curved_top_budget?.patches ?? []).filter((p) => p.dropped).map((p) => String(p.reason ?? '')) } : undefined;
+    const slant = o.mode === 'slant' && why?.slant ? slantResult(why.slant, contexts.find((c) => c.name === name)?.effective_settings?.nonplanar_slant_angle) : undefined;
+    if (slant) {
+      const flatWhy = why?.planar_fallback_reason?.replace(/ deg\b/g, '°');
+      out.push({ name, style, fact: slant.angle > 0 ? slantFact(slant) : `Printed flat${flatWhy ? `: ${flatWhy}` : ''}`, curved: slant.angle > 0, ledge: false,
+        pct: null, topMm2: 0, printedFlat: slant.angle <= 0, ...(flatWhy ? { flatWhy } : {}), slant });
+      continue;
+    }
     out.push({ name, style, fact, curved: !fact.startsWith('Flat'), ledge: ledge >= 1, pct, topMm2: top + flat, printedFlat,
       ...(printedFlat && why?.planar_fallback_reason ? { flatWhy: why.planar_fallback_reason } : {}), ...(limit ? { limit } : {}), ...(tops ? { tops } : {}) });
   }
   return out;
+}
+
+type SlantReport = { angle_deg?: number; direction_deg?: number; head_limit_deg?: number; angle_lowered_steps?: number; requested_deg?: number;
+  full_tilt_mm?: number; limit?: string; limit_reason?: string };
+
+function slantResult(r: SlantReport, setting: unknown): ObjectResult['slant'] {
+  const angle = num(r.angle_deg) ?? 0, dir = num(r.direction_deg) ?? 0, head = num(r.head_limit_deg), steps = num(r.angle_lowered_steps) ?? 0;
+  const set = num(r.requested_deg) ?? Number(setting);
+  const asked = Number.isFinite(set) && set > 0 ? set : head ?? angle;
+  if (angle > 0 && r.limit && r.limit_reason) return { angle, dir, asked, why: r.limit_reason.replace(/ deg\b/g, '°') };
+  if (angle <= 0 || angle >= asked - 0.5) return { angle, dir, asked };
+  const deg = (v: number) => `${Math.round(v)}°`;
+  const why = steps > 0 ? `the print head met the part at steeper angles (${steps} ${steps === 1 ? 'step' : 'steps'} down)`
+    : head != null && head < asked - 0.5 ? `the print head reaches ${deg(head)} toward ${deg(dir)}`
+    : `the layers reach no more than ${deg(angle)} within half the part's height`;
+  return { angle, dir, asked, why };
+}
+
+export function slantFact(s: NonNullable<ObjectResult['slant']>): string {
+  const deg = (v: number) => `${Math.round(v * 10) / 10}°`;
+  return `Slanted ${deg(s.angle)} toward ${deg(s.dir)}${s.angle < s.asked - 0.05 ? ` (asked ${deg(s.asked)})` : ''}${s.why ? `: ${s.why}` : ''}`;
 }
 
 const FALLBACK_REASONS: Record<string, [string, string]> = {

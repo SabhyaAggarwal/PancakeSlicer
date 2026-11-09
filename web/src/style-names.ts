@@ -1,18 +1,20 @@
 import type { Config, ConfigValue } from './api/types';
-import { canonicalMode, MODE_LABELS } from './nonplanar-mode';
+import { MODE_LABELS } from './nonplanar-mode';
 
 export type StyleId = 'standard' | 'smooth' | 'fast' | 'morph' | 'zaa' | 'multiplanar' | 'field';
 
-export const STYLE_NAMES: Record<StyleId | 'custom', string> = {
+export type StyleName = StyleId | 'slant' | 'conformal' | 'custom';
+
+export const STYLE_NAMES: Record<StyleName, string> = {
   standard: 'Standard', smooth: MODE_LABELS.nonplanar_top, fast: MODE_LABELS.curved_tops, morph: MODE_LABELS.smooth_morph, zaa: 'Z contour',
-  multiplanar: 'Tilted chunks', field: 'Rotary curved layers', custom: 'Custom',
+  multiplanar: 'Tilted chunks', field: 'Rotary curved layers', slant: 'Slant', conformal: 'Conformal layers', custom: 'Custom',
 };
 
 const asText = (v: ConfigValue | undefined) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(asText(v));
 
-export function styleOf(c: Config): StyleId | 'custom' {
-  const mode = canonicalMode(asText(c.nonplanar_mode) || 'off');
+export function styleOf(c: Config): StyleName {
+  const mode = asText(c.nonplanar_mode) || 'off';
   const zaa = on(c.zaa_enabled);
   if (mode === 'off') return zaa ? 'zaa' : 'standard';
   if (zaa) return 'custom';
@@ -20,6 +22,8 @@ export function styleOf(c: Config): StyleId | 'custom' {
   if (mode === 'curved_tops') return 'fast';
   if (mode === 'smooth_morph') return 'morph';
   if (mode === 'multiplanar' || mode === 'field') return mode;
+  if (mode === 'slant') return 'slant';
+  if (mode === 'conformal_layers') return 'conformal';
   return 'custom';
 }
 

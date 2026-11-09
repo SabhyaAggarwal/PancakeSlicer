@@ -15,6 +15,11 @@
       "hardware": "any"
     },
     {
+      "id": "auto",
+      "target": "mode",
+      "hardware": "known"
+    },
+    {
       "id": "manual",
       "target": "mode",
       "hardware": "known"

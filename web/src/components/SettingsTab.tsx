@@ -9,7 +9,6 @@ import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { preloadable } from '../preloadable';
-import { canonicalMode } from '../nonplanar-mode';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
 import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
@@ -192,7 +191,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
         {groups.map((g) => {
           const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id, openByDefault);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
-          const method = type === 'process' ? canonicalMode(String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off')) : undefined;
+          const method = type === 'process' ? String(config.nonplanar_mode ?? OPTIONS.nonplanar_mode?.default ?? 'off') : undefined;
           const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
             const [key, column] = splitKey(k);
             const index = !overrides && !line.index_labels ? optionIndex(key, type, config, extruderSelection, column) : null;

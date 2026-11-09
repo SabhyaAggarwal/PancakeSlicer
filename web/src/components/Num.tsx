@@ -14,7 +14,7 @@ export function Num({ value, onCommit, step = 1, label, axis }: { value?: number
       value={text}
       step={step}
       onChange={(e) => setText(e.target.value)}
-      onBlur={() => Number.isFinite(Number(text)) && onCommit(Number(text))}
+      onBlur={() => (text.trim() !== '' && Number.isFinite(Number(text)) ? onCommit(Number(text)) : setText(shown))}
       onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
     />
   );
