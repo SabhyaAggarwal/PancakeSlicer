@@ -44,6 +44,7 @@ type Server struct {
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	s := &Server{cfg: c, jobs: jobs, presets: presets, libraryV4: &libraryStore{dir: c.DataDir}, sends: NewSendManager(c.PrinterStore), filamentSlots: newFilamentSlotStore(filepath.Join(c.DataDir, "printers"))}
+	s.reconcileStoredConnections("startup")
 	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe

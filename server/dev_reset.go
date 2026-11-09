@@ -100,6 +100,7 @@ func (s *Server) resetAll(epoch string) error {
 	if err := s.libraryV4.reset(epoch); err != nil {
 		return err
 	}
+	s.reconcileStoredConnections("profile reset")
 	return nil
 }
 

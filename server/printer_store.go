@@ -337,6 +337,10 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
+	if why := s.connectionConflict(key, p.Serial, prev); why != "" {
+		fail(w, 409, why)
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.printerLocked(key) != prev {
@@ -417,6 +421,10 @@ func (s *Server) adoptConnection(w http.ResponseWriter, r *http.Request) {
 	src := m.connectionFor("unassigned:" + body.ID)
 	if src == nil {
 		fail(w, 404, "no unassigned connection with that id")
+		return
+	}
+	if why := s.connectionConflict(key, src.Serial, src); why != "" {
+		fail(w, 409, why)
 		return
 	}
 	m.mu.Lock()

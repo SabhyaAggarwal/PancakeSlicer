@@ -343,6 +343,7 @@ func (s *Server) libraryRoutes(mux *http.ServeMux) {
 			libraryFailure(w, 507, "library_write_failed", "Profiles could not be saved. Free storage and retry.", "retry_storage", revision)
 			return
 		}
+		s.reconcileConnections(in.Document, "library save")
 		writeJSON(w, 200, map[string]any{"revision": revision + 1, "operationId": in.OperationID})
 	})
 }

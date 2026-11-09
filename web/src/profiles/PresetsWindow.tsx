@@ -95,7 +95,9 @@ const failed = (action: string, e: unknown) => {
 async function archiveRecords(type: PresetType, keys: string[]) {
   const s=getState(), rows=keys.flatMap(key=>findProfile(s,type,key) ?? []);
   if(!rows.length)throw new Error('Select an editable profile to delete.');
-  if(!await confirmDialog('Remove from library',`Remove ${rows.length === 1 ? rows[0].name : `${rows.length} profiles`} from the library?\n${rows.length > 1 ? rows.map(p=>p.name).join('\n')+'\n' : ''}Saved project settings and references are retained. Undo is available.`,['Remove','Cancel']))return;
+  const archived=new Set(rows.map(profileKey)),linked=s.printerConnections.connections.filter(c=>archived.has(c.printer));
+  const devices=linked.length ? `\nThe connection to ${linked.map(c=>[c.model || c.name,c.host].filter(Boolean).join(' at ')).join(', ')} is removed too; reconnect it from another printer profile.` : '';
+  if(!await confirmDialog('Remove from library',`Remove ${rows.length === 1 ? rows[0].name : `${rows.length} profiles`} from the library?\n${rows.length > 1 ? rows.map(p=>p.name).join('\n')+'\n' : ''}Saved project settings and references are retained. Undo is available.${devices}`,['Remove','Cancel']))return;
   const undo=await archiveProfiles(type,rows.map(profileKey));
   toast(`Removed ${rows.length} profile${rows.length === 1 ? '' : 's'} from library`,{label:'Undo',run:()=>void restoreProfiles(undo).then(()=>toast('Profiles restored')).catch(error=>failed('Undo',error))});
 }
