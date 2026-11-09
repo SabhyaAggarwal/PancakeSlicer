@@ -165,6 +165,8 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 		delete(record, "printed_flat")
 	}
 	failures, touches := collidingObjects(record["nonplanar_report"], c, j)
+	ductFailures, ductTouches := ductGrazedObjects(record["nonplanar_report"], j)
+	failures, touches = append(failures, ductFailures...), append(touches, ductTouches...)
 	if len(touches) > 0 {
 		var warnings []string
 		json.Unmarshal(record["object_warnings"], &warnings)
@@ -310,6 +312,47 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[str
 		}
 		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
 			"reason": reason, "try_ignore_duct": checked && duct > v.DuctLimit && depth <= v.Tolerance})
+	}
+	return failures, warnings
+}
+
+func ductGrazedObjects(raw json.RawMessage, j *Job) (failures []map[string]any, warnings []string) {
+	var report struct {
+		Objects   []map[string]any `json:"objects"`
+		Clearance struct {
+			DuctGrazes int  `json:"duct_grazes"`
+			Override   bool `json:"clearance_override"`
+		} `json:"clearance"`
+	}
+	if j == nil || !previewableRequest(j.Request) || json.Unmarshal(raw, &report) != nil || report.Clearance.DuctGrazes <= 0 || report.Clearance.Override {
+		return nil, nil
+	}
+	settings := gcodeSettings(j.OutputPath("gcode"), "nonplanar_duct_graze_limit", "nonplanar_ignore_duct")
+	if settings["nonplanar_ignore_duct"] == "1" {
+		return nil, nil
+	}
+	limit, err := strconv.Atoi(settings["nonplanar_duct_graze_limit"])
+	if err != nil {
+		limit = 200
+	}
+	duct := report.Clearance.DuctGrazes
+	for i, o := range report.Objects {
+		mode, _ := o["mode"].(string)
+		if share, _ := o["curved_share"].(float64); mode == "" || mode == "off" || verifiedModes[mode] || share <= 0 {
+			continue
+		}
+		method := methodLabels[mode]
+		if method == "" {
+			method = mode
+		}
+		name, _ := o["name"].(string)
+		if duct <= limit {
+			warnings = append(warnings, name+": May graze the part with the fan duct in "+strconv.Itoa(duct)+" spots")
+			continue
+		}
+		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
+			"reason":          method + " would graze the part with the fan duct in " + strconv.Itoa(duct) + " moves, past your limit of " + strconv.Itoa(limit),
+			"try_ignore_duct": true})
 	}
 	return failures, warnings
 }
