@@ -17,6 +17,7 @@ type autoProfile struct {
 	Schema          int         `json:"schema"`
 	Scales          []autoScale `json:"scales"`
 	PreferredHeight *float64    `json:"preferredHeight,omitempty"`
+	HeightRule      string      `json:"heightRule,omitempty"`
 	SpeedModel      *speedModel `json:"speedModel,omitempty"`
 }
 
@@ -55,6 +56,9 @@ func validateAuto(p map[string]json.RawMessage, typ string) error {
 	if a.PreferredHeight != nil && (*a.PreferredHeight < 0.04 || *a.PreferredHeight > 1.2) {
 		return errors.New("preferredHeight is a layer height from 0.04 to 1.2 mm")
 	}
+	if _, ok := profileRules.HeightRules[a.HeightRule]; a.HeightRule != "" && (!ok || a.PreferredHeight != nil) {
+		return errors.New("heightRule is draft or fine, and never beside preferredHeight")
+	}
 	return nil
 }
 
@@ -72,10 +76,10 @@ var starterProfiles = []struct {
 		map[string]string{"nonplanar_mode": "nonplanar_top", "wall_loops": "4", "sparse_infill_density": "25%", "top_shell_layers": "6", "bottom_shell_layers": "5"}, autoProfile{Schema: 3, Scales: defaultScales}},
 	{"fine-detail", "Fine detail", "Thin layers and extra shells for small, detailed parts", [2]float64{0.2, 0.4},
 		map[string]string{"nonplanar_mode": "nonplanar_top", "top_shell_layers": "5", "bottom_shell_layers": "4"},
-		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.12)}},
+		autoProfile{Schema: 3, Scales: defaultScales, HeightRule: "fine"}},
 	{"draft", "Draft", "Flat, thick layers and 10 % infill for quick test prints", [2]float64{0.6, 0.7},
 		map[string]string{"nonplanar_mode": "off", "top_shell_layers": "3", "bottom_shell_layers": "3", "sparse_infill_density": "10%"},
-		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.28)}},
+		autoProfile{Schema: 3, Scales: defaultScales, HeightRule: "draft"}},
 }
 
 var starterValues = map[string]string{"wall_loops": "2", "sparse_infill_density": "15%", "sparse_infill_pattern": "grid",

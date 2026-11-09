@@ -120,6 +120,31 @@ func setPrintDefaults(v *VendorPresets, defaults map[string]json.RawMessage) {
 		}
 	}
 }
+
+func setLayerHeights(v *VendorPresets) {
+	for i := range v.Machines {
+		m := &v.Machines[i]
+		seen := map[float64]bool{}
+		var heights []float64
+		for j := range v.Processes {
+			p := &v.Processes[j]
+			if !compatibleWith(p, m.Name) {
+				continue
+			}
+			height, err := strconv.ParseFloat(firstConfigText(p.Config["layer_height"]), 64)
+			if err != nil || !(height > 0) {
+				continue
+			}
+			height = math.Round(height*1000) / 1000
+			if !seen[height] {
+				seen[height] = true
+				heights = append(heights, height)
+			}
+		}
+		slices.Sort(heights)
+		m.LayerHeights = heights
+	}
+}
 func compatibleWith(p *Preset, machine string) bool {
 	if len(p.CompatiblePrinters) == 0 {
 		return !p.Evaluated

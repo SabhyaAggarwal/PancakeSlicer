@@ -24,6 +24,10 @@ var profileRules = func() (r struct {
 	Heights           struct {
 		Step, MinOfNozzle, MinFloor, MaxOfNozzle float64
 	} `json:"heights"`
+	HeightRules map[string]struct {
+		CoarsestOfNozzle float64 `json:"coarsestOfNozzle"`
+		NearestOfNozzle  float64 `json:"nearestOfNozzle"`
+	} `json:"heightRules"`
 }) {
 	if err := json.Unmarshal(profileRulesData, &r); err != nil || r.Round == 0 || len(r.DefaultScales) == 0 {
 		panic("profile_rules.json is invalid")
@@ -32,6 +36,29 @@ var profileRules = func() (r struct {
 }()
 
 func roundRule(x float64) float64 { return math.Round(x*profileRules.Round) / profileRules.Round }
+
+func ruleHeight(rule string, heights []float64, nozzle float64) float64 {
+	r, ok := profileRules.HeightRules[rule]
+	if !ok || len(heights) == 0 {
+		return 0
+	}
+	if r.CoarsestOfNozzle > 0 {
+		best := heights[0]
+		for _, h := range heights {
+			if h <= roundRule(r.CoarsestOfNozzle*nozzle)+1e-6 {
+				best = h
+			}
+		}
+		return best
+	}
+	best, target := heights[0], r.NearestOfNozzle*nozzle
+	for _, h := range heights {
+		if math.Abs(h-target) < math.Abs(best-target)-1e-9 {
+			best = h
+		}
+	}
+	return best
+}
 
 func clampHeight(layerHeight, nozzle float64) float64 {
 	if nozzle > 0 {

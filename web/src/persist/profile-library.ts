@@ -10,7 +10,7 @@ export interface V4Record {
   id: string; type: Type; name: string; revision: number; archived?: { at: number; operationId: string };
   vendor?: string; model?: string; nozzle?: number; machine?: Config; printOverrides?: Config;
   family?: string; brand?: string; material?: string; colour?: string; settings?: Config; fits?: { models?: string[]; nozzles?: number[] };
-  values?: Config; scales?: ScaleRow[]; preferredHeight?: number; speedModel?: SpeedModel;
+  values?: Config; scales?: ScaleRow[]; preferredHeight?: number; heightRule?: string; speedModel?: SpeedModel;
 }
 interface V4Document { schema: 4; revision: number; epoch?: string; profiles: V4Record[]; setups: ProfileLibraryDocument['printers']['setups'] }
 
@@ -25,7 +25,7 @@ const machineName = async (vendor: string, model: string, nozzle: number) =>
   (await printerCatalog()).find((v) => v.id === vendor)?.models.find((m) => m.id === model)?.machines?.[nozzleKey(nozzle)];
 
 export function printFromV4(r: V4Record): ProfileOverlay {
-  const auto = r.scales?.length || r.preferredHeight || r.speedModel ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.speedModel ? { speedModel: r.speedModel } : {}), ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}) } } : {};
+  const auto = r.scales?.length || r.preferredHeight || r.heightRule || r.speedModel ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.speedModel ? { speedModel: r.speedModel } : {}), ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}), ...(r.heightRule ? { heightRule: r.heightRule } : {}) } } : {};
   return { id: r.id, name: r.name, revision: r.revision, kind: 'profile', type: 'process', ...(r.archived ? { archived: r.archived } : {}), base: AUTO, overlay: { ...r.values }, ...auto } as ProfileOverlay;
 }
 
@@ -56,7 +56,7 @@ async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
 }
 
 async function toV4(p: ProfileOverlay): Promise<V4Record> {
-  const type = v4Type[p.type], extra = p as ProfileOverlay & { printOverrides?: Config; auto?: { scales?: ScaleRow[]; preferredHeight?: number; speedModel?: SpeedModel } };
+  const type = v4Type[p.type], extra = p as ProfileOverlay & { printOverrides?: Config; auto?: { scales?: ScaleRow[]; preferredHeight?: number; heightRule?: string; speedModel?: SpeedModel } };
   const base: V4Record = { id: p.id!, type, name: p.name.replace(/\s+@.*$/, '').trim() || p.name, revision: p.revision ?? 0, ...(p.archived ? { archived: p.archived } : {}) };
   const overlay = { ...p.overlay };
   if (type === 'printer') {
@@ -80,7 +80,7 @@ async function toV4(p: ProfileOverlay): Promise<V4Record> {
   }
   return { ...base, ...(Object.keys(overlay).length ? { values: overlay } : {}), ...(extra.auto?.scales?.length ? { scales: extra.auto.scales } : {}),
     ...(extra.auto?.speedModel ? { speedModel: extra.auto.speedModel } : {}),
-    ...(extra.auto?.preferredHeight ? { preferredHeight: extra.auto.preferredHeight } : {}) };
+    ...(extra.auto?.preferredHeight ? { preferredHeight: extra.auto.preferredHeight } : {}), ...(extra.auto?.heightRule ? { heightRule: extra.auto.heightRule } : {}) };
 }
 
 export async function readProfileLibrary(_mock = false): Promise<ProfileLibraryDocument> {

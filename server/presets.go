@@ -30,6 +30,7 @@ type Preset struct {
 	Internal             bool                       `json:"internal,omitempty"`
 	PrintDefaults        map[string]json.RawMessage `json:"print_defaults,omitempty"`
 	StandardProcess      string                     `json:"standard_process,omitempty"`
+	LayerHeights         []float64                  `json:"layer_heights,omitempty"`
 }
 type VendorPresets struct {
 	Vendor                         string   `json:"vendor"`
@@ -148,6 +149,7 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 			}
 			noteProcessKeys(v.presets)
 			setPrintDefaults(v.presets, optionDefaults(dictionary))
+			setLayerHeights(v.presets)
 			for i := range v.presets.Machines {
 				if p := standardProcess(v.presets, &v.presets.Machines[i]); p != nil {
 					v.presets.Machines[i].StandardProcess = p.Name

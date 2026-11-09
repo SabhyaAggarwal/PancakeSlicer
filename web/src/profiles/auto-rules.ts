@@ -4,7 +4,7 @@ import rules from '../../../server/profile_rules.json';
 export type ScaleBasis = 'nozzle' | 'layer' | 'perLayer';
 export interface ScaleRow { key: string; basis: ScaleBasis; factor: number }
 export interface ScaleContext { nozzle: number; layerHeight: number }
-export interface AutoRecord { schema: 3; scales: ScaleRow[]; preferredHeight?: number; speedModel?: import('./speed-rules').SpeedModel }
+export interface AutoRecord { schema: 3; scales: ScaleRow[]; preferredHeight?: number; heightRule?: string; speedModel?: import('./speed-rules').SpeedModel }
 
 export const DEFAULT_SCALES: ScaleRow[] = rules.defaultScales.map((r) => ({ ...r, basis: r.basis as ScaleBasis }));
 
@@ -34,6 +34,13 @@ export const scalesOf = (record: unknown): ScaleRow[] => {
   const scales = (record as { auto?: { scales?: unknown } } | undefined)?.auto?.scales;
   return Array.isArray(scales) ? scales.filter((r): r is ScaleRow => !!r && typeof r.key === 'string' && Number.isFinite(r.factor) && ['nozzle', 'layer', 'perLayer'].includes(r.basis)) : [];
 };
+export function ruleHeight(rule: string, heights: number[], nozzle: number): number | undefined {
+  const r = (rules.heightRules as Record<string, { coarsestOfNozzle?: number; nearestOfNozzle?: number }>)[rule];
+  if (!r || !heights.length) return undefined;
+  if (r.coarsestOfNozzle) return heights.filter((h) => h <= round(r.coarsestOfNozzle! * nozzle) + 1e-6).pop() ?? heights[0];
+  const target = (r.nearestOfNozzle ?? 0) * nozzle;
+  return heights.reduce((best, h) => Math.abs(h - target) < Math.abs(best - target) - 1e-9 ? h : best, heights[0]);
+}
 export function heightsFor(nozzle: number, min?: number, max?: number): number[] {
   const { step, minOfNozzle, minFloor, maxOfNozzle } = rules.heights;
   const lo = min && min > 0 ? min : Math.max(minFloor, Math.round(nozzle * minOfNozzle * 100) / 100), hi = Math.min(max && max > 0 ? max : nozzle * maxOfNozzle, nozzle * rules.maxLayerOfNozzle);

@@ -2,9 +2,9 @@ import { canonicalKeys } from '../renamed-keys';
 import type { ProjectProfileReferences } from './ownership';
 import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './model';
-import { clampHeight, heightsFor, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
+import { clampHeight, heightsFor, ruleHeight, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
 import { chainApplicability, type ChainLink } from './chain';
-import { findProfile } from './identity';
+import { findProfile, profileKey } from './identity';
 import { dynamicSpeedBase, resolveDynamicSpeeds, speedModelOf, SPEED_FEATURES } from './speed-rules';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
@@ -34,17 +34,26 @@ export function profileChain(s: ProfileContextState, type: PresetType, resolved:
   return links;
 }
 export const worksWithRuleOf = chainApplicability;
+function shippedHeights(s: ProfileContextState): number[] {
+  const listed = (resolveProfile(s, 'machine', s.printer).base as { layer_heights?: number[] } | undefined)?.layer_heights;
+  if (listed?.length) return listed;
+  const machine = effectiveProfileValues(s, 'machine', s.printer);
+  return heightsFor(number(machine.nozzle_diameter), number(machine.min_layer_height), number(machine.max_layer_height));
+}
 export function preferredHeight(s: ProfileContextState, key: string): number | undefined {
   const resolved = resolveProfile(s, 'process', key), auto = (resolved.user as { auto?: AutoRecord } | undefined)?.auto;
-  return auto?.preferredHeight ?? (number(resolved.config.layer_height) || undefined);
+  const nozzle = number(effectiveProfileValues(s, 'machine', s.printer).nozzle_diameter), shipped = shippedHeights(s);
+  const own = (auto?.heightRule ? ruleHeight(auto.heightRule, shipped, nozzle) : undefined) ?? auto?.preferredHeight ?? (number(resolved.config.layer_height) || undefined);
+  if (own === undefined) return undefined;
+  return clampHeight(Math.max(own, shipped[0] ?? 0), nozzle);
 }
 export function effectiveLayerHeight(s: ProfileContextState): number {
   const nozzle = number(effectiveProfileValues(s, 'machine', s.printer).nozzle_diameter);
   return clampHeight(s.processVariant?.layerHeight ?? preferredHeight(s, s.process) ?? 0.2, nozzle);
 }
 export function availableHeights(s: ProfileContextState): number[] {
-  const machine = effectiveProfileValues(s, 'machine', s.printer);
-  return heightsFor(number(machine.nozzle_diameter), number(machine.min_layer_height), number(machine.max_layer_height));
+  const own = s.userPresets.filter((p) => p.type === 'process' && !p.archived && p.kind !== 'master').map((p) => preferredHeight(s, profileKey(p)));
+  return [...new Set([...shippedHeights(s), ...own].filter((h): h is number => !!h && h > 0).map((h) => Math.round(h * 1000) / 1000))].sort((a, b) => a - b);
 }
 export type SettingOrigin = 'set' | 'auto' | 'printer';
 export function originsOf(profile: { overlay?: Config; overrides?: Config } | undefined): Record<string, SettingOrigin> {

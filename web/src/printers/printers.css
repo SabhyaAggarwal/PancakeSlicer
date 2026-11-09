@@ -78,6 +78,8 @@
 :where(.orca-parity) .print-ring:hover .print-ring-track { stroke: var(--ink-3); }
 :where(.orca-parity) .print-ring-name { position: relative; max-width: 22px; overflow: hidden; white-space: nowrap; }
 :where(.orca-parity) .print-ring-name[data-long] { font-size: 8px; }
+:where(.orca-parity) .print-ring-name[data-longer] { font-size: 7px; }
+:where(.orca-parity) .print-ring-mark { position: absolute; right: -3px; bottom: -3px; min-width: 11px; height: 11px; padding: 0 2px; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 1px var(--line-strong); color: var(--ink-2); font-size: 7px; line-height: 11px; text-align: center; }
 @media (max-width: 599px) { :where(.orca-parity) .print-rings, :where(.orca-parity) .printer-live-wide { display: none; } }
 @media (min-width: 600px) { :where(.orca-parity) .printer-live-narrow { display: none; } }
 :where(.orca-parity) .tray-filament { color: var(--ink-2); }

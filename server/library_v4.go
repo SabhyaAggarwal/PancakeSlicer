@@ -44,6 +44,9 @@ func starterRecord(i int) map[string]any {
 	if s.auto.PreferredHeight != nil {
 		p["preferredHeight"] = *s.auto.PreferredHeight
 	}
+	if s.auto.HeightRule != "" {
+		p["heightRule"] = s.auto.HeightRule
+	}
 	return p
 }
 
@@ -91,6 +94,7 @@ type v4Record struct {
 	Values          map[string]json.RawMessage `json:"values,omitempty"`
 	Scales          []autoScale                `json:"scales,omitempty"`
 	PreferredHeight *float64                   `json:"preferredHeight,omitempty"`
+	HeightRule      string                     `json:"heightRule,omitempty"`
 	SpeedModel      *speedModel                `json:"speedModel,omitempty"`
 }
 
@@ -131,7 +135,7 @@ func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 		}
 		printerOnly := r.Vendor != "" || r.Model != "" || r.Nozzle != 0 || r.Machine != nil || r.PrintOverrides != nil
 		filamentOnly := r.Family != "" || r.Brand != "" || r.Material != "" || r.Colour != "" || r.Settings != nil || r.Fits != nil
-		printOnly := r.Values != nil || r.Scales != nil || r.PreferredHeight != nil || r.SpeedModel != nil
+		printOnly := r.Values != nil || r.Scales != nil || r.PreferredHeight != nil || r.HeightRule != "" || r.SpeedModel != nil
 		switch r.Type {
 		case "printer":
 			if filamentOnly || printOnly || r.Vendor == "" || r.Model == "" || !(r.Nozzle > 0) {
@@ -146,9 +150,9 @@ func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 			}
 		case "print":
 			if printerOnly || filamentOnly {
-				return nil, bad("a print profile is {values?, scales?, preferredHeight?, speedModel?}")
+				return nil, bad("a print profile is {values?, scales?, preferredHeight? | heightRule?, speedModel?}")
 			}
-			if err := validateAuto(map[string]json.RawMessage{"auto": must(json.Marshal(autoProfile{Schema: 3, Scales: append([]autoScale{}, r.Scales...), PreferredHeight: r.PreferredHeight, SpeedModel: r.SpeedModel}))}, "process"); err != nil {
+			if err := validateAuto(map[string]json.RawMessage{"auto": must(json.Marshal(autoProfile{Schema: 3, Scales: append([]autoScale{}, r.Scales...), PreferredHeight: r.PreferredHeight, HeightRule: r.HeightRule, SpeedModel: r.SpeedModel}))}, "process"); err != nil {
 				return nil, bad(strings.TrimPrefix(err.Error(), "auto."))
 			}
 		default:
@@ -232,6 +236,14 @@ func migrateProfiles(doc map[string]json.RawMessage) {
 				}
 				model.OuterWallCeiling = legacy.OuterWallCeiling
 				p["speedModel"], _ = json.Marshal(model)
+				changed = true
+			}
+		}
+		if rule, ok := map[string]string{"profile:starter-draft": "draft", "profile:starter-fine-detail": "fine"}[stringValue(p["id"])]; ok {
+			var h float64
+			if json.Unmarshal(p["preferredHeight"], &h) == nil && h == map[string]float64{"draft": 0.28, "fine": 0.12}[rule] {
+				delete(p, "preferredHeight")
+				p["heightRule"], _ = json.Marshal(rule)
 				changed = true
 			}
 		}

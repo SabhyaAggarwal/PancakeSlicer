@@ -11,6 +11,7 @@ import { profileColour,profileSummary } from './metadata';
 import { MenuButton } from '../components/Menu';
 import { applicabilityKey } from './WorksWith';
 import { Fits } from './Fits';
+import { NozzleStrip } from './NozzleStrip';
 import type { ProfileApplicability } from './applicability';
 import { acknowledgeProjectProfileChanges,type ProjectProfileChanges } from './project-draft';
 import { requestPreset } from '../components/PresetCombo';
@@ -198,7 +199,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
         onKeyDown={e => {if (e.key === 'Enter') {e.preventDefault(); void commitName();} else if (e.key === 'Escape' && snap.value === 'naming') {e.preventDefault(); e.stopPropagation(); m.send({type: 'CANCEL'});}}}/>
         : <span className="pf-editor-name"><strong onClick={renamable ? startRename : undefined} data-renamable={renamable || undefined}>{profileName}</strong>{dynamic && <DynamicBadge/>}{renamable && <button type="button" className="reset-icon pf-rename" aria-label="Rename" disabled={saving} onClick={startRename}><Glyph name="edit" size={14}/></button>}</span>}</>}
     summary={nameError ? <div className="pf-editor-summary pf-name-error" id={`${key}-name-error`} role="alert">{nameError}</div> : <div className="pf-editor-summary">{type === 'process' ? autoPreferences(source) : profileSummary(type, values)}{draft?.staged && <><Sep/>Includes project changes</>}</div>}
-    controls={<>{(dirty || saving) && <button type="button" className="btn primary pf-editor-save" disabled={saving || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>}
+    controls={<>{type === 'machine' && source && <NozzleStrip printerKey={profileKey(source)} disabled={saving || dirty || !ready}/>}{(dirty || saving) && <button type="button" className="btn primary pf-editor-save" disabled={saving || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>}
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
         <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(type === 'process' && source ? [dynamic ? {label: 'Make regular', disabled: saving, action: () => void makeRegular()} : {label: 'Make dynamic', disabled: saving, action: makeDynamic}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>

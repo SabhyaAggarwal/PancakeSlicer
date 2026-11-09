@@ -148,6 +148,9 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	if !(height > 0) && print.PreferredHeight != nil {
 		height = *print.PreferredHeight
 	}
+	if !(height > 0) && print.HeightRule != "" {
+		height = ruleHeight(print.HeightRule, machine.LayerHeights, printer.Nozzle)
+	}
 	if !(height > 0) {
 		height, _ = strconv.ParseFloat(firstConfigText(process.Config["layer_height"]), 64)
 	}

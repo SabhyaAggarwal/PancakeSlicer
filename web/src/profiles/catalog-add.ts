@@ -2,7 +2,7 @@ import { dynamicSpeedBase, SPEED_KEYS } from './speed-rules';
 import { useEffect, useState } from 'react';
 import type { Config, UserPreset } from '../api/types';
 import { getState, type State } from '../state/store';
-import { findCatalogBase } from './model';
+import { findCatalogBase, resolveProfile } from './model';
 import { uniqueName } from './catalog';
 import { profileKey } from './identity';
 import { profileBatchCreation } from './transactions';
@@ -28,7 +28,7 @@ export interface PrinterChoice { vendor: string; model: CatalogModel; nozzle: st
 export interface FamilyChoice { family: CatalogFamily; colour?: string; label?: string }
 export interface AddResult { keys: string[]; existing: string[]; skipped: string[]; chosen: string[] }
 
-async function printDefaults({ vendor, model, nozzle }: PrinterChoice): Promise<Config | undefined> {
+export async function printDefaults({ vendor, model, nozzle }: PrinterChoice): Promise<Config | undefined> {
   const machine = model.machines[nozzle], api = getState().api;
   if (!machine) throw new Error(`${model.name} has no ${nozzle} mm nozzle.`);
   const preset = findCatalogBase(getState(), 'machine', machine).base ?? (api && (await api.presets(vendor, [], undefined, [machine])).machines.find((p) => p.name === machine));
@@ -69,7 +69,7 @@ export async function addCatalogPrinter(vendor: string, model: CatalogModel, noz
 export async function addCatalogFamilies(choices: FamilyChoice[]): Promise<AddResult> {
   let existing: string[] = [], chosen: string[] = [];
   const result = await profileBatchCreation((s) => {
-    const names = namer(s), machine = owned(s).find((p) => p.type === 'machine')?.base?.name ?? '';
+    const names = namer(s), machine = resolveProfile(s, 'machine', s.printer).base?.name ?? '';
     const colourOf = (c?: unknown) => String([c ?? ''].flat()[0] ?? '').toUpperCase();
     const has = new Map(owned(s).filter((p) => p.type === 'filament').map((p) => [`${p.base?.name ?? p.inherits}\0${colourOf(p.overlay?.filament_colour)}`, profileKey(p)]));
     const skipped: string[] = [], records: UserPreset[] = [];

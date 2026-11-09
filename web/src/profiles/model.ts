@@ -4,6 +4,12 @@ import { sameValue } from '../state/value-equality';
 import { OPTIONS } from '../options';
 import { findProfile, lookupProfile, profileKey, withProfileIdentity } from './identity';
 import type { ProfileBaseAnchor, ProfileRecoveryReason } from './ownership';
+import { filamentCatalogPath, loadedCatalog, type CatalogFamily } from './catalog-reads';
+
+export function familyVariantName(family: string, machine: string | undefined): string | undefined {
+  const f = loadedCatalog<{ families: CatalogFamily[] }>(filamentCatalogPath(family.split('/')[0]))?.families.find((x) => x.id === family);
+  return f && ((machine && f.variants[machine]) || f.fallback || Object.values(f.variants)[0]);
+}
 
 export const PRESET_META = /^(inherits|name|from|version|type|setting_id|base_id|filament_id|is_custom_defined|instantiation|\w+_settings_id)$/;
 export interface ProfileCatalog { machines: SystemPreset[]; processes: SystemPreset[]; filaments: SystemPreset[]; userPresets: UserPreset[] }
@@ -117,7 +123,8 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
     libraries.set(signature, (values = new Map()));
     if (libraries.size > 8) libraries.delete(libraries.keys().next().value!);
   }
-  const key = type === 'process' ? `${type}:${name}@${(s as { printer?: string }).printer ?? ''}` : `${type}:${name}`, cached = values.get(key);
+  const printer = (s as { printer?: string }).printer ?? '';
+  const key = type === 'process' || type === 'filament' ? `${type}:${name}@${printer}@${printer ? resolveProfile(s, 'machine', printer).base?.name ?? '' : ''}` : `${type}:${name}`, cached = values.get(key);
   if (cached) return cached;
   const resolved = resolveAncestors(s, type, name, new Set());
   if (resolved.base || resolved.user) values.set(key, resolved);
@@ -157,7 +164,11 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
     return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
   const auto = type === 'process' && (!!(user as { auto?: unknown }).auto || user.base?.name === 'Auto');
   const printer = auto && (s as { printer?: string }).printer ? resolveProfile(s, 'machine', (s as { printer?: string }).printer!).base : undefined;
-  const found = auto ? { base: (printer && autoEnginePreset(s, printer.config, printer.name)) || autoBase(s), ambiguous: false } : findCatalogBase(s, type, user.base ?? user.inherits);
+  const family = type === 'filament' && user.kind !== 'master' ? String(user.metadata?.family ?? '') : '';
+  const selected = family && (s as { printer?: string }).printer ? resolveProfile(s, 'machine', (s as { printer?: string }).printer!).base?.name : undefined;
+  const variant = family ? familyVariantName(family, selected) : undefined;
+  const found = auto ? { base: (printer && autoEnginePreset(s, printer.config, printer.name)) || autoBase(s), ambiguous: false }
+    : findCatalogBase(s, type, variant ? { name: variant, vendor: user.base?.vendor ?? family.split('/')[0], version: '' } : user.base ?? user.inherits);
   const base = found.base ?? (!user.base ? parent?.base : undefined);
   if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
   if (parent?.base && parent.base !== base)

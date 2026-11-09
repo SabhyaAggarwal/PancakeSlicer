@@ -10,6 +10,7 @@
   "maxLayerOfNozzle": 0.75,
   "lineWidthOfNozzle": [0.9, 1.5],
   "heights": { "step": 0.04, "minOfNozzle": 0.2, "minFloor": 0.04, "maxOfNozzle": 0.7 },
+  "heightRules": { "draft": { "coarsestOfNozzle": 0.75 }, "fine": { "nearestOfNozzle": 0.3 } },
   "defaultScales": [
     { "key": "line_width", "basis": "nozzle", "factor": 1.125 },
     { "key": "outer_wall_line_width", "basis": "nozzle", "factor": 1 },

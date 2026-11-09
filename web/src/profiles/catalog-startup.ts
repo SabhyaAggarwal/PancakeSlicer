@@ -10,7 +10,8 @@ import { getState, setState, toast } from '../state/store';
 import { documentGeneration } from '../state/history';
 import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
-import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
+import { catalogAnchor, catalogKey, familyVariantName, findCatalogBase, type ProfileCatalog } from './model';
+import { filamentCatalog } from './catalog-reads';
 import { ensureCompatibleSelection } from './material-library';
 import type { CatalogBaseDependency, CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
@@ -180,6 +181,7 @@ async function ensureOwnedCatalogs(document:ProfileLibraryDocument,captured:Cata
   document.profiles.forEach(collector.record);
   for(const setup of Object.values(document.printers.setups))for(const slot of setup.slots)if(slot.snapshot)collector.snapshot(slot.snapshot,'filament');
   await ensure(collector.source(),captured,isCurrent,document);
+  if(isCurrent())await loadFilamentVariants(document.profiles,document.profiles.flatMap(p=>p.type==='machine' && !p.archived && p.base?.name ? [p.base.name] : []));
 }
 export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boolean):Promise<void> {
   const captured=session;if(!captured)throw new Error('Load the profile catalog before restoring this project.');
@@ -192,6 +194,28 @@ export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boo
     if(context.profileSnapshots)collector.references(context.profileSnapshots);
   }
   await ensure(collector.source(),captured,isCurrent);
+}
+export async function loadMachinePresets(vendor:string,machines:string[]):Promise<void> {
+  const captured=session;if(!captured)throw new Error('Load the profile catalog before changing the nozzle.');
+  const missing=machines.filter(name=>!findCatalogBase(getState(),'machine',{name,vendor,version:''}).base);
+  if(missing.length)await captured.loadNames(vendor,missing);
+  const standards=machines.flatMap(name=>{const m=findCatalogBase(getState(),'machine',{name,vendor,version:''}).base as (SystemPreset & {standard_process?:string}) | undefined;
+    return m?.standard_process && !getState().processes.some(p=>p.name===m.standard_process) ? [m.standard_process] : [];});
+  if(standards.length)await captured.loadNames(vendor,standards);
+}
+export async function loadFilamentVariants(profiles:readonly (UserPreset|ProfileOverlay)[],machines:string[]):Promise<void> {
+  const captured=session;if(!captured)throw new Error('Load the profile catalog before reading filament variants.');
+  const byVendor=new Map<string,Set<string>>();
+  for(const f of profiles){
+    const family=String(f.metadata?.family ?? '');
+    if(f.type!=='filament' || f.archived || !family)continue;
+    const vendor=family.split('/')[0];if(!(await filamentCatalog(vendor).catch(()=>null)))continue;
+    for(const machine of machines){
+      const name=familyVariantName(family,machine);
+      if(name && !findCatalogBase(getState(),'filament',{name,vendor,version:''}).base)byVendor.set(vendor,(byVendor.get(vendor) ?? new Set()).add(name));
+    }
+  }
+  await Promise.all([...byVendor].map(([vendor,names])=>captured.loadNames(vendor,[...names])));
 }
 export async function ensureLibraryPresets():Promise<void> {
   const captured=session;if(!captured)return;

@@ -17,9 +17,9 @@ const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'mac
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 export function autoOf(source: unknown, scales: ScaleRow[], speedModel?: SpeedModel | null): { auto?: object } {
-  const prior = (source as { auto?: { preferredHeight?: number; speedModel?: SpeedModel } } | undefined)?.auto;
+  const prior = (source as { auto?: { preferredHeight?: number; heightRule?: string; speedModel?: SpeedModel } } | undefined)?.auto;
   const model = speedModel === null ? undefined : speedModel ?? speedModelOf(source) ?? (scales.length ? newSpeedModel() : undefined);
-  return scales.length || prior?.preferredHeight || model ? { auto: { schema: 3, scales, ...(prior?.preferredHeight ? { preferredHeight: prior.preferredHeight } : {}), ...(model ? {speedModel: model} : {}) } } : {};
+  return scales.length || prior?.preferredHeight || prior?.heightRule || model ? { auto: { schema: 3, scales, ...(prior?.preferredHeight ? { preferredHeight: prior.preferredHeight } : {}), ...(prior?.heightRule ? { heightRule: prior.heightRule } : {}), ...(model ? {speedModel: model} : {}) } } : {};
 }
 export type ValueChoice = 'formula' | 'fix' | 'project' | 'printer';
 export interface ValueSource { source: 'formula' | 'printer'; row?: ScaleRow; printer?: string }
