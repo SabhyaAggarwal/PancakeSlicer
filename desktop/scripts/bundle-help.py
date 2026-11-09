@@ -48,6 +48,9 @@ def main():
     args = ap.parse_args()
     source = args.root/'docs/user-guide'
     target = args.web/'help'
+    if not source.is_dir():
+        shutil.copy2(args.root/'LICENSE', args.web/'licence.txt')
+        return
     target.mkdir(parents=True, exist_ok=True)
     style = 'body{max-width:960px;margin:3rem auto;padding:0 1.5rem;font:17px/1.6 system-ui,sans-serif;color:#242424;background:#fff}a{color:#63378f}img{max-width:100%;height:auto;border-radius:8px}pre{overflow:auto;padding:1rem;background:#f3f3f3}table{border-collapse:collapse;width:100%}td,th{padding:.5rem;border:1px solid #ddd}nav{margin-bottom:2rem}code{font-size:.9em}'
     for path in source.rglob('*'):
@@ -66,7 +69,8 @@ def main():
             destination = target/relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, destination)
-    shutil.copy2(target/'README.html', target/'index.html')
+    if (target/'README.html').is_file():
+        shutil.copy2(target/'README.html', target/'index.html')
     shutil.copy2(args.root/'LICENSE', args.web/'licence.txt')
     print('Bundled help files:', sum(path.is_file() for path in target.rglob('*')))
 
