@@ -285,25 +285,33 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[str
 	if v.Checked && v.Hits <= 0 {
 		return nil, nil
 	}
-	depth := math.Max(0, -v.MinMM)
+	past := math.Max(0, -v.MinMM)
+	depth := past + v.Tolerance
 	duct := v.DuctHits
 	if v.IgnoreDuct {
 		duct = 0
 	}
+	body := v.Hits
+	if v.DuctHits > v.DuctLimit {
+		body = max(0, body-v.DuctHits)
+	}
 	checked := v.Checked && v.Settings
-	refuse := !checked || depth > v.Tolerance || duct > v.DuctLimit
+	refuse := !checked || body > 0 || duct > v.DuctLimit
 	for _, i := range curved {
 		o := report.Objects[i]
 		mode, _ := o["mode"].(string)
 		method := methodLabels[mode]
 		name, _ := o["name"].(string)
 		if mode == "slant" && checked && refuse && v.Check != "block" {
-			msg := name + ": May touch the part in " + strconv.Itoa(v.Hits) + " moves, up to " + strconv.FormatFloat(depth, 'f', 2, 64) +
-				" mm deep (Head clearance check is " + checkLabel(v.Check) + ")"
-			if duct > 0 {
-				msg += "; the fan duct in " + strconv.Itoa(duct)
+			var parts []string
+			if body > 0 {
+				parts = append(parts, "the print head may touch the part in "+strconv.Itoa(body)+" moves, up to "+strconv.FormatFloat(depth, 'f', 2, 64)+
+					" mm deep ("+strconv.FormatFloat(past, 'f', 2, 64)+" mm past your "+strconv.FormatFloat(v.Tolerance, 'f', -1, 64)+" mm tolerance)")
 			}
-			warnings = append(warnings, msg)
+			if duct > 0 {
+				parts = append(parts, "the fan duct may graze it in "+strconv.Itoa(duct)+" moves")
+			}
+			warnings = append(warnings, name+": "+strings.Join(parts, "; ")+" (Head clearance check is "+checkLabel(v.Check)+")")
 			continue
 		}
 		if !refuse {
@@ -313,15 +321,15 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[str
 			continue
 		}
 		reason := "Could not check " + method + " for collisions; try again or slice flat"
-		if checked && depth > v.Tolerance {
-			reason = method + " would hit the part " + strconv.FormatFloat(depth, 'f', 2, 64) + " mm deep, past your " +
-				strconv.FormatFloat(v.Tolerance, 'f', -1, 64) + " mm collision tolerance"
+		if checked && body > 0 {
+			reason = method + " would hit the part in " + strconv.Itoa(body) + " moves, up to " + strconv.FormatFloat(depth, 'f', 2, 64) +
+				" mm deep, past your " + strconv.FormatFloat(v.Tolerance, 'f', -1, 64) + " mm collision tolerance"
 		} else if checked {
 			reason = method + " would graze the part with the fan duct in " + strconv.Itoa(duct) + " moves, past your limit of " +
 				strconv.Itoa(v.DuctLimit)
 		}
 		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
-			"reason": reason, "try_ignore_duct": checked && duct > v.DuctLimit && depth <= v.Tolerance})
+			"reason": reason, "try_ignore_duct": checked && duct > v.DuctLimit && body == 0})
 	}
 	return failures, warnings
 }
