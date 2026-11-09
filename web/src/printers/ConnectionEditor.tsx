@@ -12,8 +12,8 @@ import './printers.css';
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const errorText = (e: unknown) => sentence(e instanceof Error ? e.message : String(e));
 const STAGE: Record<string, string> = {
-  unreachable: 'Unreachable', serial: 'Wrong serial number', access_code: 'Wrong access code',
-  developer_mode: 'Developer Mode is off', address: 'Address not allowed', invalid: 'Check the address',
+  unreachable: 'Unreachable', serial: 'Serial number doesn\'t match', access_code: 'Access code doesn\'t match',
+  developer_mode: 'Developer Mode is turned off', address: 'Address isn\'t allowed', invalid: 'Double-check the address',
 };
 const DESKTOP = typeof window !== 'undefined' && !!(window as { orcaDesktop?: unknown }).orcaDesktop;
 
@@ -64,8 +64,8 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
   const setupModel = useStore((s) => String(resolvePreset(s, 'machine', printer).config?.printer_model ?? '')) || undefined;
   const use = async (d: Discovered) => {
     const found = modelOf(d.preset);
-    if (found && setupModel && found !== setupModel && !await confirmDialog('Different printer model',
-      `${d.model ?? found} at ${d.host ?? d.url} doesn't match your ${setupModel} profile. Sending ${name} G-code to a different machine could crash the toolhead or ruin the print. Use it anyway?`,
+    if (found && setupModel && found !== setupModel && !await confirmDialog('Printer model mismatch',
+      `Heads up! ${d.model ?? found} at ${d.host ?? d.url} doesn't match your ${setupModel} profile. Sending ${name} G-code to a different printer model could crash the toolhead or ruin the print. Send it anyway?`,
       ['Use anyway', 'Cancel'], true)) return;
     setKind(d.kind); touched();
     if (d.kind === 'bambu-lan') { setHost(d.host ?? ''); setSerial(d.serial ?? ''); setModel(d.model ?? ''); }
@@ -76,7 +76,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
     const key = await createProfileFromBase('machine', d.preset!, d.name || `My ${d.model ?? KIND_LABEL[d.kind]}`);
     const label = resolvePreset(getState(), 'machine', key).user?.name ?? d.name ?? key;
     if (d.kind !== 'bambu-lan') await saveConnection(key, { kind: d.kind, name: label, url: d.url });
-    toast(d.kind === 'bambu-lan' ? `Added ${label}. Enter its access code in its Connection settings.` : `Added ${label} with its connection`);
+    toast(d.kind === 'bambu-lan' ? `Added ${label}! Pop into its Connection settings to enter the access code.` : `Added ${label} and connected it`);
   });
 
   return (
@@ -95,11 +95,11 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
         <label className="form-row"><span>Printer IP</span><input className="text" value={host} placeholder="192.168.1.60" spellCheck={false} onChange={(e) => changed(setHost)(e.target.value)} /></label>
         <label className="form-row"><span>Serial number</span><input className="text" value={serial} spellCheck={false} onChange={(e) => changed(setSerial)(e.target.value)} /></label>
         <label className="form-row"><span>Access code</span><input className="text" type="password" autoComplete="new-password" value={secret} placeholder={hasSecret ? 'Stored' : ''} onChange={(e) => changed(setSecret)(e.target.value)} /></label>
-        <div className="hint-text connection-hint">On the printer: Settings › Network › LAN Only, then Developer Mode. The access code is shown there.</div>
+        <div className="hint-text connection-hint">On your printer screen, go to Settings › Network › LAN Only and turn on Developer Mode to find your access code.</div>
       </>}
       {kind === 'bambu-connect' && <div className="hint-text">{DESKTOP
-        ? 'Send hands the sliced file to Bambu Connect, which prints through your Bambu account.'
-        : 'In the browser, download the .gcode.3mf and open it in Bambu Connect.'}</div>}
+        ? "Sending opens your sliced file in Bambu Connect on this computer to print through your Bambu account—handy when your printer is in cloud mode."
+        : "Bambu Connect runs locally on your computer, so direct sending requires the desktop app. In a browser, just download the .gcode.3mf file and open it in Bambu Connect."}</div>}
       {http && <>
         <label className="form-row"><span>Hostname, IP or URL</span><input className="text" value={url} placeholder={kind === 'moonraker' ? '192.168.1.70:7125' : '192.168.1.70'} spellCheck={false} onChange={(e) => changed(setUrl)(e.target.value)} /></label>
         {kind === 'prusalink' && (
@@ -125,13 +125,13 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
           if (result.ok && result.model && bambu) setModel(result.model);
         })}>Test connection</button>
         <button type="button" className="btn-primary" disabled={!ready || !!working} onClick={() => void run('save', async () => {
-          await saveConnection(printer, edit()); setSecret(''); toast(`Saved the connection of ${name}`); onSaved?.();
+          await saveConnection(printer, edit()); setSecret(''); toast(`Saved connection for ${name}!`); onSaved?.();
         })}>Save</button>
         <button type="button" className="btn" disabled={!!working} onClick={() => void run('find', async () => setFound(await discoverPrinters()))}>{working === 'find' ? 'Searching…' : 'Find printers'}</button>
-        {saved && <button type="button" className="btn-ghost connection-remove" disabled={!!working} onClick={() => void run('remove', async () => { await removeConnection(printer); toast(`Removed the connection of ${name}`); })}>Remove connection</button>}
+        {saved && <button type="button" className="btn-ghost connection-remove" disabled={!!working} onClick={() => void run('remove', async () => { await removeConnection(printer); toast(`Removed connection for ${name}`); })}>Remove connection</button>}
       </div>
       {found && (!found.printers.length
-        ? <div className="hint-text">No printers answered on the network.{found.notes.length ? ` ${found.notes.join(' ')}` : ''}</div>
+        ? <div className="hint-text">Hmm, we didn't find any printers on your network.{found.notes.length ? ` ${found.notes.join(' ')}` : ''}</div>
         : <table className="found-table" aria-label="Printers found"><tbody>
           {found.printers.map((d) => {
             const usedBy = d.assigned && d.assigned !== printer ? resolvePreset(getState(), 'machine', d.assigned).user?.name ?? 'another printer' : '';
@@ -157,8 +157,8 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
           })}
         </tbody></table>)}
       {!saved && earlier.length > 0 && (
-        <table className="found-table" aria-label="Earlier printer connections">
-          <caption>Earlier connections</caption>
+        <table className="found-table" aria-label="Saved printer connections">
+          <caption>Saved connections</caption>
           <tbody>{earlier.map((c) => (
             <tr key={c.id}>
               <th scope="row">{c.model ?? c.name ?? KIND_LABEL[c.kind]}</th>

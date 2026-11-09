@@ -429,7 +429,7 @@ export function selectProfileConflicts(s: State, type: PresetType, name?: string
 
 export async function resolveProfileConflict(type: PresetType, name: string, key: string, choice: 'mine' | 'theirs') {
   const s = getState(), preset = decideConflict(s, type, name, key, choice);
-  if(!preset)throw new Error('This profile conflict is no longer available. Reload the profile.');
+  if(!preset)throw new Error('That edit conflict has already been resolved—reload the profile to see the latest version.');
   const {commitProfileRecords}=await import('../profiles/transactions');
   await commitProfileRecords([{...preset,revision:(preset.revision ?? 0)+1}]);
 }
@@ -463,14 +463,14 @@ export function filamentVariant(s: State, name: string, printer = s.printer, pro
 
 export function filamentSwitchReason(s: State, slot: number): string | null {
   const name = s.filamentSlots[slot];
-  return name && !filamentVariant(s, name) ? 'Unavailable for this machine' : null;
+  return name && !filamentVariant(s, name) ? 'Not supported on this printer' : null;
 }
 
 export function selectPrinter(name: string) {
   const initial=getState();
-  if(initial.profileLibraryLoad.state!=='ready')throw new Error('Load or recover the saved profile library before changing printers. Your current setup is kept.');
+  if(initial.profileLibraryLoad.state!=='ready')throw new Error('Wait for your profile library to finish loading before switching printers (your current setup is safe!).');
   const target=findProfile(initial,'machine',name);
-  if(!target || target.archived || target.kind==='master')throw new Error('Choose an owned printer profile. Add its template to your library first.');
+  if(!target || target.archived || target.kind==='master')throw new Error('Add this printer template to your library first so you can customize and use it.');
   setState(s=>{
     const key=profileKey(target),setup=planPrinterSwitch(s,key),base=resolvePreset(s,'machine',key).base;
     const projectContext=s.projectProfileContexts[key];

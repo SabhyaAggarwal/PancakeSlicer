@@ -181,10 +181,10 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     const share = top / (top + flat);
     const pct = top >= 1 ? Math.min(flat > 0 || share < 1 ? 99 : 100, Math.max(1, Math.round(100 * share))) : 0;
     let fact: string;
-    if (o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) fact = 'Whole part in curved layers';
+    if (o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) fact = 'Full-part curved layers';
     else if (ledge >= 1 && ledge > top) fact = 'No support under ledge';
     else if (top >= 1) fact = `Curved top ${pct}%`;
-    else fact = 'Flat top, prints as Standard';
+    else fact = 'Flat top (prints normally)';
     const accessBy = why?.access_by === 'nozzle' || why?.access_by === 'head' ? (why.access_by as 'nozzle' | 'head') : undefined;
     const limit = why?.planar_limit && o.mode !== 'slant' ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);

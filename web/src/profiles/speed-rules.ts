@@ -11,7 +11,7 @@ const num = (config: Config, key: string, relative = 0) => { const t = first(con
 const minimum = (config: Config, ...keys: string[]) => Math.min(Infinity, ...keys.map(k => num(config, k)).filter(n => n > 0));
 export function newSpeedModel(seed = 'standard'): SpeedModel {
   const preset = seeds[seed];
-  if (!preset) throw new Error('Unknown profile speed seed: ' + seed);
+  if (!preset) throw new Error('Unrecognized speed template: ' + seed);
   return { schema: 2, multipliers: Object.fromEntries(SPEED_FEATURES.map(f => [f.key, preset.multipliers[f.key] ?? 1])), outerWallCeiling: preset.outerWallCeiling };
 }
 export function speedModelOf(profile: unknown): SpeedModel | undefined {

@@ -94,22 +94,22 @@ func familyVariant(v *VendorPresets, family string, machine string) *Preset {
 func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveRequest) (*sliceConfig, error) {
 	printer, print := profiles[in.Printer], profiles[in.Print]
 	if printer == nil || printer.Type != "printer" || !printer.live() {
-		return nil, errors.New("choose a printer")
+		return nil, errors.New("Please choose a printer.")
 	}
 	if print == nil || print.Type != "print" || !print.live() {
-		return nil, errors.New("choose a print profile")
+		return nil, errors.New("Please choose a print profile.")
 	}
 	vendor, err := s.presets.vendor(printer.Vendor)
 	if err != nil {
-		return nil, errors.New("the printer's catalog is unavailable: " + printer.Vendor)
+		return nil, errors.New("Couldn't load the printer catalog: " + printer.Vendor)
 	}
 	machine := catalogMachine(vendor, printer.Model, printer.Nozzle)
 	if machine == nil {
-		return nil, errors.New("the catalog has no " + printer.Model + " with a " + strconv.FormatFloat(printer.Nozzle, 'f', -1, 64) + " mm nozzle")
+		return nil, errors.New("The catalog doesn't have a " + printer.Model + " preset with a " + strconv.FormatFloat(printer.Nozzle, 'f', -1, 64) + " mm nozzle.")
 	}
 	process := standardProcess(vendor, machine)
 	if process == nil {
-		return nil, errors.New("the catalog has no print settings for " + printer.Model)
+		return nil, errors.New("The catalog doesn't have print settings for " + printer.Model + ".")
 	}
 	out := &sliceConfig{Config: map[string]json.RawMessage{}, Sources: map[string]string{}, engineOverrides: map[string]bool{}}
 	out.Engine.Vendor, out.Engine.Printer, out.Engine.Process = vendor.Vendor, machine.Name, process.Name
@@ -163,12 +163,12 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	for i, id := range in.Filaments {
 		f := profiles[id]
 		if f == nil || f.Type != "filament" || !f.live() {
-			return nil, errors.New("choose a filament for slot " + strconv.Itoa(i+1))
+			return nil, errors.New("Please pick a filament for slot " + strconv.Itoa(i+1) + ".")
 		}
 		family := strings.TrimPrefix(f.Family, vendor.Vendor+"/")
 		variant := familyVariant(vendor, family, machine.Name)
 		if variant == nil {
-			return nil, errors.New("the catalog has no " + family + " filament for " + printer.Vendor)
+			return nil, errors.New("The catalog doesn't have a " + family + " filament preset for " + printer.Vendor + ".")
 		}
 		out.Engine.Filaments = append(out.Engine.Filaments, variant.Name)
 		config := map[string]json.RawMessage{}
@@ -206,11 +206,11 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	if len(print.Scales) > 0 || print.SpeedModel != nil {
 		model := print.SpeedModel
 		if model == nil {
-			return nil, errors.New("Dynamic profile has no speed multipliers. Reload profiles.")
+			return nil, errors.New("This dynamic profile is missing its speed multipliers—try reloading your profiles.")
 		}
 		base := dynamicSpeedBase(printer.Vendor, printer.Model, process.Config)
 		if base == nil {
-			return nil, errors.New("Dynamic speeds have no reference for " + printer.Model + ". Choose a regular print profile.")
+			return nil, errors.New("Dynamic speeds aren't available for " + printer.Model + " yet—pick a regular print profile instead.")
 		}
 		for _, f := range profileRules.SpeedFeatures {
 			if v, ok := printer.PrintOverrides[f.Key]; ok {

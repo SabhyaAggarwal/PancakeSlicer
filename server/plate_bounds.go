@@ -25,7 +25,7 @@ type meshBounds struct {
 func (b *meshBounds) add(p meshPoint) error {
 	for _, v := range p {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return fmt.Errorf("mesh has non-finite coordinates")
+			return fmt.Errorf("This model contains invalid (non-finite) vertex coordinates.")
 		}
 	}
 	if b.count == 0 {
@@ -114,7 +114,7 @@ func transformValue(raw string) (modelTransform, error) {
 	}
 	fields := strings.Fields(raw)
 	if len(fields) != 12 {
-		return t, fmt.Errorf("invalid 3MF transform")
+		return t, fmt.Errorf("Invalid object placement matrix in 3MF file.")
 	}
 	for i := range t {
 		v, err := strconv.ParseFloat(fields[i], 64)
@@ -172,10 +172,10 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 	read := func(name string, out any) error {
 		f := entries[strings.ToLower(path.Clean("/"+name))]
 		if f == nil {
-			return fmt.Errorf("missing 3MF part %s", name)
+			return fmt.Errorf("Missing 3MF model part: %s", name)
 		}
 		if f.UncompressedSize64 > 512<<20 {
-			return fmt.Errorf("3MF part too large")
+			return fmt.Errorf("A model part inside the 3MF file is too large to process.")
 		}
 		r, err := f.Open()
 		if err != nil {
@@ -218,7 +218,7 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 	}
 	unitScale, ok := map[string]float64{"": 1, "micron": 0.001, "millimeter": 1, "centimeter": 10, "inch": 25.4, "foot": 304.8, "meter": 1000}[m.Unit]
 	if !ok {
-		return nil, fmt.Errorf("unsupported 3MF unit %s", m.Unit)
+		return nil, fmt.Errorf("Unsupported measurement unit in 3MF file: %s", m.Unit)
 	}
 	names := map[string]string{}
 	var settings struct {
@@ -242,7 +242,7 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 	var collect func(string, string, []modelTransform, *meshBounds, int) error
 	collect = func(part, id string, chain []modelTransform, b *meshBounds, depth int) error {
 		if depth > 32 {
-			return fmt.Errorf("3MF component nesting too deep")
+			return fmt.Errorf("Part assembly nesting in this 3MF file is too deep.")
 		}
 		m, err := load(part)
 		if err != nil {
@@ -282,7 +282,7 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 			}
 			return nil
 		}
-		return fmt.Errorf("missing 3MF object %s", id)
+		return fmt.Errorf("Missing 3MF object: %s", id)
 	}
 	out := []namedBounds{}
 	for buildIndex, item := range m.Items {
@@ -320,27 +320,27 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 	for _, s := range area {
 		xy := strings.Split(s, "x")
 		if len(xy) != 2 {
-			return fmt.Errorf("invalid machine printable_area")
+			return fmt.Errorf("Invalid print bed dimensions in printer profile.")
 		}
 		x, e1 := strconv.ParseFloat(xy[0], 64)
 		y, e2 := strconv.ParseFloat(xy[1], 64)
 		if e1 != nil || e2 != nil {
-			return fmt.Errorf("invalid machine printable_area")
+			return fmt.Errorf("Invalid print bed dimensions in printer profile.")
 		}
 		if err := bed.add(meshPoint{x, y, 0}); err != nil {
 			return err
 		}
 	}
 	if bed.count < 3 {
-		return fmt.Errorf("machine has no printable_area")
+		return fmt.Errorf("Printer profile is missing print bed dimensions.")
 	}
 	check := func(name string, b meshBounds) error {
 		if b.count == 0 {
-			return fmt.Errorf("%s: no mesh vertices", name)
+			return fmt.Errorf("%s: model has no vertices", name)
 		}
 		const tolerance = 1e-3
 		if b.min[0] < bed.min[0]-tolerance || b.min[1] < bed.min[1]-tolerance || b.max[0] > bed.max[0]+tolerance || b.max[1] > bed.max[1]+tolerance {
-			return fmt.Errorf("%s: Object outside the print volume. Following objects are laid over the boundary of plate or exceeds the height limit:\n%s\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n(XY [%.3f, %.3f]–[%.3f, %.3f], printable area [%.3f, %.3f]–[%.3f, %.3f])", name, name, b.min[0], b.min[1], b.max[0], b.max[1], bed.min[0], bed.min[1], bed.max[0], bed.max[1])
+			return fmt.Errorf("%s: Model extends outside the build volume:\n%s\nMove the model fully onto the print bed and make sure it fits within the max print height.\n(Model XY [%.3f, %.3f]–[%.3f, %.3f], printable area [%.3f, %.3f]–[%.3f, %.3f])", name, name, b.min[0], b.min[1], b.max[0], b.max[1], bed.min[0], bed.min[1], bed.max[0], bed.max[1])
 		}
 		return nil
 	}

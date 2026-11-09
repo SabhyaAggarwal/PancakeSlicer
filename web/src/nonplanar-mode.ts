@@ -3,10 +3,10 @@ export const MODE_LABELS: Record<string, string> = {
   conformal_layers: 'Conformal layers',
 };
 export const MODE_HELP: Record<string, string> = {
-  off: 'Flat layers: every layer flat. Fastest.',
-  auto: 'Auto: the slicer compares the methods for each part and prints the one it measures best.',
-  nonplanar_top: 'Curved tops: bends the top layers over every gentle top the head clears (3 by default).',
-  smooth_morph: 'Smooth morph: bends every layer from the bed up. Best for domes and lids, up to 1.4× slower.',
+  off: 'Flat layers: classic horizontal layers from bottom to top. Fastest to slice and print.',
+  auto: 'Auto: tests different slicing styles on each part and picks the cleanest result.',
+  nonplanar_top: 'Curved tops: smoothly curves the top layers (3 by default) over gentle slopes where the print head has room.',
+  smooth_morph: 'Smooth morph: gradually blends layers from flat at the bed to curved at the top. Great for domes and lids (up to 1.4× print time).',
   conformal_layers: 'Conformal layers (experimental): the top shells follow each gentle top at one thickness, as one unbroken layer.',
   slant: 'Slant (experimental): a flat first layer, then each layer tilts a little more, up to the head\'s limit.',
 };

@@ -136,7 +136,7 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
         <span>Spacing</span>
         <Range min={0} max={100} step={0.05} value={a.distance} onValueChange={(next) => setArrangeSettings({ distance: next })} />
         <Num value={a.distance} step={0.05} onCommit={(v) => setArrangeSettings({ distance: v })} />
-        <span style={{ gridColumn: '1 / -1' }}>0 means auto spacing.</span>
+        <span style={{ gridColumn: '1 / -1' }}>Set to 0 for automatic spacing.</span>
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
         <label className="select-row" style={{ gridColumn: '1 / -1' }}>
           <Check checked={a.rotation} onCheckedChange={(next) => setArrangeSettings({ rotation: next })} />Auto rotate for arrangement
@@ -176,10 +176,10 @@ export function AccessNotification() {
         }}>
           <input type="password" aria-label="Access token" autoComplete="off" value={value} onChange={(event) => setValue(event.target.value)} />
           <button type="submit">Save</button>
-          <div className="notif-body">Save the token, then try the action again.</div>
+          <div className="notif-body">Save your access token, then give that another try.</div>
         </form>
       )}
-      {notice.status === 507 && <div className="notif-body">Ask your administrator to free space, then try again.</div>}
+      {notice.status === 507 && <div className="notif-body">Free up some disk space on the server (or ask your admin), then try again.</div>}
     </div>
   );
 }
@@ -277,7 +277,7 @@ export function SliceNotification() {
             <Glyph name="close" size={14} />
           </button>
           <div className="notif-title">{bareName(o.name)}</div>
-          <div className="notif-body">Stand this part up: less support<Sep/><button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
+          <div className="notif-body">Tip: Stand this part upright to use less support<Sep/><button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
         </div>
       );
     }),
@@ -290,7 +290,7 @@ export function SliceNotification() {
     ),
     brief && !expired.has(brief) && (
       <div key="brief" className="notification done">
-        <div className="notif-title">Slicing Canceled</div>
+        <div className="notif-title">Slicing canceled</div>
       </div>
     ),
     ...perObject.filter((n) => !n.f && !closed.has(n.key) && !expired.has(n.key)).map(({ bare, key, r, ws }) => (
@@ -309,14 +309,14 @@ export function SliceNotification() {
       <InTopLayer>
         <div className="notif-group">
           <AccessNotification />
-          {job.state === 'failed' && notice?.message !== cleanError(job.error) && !/Access token required|Server storage full|Server busy\./.test(job.error ?? '') && !closed.has('error') && (
+          {job.state === 'failed' && notice?.message !== cleanError(job.error) && !/Access token needed|Oops! Server storage is full|The slicer is busy right now/.test(job.error ?? '') && !closed.has('error') && (
             <SliceFailed error={cleanError(job.error)} onClose={() => setClosed((c) => new Set(c).add('error'))} />
           )}
         </div>
       </InTopLayer>
       {outside && (
         <div className="notification warning" role="alert">
-          <div className="notif-title">Object outside the print volume</div>
+          <div className="notif-title">Model extends outside the build volume</div>
           <div className="notif-body">{outside}</div>
         </div>
       )}
@@ -330,9 +330,9 @@ export function SliceNotification() {
       {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}
       {perObject.flatMap(({ f, key, ws }) => f ? [(
         <div key={`cnc${key}`} className="notification curve-failed" role="alert">
-          <div className="notif-title notif-sentence">Could not slice {f.label} with {f.method}</div>
+          <div className="notif-title notif-sentence">Oops! Couldn't slice {f.label} with {f.method}</div>
           <div className="notif-body">{f.why[0].toUpperCase() + f.why.slice(1)}</div>
-          <WarningLines warnings={ws.filter((w) => !/^Printed flat/.test(w.text ?? ''))} open={details.has(key)} onToggle={() => toggleDetails(key)} />
+          <WarningLines warnings={ws.filter((w) => !/^Printed with flat layers so the print head doesn't bump the part/.test(w.text ?? ''))} open={details.has(key)} onToggle={() => toggleDetails(key)} />
           <div className="notif-body notif-actions">
             <button type="button" className="notif-link" onClick={() => sliceFlatInstead([f])}>Slice flat instead</button>
             {f.tryDuct && <button type="button" className="notif-link" onClick={() => tryIgnoreDuct()}>Try Ignore cooling duct</button>}

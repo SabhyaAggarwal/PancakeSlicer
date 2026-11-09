@@ -66,7 +66,7 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		}
 		resp.Body.Close()
 		if h.digest = parseDigest(resp.Header.Get("WWW-Authenticate")); h.digest == nil {
-			return "", errors.New("the printer asked for an unsupported login method; set auth to apikey")
+			return "", errors.New("The printer requested an unsupported login method—try switching authorization to API key.")
 		}
 		if _, err := u.file.Seek(0, io.SeekStart); err != nil {
 			return "", err
@@ -79,11 +79,11 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return "", credentialsRejected(p)
 	case resp.StatusCode == 409:
-		return "", fmt.Errorf("the printer refused the file: it is busy printing or the file is in use%s", answer)
+		return "", fmt.Errorf("The printer couldn't accept the file because it's currently busy printing or the file is locked%s.", answer)
 	case resp.StatusCode == 413:
-		return "", errors.New("the file is too large for the printer's storage")
+		return "", errors.New("Oops! The print file is too large for the printer's onboard storage.")
 	case resp.StatusCode < 200 || resp.StatusCode > 299:
-		return "", fmt.Errorf("the printer answered HTTP %d%s", resp.StatusCode, answer)
+		return "", fmt.Errorf("The printer returned HTTP %d%s", resp.StatusCode, answer)
 	}
 	if u.start {
 		return "Uploaded " + u.filename + " to " + p.Name + " and started printing.", nil
@@ -92,7 +92,7 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 }
 
 func credentialsRejected(*PrinterConfig) error {
-	return errors.New("the printer rejected the credentials; check the API key or password in its Connection settings")
+	return errors.New("The printer rejected your login—double-check your API key or password in Connection settings.")
 }
 
 func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Client, error) {
@@ -301,7 +301,7 @@ func (h *hostSession) preflight(ctx context.Context, target string) error {
 		resp.Body.Close()
 		if resp.StatusCode == 401 && h.printer.Auth == "digest" && attempt == 0 {
 			if h.digest = parseDigest(resp.Header.Get("WWW-Authenticate")); h.digest == nil {
-				return errors.New("the printer asked for an unsupported login method; set auth to apikey")
+				return errors.New("The printer requested an unsupported login method—try switching authorization to API key.")
 			}
 			continue
 		}
@@ -309,9 +309,9 @@ func (h *hostSession) preflight(ctx context.Context, target string) error {
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			return credentialsRejected(h.printer)
 		case resp.StatusCode == 404:
-			return fmt.Errorf("the address does not look like %s (HTTP 404 at %s)", connectionKinds[h.printer.Kind], req.URL.Path)
+			return fmt.Errorf("Hmm, that address doesn't look like a %s host (got HTTP 404 at %s).", connectionKinds[h.printer.Kind], req.URL.Path)
 		case resp.StatusCode < 200 || resp.StatusCode > 299:
-			return fmt.Errorf("the printer answered HTTP %d", resp.StatusCode)
+			return fmt.Errorf("The printer returned HTTP %d", resp.StatusCode)
 		}
 		return nil
 	}

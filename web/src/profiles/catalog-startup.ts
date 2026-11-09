@@ -63,14 +63,14 @@ export async function loadCatalog() {
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
       if(!current())return;
-      if(!unchanged())throw new Error('Your setup changed while profiles loaded. Your newer work is kept; reload profiles.');
+      if(!unchanged())throw new Error('Your setup changed while profiles were loading. We kept your newest changes—just reload profiles to sync up.');
       await ensureOwnedCatalogs(document,native,unchanged);
-      if(!unchanged())throw new Error('Your setup changed while native profile bases loaded. Retry to preserve your newer work.');
+      if(!unchanged())throw new Error('Your setup changed while built-in profiles were loading. Click Retry so you don\'t lose your latest changes.');
       if(restoreStartupPlaceholder){
         busy.end();
         await initialiseSavedPreferences();
       }
-      if(!unchanged())throw new Error('Your setup changed while saved preferences loaded. Retry to preserve your newer work.');
+      if(!unchanged())throw new Error('Your setup changed while preferences were loading. Click Retry so you don\'t lose your latest changes.');
       const latest=getState(),preferred=restoreStartupPlaceholder ? preferenceText('orca.printer') : undefined;
       const remembered=document.profiles.find(p=>p.type==='machine' && p.id===preferred && p.kind!=='master');
       const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
@@ -79,7 +79,7 @@ export async function loadCatalog() {
           slotColours:latest.slotColours,filamentEdits:latest.filamentEdits,mixes:latest.mixes,
           profileRecoveries:remembered?.archived?[{type:'machine',key:remembered.id,reason:'archived'}]:[]});
       }
-      const error=result.requiresAdoption?'Your printer setup has unsaved changes that differ from the saved one. Save or discard them, then reload profiles.':null;
+      const error=result.requiresAdoption?'You have unsaved changes to your printer setup. Save or discard them first, then reload your profiles.':null;
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error){
         acceptHydratedPrinterSetups();retryDelay=1000;
@@ -160,7 +160,7 @@ function dependencies(catalog: ProfileCatalog) {
 }
 async function ensure(source:CatalogDependencySource,captured:CatalogSession,isCurrent:()=>boolean,document?:ProfileLibraryDocument) {
   if(!isCurrent())return;
-  if(!captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
+  if(!captured.current())throw new Error('The profile catalog updated in the background. Try restoring this project again.');
   const bases=source.bases.filter(d=>!(d.type==='process' && d.base.name==='Auto'));
   const available=(d:CatalogBaseDependency)=>!!findCatalogBase(withImportedCatalog(document),d.type,d.base).base;
   const missing=bases.filter(d=>!available(d));
@@ -174,7 +174,7 @@ async function ensure(source:CatalogDependencySource,captured:CatalogSession,isC
     });
     await read(byVendor(standards));
   }
-  if(isCurrent() && !captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
+  if(isCurrent() && !captured.current())throw new Error('The profile catalog updated in the background. Try restoring this project again.');
 }
 async function ensureOwnedCatalogs(document:ProfileLibraryDocument,captured:CatalogSession,isCurrent:()=>boolean) {
   const catalog=withImportedCatalog(document),collector=dependencies({...catalog,userPresets:document.profiles as UserPreset[]});
@@ -184,7 +184,7 @@ async function ensureOwnedCatalogs(document:ProfileLibraryDocument,captured:Cata
   if(isCurrent())await loadFilamentVariants(document.profiles,document.profiles.flatMap(p=>p.type==='machine' && !p.archived && p.base?.name ? [p.base.name] : []));
 }
 export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boolean):Promise<void> {
-  const captured=session;if(!captured)throw new Error('Load the profile catalog before restoring this project.');
+  const captured=session;if(!captured)throw new Error('Hang on a second—wait for the profile catalog to finish loading before restoring this project.');
   if(!isCurrent())return;
   const collector=dependencies(getState());
   if(document.profileSnapshots)collector.references(document.profileSnapshots);
@@ -196,7 +196,7 @@ export async function ensureProjectCatalogs(document:StoredDoc,isCurrent:()=>boo
   await ensure(collector.source(),captured,isCurrent);
 }
 export async function loadMachinePresets(vendor:string,machines:string[]):Promise<void> {
-  const captured=session;if(!captured)throw new Error('Load the profile catalog before changing the nozzle.');
+  const captured=session;if(!captured)throw new Error('Hang on a second—wait for the profile catalog to finish loading before switching nozzles.');
   const missing=machines.filter(name=>!findCatalogBase(getState(),'machine',{name,vendor,version:''}).base);
   if(missing.length)await captured.loadNames(vendor,missing);
   const standards=machines.flatMap(name=>{const m=findCatalogBase(getState(),'machine',{name,vendor,version:''}).base as (SystemPreset & {standard_process?:string}) | undefined;
@@ -204,7 +204,7 @@ export async function loadMachinePresets(vendor:string,machines:string[]):Promis
   if(standards.length)await captured.loadNames(vendor,standards);
 }
 export async function loadFilamentVariants(profiles:readonly (UserPreset|ProfileOverlay)[],machines:string[]):Promise<void> {
-  const captured=session;if(!captured)throw new Error('Load the profile catalog before reading filament variants.');
+  const captured=session;if(!captured)throw new Error('Hang on a second—wait for the profile catalog to finish loading before browsing filaments.');
   const byVendor=new Map<string,Set<string>>();
   for(const f of profiles){
     const family=String(f.metadata?.family ?? '');
@@ -221,5 +221,5 @@ export async function ensureLibraryPresets():Promise<void> {
   const captured=session;if(!captured)return;
   const s=getState();
   await ensureOwnedCatalogs({schema:1,revision:s.profileLibraryRevision,profiles:s.userPresets as unknown as ProfileOverlay[],printers:s.printerLibrary},captured,()=>captured.current())
-    .catch(error=>toast(`Presets could not load: ${error instanceof Error?error.message:String(error)}`));
+    .catch(error=>toast(`Oops! Couldn't load profiles: ${error instanceof Error?error.message:String(error)}`));
 }

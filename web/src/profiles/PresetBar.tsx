@@ -85,7 +85,7 @@ function Changes({ type, list, onJump, sources = {}, choices = {}, onChoose }: {
     if (rank && !modeVisible(rank, effectiveMode(s))) {
       if (rank === 'developer') patch.developerMode = true; else patch.uiMode = rank;
       const prior = { uiMode: s.uiMode, developerMode: s.developerMode };
-      toast(`Switched to ${MODE_NAME[rank] ?? rank} to show ${label(c)}`, { label: 'Undo', run: () => setState(prior) });
+      toast(`Switched to ${MODE_NAME[rank] ?? rank} to reveal ${label(c)}`, { label: 'Undo', run: () => setState(prior) });
     }
     const reveal = () => setState({ settingsFocus: { type, page: at.page, key: c.key, nonce: Date.now() } });
     if (Object.keys(patch).length) { setState(patch); setTimeout(reveal, 50); } else reveal();

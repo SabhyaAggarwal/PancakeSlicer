@@ -79,7 +79,7 @@ function ledgeLines(inst: RawInstance): Float32Array {
 }
 
 const REASONS: Record<string, string> = {
-  steep: 'Too steep', steep_strip: 'Too steep', narrow: 'Too narrow', head: 'Head would touch', flat: 'Already flat',
+  steep: 'Too steep', steep_strip: 'Too steep', narrow: 'Too narrow', head: 'Print head would touch', flat: 'Already flat',
   flat_ground: 'Already flat', flat_sliver: 'Already flat', edge: 'Too close to edge', near_bed: 'Too close to bed',
   outline: 'Ragged outline', bottom: 'Faces down',
 };

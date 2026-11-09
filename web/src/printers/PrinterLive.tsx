@@ -14,7 +14,7 @@ export function PrinterLive() {
   const open = () => setState({ appDialog: 'send' });
   const printing = presence?.label.startsWith('Printing') || presence?.label.startsWith('Paused');
   return (
-    <button type="button" className="printer-live" onClick={open} aria-label={presence ? `${presence.label}. Printer status and Send` : 'Not connected. Connect this printer'}>
+    <button type="button" className="printer-live" onClick={open} aria-label={presence ? `${presence.label}. Printer status and Send` : 'Not connected — set up connection'}>
       <span className="printer-live-text">{presence
         ? printing ? <><span className="status-text printer-live-wide" data-tone="online">Online</span><span className="status-text printer-live-narrow" data-tone={presence.tone}>{presence.label}</span></>
           : <span className="status-text" data-tone={presence.tone}>{presence.label}</span>

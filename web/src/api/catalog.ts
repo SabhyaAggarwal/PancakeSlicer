@@ -17,7 +17,7 @@ export interface ServicePresets {
 }
 
 export function normalizeCatalog(raw: ServicePresets, vendor: string, native: boolean): CompactCatalog {
-  if (raw?.schema !== 'orca.presets.compact.v1') throw new Error('The slicing service sent an unknown preset catalog format.');
+  if (raw?.schema !== 'orca.presets.compact.v1') throw new Error('Oops! The slicing service returned a preset catalog format this version doesn\'t recognize.');
   const values = raw.values.map((value, i) => {
     const key = raw.keys[raw.value_keys[i]];
     return normalizeConfig({ [key]: value }, native)[key];

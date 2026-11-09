@@ -41,7 +41,7 @@ export function autoMap(filaments: SendFilament[], trays: Tray[], mapped: (t: Tr
 export function physicalMapping(ids: number[], trays: Tray[]) {
   return ids.map((id) => {
     const tray = trays.find((t) => t.id === id);
-    if (!tray) throw new Error('Choose a reported AMS tray or external spool for every filament.');
+    if (!tray) throw new Error('Pick an AMS slot or external spool for each filament before printing.');
     return { ams_id: isExternalTray(id) ? id : tray.ams, slot_id: isExternalTray(id) ? 0 : tray.slot };
   });
 }

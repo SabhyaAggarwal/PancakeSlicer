@@ -37,7 +37,7 @@ func (s *Server) devReset(w http.ResponseWriter, r *http.Request) {
 	rand.Read(token[:])
 	epoch := hex.EncodeToString(token[:])
 	if err := s.resetAll(epoch); err != nil {
-		fail(w, 500, "reset failed: "+err.Error())
+		fail(w, 500, "Oops! Reset failed: " + err.Error())
 		return
 	}
 	audit(map[string]any{"event": "dev_reset", "client": s.clientIP(r), "epoch": epoch})

@@ -76,7 +76,7 @@ export async function importObjects(file: File, allowNew = false, sourceUrl?: st
     }, true);
     busy.end();
     if (!task.current()) return 0;
-    if (!objects.length) throw new Error(`${file.name}: no objects with meshes`);
+    if (!objects.length) throw new Error(`${file.name}: no 3D meshes found in this file`);
     const choice = await importObjectsDialog(file.name, objects.length, [...new Set(skipped)], allowNew);
     if (!choice || !task.current() || generation !== documentGeneration()) return 0;
     const [{ blobDigest }, { assignBlobKey }] = await Promise.all([import('../api/blobs'), import('../persist/session')]);

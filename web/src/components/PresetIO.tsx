@@ -78,7 +78,7 @@ export function ImportDialog() {
         </div>
         {busy && <div role="status">{value === 'importing' ? 'Importing…' : 'Reading…'}</div>}
         {error && <p className="modal-error" role="alert">{error}</p>}
-        {rows && !rows.length && <p>No profiles in these files.</p>}
+        {rows && !rows.length && <p>Hmm, we didn't find any usable profiles inside those files.</p>}
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
@@ -140,7 +140,7 @@ export function ExportDialog() {
       <ModalBody>
         <label className="form-row"><span>Export as</span>
           <Dropdown className="combo" value={kind} onValueChange={(k) => { setKind(k as ExportKind); setPicked(new Set()); }} options={KINDS.map(([k, label]) => ({ value: k, label }))} /></label>
-        {choices.length === 0 ? <p>No saved profiles of this kind.</p> : <div className="modal-pick">
+        {choices.length === 0 ? <p>You don't have any saved profiles of this type yet.</p> : <div className="modal-pick">
           <div className="modal-pick-head">
             <button type="button" className="link" onClick={() => setPicked(new Set(choices))}>Select all</button>
             <button type="button" className="link" onClick={() => setPicked(new Set())}>Clear</button>

@@ -26,7 +26,7 @@ export function FilamentColourMenu({ slot }: { slot: number }) {
       <div className="color-heading"><span>{picked ? colourName(picked) : 'Colour'}</span><span className="color-preview" style={{ backgroundColor: picked ?? colour }}/></div>
       <div className="color-palette" role="group" aria-label="Palette">{PALETTE.map((c) => <button key={c} type="button" className="color-swatch" style={{ backgroundColor: c }} aria-label={colourName(c)} aria-pressed={picked === c} onClick={() => setDraft(c)}/>)}</div>
       <label className="color-hex"><span>HEX</span><input className="text" aria-label="HEX colour" aria-invalid={!picked} aria-describedby={!picked ? errorId : undefined} value={draft} spellCheck={false} maxLength={7} onChange={(e) => setDraft(e.target.value)}/></label>
-      {!picked && <div className="control-error" id={errorId} role="status">Enter a six-digit HEX colour.</div>}
+      {!picked && <div className="control-error" id={errorId} role="status">Please enter a 6-digit HEX color (like #FF6B00).</div>}
       <div className="color-actions filament-colour-actions">
         {override && <button type="button" className="btn-ghost" disabled={busy} onClick={() => { useProfileColour(slot); setOpen(false); }}>Use profile colour</button>}
         <button type="button" className="btn" disabled={busy || !picked || same || !owned} onClick={() => void run(() => changeFilamentColour(slot, picked!))}>Change this filament</button>

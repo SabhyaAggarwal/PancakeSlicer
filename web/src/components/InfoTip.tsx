@@ -11,5 +11,5 @@ export function LabelTip({ label, full, children }: { label: ReactNode; full?: s
 }
 
 export function SourceGlyph({ text }: { text?: string }) {
-  return <span className="source-glyph" role="img" aria-label={text ?? 'Computed value'} data-truncated="true" data-full-text={text ?? 'Computed from the profile\'s formula'}>✦</span>;
+  return <span className="source-glyph" role="img" aria-label={text ?? 'Computed value'} data-truncated="true" data-full-text={text ?? 'Calculated automatically by this profile\'s formula'}>✦</span>;
 }

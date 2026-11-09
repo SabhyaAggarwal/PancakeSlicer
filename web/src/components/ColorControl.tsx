@@ -31,7 +31,7 @@ export default function ColorControl({value, onCommit, label = 'Color', disabled
         {swatches(PALETTE, 'Palette')}
         {recent.length > 0 && <><div className="color-caption">Recent</div>{swatches(recent, 'Recent colors')}</>}
         <label className="color-hex"><span>HEX</span><input className="text" aria-label="HEX color" aria-invalid={!valid} aria-describedby={!valid ? `${id}-error` : undefined} value={draft} spellCheck={false} maxLength={7} onChange={e => setDraft(e.target.value)}/></label>
-        {!valid && <div className="control-error" id={`${id}-error`} role="status">Enter a six-digit HEX color.</div>}
+        {!valid && <div className="control-error" id={`${id}-error`} role="status">Please enter a 6-digit HEX color (like #FF6B00).</div>}
         <div className="color-channels">{['R','G','B'].map((key,i) => <div key={key} className="color-channel"><label htmlFor={`${id}-${key}`}>{key}</label><Range min={0} max={255} value={rgb[i]} onValueChange={n => setChannel(i,n)} aria-label={`${key} channel`}/><input id={`${id}-${key}`} className="text num" aria-label={`${key} value`} inputMode="numeric" type="number" min={0} max={255} value={rgb[i]} onChange={e => { if(e.target.value !== '') setChannel(i, Number(e.target.value)); }}/></div>)}</div>
         <div className="color-actions"><Popover.Close asChild><button type="button" className="btn-ghost">Cancel</button></Popover.Close><button type="submit" className="btn" disabled={!valid}>Apply</button></div>
       </form>

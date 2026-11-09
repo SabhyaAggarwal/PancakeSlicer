@@ -12,7 +12,7 @@ export const baseRoleOf = (p: UserPreset | undefined) => (p as { baseRole?: Base
 const live = (p: UserPreset) => !p.archived && p.kind !== 'master';
 const record = (s: State, type: PresetType, key: string) => {
   const p = findProfile(s, type, key);
-  if (!p) throw new Error('This profile is no longer in the library.');
+  if (!p) throw new Error('This profile was removed from your library.');
   return p;
 };
 const anchorOf = (p: UserPreset) => `${p.base?.name ?? p.inherits}|${p.base?.version ?? ''}`;
@@ -50,7 +50,7 @@ export async function createBasedOn(type: PresetType, parentKey: string, name: s
   const { profileCreation } = await import('./transactions');
   return profileCreation((st) => {
     const parent = record(st, type, parentKey);
-    if (st.userPresets.some((p) => p.type === type && p.name === name && !p.archived)) throw new Error('A profile already uses this name. Choose another name.');
+    if (st.userPresets.some((p) => p.type === type && p.name === name && !p.archived)) throw new Error('You already have a profile with that name—try a different one!');
     return { id: `profile:${crypto.randomUUID()}`, type, kind: 'profile', name, revision: 0, base: parent.base, inherits: parent.inherits,
       parentId: profileKey(parent), overlay: {}, overrides: {}, baseline: {}, aliases: [] } as unknown as UserPreset;
   }).commit();

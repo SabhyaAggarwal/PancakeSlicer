@@ -12,7 +12,7 @@ async function read(id: string, stream: Stream, after: number) {
     const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/events`, { signal: stream.ctl.signal,
       headers: after >= 0 ? { 'Last-Event-ID': String(after), Accept: 'text/event-stream' } : { Accept: 'text/event-stream' } });
     if (!r.ok) throw await responseError(r);
-    if (!r.body || !r.headers.get('content-type')?.includes('text/event-stream')) throw new Error('Job stream unavailable');
+    if (!r.body || !r.headers.get('content-type')?.includes('text/event-stream')) throw new Error('Oops! Live job updates aren\'t available right now.');
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let buffer = '', last = after;
     try {
@@ -35,7 +35,7 @@ async function read(id: string, stream: Stream, after: number) {
           stream.events.push(e);
           for (const f of [...stream.followers]) if (seq > f.after) { f.after = seq; f.event(e); }
         }
-        if (buffer.length > 1_048_576) throw new Error('Job event exceeds stream limit');
+        if (buffer.length > 1_048_576) throw new Error('Oops! A progress update from the slicer was too large to read.');
         if (done) break;
       }
     } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }

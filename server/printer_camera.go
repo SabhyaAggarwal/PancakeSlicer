@@ -122,14 +122,14 @@ func (h *cameraHub) subscribe(p *PrinterConfig, camera cameraSource) (<-chan cam
 func (s *Server) printerCameras(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
 	if p == nil {
-		fail(w, 404, "this printer has no connection")
+		fail(w, 404, "This printer doesn't have a network connection set up yet.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	cameras, err := cameraSources(ctx, p)
 	if err != nil {
-		fail(w, 502, "cannot read the printer's camera configuration")
+		fail(w, 502, "Couldn't read the camera settings for this printer.")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"cameras": cameras})
@@ -137,14 +137,14 @@ func (s *Server) printerCameras(w http.ResponseWriter, r *http.Request) {
 func (s *Server) printerCamera(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
 	if p == nil {
-		fail(w, 404, "this printer has no connection")
+		fail(w, 404, "This printer doesn't have a network connection set up yet.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	sources, err := cameraSources(ctx, p)
 	cancel()
 	if err != nil {
-		fail(w, 502, "cannot read the printer's camera configuration")
+		fail(w, 502, "Couldn't read the camera settings for this printer.")
 		return
 	}
 	var camera *cameraSource
@@ -154,7 +154,7 @@ func (s *Server) printerCamera(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if camera == nil {
-		fail(w, 404, "this printer has no configured camera")
+		fail(w, 404, "No camera is set up for this printer.")
 		return
 	}
 	if r.Method == "HEAD" {
@@ -180,13 +180,13 @@ func (s *Server) printerCamera(w http.ResponseWriter, r *http.Request) {
 		case packet, ok = <-packets:
 		case <-time.After(30 * time.Second):
 			if first {
-				fail(w, 504, "camera did not deliver a frame; check access code and LAN liveview on the printer")
+				fail(w, 504, "Didn't receive a video frame from the camera—check your access code and make sure LAN Liveview is enabled on the printer.")
 			}
 			return
 		}
 		if !ok || packet.err != nil {
 			if first {
-				fail(w, 502, "camera unavailable; check its configuration, access code and LAN liveview on the printer")
+				fail(w, 502, "Camera unavailable—check your camera settings, access code, and LAN Liveview toggle on the printer.")
 			}
 			return
 		}
@@ -345,7 +345,7 @@ type cameraConn struct {
 func (c *cameraConn) Close() error { c.stop(); return c.Conn.Close() }
 func jpegCamera(ctx context.Context, p *PrinterConfig, secret string, emit func([]byte, bool)) error {
 	if len(secret) > 32 {
-		return errors.New("invalid camera access code")
+		return errors.New("Invalid camera access code.")
 	}
 	conn, err := cameraTLS(ctx, p, 6000)
 	if err != nil {
@@ -407,7 +407,7 @@ func httpCamera(ctx context.Context, p *PrinterConfig, typed string, emit func([
 		}
 		if resp.StatusCode != 200 {
 			resp.Body.Close()
-			return errors.New("camera refused request")
+			return errors.New("The printer's camera refused the connection.")
 		}
 		kind, params, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 		if kind == "multipart/x-mixed-replace" {
@@ -435,7 +435,7 @@ func httpCamera(ctx context.Context, p *PrinterConfig, typed string, emit func([
 			return err
 		}
 		if len(frame) > 16<<20 || !bytes.HasPrefix(frame, []byte{255, 216}) {
-			return errors.New("webcam is not a JPEG or MJPEG stream")
+			return errors.New("The webcam URL didn't return a supported JPEG or MJPEG stream.")
 		}
 		emit(frame, false)
 		select {
@@ -450,7 +450,7 @@ func httpCamera(ctx context.Context, p *PrinterConfig, typed string, emit func([
 func rtspCamera(ctx context.Context, p *PrinterConfig, secret string, emit func([]byte, bool)) error {
 	executable, err := exec.LookPath("ffmpeg")
 	if err != nil {
-		return errors.New("RTSPS camera requires ffmpeg in the service image")
+		return errors.New("Streaming RTSPS camera video requires ffmpeg to be installed on the server.")
 	}
 	conn, err := cameraTLS(ctx, p, 322)
 	if err != nil {

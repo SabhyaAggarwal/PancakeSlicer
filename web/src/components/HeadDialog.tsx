@@ -7,7 +7,7 @@ import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 const decimal = (n: number) => { const r = Math.round(n * 1e6) / 1e6; return String(r === 0 ? 0 : r); };
 function number(text: string) {
   const v = Number(text.trim());
-  if (text.trim() === '' || !Number.isFinite(v)) throw new Error('Expected a finite number.');
+  if (text.trim() === '' || !Number.isFinite(v)) throw new Error('Please enter a valid number.');
   return v;
 }
 
@@ -18,7 +18,7 @@ const toRow = (b: HeadBox): Row => ({
 });
 function toBox(r: Row): HeadBox {
   const [z0, z1, cx, cy, hx, hy] = r.v.map(number);
-  if (hx < 0 || hy < 0 || z1 < z0) throw new Error('Half extents must be non-negative and Z max must be at least Z min.');
+  if (hx < 0 || hy < 0 || z1 < z0) throw new Error('Half-widths can\'t be negative, and Z max needs to be at least Z min.');
   return { name: r.name, min: [cx - hx, cy - hy, z0], max: [cx + hx, cy + hy, z1], ...(r.ix && { infinite_x: true }), ...(r.iy && { infinite_y: true }), ...(r.nozzle && { nozzle: true }) };
 }
 const COLUMNS = ['Component', 'Z min (mm)', 'Z max (mm)', 'Center X (mm)', 'Center Y (mm)', 'Half X (mm)', 'Half Y (mm)', 'Infinite X', 'Infinite Y', 'Nozzle'];
@@ -34,8 +34,8 @@ const projection = (b: HeadBox, grow: number, ux: number, uy: number) => {
 
 function fromSlopeStar(base: Head, samples: { azimuth: number; slope: number }[], gap: number, date: string): Head {
   for (const s of samples)
-    if (!Number.isFinite(s.slope) || s.slope < 0 || s.slope >= Math.PI / 2) throw new Error('Slope star: clean slopes must be in [0, 90) degrees');
-  if (!(gap > 0) || !base.boxes.length) throw new Error('Slope star: select a nonempty base head and a positive layer height');
+    if (!Number.isFinite(s.slope) || s.slope < 0 || s.slope >= Math.PI / 2) throw new Error('Clean slope angles need to be between 0° and 90°.');
+  if (!(gap > 0) || !base.boxes.length) throw new Error('Pick a valid base print head and a layer height above 0 first.');
   const out: Head = { ...base, boxes: base.boxes.map((b) => ({ ...b, min: [...b.min] as HeadBox['min'], max: [...b.max] as HeadBox['max'] })) };
   const finite = out.boxes.filter((b) => !b.infinite_x && !b.infinite_y);
   for (const box of finite) {
@@ -57,7 +57,7 @@ function fromSlopeStar(base: Head, samples: { azimuth: number; slope: number }[]
       const limit = (gap + box.min[2] - (box.nozzle ? 0 : out.margin)) / p;
       if (limit < best) { best = limit; binding = box; proj = p; }
     }
-    if (!binding) throw new Error('Slope star: base head has no finite component toward a reported azimuth');
+    if (!binding) throw new Error('The selected base print head is missing clearance geometry for one of the directions.');
     binding.min[2] = Math.tan(s.slope) * proj - gap + (binding.nozzle ? 0 : out.margin) - 1e-10;
   }
   return { ...out, calibrated: true, provenance: `slope star ${date}, base ${base.id}` };
@@ -79,7 +79,7 @@ function SlopePlot({ head, gap }: { head: Head | null; gap: number }) {
         <text x={c + radius - 4} y={c - 16} fontSize="11" fill="currentColor">+X</text>
         <text x={c - 8} y={c - radius - 6} fontSize="11" fill="currentColor">+Y</text>
         {points && <polygon points={points} style={{ fill: 'color-mix(in srgb, var(--accent) 18%, transparent)', stroke: 'var(--accent-text)' }} strokeWidth="1.5" />}
-        {!slopes && <text x={6} y={16} fontSize="11" fill="currentColor">Enter a valid profile and layer height to show slope limits.</text>}
+        {!slopes && <text x={6} y={16} fontSize="11" fill="currentColor">Pick a valid profile and layer height to preview your slope limits.</text>}
       </svg>
       {slopes && <figcaption>Min {((Math.min(...slopes) * 180) / Math.PI).toFixed(1)}°</figcaption>}
     </figure>
@@ -124,10 +124,10 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
   const edit = (next: Row[]) => { setRows(next); setCalibrated(false); };
   const readHead = (): Head => {
     const margin = number(fields.margin), lateral = number(fields.lateral);
-    if (margin < 0 || lateral < 0) throw new Error('Margins must not be negative.');
+    if (margin < 0 || lateral < 0) throw new Error('Clearance margins can\'t be negative.');
     return { ...base!.head, id: fields.id, name: fields.name, margin, lateral_margin: lateral, calibrated, provenance, boxes: rows.map(toBox) };
   };
-  const readGap = () => { const g = number(fields.gap); if (g <= 0) throw new Error('Layer height must be positive.'); return g; };
+  const readGap = () => { const g = number(fields.gap); if (g <= 0) throw new Error('Layer height needs to be greater than 0.'); return g; };
   let preview: Head | null = null, gap = 0;
   try { if (base) { preview = readHead(); gap = readGap(); } } catch { preview = null; }
   const apply = () => {
@@ -140,7 +140,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       setProvenance(fitted.provenance ?? '');
       setPage(0);
     } catch (e) {
-      toast(`Could not calibrate the head. Check all eight clean angles and the head profile.\n${e instanceof Error ? e.message : String(e)}`);
+      toast(`Oops! Couldn't calibrate the print head. Double-check all eight clean angles and the head profile.\n${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const save = async () => {
@@ -148,7 +148,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
     setLoad({ ...load, state: 'saving' });
     try {
       const head = readHead();
-      if (!/^[A-Za-z0-9_-]+$/.test(head.id)) throw new Error('Head id must contain only letters, digits, hyphens and underscores.');
+      if (!/^[A-Za-z0-9_-]+$/.test(head.id)) throw new Error('Print head IDs can only use letters, numbers, hyphens (-), and underscores (_).');
       const json: Record<string, unknown> = { ...base!.json, id: head.id, name: head.name, calibrated: head.calibrated, margin: head.margin, lateral_margin: head.lateral_margin, boxes: head.boxes };
       if (head.provenance) json.provenance = head.provenance;
       delete json.side_profile; delete json.side_profile_top; delete json.sides;
@@ -156,7 +156,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       onSaved(head.id);
       close();
     } catch (e) {
-      toast(`Could not save the head. Check the profile and choose a new ID of letters, digits, hyphens or underscores.\n${e instanceof Error ? e.message : String(e)}`);
+      toast(`Oops! Couldn't save the print head. Make sure the ID only uses letters, numbers, hyphens, or underscores.\n${e instanceof Error ? e.message : String(e)}`);
       setLoad(load);
     }
   };
@@ -165,8 +165,8 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       <ModalTitle title="Print head" onClose={close} />
       <ModalBody>
         {base === undefined && <p role="status">Loading head…</p>}
-        {load.state === 'missing' && <p role="alert">“{id}” is not in the head library; using the generic conservative head.</p>}
-        {load.state === 'failed' && <p role="alert">The head could not be read: {load.error}</p>}
+        {load.state === 'missing' && <p role="alert">“{id}” isn't in the print head library—using the safe generic print head instead.</p>}
+        {load.state === 'failed' && <p role="alert">Oops! Couldn't load that print head: {load.error}</p>}
         {base && <>
           <div className="head-identity">
             <label className="form-row"><span>ID</span><input className="text" value={fields.id} onChange={field('id')} /></label>

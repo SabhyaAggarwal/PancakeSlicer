@@ -69,13 +69,13 @@ func (s *Server) gcodeLines(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if (j.Request.Output != "gcode" && j.Request.Output != "gcode.3mf") || j.AwaitFinished(r.Context()) != StateDone {
-		fail(w, 409, "job has no completed G-code")
+		fail(w, 409, "No finished G-code file was found for this job.")
 		return
 	}
 	path := j.OutputPath("gcode")
 	f, err := os.Open(path)
 	if err != nil {
-		fail(w, 410, "This output is no longer available. Slice the project again.")
+		fail(w, 410, "Oops! That sliced file has expired. Please slice the plate again.")
 		return
 	}
 	defer f.Close()
@@ -91,7 +91,7 @@ func (s *Server) gcodeLines(w http.ResponseWriter, r *http.Request) {
 	}
 	k, err := strconv.Atoi(r.URL.Query().Get("block"))
 	if err != nil || k < 0 || k >= len(ix.starts) {
-		fail(w, 404, "no such G-code block")
+		fail(w, 404, "Couldn't find that G-code section.")
 		return
 	}
 	if _, err := f.Seek(ix.starts[k], io.SeekStart); err != nil {

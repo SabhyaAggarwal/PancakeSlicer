@@ -152,11 +152,11 @@ async function preserveProjectSnapshot() {
 
 function writeRefusal(c: ProjectContext, doc: Doc): ProjectFailure | null {
   if (!c.loaded || c.loaded.revision !== c.revision) return { kind: 'interrupted', name: 'ProjectNotLoadedError', projectId: c.id, expectedRevision: c.revision,
-    message: "This project didn't finish loading, so nothing was saved over it. Retry to load it again." };
+    message: "Oops! This project didn't finish loading, so we paused auto-save to protect your file. Click Retry to load it again." };
   if (objectCount(doc) > 0 || c.loaded.objects === 0 || c.allowEmpty) return null;
   const saved = c.loaded.objects > 0 ? `the saved project has ${c.loaded.objects} object${c.loaded.objects === 1 ? '' : 's'}` : "the saved project couldn't be read";
   return { kind: 'conflict', name: 'ProjectEmptyError', projectId: c.id, expectedRevision: c.revision,
-    message: `This copy has no objects; ${saved}. Reload latest keeps the saved project, Keep mine saves it empty.` };
+    message: `This tab's plate is empty (${saved}). Click Reload latest to keep the saved models, or Keep mine to save the empty plate.` };
 }
 function save(id: string, m: Machine<ProjectStateName, ProjectEvent, ProjectContext>) {
   const doc = snapshot(), gen = documentGeneration(), version = epoch, revision = m.get().context.revision;
@@ -253,7 +253,7 @@ let listing = 0;
 function refreshList() {
   const mine = ++listing;
   listStatus={state:'loading',error:null};listeners.forEach(f=>f());
-  if (!store) { listStatus={state:'failed',error:'Project storage is unavailable. Retry connecting to the service.'};listeners.forEach(f=>f());return; }
+  if (!store) { listStatus={state:'failed',error:'Oops! Can\'t reach project storage right now. Try reconnecting to the service.'};listeners.forEach(f=>f());return; }
   void store.list().then((l) => {
     if (mine !== listing) return;
     list = l;listStatus={state:'ready',error:null}; listeners.forEach((f) => f());
@@ -279,7 +279,7 @@ function remote(message: { type?: string; id?: string; sender?: string }) {
   if (message.type === 'deleted') {
     removed.add(message.id); epoch++; opening++;
     if (hasUnsavedProject()) {
-      const failure = projectFailure({ name: 'ProjectDeletedError', message: 'This project was deleted. The local draft is preserved; recover it as a copy.' }, message.id, project.get().context.revision);
+      const failure = projectFailure({ name: 'ProjectDeletedError', message: 'This project was deleted elsewhere, but we still have your local draft! Recover it to save a new copy.' }, message.id, project.get().context.revision);
       project.send({ type: 'ERROR', error: failure.message, failure }); checkpointProject();
     } else project.send({ type: 'MISSING', id: message.id });
   } else if (message.type === 'saved') {
@@ -430,7 +430,7 @@ export async function flushProject(): Promise<void> {
   const id = project.get().context.id;
   do {
     await leaseSettled();
-    if (!leaseWritable()) throw failureError(projectFailure('This project is open in another tab or device. Take control to save.', id, project.get().context.revision));
+    if (!leaseWritable()) throw failureError(projectFailure('This project is currently being edited in another tab or device. Click Take control to edit and save from here.', id, project.get().context.revision));
     project.send({ type: 'FLUSH' });
     await queue;
     if (project.get().context.id !== id) return;

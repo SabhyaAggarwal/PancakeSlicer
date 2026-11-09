@@ -5,7 +5,7 @@ export const visibleProfiles = (s: Pick<ProfileCatalog,'userPresets'>, type: Pre
   s.userPresets.filter(p => p.type === type && (p.kind ?? 'profile') === kind && !p.archived);
 export function archiveProfile(s: ProfileCatalog, type: PresetType, key: string, operationId: string): UserPreset {
   const resolved = resolveProfile(s,type,key), source = resolved.source;
-  if (!source) throw new Error('Profile unavailable. Refresh the library before removing it.');
+  if (!source) throw new Error('That profile is out of sync—refresh your library before removing it.');
   if (source.archived) return source;
   const anchor = source.base ?? (resolved.base && catalogAnchor(resolved.base));
   return {...withProfileIdentity(source), revision:(source.revision ?? 0)+1, archived:{at:Date.now(),operationId},
@@ -20,9 +20,9 @@ export function editableMaster(s: ProfileCatalog, type: PresetType, baseKey: str
   const existing = findProfile(s,type,baseKey);
   if (existing?.kind === 'master' && profileKey(existing) === baseKey) return existing;
   const found = findCatalogBase(s,type,baseKey), base = found.base;
-  if (!base) throw new Error(found.ambiguous ? 'Choose the exact base vendor.' : 'Base unavailable. Refresh the catalog.');
+  if (!base) throw new Error(found.ambiguous ? 'Please select the brand for the base template.' : 'Base template unavailable—try refreshing the catalog.');
   const masters = s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
-  if (masters.length > 1) throw new Error('More than one local master uses this base. Choose its exact identity.');
+  if (masters.length > 1) throw new Error('Multiple custom profiles share this base template. Please pick the exact one you want to use.');
   if (masters[0]) return masters[0];
   return {id:`profile:${crypto.randomUUID()}`,name:base.name,type,kind:'master',revision:0,base:catalogAnchor(base),inherits:base.name,
     overlay:{},overrides:{},baseline:{},snapshot:{base:catalogAnchor(base),config:structuredClone(base.config)},

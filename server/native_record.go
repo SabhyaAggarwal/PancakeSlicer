@@ -361,7 +361,7 @@ func ductGrazedObjects(raw json.RawMessage, j *Job) (failures []map[string]any, 
 			continue
 		}
 		failures = append(failures, map[string]any{"object": i, "name": o["name"], "mode": mode, "method": method, "planar_limit": "clearance",
-			"reason":          method + " would graze the part with the fan duct in " + strconv.Itoa(duct) + " moves, past your limit of " + strconv.Itoa(limit),
+			"reason":          method + " would brush the part with the cooling fan duct in " + strconv.Itoa(duct) + " places (above your limit of " + strconv.Itoa(limit) + ")",
 			"try_ignore_duct": true})
 	}
 	return failures, warnings

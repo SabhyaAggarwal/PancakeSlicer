@@ -59,7 +59,7 @@ function startLoad(src: { key: string; url?: string; file?: File; shellLayers?: 
     header: (d) => { if (!mine(d)) return; note(d); live?.header(d); },
     chunk: (d) => { if (!mine(d)) return; note(d); live?.chunk(d); viewerFirstMoves(src.key, d.loaded); },
     done: (d) => mine(d) && (live ? live.done(d) : viewerReady(src.key, d.loaded)),
-    error: (d) => mine(d) && (live ? live.error(d) : viewerError(src.key, d.error ?? 'Unable to load preview')),
+    error: (d) => mine(d) && (live ? live.error(d) : viewerError(src.key, d.error ?? 'Oops! Couldn\'t load the 3D preview')),
   }, src.key.startsWith('job:') ? jobColours() : undefined);
   current = { key: src.key, ...handle };
   setLoadedStream({ key: src.key, data: handle.data });
@@ -230,7 +230,7 @@ export function PreviewView() {
       bump();
     },
     error: (d) => {
-      if (current) viewerError(current.key, d.error ?? 'Unable to load preview');
+      if (current) viewerError(current.key, d.error ?? 'Oops! Couldn\'t load the 3D preview');
       setData(d);
       bump();
     },
@@ -364,7 +364,7 @@ export function PreviewView() {
   };
   const jumpToLayer = () => {
     if (!layerCount) return;
-    void numberDialog('Jump to layer', `Please enter the layer number. (1 - ${layerCount}):`, hi + 1, 1, layerCount).then((n) => {
+    void numberDialog('Jump to layer', `Jump to layer (1–${layerCount}):`, hi + 1, 1, layerCount).then((n) => {
       if (n === null) return;
       setLayers(([a]) => [Math.min(a, n - 1), n - 1]);
       setMovePos(null);
@@ -431,8 +431,8 @@ export function PreviewView() {
     ? job.state === 'done' || methods ? null : objects.length ? 'Not sliced yet' : 'Plate is empty'
     : data?.error
       ? /^404 /.test(data.error)
-        ? 'This slicing service did not produce preview data for the job. The sliced file can still be exported.'
-        : `Cannot load the toolpaths: ${data.error}`
+        ? 'The slicing service didn\'t generate 3D preview data for this job, but you can still export your sliced file!'
+        : `Oops! Couldn't load toolpaths: ${data.error}`
       : null;
 
   return (

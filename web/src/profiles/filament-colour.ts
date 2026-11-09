@@ -40,14 +40,14 @@ export function useProfileColour(slot: number) {
 
 const ownedSource = (s: State, slot: number) => {
   const p = findProfile(s, 'filament', s.filamentSlots[slot] ?? '');
-  if (!p || p.archived) throw new Error('Choose a saved filament for this slot first.');
+  if (!p || p.archived) throw new Error('Pick a saved filament for this slot first.');
   return p;
 };
 const withColour = (config: Config, colour: string): Config =>
   ({ ...config, filament_colour: Array.isArray(config.filament_colour) ? [colour] : colour });
 
 export async function changeFilamentColour(slot: number, colour: string): Promise<void> {
-  const value = hex(colour); if (!value) throw new Error('Choose a colour.');
+  const value = hex(colour); if (!value) throw new Error('Pick a color first.');
   const s = getState(), source = ownedSource(s, slot), key = profileKey(source);
   const [{ saveProfile }, { commitProfileRecords }] = await Promise.all([import('./model'), import('./transactions')]);
   const record = { ...saveProfile(s, 'filament', source.name, key, withColour(resolvePreset(s, 'filament', key).config, value)), id: key };
@@ -70,7 +70,7 @@ export function colourName(colour: string): string {
 }
 
 export async function saveFilamentAsColour(slot: number, colour: string): Promise<string> {
-  const value = hex(colour); if (!value) throw new Error('Choose a colour.');
+  const value = hex(colour); if (!value) throw new Error('Pick a color first.');
   const s = getState(), source = ownedSource(s, slot), key = profileKey(source);
   const stem = `${source.name.replace(new RegExp(` ${colourName(configColour(resolvePreset(s, 'filament', key).config) ?? '')}$`), '')} ${colourName(value)}`;
   const [{ saveProfile }, { profileCreation }] = await Promise.all([import('./model'), import('./transactions')]);

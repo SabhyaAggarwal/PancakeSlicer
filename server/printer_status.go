@@ -255,7 +255,7 @@ func (s *Server) snapshot() statusSnapshot {
 func (s *Server) connectionEvents(w http.ResponseWriter, r *http.Request) {
 	controller := http.NewResponseController(w)
 	if _, ok := w.(http.Flusher); !ok {
-		fail(w, 500, "streaming unavailable")
+		fail(w, 500, "Live progress streaming isn't available in this connection.")
 		return
 	}
 	hub := s.sends.hub

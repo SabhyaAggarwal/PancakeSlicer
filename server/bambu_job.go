@@ -57,7 +57,7 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 			return nil, err
 		}
 		if len(config.Plates) != 1 {
-			return nil, errors.New("expected one sliced plate")
+			return nil, errors.New("Please select a single sliced plate.")
 		}
 		if file.Name == "Metadata/slice_info.config" {
 			out.Materials = config.Plates[0].Filaments
@@ -85,14 +85,14 @@ func readBambuJobMapping(path string) (*BambuJobMapping, error) {
 			for _, text := range strings.Fields(row.Value) {
 				value, err := strconv.Atoi(text)
 				if err != nil || value < 0 {
-					return nil, errors.New("invalid sliced filament assignment")
+					return nil, errors.New("Oops! The filament mapping for this slice isn't valid.")
 				}
 				*target = append(*target, value)
 			}
 		}
 	}
 	if len(out.Filaments) == 0 {
-		return nil, errors.New("slice has no resolved filament assignment")
+		return nil, errors.New("This slice doesn't have filament slots assigned yet.")
 	}
 	return out, nil
 }
@@ -103,12 +103,12 @@ func (s *Server) bambuJobMapping(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if j.Request.Output != "gcode.3mf" || j.AwaitFinished(r.Context()) != StateDone {
-		fail(w, 409, "job has no completed Bambu G-code package")
+		fail(w, 409, "No finished Bambu .gcode.3mf package was found for this job.")
 		return
 	}
 	mapping, err := readBambuJobMapping(j.OutputPath("gcode.3mf"))
 	if err != nil {
-		fail(w, 422, "cannot read the sliced nozzle assignment: "+err.Error())
+		fail(w, 422, "Couldn't read the nozzle assignment from the sliced file: " + err.Error())
 		return
 	}
 	writeJSON(w, 200, mapping)

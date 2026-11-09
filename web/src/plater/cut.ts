@@ -15,12 +15,12 @@ export function cutTarget(s: State = getState()): { o: PlateObject; inst: Instan
 }
 
 export function cutBlocked(s: State = getState()): string | null {
-  if (!s.features.cut) return 'Cut needs a slicing service whose tool has --cut-only';
+  if (!s.features.cut) return 'Cutting models requires an updated slicing service with cut support.';
   const o = s.objects.find((ob) => ob.id === s.selected?.object);
   if (!o || s.selected?.all) return 'Select one object to cut';
-  if (o.project && !s.features.edit) return 'Objects of an opened 3MF project need a tool with --edit to be cut';
-  if (o.project?.placeholder) return 'The project has no mesh for this object';
-  if (o.volumes?.length) return 'Objects with parts or modifiers cannot be cut yet';
+  if (o.project && !s.features.edit) return 'Cutting objects inside an imported 3MF project requires an updated slicing service.';
+  if (o.project?.placeholder) return 'Oops! We couldn\'t find the 3D mesh for this object.';
+  if (o.volumes?.length) return 'Objects with multiple parts or modifiers can\'t be cut with the plane tool yet.';
   return null;
 }
 

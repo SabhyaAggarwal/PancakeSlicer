@@ -26,7 +26,7 @@ export default function LeaseBar() {
   if (!show) return null;
   return (
     <div className="lease-bar" role="status">
-      <span>Open in another tab or device{context.holder && <><Sep/>{context.holder.label}</>}</span>
+      <span>Currently open in another tab or device{context.holder && <><Sep/>{context.holder.label}</>}</span>
       <button type="button" className="btn-primary" disabled={busy} aria-busy={busy} onClick={takeControl}>{busy ? 'Taking control…' : 'Take control'}</button>
     </div>
   );

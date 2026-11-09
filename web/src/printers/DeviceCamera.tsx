@@ -20,9 +20,9 @@ function MP4Camera({ url, onError, onRatio }: { url: string; onError(message: st
         let init = new Uint8Array(0), codec = '';
         while (!codec) {
           const chunk = await reader.read();
-          if (chunk.done) throw new Error('Camera ended before video initialization');
+          if (chunk.done) throw new Error('The camera stream disconnected before video could start.');
           const joined = new Uint8Array(init.length + chunk.value.length); joined.set(init); joined.set(chunk.value, init.length); init = joined;
-          if (init.length > 2 << 20) throw new Error('Camera video initialization is too large');
+          if (init.length > 2 << 20) throw new Error('The camera sent an unexpectedly large video header.');
           for (let i = 4; i + 8 < init.length; i++) {
             if (init[i] === 97 && init[i + 1] === 118 && init[i + 2] === 99 && init[i + 3] === 67) {
               codec = `avc1.${[...init.slice(i + 5, i + 8)].map((v) => v.toString(16).padStart(2, '0')).join('')}`; break;
@@ -30,10 +30,10 @@ function MP4Camera({ url, onError, onRatio }: { url: string; onError(message: st
           }
         }
         const mime = `video/mp4; codecs="${codec}"`;
-        if (!MediaSource.isTypeSupported(mime)) throw new Error('This device cannot decode the camera’s H.264 video');
+        if (!MediaSource.isTypeSupported(mime)) throw new Error('Your browser or device doesn\'t support decoding this camera\'s H.264 video stream.');
         const buffer = media.addSourceBuffer(mime);
         const append = (data: Uint8Array) => new Promise<void>((resolve, reject) => {
-          const done = () => { cleanup(); resolve(); }, failed = () => { cleanup(); reject(new Error('Camera video could not be decoded')); };
+          const done = () => { cleanup(); resolve(); }, failed = () => { cleanup(); reject(new Error('Oops! Couldn\'t decode the live video stream from the camera.')); };
           const cleanup = () => { buffer.removeEventListener('updateend', done); buffer.removeEventListener('error', failed); abort.signal.removeEventListener('abort', failed); };
           buffer.addEventListener('updateend', done, { once: true }); buffer.addEventListener('error', failed, { once: true }); abort.signal.addEventListener('abort', failed, { once: true });
           try { buffer.appendBuffer(data as Uint8Array<ArrayBuffer>); } catch (error) { cleanup(); reject(error); }
@@ -41,7 +41,7 @@ function MP4Camera({ url, onError, onRatio }: { url: string; onError(message: st
         await append(init);
         while (!abort.signal.aborted) {
           const { done, value } = await reader.read();
-          if (done) throw new Error('Camera stream ended');
+          if (done) throw new Error('Camera stream disconnected');
           await append(value);
           if (buffer.buffered.length) {
             const end = buffer.buffered.end(buffer.buffered.length - 1);
@@ -70,7 +70,7 @@ export function DeviceCamera({ printer, cover, light, lightLabel, cameraLabel, b
   const [fullscreenError, setFullscreenError] = useState('');
   const fullscreen = () => {
     const action = document.fullscreenElement ? document.exitFullscreen() : frame.current?.requestFullscreen();
-    void action?.catch(() => setFullscreenError('Fullscreen is unavailable'));
+    void action?.catch(() => setFullscreenError('Fullscreen isn\'t available right now'));
   };
   const [cameras, setCameras] = useState<Camera[]>([]), [selected, select] = useState('');
   const [error, setError] = useState(''), [watching, watch] = useState(true), [attempt, retry] = useState(0), [loading, setLoading] = useState(true);
@@ -95,8 +95,8 @@ export function DeviceCamera({ printer, cover, light, lightLabel, cameraLabel, b
     {!watching ? <div className="device-camera-hidden"><span>Camera hidden</span><button type="button" className="btn slant" onClick={() => watch(true)}>Show camera</button></div>
       : <><div className="device-camera-frame" style={{ aspectRatio: ratio }}>
         {loading ? <p role="status">Connecting camera…</p>
-          : !camera ? <p>No LAN camera configured</p>
-          : camera.format === 'mjpeg' ? <img key={`${camera.url}:${attempt}`} src={camera.url} alt="Live printer camera" onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth && img.naturalHeight) setRatio(img.naturalWidth / img.naturalHeight); }} onError={() => setError('Camera unavailable. Check the printer’s access code and LAN liveview setting.')} />
+          : !camera ? <p>No LAN camera set up</p>
+          : camera.format === 'mjpeg' ? <img key={`${camera.url}:${attempt}`} src={camera.url} alt="Live printer camera" onLoad={(e) => { const img = e.currentTarget; if (img.naturalWidth && img.naturalHeight) setRatio(img.naturalWidth / img.naturalHeight); }} onError={() => setError('Couldn\'t connect to the camera. Double-check your printer\'s access code and make sure LAN Liveview is turned on.')} />
           : <MP4Camera key={`${camera.url}:${attempt}`} url={camera.url} onError={setError} onRatio={setRatio} />}
       </div><div className="device-camera-toolbar">
         <span className="device-camera-label">{cameraLabel ?? camera?.name ?? 'Camera'}</span>

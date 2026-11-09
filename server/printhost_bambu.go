@@ -27,7 +27,7 @@ const bambuUser = "bblp"
 func sendBambu(ctx context.Context, u *upload) (string, error) {
 	p := u.printer
 	if strings.ContainsAny(u.filename, "\r\n/") {
-		return "", errors.New("the file name cannot be sent over FTP")
+		return "", errors.New("That file name contains characters that can't be sent over FTP.")
 	}
 	plate, err := packagePlate(u.file)
 	if err != nil {
@@ -66,14 +66,14 @@ func packagePlate(f *os.File) (string, error) {
 	}
 	z, err := zip.NewReader(f, st.Size())
 	if err != nil {
-		return "", errors.New("the export is not a valid .gcode.3mf package")
+		return "", errors.New("The exported file isn't a valid .gcode.3mf package.")
 	}
 	for _, entry := range z.File {
 		if plateEntry.MatchString(entry.Name) {
 			return entry.Name, nil
 		}
 	}
-	return "", errors.New("the .gcode.3mf package holds no plate G-code")
+	return "", errors.New("The .gcode.3mf package doesn't contain any sliced plate G-code.")
 }
 
 type connError struct{ stage, msg string }
@@ -224,9 +224,9 @@ func ftpFailure(ctx context.Context, err error, step string) error {
 	case errors.As(err, &ftpErr) && ftpErr.code == 530:
 		return &connError{"access_code", "the printer rejected the access code (FTPS); check it on the printer's screen (Settings > Network)"}
 	case errors.As(err, &ftpErr) && ftpErr.code == 522:
-		return errors.New("the printer refused the FTP data connection (TLS session reuse); report this with the printer's firmware version")
+		return errors.New("The printer declined the FTP data transfer (TLS session reuse). Please report this along with your printer's firmware version.")
 	case errors.As(err, &ftpErr):
-		return fmt.Errorf("the printer's file transfer failed at %s: %v", step, ftpErr)
+		return fmt.Errorf("File transfer to the printer failed at %s: %v", step, ftpErr)
 	}
 	return netError(err, "the printer (FTPS port 990, "+step+")")
 }
@@ -360,7 +360,7 @@ func mqttSession(ctx context.Context, p *PrinterConfig, secret string) (*tls.Con
 	case 4, 5:
 		return fail(&connError{"access_code", "the printer rejected the access code (MQTT); check it on the printer's screen (Settings > Network)"})
 	default:
-		return fail(fmt.Errorf("the printer refused the MQTT connection (code %d)", body[1]))
+		return fail(fmt.Errorf("The printer declined the MQTT connection (code %d).", body[1]))
 	}
 	subscribe := append([]byte{0, 1}, mqttString("device/"+p.Serial+"/report")...)
 	subscribe = append(subscribe, 0)
@@ -395,7 +395,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		if cause := context.Cause(ctx); cause != nil {
 			err = cause
 		}
-		return "", fmt.Errorf("%s, but starting the print failed: %w", u.placed(), err)
+		return "", fmt.Errorf("%s, but the printer couldn't start the print automatically: %w", u.placed(), err)
 	}
 	conn, r, err := mqttSession(ctx, p, u.secret)
 	if err != nil {
@@ -466,9 +466,9 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 				reason = m.Result
 			}
 			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
-				return fail(fmt.Errorf("the printer refused the start command (%s): turn on LAN-only mode and Developer Mode on the printer", reason))
+				return fail(fmt.Errorf("The printer declined the start command (%s)—make sure LAN Only mode and Developer Mode are enabled on the printer.", reason))
 			}
-			return fail(fmt.Errorf("the printer refused the job: %s", reason))
+			return fail(fmt.Errorf("The printer declined the print job: %s", reason))
 		}
 		if (m.State == "PREPARE" || m.State == "RUNNING") && (m.Subtask == name || m.GcodeFile == u.filename) {
 			mqttWrite(conn, 0xE0, nil)
@@ -864,7 +864,7 @@ func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, 
 	for {
 		kind, body, err := mqttRead(r)
 		if err != nil {
-			return nil, fmt.Errorf("the printer did not report its AMS: %w", err)
+			return nil, fmt.Errorf("Couldn't read AMS status from the printer: %w", err)
 		}
 		var message struct {
 			Print *bambuReport `json:"print"`
@@ -962,10 +962,10 @@ func bambuScopedCommand(ctx context.Context, p *PrinterConfig, secret, scope str
 		if m := message[scope]; m.Command == action && m.Sequence == sequence {
 			mqttWrite(conn, 0xE0, nil)
 			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
-				return errors.New("the printer refused the command: turn on LAN Only and Developer Mode on the printer")
+				return errors.New("The printer declined the command—make sure LAN Only mode and Developer Mode are turned on at the printer.")
 			}
 			if m.ErrCode != 0 || m.Result != "" && !strings.EqualFold(m.Result, "success") {
-				return fmt.Errorf("the printer refused %s: %s (code %d)", action, cmpOr(m.Reason, m.Result), m.ErrCode)
+				return fmt.Errorf("The printer declined %s: %s (code %d)", action, cmpOr(m.Reason, m.Result), m.ErrCode)
 			}
 			return nil
 		}

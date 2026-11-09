@@ -20,7 +20,7 @@ export function useDevReset(): boolean {
 }
 
 export async function startOver(): Promise<void> {
-  if (!await confirmDialog('Start over?', 'Everything is deleted.', ['Start over', 'Cancel'], true)) return;
+  if (!await confirmDialog('Start fresh?', 'This will clear your current demo session and reset everything back to the start.', ['Start over', 'Cancel'], true)) return;
   if (import.meta.env.MODE === 'demo') {
     discardPendingWrites();
     await (await import('./demo/transport')).resetDemo();

@@ -11,7 +11,7 @@ export interface ProfileLibraryHydration {
 }
 export function prepareProfileLibraryHydration(s: State, document: ProfileLibraryDocument, options:{restoreStartupPlaceholder?:boolean}={}):ProfileLibraryHydration {
   const userPresets=document.profiles.map(normalizeUserPreset),ids=userPresets.map(profileKey);
-  if(new Set(ids).size!==ids.length)throw new Error('The saved library contains duplicate profile identities. Export it before recovery.');
+  if(new Set(ids).size!==ids.length)throw new Error('Oops! Your library has duplicate profile IDs. Export a backup copy before running recovery.');
   let next:State={...s,userPresets,printerLibrary:document.printers,profileLibraryRevision:document.revision};
   const patch:Partial<State>={userPresets,printerLibrary:document.printers,profileLibraryRevision:document.revision};
   for(const type of ['machine','process','filament'] as const){

@@ -23,7 +23,7 @@ const nameOf = (key: string) => NAMES[key] ?? OPTIONS[key]?.label ?? key;
 const NOZZLES = [0.2, 0.4, 0.6, 0.8];
 const BASES: { id: ScaleBasis; label: string }[] = [{ id: 'nozzle', label: '× nozzle' }, { id: 'layer', label: '× layer height' }, { id: 'perLayer', label: '÷ layer height' }];
 const mm = (v: number) => String(Math.round(v * 1000) / 1000);
-const SPEED_HEADS: [string, string, boolean][] = [['Base mm/s', 'From the profile', true], ['Multiplier', 'Your adjustment', true], ['Speed mm/s', 'What will actually print', true], ['Limit', 'What capped the speed', false], ['Accel. mm/s²', 'Acceleration', true]];
+const SPEED_HEADS: [string, string, boolean][] = [['Base mm/s', 'From the profile', true], ['Multiplier', 'Your adjustment', true], ['Speed mm/s', 'Actual print speed', true], ['Limit', 'Speed limit applied', false], ['Accel. mm/s²', 'Acceleration', true]];
 const isWidth = (key: string) => key === 'line_width' || key.endsWith('_line_width');
 
 interface Formula { name: string; keys: string[]; basis: ScaleBasis; factor: number }
@@ -102,7 +102,7 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
   const cell = (f: Formula, n: number, h: number) => {
     const row: ScaleRow = { key: f.keys[0], basis: f.basis, factor: f.factor }, v = scaledValue(row, { nozzle: n, layerHeight: h });
     const raw = f.basis === 'nozzle' ? f.factor * n : f.basis === 'layer' ? f.factor * h : v, clamped = f.basis !== 'perLayer' && Math.abs(raw - v) > 1e-6;
-    const why = isWidth(row.key) ? 'Kept within 90–150 % of the nozzle' : 'Kept within 75 % of the nozzle';
+    const why = isWidth(row.key) ? 'Automatically kept within 90–150% of your nozzle size' : 'Automatically kept at or below 75% of your nozzle size';
     return <td key={f.keys.join()} className="n" {...(clamped ? { 'data-clamped': true, 'data-truncated': 'true', 'data-full-text': why } : {})}>{f.basis === 'perLayer' ? v : mm(v)}</td>;
   };
   const shells = (n: number, h: number) => { const row = rows.find((r) => r.key === 'top_shell_layers');
@@ -114,8 +114,8 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
         <label>Outer-wall ceiling <span><input className="text num" type="number" min="1" max="2000" step="5" aria-label="Outer-wall ceiling" value={speedModel.outerWallCeiling} disabled={readOnly}
           onChange={e => {const n = Number(e.target.value); if (n > 0 && n <= 2000) onSpeedModel?.({...speedModel, outerWallCeiling: n});}}/> mm/s</span></label>
       </div>
-      {!missingReference && <p className="hint-text">Speed = base × multiplier, capped by what the nozzle can melt or the printer's max.</p>}
-      {missingReference ? <p role="status">This printer has no reference for dynamic speeds. Choose a regular print profile.</p> : <div className="dyn-speed-scroll"><table className="dyn-table dyn-speed-table">
+      {!missingReference && <p className="hint-text">Speed = printer base speed × multiplier (automatically capped by your hotend's max flow rate and printer speed limits). Adjust any multiplier to tune print speed.</p>}
+      {missingReference ? <p role="status">This printer doesn't have base speed values for dynamic profiles yet—pick a regular print profile instead.</p> : <div className="dyn-speed-scroll"><table className="dyn-table dyn-speed-table">
         <thead><tr><th>Feature</th>{SPEED_HEADS.map(([label, tip, n]) => <th key={label} className={n ? 'n' : undefined} data-truncated="true" data-full-text={tip}>{label}</th>)}</tr></thead>
         <tbody>{SPEED_FEATURES.map(f => {const d = speeds[f.key]; if (!d) return null; return <tr key={f.key}>
           <th scope="row">{f.label}</th><td className="n">{Math.round(d.base)}</td>

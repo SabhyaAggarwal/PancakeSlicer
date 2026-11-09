@@ -16,7 +16,7 @@ export interface PrinterSlots { online: boolean; updated: string; slots: SlotMat
 export const slotOf = (t: Tray) => isExternalTray(t.id) ? t.extruder === undefined ? 'ext' : t.extruder === 0 ? 'ext.L' : 'ext.R' : `ams${t.ams}.${t.slot}`;
 
 export const ruleText = (m: SlotMatch) => ({ spool: 'Your choice for this spool', remembered: 'Your choice', exact: 'Same filament',
-  type: `Matched by type`, generic: 'Generic, not in My filaments' })[m.rule];
+  type: `Matched by type`, generic: 'Generic (not in My filaments)' })[m.rule];
 
 const path = (printer: string, slot = '') => `/api/printer-slots/${encodeURIComponent(printer)}${slot && `/${encodeURIComponent(slot)}`}`;
 

@@ -30,7 +30,7 @@ export interface AddResult { keys: string[]; existing: string[]; skipped: string
 
 export async function printDefaults({ vendor, model, nozzle }: PrinterChoice): Promise<Config | undefined> {
   const machine = model.machines[nozzle], api = getState().api;
-  if (!machine) throw new Error(`${model.name} has no ${nozzle} mm nozzle.`);
+  if (!machine) throw new Error(`${model.name} doesn't have a ${nozzle} mm nozzle preset.`);
   const preset = findCatalogBase(getState(), 'machine', machine).base ?? (api && (await api.presets(vendor, [], undefined, [machine])).machines.find((p) => p.name === machine));
   const supplied = (preset as { print_defaults?: Config } | undefined)?.print_defaults;
   return supplied && Object.fromEntries(Object.entries(supplied).filter(([key]) => !SPEED_KEYS.has(key) || !dynamicSpeedBase(vendor, model.id, {})));
@@ -62,7 +62,7 @@ export async function addCatalogPrinters(choices: PrinterChoice[]): Promise<AddR
 }
 export async function addCatalogPrinter(vendor: string, model: CatalogModel, nozzle: string): Promise<string> {
   const { keys, skipped } = await addCatalogPrinters([{ vendor, model, nozzle }]);
-  if (!keys.length) throw new Error(`${skipped[0]} is already in your printers.`);
+  if (!keys.length) throw new Error(`${skipped[0]} is already in your printers list.`);
   return keys[0];
 }
 
@@ -90,6 +90,6 @@ export async function addCatalogFamilies(choices: FamilyChoice[]): Promise<AddRe
 }
 export async function addCatalogFamily(family: CatalogFamily, colour?: string, label?: string): Promise<string> {
   const { keys, skipped } = await addCatalogFamilies([{ family, colour, label }]);
-  if (!keys.length) throw new Error(`${skipped[0]} is already in your filaments.`);
+  if (!keys.length) throw new Error(`${skipped[0]} is already in your filaments list.`);
   return keys[0];
 }

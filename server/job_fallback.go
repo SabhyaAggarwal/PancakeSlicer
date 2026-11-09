@@ -71,7 +71,7 @@ func (s *Server) fallbackJobReads(next http.Handler) http.Handler {
 			unavailable = unavailable || err != nil || code >= 500
 		}
 		if unavailable {
-			fail(w, http.StatusBadGateway, "historical job service unavailable; retry shortly")
+			fail(w, http.StatusBadGateway, "Job history is warming up—try again in a moment.")
 			return
 		}
 		next.ServeHTTP(w, r)

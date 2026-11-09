@@ -34,21 +34,21 @@ function stringVector(text: string): string[] {
       while (i < text.length && text[i] !== '"') {
         let c = text[i++];
         if (c === '\\') {
-          if (i === text.length) throw new Error('Incomplete string vector escape');
+          if (i === text.length) throw new Error('Oops! Unfinished escape sequence in text list');
           c = text[i++];
           if (c === 'n') c = '\n';
           else if (c === 'r') c = '\r';
         }
         word += c;
       }
-      if (text[i++] !== '"') throw new Error('Unclosed string vector quote');
+      if (text[i++] !== '"') throw new Error('Oops! Missing closing quote in text list');
     } else {
       while (i < text.length && text[i] !== ';') word += text[i++];
     }
     result.push(word);
     while (text[i] === ' ' || text[i] === '\t') i++;
     if (i === text.length) break;
-    if (text[i++] !== ';') throw new Error('Expected string vector separator');
+    if (text[i++] !== ';') throw new Error('Oops! Missing separator between items in text list');
     if (i === text.length) result.push('');
   }
   return result;

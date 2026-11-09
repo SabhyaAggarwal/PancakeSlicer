@@ -103,7 +103,7 @@ func (r *v4Record) live() bool { return len(r.Archived) == 0 || string(r.Archive
 func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 	var schema int
 	if json.Unmarshal(doc["schema"], &schema) != nil || schema != 4 {
-		return nil, errors.New("the library schema must be 4")
+		return nil, errors.New("Profile library schema version must be 4.")
 	}
 	var raws []json.RawMessage
 	if json.Unmarshal(doc["profiles"], &raws) != nil || raws == nil {
@@ -115,11 +115,11 @@ func v4Profiles(doc map[string]json.RawMessage) (map[string]*v4Record, error) {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&r); err != nil {
-			return nil, fmt.Errorf("a profile has an unknown or malformed field: %v", err)
+			return nil, fmt.Errorf("A profile has an unrecognized or invalid field: %v", err)
 		}
 		bad := func(why string) error { return fmt.Errorf("%s: %s", r.Name, why) }
 		if !strings.HasPrefix(r.ID, "profile:") || len(r.ID) <= 8 || out[r.ID] != nil {
-			return nil, errors.New("every profile needs its own profile: ID")
+			return nil, errors.New("Every profile must have a unique profile ID.")
 		}
 		if validProfileName(r.Name) != nil || r.Revision == nil || strings.Contains(r.Name, " @") {
 			return nil, bad("needs a name (without a catalog \"@\" suffix) and a revision")
@@ -177,7 +177,7 @@ func (l *libraryStore) read() (*libraryV4Envelope, error) {
 		err = json.Unmarshal(raw, &e)
 	}
 	if err == nil && (e.Document == nil || e.Operations == nil) {
-		err = errors.New("invalid stored library")
+		err = errors.New("Oops! Stored profile library data is invalid.")
 	}
 	if err == nil {
 		migrateProfiles(e.Document)

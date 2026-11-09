@@ -9,7 +9,7 @@ import { attachFiles, postJob } from '../api/blobs';
 
 export async function toolJob(operation: string, fields: Record<string, string>, files: [Blob, string][]) {
   const s = getState();
-  if (!s.api || s.api.mock) throw new Error('This needs the slicing service.');
+  if (!s.api || s.api.mock) throw new Error('This action needs a connection to the slicing service.');
   const fd = new FormData();
   fd.append('operation', operation);
   for (const [k, v] of Object.entries(fields)) fd.append(k, v);
@@ -65,7 +65,7 @@ export async function fixModel(objectId: number) {
     replace(o, file, geometry, 'Fix Model');
     logNotice(done.length ? `${o.name}: repaired (${done.join(', ')})` : `${o.name}: no errors found`, 'success');
   } catch (e) {
-    toast(`Fix Model failed: ${e instanceof Error ? e.message : String(e)}`);
+    toast(`Oops! Couldn't repair the model: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     busy.end();
   }

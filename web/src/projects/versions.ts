@@ -36,7 +36,7 @@ const path = (id: string) => `/api/versions/${encodeURIComponent(id)}`;
 async function post<T>(url: string, body: unknown): Promise<T> {
   const { serviceJson, jsonWrite } = await service();
   const value = await serviceJson<T>(url, jsonWrite('POST', body));
-  if (value === null) throw new Error('The service returned no version data');
+  if (value === null) throw new Error('Oops! Couldn\'t load the version details from the server.');
   return value;
 }
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -79,7 +79,7 @@ async function showSlice(id: string, v: ProjectVersion, request: number) {
   } catch (e) {
     const current = versionView.get().context.request === request;
     versionView.send({ type: 'SLICE_FAIL', request });
-    if (current) toast(`Slice not loaded: ${errorText(e)}`);
+    if (current) toast(`Oops! Couldn't load slice preview: ${errorText(e)}`);
   }
 }
 
@@ -92,7 +92,7 @@ export async function viewVersion(v: ProjectVersion) {
   try {
     const { projectJson } = await import('../persist/project-wire');
     const record = await projectJson<{ meta: ProjectMeta; doc: StoredDocBase }>(`${path(id)}/${v.id}`);
-    if (!record) throw new Error('This version is no longer kept.');
+    if (!record) throw new Error('That older version is no longer stored on the server.');
     if (!versionWanted(request)) return;
     if (!(await viewProjectVersion(id, record, request))) return void versionView.send({ type: 'FAIL', request });
     if (v.slice) await showSlice(id, v, request);

@@ -41,13 +41,13 @@ export default function SvgPanel() {
       {num('Depth', 'depth', 0.01, 1000)}
       {num('Size', 'size', 0.1, 1000)}
       {v && (
-        <label className="prefs-row cut-joint-row" title={canSurface ? undefined : 'Update the slicing service to wrap onto a curved surface'}>
+        <label className="prefs-row cut-joint-row" title={canSurface ? undefined : 'Update your slicing service to wrap SVGs onto curved surfaces.'}>
           <span>Use surface</span>
           <Check checked={!!spec.surface || placing} disabled={!canSurface && !spec.surface}
             onCheckedChange={(next) => { if (next) setTextPlacing(true); else { setTextPlacing(false); if (spec.surface) edit({ surface: undefined }); } }} />
         </label>
       )}
-      {placing && <div className="cut-joint-hint">Click on the object's surface to place the SVG</div>}
+      {placing && <div className="cut-joint-hint">Click anywhere on the model's surface to place your SVG.</div>}
       {v && (
         <label className="prefs-row cut-joint-row"><span>Operation</span>
           <Dropdown className="combo" value={v.type} aria-label="Operation"

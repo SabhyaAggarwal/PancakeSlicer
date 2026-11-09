@@ -12,13 +12,13 @@ export function projectFailure(error: unknown, projectId: string, expectedRevisi
   const name = typeof source.name === 'string' ? source.name : 'Error';
   const kind = name === 'ProjectConflictError' ? 'conflict' : name === 'ProjectDeletedError' ? 'deleted'
     : name === 'QuotaExceededError' ? 'quota' : name === 'ProjectServiceError' ? 'unavailable' : loading ? 'decode' : 'unavailable';
-  const message = kind === 'quota' ? 'Storage is full. Keep this window open, export the project, or free space and retry.'
+  const message = kind === 'quota' ? 'Oops! Server storage is full. Keep this tab open and export your project as a file, or free up space and try saving again.'
     : typeof source.message === 'string' ? source.message : String(error);
   return { kind, name, message, projectId, expectedRevision };
 }
 export const conflictFailure = (projectId: string, expectedRevision: number): ProjectFailure => ({
   kind: 'conflict', name: 'ProjectConflictError', projectId, expectedRevision,
-  message: 'This project changed in another window. Reload latest or reapply this draft explicitly.',
+  message: 'Heads up: this project was edited in another window. Load the latest version or choose Keep mine to save your draft.',
 });
 export function failureError(failure: ProjectFailure): Error & { failure: ProjectFailure } {
   return Object.assign(new Error(failure.message), { name: failure.name, failure });

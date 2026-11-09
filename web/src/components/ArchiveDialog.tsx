@@ -20,10 +20,10 @@ export function importZipArchive(open: (files: File[]) => void) {
       const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()), { filter: (f) => pattern.test(f.name) && !f.name.startsWith('__MACOSX/') });
       const files = Object.entries(entries).sort(([a], [b]) => a.localeCompare(b))
         .map(([path, data]) => Object.assign(new File([data as BlobPart], path.split('/').pop()!), { path }));
-      if (!files.length) return toast('No 3D model files found inside that ZIP.');
+      if (!files.length) return toast('Hmm, we didn\'t find any 3D model files inside that ZIP archive.');
       open(files);
     } catch (e) {
-      toast(`Cannot read the archive: ${e instanceof Error ? e.message : String(e)}`);
+      toast(`Oops! Couldn't open that archive: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   input.click();

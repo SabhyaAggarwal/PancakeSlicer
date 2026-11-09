@@ -47,7 +47,7 @@ export function condition(expression: string, env: Environment): boolean | undef
     let left: Scalar;
     if (token === '(') {
       left = parse();
-      if (tokens[pos++] !== ')') throw new Error('unbalanced condition');
+      if (tokens[pos++] !== ')') throw new Error('unbalanced parentheses or condition');
     } else if (token === '!') {
       const value = truth(parse(7)); left = value === undefined ? undefined : !value;
     } else if (token === '-') {

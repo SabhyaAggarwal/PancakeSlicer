@@ -16,6 +16,6 @@ const main = import('./main');
 main.catch(() => {});
 checkBrowserSupport().then(() => {
   main.then((m) => m.start(), () => showBrowserNotice(root,
-    'The application could not load. Check your connection and reload the page.', 'Unable to start PancakeSlicer'));
+    'Oops! PancakeSlicer couldn\'t finish loading. Check your internet connection and reload the page.', 'Oops! Couldn\'t start PancakeSlicer'));
 }, (error: unknown) => showBrowserNotice(root,
   unsupportedBrowserMessage(error instanceof Error ? error.message : String(error))));

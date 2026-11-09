@@ -12,7 +12,7 @@ import (
 
 var buildSourceSHA256 string
 
-var errSourceUnconfigured = errors.New("source archive not configured")
+var errSourceUnconfigured = errors.New("Source code archive isn't configured on this server.")
 
 func sourceSHA256() string {
 	if buildSourceSHA256 != "" {
@@ -27,11 +27,11 @@ func openSourceArchive(c Config) (*os.File, error) {
 	}
 	expected := sourceSHA256()
 	if digest, err := hex.DecodeString(expected); err != nil || len(digest) != sha256.Size {
-		return nil, errors.New("build has no valid source archive digest")
+		return nil, errors.New("This build doesn't have a valid source code archive checksum.")
 	}
 	file, err := os.Open(c.SourceArchive)
 	if err != nil {
-		return nil, errors.New("source archive unavailable")
+		return nil, errors.New("Source code archive isn't available on this server.")
 	}
 	fail := func(err error) (*os.File, error) { file.Close(); return nil, err }
 	stat, err := file.Stat()
@@ -40,10 +40,10 @@ func openSourceArchive(c Config) (*os.File, error) {
 	}
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return fail(errors.New("cannot read source archive"))
+		return fail(errors.New("Oops! Couldn't read the source code archive."))
 	}
 	if hex.EncodeToString(hash.Sum(nil)) != expected {
-		return fail(errors.New("source archive does not match this build"))
+		return fail(errors.New("The source code archive on disk doesn't match this build."))
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return fail(err)
@@ -64,7 +64,7 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 	stat, err := file.Stat()
 	if err != nil {
-		fail(w, http.StatusServiceUnavailable, "source archive unavailable")
+		fail(w, http.StatusServiceUnavailable, "Source code archive isn't available on this server.")
 		return
 	}
 	w.Header().Set("Content-Type", "application/gzip")

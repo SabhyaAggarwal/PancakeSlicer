@@ -174,7 +174,7 @@
               "source": "src/slic3r/GUI/Tab.cpp:5352",
               "overrides": {
                 "printer_agent": {
-                  "tooltip": "Select the network agent implementation for printer communication. Available agents are registered at startup."
+                  "tooltip": "Choose the network protocol used to talk to your printer."
                 }
               },
               "modes": {
@@ -433,7 +433,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:5447",
               "label": "Fan speed-up time",
-              "tooltip": "fan_speedup_time",
+              "tooltip": "How many seconds ahead to spin up the part cooling fan before overhangs or bridges.",
               "modes": {
                 "fan_speedup_time": "Advanced",
                 "fan_speedup_overhangs": "Advanced"
@@ -648,7 +648,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:5494",
               "label": "Print head",
-              "tooltip": "The head shape the non-planar clearance check uses. Calibration > Non-planar > Head clearance fits it to your printer.",
+              "tooltip": "The 3D print head model used to check for collisions during curved-layer slicing. You can fine-tune it under Calibration › Non-planar › Head clearance.",
               "modes": {
                 "nonplanar_head": "Advanced"
               }
@@ -657,7 +657,7 @@
               "options": [],
               "source": "src/slic3r/GUI/Tab.cpp:5518",
               "label": "Head shape",
-              "tooltip": "Edit the components and margins of the selected head and save them as a user head.",
+              "tooltip": "Customize the dimensions and safety margins of the selected print head and save it as your own profile.",
               "manual": true,
               "widget": "desktop custom widget",
               "modes": {}
@@ -971,7 +971,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:5843",
               "label": "Frequency",
-              "tooltip": "The frequency of the anti-vibration signal will correspond to the natural frequency of the frame.",
+              "tooltip": "The resonant frequency (Hz) used by input shaping to cancel out frame ringing.",
               "modes": {
                 "input_shaping_freq_x": "Expert",
                 "input_shaping_freq_y": "Expert"
@@ -984,7 +984,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:5850",
               "label": "Damping",
-              "tooltip": "Damping ratio for the input shaping filter.",
+              "tooltip": "Damping ratio (zeta) for the input shaping filter.",
               "modes": {
                 "input_shaping_damp_x": "Expert",
                 "input_shaping_damp_y": "Expert"

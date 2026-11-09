@@ -118,11 +118,11 @@ export interface LayerRec {
 export function readHeader(dv: DataView): Header {
   let magic = '';
   for (let i = 0; i < 8; ++i) magic += String.fromCharCode(dv.getUint8(i));
-  if (magic !== MAGIC && magic !== TRANSFER_MAGIC && magic !== PLANES_MAGIC) throw new Error(`not a move stream (magic ${JSON.stringify(magic)})`);
-  if (dv.getUint32(24, true) !== 1) throw new Error(`unknown units ${dv.getUint32(24, true)}`);
+  if (magic !== MAGIC && magic !== TRANSFER_MAGIC && magic !== PLANES_MAGIC) throw new Error(`invalid toolpath stream header (${JSON.stringify(magic)})`);
+  if (dv.getUint32(24, true) !== 1) throw new Error(`unrecognized measurement units (${dv.getUint32(24, true)})`);
   const u64 = (o: number) => {
     const v = dv.getBigUint64(o, true);
-    if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('count out of range');
+    if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('item count is out of range');
     return Number(v);
   };
   const h: Header = {
@@ -141,8 +141,8 @@ export function readHeader(dv: DataView): Header {
     tableRotary: (dv.getUint32(28, true) & 0x20000) !== 0,
     tableAC: (dv.getUint32(28, true) & 0x40000) !== 0,
   };
-  if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) + (h.oriented ? 16 : 0) || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
-  if (h.block && (h.block !== CHUNK || h.moveStride % 4)) throw new Error(`unknown transfer blocks (${h.block} moves, stride ${h.moveStride})`);
+  if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) + (h.oriented ? 16 : 0) || h.stateStride < 32 || h.layerStride < 16) throw new Error('invalid data layout in toolpath stream');
+  if (h.block && (h.block !== CHUNK || h.moveStride % 4)) throw new Error(`unrecognized toolpath block format (${h.block} moves, stride ${h.moveStride})`);
   return h;
 }
 

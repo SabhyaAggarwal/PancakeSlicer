@@ -38,13 +38,13 @@ async function requestFiles(url: string, signal: AbortSignal, file?: UrlFile) {
     ...jsonWrite('POST', { url, ...(file ? { fileUrl: file.url, name: file.name } : {}) }), signal,
   }, false, signal, undefined, true);
   const result = await response.json() as { sourceUrl: string; files: UrlFile[] };
-  if (!result?.files.length) throw new Error('The link has no downloadable model files.');
+  if (!result?.files.length) throw new Error('Hmm, we couldn\'t find any downloadable 3D model files at that link.');
   return result;
 }
 async function assetFile(asset: UrlFile, signal: AbortSignal, current: () => boolean): Promise<File> {
-  if (!asset.key || !asset.sha256) throw new Error('The service did not store the downloaded model.');
+  if (!asset.key || !asset.sha256) throw new Error('Oops! The server couldn\'t save the downloaded model file.');
   const response = await serviceRequest(`/api/assets/${encodeURIComponent(asset.key)}`, { signal });
-  if (!response) throw new Error('The downloaded model asset is missing.');
+  if (!response) throw new Error('Oops! The downloaded model file couldn\'t be found.');
   let blob: Blob;
   if (response.body && asset.size) {
     const reader = response.body.getReader(), chunks: Uint8Array[] = [];
@@ -85,7 +85,7 @@ async function amfGeometry(file: File): Promise<File> {
 async function runImport(resolve: boolean) {
   if (busy()) return;
   const url = state.url.trim();
-  if (!/^https?:\/\/\S+$/i.test(url)) { update({ error: 'Enter an http or https link.' }); return; }
+  if (!/^https?:\/\/\S+$/i.test(url)) { update({ error: 'Please paste a valid http:// or https:// link.' }); return; }
   const ticket = ++operation, generation = documentGeneration();
   controller?.abort(); const request = new AbortController(); controller = request;
   const signal = request.signal;
@@ -116,17 +116,17 @@ async function runImport(resolve: boolean) {
       if (!current()) return;
       models.push(model);
     }
-    if (!models.length) throw new Error('Select at least one model file.');
+    if (!models.length) throw new Error('Pick at least one model file to import.');
     update({ phase: 'importing', progress: 'Adding model geometry…' });
     const { importFiles } = await import('./actions');
     if (!current()) return;
     const count = await importFiles(models, { sourceUrl });
     if (!current()) return;
-    if (!count) throw new Error('No objects were added. The import was cancelled or the model could not be read.');
+    if (!count) throw new Error('No models were added—either the import was canceled or we couldn\'t read the file.');
     closeUrlImport();
   } catch (error) {
     if (ticket !== operation || generation !== documentGeneration()) return;
-    update({ phase: state.files.length ? 'picking' : 'editing', progress: '', error: signal.aborted ? 'The download timed out. Try again.' : error instanceof Error ? error.message : String(error) });
+    update({ phase: state.files.length ? 'picking' : 'editing', progress: '', error: signal.aborted ? 'Oops! That download took too long and timed out. Give it another try.' : error instanceof Error ? error.message : String(error) });
   } finally { clearTimeout(timer); }
 }
 export const resolveUrlImport = () => runImport(true);

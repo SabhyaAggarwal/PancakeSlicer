@@ -30,6 +30,7 @@ export function VariantSelector({ type, config, machine, selection, onChange }: 
   </span></div>;
 }
 
+const MAP_MODE_LABELS: Record<string, string> = { 'Auto For Flush': 'Auto (best for flushing)', 'Auto For Match': 'Auto (best match)', 'Nozzle Manual': 'Manual nozzle selection' };
 export function FilamentNozzleAssignment({ slot, disabled }: { slot: number; disabled?: boolean }) {
   const s = useStore((state) => state);
   const machine = effectiveConfig(s, 'machine'), count = extruderCount(machine);
@@ -41,7 +42,7 @@ export function FilamentNozzleAssignment({ slot, disabled }: { slot: number; dis
   const volume = valueAt(config.filament_volume_map, slot, '0');
   return <>
     <div className="opt-line"><span className="opt-label">Nozzle mapping</span><span className="opt-field">
-      <Dropdown className="combo" aria-label="Nozzle mapping" disabled={disabled} value={mode} options={['Auto For Flush', 'Auto For Match', 'Manual', ...(mode === 'Nozzle Manual' ? ['Nozzle Manual'] : [])].map((value) => ({ value, label: value }))}
+      <Dropdown className="combo" aria-label="Nozzle mapping" disabled={disabled} value={mode} options={['Auto For Flush', 'Auto For Match', 'Manual', ...(mode === 'Nozzle Manual' ? ['Nozzle Manual'] : [])].map((value) => ({ value, label: MAP_MODE_LABELS[value] ?? value }))}
         onValueChange={(value) => value === 'Manual' ? setNozzleAssignment(slot, Math.max(0, Math.min(count - 1, extruder))) : updateAssignments({ filament_map_mode: value })} />
     </span></div>
     <div className="opt-line"><span className="opt-label">Filament {slot + 1} nozzle</span><span className="opt-field">

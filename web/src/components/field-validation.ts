@@ -20,11 +20,11 @@ export function fieldIssue(text: string, def: OptionDef): { inline: string; deta
   const raw = text.trim(), percent = raw.endsWith('%'), number = percent ? raw.slice(0, -1).trim() : raw;
   const n = Number(number);
   if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(number) || !Number.isFinite(n))
-    return { inline: 'Enter a number', detail: 'is not a valid number' };
-  if (percent && !def.type.includes('percent')) return { inline: 'Use a number without %', detail: 'does not accept a percentage' };
+    return { inline: 'Enter a number', detail: 'isn\'t a valid number' };
+  if (percent && !def.type.includes('percent')) return { inline: 'Use a number without %', detail: 'takes a plain number, not a percentage (%)' };
   const limit = (value: number) => fieldNumber(`${value}${percent ? '%' : ''}`, def);
-  if (def.min !== undefined && n < def.min) return { inline: `Min ${limit(def.min)}`, detail: `is below the limit ${limit(def.min)}` };
-  if (def.max !== undefined && n > def.max) return { inline: `Max ${limit(def.max)}`, detail: `is above the limit ${limit(def.max)}` };
-  if (def.type.startsWith('int') && !Number.isInteger(n)) return { inline: 'Enter a whole number', detail: 'must be a whole number' };
+  if (def.min !== undefined && n < def.min) return { inline: `Min ${limit(def.min)}`, detail: `is below the minimum (${limit(def.min)})` };
+  if (def.max !== undefined && n > def.max) return { inline: `Max ${limit(def.max)}`, detail: `is above the maximum (${limit(def.max)})` };
+  if (def.type.startsWith('int') && !Number.isInteger(n)) return { inline: 'Enter a whole number', detail: 'needs to be a whole number' };
   return undefined;
 }

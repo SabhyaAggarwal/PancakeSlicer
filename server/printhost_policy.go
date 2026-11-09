@@ -34,7 +34,7 @@ func parseHostPolicy(list, listen string) (*hostPolicy, error) {
 	case "off":
 		return nil, nil
 	case "":
-		return nil, errors.New("printer-network is empty: give lan, CIDRs and host names, or off")
+		return nil, errors.New("Printer network setting is empty—set it to 'lan', a list of CIDRs/hostnames, or 'off'.")
 	}
 	h := &hostPolicy{}
 	for _, entry := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' }) {
@@ -50,7 +50,7 @@ func parseHostPolicy(list, listen string) (*hostPolicy, error) {
 		} else if name := strings.ToLower(strings.TrimSuffix(entry, ".")); validHostName(strings.TrimPrefix(name, ".")) {
 			h.names = append(h.names, name)
 		} else {
-			return nil, fmt.Errorf("printer-network: %q is not lan, a CIDR, an address or a host name", entry)
+			return nil, fmt.Errorf("Invalid printer-network entry '%q'—use 'lan', a CIDR range, an IP address, or a hostname.", entry)
 		}
 	}
 	if _, port, err := net.SplitHostPort(listen); err == nil {
@@ -93,7 +93,7 @@ func (h *hostPolicy) String() string {
 	return strings.Join(append(parts, h.names...), ", ")
 }
 
-var errHostRefused = errors.New("this service does not allow printers at that address (its printer network setting)")
+var errHostRefused = errors.New("This server's network settings don't allow connecting to printers at that address.")
 
 type hostRefusal struct{ reason string }
 
@@ -107,16 +107,16 @@ func hostURL(typed string) (*url.URL, error) {
 	}
 	u, err := url.Parse(typed)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.Trim(u.Path, "/") != "" {
-		return nil, errors.New("enter the printer's host name or IP address, optionally with :port (no path)")
+		return nil, errors.New("Enter your printer's IP address or hostname (optionally with :port, no URL path).")
 	}
 	if p := u.Port(); p != "" {
 		if n, err := strconv.ParseUint(p, 10, 16); err != nil || n == 0 {
-			return nil, errors.New("the port must be 1-65535")
+			return nil, errors.New("Port number must be between 1 and 65535.")
 		}
 	}
 	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
 	if _, err := netip.ParseAddr(host); err != nil && !validHostName(host) {
-		return nil, errors.New("enter the printer's host name or IP address, optionally with :port (no path)")
+		return nil, errors.New("Enter your printer's IP address or hostname (optionally with :port, no URL path).")
 	}
 	return &url.URL{Scheme: u.Scheme, Host: u.Host}, nil
 }
@@ -143,7 +143,7 @@ func (h *hostPolicy) resolve(ctx context.Context, u *url.URL) (netip.AddrPort, e
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if addrs, err = net.DefaultResolver.LookupNetIP(ctx, "ip", host); err != nil || len(addrs) == 0 {
-			return netip.AddrPort{}, errors.New("cannot resolve the printer's address")
+			return netip.AddrPort{}, errors.New("Couldn't find that printer address on the network.")
 		}
 	}
 	named := false

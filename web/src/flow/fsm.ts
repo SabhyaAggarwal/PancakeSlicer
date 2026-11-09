@@ -42,7 +42,7 @@ const list = <T>(t: T | readonly T[] | undefined): readonly T[] => (t === undefi
 const norm = <S extends string, C, E extends Ev>(t: S | Transition<S, C, E>): Transition<S, C, E> => (typeof t === 'string' ? { target: t } : t);
 
 export function assertNever(value: never): never {
-  throw new Error(`Unhandled machine variant: ${String(value)}`);
+  throw new Error(`Unsupported printer variant: ${String(value)}`);
 }
 
 export interface TransitionRecord {

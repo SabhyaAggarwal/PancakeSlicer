@@ -34,9 +34,9 @@ async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPres
   const mine = () => getState().machines.filter((p) => p.vendor === m.vendor && (p.model ? p.model === m.model : /^(.*?)\s+[\d.]+\s*nozzle$/i.exec(p.name)?.[1] === m.model));
   if (!nozzles.every((n) => mine().some((p) => Math.abs(nozzleOf(p) - n) < 1e-6))) {
     const api = getState().api;
-    if (!api) throw new Error('The slicing service is not connected.');
+    if (!api) throw new Error('Not connected to the slicing service.');
     const names = nozzles.map((n) => m.machines[String(n)] ?? Object.entries(m.machines).find(([k]) => Number(k) === n)?.[1]).filter((x): x is string => !!x);
-    if (!names.length) throw new Error(`No ${m.model} preset for ${nozzles.join(', ')} mm.`);
+    if (!names.length) throw new Error(`No ${m.model} preset found for ${nozzles.join(', ')} mm.`);
     const cat = await api.presets(m.vendor, [], undefined, names);
     const union = (current: SystemPreset[], incoming: SystemPreset[]) => { const keys = new Set(current.map(catalogKey)); return [...current, ...incoming.filter((p) => !keys.has(catalogKey(p)))]; };
     setState((st) => ({ machines: union(st.machines, cat.machines), processes: union(st.processes, cat.processes), filaments: union(st.filaments, cat.filaments) }));
@@ -72,13 +72,15 @@ function Welcome() {
   useEffect(() => { if (idle) send({ type: 'CLOSE' }); }, [idle]);
   if (idle) return null;
   return ready
-    ? <Frame step="welcome" title="Take the tour?">
+    ? <Frame step="welcome" title="Want a quick 1-minute tour?">
       <div className="setup-welcome">
+        <p>Take a quick peek at what makes PancakeSlicer different: smooth curved tops, dynamic profiles, and cloud-synced projects.</p>
         <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'CLOSE' })}>Not now</button><Next label="Start tour" /></div>
       </div>
     </Frame>
-    : <Frame step="welcome" title="Welcome to PancakeSlicer">
+    : <Frame step="welcome" title="Welcome to PancakeSlicer!">
       <div className="setup-welcome">
+        <p>Let's pick your printer and filaments—it only takes about a minute!</p>
         <div className="setup-welcome-actions">{TOUR_PAGES > 0 && <button type="button" className="btn-ghost" onClick={() => send({ type: 'NEXT' })}>Show me around</button>}<Next label="Set up printer" onClick={() => send({ type: 'SKIP' })} /></div>
       </div>
     </Frame>;
@@ -163,7 +165,7 @@ function Connect() {
   const [found, setFound] = useState<Discovered[] | 'looking' | string | null>(null);
   const discover = async () => {
     setFound('looking');
-    try { const r = await discoverPrinters(); setFound(r.printers.length ? r.printers : 'No printers found on this network'); }
+    try { const r = await discoverPrinters(); setFound(r.printers.length ? r.printers : 'We didn\'t spot any printers on your network yet'); }
     catch (e) { setFound(e instanceof Error ? e.message : String(e)); }
   };
   const use = (d: Discovered) => { setEdit((e) => ({ ...e, kind: d.kind, name: d.name ?? e.name, host: d.host, url: d.url, serial: d.serial, model: d.model })); setTest(null); };
@@ -277,7 +279,7 @@ async function applyChoices() {
       if (keep && (!current || drop.includes(profileKey(current)))) requestPreset('process', 0, keep);
       if (drop.length) await archiveProfiles('process', drop);
     }
-    if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Connection not saved: ${e instanceof Error ? e.message : e}`));
+    if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Couldn't save connection: ${e instanceof Error ? e.message : e}`));
     const added = choices.families.length ? await addCatalogFamilies(choices.families.map((family) => ({ family }))) : undefined;
     const first = added?.chosen[0];
     if (first) requestPreset('filament', 0, first);

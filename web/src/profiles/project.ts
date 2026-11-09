@@ -35,7 +35,7 @@ export function restoreProjectProfiles(s:ProfileContextState,snapshots:ProjectPr
     ...(snapshots.slots?{slotColours:snapshots.slots.map(slot=>slot.colour)}:{})};
 }
 export function recoverProjectProfile(s:ProfileContextState,snapshot:ProjectProfileSnapshot,baseKey:string,name=snapshot.name):UserPreset{
-  const base=findCatalogBase(s,snapshot.type,baseKey).base;if(!base)throw new Error('Choose an available base before recovering this profile.');
+  const base=findCatalogBase(s,snapshot.type,baseKey).base;if(!base)throw new Error('Pick an available base template first to recover this profile.');
   const config=snapshot.profileConfig ?? snapshot.profile?.snapshot?.config ?? snapshot.config,overlay=changedKeys(config,base.config);
   return {...snapshot.profile,id:`profile:${crypto.randomUUID()}`,name,type:snapshot.type,kind:snapshot.profile?.kind ?? 'profile',revision:0,archived:undefined,
     base:catalogAnchor(base),inherits:base.name,parent:undefined,parentId:undefined,masterId:undefined,overlay,overrides:overlay,

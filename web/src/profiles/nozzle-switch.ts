@@ -42,16 +42,16 @@ export function planNozzle(record: UserPreset, from: SystemPreset, to: SystemPre
 const label = (key: string) => key.replace(/_/g, ' ');
 export async function switchNozzle(printerKey: string, nozzle: string): Promise<string[]> {
   const before = getState(), record = findProfile(before, 'machine', printerKey), from = resolveProfile(before, 'machine', printerKey).base;
-  if (!record || !from) throw new Error('This printer is unavailable.');
+  if (!record || !from) throw new Error('Oops! That printer isn\'t available right now.');
   const found = await nozzleModel(from.name);
-  if (!found) throw new Error(`${record.name} has no catalog nozzle variants.`);
+  if (!found) throw new Error(`${record.name} doesn't have any nozzle presets in the catalog.`);
   const target = found.model.machines[nozzle];
-  if (!target) throw new Error(`${found.model.name} has no ${nozzle} mm nozzle.`);
+  if (!target) throw new Error(`${found.model.name} doesn't have a ${nozzle} mm nozzle preset.`);
   if (target === from.name) return [];
   await loadMachinePresets(found.vendor, [target]);
   await loadFilamentVariants(getState().userPresets, [target]);
   const to = resolveProfile({ ...getState(), userPresets: [] }, 'machine', target).base;
-  if (!to) throw new Error(`The ${nozzle} mm nozzle preset could not load.`);
+  if (!to) throw new Error(`Oops! Couldn't load the ${nozzle} mm nozzle preset.`);
   const [oldDefaults, newDefaults] = await Promise.all([printDefaults({ ...found, nozzle: found.nozzle }), printDefaults({ ...found, nozzle })]);
   const plan = planNozzle(record, from, to, oldDefaults ?? {}, newDefaults ?? {});
   const projectDropped: string[] = [];
@@ -76,7 +76,7 @@ function follow(s: State, rebased: UserPreset, from: SystemPreset, to: SystemPre
 
 async function undoNozzle(printerKey: string, previous: UserPreset) {
   const current = findProfile(getState(), 'machine', printerKey);
-  if (!current) { toast('Can\'t undo: the printer was removed.'); return; }
+  if (!current) { toast('Can\'t undo because that printer was removed from your library.'); return; }
   const from = resolveProfile(getState(), 'machine', printerKey).base, to = resolveProfile({ ...getState(), userPresets: [] }, 'machine', previous.base?.name ?? previous.inherits).base;
   try {
     const restored = { ...previous, revision: current.revision };

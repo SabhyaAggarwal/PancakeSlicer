@@ -24,8 +24,8 @@ export function planDeleteSelected(selection: ProfileSelection, access: ProfileA
   const deletable: NamedProfile[] = [], blocked: BlockedProfile[] = [];
   for (const profile of selected) {
     const references = access.isInUse(profile.key).map((r) => ({ ...r }));
-    const reason = !access.isDeletable(profile.key) ? 'This profile is read-only.'
-      : !access.referencesComplete ? 'Profile references are still loading.'
+    const reason = !access.isDeletable(profile.key) ? 'Built-in profile (read-only — duplicate it to make your own edits).'
+      : !access.referencesComplete ? 'Hang tight—profile links are still loading.'
       : references.length ? `In use: ${references.map((r) => r.label).join('; ')}` : null;
     if (reason) blocked.push({ ...profile, reason, references }); else deletable.push(profile);
   }
@@ -58,7 +58,7 @@ export function deleteResult(plan: DeletePlan, outcomes: readonly DeleteOutcome[
   for (const { key } of plan.deletable) {
     const records = byKey.get(key) ?? [], result = records[0];
     if (!result) { notAttempted.push(key); continue; }
-    if (records.some((r) => r.status !== result.status)) { unknown.push({ key, error: 'Conflicting delete responses. Refresh to check this profile.' }); continue; }
+    if (records.some((r) => r.status !== result.status)) { unknown.push({ key, error: 'Hmm, we got mixed signals while deleting that profile. Refresh to check its current status.' }); continue; }
     switch (result.status) {
       case 'deleted': deleted.push(key); break;
       case 'failed': failed.push({ key, error: result.error }); break;
@@ -108,12 +108,12 @@ export function selectedActions(selection: ProfileSelection, support: {
   canReset?(key: ProfileKey): ActionAvailability;
 }): { use: ActionAvailability; compare: ActionAvailability; export: ActionAvailability; reset: ActionAvailability } {
   const keys = selectedVisible(selection);
-  const compareReason = keys.length === support.compareCount ? support.compareReason(keys) : `Select exactly ${support.compareCount} profile${support.compareCount === 1 ? '' : 's'} to compare.`;
+  const compareReason = keys.length === support.compareCount ? support.compareReason(keys) : `Pick ${support.compareCount} profile${support.compareCount === 1 ? '' : 's'} to compare side by side.`;
   return {
-    use: keys.length === 1 ? support.canUse(keys[0]) : disabled('Select exactly one profile to use.'),
+    use: keys.length === 1 ? support.canUse(keys[0]) : disabled('Pick a single profile to use.'),
     compare: compareReason === undefined ? { enabled: true } : disabled(compareReason),
-    export: keys.length ? { enabled: true } : disabled('Select profiles to export.'),
+    export: keys.length ? { enabled: true } : disabled('Select one or more profiles to export.'),
     reset: keys.length === 1 && support.canReset ? support.canReset(keys[0])
-      : disabled(keys.length > 1 ? 'Reset profiles individually to review inheritance and project edits.' : 'Select one profile with an available reset action.'),
+      : disabled(keys.length > 1 ? 'Please reset profiles one at a time so you can review their linked settings and project edits.' : 'Pick a modified profile that can be reset.'),
   };
 }

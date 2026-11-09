@@ -22,7 +22,7 @@ func duetConnect(ctx context.Context, h *hostSession, base *url.URL) (string, er
 	q := url.Values{"password": {cmpOr(h.secret, "reprap")}, "time": {duetTime()}}
 	code, err := h.call(ctx, "GET", base.JoinPath("/rr_connect").String()+"?"+q.Encode(), nil, &reply)
 	if code == 404 {
-		return "", errors.New("the board does not answer rr_connect: Duet in SBC mode (DuetSoftwareFramework) is not supported; use standalone mode")
+		return "", errors.New("The Duet board didn't respond to rr_connect (SBC mode isn't supported yet—use standalone RepRapFirmware mode).")
 	}
 	if err != nil {
 		return "", err
@@ -30,11 +30,11 @@ func duetConnect(ctx context.Context, h *hostSession, base *url.URL) (string, er
 	switch reply.Err {
 	case 0:
 	case 1:
-		return "", errors.New("the Duet rejected the password; check it in the printer's Connection settings")
+		return "", errors.New("The Duet board rejected the password—double-check it in your printer's Connection settings.")
 	case 2:
-		return "", errors.New("the Duet has no free session; close a browser tab of its web interface and try again")
+		return "", errors.New("The Duet board has no open connection slots—close an open Duet web tab and try again.")
 	default:
-		return "", fmt.Errorf("the Duet refused the connection (error %d)", reply.Err)
+		return "", fmt.Errorf("The Duet board declined the connection (error %d).", reply.Err)
 	}
 	if reply.SessionKey != nil {
 		h.session = fmt.Sprint(*reply.SessionKey)
@@ -56,7 +56,7 @@ func duetGcode(ctx context.Context, h *hostSession, base *url.URL, gcode string)
 		return err
 	}
 	if reply.Err != nil && *reply.Err != 0 {
-		return fmt.Errorf("the Duet refused %s", gcode)
+		return fmt.Errorf("The Duet board declined %s.", gcode)
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func sendDuet(ctx context.Context, u *upload) (string, error) {
 		return "", err
 	}
 	if strings.ContainsAny(u.filename, "\"\r\n") {
-		return "", errors.New("the file name cannot be sent to a Duet")
+		return "", errors.New("That file name contains characters not supported by Duet.")
 	}
 	if _, err := duetConnect(ctx, h, base); err != nil {
 		return "", err
@@ -87,14 +87,14 @@ func sendDuet(ctx context.Context, u *upload) (string, error) {
 	answer, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 	resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 || !strings.Contains(strings.ReplaceAll(string(answer), " ", ""), `"err":0`) {
-		return "", fmt.Errorf("the Duet did not store the file (HTTP %d)", resp.StatusCode)
+		return "", fmt.Errorf("The Duet board couldn't save the uploaded file (HTTP %d).", resp.StatusCode)
 	}
 	if !u.start {
 		return "Uploaded " + u.filename + " to " + u.printer.Name + ".", nil
 	}
 	u.starting()
 	if err := duetGcode(ctx, h, base, `M32 "0:/gcodes/`+u.filename+`"`); err != nil {
-		return "", fmt.Errorf("uploaded %s, but starting the print failed: %w", u.filename, err)
+		return "", fmt.Errorf("Uploaded %s, but couldn't start the print automatically: %w", u.filename, err)
 	}
 	return "Uploaded " + u.filename + " to " + u.printer.Name + " and started printing.", nil
 }

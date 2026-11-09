@@ -28,7 +28,7 @@ async function checkSpiral() {
     && first(c.enforce_support_layers) === 0 && !bool(c.detect_thin_wall) && !bool(c.overhang_reverse) && String(c.timelapse_type ?? '0') === '0'
     && !bool(c.enable_wrapping_detection);
   if (ok) return;
-  let msg = 'Spiral Vase mode requires 1 wall loop, 0 top shell layers, 0% infill, no supports, no clumping detection, and standard timelapse.';
+  let msg = 'Spiral Vase mode prints a single continuous outer wall—it sets wall loops to 1, top shell layers to 0, infill to 0%, turns off supports and clumping detection, and sets timelapse to standard.';
   if (effectiveConfig(s, 'machine').printer_structure === 'i3') msg += ' But machines with I3 structure will not generate timelapse videos.';
   msg += '\n\nChange these settings automatically?\nYes - Change these settings and enable spiral/vase mode automatically\nNo  - Cancel enabling spiral mode';
   if (await confirmDialog(TITLE, msg, ['Yes', 'No'])) setOptions('process', SPIRAL, 'Enable spiral vase');
@@ -42,7 +42,7 @@ async function checkLayerHeight() {
   const min = mins.length ? Math.min(...mins) : 0, max = maxs.length ? Math.max(...maxs) : 0;
   const h = Number(effectiveConfig(s, 'process').layer_height), EPS = 1e-4;
   if (min > EPS && !(h >= EPS)) {
-    await messageDialog(TITLE, `Layer height is too small. It will be set to the minimum (${min} mm).`);
+    await messageDialog(TITLE, `That layer height is too thin—we bumped it up to the minimum (${min} mm).`);
     return setOptions('process', { layer_height: String(min) }, 'Change setting "Layer height"');
   }
   const to = max > EPS && h > max + EPS ? max : min > EPS && h < min - EPS ? min : null;
@@ -56,8 +56,8 @@ async function checkNozzleTemperature(key: string, slot: number) {
   const c = effectiveConfig(getState(), 'filament', slot);
   const low = first(c.nozzle_temperature_range_low), high = first(c.nozzle_temperature_range_high), t = first(c[key]);
   if (!Number.isFinite(low) || !Number.isFinite(high) || !Number.isFinite(t) || (t >= low && t <= high)) return;
-  await messageDialog(TITLE, 'The nozzle may become clogged when the temperature is out of the recommended range.\nPlease make sure whether to use this temperature to print.\n\n'
-    + `The recommended nozzle temperature for this filament type is [${low}, ${high}] degrees Celsius.`);
+  await messageDialog(TITLE, 'Heads up: printing outside the recommended temperature range can cause nozzle clogs or poor layer bonding.\nAre you sure you want to use this temperature?\n\n'
+    + `The recommended nozzle temperature for this filament is ${low}–${high} °C.`);
 }
 
 const MATERIAL_RANGE = new Map('ABS:190-300 ABS-CF:220-300 ABS-GF:240-280 ASA:220-300 ASA-CF:230-300 ASA-GF:240-300 ASA-AERO:240-280 BVOH:190-240 EVA:175-220 FLEX:210-230 HIPS:220-270 PA:235-280 PA-CF:240-315 PA-GF:240-290 PA6:260-300 PA6-CF:230-300 PA6-GF:260-300 PA11:275-295 PA11-CF:275-295 PA11-GF:275-295 PA12:250-270 PA12-CF:250-300 PA12-GF:255-270 PAHT:260-310 PAHT-CF:270-310 PAHT-GF:270-310 PC:240-300 PC-ABS:230-270 PC-CF:270-295 PC-PBT:260-300 PCL:130-170 PCTG:220-300 PE:175-260 PE-CF:175-260 PE-GF:230-270 PEI-1010:370-430 PEI-1010-CF:380-430 PEI-1010-GF:380-430 PEI-9085:350-390 PEI-9085-CF:365-390 PEI-9085-GF:370-390 PEEK:350-460 PEEK-CF:380-410 PEEK-GF:375-410 PEKK:325-400 PEKK-CF:360-400 PES:340-390 PET:200-290 PET-CF:240-320 PET-GF:280-320 PETG:190-260 PETG-CF:230-290 PETG-GF:210-270 PHA:190-250 PI:390-410 PLA:180-240 PLA-AERO:220-270 PLA-CF:190-250 POM:210-250 PP:200-240 PP-CF:210-250 PP-GF:220-260 PPA-CF:260-300 PPA-GF:260-290 PPS:300-345 PPS-CF:295-350 PPSU:360-420 PSU:350-380 PVA:185-250 PVB:190-250 PVDF:245-265 SBS:195-250 TPI:420-445 TPU:175-260'.split(' ').map((e) => { const [t, r] = e.split(':'); return [t, r.split('-').map(Number)] as const; }));
@@ -70,17 +70,19 @@ async function checkRecommendedRange(slot: number) {
   const [min, max] = MATERIAL_RANGE.get(type) ?? [190, 300];
   if (!MATERIAL_RANGE.has(type)) type = 'Unknown';
   let msg = '';
-  if (low < min) msg += `A minimum temperature above ${min}℃ is recommended for ${type}.\n`;
-  if (high > max) msg += `A maximum temperature below ${max}℃ is recommended for ${type}.\n`;
-  if (low > high) msg += 'The recommended minimum temperature cannot be higher than the recommended maximum temperature.\n';
-  if (msg) await messageDialog(TITLE, msg + 'Please check.\n');
+  if (low < min) msg += `We recommend a minimum temperature above ${min} °C for ${type}.
+`;
+  if (high > max) msg += `We recommend a maximum temperature below ${max} °C for ${type}.
+`;
+  if (low > high) msg += 'The minimum temperature can\'t be higher than the maximum temperature.\n';
+  if (msg) await messageDialog(TITLE, msg + 'Please double-check this setting.\n');
 }
 
 async function checkAlternateExtraWall() {
   const c = effectiveConfig(getState(), 'process');
   if (!bool(c.alternate_extra_wall) || String(c.ensure_vertical_shell_thickness) !== 'ensure_all') return;
-  const msg = 'Alternate extra wall doesn\'t work well when ensure vertical shell thickness is set to All.\n\nChange these settings automatically?\n'
-    + 'Yes - Change ensure vertical shell thickness to Moderate and enable alternate extra wall\nNo  - Don\'t use alternate extra wall';
+  const msg = 'Alternate extra wall works best when \'Ensure vertical shell thickness\' is set to Moderate instead of All.\n\nWould you like to update both automatically?\n'
+    + 'Yes — switch vertical shell thickness to Moderate and turn on Alternate extra wall\nNo — keep current settings';
   if (await confirmDialog(TITLE, msg, ['Yes', 'No'])) setOptions('process', { ensure_vertical_shell_thickness: 'ensure_moderate', alternate_extra_wall: '1' }, 'Change setting "Alternate extra wall"');
   else setOptions('process', { ensure_vertical_shell_thickness: 'ensure_all', alternate_extra_wall: '0' }, 'Change setting "Alternate extra wall"');
 }
@@ -96,7 +98,7 @@ async function checkSeamSlope() {
 
 async function checkVolumetricSpeed(slot: number) {
   if (!(first(effectiveConfig(getState(), 'filament', slot).filament_max_volumetric_speed) < 0.5)) return;
-  await messageDialog(TITLE, 'Too small max volumetric speed.\nValue was reset to 0.5');
+  await messageDialog(TITLE, 'Max volumetric speed was too low, so we reset it to 0.5 mm³/s.');
   setOptions('filament', { filament_max_volumetric_speed: '0.5' }, 'Change setting "Max volumetric speed"', slot);
 }
 

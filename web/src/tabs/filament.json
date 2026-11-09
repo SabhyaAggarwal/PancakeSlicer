@@ -169,7 +169,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4621",
               "label": "Recommended nozzle temperature",
-              "tooltip": "Recommended nozzle temperature range of this filament. 0 means not set",
+              "tooltip": "Recommended nozzle temperature range for this filament (0 = not set).",
               "modes": {
                 "nozzle_temperature_range_low": "Simple",
                 "nozzle_temperature_range_high": "Simple"
@@ -298,7 +298,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4673",
               "label": "Chamber temperature",
-              "tooltip": "Target chamber temperature, and the minimal chamber temperature at which printing should start",
+              "tooltip": "Target chamber temperature, plus the minimum chamber temperature to reach before starting the print.",
               "overrides": {
                 "chamber_temperature": {
                   "label": "Target"
@@ -364,7 +364,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4702",
               "label": "Cool Plate (SuperTack)",
-              "tooltip": "Bed temperature when the Cool Plate SuperTack is installed. A value of 0 means the filament does not support printing on the Cool Plate SuperTack.",
+              "tooltip": "Bed temperature for the Cool Plate SuperTack (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "supertack_plate_temp_initial_layer": "Simple",
                 "supertack_plate_temp": "Simple"
@@ -377,7 +377,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4709",
               "label": "Cool Plate",
-              "tooltip": "This is the bed temperature when the Cool Plate is installed. A value of 0 means the filament does not support printing on the Cool Plate.",
+              "tooltip": "Bed temperature for the Cool Plate (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "cool_plate_temp_initial_layer": "Simple",
                 "cool_plate_temp": "Simple"
@@ -390,7 +390,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4716",
               "label": "Textured Cool Plate",
-              "tooltip": "This is the bed temperature when the Textured Cool Plate is installed. A value of 0 means the filament does not support printing on the Textured Cool Plate.",
+              "tooltip": "Bed temperature for the Textured Cool Plate (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "textured_cool_plate_temp_initial_layer": "Simple",
                 "textured_cool_plate_temp": "Simple"
@@ -403,7 +403,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4723",
               "label": "Engineering Plate",
-              "tooltip": "This is the bed temperature when the engineering plate is installed. A value of 0 means the filament does not support printing on the Engineering Plate.",
+              "tooltip": "Bed temperature for the Engineering Plate (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "eng_plate_temp_initial_layer": "Simple",
                 "eng_plate_temp": "Simple"
@@ -416,7 +416,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4730",
               "label": "Smooth PEI Plate / High Temp Plate",
-              "tooltip": "This is the bed temperature when the Smooth PEI Plate/High Temperature Plate is installed. A value of 0 means the filament does not support printing on the Smooth PEI Plate/High Temp Plate.",
+              "tooltip": "Bed temperature for the Smooth PEI / High Temp Plate (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "hot_plate_temp_initial_layer": "Simple",
                 "hot_plate_temp": "Simple"
@@ -429,7 +429,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4737",
               "label": "Textured PEI Plate",
-              "tooltip": "This is the bed temperature when the Textured PEI Plate is installed. A value of 0 means the filament does not support printing on the Textured PEI Plate.",
+              "tooltip": "Bed temperature for the Textured PEI Plate (set to 0 if this filament isn't compatible with this plate).",
               "modes": {
                 "textured_plate_temp_initial_layer": "Simple",
                 "textured_plate_temp": "Simple"
@@ -540,7 +540,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4798",
               "label": "Min fan speed threshold",
-              "tooltip": "The part cooling fan will run at the minimum fan speed when the estimated layer time is longer than the threshold value. When the layer time is shorter than the threshold, the fan speed will be interpolated between the minimum and maximum fan speed according to layer printing time.",
+              "tooltip": "Runs the part cooling fan at minimum speed when a layer takes longer than this time. On faster layers, fan speed ramps up smoothly between minimum and maximum.",
               "modes": {
                 "fan_min_speed": "Simple",
                 "fan_cooling_layer_time": "Simple"
@@ -553,7 +553,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4803",
               "label": "Max fan speed threshold",
-              "tooltip": "The part cooling fan will run at maximum speed when the estimated layer time is shorter than the threshold value.",
+              "tooltip": "Runs the part cooling fan at full speed when a layer prints faster than this time threshold.",
               "modes": {
                 "fan_max_speed": "Simple",
                 "slow_down_layer_time": "Simple"

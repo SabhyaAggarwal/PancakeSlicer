@@ -24,7 +24,7 @@ const objects = () => s().objects.length > 0 || 'Add a model first';
 const selection = () => !!s().selected || 'Select an object first';
 const editable = () => {
   const st = s(), o = st.objects.find((x) => x.id === st.selected?.object);
-  return !st.selected ? 'Select an object first' : st.selected.all ? 'Select one object' : o?.project?.placeholder ? 'Not editable in an opened project' : true;
+  return !st.selected ? 'Select an object first' : st.selected.all ? 'Select one object' : o?.project?.placeholder ? 'Locked in an imported 3MF project' : true;
 };
 const noProject = (f: () => boolean | string) => () => s().project ? 'Not in an opened project' : f();
 const exportable = () => {
@@ -35,7 +35,7 @@ const exportable = () => {
 };
 const busy = (st: State) => st.job.state === 'running' || st.job.state === 'submitting';
 const gizmo = (g: Gizmo) => () => setState((st) => ({ gizmo: st.gizmo === g ? 'none' : g, tab: 'prepare' }));
-const printers = () => s().printerConnections.enabled || (s().printerConnections.enabled === false ? 'Printer connections are off on this service' : 'Connecting to printers');
+const printers = () => s().printerConnections.enabled || (s().printerConnections.enabled === false ? 'Printer network connections are disabled on this server' : 'Connecting to printers');
 const app = (d: NonNullable<State['appDialog']>) => () => setState({ appDialog: d });
 
 const VIEW_TOGGLES: [keyof ViewOptions, string, string?][] = [

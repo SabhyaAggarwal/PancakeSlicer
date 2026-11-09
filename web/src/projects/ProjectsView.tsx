@@ -61,8 +61,8 @@ const sorters: Record<Sort,(a:ProjectMeta,b:ProjectMeta)=>number> = {
 
 async function exportProject(p:ProjectMeta) {
   if(!await confirmDialog('Export 3MF',`Open “${p.name}” and export it?`,['Export','Cancel']))return;
-  try {const flow=await import('../flow/project');await flow.openProject(p.id);if(flow.project.get().context.id!==p.id || ['missing','failed','opening'].includes(flow.project.get().value))throw new Error('The project could not be opened.');await (await import('../actions')).saveProject();}
-  catch(error){toast(`Export failed: ${message(error)}`);}
+  try {const flow=await import('../flow/project');await flow.openProject(p.id);if(flow.project.get().context.id!==p.id || ['missing','failed','opening'].includes(flow.project.get().value))throw new Error('Oops! We couldn\'t open that project.');await (await import('../actions')).saveProject();}
+  catch(error){toast(`Oops! Export failed: ${message(error)}`);}
 }
 
 function Thumb({p}:{p:ProjectMeta}) {
@@ -86,7 +86,7 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
   setRenaming(on:boolean):void;select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;onFavorite():void;onRestore():void;onDrag(e:DragEvent):void;onDragEnd():void;
 }) {
   const committed=useRef(false),[renameError,setRenameError]=useState<string|null>(null),[renameSaving,setRenameSaving]=useState(false);
-  const commit=async(name:string)=>{if(committed.current)return;if(!name.trim()){setRenameError('Enter a name.');return;}if(name.trim()===p.name){setRenaming(false);return;}committed.current=true;setRenameSaving(true);try{await (await import('../flow/project')).renameProject(p.id,name.trim());setRenameError(null);setRenaming(false);}catch(error){setRenameError(message(error));committed.current=false;}finally{setRenameSaving(false);}};
+  const commit=async(name:string)=>{if(committed.current)return;if(!name.trim()){setRenameError('Please enter a name.');return;}if(name.trim()===p.name){setRenaming(false);return;}committed.current=true;setRenameSaving(true);try{await (await import('../flow/project')).renameProject(p.id,name.trim());setRenameError(null);setRenaming(false);}catch(error){setRenameError(message(error));committed.current=false;}finally{setRenameSaving(false);}};
   useEffect(()=>{if(renaming)committed.current=false;},[renaming]);
   const click=(e:MouseEvent<HTMLElement>)=>{
     if(renaming || (e.target as Element).closest('button,input,.pj-check'))return;
@@ -211,7 +211,7 @@ function Projects() {
       if(!trashRestores.has(p.id))trashRestores.set(p.id,p.revision);
       setError(null);
       try{await (await import('../flow/project')).restoreArchivedProject(p.id,trashRestores.get(p.id));trashRestores.delete(p.id);toast(`${p.name} restored`);}
-      catch(error){setError(`Restore not confirmed: ${message(error)}`);}
+      catch(error){setError(`Couldn't finish restoring: ${message(error)}`);}
       finally{void loadTrash();}
     },p.id);
   };
@@ -225,7 +225,7 @@ function Projects() {
         const run=await flow.deleteProject(command.id);projectUndos.set(command.id,{id:command.id,name:list?.find(p=>p.id===command.id)?.name ?? command.id,run});
       }else if(projectUndos.has(command.id))await restoreEntries([projectUndos.get(command.id)!]);
       else if(trashRestores.has(command.id)){await flow.restoreArchivedProject(command.id,trashRestores.get(command.id));trashRestores.delete(command.id);}
-      else throw new Error('Retry from the original Undo.');
+      else throw new Error('Please try undoing again from the original notification.');
     }catch(error){setError(message(error));}
     finally{void loadTrash();}
   },command.operationId);
@@ -246,7 +246,7 @@ function Projects() {
     setError(null);const undo:ProjectUndo[]=[],failed:string[]=[];
     for(const p of targets){const run=await deleteProject(p.id);if(run){const entry={id:p.id,name:p.name,run};undo.push(entry);projectUndos.set(p.id,entry);}else failed.push(p.name);}
       setSelection(s=>reduceSelection(s,{type:'SYNC',scope:'projects',visible:visible.filter(id=>!undo.some(p=>p.id===id))}));
-      if(failed.length)setError(`${undo.length} moved to Trash, ${failed.length} not confirmed: ${failed.join(', ')}.`);
+      if(failed.length)setError(`Moved ${undo.length} to Trash, but ${failed.length} couldn't be moved: ${failed.join(', ')}.`);
       if(undo.length)toast(`${undo.length===1?undo[0].name:`${undo.length} projects`} moved to Trash`,{label:'Undo',run:()=>void restore(undo)},10000);
     });
   };
@@ -292,20 +292,20 @@ function Projects() {
     if(!ids.length)return;
     const name=folder?folders.find(f=>f.id===folder)?.name ?? 'folder':'Unsorted';
     try{await moveProjects(ids,folder);toast(`${ids.length===1?(list?.find(p=>p.id===ids[0])?.name ?? 'Project'):`${ids.length} projects`} moved to ${name}`);if(ids.length>1)dispatch({type:'CLEAR'});}
-    catch(error){setError(`Move failed: ${message(error)}`);}
+    catch(error){setError(`Oops! Couldn't move item: ${message(error)}`);}
   };
   const uniqueName=(parent:string|null)=>{const taken=new Set(childFolders(folders,parent).map(f=>f.name.toLocaleLowerCase()));let name='New folder';for(let n=2;taken.has(name.toLocaleLowerCase());n++)name=`New folder ${n}`;return name;};
   const newFolder=async(parent:string|null,ids?:readonly string[])=>{
     try{const id=await createFolder(uniqueName(parent),parent);if(parent)collapsed.delete(parent);if(ids?.length)await moveProjects(ids,id);setEditing(id);}
-    catch(error){setError(`New folder failed: ${message(error)}`);}
+    catch(error){setError(`Oops! Couldn't create folder: ${message(error)}`);}
   };
   const named=(f:Folder)=>async(name:string|null)=>{
     setEditing(null);const next=name?.trim();if(!next || next===f.name)return;
-    try{await renameFolder(f.id,next);}catch(error){setError(`Rename failed: ${message(error)}`);}
+    try{await renameFolder(f.id,next);}catch(error){setError(`Oops! Couldn't rename: ${message(error)}`);}
   };
   const nest=async(id:string,parent:string|null)=>{
     const f=folders.find(x=>x.id===id);if(!f || (f.parentId ?? null)===parent || id===parent)return;
-    try{await moveFolder(id,parent);if(parent)collapsed.delete(parent);}catch(error){setError(`Move failed: ${message(error)}`);}
+    try{await moveFolder(id,parent);if(parent)collapsed.delete(parent);}catch(error){setError(`Oops! Couldn't move item: ${message(error)}`);}
   };
   type Target={folder:string|null}|'trash'|'new';
   const dropTarget=(target:Target,folders=true)=>({
@@ -331,7 +331,7 @@ function Projects() {
     const detail=[`${count(n,'project moves','projects move')} to Unsorted.`,inner?`${count(inner,'folder moves','folders move')} up a level.`:''].filter(Boolean).join(' ');
     if(!await confirmDialog(`Delete “${f.name}”?`,detail,['Delete folder','Cancel'],true))return;
     try{await deleteFolder(f.id);if(place.kind==='folder' && place.id===f.id)go(f.parentId?{kind:'folder',id:f.parentId}:{kind:'home'});toast(`${f.name} deleted`);}
-    catch(error){setError(`Delete failed: ${message(error)}`);}
+    catch(error){setError(`Oops! Couldn't delete: ${message(error)}`);}
   };
   const moveEntries=(ids:readonly string[]):MenuEntry[]=>{
     const at=(id:string)=>{const p=list?.find(x=>x.id===id);return p?folderOf(p):null;};

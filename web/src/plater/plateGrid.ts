@@ -86,7 +86,7 @@ export class PlateGrid {
     const locked = !!p.locked;
     const changed = PLATE_KEYS.some((k) => p.settings[k] !== undefined && p.settings[k] !== '');
     const slots: ([string, string, () => void, boolean] | null)[] = [
-      editable && many ? ['plate_close', 'Remove current plate (if not last one)', () => deletePlate(p.index), idle] : null,
+      editable && many ? ['plate_close', 'Remove current plate', () => deletePlate(p.index), idle] : null,
       many ? ['plate_orient', 'Auto orient objects on current plate', onPlate(() => void toolbarOperation('orient', true)), !s.project && !locked && p.objects.length > 0] : null,
       many ? ['plate_arrange', 'Arrange objects on current plate', onPlate(() => arrangeAll(false)), !locked && p.objects.length > 0] : null,
       many ? [locked ? 'plate_locked' : 'plate_unlocked', locked ? 'Unlock current plate' : 'Lock current plate', () => toggleLock(p.index), true] : null,

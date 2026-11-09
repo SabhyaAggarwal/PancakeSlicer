@@ -79,7 +79,7 @@ export function switchPreset(type: PresetType, slot: number, name: string, edits
   if(type==='machine' && historyVersion()!==before && summary && (changed.length || summary.needsSelection)){
     const undoTransition=captureUndo();
     const replaced=selectionNotice(getState(),summary);
-    toast(replaced || changed.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(SEP),{label:'Undo',run:()=>{if(!undoTransition())toast('Can\'t undo the printer switch: the project changed since. Your newer work is kept.');}},undefined,replaced?'warning':undefined);
+    toast(replaced || changed.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(SEP),{label:'Undo',run:()=>{if(!undoTransition())toast('Can\'t undo the printer switch because you\'ve made newer changes since then (your latest work is safe!).');}},undefined,replaced?'warning':undefined);
   }
   return result;
 }
@@ -148,7 +148,7 @@ export async function importFiles(files: FileList | File[], opts: { sourceUrl?: 
   list = list.filter((f) => !/\.3mf$/i.test(f.name));
   if (!list.length) return imported;
   if (getState().project && !canEditProject()) {
-    toast('A 3MF project is open; start a new project to add models');
+    toast('You\'re viewing an imported 3MF project—start a new project if you\'d like to add more models.');
     return imported;
   }
   const project = !!getState().project;
@@ -156,7 +156,7 @@ export async function importFiles(files: FileList | File[], opts: { sourceUrl?: 
     .then(([{ blobDigest }, { assignBlobKey }]) => blobDigest(f).then((sum) => assignBlobKey(f, `sha256-${sum}`))).catch(() => {});
   const step = /\.(step|stp|drc)$/i;
   list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && (canLoadStep() || /\.drc$/i.test(f.name)) ||
-    (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
+    (toast(`Oops! ${f.name} isn't a supported 3D model. Please pick an STL, OBJ${canLoadStep() ? ', STEP' : ''}, or 3MF file.`), false));
   const task = importing.begin('loading');
   const added: PlateObject[] = [];
   for (const f of list) {
@@ -195,11 +195,11 @@ export async function importFiles(files: FileList | File[], opts: { sourceUrl?: 
 
 async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
   const s = getState();
-  if (!s.api || s.api.mock) throw new Error(`${f.name}: importing STEP requires the slicing service`);
+  if (!s.api || s.api.mock) throw new Error(`Oops! Importing STEP files (${f.name}) requires a connection to the slicing service.`);
   return withBusy(`Loading ${f.name}`, () => meshStep(s, f, signal), signal);
 }
 async function meshStep(s: ReturnType<typeof getState>, f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
-  if (!s.api) throw new Error(`${f.name}: importing STEP requires the slicing service`);
+  if (!s.api) throw new Error(`Oops! Importing STEP files (${f.name}) requires a connection to the slicing service.`);
   const { library } = jobFields(s, true);
   const id = await s.api.submit({ library, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] }, signal);
   if (signal?.aborted) { void s.api.cancel(id).catch(() => {}); throw new DOMException('Import canceled', 'AbortError'); }
@@ -218,7 +218,7 @@ async function meshStep(s: ReturnType<typeof getState>, f: File, signal?: AbortS
   const stem = f.name.replace(/\.(step|stp|drc)$/i, '');
   let geometry: THREE.BufferGeometry | undefined;
   await loadProject(new File([await response.blob()], `${stem}.3mf`), { items() {}, mesh: (i, g) => { if (i === 0) geometry = g; }, missing() {} });
-  if (!geometry) throw new Error(`${f.name}: the STEP file has no shape`);
+  if (!geometry) throw new Error(`Oops! We couldn't find any 3D geometry inside ${f.name}.`);
   const mesh = { geometry, rotX: 0, rotY: 0, scale: [1, 1, 1] } as PlateObject;
   return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
 }
@@ -236,7 +236,7 @@ let creatingProject:Promise<boolean>|null=null;
 export function newProject(preserveProfiles = false):Promise<boolean> {
   if(creatingProject)return creatingProject;
   creatingProject=(async()=>{
-    const offerUndo=await replacePlate('New Project','Start a new project? The objects on the plate are removed.');
+    const offerUndo=await replacePlate('New Project','Start a new project? Anything currently on the plate will be cleared.');
     if(!offerUndo)return false;
     leaveDocument();clearPlate(preserveProfiles);newDocument(true);offerUndo();return true;
   })().finally(()=>{creatingProject=null;});
@@ -275,8 +275,8 @@ export function pickModelFiles(onFiles: (files: FileList) => unknown) {
 export function arrangeAll(allPlates = true) {
   const s = getState();
   const locked = !!s.projectPlates.find((p) => p.index === s.plateIndex)?.locked;
-  if (locked && !allPlates) return toast('The plate is locked');
-  if (s.features.arrange && !s.project && s.api && !s.api.mock) return locked ? toast('The plate is locked') : void import('./plater/operations').then((m) => m.arrangeNative());
+  if (locked && !allPlates) return toast('This plate is locked');
+  if (s.features.arrange && !s.project && s.api && !s.api.mock) return locked ? toast('This plate is locked') : void import('./plater/operations').then((m) => m.arrangeNative());
   const area = bedArea();
   undoable('Arrange', () => setState((st) => ({
     ...(locked ? {} : { objects: arrange(st.objects, area) }),
@@ -314,7 +314,7 @@ export async function setInstanceCount() {
   if (!o || o.project && (o.project.placeholder || !canEditProject())) return;
   const num = await numberDialog('Copies of the selected object', 'Number of copies:', o.instances.length, 0, 1000);
   if (num === null || num === o.instances.length) return;
-  undoable(`Set numbers of copies to ${num}`, () => setState((st) => {
+  undoable(`Set number of copies to ${num}`, () => setState((st) => {
     const cur = st.objects.find((ob) => ob.id === o.id);
     if (!cur) return {};
     if (num === 0) return { objects: st.objects.filter((ob) => ob.id !== o.id), selected: null, job: markStale(st.job) };
@@ -344,13 +344,13 @@ export function fillBed() {
   const fits = (objects: PlateObject[]) => outsideBed(objects, area, Infinity).size === 0;
   let lo = 0, hi = 1;
   let best = withCopies(0);
-  if (!fits(best)) return toast('Plate is full: no room for another copy');
+  if (!fits(best)) return toast('The plate is full—there\'s no room for another copy!');
   for (let next = withCopies(hi); hi <= 1000 && fits(next); next = withCopies(hi)) { best = next; lo = hi; hi *= 2; }
   while (hi - lo > 1) {
     const mid = (lo + hi) >> 1, next = withCopies(mid);
     if (fits(next)) { best = next; lo = mid; } else hi = mid;
   }
-  if (!lo) return toast('Plate is full: no room for more copies');
+  if (!lo) return toast('The plate is full—couldn\'t fit any more copies!');
   undoable('Arrange', () => setState((st) => ({ objects: best, selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, job: markStale(st.job) })));
 }
 
@@ -360,17 +360,17 @@ export { confirmDialog, numberDialog, promptDialog };
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   await flushReady();
   if (!saving) {
-    if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Wait for saved profile adoption before slicing.');
+    if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Hang tight—finishing profile setup before slicing.');
     const {flushPrinterSetups}=await import('./profiles/printer-setups');await flushPrinterSetups();
     validateProfileSubmission(s);
     const [{methodAvailability},{methodSelectionProblem}]=await Promise.all([import('./profiles/method-context'),import('./profiles/capabilities')]);
     const availability=methodAvailability(s), global=effectiveConfig(s,'process');
     const effective=[global,...s.objects.flatMap(o=>[ {...global,...o.settings},...(o.volumes ?? []).map(v=>({...global,...o.settings,...v.settings})),...(o.ranges ?? []).flatMap(r=>(o.volumes?.filter(v=>v.type === 'part') ?? [undefined]).map(v=>({...global,...o.settings,...v?.settings,...r.settings})))])];
-    for(const config of effective) {const problem=methodSelectionProblem(availability,config);if(problem) throw new Error(`Slicing method unavailable: ${problem.reason}`);}
+    for(const config of effective) {const problem=methodSelectionProblem(availability,config);if(problem) throw new Error(`That slicing method isn't available right now: ${problem.reason}`);}
     const {readProfileLibrary}=await import('./persist/profile-library'), remote=await readProfileLibrary(s.api?.mock);
     for(const [type,key] of [['machine',s.printer],['process',s.process],...s.filamentSlots.map(key=>['filament',key])] as [PresetType,string][]) {
       const local=findProfile(s,type,key), persisted=findProfile({userPresets:remote.profiles.map(normalizeUserPreset)},type,key);
-      if(!local || !persisted || (local.revision ?? 0)!==(persisted.revision ?? 0)) throw new Error('A selected profile changed in storage. Reload or save its draft before slicing.');
+      if(!local || !persisted || (local.revision ?? 0)!==(persisted.revision ?? 0)) throw new Error('Heads up: one of your selected profiles was updated elsewhere. Reload it or save your current edits before slicing.');
     }
     const configs = [effectiveConfig(s, 'process'), ...s.objects.flatMap((o) =>
       [o.settings, ...o.volumes?.map((v) => v.settings) ?? [], ...o.ranges?.map((r) => r.settings) ?? []])];
@@ -419,7 +419,8 @@ export function outsideVolumeWarning(s = getState()): string | null {
   if (!objects.length) return null;
   const outside = outsideBed(objects, parsePoints(machine.config.printable_area), Number(machine.config.printable_height ?? 1e6));
   const names = objects.filter((o) => o.instances.some((i) => outside.has(i.id))).map((o) => o.name);
-  return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;
+  return names.length ? `Oops! These objects stick out past the edge of the plate or exceed the max print height: ${names.join('\n')}. Move them fully onto the bed and check their height before slicing.
+` : null;
 }
 
 function recordWarnings(record: Record<string, unknown> | undefined, stderr: string[]): string[] {
@@ -506,7 +507,7 @@ export async function plateJob(s = getState(), ask = true): Promise<JobRequest |
   if (nativeSupportCapable(s) && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
     const conflicts = (await import('./plater/nativeSupport')).nativeSupportConflicts(s);
     if (conflicts && !ask) return conflicts;
-    if (conflicts && !(await confirmDialog('Native support', `${conflicts} Slice anyway?`))) return null;
+    if (conflicts && !(await confirmDialog('Native support', `${conflicts} Would you like to slice anyway?`))) return null;
   }
   return jobRequest(s);
 }
@@ -519,7 +520,7 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
   const methodProblem = methodSelectionProblem(methodAvailability(s), effectiveConfig(s,'process'));
-  if(methodProblem) return void setState({job:{state:'failed',pct:0,stage:'',error:`Slicing method unavailable: ${methodProblem.reason}`}});
+  if(methodProblem) return void setState({job:{state:'failed',pct:0,stage:'',error:`That slicing method isn't available right now: ${methodProblem.reason}`}});
   const generation = ++sliceGeneration, document = documentGeneration(), projectId = projectFlow.get().context.id, plate = s.plateIndex;
   const current = () => generation === sliceGeneration && document === documentGeneration() && projectId === projectFlow.get().context.id && plate === getState().plateIndex;
   const signature = plateSignature(s);
@@ -579,23 +580,23 @@ export const curveRefused = (s: State) => !!(s.job.status?.record as { could_not
 export function fileUse(machine = printerPreset(getState())) {
   const printer = machine?.model?.replace(/^Bambu Lab /, '') ?? 'printer';
   return machine?.vendor === 'BBL'
-    ? `Copy it to the ${printer}'s microSD card.`
-    : `Copy it to the ${printer}'s USB drive.`;
+    ? `Copy the file onto your ${printer}'s microSD card to start printing.`
+    : `Copy the file onto your ${printer}'s USB drive to start printing.`;
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';
 
 function exportBlocker(s: State) {
-  if (!s.objects.length) return 'Nothing to export. Add a model and slice it first.';
+  if (!s.objects.length) return 'Nothing to export yet! Add a model to the plate and slice it first.';
   const outside = outsideVolumeWarning(s);
   if (outside) return outside;
-  if (s.job.state === 'running' || s.job.state === 'submitting') return 'Still slicing. Export when it finishes.';
-  if (s.job.state === 'done' && !s.job.stale && curveRefused(s)) return 'Could not slice with the curved method. Slice flat instead, or change its settings.';
-  return s.job.state === 'done' ? 'The plate changed since the last slice. Slice again.' : 'Slice the plate first.';
+  if (s.job.state === 'running' || s.job.state === 'submitting') return 'Still slicing! You\'ll be able to export as soon as it finishes.';
+  if (s.job.state === 'done' && !s.job.stale && curveRefused(s)) return 'Oops! We couldn\'t slice this model with curved layers. Try slicing with flat layers instead, or tweak your curved-layer settings.';
+  return s.job.state === 'done' ? 'You\'ve made changes since the last slice—slice the plate again to update the toolpaths.' : 'Slice the plate first before continuing.';
 }
 
 export async function download() {
-  if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
+  if (import.meta.env.MODE === 'demo') return void toast('Not available in demo mode', null, 3500, 'warning');
   const s = getState();
   if (!s.api || !canExport(s) || !s.job.id) return void (s.api && toast(exportBlocker(s)));
   const task = output.begin('exporting');
@@ -607,7 +608,7 @@ export async function download() {
   } catch (e) {
     if (!task.current()) return;
     task.fail(e);
-    toast((e as ApiError).code === 'could_not_curve' ? (e as ApiError).message : `Export failed: ${e instanceof Error ? e.message : e}`);
+    toast((e as ApiError).code === 'could_not_curve' ? (e as ApiError).message : `Oops! Export failed: ${e instanceof Error ? e.message : e}`);
     return;
   }
   if (!task.current() || getState().job.id !== s.job.id || !canExport()) {
@@ -629,7 +630,7 @@ export const toolbarOperation = (operation: 'orient' | 'split' | 'split-parts', 
   import('./plater/operations').then((m) => m.run(operation, all));
 
 export async function saveProject(as = false) {
-  if (import.meta.env.MODE === 'demo') return void toast('Not available in the demo', null, 3500, 'warning');
+  if (import.meta.env.MODE === 'demo') return void toast('Not available in demo mode', null, 3500, 'warning');
   const saving = await import('./saveProject');
   return saving.saveProject(as);
 }
@@ -641,7 +642,7 @@ export function toggleText() {
   void import('./plater/text').then((m) => {
     if (m.editedText()) return setState({ gizmo: 'text' });
     const o = s.objects.find((x) => x.id === s.selected?.object);
-    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('Select a single object on the plate (or deselect everything) to add text');
+    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('Select one object on the plate (or click empty space to deselect all) to add text.');
     void m.addText(o ? o.id : null);
   });
 }
@@ -662,7 +663,7 @@ export function toggleSvg() {
   void import('./plater/svg').then((m) => {
     if (m.editedSvg()) return setState({ gizmo: 'svg' });
     const o = s.objects.find((x) => x.id === s.selected?.object);
-    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('Select a single object on the plate (or deselect everything) to add an SVG');
+    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('Select one object on the plate (or click empty space to deselect all) to add an SVG.');
     void m.addSvg(o ? o.id : null);
   });
 }

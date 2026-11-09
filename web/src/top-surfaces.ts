@@ -30,14 +30,14 @@ const COLOURS: Record<Verdict, RGB | null> = {
   no: [190 / 255, 96 / 255, 86 / 255],
   flat: null,
 };
-export const SURFACE_LEGEND: [string, string][] = [['#16B3A0', 'Curves'], ['#F5A524', 'Needs Ignore cooling duct'], ['#BE6056', "Can't curve here"]];
+export const SURFACE_LEGEND: [string, string][] = [['#16B3A0', 'Curves'], ['#F5A524', 'Needs Ignore cooling duct'], ['#BE6056', "Can't curve this spot"]];
 
 function estimated(status: SurfaceStatus, reason: string, share?: number): Pick<Surface, 'verdict' | 'line' | 'why' | 'share'> {
   const likely = source === 'plan' ? '' : 'Likely ';
-  if (status === 'flat') return { verdict: 'flat', line: 'Flat, prints exactly', share: undefined };
+  if (status === 'flat') return { verdict: 'flat', line: 'Already flat (prints cleanly)', share: undefined };
   if (status === 'curves') return { verdict: 'curves', line: `${likely}curves`.replace(/^./, (c) => c.toUpperCase()), share };
   if (status === 'duct') return { verdict: 'duct', line: `${likely}needs Ignore cooling duct`.replace(/^./, (c) => c.toUpperCase()), why: source === 'plan' ? reason : undefined, share };
-  return { verdict: 'no', line: "Can't curve here", why: reason, share };
+  return { verdict: 'no', line: "Can't curve this spot", why: reason, share };
 }
 let source: 'estimate' | 'plan' = 'estimate';
 
@@ -168,7 +168,7 @@ export const selectedSurface = () => selected;
 export function surfaceText(f: Surface): string[] {
   const area = f.area < 10 ? f.area.toFixed(1) : String(Math.round(f.area));
   const share = f.share !== undefined && f.share > 0 && f.share < 0.995 ? ` (${Math.round(f.share * 100)}% curved)` : '';
-  return [f.line + share, ...(f.why ? [f.why] : []), `Max slope ${Math.round(f.slope)}°, ${f.span.toFixed(1)} mm tall, ${area} mm²`];
+  return [f.line + share, ...(f.why ? [f.why] : []), `Max slope ${Math.round(f.slope)}° · ${f.span.toFixed(1)} mm tall · ${area} mm²`];
 }
 export const headIgnoresDuct = () => ductIgnorable;
 
@@ -272,13 +272,13 @@ function applyOutcome() {
       const share = total[k] > 0 ? done[k] / total[k] : 0;
       const deg = (v: number) => `${Math.round(v)}°`, limit = flat?.limit;
       const why = f.estimate === 'small' ? f.reason
-        : limit?.kind === 'access' && limit.reachableDeg != null ? `Slope up to ${deg(f.slope)} is steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg(limit.reachableDeg)})`
-        : limit?.kind === 'angle' && limit.capDeg != null ? `Slope up to ${deg(f.slope)} is above your ${deg(limit.capDeg)} curved-top limit`
-        : flat?.why ?? 'The slice kept it flat';
+        : limit?.kind === 'access' && limit.reachableDeg != null ? `Slope reaches ${deg(f.slope)}, which is steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} limit (${deg(limit.reachableDeg)})`
+        : limit?.kind === 'angle' && limit.capDeg != null ? `Slope reaches ${deg(f.slope)}, which is above your ${deg(limit.capDeg)} curved-top limit`
+        : flat?.why ?? 'Kept flat during slicing';
       inst.surfaces[k] = share >= 0.5 ? { ...f, verdict: 'curves', line: 'Curves', why: undefined, share }
         : (flat?.tryDuct || (flat?.head && ductIgnorable && !ignoring)) && f.estimate !== 'small'
           ? { ...f, verdict: 'duct', line: 'Needs Ignore cooling duct', why, share }
-          : { ...f, verdict: 'no', line: "Can't curve here", why, share };
+          : { ...f, verdict: 'no', line: "Can't curve this spot", why, share };
     });
     paint(inst);
   }
@@ -292,12 +292,12 @@ interface PlanTops { schema: string; ignore_duct: boolean; regions: PlanRegion[]
 function planReason(r: PlanRegion): string {
   const slope = `Slope up to ${Math.round(r.slope_max)}°`, deg = r.reachable_slope_deg != null ? `${Math.round(r.reachable_slope_deg)}°` : null;
   switch (r.planar_limit) {
-    case 'access': return deg ? `${slope} is steeper than the ${r.access_by === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg})` : 'The print head cannot reach it';
+    case 'access': return deg ? `${slope} is steeper than the ${r.access_by === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg})` : 'The print head can\'t reach this area safely';
     case 'angle': return deg ? `${slope} is above the ${deg} curved-top limit` : `${slope} is above the curved-top limit`;
-    case 'area': return 'Too small for a curved top';
-    case 'head_unknown': return 'This printer has no print head model';
-    case 'flat': return 'Flat, prints exactly';
-    default: return 'The plan keeps it flat';
+    case 'area': return 'Area is too small for curved top layers';
+    case 'head_unknown': return 'No print head model set for this printer';
+    case 'flat': return 'Already flat (prints cleanly)';
+    default: return 'Planned as flat layers';
   }
 }
 
@@ -313,7 +313,7 @@ async function planned(s: State, objects: PlateObject[], mine: number): Promise<
   if (planJob === id) planJob = null;
   if (mine !== generation) return [];
   const plan = status.record as PlanTops | undefined;
-  if (plan?.schema !== 'orca.nonplanar.plan_tops.v1') throw new Error('the slicer returned no curved tops plan');
+  if (plan?.schema !== 'orca.nonplanar.plan_tops.v1') throw new Error('the slicer didn\'t return a curved-tops preview');
   return objects.flatMap((o) => {
     const oi = s.objects.indexOf(o);
     const regions: RegionIn[] = plan.regions.filter((r) => r.object === oi).map((r) => {

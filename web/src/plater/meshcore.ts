@@ -16,7 +16,7 @@ export function parseStl(buf: ArrayBuffer): Float32Array {
   const out: number[] = [];
   const re = /vertex\s+(\S+)\s+(\S+)\s+(\S+)/g;
   for (let m; (m = re.exec(text)); ) out.push(+m[1], +m[2], +m[3]);
-  if (!out.length) throw new Error('no triangles in the STL');
+  if (!out.length) throw new Error('no triangles found in the STL file');
   return new Float32Array(out);
 }
 
@@ -37,7 +37,7 @@ export function parseObj(text: string): Float32Array {
       for (let k = 1; k + 1 < p.length; k++) push(p[0]), push(p[k]), push(p[k + 1]);
     }
   }
-  if (!out.length) throw new Error('no mesh in the OBJ');
+  if (!out.length) throw new Error('no 3D mesh found in the OBJ file');
   return new Float32Array(out);
 }
 

@@ -22,7 +22,7 @@ func runToolIn(ctx context.Context, tool, dir string, args ...string) error {
 	configureJobProcess(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("the slicer could not read the model: %s", sanitizeToolError(errors.New(lastLine(string(out)))))
+		return fmt.Errorf("Oops! The slicer couldn't read the model file: %s", sanitizeToolError(errors.New(lastLine(string(out)))))
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func (m *JobManager) mapPlanFacets(ctx context.Context, j *Job, raw []byte) ([]b
 		}
 		b, err := os.ReadFile(filepath.Join(in, "plate.json"))
 		if err != nil || json.Unmarshal(b, &plate) != nil {
-			return nil, errors.New("the plan's plate cannot be read")
+			return nil, errors.New("Oops! Couldn't read the build plate for this preview.")
 		}
 		for _, o := range plate.Objects {
 			files = append(files, o.File)

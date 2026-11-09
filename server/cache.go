@@ -30,7 +30,7 @@ var optionData []byte
 type cachedResponse struct {
 	plain, zipped []byte
 	etag          string
-	brotli        atomic.Pointer[[]byte]
+	brotli atomic.Pointer[[]byte]
 }
 
 var brotliSlot = make(chan struct{}, 1)
@@ -171,13 +171,13 @@ func serveGzipped(w http.ResponseWriter, r *http.Request, path string, st os.Fil
 			return
 		}
 		if err != nil {
-			failUncached(w, "the output could not be compressed: "+err.Error())
+			failUncached(w, "Couldn't compress the output file: " + err.Error())
 			return
 		}
 	}
 	f, err := os.Open(cached)
 	if err != nil {
-		failUncached(w, "the output could not be opened")
+		failUncached(w, "Oops! Couldn't open the output file on the server.")
 		return
 	}
 	defer f.Close()
@@ -192,7 +192,7 @@ func serveGzipped(w http.ResponseWriter, r *http.Request, path string, st os.Fil
 	}
 	z, err := gzip.NewReader(f)
 	if err != nil {
-		failUncached(w, "the output could not be opened")
+		failUncached(w, "Oops! Couldn't open the output file on the server.")
 		return
 	}
 	if r.Method != http.MethodHead {

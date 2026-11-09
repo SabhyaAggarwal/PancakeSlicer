@@ -21,7 +21,7 @@ function facts(run: MethodRun): { main?: string; detail: string; warn?: boolean 
     return { main, detail: ['Flat', why].filter(Boolean).join(': '), warn: true };
   }
   const tilt = objectResults(record).find((o) => o.slant)?.slant?.angle, pct = curvedTopPercent(record);
-  const top = run.method === 'off' ? null : tilt != null ? `Tilt ${Math.round(tilt)}°` : s.wholePart ? 'Whole part curved' : pct != null ? `Top ${pct}% curved` : null;
+  const top = run.method === 'off' ? null : tilt != null ? `Tilt ${Math.round(tilt)}°` : s.wholePart ? 'Full-part curved layers' : pct != null ? `${pct}% of top curved` : null;
   return { main, detail: [top, error, head].filter(Boolean).join(' · '), warn: !!hits };
 }
 

@@ -89,7 +89,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     for (const r of DEFAULT_SCALES) { if (native[r.key] === undefined) delete next[r.key]; else next[r.key] = native[r.key]; }
     update(key, {...current, values: next, scales: [...DEFAULT_SCALES], speedModel: newSpeedModel()}); };
   const makeRegular = async () => {
-    if (!await confirmDialog('Make regular', `Fix the formulas’ values at a ${nozzle} mm nozzle and ${height.toFixed(2)} mm layers?`, ['Make regular', 'Cancel'])) return;
+    if (!await confirmDialog('Make regular', `Lock in the calculated values for a ${nozzle} mm nozzle and ${height.toFixed(2)} mm layer height?`, ['Make regular', 'Cancel'])) return;
     const current = latest.current;
     update(key, {...current, values: {...current.values, ...scaleValues(scales, {nozzle, layerHeight: height}), ...speedResolution.values, layer_height: String(height)}, scales: [], speedModel: null}); };
   const printer = useStore((st) => findProfile(st, 'machine', st.printer));
@@ -137,9 +137,9 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     if (!m.can({type: 'SAVE'}) || !dirty) return;
     const s = getState(), currentSource=findProfile(s,type,name);
     const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
-    if (!s.api) {setError('Not connected. Your edits are kept.'); return;}
-    if (!source || resolved.error || !resolved.base) {setError(resolved.error ?? 'This profile is unavailable. Your edits are kept.'); return;}
-    if (!profileOriginIsCurrent(currentSource,submitted.origin)) { setError('This profile changed elsewhere. Cancel edits to load the saved version.'); return; }
+    if (!s.api) {setError('Offline right now—your edits are safely kept in this tab.'); return;}
+    if (!source || resolved.error || !resolved.base) {setError(resolved.error ?? 'That profile isn\'t available right now, but your edits are safely kept here.'); return;}
+    if (!profileOriginIsCurrent(currentSource,submitted.origin)) { setError('Heads up: this profile was updated in another tab. Cancel your current edits to load the newest saved version.'); return; }
     m.send({type: 'SAVE'});
     const request = m.get().context.request;
     try {
@@ -157,7 +157,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
       if (type === 'process' && !auto) delete (p as {auto?: unknown}).auto;
       await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
       const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolveProfile(saved,type,profileKey(p));
-      if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('The profile changed again while saving. Your edits are kept.');
+      if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('This profile was updated elsewhere while you were saving. Don\'t worry, your edits are still here!');
       const next=acknowledgedProfileDraft(latest.current,submitted,origin,acknowledged.config);
       update(key,next); m.send({type: 'SAVED', request}); toast(`Saved ${profileName}`);
     } catch (e) { m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}); }
@@ -169,13 +169,13 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   useEffect(() => {if (renameRequest?.key === name && Date.now() - renameRequest.at < 2000) startRename();}, [renameRequest]);
   const writeName = async (next: string) => {
     const current = findProfile(getState(), type, name);
-    if (!current) throw new Error('This profile is unavailable.');
+    if (!current) throw new Error('Oops! This profile isn\'t available right now.');
     const prior = current.name;
     await commitProfileRecords([renameOwnedProfile(current, next)]);
     const renamed = findProfile(getState(), type, name);
     if (draft && renamed) update(key, {...latest.current, origin: renamed});
     toast(`Renamed to ${next}`, {label: 'Undo', run: () => {
-      if (!m.can({type: 'RENAME', name: next})) {toast('Finish saving first, then rename it back.'); return;}
+      if (!m.can({type: 'RENAME', name: next})) {toast('Wait a second for the current save to finish, then you can rename it.'); return;}
       m.send({type: 'RENAME', name: next}); m.send({type: 'TYPE', value: prior}); void commitName();
     }});
   };
@@ -192,7 +192,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     try {await writeName(next); m.send({type: 'RENAMED', request});}
     catch (e) {m.send({type: 'RENAME_FAIL', request, error: e instanceof Error ? e.message : String(e)});}
   };
-  if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'This profile could not be loaded.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const {loadCatalog}=await import('../actions');await loadCatalog();const s=getState();if(s.profileLibraryLoad.state==='failed')throw new Error(s.profileLibraryLoad.error);if(!findProfile(s,type,name))throw new Error('Profile is still unavailable.');} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
+  if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'Oops! We couldn\'t load that profile.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const {loadCatalog}=await import('../actions');await loadCatalog();const s=getState();if(s.profileLibraryLoad.state==='failed')throw new Error(s.profileLibraryLoad.error);if(!findProfile(s,type,name))throw new Error('That profile is still unavailable.');} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
   return <DetailPane label={`Edit ${profileName}`} error={error}
     identity={<>{type === 'filament' && <ColorPicker value={profileColour(values) ?? ''} label="Default filament color" disabled={saving} onCommit={colour=>set('filament_colour',Array.isArray(values.filament_colour) ? [colour] : colour)}/>}{naming !== null ? <input ref={nameInput} autoFocus onFocus={e => e.currentTarget.select()} className="pf-name-input" aria-label="Profile name" aria-invalid={!!nameError} aria-describedby={nameError ? `${key}-name-error` : undefined} value={naming} autoComplete="off" spellCheck={false}
         readOnly={snap.value === 'renaming'} onChange={e => m.send({type: 'TYPE', value: e.target.value})} onBlur={() => void commitName()}

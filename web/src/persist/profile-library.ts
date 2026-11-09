@@ -87,7 +87,7 @@ export async function readProfileLibrary(_mock = false): Promise<ProfileLibraryD
   const response = await fetch('/api/library');
   if (!response.ok) throw await responseError(response);
   const doc = await response.json() as V4Document;
-  if (!doc || doc.schema !== 4 || !Number.isInteger(doc.revision) || !Array.isArray(doc.profiles)) throw new Error('The profile library is invalid.');
+  if (!doc || doc.schema !== 4 || !Number.isInteger(doc.revision) || !Array.isArray(doc.profiles)) throw new Error('Oops! Your profile library data looks corrupted or unreadable.');
   return fromV4(doc);
 }
 export async function persistProfileLibrary(write: ProfileLibraryWrite, _mock = false): Promise<ProfileLibraryWriteResult> {

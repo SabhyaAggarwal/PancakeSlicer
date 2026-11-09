@@ -40,7 +40,7 @@ type printerSlots struct {
 	Online  bool        `json:"online"`
 	Updated time.Time   `json:"updated"`
 	Slots   []slotMatch `json:"slots"`
-	Error   string      `json:"error,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 type slotChoice struct {
@@ -83,7 +83,7 @@ func (st *filamentSlotStore) load() (*slotDoc, error) {
 	}
 	if err == nil {
 		if err := json.Unmarshal(b, doc); err != nil || doc.Schema != 1 {
-			return nil, fmt.Errorf("%s: unreadable printer slots (schema 1 expected)", st.path)
+			return nil, fmt.Errorf("%s: couldn't read printer slot configuration.", st.path)
 		}
 		if doc.Last == nil {
 			doc.Last = map[string]*printerSlots{}
@@ -380,20 +380,20 @@ func (s *Server) printerSlotsFor(key string, profiles map[string]*v4Record) (*pr
 	}
 	printer := profiles[key]
 	if printer == nil || printer.Type != "printer" {
-		return nil, errors.New("this printer is not in the library")
+		return nil, errors.New("That printer isn't in your library yet.")
 	}
 	vendor, err := s.presets.vendor(printer.Vendor)
 	if err != nil {
-		return nil, errors.New("the printer's catalog is unavailable: " + printer.Vendor)
+		return nil, errors.New("Couldn't load the printer catalog: " + printer.Vendor)
 	}
 	machine := catalogMachine(vendor, printer.Model, printer.Nozzle)
 	if machine == nil {
-		return nil, errors.New("the catalog has no " + printer.Model)
+		return nil, errors.New("Couldn't find " + printer.Model + " in the catalog.")
 	}
 	mine := sliceable(profiles, printer, vendor, machine)
 	ids, err := bambuFilamentIDs(s.cfg.Resources)
 	if err != nil {
-		return nil, errors.New("the Bambu filament id table is unreadable: " + err.Error())
+		return nil, errors.New("Couldn't read the Bambu filament lookup table: " + err.Error())
 	}
 	for i := range mine {
 		if id := ids[mine[i].id]; id != "" {
@@ -435,7 +435,7 @@ func (s *Server) printerSlotRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/printer-slots", func(w http.ResponseWriter, r *http.Request) {
 		profiles, err := s.libraryV4Profiles()
 		if err != nil {
-			fail(w, 503, "the library is unavailable: "+err.Error())
+			fail(w, 503, "Your profile library isn't available right now: " + err.Error())
 			return
 		}
 		out := map[string]*printerSlots{}
@@ -454,7 +454,7 @@ func (s *Server) printerSlotRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/printer-slots/{printer}", func(w http.ResponseWriter, r *http.Request) {
 		profiles, err := s.libraryV4Profiles()
 		if err != nil {
-			fail(w, 503, "the library is unavailable: "+err.Error())
+			fail(w, 503, "Your profile library isn't available right now: " + err.Error())
 			return
 		}
 		slots, err := s.printerSlotsFor(r.PathValue("printer"), profiles)
@@ -468,11 +468,11 @@ func (s *Server) printerSlotRoutes(mux *http.ServeMux) {
 		key, slot := r.PathValue("printer"), r.PathValue("slot")
 		profiles, err := s.libraryV4Profiles()
 		if err != nil {
-			fail(w, 503, "the library is unavailable: "+err.Error())
+			fail(w, 503, "Your profile library isn't available right now: " + err.Error())
 			return
 		}
 		if f := profiles[filament]; filament != "" && (f == nil || f.Type != "filament" || !f.live()) {
-			fail(w, 400, "choose one of My filaments")
+			fail(w, 400, "Please pick a filament from My filaments.")
 			return
 		}
 		current, err := s.printerSlotsFor(key, profiles)
@@ -487,7 +487,7 @@ func (s *Server) printerSlotRoutes(mux *http.ServeMux) {
 			}
 		}
 		if tray == nil {
-			fail(w, 404, "this slot holds no filament now")
+			fail(w, 404, "This slot doesn't have any filament loaded right now.")
 			return
 		}
 		s.filamentSlots.mu.Lock()

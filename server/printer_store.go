@@ -208,7 +208,7 @@ func (b *connectionEdit) secret() string {
 
 func (s *Server) connectionBody(w http.ResponseWriter, r *http.Request) (*connectionEdit, bool) {
 	if s.sends.store == nil {
-		fail(w, 403, "printer connections are off on this service")
+		fail(w, 403, "Printer network connections are disabled on this server.")
 		return nil, false
 	}
 	var body connectionEdit
@@ -224,11 +224,11 @@ func (s *Server) connectionBody(w http.ResponseWriter, r *http.Request) (*connec
 	body.Name, body.Host, body.Serial, body.AccessCode = strings.TrimSpace(body.Name), strings.TrimSpace(body.Host), strings.ToUpper(strings.TrimSpace(body.Serial)), strings.TrimSpace(body.AccessCode)
 	body.URL, body.Username = strings.TrimSpace(body.URL), strings.TrimSpace(body.Username)
 	if body.AccessCode != "" && (len(body.AccessCode) > 64 || strings.IndexFunc(body.AccessCode, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0) {
-		fail(w, 400, "the access code is the 8 characters under Settings > Network on the printer")
+		fail(w, 400, "Enter the 8-character access code shown under Settings › Network on your printer.")
 		return nil, false
 	}
 	if len(body.Key) > 256 || strings.IndexFunc(body.Key, unicode.IsControl) >= 0 || len(body.Username) > 64 || strings.IndexFunc(body.Username, unicode.IsControl) >= 0 {
-		fail(w, 400, "the API key, user or password is too long or holds control characters")
+		fail(w, 400, "The API key, username, or password is too long or contains invalid characters.")
 		return nil, false
 	}
 	if len(body.Model) > 60 || strings.IndexFunc(body.Model, unicode.IsControl) >= 0 {
@@ -306,7 +306,7 @@ func (m *SendManager) connectionFor(key string) *PrinterConfig {
 func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("printer")
 	if key == "" || len(key) > 300 || strings.HasPrefix(key, "unassigned:") || strings.IndexFunc(key, unicode.IsControl) >= 0 {
-		fail(w, 400, "the path names the printer setup key")
+		fail(w, 400, "The request URL needs to include the printer name.")
 		return
 	}
 	body, ok := s.connectionBody(w, r)
@@ -344,24 +344,24 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.printerLocked(key) != prev {
-		fail(w, 409, "this printer's connection changed meanwhile; try again")
+		fail(w, 409, "This printer's connection settings were just updated elsewhere—please try again.")
 		return
 	}
 	if prev != nil && m.busy[key] {
-		fail(w, 409, "this printer is receiving an upload; change its connection when it finishes")
+		fail(w, 409, "This printer is currently receiving a file upload—wait for it to finish before changing connection settings.")
 		return
 	}
 	switch secret := body.secret(); {
 	case secret != "":
 		if err := writeFileAtomic(p.CredentialFile, []byte(secret+"\n")); err != nil {
-			fail(w, 500, "cannot store the printer's credential")
+			fail(w, 500, "Oops! Couldn't save the printer's access code or password on the server.")
 			return
 		}
 	case body.ClearKey && !secretRequired(body.Kind) || prev != nil && prev.Kind != body.Kind || body.Kind == "bambu-connect":
 		os.Remove(p.CredentialFile)
 	}
 	if err := m.replace(prev, p); err != nil {
-		fail(w, 500, "cannot save the printer connection")
+		fail(w, 500, "Oops! Couldn't save the printer connection.")
 		return
 	}
 	audit(map[string]any{"event": map[bool]string{true: "connection_edited", false: "connection_added"}[prev != nil], "printer": key, "kind": p.Kind, "client": s.clientIP(r)})
@@ -373,27 +373,27 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	m := s.sends
 	if m.store == nil {
-		fail(w, 403, "printer connections are off on this service")
+		fail(w, 403, "Printer network connections are disabled on this server.")
 		return
 	}
 	key := r.PathValue("printer")
 	p := m.connectionFor(key)
 	if p == nil {
-		fail(w, 404, "this printer has no connection")
+		fail(w, 404, "This printer doesn't have a network connection set up yet.")
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.holds(p) {
-		fail(w, 404, "this printer has no connection")
+		fail(w, 404, "This printer doesn't have a network connection set up yet.")
 		return
 	}
 	if m.busy[p.Printer] && p.Printer != "" {
-		fail(w, 409, "this printer is receiving an upload; remove its connection when it finishes")
+		fail(w, 409, "This printer is currently receiving a file upload—wait for it to finish before removing the connection.")
 		return
 	}
 	if err := m.replace(p, nil); err != nil {
-		fail(w, 500, "cannot save the printer connections")
+		fail(w, 500, "Oops! Couldn't save your printer connections.")
 		return
 	}
 	os.Remove(p.CredentialFile)
@@ -406,7 +406,7 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 func (s *Server) adoptConnection(w http.ResponseWriter, r *http.Request) {
 	m := s.sends
 	if m.store == nil {
-		fail(w, 403, "printer connections are off on this service")
+		fail(w, 403, "Printer network connections are disabled on this server.")
 		return
 	}
 	key := r.PathValue("printer")
@@ -420,7 +420,7 @@ func (s *Server) adoptConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	src := m.connectionFor("unassigned:" + body.ID)
 	if src == nil {
-		fail(w, 404, "no unassigned connection with that id")
+		fail(w, 404, "Couldn't find a saved connection with that ID.")
 		return
 	}
 	if why := s.connectionConflict(key, src.Serial, src); why != "" {
@@ -430,17 +430,17 @@ func (s *Server) adoptConnection(w http.ResponseWriter, r *http.Request) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.holds(src) {
-		fail(w, 404, "no unassigned connection with that id")
+		fail(w, 404, "Couldn't find a saved connection with that ID.")
 		return
 	}
 	if m.printerLocked(key) != nil {
-		fail(w, 409, "this printer already has a connection; remove it first")
+		fail(w, 409, "This printer already has a connection set up—remove the existing one first.")
 		return
 	}
 	next := *src
 	next.Printer, next.Name = key, cmp.Or(strings.TrimSpace(body.Name), src.Name)
 	if err := m.replace(src, &next); err != nil {
-		fail(w, 500, "cannot save the printer connections")
+		fail(w, 500, "Oops! Couldn't save your printer connections.")
 		return
 	}
 	m.hub.changed()
@@ -452,7 +452,7 @@ var legacyHostTypes = map[string]string{"prusalink": "prusalink", "octoprint": "
 func (s *Server) importLegacyConnection(w http.ResponseWriter, r *http.Request) {
 	m := s.sends
 	if m.store == nil {
-		fail(w, 403, "printer connections are off on this service")
+		fail(w, 403, "Printer network connections are disabled on this server.")
 		return
 	}
 	key := r.PathValue("printer")
@@ -468,11 +468,11 @@ func (s *Server) importLegacyConnection(w http.ResponseWriter, r *http.Request) 
 	hostType := cmp.Or(c["host_type"], "octoprint")
 	kind := legacyHostTypes[hostType]
 	if kind == "" {
-		writeJSON(w, 422, map[string]any{"error": "the service does not speak " + hostType + "; its settings stay in the printer profile", "code": "unsupported_host_type", "host_type": hostType})
+		writeJSON(w, 422, map[string]any{"error": "The server doesn't support " + hostType + " directly; those settings stay saved inside the printer profile.", "code": "unsupported_host_type", "host_type": hostType})
 		return
 	}
 	if strings.TrimSpace(c["print_host"]) == "" {
-		writeJSON(w, 422, map[string]any{"error": "the profile names no print host", "code": "no_print_host"})
+		writeJSON(w, 422, map[string]any{"error": "This printer profile doesn't have a host address configured.", "code": "no_print_host"})
 		return
 	}
 	edit := &connectionEdit{Kind: kind, Name: strings.TrimSpace(body.Name), URL: strings.TrimSpace(c["print_host"]), Key: c["printhost_apikey"]}
@@ -481,13 +481,13 @@ func (s *Server) importLegacyConnection(w http.ResponseWriter, r *http.Request) 
 	}
 	if c["printhost_authorization_type"] == "user" {
 		if kind != "prusalink" {
-			writeJSON(w, 422, map[string]any{"error": hostType + " with a user and password is not supported; use its API key", "code": "unsupported_login"})
+			writeJSON(w, 422, map[string]any{"error": hostType + " login with a username and password isn't supported—please use an API key instead.", "code": "unsupported_login"})
 			return
 		}
 		edit.Auth, edit.Username, edit.Key = "digest", c["printhost_user"], c["printhost_password"]
 	}
 	if p := m.printer(key); p != nil {
-		writeJSON(w, 409, map[string]any{"error": "this printer already has a connection", "code": "connection_exists", "connection": p.view()})
+		writeJSON(w, 409, map[string]any{"error": "This printer already has a network connection configured.", "code": "connection_exists", "connection": p.view()})
 		return
 	}
 	sp := storedPrinter{ID: newSendID(), Printer: key}
@@ -499,23 +499,23 @@ func (s *Server) importLegacyConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if secretRequired(kind) && edit.Key == "" {
-		writeJSON(w, 422, map[string]any{"error": "the profile holds no API key or password for " + hostType, "code": "no_credential"})
+		writeJSON(w, 422, map[string]any{"error": "This profile doesn't have a saved API key or password for " + hostType + ".", "code": "no_credential"})
 		return
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if q := m.printerLocked(key); q != nil {
-		writeJSON(w, 409, map[string]any{"error": "this printer already has a connection", "code": "connection_exists", "connection": q.view()})
+		writeJSON(w, 409, map[string]any{"error": "This printer already has a network connection configured.", "code": "connection_exists", "connection": q.view()})
 		return
 	}
 	if edit.Key != "" {
 		if err := writeFileAtomic(p.CredentialFile, []byte(edit.Key+"\n")); err != nil {
-			fail(w, 500, "cannot store the printer's credential")
+			fail(w, 500, "Oops! Couldn't save the printer's access code or password on the server.")
 			return
 		}
 	}
 	if err := m.replace(nil, p); err != nil {
-		fail(w, 500, "cannot save the printer connection")
+		fail(w, 500, "Oops! Couldn't save the printer connection.")
 		return
 	}
 	audit(map[string]any{"event": "connection_migrated", "printer": key, "kind": kind, "client": s.clientIP(r)})
@@ -531,7 +531,7 @@ func (s *Server) testConnection(w http.ResponseWriter, r *http.Request) {
 	client := s.clientIP(r)
 	if ok, retry := s.sends.allowBurst("test "+client, 10); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
-		fail(w, 429, "too many tests; wait before testing again")
+		fail(w, 429, "Too many connection tests in a row—wait a few seconds and try again.")
 		return
 	}
 	if body.Kind == "bambu-connect" {
@@ -588,7 +588,7 @@ func (m *SendManager) setModel(p *PrinterConfig, model string) {
 func (s *Server) amsConnection(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
 	if p == nil || p.Kind != "bambu-lan" {
-		fail(w, 404, "this printer has no Bambu LAN connection")
+		fail(w, 404, "This printer doesn't have a Bambu LAN connection set up.")
 		return
 	}
 	secret, err := p.secret()
@@ -599,7 +599,7 @@ func (s *Server) amsConnection(w http.ResponseWriter, r *http.Request) {
 	client := s.clientIP(r)
 	if ok, retry := s.sends.allowBurst("ams "+client, 10); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
-		fail(w, 429, "too many AMS reads; wait before trying again")
+		fail(w, 429, "Checking AMS too frequently—wait a few seconds and try again.")
 		return
 	}
 	if st, ok := s.sends.hub.current(p.Printer); ok && st.Online && st.Trays != nil {
@@ -619,7 +619,7 @@ func (s *Server) amsConnection(w http.ResponseWriter, r *http.Request) {
 func (s *Server) controlConnection(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
 	if p == nil || p.Kind == "bambu-connect" {
-		fail(w, 404, "this printer has no connection the service can control")
+		fail(w, 404, "This printer doesn't have a network connection that supports remote commands.")
 		return
 	}
 	var body struct {
@@ -636,7 +636,7 @@ func (s *Server) controlConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok, retry := s.sends.allowBurst("control "+s.clientIP(r), 10); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
-		fail(w, 429, "too many printer commands; wait before trying again")
+		fail(w, 429, "Whoa, slow down! Too many printer commands sent at once—wait a moment and try again.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)

@@ -46,11 +46,11 @@ func (s substrings) MatchString(key string) bool {
 
 func overrides(raw string) ([][2]string, error) {
 	if len(raw) > 256<<10 {
-		return nil, errors.New("overrides exceed 256 KiB")
+		return nil, errors.New("Settings overrides exceed the 256 KiB limit.")
 	}
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &values); err != nil || values == nil {
-		return nil, errors.New("overrides must be a JSON object")
+		return nil, errors.New("Settings overrides must be a JSON object.")
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
@@ -64,11 +64,11 @@ func overrides(raw string) ([][2]string, error) {
 			continue
 		}
 		if !settingKey.MatchString(key) || hiddenSetting.MatchString(key) || configKinds[key] == "" {
-			return nil, fmt.Errorf("invalid override key %q", key)
+			return nil, fmt.Errorf("Unrecognized setting override key: %q", key)
 		}
 		value, err := configValue(key, values[saved])
 		if err == nil && len(value) > 64<<10 {
-			err = errors.New("serialized value exceeds 64 KiB")
+			err = errors.New("Setting value exceeds the 64 KiB limit.")
 		}
 		if err != nil {
 			return nil, fmt.Errorf("override %s: %w", key, err)
@@ -86,15 +86,15 @@ func scalarConfigValue(value any) (string, error) {
 	switch v := value.(type) {
 	case string:
 		if len(v) > 32<<10 {
-			return "", errors.New("scalar exceeds 32 KiB")
+			return "", errors.New("Text value exceeds the 32 KiB limit.")
 		}
 		if strings.IndexFunc(v, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' }) >= 0 {
-			return "", errors.New("scalar contains control characters")
+			return "", errors.New("Value contains invalid control characters.")
 		}
 		return v, nil
 	case json.Number:
 		if len(v) > 32<<10 {
-			return "", errors.New("scalar exceeds 32 KiB")
+			return "", errors.New("Text value exceeds the 32 KiB limit.")
 		}
 		return string(v), nil
 	case bool:
@@ -103,7 +103,7 @@ func scalarConfigValue(value any) (string, error) {
 		}
 		return "0", nil
 	default:
-		return "", errors.New("expected string, number, boolean or flat array")
+		return "", errors.New("Expected a string, number, boolean, or flat list.")
 	}
 }
 
@@ -117,7 +117,7 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 	kind := configKinds[key]
 	if array, ok := value.([]any); ok {
 		if kind == "string" {
-			return "", errors.New("this string option expects a scalar value")
+			return "", errors.New("This text setting expects a single value.")
 		}
 		parts := make([]string, len(array))
 		for i, element := range array {
@@ -126,7 +126,7 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 				return "", err
 			}
 			if kind != "strings" && strings.IndexFunc(part, unicode.IsControl) >= 0 {
-				return "", errors.New("scalar contains control characters")
+				return "", errors.New("Value contains invalid control characters.")
 			}
 			if kind == "strings" && ((len(array) == 1 && part == "") || strings.ContainsAny(part, " \t;\\\"\r\n")) {
 				part = "\"" + escapeConfigString(part) + "\""
@@ -152,7 +152,7 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 		return "", err
 	}
 	if kind != "string" && kind != "strings" && strings.IndexFunc(scalar, unicode.IsControl) >= 0 {
-		return "", errors.New("scalar contains control characters")
+		return "", errors.New("Value contains invalid control characters.")
 	}
 	return scalar, nil
 }

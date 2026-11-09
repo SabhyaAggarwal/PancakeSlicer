@@ -54,12 +54,12 @@ export function preprintMaterialChecks(machine: Config, status: PrinterStatus | 
       slot: tray && !isExternalTray(tray.id) ? 'ams' : 'ext', extruder, flow, diameter, hasFilamentSwitch: f.hasFilamentSwitch, object: f.object, support: f.support });
     if (extruder !== undefined) {
       const label = extruderLabel(extruder, count, true), level = ((f.compatibility ?? 0) >>> (extruder * 3)) & 7;
-      if (!((f.printable ?? 3) & (1 << extruder)) || level === 1) rows.push({ message: `${f.name ?? f.type} is not supported by ${label.toLowerCase()}.`, blocked: true });
-      else if (level === 2 || level === 3) rows.push({ message: `${f.name ?? f.type} may have ${level === 2 ? 'critical ' : ''}print quality issues on ${label.toLowerCase()}.`, blocked: false });
+      if (!((f.printable ?? 3) & (1 << extruder)) || level === 1) rows.push({ message: `${f.name ?? f.type} isn't supported by ${label.toLowerCase()}.`, blocked: true });
+      else if (level === 2 || level === 3) rows.push({ message: `${f.name ?? f.type} might have ${level === 2 ? 'critical ' : ''}print quality issues with ${label.toLowerCase()}.`, blocked: false });
       const actual = status?.online ? status.nozzles?.filter((n) => !n.abnormal && n.extruder === extruder && (count === 1 || !n.legacy) &&
         Math.abs(n.diameter - (diameter ?? 0)) < 0.001 && (!n.flow || flow === 'Hybrid' || n.flow === flow)) ?? [] : [];
       if (f.requiredHRC && actual.length && actual.every((n) => n.type && nozzleHardness(n.type) !== undefined && nozzleHardness(n.type) < f.requiredHRC!))
-        rows.push({ message: `${f.name ?? f.type} requires nozzle hardness ${f.requiredHRC} HRC; the reported ${label.toLowerCase()} is softer.`, blocked: false });
+        rows.push({ message: `${f.name ?? f.type} needs a nozzle hardness of at least ${f.requiredHRC} HRC, and your ${label.toLowerCase()} is softer.`, blocked: false });
     }
     return rows.map((row) => ({ ...row, message: `Filament ${i + 1}: ${row.message}` }));
   });

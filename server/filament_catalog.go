@@ -67,7 +67,7 @@ var filamentCatalogs sync.Map
 func (s *Server) filamentCatalog(w http.ResponseWriter, r *http.Request) {
 	vendor, err := s.presets.vendor(r.URL.Query().Get("vendor"))
 	if err != nil {
-		fail(w, 404, "unknown vendor")
+		fail(w, 404, "Unrecognized printer brand.")
 		return
 	}
 	body, err := filamentCatalogResponse(vendor)

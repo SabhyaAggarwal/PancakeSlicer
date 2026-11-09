@@ -12,11 +12,11 @@ const files = import.meta.glob('./fixtures/*', { eager: true, query: '?url&no-in
 const nativeFetch = globalThis.fetch.bind(globalThis), mainThread = typeof window !== 'undefined';
 let installed = false, seedRead: Promise<Seed> | undefined, stateRead: Promise<DemoState> | undefined;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
-const missing = () => json({ error: 'This item is not available in the demo.' }, 404);
-const assetUrl = (name: string) => { const url = files[`./fixtures/${name}`]; if (!url) throw new Error(`Missing demo fixture: ${name}`); return url; };
+const missing = () => json({ error: 'This item isn\'t available in the live demo.' }, 404);
+const assetUrl = (name: string) => { const url = files[`./fixtures/${name}`]; if (!url) throw new Error(`Oops! Demo sample not found: ${name}`); return url; };
 async function compressed(name: string) {
   const response = await nativeFetch(assetUrl(name));
-  if (!response.ok || !response.body) throw new Error(`Demo fixture could not load: ${name}`);
+  if (!response.ok || !response.body) throw new Error(`Oops! Couldn't load demo sample: ${name}`);
   return new Response(response.body.pipeThrough(new DecompressionStream('gzip')));
 }
 const seed = () => seedRead ??= compressed('seed.json.gz').then(r => r.json() as Promise<Seed>);
@@ -31,7 +31,7 @@ async function state(): Promise<DemoState> {
 function save(s: DemoState) {
   if (!mainThread) return;
   try { sessionStorage.setItem(STORAGE, JSON.stringify(s)); }
-  catch { hooks.notice?.('Demo session storage is full. Keep this tab open to retain your edits.'); }
+  catch { hooks.notice?.('Heads up: browser storage for this demo is full. Keep this tab open so you don\'t lose your edits.'); }
 }
 export async function resetDemo() {
   const next = initial(await seed());
@@ -121,7 +121,7 @@ async function handle(request: Request): Promise<Response> {
   if (path === 'user-heads' || path === 'printer-sends') return json([]);
   if (path === 'emboss-fonts') return json({ fonts: [] });
   if (path === 'printer-connections') return json({ enabled: true, connections: [] });
-  if (path.startsWith('printer-connections/')) return json({ error: 'Not available in the demo' }, 400);
+  if (path.startsWith('printer-connections/')) return json({ error: 'Not available in demo mode' }, 400);
   if (path.startsWith('project-leases/')) return json({ granted: true, heartbeatMs: 60000 });
   if (path.startsWith('handy-models/')) {
     const model = path.slice('handy-models/'.length).toLowerCase();
@@ -205,7 +205,7 @@ async function handle(request: Request): Promise<Response> {
   }
   if (path === 'jobs' || path === 'patch-preview') {
     const form = await request.formData();
-    if (form.get('output') === '3mf') return json({ error: 'This model operation is not available in the demo. Import STL or OBJ files instead.' }, 400);
+    if (form.get('output') === '3mf') return json({ error: 'That model tool requires the full slicing service and isn\'t available in the browser demo. You can still import STL or OBJ files!' }, 400);
     const input = JSON.parse(String(form.get('library') ?? '{}'));
     const settings = { ...s.library.profiles.find((p: Row) => p.id === input.print)?.intent, ...input.project };
     const curved = !form.has('force_planar') && settings.nonplanar_mode === 'nonplanar_top', height = Number(input.layerHeight || settings.layer_height || 0.2);
@@ -221,7 +221,7 @@ async function handle(request: Request): Promise<Response> {
     if (action === 'download') return compressed(`${j.fixture}.gcode.gz`);
     if (action === 'gcode-lines') { const lines = await gcodeLines(j.fixture), at = Number(url.searchParams.get('block') ?? 0) * 1024; return json({ total: lines.length, lines: lines.slice(at, at + 1024) }); }
     if (action === 'surface-grid') return compressed(`${j.fixture}.surface.json.gz`);
-    if (action === 'send') return json({ error: 'Not available in the demo' }, 400);
+    if (action === 'send') return json({ error: 'Not available in demo mode' }, 400);
     if (action === 'transitions') return json([]);
     return json(await snapshot(j));
   }

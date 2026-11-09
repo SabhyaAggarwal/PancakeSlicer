@@ -15,13 +15,13 @@ func validBambuTray(id int) bool {
 
 func bambuMapping(mapping []int, addresses []bambuTrayAddress, count int) ([]int, []bambuTrayAddress, error) {
 	if len(mapping) != count || addresses != nil && len(addresses) != count {
-		return nil, nil, fmt.Errorf("AMS mapping needs one tray per job filament")
+		return nil, nil, fmt.Errorf("Please pick an AMS slot for each filament used in this print.")
 	}
 	v0 := make([]int, count)
 	v1 := make([]bambuTrayAddress, count)
 	for i, id := range mapping {
 		if !validBambuTray(id) {
-			return nil, nil, fmt.Errorf("AMS mapping has an invalid tray id %d", id)
+			return nil, nil, fmt.Errorf("Invalid AMS tray ID (%d) in filament mapping.", id)
 		}
 		v0[i] = id
 		switch {
@@ -42,7 +42,7 @@ func bambuMapping(mapping []int, addresses []bambuTrayAddress, count int) ([]int
 				matches = true
 			}
 			if a.AMS < 0 || a.AMS > 255 || a.Slot < 0 || a.Slot > 3 || !matches {
-				return nil, nil, fmt.Errorf("AMS mapping has an invalid unit or slot at filament %d", i+1)
+				return nil, nil, fmt.Errorf("Invalid AMS unit or slot selected for filament %d.", i+1)
 			}
 			v1[i] = a
 		}

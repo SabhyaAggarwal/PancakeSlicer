@@ -36,9 +36,9 @@ export default function BrimEarsPanel() {
       </More>
       {!painted && ears.length > 0 && (
         <div className="brim-warning">
-          Warning: The brim type is not set to "painted", the brim ears will not take effect!
+          Heads up: Brim type isn't set to "Painted" yet, so your painted brim ears won't show up until you switch it!
           <button type="button" className="btn small" onClick={() => updateObject(o.id, { settings: { ...getState().objects.find((x) => x.id === o.id)!.settings, brim_type: 'painted' } }, 'Set brim type to painted')}>
-            Set the brim type of this object to "painted"
+            Switch this object's brim type to "Painted"
           </button>
         </div>
       )}

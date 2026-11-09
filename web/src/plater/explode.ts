@@ -25,7 +25,7 @@ export async function volumeMesh(blob: Blob): Promise<THREE.BufferGeometry> {
   const zip = await new Promise<Record<string, Uint8Array>>(async (resolve, reject) =>
     unzip(new Uint8Array(await blob.arrayBuffer()), (err, data) => (err ? reject(err) : resolve(data))));
   const model = Object.entries(zip).find(([k]) => /\.model$/i.test(k))?.[1];
-  if (!model) throw new Error('no 3D model in an exploded volume');
+  if (!model) throw new Error('No 3D geometry found inside that part.');
   const text = strFromU8(model), pos: number[] = [], idx: number[] = [];
   for (const m of text.matchAll(/<vertex\s+x="([^"]+)"\s+y="([^"]+)"\s+z="([^"]+)"/g)) pos.push(+m[1], +m[2], +m[3]);
   for (const m of text.matchAll(/<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"/g)) idx.push(+m[1], +m[2], +m[3]);

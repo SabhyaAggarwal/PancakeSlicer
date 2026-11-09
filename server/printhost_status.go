@@ -88,11 +88,11 @@ func (h *hostSession) call(ctx context.Context, method, target string, body []by
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			return resp.StatusCode, credentialsRejected(h.printer)
 		case resp.StatusCode < 200 || resp.StatusCode > 299:
-			return resp.StatusCode, fmt.Errorf("the printer answered HTTP %d%s", resp.StatusCode, jsonMessage(raw))
+			return resp.StatusCode, fmt.Errorf("The printer returned HTTP %d%s", resp.StatusCode, jsonMessage(raw))
 		}
 		if out != nil && len(raw) > 0 {
 			if err := json.Unmarshal(raw, out); err != nil {
-				return resp.StatusCode, fmt.Errorf("the printer's answer is not the expected JSON")
+				return resp.StatusCode, fmt.Errorf("The printer returned an unexpected response format.")
 			}
 		}
 		return resp.StatusCode, nil
@@ -367,7 +367,7 @@ func controlHTTP(ctx context.Context, p *PrinterConfig, secret, action string) e
 			return err
 		}
 		if status.Job == nil {
-			return errors.New("the printer has no job running")
+			return errors.New("The printer isn't running a print job right now.")
 		}
 		job := base.JoinPath("/api/v1/job", fmt.Sprint(status.Job.ID))
 		if action == "stop" {

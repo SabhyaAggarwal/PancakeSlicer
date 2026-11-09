@@ -40,11 +40,11 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   if (!runtime.isCurrent(mine)) return;
   const meta: ProjectMeta = canonical ?? { id: draft.projectId, name: draft.name, revision: draft.baseRevision,
     savedAt: 0, objects: draft.objects, thumbnail: null };
-  const failure = runtime.removed.has(draft.projectId) ? projectFailure({ name: 'ProjectDeletedError', message: 'This project was deleted. Recover the draft as a copy.' }, draft.projectId, draft.baseRevision)
+  const failure = runtime.removed.has(draft.projectId) ? projectFailure({ name: 'ProjectDeletedError', message: 'Heads up: this project was deleted elsewhere. You can save your current draft as a new copy!' }, draft.projectId, draft.baseRevision)
     : canonical && (canonical.revision ?? 0) !== draft.baseRevision ? conflictFailure(draft.projectId, draft.baseRevision)
     : draft.failure?.kind === 'conflict' ? draft.failure
     : { kind: 'interrupted', name: 'ProjectInterruptedError', projectId: draft.projectId, expectedRevision: draft.baseRevision,
-      message: 'Unsaved project recovered. Retry to save it, or reload the saved version.' } satisfies ProjectFailure;
+      message: 'We recovered your unsaved changes! Click Retry to save them, or reload the last saved version.' } satisfies ProjectFailure;
   runtime.previous(project.get().context.id);
   runtime.adopt(() => {
     leaveDocument(); clearPlateJobs();
@@ -96,7 +96,7 @@ export async function keepProjectVersion(runtime: RecoveryRuntime) {
     await runtime.waitForWrites();
     const rec = await runtime.storage()?.load(id);
     if (id !== project.get().context.id || gen !== documentGeneration()) return;
-    if (!rec || runtime.removed.has(id)) throw failureError(projectFailure({ name: 'ProjectDeletedError', message: 'The saved project is missing. Recover the draft as a copy.' }, id, project.get().context.revision));
+    if (!rec || runtime.removed.has(id)) throw failureError(projectFailure({ name: 'ProjectDeletedError', message: 'Oops! We couldn\'t find the saved project on the server, but you can save your local draft as a new copy.' }, id, project.get().context.revision));
     project.send({ type: 'REBASE', revision: rec.meta.revision ?? 0 });
     runtime.resetCaptured();
     await flushProject();
@@ -122,7 +122,7 @@ export async function reloadProject(runtime: RecoveryRuntime) {
 export async function recoverProjectDraft(runtime: RecoveryRuntime, draftId: string, options: { asCopy?: boolean } = {}) {
   await runtime.preserveSnapshot();
   const draft = await (await runtime.drafts()).load(draftId);
-  if (!draft) throw new Error('Project draft not found');
+  if (!draft) throw new Error('Couldn\'t find that project draft.');
   const mine = runtime.beginOpen(); runtime.invalidateWrites(); await runtime.waitForWrites();
   if (!runtime.isCurrent(mine)) return;
   const recovered = options.asCopy ? { ...draft, projectId: newKey(), baseRevision: 0, failure: null, kind: 'snapshot' as const } : draft;
@@ -134,7 +134,7 @@ export async function recoverProjectDraft(runtime: RecoveryRuntime, draftId: str
 export async function discardProjectDraft(runtime: RecoveryRuntime, draftId: string) {
   const c = project.get().context;
   if (runtime.hasUnsaved() && (c.draft.state !== 'none' && c.draft.checkpoint.id === draftId || runtime.restored()?.id === draftId))
-    throw new Error('Save or reload the current project before discarding its active recovery draft.');
+    throw new Error('Please save or reload your project before discarding the recovery draft.');
   const storage = await runtime.drafts(), draft = await storage.load(draftId);
   if (draft) await storage.remove(draft.id, draft.sequence);
   await runtime.refreshDrafts();
@@ -155,7 +155,7 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
   try {
     let loadError: unknown;
     let rec: Awaited<ReturnType<ProjectStore['load']>> = null;
-    try { const store = runtime.storage(); if (!store) throw new Error('Project storage is unavailable'); rec = await store.load(id); } catch (error) { loadError = error; }
+    try { const store = runtime.storage(); if (!store) throw new Error('Oops! Project storage isn\'t available right now.'); rec = await store.load(id); } catch (error) { loadError = error; }
     const drafts = await runtime.drafts().then((storage) => storage.listMetadata(rec?.meta.id ?? id)).catch(() => [] as ProjectDraftMeta[]);
     if (!runtime.isCurrent(mine)) return;
     const draft = !options.reload ? drafts.filter((d) => d.kind === 'dirty' && (runtime.session.previousOwners.includes(d.owner) || d.owner === runtime.session.owner))
@@ -214,7 +214,7 @@ export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, r
 export async function renameProject(runtime: RecoveryRuntime, id: string, name: string) {
   if (!name.trim()) return;
   const storage = runtime.storage();
-  if (!storage) throw new Error('Project storage is unavailable');
+  if (!storage) throw new Error('Oops! Project storage isn\'t available right now.');
   const current = id === project.get().context.id, gen = documentGeneration();
   let resumed = false;
   for (const pending of storage.commands()) if (pending.id === id && pending.kind === 'rename' && pending.name !== undefined) {
@@ -251,12 +251,12 @@ function attemptAction<T>(map: Map<string, PendingAction<T>>, id: string, create
 }
 export function discardRejectedProjectCommand(runtime: RecoveryRuntime, operationId: string): void {
   const storage = runtime.storage();
-  if (!storage) throw new Error('Project storage is unavailable');
+  if (!storage) throw new Error('Oops! Project storage isn\'t available right now.');
   const command = storage.commands().find((entry) => entry.operationId === operationId);
-  if (!command || command.state !== 'conflict') throw new Error('Only a rejected conflict can be dismissed. Retry ambiguous commands unchanged.');
+  if (!command || command.state !== 'conflict') throw new Error('Wait until the save conflict finishes resolving before dismissing this notice.');
   const map = command.kind === 'duplicate' ? duplicateIntents.get(runtime) : command.kind === 'archive' ? deleteIntents.get(runtime) : undefined;
   const action = map?.get(command.id), matching = action?.matches(command);
-  if (matching && action?.task) throw new Error('Wait for the rejected command to settle before dismissing it.');
+  if (matching && action?.task) throw new Error('Hang tight—waiting for the last action to finish before dismissing.');
   storage.discardRejectedCommand(operationId);
   if (matching && map && map.get(command.id) === action) map.delete(command.id);
   const owner = removalOwners.get(runtime)?.get(command.id);
@@ -281,7 +281,7 @@ export async function duplicateProject(runtime: RecoveryRuntime, id: string): Pr
 }
 export async function deleteProject(runtime: RecoveryRuntime, id: string): Promise<() => Promise<void>> {
   const storage = runtime.storage();
-  if (!storage) throw new Error('Project storage is unavailable');
+  if (!storage) throw new Error('Oops! Project storage isn\'t available right now.');
   return attemptAction(actionMap(deleteIntents, runtime), id, () => {
     const gen = documentGeneration(), current = id === project.get().context.id, owner = { revision: null as number | null, dismissedRestore: false };
     let owners = removalOwners.get(runtime);
@@ -289,11 +289,11 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
     const retainedOwners = owners;
     let ack: Awaited<ReturnType<ProjectStore['remove']>> | null = null, restored = false, restoring: Promise<void> | null = null;
     const undo = () => {
-      if (owner.dismissedRestore) return Promise.reject(new Error('This rejected Undo was dismissed. Review the current project before a new restore intent.'));
+      if (owner.dismissedRestore) return Promise.reject(new Error('That undo couldn\'t be applied and was dismissed. Check your project before restoring an older version.'));
       if (restored) return Promise.resolve();
       if (!restoring) {
         const task = Promise.resolve().then(async () => {
-          if (retainedOwners.get(id) !== owner) throw new Error('A newer delete owns this project. Use its Undo action.');
+          if (retainedOwners.get(id) !== owner) throw new Error('This project was deleted more recently—use the latest Undo button to bring it back.');
           await storage.restore(id, ack!.revision);
           restored = true;
           if (retainedOwners.get(id) === owner) { retainedOwners.delete(id); runtime.removed.delete(id); }
@@ -319,7 +319,7 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
 
 export async function restoreArchivedProject(runtime: RecoveryRuntime, id: string, expectedRevision?: number) {
   const storage = runtime.storage();
-  if (!storage) throw new Error('Project storage is unavailable');
+  if (!storage) throw new Error('Oops! Project storage isn\'t available right now.');
   const owner = removalOwners.get(runtime)?.get(id), removed = runtime.removed.has(id);
   await storage.restore(id, expectedRevision);
   if (removed && removalOwners.get(runtime)?.get(id) === owner) { removalOwners.get(runtime)?.delete(id); runtime.removed.delete(id); }
@@ -332,7 +332,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
 }) {
   const { id, document, gen, version, revision, storage, receipt } = capture;
     if (revision > 0) await receipt.durable.catch(() => null);
-    if (!storage) throw new Error('Project storage is unavailable');
+    if (!storage) throw new Error('Oops! Project storage isn\'t available right now.');
     if (runtime.removed.has(id)) return;
     if (runtime.activeWrite(id, gen, version) && project.get().value === 'conflict') throw failureError(project.get().context.failure ?? conflictFailure(id, revision));
     const { encode, nameOf, plateCount, thumbnail } = await codec();

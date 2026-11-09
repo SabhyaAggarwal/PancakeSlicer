@@ -16,7 +16,7 @@ const change={target:'saving' as const,action:(_:SetupContext,e:{intent:SetupInt
 const setups=createMachine<SetupState,SetupEvent,SetupContext>({
   id:'printer-setups',initial:'unhydrated',strict:true,context:{request:0,desired:null,writing:null,error:null},
   states:{
-    unhydrated:{on:{HYDRATED:hydratedEdge,CHANGE:{target:'blocked',action:()=>({error:'Restore or adopt the saved printer setups before saving this working setup.'})},DONE:late,FAIL:late}},
+    unhydrated:{on:{HYDRATED:hydratedEdge,CHANGE:{target:'blocked',action:()=>({error:'Please restore or sync your saved printer setups before saving this workspace.'})},DONE:late,FAIL:late}},
     blocked:{on:{HYDRATED:hydratedEdge,CHANGE:{},DONE:late,FAIL:late}},
     idle:{on:{HYDRATED:hydratedEdge,CHANGE:change,DONE:late,FAIL:late}},
     saving:{
@@ -60,7 +60,7 @@ export function flushPrinterSetups():Promise<void>{
       const {value,context}=setups.get();
       if(done || value==='saving')return;
       done=true;stop?.();
-      if(value==='failed' || value==='blocked')reject(new Error(context.error ?? 'Printer setups need recovery.'));else resolve();
+      if(value==='failed' || value==='blocked')reject(new Error(context.error ?? 'Your printer setups need a quick sync before continuing.'));else resolve();
     };
     settle();if(!done)stop=setups.subscribe(settle);
   });

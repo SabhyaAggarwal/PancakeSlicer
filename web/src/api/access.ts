@@ -39,7 +39,7 @@ function sendWithProgress(path: string, init: RequestInit, headers: Headers, onU
       }
       resolve(new Response(xhr.response, { status: xhr.status, statusText: xhr.statusText, headers }));
     };
-    xhr.onerror = xhr.onabort = () => reject(new TypeError('Failed to fetch'));
+    xhr.onerror = xhr.onabort = () => reject(new TypeError('Oops! Couldn\'t reach the server. Check your connection and try again.'));
     xhr.send(init.body as XMLHttpRequestBodyInit);
   });
 }
@@ -61,7 +61,7 @@ let discarding = false;
 export const discardPendingWrites = (on = true) => { discarding = on; };
 export const writesDiscarded = () => discarding;
 export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void, quiet = false): Promise<Response> {
-  if (discarding) throw new Error('Starting over: this page\'s changes are discarded.');
+  if (discarding) throw new Error('Starting fresh—unsaved changes on this page were discarded.');
   const accessNotice = quiet ? () => undefined : showNotice;
   init = await gzipBody(init);
   const send = () => {
@@ -74,13 +74,13 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   if ((response.status === 429 || response.status === 503) && retry) {
     const raw = response.headers.get('Retry-After') ?? '1';
     const seconds = /^\d+$/.test(raw) ? Math.min(86400, Number(raw)) : 1;
-    const current = { status: response.status, message: `Server busy. Retry after ${seconds} seconds. Retrying once automatically.` };
+    const current = { status: response.status, message: `The slicer is busy right now—automatically retrying in ${seconds}s…` };
     accessNotice(current);
     try {
       await new Promise<void>((resolve, reject) => {
         const abort = () => {
           clearTimeout(timer);
-          reject(new Error('Slicing Canceled'));
+          reject(new Error('Slicing canceled'));
         };
         const timer = setTimeout(() => {
           signal?.removeEventListener('abort', abort);
@@ -92,21 +92,21 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     } finally {
       if (notice === current) accessNotice(null);
     }
-    if (signal?.aborted) throw new Error('Slicing Canceled');
+    if (signal?.aborted) throw new Error('Slicing canceled');
     response = await send();
   }
   if (response.status === 401) {
-    accessNotice({ status: 401, message: 'Access token required' });
-    throw new Error('Access token required');
+    accessNotice({ status: 401, message: 'Access token needed' });
+    throw new Error('Access token needed');
   }
   if (response.status === 507) {
-    accessNotice({ status: 507, message: 'Server storage full' });
-    throw new Error('Server storage full');
+    accessNotice({ status: 507, message: 'Oops! Server storage is full' });
+    throw new Error('Oops! Server storage is full');
   }
   if (response.status === 429 || response.status === 503) {
     const raw = response.headers.get('Retry-After') ?? '1';
     const seconds = /^\d+$/.test(raw) ? Math.min(86400, Number(raw)) : 1;
-    const message = `Server busy. Retry after ${seconds} seconds.`;
+    const message = `The slicer is busy right now. Please try again in ${seconds} seconds.`;
     accessNotice({ status: response.status, message });
     throw Object.assign(new Error(message), { status: response.status });
   }

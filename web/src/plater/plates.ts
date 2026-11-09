@@ -212,6 +212,6 @@ export async function exportAll() {
     a.href = href; a.download = `${name}.zip`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(href), 60000);
   } catch (e) {
-    toast(`Export failed: ${e instanceof Error ? e.message : e}`);
+    toast(`Oops! Export failed: ${e instanceof Error ? e.message : e}`);
   }
 }

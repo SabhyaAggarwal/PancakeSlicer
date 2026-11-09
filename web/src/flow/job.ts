@@ -19,13 +19,13 @@ export function waitForJob(api: Api, id: string, signal?: AbortSignal, progress?
     };
     const deadline = setTimeout(() => {
       void api.cancel(id).catch(() => {});
-      finish(new Error('Project export timed out. Retry when the slicing service is available.'));
+      finish(new Error('Oops! Exporting the project took too long and timed out. Make sure the slicing service is running and try again.'));
     }, 5 * 60_000);
     const poll = async () => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const status = await Promise.race([api.status(id), new Promise<never>((_, fail) => {
-          timeout = setTimeout(() => fail(new Error('The slicing service stopped responding. Retry project export.')), 10_000);
+          timeout = setTimeout(() => fail(new Error('Oops! The slicing service stopped responding while exporting. Please try exporting again.')), 10_000);
         })]);
         if (settled) return;
         if (jobLifecycle(status as CanonicalJobStatus) === 'done') finish();
@@ -77,7 +77,7 @@ const progress = { target: 'progress', guard: (c: JobContext, e: Extract<JobEven
 const jobEffects = new WeakMap<object, { cancel(): void; retry(): void }>();
 const cancel = { target: 'canceling', action: (_: JobContext, _e: JobEvent, m: object) => jobEffects.get(m)?.cancel() } as const;
 const disconnect = { target: 'interrupted', guard: (c: JobContext, e: Extract<JobEvent, { type: 'DISCONNECT' }>) => c.job?.id === e.id,
-  action: () => ({ error: 'Connection interrupted. Retry to reconnect or restart the job.' }) } as const;
+  action: () => ({ error: 'Oops! Connection dropped. Click Retry to reconnect or restart the job.' }) } as const;
 const active = { TRACK: track, RESET: reset, CANCEL: cancel, DISCONNECT: disconnect };
 const settled = { TRACK: track, RESET: reset, RETRY: { action: (_: JobContext, _e: JobEvent, m: object) => jobEffects.get(m)?.retry() } };
 const jobStates: Record<JobLifecycle, StateNode<JobLifecycle, JobEvent, JobContext>> = {
@@ -103,10 +103,10 @@ export type JobSnapshot = { value: 'idle' } | (JobIdentity & (
 export function jobSnapshot(machine = job): JobSnapshot {
   const { value, context: c } = machine.get();
   if (value === 'idle') return { value };
-  if (!c.job) throw new Error('Tracked job invariant');
+  if (!c.job) throw new Error('Oops! Slice job state got out of sync.');
   const identity = { job: c.job, seq: c.seq, pct: c.pct, stage: c.stage };
   return value === 'failed' || value === 'interrupted'
-    ? { ...identity, value, error: c.error ?? `Job ${value}. Retry is available.` }
+    ? { ...identity, value, error: c.error ?? `Job ${value}. Click Retry to try again.` }
     : { ...identity, value, error: c.error };
 }
 
@@ -141,7 +141,7 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
     options.checkpoint?.(last, m.get().value);
     if (jobTerminal(m.get().value)) {
       if (m.get().value === 'done') options.done?.(status);
-      else options.failed?.(status.error ?? `Job ${m.get().value}. Retry is available.`);
+      else options.failed?.(status.error ?? `Job ${m.get().value}. Click Retry to try again.`);
       ctl.abort(); clearTimeout(timer); clearTimeout(streamTimer);
     }
   };
@@ -150,7 +150,7 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       const snapshot = await Promise.race([api.status(id), new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('Job service stopped responding')), 10_000);
+        timeout = setTimeout(() => reject(new Error('Oops! The slicing service stopped responding.')), 10_000);
       })]) as CanonicalJobStatus;
       if (signal === ctl.signal && !signal.aborted) apply(snapshot);
     } finally { clearTimeout(timeout); }
@@ -159,7 +159,7 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
     if (!alive()) return;
     const owner = ctl;
     try { await status(); } catch {
-      if (owner === ctl && alive()) { m.send({ type: 'DISCONNECT', id: current.id }); options.failed?.('Connection interrupted. Retry to reconnect.'); ctl.abort(); }
+      if (owner === ctl && alive()) { m.send({ type: 'DISCONNECT', id: current.id }); options.failed?.('Connection dropped—click Retry to reconnect.'); ctl.abort(); }
     }
     if (owner === ctl && alive()) timer = setTimeout(() => void poll(), 5000);
   };
@@ -188,7 +188,7 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
   const connect = async () => {
     const owner = ctl;
     try { await status(); } catch {
-      if (owner === ctl && alive()) { m.send({ type: 'DISCONNECT', id: current.id }); options.failed?.('Connection interrupted. Retry to reconnect.'); ctl.abort(); }
+      if (owner === ctl && alive()) { m.send({ type: 'DISCONNECT', id: current.id }); options.failed?.('Connection dropped—click Retry to reconnect.'); ctl.abort(); }
     }
     if (owner === ctl && alive()) { timer = setTimeout(() => void poll(), 5000); void stream(); }
   };
@@ -218,7 +218,7 @@ export function followJob(api: Api, tracked: TrackedJob, options: {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         existing = await Promise.race([api.status(current.id), new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => reject(new Error('Job service stopped responding')), 10_000);
+          timeout = setTimeout(() => reject(new Error('Oops! The slicing service stopped responding.')), 10_000);
         })]) as CanonicalJobStatus;
       } catch {  }
       finally { clearTimeout(timeout); }

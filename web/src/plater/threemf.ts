@@ -68,7 +68,7 @@ const attr = (tag: string, name: string) => {
 function parseModel(text: string): { objects: Map<string, Obj>; build: { objectid: string; transform: number[]; printable: boolean }[] } {
   const unit = attr(/<model\b([^>]*)>/.exec(text)?.[1] ?? '', 'unit') ?? 'millimeter';
   const factor = ({ micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 } as Record<string, number>)[unit];
-  if (!factor) throw new Error(`Unsupported 3MF unit: ${unit}`);
+  if (!factor) throw new Error(`Unsupported measurement unit in 3MF file: ${unit}`);
   const transform = (value: string | undefined) => parseTransform(value).map((v, i) => i >= 9 ? v * factor : v);
   const objects = new Map<string, Obj>();
   const objRe = /<object\b([^>]*)>([\s\S]*?)<\/object>/g;
@@ -84,7 +84,7 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
       const verts: number[] = [];
       for (const v of vText.matchAll(/<vertex\b([^>]*)\/?>/g)) {
         const xyz = ['x', 'y', 'z'].map((key) => Number(attr(v[1], key)) * factor);
-        if (!xyz.every(Number.isFinite)) throw new Error('Invalid 3MF vertex');
+        if (!xyz.every(Number.isFinite)) throw new Error('Corrupted vertex data in 3MF file');
         verts.push(...xyz);
       }
       const tText = body.slice(body.indexOf('<triangles', vEnd), body.indexOf('</triangles>', vEnd));
@@ -95,7 +95,7 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
           if (value) ((obj.paint ??= {})[kind] ??= {})[String(tris.length / 3)] = value;
         }
         const indices = ['v1', 'v2', 'v3'].map((key) => Number(attr(t[1], key)));
-        if (!indices.every((v) => Number.isInteger(v) && v >= 0 && v < verts.length / 3)) throw new Error('Invalid 3MF triangle');
+        if (!indices.every((v) => Number.isInteger(v) && v >= 0 && v < verts.length / 3)) throw new Error('Corrupted triangle data in 3MF file');
         tris.push(...indices);
       }
       obj.vertices = new Float32Array(verts);
@@ -162,7 +162,7 @@ export async function readProject(file: File, objectsOnly = false): Promise<{ it
   const rels = entry('_rels/.rels');
   const rootPath = (rels && /Target="([^"]+\.model)"/i.exec(strFromU8(rels))?.[1]) || '/3D/3dmodel.model';
   const rootBytes = entry(rootPath);
-  if (!rootBytes) throw new Error(`${file.name}: no 3D model part in the archive`);
+  if (!rootBytes) throw new Error(`${file.name}: no 3D models found inside this archive`);
   const models = new Map<string, ReturnType<typeof parseModel>>();
   const model = (path: string) => {
     let m = models.get(path);
@@ -179,8 +179,8 @@ export async function readProject(file: File, objectsOnly = false): Promise<{ it
 
   const collect = (path: string, id: string, t: number[], out: number[], depth = 0) => {
     const o = model(path).objects.get(id);
-    if (!o) throw new Error(`Missing 3MF mesh object ${id}`);
-    if (depth > 64) throw new Error('Cyclic or excessively nested 3MF components');
+    if (!o) throw new Error(`Missing 3D mesh object #${id} in 3MF file`);
+    if (depth > 64) throw new Error('This 3MF file has circular or overly nested part references.');
     if (o.vertices && o.triangles) {
       const v = o.vertices;
       const mirrored = t[0] * (t[4] * t[8] - t[5] * t[7]) - t[3] * (t[1] * t[8] - t[2] * t[7]) + t[6] * (t[1] * t[5] - t[2] * t[4]) < 0;
@@ -253,7 +253,7 @@ export async function readProject(file: File, objectsOnly = false): Promise<{ it
     const instance = counts.get(b.objectid) ?? 0;
     counts.set(b.objectid, instance + 1);
     const plateIndex = membership.get(`${b.objectid}:${instance}`) ?? (objectsOnly || plates.length === 1 ? plates[0].index : 0);
-    if (!plateIndex && !objectsOnly) throw new Error('Cannot resolve saved plate membership for every build item');
+    if (!plateIndex && !objectsOnly) throw new Error('Couldn\'t match every model in the file to a saved build plate.');
     const plate = plates.find((p) => p.index === plateIndex);
     return {
       id: b.objectid, instance, buildIndex: i, plateIndex,

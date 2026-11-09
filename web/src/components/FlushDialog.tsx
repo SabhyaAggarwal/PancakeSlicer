@@ -112,7 +112,7 @@ function FlushTable() {
               </tbody>
             </table>
           </div>
-          <p className={outOfRange ? 'modal-error' : 'flush-note'} role={outOfRange ? 'alert' : undefined}>mm³ from row to column, typically {minVol}–{TYPICAL_MAX_FLUSH_VOLUME}</p>
+          <p className={outOfRange ? 'modal-error' : 'flush-note'} role={outOfRange ? 'alert' : undefined}>mm³ flushed when switching from row to column, typically {minVol}–{TYPICAL_MAX_FLUSH_VOLUME}</p>
         </ModalBody>
         <ModalFooter lead={<button type="button" className="btn-ghost" onClick={() => setRaw((values) => values.map((old, i) => i >= offset && i < offset + n * n ? auto[i - offset] : old))}>Recalculate</button>}>
           <button type="button" className="btn" onClick={close}>Cancel</button>

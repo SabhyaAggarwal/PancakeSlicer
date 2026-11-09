@@ -32,7 +32,7 @@ export function defaultProcesses(s: State): DefaultProcess[] {
   ].map(({ id, name, target, surface }) => {
     const layer = Math.round(Math.max(minimum, Math.min(maximum, target)) * 1000) / 1000;
     return { id: `default:${id}`, label: `${name} ${target.toFixed(2)}`, preset: base?.name, layer, surface,
-      unavailable: !base ? 'No compatible process for this printer' : surfaceUnavailable(surface),
-      note: layer !== target ? `Uses ${layer} mm within this nozzle's layer-height limits` : undefined };
+      unavailable: !base ? 'No compatible print profile found for this printer' : surfaceUnavailable(surface),
+      note: layer !== target ? `Using ${layer} mm (adjusted to fit this nozzle's layer-height range)` : undefined };
   });
 }

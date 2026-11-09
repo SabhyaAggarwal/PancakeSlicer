@@ -114,7 +114,7 @@ function AllJobs({ runningId, version, collapse }: { runningId?: string; version
     void fetch(`/api/printer-sends?limit=${count}`, { signal: abort.signal }).then(async (r) => {
       if (!r.ok) throw await responseError(r);
       const body = await r.json() as { sends: History[]; total: number }; if (!abort.signal.aborted) { setPages(body); setError(''); }
-    }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Cannot read the job history'); });
+    }).catch((e: unknown) => { if (!abort.signal.aborted) setError(e instanceof Error ? e.message : 'Couldn\'t load print history'); });
     return () => abort.abort();
   }, [count, version]);
   return <>{error && <p role="status" className="device-error">{error}</p>}
@@ -133,13 +133,13 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
     void fetch(`/api/printer-sends?printer=${encodeURIComponent(connection.printer)}`, { signal: abort.signal }).then(async (r) => {
       if (!r.ok) throw await responseError(r);
       const body = await r.json() as { sends: History[] }; if (!abort.signal.aborted) { setHistory(body.sends); setHistoryError(''); }
-    }).catch((e: unknown) => { if (!abort.signal.aborted) setHistoryError(e instanceof Error ? e.message : 'Cannot read recent jobs'); });
+    }).catch((e: unknown) => { if (!abort.signal.aborted) setHistoryError(e instanceof Error ? e.message : 'Couldn\'t load recent prints'); });
     return () => abort.abort();
   }, [connection.printer, historyVersion]);
   useEffect(() => failThumbnail(false), [status?.job?.id]);
   const act = async (work: () => Promise<void>) => {
     setPending(true); setError('');
-    try { await work(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'Printer command failed'); return false; } finally { setPending(false); }
+    try { await work(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'Oops! The printer didn\'t accept that command'); return false; } finally { setPending(false); }
   };
   const busy = !live || !status?.online || pending;
   const bambu = connection.kind === 'bambu-lan', temperaturesEditable = bambu || ['moonraker', 'octoprint', 'duet'].includes(connection.kind);
@@ -149,7 +149,7 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
   const active = status?.state === 'printing' || status?.state === 'paused', canStop = active || status?.state === 'busy';
   const set = (control: Control, value: number, fan?: string, extruder?: number) => act(() => controlDevice(connection.printer, { control, value, fan, extruder }));
   const run = (action: 'pause' | 'resume' | 'stop') => void act(async () => {
-    if (action === 'stop' && !await confirmDialog('Stop print', `Stop the print on ${connection.name}? It cannot be resumed.`, ['Stop print', 'Cancel'], true)) return;
+    if (action === 'stop' && !await confirmDialog('Stop print', `Stop the print on ${connection.name}? Once stopped, it can't be resumed.`, ['Stop print', 'Cancel'], true)) return;
     await controlPrinter(connection.printer, action);
   });
   const fans = bambu ? Object.entries(status?.fans ?? {}).filter(([name]) => status?.controls?.fans?.[name] && capabilities.fans.includes(name)).sort(([a], [b]) => ['part', 'auxiliary', 'chamber'].indexOf(a) - ['part', 'auxiliary', 'chamber'].indexOf(b)) : [];
@@ -176,7 +176,7 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
   const phrase = !live ? 'Reconnecting…' : canStop ? status?.state === 'paused' ? 'Paused' : status?.state === 'busy' ? 'Printer busy' : 'Printing' : end.label;
   const tone = !live ? 'offline' : canStop ? status?.state === 'busy' ? undefined : 'printing' : end.tone;
   const progress = canStop ? status?.progress : status?.state === 'finished' && filename ? 1 : undefined;
-  const ams = bambu && trays.length > 0 && <Card title="AMS & filament" className="device-ams" action={platePrinter === connection.printer && <button type="button" className="btn slant device-action" disabled={syncing} onClick={useFilaments}>{syncing ? 'Reading…' : 'Set project filaments'}</button>}>{[...units].sort(([a], [b]) => a - b).map(([id, slots]) => <div className="device-ams-unit" key={id}>{units.size > 1 && <h3>AMS {id + 1}</h3>}<div className="device-slots">{slots.sort((a, b) => a.slot - b.slot).map((tray) => <Spool key={tray.id} tray={tray} trays={trays} dual={dual} match={matchOf(tray)} choices={choices} busy={busy || choosing} choose={choose(tray)} />)}</div></div>)}
+  const ams = bambu && trays.length > 0 && <Card title="AMS & filament" className="device-ams" action={platePrinter === connection.printer && <button type="button" className="btn slant device-action" disabled={syncing} onClick={useFilaments}>{syncing ? 'Reading…' : 'Use printer\'s filaments'}</button>}>{[...units].sort(([a], [b]) => a - b).map(([id, slots]) => <div className="device-ams-unit" key={id}>{units.size > 1 && <h3>AMS {id + 1}</h3>}<div className="device-slots">{slots.sort((a, b) => a.slot - b.slot).map((tray) => <Spool key={tray.id} tray={tray} trays={trays} dual={dual} match={matchOf(tray)} choices={choices} busy={busy || choosing} choose={choose(tray)} />)}</div></div>)}
           {trays.filter((t) => t.kind === 'external').map((tray) => <div className="device-external" key={tray.id}><Spool tray={tray} trays={trays} dual={dual} external match={matchOf(tray)} choices={choices} busy={busy || choosing} choose={choose(tray)} /></div>)}
         </Card>;
   const temperatures = !!(status?.nozzle || status?.nozzle_temps?.length || status?.bed || (capabilities.chamber && status?.chamber));
@@ -190,7 +190,7 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
         <section className="device-job" aria-label="Print job">
           {status?.job?.thumbnail && !thumbnailFailed && <div className="device-job-art"><img src={status.job.thumbnail} alt={`Plate ${status.job.plate}`} onError={() => failThumbnail(true)} /></div>}
           <div className="device-job-content">
-            <strong className="device-job-name">{filename ? jobName(filename) : 'No print yet'}</strong>
+            <strong className="device-job-name">{filename ? jobName(filename) : 'No active print'}</strong>
             <span className="device-job-state">{status?.job && filename && <span>Plate {status.job.plate}</span>}<span className="status-text" data-tone={tone}>{phrase}</span>{!canStop && live && end.reason && <span>{end.reason}</span>}</span>
             {progress != null && <div className="device-job-progress"><progress max="1" value={progress} aria-label="Print progress" /><strong>{Math.round(progress * 100)}<small>%</small></strong></div>}
             {canStop && <div className="device-job-meta">{status?.layer != null && status.layer > 0 && <span>Layer {status.layer}{status.layers != null && ` / ${status.layers}`}</span>}{status?.remaining_s != null && <span>{duration(status.remaining_s)} left</span>}{eta && <span>ETA {eta}</span>}</div>}
@@ -235,6 +235,6 @@ export function DeviceView() {
     })}{!printers.length && <p className="device-muted">No printers connected</p>}</div>
       <div className="device-list-actions">{current && <button type="button" className="btn slant" onClick={() => openConnection(current.printer)}>Connection</button>}
         <button type="button" className="btn slant device-manage" onClick={() => setState({ presetUx: { kind: 'presets', type: 'machine' } })}>Manage printers</button></div></aside>
-    {current && shown ? <DevicePanel key={current.printer} connection={{ ...current, name: shown.name }} model={shown.model || current.model || ''} cover={printerCover(shown.vendor, shown.config, shown.model)} status={connections.status[current.printer]} live={connections.live} /> : <div className="device-empty"><h1>Connect a printer</h1><p>Add a connection in the printer’s settings to monitor it here.</p></div>}
+    {current && shown ? <DevicePanel key={current.printer} connection={{ ...current, name: shown.name }} model={shown.model || current.model || ''} cover={printerCover(shown.vendor, shown.config, shown.model)} status={connections.status[current.printer]} live={connections.live} /> : <div className="device-empty"><h1>Connect a printer</h1><p>Connect your printer in its settings to watch live progress and control it from here.</p></div>}
   </main>;
 }

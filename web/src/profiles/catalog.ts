@@ -38,7 +38,7 @@ export function listProfiles(s: State, type: PresetType, filters: {browseAll?: b
 }
 export function resolveCatalogEntry(s: State, type: PresetType, key: string) {
   const found = findCatalogBase(s,type,key);
-  if (!found.base) throw new Error(found.ambiguous ? 'This catalog name is ambiguous. Choose its exact source again.' : 'This catalog source is unavailable. Reopen Add and choose it again.');
+  if (!found.base) throw new Error(found.ambiguous ? 'More than one catalog item matches that name—please pick the exact one you want.' : 'That catalog item isn\'t available anymore. Reopen Add and pick another one.');
   return {key: catalogKey(found.base), base: found.base, anchor: catalogAnchor(found.base)};
 }
 
@@ -63,7 +63,7 @@ export async function createProfileFromBase(type:PresetType,baseName:string,name
   if(!entry){
     entry={creation:profileCreation(s=>{
       const current=findCatalogBase(s,type,identity).base;
-      if(!current || baseIdentity(current)!==identity)throw new Error('The catalog source changed. Reopen Add and choose it again.');
+      if(!current || baseIdentity(current)!==identity)throw new Error('The profile catalog just updated. Close and reopen the Add menu to pick your item again.');
       if(!explicit){
         const selected=type==='machine'?[s.printer]:type==='process'?[s.process]:s.filamentSlots;
         const active=new Set(selected.flatMap(key=>{const p=findProfile(s,type,key);return p?[profileKey(p)]:[];}));

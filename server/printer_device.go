@@ -55,22 +55,22 @@ func (s *Server) deviceJob(st PrinterStatus) *deviceJob {
 func (s *Server) printerJobThumbnail(w http.ResponseWriter, r *http.Request) {
 	st, ok := s.sends.hub.current(r.PathValue("printer"))
 	if !ok {
-		fail(w, 404, "no current job")
+		fail(w, 404, "No active print job.")
 		return
 	}
 	job := s.deviceJob(st)
 	if job == nil {
-		fail(w, 404, "this job was not sent by this service")
+		fail(w, 404, "This print wasn't started from this server.")
 		return
 	}
 	j := s.jobs.Get(job.ID)
 	if j == nil {
-		fail(w, 404, "job expired")
+		fail(w, 404, "This job has expired.")
 		return
 	}
 	z, err := zip.OpenReader(j.OutputPath("gcode.3mf"))
 	if err != nil {
-		fail(w, 404, "no job thumbnail")
+		fail(w, 404, "No thumbnail available for this job.")
 		return
 	}
 	defer z.Close()
@@ -89,12 +89,12 @@ func (s *Server) printerJobThumbnail(w http.ResponseWriter, r *http.Request) {
 		io.Copy(w, io.LimitReader(reader, 4<<20))
 		return
 	}
-	fail(w, 404, "no job thumbnail")
+	fail(w, 404, "No thumbnail available for this job.")
 }
 
 func controlHostDevice(ctx context.Context, p *PrinterConfig, secret string, in bambuControlRequest) error {
 	if in.Value == nil || in.Control != "nozzle" && in.Control != "bed" {
-		return errors.New("this host exposes only nozzle and bed setpoints")
+		return errors.New("This printer connection only supports setting nozzle and bed temperatures.")
 	}
 	value := *in.Value
 	maxTemp := 120
@@ -104,7 +104,7 @@ func controlHostDevice(ctx context.Context, p *PrinterConfig, secret string, in 
 		gcode = "M104"
 	}
 	if value < 0 || value > maxTemp {
-		return errors.New("temperature target is outside the supported range")
+		return errors.New("That target temperature is outside your printer's supported range.")
 	}
 	h, base, err := httpSession(ctx, p, secret)
 	if err != nil {
@@ -129,7 +129,7 @@ func controlHostDevice(ctx context.Context, p *PrinterConfig, secret string, in 
 			err = duetGcode(ctx, h, base, fmt.Sprintf("%s S%d", gcode, value))
 		}
 	default:
-		return errors.New("device setpoints are unavailable for this host")
+		return errors.New("Live temperature and fan controls aren't supported over this connection type.")
 	}
 	return err
 }

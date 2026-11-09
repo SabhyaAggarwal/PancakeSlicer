@@ -41,8 +41,8 @@ export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) =>
       pending.clear();
       for (const [id, h] of all) h({ type: 'error', id, message });
     };
-    worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Mesh worker failed'); };
-    worker.onmessageerror = () => fail('Mesh worker message failed');
+    worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Oops! Mesh processing worker stopped'); };
+    worker.onmessageerror = () => fail('Oops! Couldn\'t process mesh data');
   }
   const id = nextRequest++;
   pending.set(id, on);

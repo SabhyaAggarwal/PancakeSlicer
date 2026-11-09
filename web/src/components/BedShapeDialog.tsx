@@ -36,7 +36,7 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
     const errorId = `${id}-${label.replace(/ /g, '-')}`;
     return <label className="form-row"><span>{label}<InfoTip label={label}>Allowed range: {min} mm to {max} mm</InfoTip></span>
       <span className="control-stack"><span className="modal-unit"><input className="text num" type="number" min={min} max={max} step="any" value={Number.isFinite(value) ? value : ''} aria-invalid={!!reason || undefined} aria-describedby={reason ? errorId : undefined}
-        onChange={(e) => set(e.target.valueAsNumber)} onBlur={() => { if (reason) toast(`${label}: ${reason} (kept previous value).`, null, undefined, 'warning'); }} /><span>mm</span></span>
+        onChange={(e) => set(e.target.valueAsNumber)} onBlur={() => { if (reason) toast(`${label}: ${reason} (kept your previous value).`, null, undefined, 'warning'); }} /><span>mm</span></span>
         {reason && <span className="control-error" id={errorId} role="status">{reason}</span>}</span></label>;
   };
   const at = (values: number[], set: (v: number[]) => void, i: number) => (v: number) => set(values.map((x, j) => (i === j ? v : x)));
@@ -55,16 +55,16 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
           const area = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1]);
           if (Math.abs(area) > 1e-8) triangles.push([p]);
         }
-        if (!triangles.length) throw new Error('The selected file contains no geometry.');
+        if (!triangles.length) throw new Error('Hmm, that file doesn\'t seem to have any 3D geometry in it.');
         let merged = union(triangles[0]);
         for (let i = 1; i < triangles.length; i += 128) merged = union(merged, ...triangles.slice(i, i + 128));
-        if (merged.length !== 1) throw new Error('The selected file contains several disjointed areas. This is not supported.');
+        if (merged.length !== 1) throw new Error('Oops! That file contains multiple disconnected regions, which isn\'t supported here.');
         setCustom(merged[0][0].slice(0, -1));
         setError('');
       } finally { geometry.dispose(); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Error: invalid model'); }
   };
-  const invalid = !valid && (shape === 'Custom' ? 'Load an STL outline of the bed.' : 'Enter sizes above 0 mm.');
+  const invalid = !valid && (shape === 'Custom' ? 'Load an STL model of your print bed.' : 'Please enter bed dimensions greater than 0 mm.');
   return <Modal size="l" label="Bed shape" onClose={close}>
     <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; onSet('printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); onSet('bed_custom_texture', texture); onSet('bed_custom_model', model); close(); }}>
       <ModalTitle title="Bed shape" onClose={close} />

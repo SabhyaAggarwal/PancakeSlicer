@@ -99,7 +99,7 @@ func (s *Server) topSurfaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validHeadID(req.Head) {
-		fail(w, 400, "This printer has no print head model, so its top surfaces cannot be checked.")
+		fail(w, 400, "This printer doesn't have a 3D print head model yet, so top-surface clearance can't be previewed.")
 		return
 	}
 	var missing []string
@@ -114,7 +114,7 @@ func (s *Server) topSurfaces(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(missing) > 0 {
-		writeJSON(w, 409, map[string]any{"error": "Uploaded models expired on the service. Sending them again.", "code": "blob_missing", "missing": missing})
+		writeJSON(w, 409, map[string]any{"error": "Re-syncing your model files with the slicing service…", "code": "blob_missing", "missing": missing})
 		return
 	}
 	reach, err := loadHeadReach(s.cfg, req.Head)
@@ -297,7 +297,7 @@ func loadHeadReach(c Config, id string) (*headReach, error) {
 	if err != nil {
 		path = filepath.Join(c.Resources, "nonplanar", "heads", id+".json")
 		if st, err = os.Stat(path); err != nil {
-			return nil, fmt.Errorf("print head %q is not installed on the service", id)
+			return nil, fmt.Errorf("Print head profile %q isn't installed on the server.", id)
 		}
 	}
 	key := path + "\x00" + st.ModTime().String()
@@ -321,7 +321,7 @@ func loadHeadReach(c Config, id string) (*headReach, error) {
 		} `json:"boxes"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, fmt.Errorf("print head %q cannot be read: %v", id, err)
+		return nil, fmt.Errorf("Couldn't read print head profile %q: %v", id, err)
 	}
 	box := func(z, x0, x1, y0, y1 float64) headObstacle {
 		return headObstacle{z: z, corners: [4][2]float64{{x0, y0}, {x1, y0}, {x0, y1}, {x1, y1}}}
@@ -441,7 +441,7 @@ func (s *Server) measureSurfaces(ctx context.Context, sum, head string) (*surfac
 	}
 	raw, err := os.ReadFile(regions)
 	if err != nil || json.Unmarshal(raw, &report) != nil {
-		return nil, errors.New("the slicer wrote no top surfaces")
+		return nil, errors.New("The slicer didn't find any top surfaces to preview.")
 	}
 	toInput := matchFacets(input, tool)
 	out := &surfaceAnalysis{Head: report.Head, Regions: []surfaceRegion{}}
@@ -509,12 +509,12 @@ func readBinarySTL(path string) ([][9]float64, error) {
 	defer f.Close()
 	head := make([]byte, 84)
 	if _, err := io.ReadFull(f, head); err != nil {
-		return nil, errors.New("the model is not a binary STL")
+		return nil, errors.New("The model file isn't a binary STL.")
 	}
 	n := binary.LittleEndian.Uint32(head[80:])
 	st, err := f.Stat()
 	if err != nil || st.Size() != 84+50*int64(n) {
-		return nil, errors.New("the model is not a binary STL")
+		return nil, errors.New("The model file isn't a binary STL.")
 	}
 	body := make([]byte, 50*int(n))
 	if _, err := io.ReadFull(f, body); err != nil {

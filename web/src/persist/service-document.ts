@@ -52,7 +52,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   const hydrate = () => {
     if (hydrated) return Promise.resolve(current);
     loading ??= serviceJson<{revision:number;document:D}>(path).then((remote) => {
-      if (!remote || !Number.isSafeInteger(remote.revision) || remote.revision < 0 || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw new Error('Invalid saved service document');
+      if (!remote || !Number.isSafeInteger(remote.revision) || remote.revision < 0 || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw new Error('Oops! The saved project file on the server couldn\'t be read.');
       hydrated = true; base = remote.document;
       publish({ ...remote, document: { ...remote.document, ...beforeHydration } });
       beforeHydration = {};
@@ -75,7 +75,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   const flush = (retry = false) => write(retry, false);
   async function write(retry: boolean, automatic: boolean): Promise<void> {
     if (running) { await running; if (savedSerial < serial) return write(retry, automatic); return; }
-    if (!sync.can({ type: 'WRITE', retry, auto: automatic })) throw new Error(current.error ?? 'The service document was not saved');
+    if (!sync.can({ type: 'WRITE', retry, auto: automatic })) throw new Error(current.error ?? 'Changes couldn\'t be saved to the server yet');
     sync.send({ type: 'WRITE', retry, auto: automatic });
     running = (async () => {
       if (!hydrated) await hydrate();
@@ -104,7 +104,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
           base = remote.document; operation = null; publish({ revision: remote.revision, document: next as D });
           continue;
         }
-        if (!ack || ack.revision !== captured.expectedRevision + 1) throw new Error('Invalid service revision acknowledgement');
+        if (!ack || ack.revision !== captured.expectedRevision + 1) throw new Error('Oops! The server returned an unexpected version number.');
         for (const [key, at] of unsaved) if (at <= captured.serial) unsaved.delete(key);
         base = captured.document; savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });
       }

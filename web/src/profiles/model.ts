@@ -149,19 +149,19 @@ export function autoEnginePreset(s: ProfileCatalog, printerConfig: Config, print
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
   const lookup = isCatalogKey(name) ? {profile: undefined, ambiguous: false} : lookupProfile(s, type, name), user = lookup.profile;
   const identity = user ? profileKey(user) : name;
-  if (seen.has(identity)) return unavailable('cycle', identity, 'Profile inheritance contains a cycle', user);
+  if (seen.has(identity)) return unavailable('cycle', identity, 'Circular profile inheritance detected', user);
   seen.add(identity);
   if (!user) {
     if (lookup.ambiguous)
-      return unavailable('ambiguous', name, 'More than one profile uses this reference. Choose its exact profile.');
+      return unavailable('ambiguous', name, 'Multiple profiles match this link—please pick the exact one you want to use.');
     const result = findCatalogBase(s, type, name), base = result.base;
-    if (!base) return unavailable(result.ambiguous ? 'ambiguous' : 'missing-profile', name, result.ambiguous ? 'The catalog reference is ambiguous.' : 'This profile is unavailable. Reimport it or recover its saved settings.');
+    if (!base) return unavailable(result.ambiguous ? 'ambiguous' : 'missing-profile', name, result.ambiguous ? 'Multiple catalog templates match this reference.' : 'This profile is missing from your library. Re-import it or recover its saved settings from the project.');
     return { base, name: base.name, engineName: base.engine_base ?? base.name, config: base.config, status: 'ready' };
   }
   const parentName = user.parentId ?? user.parent ?? (!user.base && findProfile(s, type, user.inherits) ? user.inherits : undefined);
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   if (parent?.issue && parent.status !== 'archived' || parentName && !parent?.source)
-    return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
+    return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'This profile\'s parent template is missing. Recover its saved settings to keep editing.', user);
   const auto = type === 'process' && (!!(user as { auto?: unknown }).auto || user.base?.name === 'Auto');
   const printer = auto && (s as { printer?: string }).printer ? resolveProfile(s, 'machine', (s as { printer?: string }).printer!).base : undefined;
   const family = type === 'filament' && user.kind !== 'master' ? String(user.metadata?.family ?? '') : '';
@@ -170,19 +170,19 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const found = auto ? { base: (printer && autoEnginePreset(s, printer.config, printer.name)) || autoBase(s), ambiguous: false }
     : findCatalogBase(s, type, variant ? { name: variant, vendor: user.base?.vendor ?? family.split('/')[0], version: '' } : user.base ?? user.inherits);
   const base = found.base ?? (!user.base ? parent?.base : undefined);
-  if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
+  if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'This profile\'s base template is missing. Re-import the base template or save a standalone copy of its settings.', user);
   if (parent?.base && parent.base !== base)
-    return unavailable('missing-base', identity, 'The parent profile has a different base. Recover a copy before editing.', user);
+    return unavailable('missing-base', identity, 'This profile\'s parent template uses a different base—save a copy before editing.', user);
   let master: ResolvedProfile | undefined;
   if (user.kind !== 'master' && !parentName) {
     const candidates = user.masterId ? [findProfile(s,type,user.masterId)].filter((p): p is UserPreset => !!p)
       : s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
-    if (candidates.length > 1) return unavailable('ambiguous', identity, 'Choose the exact local master for this profile.', user);
-    if (user.masterId && !candidates.length) return unavailable('missing-profile', identity, 'The linked master is unavailable. Recover the saved settings.', user);
+    if (candidates.length > 1) return unavailable('ambiguous', identity, 'Pick which custom profile in your library this should link to.', user);
+    if (user.masterId && !candidates.length) return unavailable('missing-profile', identity, 'The linked base profile is missing—recover its saved settings to continue.', user);
     if (candidates[0]) {
       master = resolveAncestors(s,type,profileKey(candidates[0]),seen);
       if (master.issue && master.status !== 'archived') return unavailable(master.issue.code,identity,master.error!,user);
-      if (master.base !== base) return unavailable('missing-base',identity,'The linked master has a different base. Recover its saved settings before editing.',user);
+      if (master.base !== base) return unavailable('missing-base',identity,'The linked profile uses a different base template—recover its saved settings before editing.',user);
     }
   }
   const constraints = Object.fromEntries(Object.entries(user.metadata ?? {}).filter(([key]) => /^compatible_(printers|prints)(_condition)?$/.test(key)));
@@ -192,8 +192,8 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   if (user.archived) {
     const retained = user.snapshot?.config ?? config;
     return {base,source:user,user:{...user,overrides:changedKeys(retained,base.config)},key:identity,name:user.name,config:retained,status:'archived',
-      issue:{code:'archived',key:identity,message:'This profile was removed from the library. Undo or recover a copy before using it.'},
-      error:'This profile was removed from the library. Undo or recover a copy before using it.'};
+      issue:{code:'archived',key:identity,message:'This profile was removed from your library. Click Undo or recover a copy before using it.'},
+      error:'This profile was removed from your library. Click Undo or save a copy of it before using it.'};
   }
   return { base, source: user, user: parentName || master ? { ...user, overrides: owned } : user, key: identity, name: user.name,
     engineName: base.engine_base ?? base.name, config, status: 'ready' };

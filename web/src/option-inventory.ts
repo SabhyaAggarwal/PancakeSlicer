@@ -54,7 +54,7 @@ function records(raw: any): Record<string, Metadata> {
     ? Object.fromEntries(raw.options.map((def: any) => [def.key, def])) : raw;
   if (!options || typeof options !== 'object' || !Object.keys(options).length ||
     Object.values(options).some((def: any) => !def || typeof def.type !== 'string' || MODES[def.mode] === undefined))
-    throw new Error('Invalid option dictionary');
+    throw new Error('Oops! Settings dictionary is invalid.');
   return options;
 }
 
@@ -88,11 +88,11 @@ export async function loadRuntimeOptions(url: string, engine: EngineCapabilities
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}: /api/options`);
     etag = response.headers.get('ETag');
     const body = await response.json();
-    if (body?.schema !== 'orca.options.v2' || typeof body.tooltips !== 'string') throw new Error('The slicing service sent an unknown option dictionary format.');
+    if (body?.schema !== 'orca.options.v2' || typeof body.tooltips !== 'string') throw new Error('Oops! The slicing service returned a settings format this version doesn\'t recognize.');
     tooltips = body.tooltips;
     selected = records(body.options);
   } else selected = await asset(url).then(records).catch(() => null);
-  if (!selected) throw new Error('Shipped option dictionary unavailable');
+  if (!selected) throw new Error('Oops! Built-in settings definitions couldn\'t be loaded.');
   const options = normalizeOptions(selected);
   if (native) for (const [key, def] of Object.entries(options)) {
     const hint = hints[key];

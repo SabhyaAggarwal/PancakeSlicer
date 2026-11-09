@@ -76,42 +76,42 @@ type bambuControlRequest struct {
 
 func (c *BambuControls) command(in bambuControlRequest) (map[string]any, error) {
 	if c == nil || in.Value == nil {
-		return nil, errors.New("a reported control and integer value are required")
+		return nil, errors.New("Please provide a valid printer control and a whole-number value.")
 	}
 	value := *in.Value
 	switch in.Control {
 	case "chamber":
 		if c.Chamber == nil || value < c.Chamber.Min || value > c.Chamber.Max {
-			return nil, errors.New("chamber target is outside the printer's supported range")
+			return nil, errors.New("That chamber temperature is outside your printer's supported range.")
 		}
 		return map[string]any{"command": "set_ctt", "ctt_val": value}, nil
 	case "fan":
 		fan, ok := c.Fans[in.Fan]
 		if !ok || value < fan.Min || value > fan.Max || value < 0 || value > 100 {
-			return nil, errors.New("fan is not adjustable at that speed in the current air-duct mode")
+			return nil, errors.New("The fan speed can't be adjusted to that level in the current air-duct mode.")
 		}
 		if fan.Modern {
 			return map[string]any{"command": "set_fan", "fan_index": fan.Index, "speed": value}, nil
 		}
 		return map[string]any{"command": "gcode_line", "param": fmt.Sprintf("M106 P%d S%d\n", fan.Index, value*255/100)}, nil
 	}
-	return nil, errors.New("unknown device control")
+	return nil, errors.New("Unrecognized printer control.")
 }
 
 func (s *Server) deviceControl(w http.ResponseWriter, r *http.Request) {
 	p := s.sends.printer(r.PathValue("printer"))
 	if p == nil || p.Kind == "bambu-connect" {
-		fail(w, 404, "this printer has no controllable connection")
+		fail(w, 404, "This printer doesn't have an active connection that supports live controls.")
 		return
 	}
 	var in bambuControlRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&in); err != nil {
-		fail(w, 400, "expected a device control and integer value")
+		fail(w, 400, "Expected a printer control name and a whole-number value.")
 		return
 	}
 	status, ok := s.sends.hub.current(p.Printer)
 	if !ok || !status.Online {
-		fail(w, 409, "wait for the printer's live status before changing its controls")
+		fail(w, 409, "Hang on a second—waiting for live status from the printer before changing controls.")
 		return
 	}
 	command, err := status.Controls.command(in)
@@ -125,7 +125,7 @@ func (s *Server) deviceControl(w http.ResponseWriter, r *http.Request) {
 				maxTemp, gcode = 300, "M104"
 			}
 			if in.Control == "nozzle" && len(status.NozzleTemps) > 0 {
-				err = errors.New("select a reported extruder and a target between 0 and 350 °C")
+				err = errors.New("Pick an available extruder and a temperature between 0 and 350 °C.")
 				for _, extruder := range status.NozzleTemps {
 					if in.Extruder != nil && extruder.ID == *in.Extruder && value >= 0 && value <= 350 {
 						command, err = map[string]any{"command": "set_nozzle_temp", "extruder_index": extruder.ID, "target_temp": value}, nil
@@ -134,20 +134,20 @@ func (s *Server) deviceControl(w http.ResponseWriter, r *http.Request) {
 			} else if value >= 0 && value <= maxTemp {
 				command, err = map[string]any{"command": "gcode_line", "param": fmt.Sprintf("%s S%d\n", gcode, value)}, nil
 			} else {
-				err = errors.New("temperature target is outside the supported range")
+				err = errors.New("That target temperature is outside your printer's supported range.")
 			}
 		case "speed":
 			if value >= 1 && value <= 4 {
 				command, err = map[string]any{"command": "print_speed", "param": fmt.Sprint(value)}, nil
 			} else {
-				err = errors.New("speed mode must be 1 through 4")
+				err = errors.New("Speed mode must be between 1 (Silent) and 4 (Ludicrous).")
 			}
 		case "light":
 			if value == 0 || value == 1 {
 				scope = "system"
 				command, err = map[string]any{"command": "ledctrl", "led_node": "chamber_light", "led_mode": map[bool]string{true: "on", false: "off"}[value == 1], "led_on_time": 500, "led_off_time": 500, "loop_times": 0, "interval_time": 0}, nil
 			} else {
-				err = errors.New("light value must be 0 or 1")
+				err = errors.New("Light setting must be 0 (off) or 1 (on).")
 			}
 		}
 	}
@@ -162,7 +162,7 @@ func (s *Server) deviceControl(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok, retry := s.sends.allowBurst("control "+s.clientIP(r), 10); !ok {
 		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
-		fail(w, 429, "too many printer commands; wait before trying again")
+		fail(w, 429, "Whoa, slow down! Too many printer commands sent at once—wait a moment and try again.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)

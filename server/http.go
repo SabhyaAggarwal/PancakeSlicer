@@ -29,16 +29,16 @@ import (
 )
 
 type Server struct {
-	cfg           Config
-	jobs          *JobManager
-	presets       *PresetIndex
-	libraryV4     *libraryStore
-	workspace     *workspaceStore
-	sends         *SendManager
-	blobs         *blobStore
-	fontsOnce     sync.Once
-	fonts         []byte
-	fontsErr      error
+	cfg       Config
+	jobs      *JobManager
+	presets   *PresetIndex
+	libraryV4 *libraryStore
+	workspace *workspaceStore
+	sends     *SendManager
+	blobs     *blobStore
+	fontsOnce sync.Once
+	fonts     []byte
+	fontsErr  error
 	filamentSlots *filamentSlotStore
 }
 
@@ -130,7 +130,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
 	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "Unknown API endpoint.") })
 	mux.Handle("/", spaFiles(c.StaticDir, c.Resources))
 	if c.Metrics {
 		mux.HandleFunc("GET /metrics", s.metrics)
@@ -156,7 +156,7 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := s.presets.namesResponse(vendor, names)
 	if errors.Is(err, os.ErrNotExist) {
-		fail(w, 404, "unknown vendor")
+		fail(w, 404, "Unrecognized printer brand.")
 		return
 	}
 	if err != nil {
@@ -234,13 +234,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if r.ContentLength > s.cfg.MaxUploadSize {
-		fail(w, http.StatusRequestEntityTooLarge, "multipart upload exceeds max-upload")
+		fail(w, http.StatusRequestEntityTooLarge, "Oops! That upload is larger than the server's maximum file size limit.")
 		return
 	}
 	controller := http.NewResponseController(w)
 	deadline := time.Now().Add(uploadIdleTimeout)
 	if err := controller.SetReadDeadline(deadline); err != nil {
-		fail(w, 500, "upload read deadline unavailable")
+		fail(w, 500, "Couldn't set an upload timeout on the server.")
 		return
 	}
 	defer controller.SetReadDeadline(time.Time{})
@@ -260,10 +260,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &timeout) && timeout.Timeout() {
 			status = http.StatusRequestTimeout
 			w.Header().Set("Connection", "close")
-			fail(w, status, "multipart upload read deadline exceeded")
+			fail(w, status, "Oops! The upload took too long and timed out.")
 			return
 		}
-		fail(w, status, "invalid multipart upload: "+err.Error())
+		fail(w, status, "Invalid file upload: " + err.Error())
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
@@ -294,20 +294,20 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	case "", "orient":
 	case "orient-scores":
 		if !s.cfg.Features.OrientScores {
-			fail(w, 400, "orientation scores require a tool with --orient-scores")
+			fail(w, 400, "Auto-orient requires a slicing engine with --orient-scores support.")
 			return
 		}
 		req.OrientScores = true
 	case "arrange":
 		if !s.cfg.Features.Arrange {
-			fail(w, 400, "arrange requires a tool with --arrange-only")
+			fail(w, 400, "Auto-arrange requires a slicing engine with --arrange-only support.")
 			return
 		}
 		req.Arrange, req.ArrangeNoRotation = true, r.FormValue("arrange_rotation") == "0"
 		if raw := r.FormValue("arrange_spacing"); raw != "" {
 			v, err := strconv.ParseFloat(raw, 64)
 			if err != nil || v < 0 || v > 100 || math.IsNaN(v) {
-				fail(w, 400, "arrange_spacing must be 0 to 100 mm")
+				fail(w, 400, "Object spacing must be between 0 and 100 mm.")
 				return
 			}
 			req.ArrangeSpacing = v
@@ -321,7 +321,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	case "repair", "simplify":
 		if op := r.FormValue("operation"); op == "repair" && !s.cfg.Features.MeshRepair || op == "simplify" && !s.cfg.Features.MeshSimplify {
-			fail(w, 400, "Fix Model and Simplify Model require a tool with --repair-mesh and --simplify-mesh")
+			fail(w, 400, "Fix Model and Simplify Model require a slicing engine with mesh repair and simplification support.")
 			return
 		}
 		req.MeshOp = r.FormValue("operation")
@@ -345,7 +345,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	case "export":
 		format := r.FormValue("export_format")
 		if format == "drc" && !s.cfg.Features.ExportDRC || format == "generic3mf" && !s.cfg.Features.ExportGeneric3MF {
-			fail(w, 400, "this export requires a tool with --export-drc / --export-3mf-generic")
+			fail(w, 400, "This export format requires a slicing engine with --export-drc / --export-3mf-generic support.")
 			return
 		}
 		if format != "drc" && format != "generic3mf" {
@@ -364,7 +364,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	case "boolean":
 		op := r.FormValue("boolean_op")
 		if !s.cfg.Features.MeshBoolean {
-			fail(w, 400, "Mesh Boolean requires a tool with --mesh-boolean")
+			fail(w, 400, "Mesh Boolean requires a slicing engine with --mesh-boolean support.")
 			return
 		}
 		if op != "union" && op != "difference" && op != "intersection" {
@@ -374,7 +374,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		req.MeshOp, req.BooleanOp = "boolean", op
 	case "svg":
 		if !s.cfg.Features.EmbossSVG {
-			fail(w, 400, "SVG requires a tool with --emboss-svg")
+			fail(w, 400, "SVG embossing requires a slicing engine with --emboss-svg support.")
 			return
 		}
 		args := []string{}
@@ -406,7 +406,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	case "text":
 		if !s.cfg.Features.EmbossText {
-			fail(w, 400, "Text requires a tool with --emboss-text")
+			fail(w, 400, "Text embossing requires a slicing engine with --emboss-text support.")
 			return
 		}
 		args, err := textArgs(r)
@@ -423,19 +423,19 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	case "explode":
 		if !s.cfg.Features.Explode {
-			fail(w, 400, "opening a project as an editable plate requires a tool with --explode-3mf")
+			fail(w, 400, "Opening a 3MF project as editable objects requires a slicing engine with --explode-3mf support.")
 			return
 		}
 		req.Explode = true
 	case "wipe-tower":
 		if !s.cfg.Features.WipeTower {
-			fail(w, 400, "the prime tower estimate requires a tool with --wipe-tower-only")
+			fail(w, 400, "Estimating the prime tower requires a slicing engine with --wipe-tower-only support.")
 			return
 		}
 		req.WipeTower = true
 	case "cut":
 		if !s.cfg.Features.Cut {
-			fail(w, 400, "cutting requires a tool with --cut-only")
+			fail(w, 400, "Cutting models requires a slicing engine with --cut-only support.")
 			return
 		}
 		req.Cut, req.CutKeep, req.CutPlaceLower = r.FormValue("cut"), r.FormValue("cut_keep"), r.FormValue("cut_place_lower") == "1"
@@ -452,7 +452,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		fail(w, 400, "unknown operation")
+		fail(w, 400, "Unrecognized operation.")
 		return
 	}
 	if strings.ContainsAny(req.Filename, "/\\\r\n") || len(req.Filename) > 240 || strings.IndexFunc(req.Filename, unicode.IsControl) >= 0 || req.Filename == "." || req.Filename == ".." {
@@ -472,28 +472,28 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.FormValue("force_planar") != "" {
 		if !s.cfg.Features.ForcePlanar {
-			fail(w, 400, "force_planar requires a tool with --force-planar")
+			fail(w, 400, "Forcing flat layers requires a slicing engine with --force-planar support.")
 			return
 		}
 		req.ForcePlanar = true
 	}
 	if r.FormValue("floating") != "" {
 		if !s.cfg.Features.Floating {
-			fail(w, 400, "floating requires a tool with --floating")
+			fail(w, 400, "Floating overhang detection requires a slicing engine with --floating support.")
 			return
 		}
 		req.Floating = true
 	}
 	if r.FormValue("allow_mixed_temperatures") != "" {
 		if !s.cfg.Features.MixedTemperatures {
-			fail(w, 400, "allow_mixed_temperatures requires a tool with --allow-mixed-temperatures")
+			fail(w, 400, "Allowing mixed filament temperatures requires a slicing engine with --allow-mixed-temperatures support.")
 			return
 		}
 		req.AllowMixedTemperatures = true
 	}
 	if r.URL.Path == "/api/patch-preview" {
 		if !s.cfg.Features.PatchPreview {
-			fail(w, 501, "this slicer has no patch preview")
+			fail(w, 501, "This slicing engine build doesn't support curved patch previews.")
 			return
 		}
 		budget, err := strconv.ParseFloat(cmp.Or(r.FormValue("budget"), "2"), 64)
@@ -504,7 +504,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		req.Output, req.Priority, req.PreviewBudget = "patch-preview", "low", budget
 	} else if r.URL.Path == "/api/top-surfaces/plan" {
 		if !s.cfg.Features.PlanTops {
-			fail(w, 501, "this slicer has no curved tops plan")
+			fail(w, 501, "This slicing engine build doesn't support curved-top previews.")
 			return
 		}
 		req.Output, req.Priority = "plan-tops", "low"
@@ -570,9 +570,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		params := r.FormValue("calib_params")
 		switch {
 		case !s.cfg.Features.Calib:
-			fail(w, 400, "calibrations require a tool with --calib")
+			fail(w, 400, "Calibration generators require a slicing engine with --calib support.")
 		case !calibKinds[kind]:
-			fail(w, 400, "unknown calibration")
+			fail(w, 400, "Unrecognized calibration test type.")
 		case !calibParams.MatchString(params):
 			fail(w, 400, "calib_params must be key=value pairs separated by commas")
 		case !calibHead.MatchString(r.FormValue("calib_head")):
@@ -604,7 +604,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		ext := strings.ToLower(filepath.Ext(name))
 		other := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc" || req.MeshOp == "svg" && ext == ".svg"
 		if name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || name == "." || name == ".." || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !other) || names[name] {
-			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC, SVG or 3MF basenames")
+			fail(w, 400, "Each uploaded STL, OBJ, STEP, DRC, SVG, or 3MF file needs a unique file name.")
 			return
 		}
 		if !blobDigest.MatchString(f.SHA256) {
@@ -621,7 +621,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(missing) > 0 {
-		writeJSON(w, 409, map[string]any{"error": "Uploaded models expired on the service. Sending them again.", "code": "blob_missing", "missing": missing})
+		writeJSON(w, 409, map[string]any{"error": "Re-syncing your model files with the slicing service…", "code": "blob_missing", "missing": missing})
 		return
 	}
 	rawPlate := r.FormValue("plate")
@@ -629,7 +629,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		var plate map[string]json.RawMessage
 		var objects []map[string]json.RawMessage
 		if json.Unmarshal([]byte(raw), &plate) != nil || json.Unmarshal(plate["objects"], &objects) != nil || len(objects) == 0 {
-			fail(w, 400, "plate needs a non-empty objects array")
+			fail(w, 400, "The plate needs at least one model on it.")
 			return
 		}
 		for _, obj := range objects {
@@ -640,38 +640,38 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 			if obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil ||
 				(obj["file"] != nil || len(volumes) == 0) && (json.Unmarshal(obj["file"], &file) != nil || !names[file]) {
-				fail(w, 400, "plate objects must reference uploaded basenames")
+				fail(w, 400, "Every object on the plate must match an uploaded model file.")
 				return
 			}
 			if len(volumes) > 0 && !s.cfg.Features.Volumes {
-				fail(w, 400, "parts and modifiers require a tool with plate-JSON volumes")
+				fail(w, 400, "Multi-part objects and modifiers require a slicing engine with plate-JSON volume support.")
 				return
 			}
 			for _, v := range volumes {
 				if (v.Type == "seam" || strings.HasPrefix(v.Type, "precise_seam_")) && !s.cfg.Features.SeamParts {
-					fail(w, 400, "precise seam parts require a tool with plate-JSON seam volumes")
+					fail(w, 400, "Precise seam modifiers require a slicing engine with plate-JSON seam support.")
 					return
 				}
 			}
 			if obj["paint"] != nil && !s.cfg.Features.Paint {
-				fail(w, 400, "painting requires a tool with plate-JSON paint")
+				fail(w, 400, "Painted supports, seams, and colors require a slicing engine with plate-JSON paint support.")
 				return
 			}
 			if obj["layer_height_profile"] != nil && !s.cfg.Features.LayerProfile {
-				fail(w, 400, "variable layer height requires a tool with plate-JSON layer height profiles")
+				fail(w, 400, "Variable layer height requires a slicing engine with layer-height profile support.")
 				return
 			}
 			if obj["ranges"] != nil && !s.cfg.Features.Ranges {
-				fail(w, 400, "height range modifiers require a tool with plate-JSON ranges")
+				fail(w, 400, "Height-range modifiers require a slicing engine with plate-JSON range support.")
 				return
 			}
 			if obj["brim_ears"] != nil && !s.cfg.Features.BrimEars {
-				fail(w, 400, "brim ears require a tool with plate-JSON brim_ears")
+				fail(w, 400, "Painted brim ears require a slicing engine with plate-JSON brim_ears support.")
 				return
 			}
 			for _, v := range volumes {
 				if !names[v.File] {
-					fail(w, 400, "plate volumes must reference uploaded basenames")
+					fail(w, 400, "Every part volume on the plate must match an uploaded model file.")
 					return
 				}
 			}
@@ -687,7 +687,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		req.Plate = true
 	} else if raw := r.FormValue("project_edits"); raw != "" {
 		if !s.cfg.Features.Edit {
-			fail(w, 400, "editing an opened project requires a tool with --edit")
+			fail(w, 400, "Editing an imported 3MF project requires a slicing engine with --edit support.")
 			return
 		}
 		if err := writeProjectEdits(filepath.Join(j.Dir, "input"), req.Files, names, raw, s.cfg.Features.ProjectVolumes, s.cfg.Features.ProjectPaint); err != nil {
@@ -706,7 +706,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Output != "3mf" && !s.cfg.Features.PlateIndex {
-			fail(w, 400, "slicing a selected project plate requires an upgraded ToolRecord tool with --plate-index support")
+			fail(w, 400, "Slicing a specific plate from a multi-plate project requires an updated slicing engine with --plate-index support.")
 			return
 		}
 	}
@@ -722,28 +722,28 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.PlateIndex > 0 && req.Output != "3mf" {
 			if layout.Width <= 0 || layout.Depth <= 0 {
-				fail(w, 400, "selected project has no printable area")
+				fail(w, 400, "The selected project doesn't define a printable bed area.")
 				return
 			}
 			for _, plate := range layout.Membership {
 				if plate == 0 {
-					fail(w, 400, "cannot resolve saved plate membership for every build item")
+					fail(w, 400, "Couldn't match every object in the project to a build plate.")
 					return
 				}
 			}
 		}
 		req.SourcePlates = layout.Plates
 		if req.PlateIndex > 0 && !layout.hasPlate(req.PlateIndex) {
-			fail(w, 400, "plate_index does not name a saved project plate")
+			fail(w, 400, "That plate number doesn't exist in the saved project.")
 			return
 		}
 		if req.Output != "3mf" && len(layout.Plates) > 1 && req.PlateIndex == 0 {
-			fail(w, 400, "multi-plate project: select a plate using plate_index; slicing requires a ToolRecord tool with --plate-index support")
+			fail(w, 400, "Multi-plate project: pick a plate using plate_index (requires a slicing engine with --plate-index support).")
 			return
 		}
 	}
 	if req.Output == "3mf" && !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") && !s.cfg.Features.PlatePlacement {
-		fail(w, 400, "saving loaded projects requires the R238 tool (native placement and identify IDs)")
+		fail(w, 400, "Saving edits to an imported 3MF project requires the updated R238 slicing engine.")
 		return
 	}
 	if raw := r.FormValue("project_instances"); raw != "" {
@@ -841,7 +841,7 @@ func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started
 		return
 	}
 	if err := s.captureSubmission(j, &req, vendor); err != nil {
-		fail(w, 500, "The submitted configuration could not be saved. Try again before slicing.")
+		fail(w, 500, "Oops! Couldn't save the print settings for this job. Please try slicing again.")
 		return
 	}
 	j.Request = req
@@ -857,7 +857,7 @@ func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started
 func (s *Server) job(w http.ResponseWriter, r *http.Request) *Job {
 	j := s.jobs.Get(r.PathValue("id"))
 	if j == nil {
-		fail(w, 404, "job not found")
+		fail(w, 404, "Couldn't find that slice job.")
 	}
 	return j
 }
@@ -889,7 +889,7 @@ func (s *Server) surfaceGrid(w http.ResponseWriter, r *http.Request) {
 	}
 	var record map[string]json.RawMessage
 	if !j.Previewable() || json.Unmarshal(j.Record(), &record) != nil || record["surface_grid"] == nil {
-		fail(w, 404, "surface grid is not available")
+		fail(w, 404, "Surface preview grid isn't available for this job.")
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -905,7 +905,7 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.jobs.Remove(j); err != nil {
-		fail(w, 500, "cannot remove job: "+err.Error())
+		fail(w, 500, "Couldn't remove job: " + err.Error())
 		return
 	}
 	w.WriteHeader(204)
@@ -916,7 +916,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if j.AwaitFinished(r.Context()) != StateDone {
-		fail(w, 409, "job has no completed download")
+		fail(w, 409, "This job doesn't have a finished file ready to download yet.")
 		return
 	}
 	if refusal := j.curveRefusal(); refusal != "" && previewableRequest(j.Request) {
@@ -939,9 +939,9 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			j.setState(StateStale, "completed output is unavailable; slice again")
-			writeJSON(w, 410, map[string]string{"error": "This output is no longer available. Slice the project again.", "code": "job_output_expired", "recovery": "slice_again"})
+			writeJSON(w, 410, map[string]string{"error": "Oops! That sliced file has expired. Please slice the plate again.", "code": "job_output_expired", "recovery": "slice_again"})
 		} else {
-			fail(w, 503, "The output could not be opened. Try downloading again.")
+			fail(w, 503, "Oops! Couldn't open the exported file. Please try downloading it again.")
 		}
 		return
 	}
@@ -972,12 +972,12 @@ func (s *Server) exploded(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PathValue("name")
 	if !j.Request.Explode || j.State() != StateDone || !explodedName.MatchString(name) {
-		fail(w, 404, "no such exploded mesh")
+		fail(w, 404, "Couldn't find that extracted model part.")
 		return
 	}
 	f, err := os.Open(filepath.Join(j.ExplodedDir(), name))
 	if err != nil {
-		fail(w, 404, "no such exploded mesh")
+		fail(w, 404, "Couldn't find that extracted model part.")
 		return
 	}
 	defer f.Close()
@@ -1006,7 +1006,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 		if f != nil {
 			f.Close()
 		}
-		fail(w, 404, "moves are not available")
+		fail(w, 404, "Toolpath preview data isn't available for this slice.")
 		return
 	}
 	st, err := f.Stat()
@@ -1041,7 +1041,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	}
 	controller := http.NewResponseController(w)
 	if _, ok := w.(http.Flusher); !ok {
-		fail(w, 500, "streaming unavailable")
+		fail(w, 500, "Live progress streaming isn't available in this connection.")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1239,7 +1239,7 @@ var vector3 = regexp.MustCompile(`^-?[0-9.]+(e-?[0-9]+)?,-?[0-9.]+(e-?[0-9]+)?,-
 
 func surfaceArgs(r *http.Request, f ToolFeatures) ([]string, error) {
 	if !f.EmbossSurface {
-		return nil, errors.New("Use surface requires a tool with --use-surface")
+		return nil, errors.New("Wrapping onto a curved surface requires a slicing engine with --use-surface support.")
 	}
 	args := []string{}
 	for _, k := range []string{"at", "normal", "up"} {
@@ -1261,7 +1261,7 @@ func surfaceArgs(r *http.Request, f ToolFeatures) ([]string, error) {
 	}
 	if r.FormValue("outside") == "1" {
 		if !f.EmbossSurfaceOutside {
-			return nil, errors.New("raised surface text requires a tool with --surface-outside")
+			return nil, errors.New("Raised surface text requires a slicing engine with --surface-outside support.")
 		}
 		args = append(args, "--surface-outside")
 	}
@@ -1270,7 +1270,7 @@ func surfaceArgs(r *http.Request, f ToolFeatures) ([]string, error) {
 
 func (s *Server) embossFonts(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.Features.EmbossText {
-		fail(w, 404, "the tool has no text")
+		fail(w, 404, "Please enter some text to generate.")
 		return
 	}
 	s.fontsOnce.Do(func() {
@@ -1307,12 +1307,12 @@ func (s *Server) embossFonts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handyModel(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !handyModels[name] {
-		fail(w, 404, "unknown handy model")
+		fail(w, 404, "Unrecognized built-in sample model.")
 		return
 	}
 	f, err := os.Open(filepath.Join(s.cfg.Resources, "handy_models", name))
 	if err != nil {
-		fail(w, 404, "handy model unavailable")
+		fail(w, 404, "That built-in sample model isn't available right now.")
 		return
 	}
 	defer f.Close()
@@ -1384,7 +1384,7 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 	if err := s.captureSubmission(j, &req, vendor); err != nil {
 		s.jobs.releaseUpload(j)
 		os.RemoveAll(j.Dir)
-		fail(w, 500, "The retry configuration could not be saved. Submit the project again.")
+		fail(w, 500, "Oops! Couldn't save the retry settings. Please slice the project again.")
 		return
 	}
 	j.Request = req

@@ -86,12 +86,12 @@ function restoreChanges(type: PresetType, slot: number, key: string, c: ReturnTy
 
 export async function saveToProfile(type: PresetType, slot = 0, choices: Record<string, ValueChoice> = {}): Promise<void> {
   const s = getState();
-  if (!s.api) throw new Error('Not connected. Your changes are kept.');
+  if (!s.api) throw new Error('Offline right now—your changes are safely kept in this tab.');
   const stage = captureProjectProfileChanges(type, slot), source = findProfile(s, type, stage.key), resolved = resolvePreset(s, type, stage.key);
-  if (!source || !resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
+  if (!source || !resolved.base || resolved.error) throw new Error(resolved.error ?? 'That profile isn\'t available right now, but your edits are safely kept here.');
   const before = changesOf(s, type, slot), prior = structuredClone(source), printerBefore = structuredClone(findProfile(s, 'machine', s.printer));
   const scales = scalesOf(source), { rows, own, toPrinter, kept } = applyChoices(scales, stage.deltas, valueSources(s, type, slot), choices, scaleContext(s));
-  if (Object.keys(kept).length === Object.keys(stage.deltas).length) throw new Error('Every change stays in this project. Choose where to save one.');
+  if (Object.keys(kept).length === Object.keys(stage.deltas).length) throw new Error('Your edits apply to this project by default. Choose where you\'d like to save them permanently.');
   const values = { ...resolved.config, ...own };
   if (speedModelOf(source)) for (const f of SPEED_FEATURES) for (const key of [f.key, f.acceleration]) if (!(key in own)) {
     const value = source.overlay?.[key] ?? resolved.base.config[key];
@@ -127,11 +127,11 @@ export function newProfileNameError(s: State, type: PresetType, name: string): s
 export type NewKind = 'same' | 'dynamic' | 'regular';
 export async function saveAsNewProfile(type: PresetType, slot: number, name: string, kind: NewKind = 'same', choices: Record<string, ValueChoice> = {}): Promise<void> {
   const s = getState();
-  if (!s.api) throw new Error('Not connected. Your changes are kept.');
+  if (!s.api) throw new Error('Offline right now—your changes are safely kept in this tab.');
   const error = newProfileNameError(s, type, name);
   if (error) throw new Error(error);
   const key = selectedKey(s, type, slot), resolved = resolvePreset(s, type, key);
-  if (!resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
+  if (!resolved.base || resolved.error) throw new Error(resolved.error ?? 'That profile isn\'t available right now, but your edits are safely kept here.');
   const deltas = Object.fromEntries(selectChanges(s, type, slot).filter((c) => c.scope === 'project' && c.owner.plate === undefined).map((c) => [c.key, c.now]));
   const before = changesOf(s, type, slot), source = findProfile(s, type, key), ctx = scaleContext(s);
   const scales = scalesOf(source), dynamic = type === 'process' && kind === 'dynamic' && !!speedModelOf(source);

@@ -12,11 +12,11 @@ import (
 
 func validProfileName(name string) error {
 	if name == "" || len(name) > 200 || strings.TrimSpace(name) != name {
-		return errors.New("a profile name is 1 to 200 characters without leading or trailing spaces")
+		return errors.New("Profile names must be between 1 and 200 characters (without leading or trailing spaces).")
 	}
 	for _, r := range name {
 		if unicode.IsControl(r) {
-			return errors.New("a profile name has no control characters")
+			return errors.New("Profile names can't contain control characters.")
 		}
 	}
 	return nil

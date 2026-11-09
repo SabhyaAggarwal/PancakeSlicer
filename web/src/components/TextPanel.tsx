@@ -41,7 +41,7 @@ export default function TextPanel() {
     <div className="manip-panel brim-ears text-panel">
       <div className="manip-title">Text</div>
       <textarea className="text" rows={3} value={spec.text} aria-label="Text" onChange={(e) => edit({ text: e.target.value })} />
-      {!spec.text.trim() && <div className="brim-warning">Embossed text cannot contain only white spaces.</div>}
+      {!spec.text.trim() && <div className="brim-warning">Please enter some visible text (not just spaces!).</div>}
       <label className="prefs-row cut-joint-row"><span>Font</span>
         <Dropdown className="combo" value={spec.font} aria-label="Font" onValueChange={(next) => edit({ font: next })} options={[{ value: "", label: 'Default' }, ...fonts.map((f) => ({ value: f.id, label: f.name }))]} />
       </label>
@@ -65,13 +65,13 @@ export default function TextPanel() {
         {num('Char gap', 'charGap', -100, 100, 1)}
         {num('Line gap', 'lineSpacing', 0.1, 10, 0.1)}
         {v && (
-          <label className="prefs-row cut-joint-row" title={canSurface ? undefined : v.type === 'part' ? 'Update the slicing service to raise text on a curved surface; until then, use Cut or Modifier' : 'Update the slicing service to wrap onto a curved surface'}>
+          <label className="prefs-row cut-joint-row" title={canSurface ? undefined : v.type === 'part' ? 'Update the slicing service to raise text on a curved surface; until then, use Cut or Modifier' : 'Update your slicing service to wrap SVGs onto curved surfaces.'}>
             <span>Use surface</span>
             <Check checked={!!spec.surface || placing} disabled={!canSurface && !spec.surface}
               onCheckedChange={(next) => { if (next) setTextPlacing(true); else { setTextPlacing(false); if (spec.surface) edit({ surface: undefined }); } }} />
           </label>
         )}
-        {placing && <div className="cut-joint-hint">Click on the object's surface to place the text</div>}
+        {placing && <div className="cut-joint-hint">Click anywhere on the model's surface to place your text.</div>}
       </More>
       <div className="cut-joint-buttons"><span style={{ flex: 1 }} /><button type="button" className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button></div>
     </div>

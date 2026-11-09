@@ -9,7 +9,7 @@ const formFiles = new WeakMap<FormData, Map<string, Blob>>();
 export function blobDigest(blob: Blob): Promise<string> {
   let digest = digests.get(blob);
   if (!digest) {
-    if (!crypto.subtle) throw new Error('Uploading models needs a secure (HTTPS or localhost) connection.');
+    if (!crypto.subtle) throw new Error('Uploading models requires a secure connection (HTTPS or localhost).');
     digest = blob.arrayBuffer().then((b) => crypto.subtle.digest('SHA-256', b)).then((h) =>
       Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, '0')).join(''));
     digests.set(blob, digest);
@@ -26,7 +26,7 @@ async function upload(blobs: Map<string, Blob>, signal?: AbortSignal, onUpload?:
   await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [sum, blob] = next;
-      if (signal?.aborted) throw new Error('Slicing Canceled');
+      if (signal?.aborted) throw new Error('Slicing canceled');
       await mutation(`/api/blobs/${sum}`, { method: 'PUT', body: blob }, false, signal, (f) => { sent.set(sum, f * blob.size); report(); });
       sent.set(sum, blob.size);
       present.add(sum);

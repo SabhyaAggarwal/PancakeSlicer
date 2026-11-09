@@ -16,13 +16,13 @@ export const hasWorksWithRule = (s: ProfileContextState, type: PresetType, key: 
 
 export function worksWithReason(s: ProfileContextState, type: PresetType, key: string, printerKey = s.printer, nozzle?: string | number): string {
   const resolved = resolveProfile(s, type, key), rule = ruleOf(s, type, resolved);
-  if (rule !== undefined && !validWorksWith(rule, type)) return 'Repair this profile\'s Works with rule';
+  if (rule !== undefined && !validWorksWith(rule, type)) return 'Fix this profile\'s compatibility rules';
   if (type === 'machine') return '';
   const printer = printerFacts(s, printerKey, nozzle);
-  if (rule && !matchesPrinter(rule, printer)) return 'Not set to work with this printer or nozzle';
+  if (rule && !matchesPrinter(rule, printer)) return 'Not marked compatible with this printer or nozzle';
   const process = resolveProfile(s, 'process', s.process), loaded = (s.filamentSlots ?? []).filter(Boolean).map((k) => resolveProfile(s, 'filament', k));
   if (type === 'filament') {
-    if (rule && !matchesPrint(rule, process.key)) return 'Not set to work with these print settings';
+    if (rule && !matchesPrint(rule, process.key)) return 'Not marked compatible with these print settings';
     for (const other of [process, resolveProfile(s, 'machine', printerKey)]) {
       const otherRule = ruleOf(s, other === process ? 'process' : 'machine', other);
       if (otherRule && validWorksWith(otherRule, other === process ? 'process' : 'machine') && !matchesFilament(otherRule, filamentFacts(resolved)))
@@ -31,7 +31,7 @@ export function worksWithReason(s: ProfileContextState, type: PresetType, key: s
     return '';
   }
   for (const filament of loaded) {
-    if (rule && !matchesFilament(rule, filamentFacts(filament))) return `Not set to work with ${filament.name ?? 'this filament'}`;
+    if (rule && !matchesFilament(rule, filamentFacts(filament))) return `Not marked compatible with ${filament.name ?? 'this filament'}`;
     const filamentRule = ruleOf(s, 'filament', filament);
     if (filamentRule && validWorksWith(filamentRule, 'filament') && !matchesPrint(filamentRule, resolved.key))
       return `${filament.name ?? 'A loaded filament'} isn't set to work with these print settings`;

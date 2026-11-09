@@ -27,7 +27,7 @@ export type ViewerSnapshot = { value: 'empty' } | { value: 'loading' | 'ready' |
 export function viewerSnapshot(m: Machine<ViewerState, ViewerEvent, ViewerContext>): ViewerSnapshot {
   const { value, context: c } = m.get();
   if (value === 'empty') return { value };
-  if (!c.source) throw new Error('Viewer source invariant');
+  if (!c.source) throw new Error('Oops! Preview data got out of sync.');
   switch (value) {
     case 'loading': case 'ready': case 'playing': return { value, source: c.source };
     case 'error': return { value, source: c.source, error: c.error ?? 'Preview unavailable' };

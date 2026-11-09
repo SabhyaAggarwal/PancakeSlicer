@@ -21,7 +21,7 @@ export async function cancelTrackedJob() {
 export async function startFlows() {
   if (started) return;
   started = true;
-  try { await initialiseRecovery(); } catch (error) { started = false; toast(error instanceof Error ? error.message : 'Recovery references could not be loaded'); return; }
+  try { await initialiseRecovery(); } catch (error) { started = false; toast(error instanceof Error ? error.message : 'Oops! Couldn\'t load the recovery files for this project.'); return; }
   const recovery = readRecovery();
   let seenId: string | undefined, generation = documentGeneration();
   const watch = (tracked: TrackedJob, seq = -1, restoring = false) => {

@@ -99,7 +99,7 @@ function publish(s: State, status: ProfileReferenceSnapshot['status'], error: st
   for (const item of source.references) push(item.key, item.reference);
   const complete = status === 'ready' && source.complete;
   snapshot = { status: status === 'ready' && !complete ? 'incomplete' : status, referencesComplete: complete, references,
-    error: error ?? (!complete && status === 'ready' ? 'Some saved profile references could not be resolved. Refresh or recover those projects before deleting profiles.' : null) };
+    error: error ?? (!complete && status === 'ready' ? 'Some projects link to profiles that are still syncing. Refresh or open those projects before deleting profiles.' : null) };
   notify();
 }
 
@@ -109,7 +109,7 @@ export async function refreshProfileReferences(): Promise<ProfileReferenceSnapsh
   defaults = readDefaults(); publish(getState(), 'loading');
   try {
     const storage = await projectStore();
-    if (!storage) throw new Error('Project storage is unavailable. Profile deletion is disabled.');
+    if (!storage) throw new Error('Can\'t reach project storage right now, so deleting profiles is temporarily paused.');
     const [stored, drafts] = await Promise.all([storage.referenceDocuments(), projectDraftStore().then((store) => store.list())]);
     const loaded: ProfileReferenceDocuments = { ...stored, documents: [...stored.documents, ...drafts.map(draft => ({ id: draft.id, name: `${draft.name} (${draft.kind === 'snapshot' ? 'Snapshot' : 'Draft'})`, doc: draft.doc }))] };
     if (mine !== generation) return snapshot;

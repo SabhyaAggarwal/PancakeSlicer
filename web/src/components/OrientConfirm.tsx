@@ -23,8 +23,8 @@ export function OrientConfirm() {
   const { original: a, standing: b } = c;
   const slower = a?.time_s != null && b?.time_s != null && b.time_s > a.time_s;
   const more = a?.floating_mm != null && b?.floating_mm != null ? b.floating_mm - a.floating_mm : null;
-  const advice = more != null && more >= FLOAT_MARGIN_MM ? `Stood up, ${more.toFixed(0)} mm more road prints in the air: keep the original.`
-    : slower && !(more != null && more <= -FLOAT_MARGIN_MM) ? 'Stood up, it prints slower: keep the original.' : null;
+  const advice = more != null && more >= FLOAT_MARGIN_MM ? `Standing it up would print ${more.toFixed(0)} mm more in mid-air—better to keep the current orientation.`
+    : slower && !(more != null && more <= -FLOAT_MARGIN_MM) ? 'Standing it up would take longer to print—better to keep the current orientation.' : null;
   return (
     <Modal size="s" label="Stand this part up?" onClose={close}>
       <ModalTitle title={`Stand ${name} up?`} onClose={close} />

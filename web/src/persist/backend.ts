@@ -71,7 +71,7 @@ function observableStore(backend: ProjectStore): ProjectStore {
 
 let store: Promise<ProjectStore | null> | null = null;
 let storageError: string | null = null;
-export const projectStorageError = () => storageError ?? 'The project service is unavailable. Keep this window open and retry.';
+export const projectStorageError = () => storageError ?? 'Oops! Can\'t reach the project server right now. Keep this window open and try again in a moment.';
 export function projectStore(retry = false): Promise<ProjectStore | null> {
   if (retry) { store = null; storageError = null; }
   if (store) return store;

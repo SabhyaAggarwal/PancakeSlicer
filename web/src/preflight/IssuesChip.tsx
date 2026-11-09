@@ -9,9 +9,9 @@ import { SEP } from '../separator';
 
 const TITLE: Record<Issue['kind'], string> = {
   bed: 'Off the bed',
-  overhang: 'Overhang, no support',
-  contact: 'Barely touches the bed',
-  footprint: 'Small footprint',
+  overhang: 'Steep overhang (no supports)',
+  contact: 'Tiny bed contact area',
+  footprint: 'Small base footprint',
 };
 
 const select = (id: number) => {

@@ -14,7 +14,7 @@ export async function serviceRequest(path: string, init: RequestInit = {}, missi
     const status = (error as { status?: number })?.status;
     if (missing && status === 404) return null;
     const name = status === 409 ? 'ProjectConflictError' : status === 410 ? 'ProjectDeletedError'
-      : status === 507 || error instanceof Error && error.message === 'Server storage full' ? 'QuotaExceededError' : 'ProjectServiceError';
+      : status === 507 || error instanceof Error && error.message === 'Oops! Server storage is full' ? 'QuotaExceededError' : 'ProjectServiceError';
     throw Object.assign(error instanceof Error ? error : new Error(String(error)), { name });
   }
 }
@@ -44,9 +44,9 @@ export async function readAsset(key: string): Promise<Blob | null> {
 let workspaceService: Promise<void> | null = null;
 export function requireWorkspaceService(): Promise<void> {
   workspaceService ??= readHealth(15_000).then(async response => {
-    if (!response.ok) throw Object.assign(new Error('The slicing service is unavailable.'), { status: response.status });
+    if (!response.ok) throw Object.assign(new Error('Oops! The slicing service isn\'t reachable right now.'), { status: response.status });
     if ((await response.json()).workspace_schema !== 1)
-      throw new Error('The updated storage service is required. Your projects, drafts and preference changes are kept; retry after the service update.');
+      throw new Error('This version of the app needs an updated slicing service. Don\'t worry—your projects, drafts, and preferences are safe! Update the service and try again.');
   }).catch(error => { workspaceService = null; throw error; });
   return workspaceService;
 }

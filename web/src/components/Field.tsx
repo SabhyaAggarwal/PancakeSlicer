@@ -23,7 +23,7 @@ const NUMERIC = new Set(['float', 'floats', 'int', 'ints', 'percent', 'percents'
 function rejectField(text: string, previous: string, def: OptionDef, label: string): boolean {
   const issue = fieldIssue(text, def);
   if (!issue) return false;
-  toast(`${label}: ${fieldNumber(text, def)} ${issue.detail}. Not applied; keeping ${fieldNumber(previous, def)}.`, null, undefined, 'warning');
+  toast(`${label}: ${fieldNumber(text, def)} ${issue.detail}—kept ${fieldNumber(previous, def)} instead.`, null, undefined, 'warning');
   return true;
 }
 
@@ -45,8 +45,8 @@ const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map
 const CHOICE_HINTS: Record<string, Record<string, string>> = {
   nonplanar_mode: {
     ...MODE_HELP,
-    multiplanar: 'Tilted chunks: the bed tilts so each chunk prints its overhangs upright.',
-    field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
+    multiplanar: 'Tilted chunks: tilts the print bed for each section so overhangs print cleanly upright.',
+    field: 'Rotary curved layers: curves every layer while the rotary table tilts to keep the nozzle level.',
   },
 };
 
@@ -131,7 +131,7 @@ export const Field = memo(function Field(props: {
   const isSwitch = def.type.replace(/s$/, '') === 'bool' && !FILAMENT_SLOT_KEYS.has(key);
   const isOn = value === true || value === 'true' || value === '1' || value === 1;
   const locked = !!props.disabled || !!def.readonly || (def.nullable && !checked);
-  const disabledReason = def.readonly ? 'This value is read-only for the selected profile.' : props.disabled ? 'This setting is unavailable with the current printer and process options.' : def.nullable && !checked ? 'Enable the override to edit this value.' : undefined;
+  const disabledReason = def.readonly ? 'This setting is locked in the current profile.' : props.disabled ? 'This setting isn\'t available with your current printer and print profile combination.' : def.nullable && !checked ? 'Turn on the override toggle first to customize this value.' : undefined;
   const hint = CHOICE_HINTS[key]?.[asText(value)];
   const help = props.tooltip || def.tooltip;
 
@@ -279,7 +279,7 @@ function TextBox(props: { value: string; label?: string; multiline?: boolean; nu
     const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, requested));
     if (next !== requested) {
       const issue = fieldIssue(`${requested}${pct ? '%' : ''}`, props.def);
-      toast(`${label}: ${fieldNumber(`${requested}${pct ? '%' : ''}`, props.def)} ${issue?.detail}. Using ${fieldNumber(`${next}${pct ? '%' : ''}`, props.def)}.`, null, undefined, 'warning');
+      toast(`${label}: ${fieldNumber(`${requested}${pct ? '%' : ''}`, props.def)} ${issue?.detail}—using ${fieldNumber(`${next}${pct ? '%' : ''}`, props.def)}.`, null, undefined, 'warning');
     }
     const value = `${next}${pct ? '%' : ''}`;
     if (rejectField(value, props.value, props.def, label)) return;

@@ -35,7 +35,7 @@ function analysis(o: PlateObject, firstLayer: number, threshold: number, nozzle:
   let p = cache.get(key);
   if (p) return p;
   const fail = (e: Event) => {
-    const error = new Error(e instanceof ErrorEvent && e.message ? e.message : 'The preflight worker stopped');
+    const error = new Error(e instanceof ErrorEvent && e.message ? e.message : 'Oops! The background model checker stopped');
     worker?.terminate(); worker = null;
     for (const w of waiting.values()) { cache.delete(w.key); w.reject(error); }
     waiting.clear();

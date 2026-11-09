@@ -11,7 +11,7 @@ export interface ProjectProfileChanges {
 export function captureProjectProfileChanges(type:PresetType,slot=0):ProjectProfileChanges {
   const s=getState(),key=(type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
   const resolved=resolvePreset(s,type,key);
-  if(!resolved.source || resolved.error)throw new Error(resolved.error ?? 'Select an owned profile before saving project changes.');
+  if(!resolved.source || resolved.error)throw new Error(resolved.error ?? 'Select one of your custom profiles (or save as a new profile) to save these changes.');
   const deltas=Object.fromEntries(selectChanges(s,type,slot).filter(c=>c.scope === 'project' && c.owner.plate === undefined).map(c=>[c.key,c.now]));
   return {id:crypto.randomUUID(),type,key:profileKey(resolved.source),slot,generation:documentGeneration(),deltas:structuredClone(deltas),edits:structuredClone(presetEdits(s,type,slot)),project:structuredClone((type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type]) ?? null)};
 }

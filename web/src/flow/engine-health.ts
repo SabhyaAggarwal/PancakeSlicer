@@ -47,7 +47,7 @@ export function probeEngine(): Promise<void> {
   watch();
   clearTimeout(retry);
   probe = readHealth(5000).then(async (r) => {
-    if (!r.ok) throw new Error('Health unavailable');
+    if (!r.ok) throw new Error('Service status check unavailable');
     const health = await r.json() as EngineHealth;
     adopt(health);
     engineHealth.send({ type: 'HEALTH', health });

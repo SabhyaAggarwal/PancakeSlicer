@@ -8,7 +8,7 @@ import { meshJob } from './meshOps';
 export type BooleanOp = 'union' | 'difference' | 'intersection';
 export type PartKey = 'main' | number;
 
-export const BOOLEAN_WARNING = 'Unable to perform boolean operation on selected parts';
+export const BOOLEAN_WARNING = 'Oops! Couldn\'t combine or subtract those parts. Make sure the meshes overlap cleanly.';
 
 const partStl = (o: PlateObject, k: PartKey) => {
   const v = o.volumes?.find((x) => x.id === k);
@@ -48,7 +48,7 @@ export async function meshBoolean(objectId: number, op: BooleanOp, a: PartKey, b
     }
     if (remove) next = { ...next, volumes: next.volumes?.filter((x) => x.id !== tool) };
     undoable('Mesh Boolean', () => setState((st) => ({ objects: st.objects.map((x) => (x.id === objectId ? next : x)), job: markStale(st.job) })));
-    if (record.best_effort) toast(`Mesh Boolean: best effort result${(record.preflight_reasons as string[] | undefined)?.length ? ` (${(record.preflight_reasons as string[]).join(', ')})` : ''}; check the part`);
+    if (record.best_effort) toast(`Mesh Boolean finished (best-effort result${(record.preflight_reasons as string[] | undefined)?.length ? ` (${(record.preflight_reasons as string[]).join(', ')})` : ''}—give the part a quick look).`);
   } catch (e) {
     toast(`${BOOLEAN_WARNING}: ${e instanceof Error ? e.message : String(e)}`);
   } finally {

@@ -26,7 +26,7 @@ export function useProjects(): ListedProject[] | null {
 export async function listTrash(): Promise<ListedProject[]> {
   const { projectJson } = await import('../persist/project-wire');
   const rows = await projectJson<Partial<ProjectMeta>[]>('/api/projects?archived=1');
-  if (!Array.isArray(rows)) throw new Error('Trash could not be read.');
+  if (!Array.isArray(rows)) throw new Error('Oops! Couldn\'t load the Trash folder.');
   return rows.map(clean).filter((p): p is ListedProject => !!p);
 }
 

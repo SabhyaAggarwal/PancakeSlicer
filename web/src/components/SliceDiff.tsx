@@ -51,12 +51,12 @@ export function SliceDiff({ data, record }: { data: PreviewData; record: Config 
         {figures.map(([label, a, b]) => <li key={label} data-same={a === b || undefined}><span>{label}</span><span>{a === b ? b : `${a} → ${b}`}</span></li>)}
       </ul>
       {added.map((w) => <p key={`+${w}`} className="sd-warning">New warning: {w}</p>)}
-      {gone.map((w) => <p key={`-${w}`} className="sd-note">No longer warned: {w}</p>)}
+      {gone.map((w) => <p key={`-${w}`} className="sd-note">Resolved warnings: {w}</p>)}
       <div className="lg-sec">Settings changed</div>
       {settings.length ? <ul className="sd-rows">
         {settings.slice(0, SHOWN).map((c) => <li key={c.label}><span>{c.label}</span><span>{c.from} → {c.to}</span></li>)}
         {settings.length > SHOWN && <li className="sd-more">and {settings.length - SHOWN} more</li>}
-      </ul> : <p className="sd-note">Only the objects changed.</p>}
+      </ul> : <p className="sd-note">Only the models or layout changed (settings stayed the same).</p>}
     </section>
   );
 }

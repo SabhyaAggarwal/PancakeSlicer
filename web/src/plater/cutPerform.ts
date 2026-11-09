@@ -49,7 +49,7 @@ export async function performCut() {
           error(message) { stop(); reject(new Error(message)); },
         });
       });
-      if (!pieces.length) throw new Error('The native tool returned no cut pieces.');
+      if (!pieces.length) throw new Error('Oops! Cutting didn\'t produce any parts.');
       const base = o.name.replace(/\.(stl|obj)$/i, '');
       files = await Promise.all(pieces.map(async (piece) => {
         const r = await fetch(`${s.api!.downloadUrl(id)}?piece=${piece.side}`);
@@ -88,7 +88,7 @@ export async function performCut() {
       created.push(piece);
       placed.push(piece);
     }
-    if (signature !== plateSignature(getState())) throw new Error('The plate changed during the cut. Try again.');
+    if (signature !== plateSignature(getState())) throw new Error('The plate changed while we were cutting the model. Please try the cut again.');
     const pieces = created.slice().reverse();
     const objects = s.objects.flatMap((ob) => (ob.id === o.id ? pieces : [ob]));
     const open = files.filter((f) => f.piece.open_edges > 0);
@@ -107,7 +107,7 @@ async function cutToParts(o: PlateObject, files: { piece: Piece; file: File }[],
   const s = getState(), inst = o.instances[0];
   const load = async (side: Piece['side']) => {
     const f = files.find((x) => x.piece.side === side);
-    if (!f) throw new Error('The native tool returned one piece: the plane does not cross the object.');
+    if (!f) throw new Error('The cut plane didn\'t slice through the model, so it stayed in one piece.');
     const geometry = await loadMesh(f.file);
     const toWorld = instanceMatrix(o, inst).multiply(objectMatrix(o).invert())
       .multiply(new THREE.Matrix4().makeTranslation(...geometry.userData.sourceCentre as [number, number, number]));
@@ -123,7 +123,7 @@ async function cutToParts(o: PlateObject, files: { piece: Piece; file: File }[],
   const part: Volume = { id: newId(), name: `${base.name}_A`, type: 'part', geometry, extruder: 0, settings: {},
     matrix: instanceMatrix(base, base.instances[0]).invert().multiply(upper.toWorld).multiply(back).elements };
   const object: PlateObject = { ...base, volumes: [part] };
-  if (signature !== plateSignature(getState())) throw new Error('The plate changed during the cut. Try again.');
+  if (signature !== plateSignature(getState())) throw new Error('The plate changed while we were cutting the model. Please try the cut again.');
   undoable('Cut by Plane', () => setState({ objects: s.objects.flatMap((ob) => (ob.id === o.id ? [object] : [ob])),
     selected: { object: object.id, instance: object.instances[0].id, allInstances: true }, gizmo: 'none', cut: null, toast: null }));
 }

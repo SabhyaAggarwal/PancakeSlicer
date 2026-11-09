@@ -68,9 +68,9 @@ const realApi: Api = {
     const fd = new FormData();
     await attachFiles(fd, req.files, signal, onUpload);
     const { printer, print, filaments } = req.library;
-    if (!printer) throw new Error('Choose a printer first.');
-    if (!print) throw new Error('Choose print settings first.');
-    if (!filaments.length || filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
+    if (!printer) throw new Error('Pick a printer first to get started.');
+    if (!print) throw new Error('Pick a print profile first.');
+    if (!filaments.length || filaments.some((f) => !f)) throw new Error('Please pick a filament for each slot before continuing.');
     fd.append('library', JSON.stringify({ ...req.library, project: req.overrides }));
     if (req.plate_index !== undefined) fd.append('plate_index', String(req.plate_index));
     if (req.plate) fd.append('plate', JSON.stringify({ ...req.plate, objects: req.plate.objects.map((o) => ({ ...o,
@@ -207,9 +207,9 @@ export const canCurvedTops = () => validatedSurface('curved_tops');
 export const canSurfaceWaves = (mode = 'whole') => validatedSurface('nonplanar_wave') && toolArtifactManifest?.wave_modes?.includes(mode) === true;
 
 export function surfaceConfigBlocker(config: Config): string | undefined {
-  if (String(config.nonplanar_mode) === 'nonplanar_top' && !canCurvedTops()) return 'Curved layers need a newer slicing engine';
+  if (String(config.nonplanar_mode) === 'nonplanar_top' && !canCurvedTops()) return 'Curved layers require a newer version of the slicing engine.';
   const wave = String(config.nonplanar_wave ?? 'off');
-  if (wave !== 'off' && !canSurfaceWaves(wave)) return 'Rippled top needs a newer slicing engine';
+  if (wave !== 'off' && !canSurfaceWaves(wave)) return 'Rippled top surfaces require a newer version of the slicing engine.';
 }
 
 function guardedApi(api: Api): Api {
@@ -244,5 +244,5 @@ export async function connect(timeoutMs = 1500): Promise<Api> {
     }
   } catch {
   }
-  throw new Error('The slicing service is unavailable. Reconnect and retry.');
+  throw new Error('Oops! We lost connection to the slicing service. Reconnect and give it another try.');
 }

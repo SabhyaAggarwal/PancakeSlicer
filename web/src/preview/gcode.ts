@@ -140,7 +140,7 @@ export function gcodeToStream(text: string): ArrayBuffer {
     const args: Record<string, number> = {};
     for (const m of code.slice(command[0].length).matchAll(/([A-Z])\s*([+-]?(?:\d+\.?\d*|\.\d+))/gi)) {
       const v = Number(m[2]);
-      if (!Number.isFinite(v)) throw new Error(`Invalid number at G-code line ${line}`);
+      if (!Number.isFinite(v)) throw new Error(`Invalid number on G-code line ${line}`);
       args[m[1].toUpperCase()] = v;
     }
     const arg = (k: string) => args[k];

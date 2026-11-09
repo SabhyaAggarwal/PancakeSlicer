@@ -6,13 +6,13 @@ const projectPath = (id: string) => `/api/projects/${routeKey(id)}`;
 const pendingSaves = new Map<string, Promise<{ request: RequestInit; savedAt: number }>>();
 async function required<T>(path: string, init?: RequestInit): Promise<T> {
   const value = await serviceJson<T>(path, init);
-  if (value === null) throw new Error('The service returned no project data');
+  if (value === null) throw new Error('Oops! The server didn\'t return any data for this project.');
   return value;
 }
 const metadata = async (id: string, archived = false) => {
   if (!archived) {
     const record = await serviceJson<ProjectRecord>(projectPath(id), undefined, true);
-    if (!record) throw new Error('Project not found');
+    if (!record) throw new Error('Oops! We couldn\'t find that project.');
     return record.meta;
   }
   return (await required<ProjectRecord>(projectPath(id) + '?archived=1')).meta;
@@ -47,7 +47,7 @@ function executeCommand(entry: PendingCommand): Promise<ProjectCommandAck | Proj
     if (!entry.request) {
       const { id, kind, name, newId, expectedRevision } = entry.command;
       const revision = expectedRevision ?? (await metadata(id, kind === 'restore')).revision ?? 0;
-      if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid project command revision');
+      if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Oops! Project version got out of sync.');
       entry.status.expectedRevision = revision;
       entry.request = Object.freeze(jsonWrite('POST', { operationId: entry.status.operationId, expectedRevision: revision,
         ...(name !== undefined ? { name } : {}), ...(newId !== undefined ? { newId } : {}) }));
@@ -56,14 +56,14 @@ function executeCommand(entry: PendingCommand): Promise<ProjectCommandAck | Proj
     const ack = await required<ProjectCommandAck | ProjectMeta>(projectPath(entry.command.id) + '/' + entry.command.kind, entry.request)
       .catch((error: unknown) => alreadyRestored(entry, error));
     if (entry.command.kind === 'duplicate') {
-      if (!('id' in ack) || ack.id !== entry.command.newId || ack.revision !== 1) throw new Error('Invalid duplicate acknowledgement');
+      if (!('id' in ack) || ack.id !== entry.command.newId || ack.revision !== 1) throw new Error('Oops! The server returned an unexpected response while duplicating the project.');
     } else if (!('operationId' in ack) || ack.operationId !== entry.status.operationId || ack.revision !== entry.status.expectedRevision! + 1)
-      throw new Error('Invalid project command acknowledgement');
+      throw new Error('Oops! The server returned an unexpected response while updating the project.');
     entry.result = ack; entry.status.state = 'acknowledged'; publishCommands();
     return ack;
   }).catch((error: unknown) => {
     entry.status.state = (error as { status?: number })?.status === 409 ? 'conflict' : 'failed';
-    entry.status.error = error instanceof Error ? error.message : 'Project command failed'; publishCommands(); throw error;
+    entry.status.error = error instanceof Error ? error.message : 'Oops! Couldn\'t update project'; publishCommands(); throw error;
   });
   entry.running = task;
   void task.finally(() => { if (entry.running === task) entry.running = null; }).catch(() => {});
@@ -98,14 +98,14 @@ export const serviceStore: ProjectStore = {
     const key = `${id}/${revision}/${capture.digest}`;
     const preparation = prepareOnce(pendingSaves, key, async () => {
       const previous = revision > 0 ? await required<ProjectRecord>(projectPath(id)) : null;
-      if (previous && (previous.meta.revision ?? 0) !== revision) throw Object.assign(new Error('This project changed. Reload or reapply your draft.'), { name: 'ProjectConflictError' });
+      if (previous && (previous.meta.revision ?? 0) !== revision) throw Object.assign(new Error('Heads up: this project was updated elsewhere. Reload the latest version or save your current edits.'), { name: 'ProjectConflictError' });
       const record = { ...previous, meta: { ...previous?.meta, ...meta, revision, id, thumbnail: thumbnail === undefined ? previous?.meta.thumbnail ?? null : thumbnail }, doc: null };
       return { request: projectWrite(await capture.project({ operationId: newKey(), expectedRevision: revision, record })), savedAt: meta.savedAt };
     });
     let pending: Awaited<typeof preparation>;
     try { pending = await preparation; } finally { capture.release(); }
     const ack = await required<{revision:number}>(projectPath(id), pending.request);
-    if (ack.revision !== revision + 1) throw new Error('Invalid project revision acknowledgement');
+    if (ack.revision !== revision + 1) throw new Error('Oops! Couldn\'t verify the saved project version.');
     if (pendingSaves.get(key) === preparation) pendingSaves.delete(key);
     return { revision: ack.revision, savedAt: pending.savedAt };
   },
@@ -117,7 +117,7 @@ export const serviceStore: ProjectStore = {
   subscribeCommands(listener) { commandListeners.add(listener); return () => { commandListeners.delete(listener); }; },
   discardRejectedCommand(operationId) {
     const found = [...commands].find(([, entry]) => entry.status.operationId === operationId);
-    if (!found || found[1].status.state !== 'conflict' || found[1].running) throw new Error('Only an explicitly rejected conflict can be discarded. Retry ambiguous commands unchanged.');
+    if (!found || found[1].status.state !== 'conflict' || found[1].running) throw new Error('Wait until the save conflict finishes checking before discarding changes.');
     commands.delete(found[0]); publishCommands();
   },
   referenceDocuments: () => required<ProfileReferenceDocuments>('/api/projects/references'),

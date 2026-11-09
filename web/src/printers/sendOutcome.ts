@@ -9,14 +9,14 @@ const mb = (n: number) => (n / 1e6).toFixed(1);
 
 export function sendOutcome(t: Transfer): SendOutcome {
   if (t.state === 'uploading') return { tone: 'progress', title: `Sending to ${t.name}`, detail: `${mb(t.sent)} of ${mb(t.total)} MB (${Math.floor((100 * t.sent) / Math.max(1, t.total))}%)` };
-  if (t.state === 'starting') return { tone: 'progress', title: `Sending to ${t.name}`, detail: 'Uploaded; waiting for the printer to accept the start…' };
-  if (t.state === 'cancelled') return { tone: 'error', title: 'Send cancelled', detail: sentence(t.error ?? '') };
+  if (t.state === 'starting') return { tone: 'progress', title: `Sending to ${t.name}`, detail: 'Uploaded! Waiting for your printer to start the job…' };
+  if (t.state === 'cancelled') return { tone: 'error', title: 'Upload canceled', detail: sentence(t.error ?? '') };
   switch (t.outcome) {
     case 'printing': return { tone: 'success', title: `Printing on ${t.name}`, detail: '' };
-    case 'uploaded': return { tone: 'success', title: `Uploaded to ${t.name}, not started`, detail: 'Start it from the printer\'s screen.' };
-    case 'waiting_for_printer': return { tone: 'waiting', title: 'Sent, waiting for the printer to start', detail: `${t.name} has not confirmed the start yet. Check its screen before sending again.` };
-    case 'failed': return { tone: 'error', title: `Not sent to ${t.name}`, detail: sentence(t.error ?? '') };
-    case undefined: throw new Error(`Send ${t.id} finished without an outcome`);
+    case 'uploaded': return { tone: 'success', title: `Uploaded to ${t.name} (ready to start)`, detail: 'You can start the print right from your printer\'s screen.' };
+    case 'waiting_for_printer': return { tone: 'waiting', title: 'Sent! Waiting for the printer to start', detail: `${t.name} hasn't confirmed that the print started yet. Check the printer's screen before sending it again.` };
+    case 'failed': return { tone: 'error', title: `Couldn't send to ${t.name}`, detail: sentence(t.error ?? '') };
+    case undefined: throw new Error(`Upload ${t.id} finished without a status report from the printer.`);
   }
 }
 
@@ -39,8 +39,8 @@ export function noticeSend(t: Transfer) {
     last = key;
     if (x.state === 'done' && x.outcome === 'printing') toast(`Printing on ${x.name}`, { label: 'View', run: openDevice }, 8000, 'success', true);
     else if (x.state === 'done' && x.outcome === 'uploaded') toast(`Uploaded to ${x.name}`, { label: 'View', run: openDevice }, 6000, 'success', true);
-    else if (x.state === 'done' && x.outcome === 'waiting_for_printer') toast(`Sent to ${x.name}, waiting for it to start`, { label: 'View', run: openDevice }, 8000, 'warning');
-    else if (x.state === 'failed' || x.state === 'cancelled') toast(x.state === 'cancelled' ? 'Send cancelled' : `Not sent to ${x.name}${SHORT_REASON[x.reason ?? ''] ? `: ${SHORT_REASON[x.reason!]}` : ''}`, { label: 'Retry', run: () => setState({ appDialog: 'send' }) }, 10000, 'error');
+    else if (x.state === 'done' && x.outcome === 'waiting_for_printer') toast(`Sent to ${x.name}—waiting for the print to start`, { label: 'View', run: openDevice }, 8000, 'warning');
+    else if (x.state === 'failed' || x.state === 'cancelled') toast(x.state === 'cancelled' ? 'Upload canceled' : `Couldn't send to ${x.name}${SHORT_REASON[x.reason ?? ''] ? `: ${SHORT_REASON[x.reason!]}` : ''}`, { label: 'Retry', run: () => setState({ appDialog: 'send' }) }, 10000, 'error');
   };
   const settled = (x: Transfer) => x.state !== 'uploading' && x.state !== 'starting' && x.outcome !== 'waiting_for_printer';
   show(t);

@@ -9,13 +9,13 @@ export async function syncAms(printer: string) {
   try {
     slots = (await readPrinterSlots(printer)).slots;
   } catch (e) {
-    toast(`Set project filaments: ${e instanceof Error ? e.message : String(e)}`);
+    toast(`Match printer filaments: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
   const loaded = slots.filter((m) => !m.slot.startsWith('ext'));
   const used = loaded.length ? loaded : slots.filter((m) => m.slot.startsWith('ext'));
   if (!used.length) {
-    toast('Set project filaments: the printer reports no loaded filament.');
+    toast('Your printer says no filaments are currently loaded.');
     return;
   }
   const added: string[] = [];
@@ -25,7 +25,7 @@ export async function syncAms(printer: string) {
     const vendor = resolvePreset(getState(), 'machine', printer).base?.vendor ?? '';
     const family = (await filamentCatalog(vendor)).find((f) => Object.values(f.variants).includes(m.catalog ?? ''));
     if (!family) {
-      toast(`Set project filaments: ${m.label} holds ${m.tray.type}, and the catalog has no ${m.name} for this printer.`, null, null, 'warning');
+      toast(`${m.label} has ${m.tray.type} loaded, which doesn't have a matching ${m.name} profile for this printer yet.`, null, null, 'warning');
       return;
     }
     keys.push(await addCatalogFamily(family, m.tray.colour || undefined));
@@ -41,5 +41,5 @@ export async function syncAms(printer: string) {
     events: st.events.filter((e) => e.type !== 'change' || Number(e.text) <= n),
     job: markStale(st.job),
   })));
-  toast(`Using ${n} filament${n === 1 ? '' : 's'} from the printer${added.length ? `; added ${added.join(', ')} to My filaments` : ''}`, { label: 'Undo', run: undo }, 8000, 'success');
+  toast(`Synced ${n} filament${n === 1 ? '' : 's'} from your printer${added.length ? `; added ${added.join(', ')} to My filaments` : ''}!`, { label: 'Undo', run: undo }, 8000, 'success');
 }

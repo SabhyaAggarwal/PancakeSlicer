@@ -16,7 +16,7 @@ let busy = false;
 
 export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-scores'): Promise<Record<string, unknown> | undefined> {
   const s = getState();
-  if (!s.api || s.api.mock) throw new Error('Auto orient requires the native slicing service.');
+  if (!s.api || s.api.mock) throw new Error('Auto-orient requires a connection to the slicing service.');
   const fd = new FormData();
   fd.append('operation', operation);
   await attachFiles(fd, [{ name: 'orient.stl', blob: await bakeStl(o) }]);
@@ -41,7 +41,7 @@ export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-sc
 async function orient(o: PlateObject): Promise<PlateObject> {
   if (getState().features.orient_scores) {
     const scores = (await orientJob(o, 'orient-scores'))?.scores;
-    if (!Array.isArray(scores)) throw new Error('The native tool did not return orientation scores.');
+    if (!Array.isArray(scores)) throw new Error('Oops! We couldn\'t calculate orientation options for this model.');
     const best = (scores as Record<string, unknown>[]).find((x) => (x.object ?? 0) === 0 && x.best === true);
     const axis = best?.axis as number[], angle = Number(best?.angle_deg);
     if (!best || best.original === true || !Array.isArray(axis) || axis.length !== 3 || !Number.isFinite(angle) || Math.abs(angle) < 0.01) return o;
@@ -49,7 +49,7 @@ async function orient(o: PlateObject): Promise<PlateObject> {
   }
   const rotation = (await orientJob(o, 'orient'))?.rotation as number[];
   if (!Array.isArray(rotation) || rotation.length !== 9 || !rotation.every(Number.isFinite))
-    throw new Error('The native tool did not return an orientation rotation.');
+    throw new Error('Oops! We couldn\'t find a better orientation for this model.');
   return withRotation(o, rotation);
 }
 
@@ -59,7 +59,7 @@ async function splitObject(o: PlateObject): Promise<PlateObject[]> {
     if (m.type === 'pieces') resolve(m.pieces);
     else if (m.type === 'error') reject(new Error(m.message));
   }));
-  if (pieces.length < 2) throw new Error("The selected object couldn't be split.");
+  if (pieces.length < 2) throw new Error("Hmm, that object is already a single connected mesh and can't be split further.");
   const result: PlateObject[] = [];
   for (let k = 0; k < pieces.length; k++) {
     const name = `${o.name.replace(/\.(stl|obj)$/i, '')}_${k + 1}`;
@@ -81,13 +81,13 @@ async function splitObject(o: PlateObject): Promise<PlateObject[]> {
 }
 
 async function splitParts(o: PlateObject): Promise<PlateObject[]> {
-  if (o.volumes?.length) throw new Error('Split to parts needs an object of one part.');
+  if (o.volumes?.length) throw new Error('Select a single-part object to split it into separate parts.');
   const file = await bakeStl(o, new Matrix4());
   const blobs = await new Promise<Blob[]>((resolve, reject) => request({ type: 'split', file }, (m) => {
     if (m.type === 'pieces') resolve(m.pieces);
     else if (m.type === 'error') reject(new Error(m.message));
   }));
-  if (blobs.length < 2) throw new Error("The selected object couldn't be split.");
+  if (blobs.length < 2) throw new Error("Hmm, that object is already a single connected mesh and can't be split further.");
   const base = o.name.replace(/\.(stl|obj|3mf|stp|step)$/i, '');
   const files = [...blobs].sort((a, b) => b.size - a.size).map((blob, k) => new File([blob], `${base}_${k + 1}.stl`, { type: 'model/stl' }));
   const pieces = await Promise.all(files.map((f) => loadMesh(f)));
@@ -109,7 +109,7 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
   const s = getState();
   if (busy || s.project || s.tab !== 'prepare') return;
   const plateWide = operation === 'orient' && (all || !s.selected);
-  if (plateWide && s.projectPlates.find((p) => p.index === s.plateIndex)?.locked) return toast('The plate is locked');
+  if (plateWide && s.projectPlates.find((p) => p.index === s.plateIndex)?.locked) return toast('This plate is locked');
   const objects = plateWide ? s.objects : s.objects.filter((o) => o.id === s.selected?.object);
   if (!objects.length) return;
   busy = true;
@@ -124,7 +124,7 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
       replacements.set(o.id, next);
       if (operation === 'split') created.push(...next);
     }
-    if (signature !== plateSignature(getState())) throw new Error('The plate changed during the operation. Try again.');
+    if (signature !== plateSignature(getState())) throw new Error('The plate changed while that tool was running. Give it another try!');
     const next = s.objects.flatMap((o) => replacements.get(o.id) ?? [o]);
     const first = replacements.get(objects[0].id)![0];
     undoable(operation === 'orient' ? 'Orient' : operation === 'split' ? 'Split to Objects' : 'Split to Parts',
@@ -177,7 +177,7 @@ export async function arrangeNative() {
     } finally {
       await s.api.cancel(id);
     }
-    if (result?.schema !== 'orca.arrange.v1' || result.objects?.length !== s.objects.length) throw new Error('The native tool did not return an arrangement.');
+    if (result?.schema !== 'orca.arrange.v1' || result.objects?.length !== s.objects.length) throw new Error('Oops! We couldn\'t calculate a plate arrangement.');
     if (getState().objects !== s.objects) return;
     const area = bedArea(), xs = area.map((p) => p.x), width = Math.max(...xs) - Math.min(...xs);
     let away = 0;
@@ -190,9 +190,9 @@ export async function arrangeNative() {
       return { ...turned, x: turned.x + r.x - cx + (r.plate - 1) * width * 1.2, y: turned.y + r.y - cy };
     }) }));
     undoable('Arrange', () => setState({ objects }));
-    if (away) toast(`${away} instance${away > 1 ? 's do' : ' does'} not fit on the plate`);
+    if (away) toast(`${away} copy${away > 1 ? 's do' : ' does'} couldn't fit on the plate`);
   } catch (e) {
-    toast(`Arrange failed: ${e instanceof Error ? e.message : e}`);
+    toast(`Oops! Couldn't auto-arrange the plate: ${e instanceof Error ? e.message : e}`);
   } finally {
     busy = false;
     overlay.end();

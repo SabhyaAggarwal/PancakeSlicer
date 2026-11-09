@@ -253,8 +253,8 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
     worker.terminate();
     on.error(d, message);
   };
-  worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Preview worker stopped'); };
-  worker.onmessageerror = () => fail('Preview data could not be transferred');
+  worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Oops! The 3D preview worker stopped'); };
+  worker.onmessageerror = () => fail('Oops! Couldn\'t load the preview data into the 3D viewer');
   let frameWork = 0, frameWatched = false;
   worker.onmessage = (e: MessageEvent<WorkerOut>) => {
     try {

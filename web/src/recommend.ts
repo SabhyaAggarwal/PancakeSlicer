@@ -52,20 +52,20 @@ function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config
   const slope = slopes && slopes.max >= 0.5 ? `Top slope ${slopes.max - slopes.min > 1 ? 'up to ' : ''}${whole(slopes.max)}°` : 'Top';
   const { kind, capDeg, reachableDeg } = r.limit;
   if (kind === 'access') {
-    const moves = r.flatWhy?.match(/met the print head in (\d+) moves/)?.[1];
+    const moves = r.flatWhy?.match(/would bump the print head in (\d+) moves/)?.[1];
     return { why: reachableDeg != null ? `${slope} is steeper than the ${r.limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${whole(reachableDeg)}°)`
-      : moves ? `The print head would hit the part in ${Number(moves).toLocaleString('en-US')} moves` : 'The print head cannot reach this top' };
+      : moves ? `The print head would bump into the part in ${Number(moves).toLocaleString('en-US')} places` : 'The print head doesn\'t have enough clearance to reach this top' };
   }
-  if (kind === 'angle') return { why: `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit`, hint: 'try raising Max curved top angle' };
+  if (kind === 'angle') return { why: `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit`, hint: 'try increasing Max curved top angle' };
   if (kind === 'area') {
     const area = Number({ ...process, ...o?.settings }.nonplanar_curved_min_area);
-    return { why: `Top smaller than your ${Number.isFinite(area) ? `${area} mm² ` : ''}Minimum curved top area` };
+    return { why: `Smaller than your ${Number.isFinite(area) ? `${area} mm² ` : ''}Minimum curved top area setting` };
   }
-  if (kind === 'base') return { why: 'Top too close to the bed for curved layers' };
-  if (kind === 'budget') return { why: 'A curved top would cost too much time or quality' };
+  if (kind === 'base') return { why: 'Too close to the print bed for curved layers' };
+  if (kind === 'budget') return { why: 'Curving this surface would add too much print time without improving quality' };
   if (kind === 'hits') {
     const moves = r.flatWhy?.match(/(\d+) moves/)?.[1];
-    return { why: moves ? `The print head would hit the part in ${Number(moves).toLocaleString('en-US')} moves` : 'The print head would hit the part' };
+    return { why: moves ? `The print head would bump into the part in ${Number(moves).toLocaleString('en-US')} places` : 'The print head would bump into the part' };
   }
   return null;
 }
@@ -78,7 +78,7 @@ function topFact(r: ObjectResult, o: PlateObject, process: Config): string {
 
 function flatLine(r: ObjectResult, o: PlateObject | undefined, process: Config): string {
   const f = flatReason(r, o, process);
-  return f ? `${f.why}${f.hint ? `; ${f.hint}` : ''}` : r.flatWhy || 'No top surface could be curved with the current limits';
+  return f ? `${f.why}${f.hint ? `; ${f.hint}` : ''}` : r.flatWhy || 'No top surfaces fit within your current curved-layer settings';
 }
 
 function partialLine(r: ObjectResult): string | undefined {

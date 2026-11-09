@@ -2690,7 +2690,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3106",
               "label": "Overhang speed",
-              "tooltip": "This is the speed for various overhang degrees. Overhang degrees are expressed as a percentage of line width. 0 speed means no slowing down for the overhang degree range and wall speed is used",
+              "tooltip": "Print speeds for different overhang steepness levels (measured as a percentage of line width). Set to 0 to keep normal wall speed.",
               "modes": {
                 "overhang_1_4_speed": "Advanced",
                 "overhang_2_4_speed": "Advanced",
@@ -2705,7 +2705,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3111",
               "label": "Bridge",
-              "tooltip": "Set speed for external and internal bridges",
+              "tooltip": "Print speeds for external and internal bridges.",
               "modes": {
                 "bridge_speed": "Advanced",
                 "internal_bridge_speed": "Advanced"

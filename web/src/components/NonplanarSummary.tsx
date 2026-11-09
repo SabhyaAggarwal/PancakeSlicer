@@ -28,7 +28,7 @@ export default function NonplanarSummary({ onExplain }: { onExplain?: () => void
   const info = heads?.find((h) => h.id === id);
   const name = !id ? 'generic' : info ? headShortName(info).replace(/^Bambu Lab /, '') : heads ? `${id} (missing; generic)` : id;
   const text = `Head: ${name}${info && !info.calibrated ? `${SEP}uncalibrated` : ''}`;
-  const details = [!id ? 'Generic conservative head' : info ? `${info.name}, ${info.calibrated ? 'calibrated' : 'uncalibrated'}` : `Head ${id}`];
+  const details = [!id ? 'Safe generic print head' : info ? `${info.name}, ${info.calibrated ? 'calibrated' : 'uncalibrated'}` : `Head ${id}`];
   const gap = num(process.nonplanar_shell_layer_height) || num(process.layer_height);
   const cap = num(process.nonplanar_max_slope);
   if (head?.id === (id || 'generic-conservative') && gap > 0) {

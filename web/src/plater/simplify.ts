@@ -8,7 +8,7 @@ const requests = new Map<number, number>();
 export async function setKeepOriginal(id: number, keep: boolean): Promise<void> {
   const object = getState().objects.find((o) => o.id === id);
   if (!object?.simplification || object.project || object.native) return;
-  if (object.paint && Object.values(object.paint).some(Boolean)) { toast('Clear painting first'); return; }
+  if (object.paint && Object.values(object.paint).some(Boolean)) { toast('Clear your painted regions first before running this action'); return; }
   const token = (requests.get(id) ?? 0) + 1;
   requests.set(id, token);
   const geometry = await loadMesh(object.source, undefined, !keep).catch((err: unknown) => { toast(String(err)); return null; });

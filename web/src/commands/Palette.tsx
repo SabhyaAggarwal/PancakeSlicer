@@ -154,7 +154,7 @@ export default function Palette() {
       <div className="pal-input-row">
         {scope && <span className="pal-scope">{SCOPES[scope]}</span>}
         <input className="pal-input" data-autofocus autoFocus spellCheck={false} autoComplete="off"
-          placeholder={scope === '/' ? 'Search settings' : scope === '@' ? 'Objects on the plate' : 'Type a command, setting, preset or object'}
+          placeholder={scope === '/' ? 'Search settings' : scope === '@' ? 'Objects on the plate' : 'Search commands, settings, profiles, or objects…'}
           aria-label="Command" role="combobox" aria-expanded={rows.length > 0} aria-controls="pal-list" aria-activedescendant={rows.length ? `pal-${at}` : undefined}
           value={scope ? query.slice(1) : query}
           onChange={(e) => { setQuery(scope + e.target.value); setActive(0); }}

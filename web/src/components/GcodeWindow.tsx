@@ -16,7 +16,7 @@ async function text(blob: Blob): Promise<string> {
   if (head[0] !== 0x50 || head[1] !== 0x4b) return blob.text();
   const files = unzipSync(new Uint8Array(await blob.arrayBuffer()), { filter: (f) => /^Metadata\/plate_\d+\.gcode$/.test(f.name) });
   const name = Object.keys(files).sort()[0];
-  if (!name) throw new Error('no plate G-code in the package');
+  if (!name) throw new Error('No plate G-code was found inside the package.');
   return new TextDecoder().decode(files[name]);
 }
 
@@ -83,7 +83,7 @@ export function GcodeWindow({ line, file, onClose }: { line: number; file?: File
       </header>
       {error ? (
         <div className="gcode-status" role="status">
-          <span>Couldn't read the G-code</span>
+          <span>Oops! Couldn't load the G-code</span>
           <button type="button" className="btn-ghost" onClick={() => setAttempt((n) => n + 1)}>Retry</button>
         </div>
       ) : !shown ? (

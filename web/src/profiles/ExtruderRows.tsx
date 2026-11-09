@@ -23,7 +23,7 @@ export function installVariant(config: Config, i: number, variant: string): Reco
 }
 async function saveOnPrinter(i: number, variant: string) {
   const s = getState(), source = findProfile(s, 'machine', s.printer);
-  if (!source || source.archived) throw new Error('Choose a saved printer first.');
+  if (!source || source.archived) throw new Error('Please select a saved printer first.');
   const key = profileKey(source), config = resolvePreset(s, 'machine', key).config;
   const [{ saveProfile }, { commitProfileRecords }] = await Promise.all([import('./model'), import('./transactions')]);
   const record = { ...saveProfile(s, 'machine', source.name, key, { ...config, ...installVariant(config, i, variant) }), id: key };

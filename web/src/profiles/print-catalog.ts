@@ -53,7 +53,7 @@ export async function addPrintMaster(m: PrintMaster): Promise<string> {
 export function createPrintProfile(base: { profile: UserPreset } | { master: PrintMaster }, name: string): Promise<string> {
   if ('profile' in base) return profileCopyCreation(base.profile, name.trim()).commit();
   return profileCreation((s) => {
-    if (printProfiles(s).some((p) => p.name === name.trim())) throw new Error('A profile already uses this name. Choose another name.');
+    if (printProfiles(s).some((p) => p.name === name.trim())) throw new Error('You already have a profile with that name—try a different one!');
     return { ...printFromV4({ ...base.master.record, id: `profile:${crypto.randomUUID()}`, revision: 0 }), name: name.trim() } as UserPreset;
   }).commit();
 }

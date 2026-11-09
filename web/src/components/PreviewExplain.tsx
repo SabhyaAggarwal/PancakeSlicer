@@ -163,11 +163,11 @@ export function ExplainLegend(props: {
       )}
       {compare && cmp.state === 'failed' && (
         <button className="lg-mode" onClick={() => void startCompare()}>
-          {cmp.busy ? 'Service busy, retry' : 'Standard failed, retry'}
+          {cmp.busy ? 'Server busy — retry' : 'Flat comparison failed — retry'}
         </button>
       )}
       {compare && v?.uncalibrated && (
-        <div className="lg-row np-warn">Head model uncalibrated</div>
+        <div className="lg-row np-warn">Print head not calibrated yet</div>
       )}
       {compare && s.flat.length > 0 && (
         <>
@@ -317,8 +317,8 @@ function StandardPane(props: {
       const x = e.clientX - r.left, y = e.clientY - r.top, cell = scene.pickSurface(x, y);
       setTip(cell < 0 ? null : { text: `Top error ${Math.round(grid.rms[cell] * 1000)} µm`, x, y });
     }}>
-      {tooLarge && <div className="preview-status">Too large to draw twice</div>}
-      {gone && <div className="preview-status">The earlier slice is no longer kept</div>}
+      {tooLarge && <div className="preview-status">Too large for side-by-side view</div>}
+      {gone && <div className="preview-status">The previous slice is no longer cached on the server</div>}
       {tip && <div className="preview-tip" style={{ left: tip.x + 16, top: tip.y + 16 }}><b>{tip.text}</b></div>}
     </div>
   );

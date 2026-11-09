@@ -47,7 +47,7 @@ const shapers = (flavor: string): [string, string][] =>
 const firmwareNote = (flavor: string) => flavor === 'marlin2' || flavor === 'marlin' ? 'Marlin version => 2.1.2\nFixed-Time motion not yet implemented.'
   : flavor === 'klipper' ? 'Klipper version => 0.9.0'
   : flavor === 'reprapfirmware' ? 'RepRap firmware version => 3.4.0\nCheck your firmware documentation for supported shaper types.'
-  : 'Make sure your printer\'s firmware supports the option you pick here.';
+  : 'Heads up: make sure your printer\'s firmware supports the calibration option you choose here.';
 
 const MODELS: [string, string][] = [['0', 'Ringing Tower'], ['1', 'Fast Tower']];
 const range = (start: string, end: string, step: string, v: Values) => num(v[start]) > 0 && num(v[step]) >= 0 && num(v[end]) > num(v[start]) + num(v[step]);
@@ -116,7 +116,7 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
     title: 'Cornering test', settings: 'Cornering settings', wiki: 'cornering_calib',
     groups: [{ legend: 'Test model', key: 'model', options: [...MODELS, ['2', 'SCV-V2']] }],
     fields: [{ key: 'start', label: 'Start: ' }, { key: 'end', label: 'End: ' }],
-    note: 'Note: Lower values = sharper corners but slower speeds.',
+    note: 'Tip: Lower values give you sharper corners, though prints will run a bit slower.',
     defaults: (p) => ({ model: '0', ...(p.junction ? { start: '0.000', end: '0.250' } : { start: '1.000', end: '15.000' }) }),
     run: (v, p) => {
       const max = p.junction ? 0.3 : 100;
@@ -132,7 +132,7 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
       { key: 'freq_start_y', label: 'Y Start: ', unit: 'Hz', show: () => !printer().reprap }, { key: 'freq_end_y', label: 'Y End: ', unit: 'Hz', show: () => !printer().reprap },
       { key: 'damping', label: 'Damp: ' },
     ],
-    note: 'Recommended: Set Damp to 0.\nThis will use the printer\'s default or saved value.',
+    note: 'Tip: Leave Damp at 0 to use your printer\'s default or saved damping value.',
     defaults: (p) => ({ model: '0', shaper: shapers(p.flavor)[0][0], freq_start_x: '15', freq_end_x: '110', freq_start_y: '15', freq_end_y: '110', damping: '0.150' }),
     run: (v, p) => {
       const axes = p.reprap ? ['x'] : ['x', 'y'];
@@ -150,7 +150,7 @@ export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
       { key: 'freq_x', label: 'Frequency X: ', unit: 'Hz' }, { key: 'freq_y', label: 'Frequency Y: ', unit: 'Hz', show: () => !printer().reprap },
       { key: 'damping_start', label: 'Damp Start: ' }, { key: 'damping_end', label: 'Damp End: ' },
     ],
-    note: 'Note: Use previously calculated frequencies.',
+    note: 'Tip: Enter the X and Y frequencies you found in the frequency test.',
     defaults: (p) => ({ model: '0', shaper: shapers(p.flavor)[0][0], freq_x: '30', freq_y: '30', damping_start: '0.000', damping_end: '0.400' }),
     run: (v, p) => {
       if ([v.freq_x, ...(p.reprap ? [] : [v.freq_y])].some((f) => !(num(f) > 0 && num(f) < 500))) return 'Please input valid values:\n(0 < Freq < 500)';

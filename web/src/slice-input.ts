@@ -101,9 +101,9 @@ export function jobLibrary(s: State): JobLibrary {
 
 export function appendLibrary(fd: FormData, s: State, settings: Config = {}) {
   const library = jobLibrary(s);
-  if (!library.printer) throw new Error('Choose a printer first.');
-  if (!library.print) throw new Error('Choose print settings first.');
-  if (!library.filaments.length || library.filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
+  if (!library.printer) throw new Error('Pick a printer first to get started.');
+  if (!library.print) throw new Error('Pick a print profile first.');
+  if (!library.filaments.length || library.filaments.some((f) => !f)) throw new Error('Please pick a filament for each slot before continuing.');
   fd.append('library', JSON.stringify({ ...library, project: { ...overrides(s), ...settings } }));
 }
 

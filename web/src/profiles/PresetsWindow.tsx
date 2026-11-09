@@ -89,17 +89,17 @@ function items(s: State, type: PresetType): Item[] {
 
 const failed = (action: string, e: unknown) => {
   const message = e instanceof Error ? e.message : String(e);
-  if (accessSnapshot()?.message !== message) toast(`${action} failed: ${message}`);
+  if (accessSnapshot()?.message !== message) toast(`Oops! ${action} failed: ${message}`);
 };
 
 async function archiveRecords(type: PresetType, keys: string[]) {
   const s=getState(), rows=keys.flatMap(key=>findProfile(s,type,key) ?? []);
-  if(!rows.length)throw new Error('Select an editable profile to delete.');
+  if(!rows.length)throw new Error('Pick a custom profile that you can delete.');
   const archived=new Set(rows.map(profileKey)),linked=s.printerConnections.connections.filter(c=>archived.has(c.printer));
   const devices=linked.length ? `\nThe connection to ${linked.map(c=>[c.model || c.name,c.host].filter(Boolean).join(' at ')).join(', ')} is removed too; reconnect it from another printer profile.` : '';
-  if(!await confirmDialog('Remove from library',`Remove ${rows.length === 1 ? rows[0].name : `${rows.length} profiles`} from the library?\n${rows.length > 1 ? rows.map(p=>p.name).join('\n')+'\n' : ''}Saved project settings and references are retained. Undo is available.${devices}`,['Remove','Cancel']))return;
+  if(!await confirmDialog('Remove from library',`Remove ${rows.length === 1 ? rows[0].name : `${rows.length} profiles`} from your library?\n${rows.length > 1 ? rows.map(p=>p.name).join('\n')+'\n' : ''}Your saved projects will keep their settings, and you can undo this anytime.${devices}`,['Remove','Cancel']))return;
   const undo=await archiveProfiles(type,rows.map(profileKey));
-  toast(`Removed ${rows.length} profile${rows.length === 1 ? '' : 's'} from library`,{label:'Undo',run:()=>void restoreProfiles(undo).then(()=>toast('Profiles restored')).catch(error=>failed('Undo',error))});
+  toast(`Removed ${rows.length} profile${rows.length === 1 ? '' : 's'} from your library`,{label:'Undo',run:()=>void restoreProfiles(undo).then(()=>toast('Profiles restored!')).catch(error=>failed('Undo',error))});
 }
 export async function removePreset(type: PresetType, profile: UserPreset) {try {await archiveRecords(type,[profileKey(profile)]);} catch(error) {failed('Remove',error);}}
 
@@ -443,7 +443,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const duplicate=async(source:UserPreset)=>{
     if(busy || !libraryReady)return;
-    if(pendingCopy){if(pendingCopy.source.id===source.id)await retryCopy();else setBulkError(`Finish or discard the copy of ${pendingCopy.source.name} first.`);return;}
+    if(pendingCopy){if(pendingCopy.source.id===source.id)await retryCopy();else setBulkError(`Please finish saving or discard your copy of ${pendingCopy.source.name} first.`);return;}
     const copyName=await promptDialog(`Duplicate ${NOUNS[type][0]}`,`${source.name} copy`);
     if(!copyName || windowOps.get().context.copy || windowOps.get().value !== 'idle')return;
     if(getState().userPresets.some(p=>p.type === source.type && !p.archived && p.name === copyName)){setBulkError(`${copyName} already exists.`);return;}
@@ -528,7 +528,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     </header>
     <ProfileLibraryNotice/>
     {pendingCopy && <div className="pf-copy-pending" role={pendingCopy.error ? 'alert' : 'status'}>
-      <strong>{pendingCopy.name}</strong><span>{pendingCopy.error ?? 'Duplicate not finished'}</span>
+      <strong>{pendingCopy.name}</strong><span>{pendingCopy.error ?? 'Finish duplicating profile first'}</span>
       <button type="button" className="btn" disabled={busy || !libraryReady} onClick={()=>void retryCopy()}>Retry</button>
       {!pendingCopy.creation.retryable && <button type="button" className="btn-ghost" disabled={busy} onClick={discardCopy}>Discard</button>}
     </div>}

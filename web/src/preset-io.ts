@@ -69,7 +69,7 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
   } catch {
     return { ...base, error: 'not valid JSON' };
   }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...base, error: 'not a preset object' };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ...base, error: 'not a valid profile JSON object' };
   const r = raw as Record<string, unknown>;
   const str = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : v == null ? '' : String(v));
   const parsed: ParsedPreset = { ...base, name: str(r.name) || base.name, inherits: str(r.inherits), type: typeOf(r), from: str(r.from), metadata: {} };
@@ -78,8 +78,8 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
     const config = Object.fromEntries(Object.entries(r).filter(([k, v]) => /^(host_type|print_host|printhost_)/.test(k) && (typeof v === 'string' || typeof v === 'number'))) as Config;
     return { ...parsed, physical: { printers, config } };
   }
-  if (!parsed.type) return { ...parsed, error: 'unknown preset type (no printer_settings_id, print_settings_id or filament_settings_id)' };
-  if (!/^\d+(\.\d+){1,3}/.test(str(r.version))) return { ...parsed, error: 'missing or invalid "version"' };
+  if (!parsed.type) return { ...parsed, error: 'unrecognized profile type (missing printer, print, or filament ID)' };
+  if (!/^\d+(\.\d+){1,3}/.test(str(r.version))) return { ...parsed, error: 'missing or invalid "version" field' };
   if (r.orca_web_profile !== undefined) {
     try {
       const app = typeof r.orca_web_profile === 'string' ? JSON.parse(r.orca_web_profile) : r.orca_web_profile;
@@ -88,7 +88,7 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
         || typeof p.base.version !== 'string' || !p.overlay || typeof p.overlay !== 'object' || Array.isArray(p.overlay)
         || p.applicability !== undefined && !validWorksWith(p.applicability, p.type)) throw new Error('invalid app metadata');
       parsed.appProfile = normalizeUserPreset(p);
-    } catch { return {...parsed,error:'The saved profile metadata is invalid. Repair or re-export the profile.'}; }
+    } catch { return {...parsed,error:'Oops! That profile\'s metadata looks corrupted. Try repairing or re-exporting it.'}; }
   }
   for (const [key, value] of Object.entries(r)) {
     if (key === 'orca_web_profile') continue;
@@ -112,9 +112,9 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
 }
 
 export async function readPresetFile(file: File): Promise<ParsedPreset[]> {
-  if (file.size > MAX_FILE) return [{ ...emptyParsed(file.name), error: `larger than ${MAX_FILE >> 20} MB` }];
+  if (file.size > MAX_FILE) return [{ ...emptyParsed(file.name), error: `file is larger than ${MAX_FILE >> 20} MB` }];
   if (/\.json$/i.test(file.name)) return [parsePresetJson(await file.text(), file.name)];
-  if (!/\.(zip|bbscfg|orca_printer|orca_filament|orca_bundle)$/i.test(file.name)) return [{ ...emptyParsed(file.name), error: 'not a preset file' }];
+  if (!/\.(zip|bbscfg|orca_printer|orca_filament|orca_bundle)$/i.test(file.name)) return [{ ...emptyParsed(file.name), error: 'not a valid profile file' }];
   let entries: Record<string, Uint8Array>;
   let count = 0, total = 0, tooLarge = '';
   try {
@@ -126,11 +126,11 @@ export async function readPresetFile(file: File): Promise<ParsedPreset[]> {
       },
     });
   } catch (e) {
-    return [{ ...emptyParsed(file.name), error: `not a readable archive (${e instanceof Error ? e.message : e})` }];
+    return [{ ...emptyParsed(file.name), error: `couldn't open archive (${e instanceof Error ? e.message : e})` }];
   }
   const out = Object.entries(entries).map(([name, data]) =>
     parsePresetJson(new TextDecoder().decode(data), `${file.name}/${name}`));
-  if (tooLarge) out.push({ ...emptyParsed(`${file.name}/${tooLarge}`), error: 'the archive exceeds the size or entry limits; the rest was skipped' });
+  if (tooLarge) out.push({ ...emptyParsed(`${file.name}/${tooLarge}`), error: 'this archive has too many files or is too large, so the remaining files were skipped' });
   return out;
 }
 

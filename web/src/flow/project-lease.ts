@@ -28,7 +28,7 @@ async function request(id: string, take: boolean) {
     const body = await response.json().catch(() => ({}));
     if (response.ok || response.status === 404 || response.status === 405) return same({ type: 'GRANTED', id, heartbeatMs: body.heartbeatMs });
     if (response.status === 409 && body.holder) return same({ type: body.code === 'lease_lost' ? 'LOST' : 'HELD', id, holder: body.holder });
-    throw new Error(`lease ${response.status}`);
+    throw new Error(`Session lock (${response.status})`);
   } catch {
     retryTimer = setTimeout(() => { retryTimer = undefined; lease.send({ type: 'RETRY', id }); }, 5_000);
   } finally {

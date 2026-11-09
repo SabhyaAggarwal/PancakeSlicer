@@ -95,7 +95,7 @@ export function TopBar() {
           { label: 'Export all objects as one STL', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
           ...(exportDrc ? [{ label: 'Export all objects as one DRC', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
-          ...(generic3mf ? [{ label: 'Export generic 3MF', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
+          ...(generic3mf ? [{ label: 'Export generic 3MF', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export a standard 3MF file for other slicers' }] : []),
           { label: 'Export toolpaths as OBJ', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export preset bundle…', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
@@ -121,14 +121,14 @@ export function TopBar() {
           { label: 'Cut', shortcut: `${MOD}+X`, action: cutSelection, disabled: !hasSel, tip: 'Cut selection to clipboard' },
           { label: 'Copy', shortcut: `${MOD}+C`, action: copySelection, disabled: !hasSel, tip: 'Copy selection to clipboard' },
           { label: 'Paste', shortcut: `${MOD}+V`, action: pasteClipboard, disabled: !pasteEnabled, tip: 'Paste clipboard' },
-          { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Deletes the current selection' },
-          { label: 'Delete all', shortcut: `${MOD}+Del`, action: deleteAll, disabled: !hasObjects, tip: 'Deletes all objects' },
-          { label: 'Clone selected', shortcut: `${MOD}+K`, action: () => setState({ appDialog: 'clone' }), disabled: !hasSel || hasProject, tip: 'Clone copies of selections' },
+          { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Delete selected objects' },
+          { label: 'Delete all', shortcut: `${MOD}+Del`, action: deleteAll, disabled: !hasObjects, tip: 'Delete all objects on the plate' },
+          { label: 'Clone selected', shortcut: `${MOD}+K`, action: () => setState({ appDialog: 'clone' }), disabled: !hasSel || hasProject, tip: 'Make copies of the selected objects' },
           'sep',
           { label: 'Duplicate current plate', action: duplicatePlate, disabled: !plateTools, tip: 'Duplicate the current plate' },
           'sep',
-          { label: 'Select all', shortcut: `${MOD}+A`, action: selectAll, disabled: !hasObjects, tip: 'Selects all objects' },
-          { label: 'Deselect all', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselects all objects' },
+          { label: 'Select all', shortcut: `${MOD}+A`, action: selectAll, disabled: !hasObjects, tip: 'Select all objects' },
+          { label: 'Deselect all', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselect all objects' },
           'sep',
           { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
           'sep',
@@ -143,19 +143,19 @@ export function TopBar() {
           { label: 'Use orthogonal view', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
           { label: 'Auto perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
           'sep',
-          { label: 'Show G-code window', shortcut: 'C', role: 'menuitemcheckbox', checked: view.gcodeWindow, action: () => toggleViewOption('gcodeWindow'), tip: 'Show G-code window in Preview scene.' },
-          { label: 'Show 3D Navigator', role: 'menuitemcheckbox', checked: view.navigator, action: () => toggleViewOption('navigator'), tip: 'Show 3D navigator in Prepare and Preview scene.' },
-          { label: 'Show gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
+          { label: 'Show G-code window', shortcut: 'C', role: 'menuitemcheckbox', checked: view.gcodeWindow, action: () => toggleViewOption('gcodeWindow'), tip: 'Show the G-code viewer in Preview' },
+          { label: 'Show 3D Navigator', role: 'menuitemcheckbox', checked: view.navigator, action: () => toggleViewOption('navigator'), tip: 'Show the 3D orientation cube in Prepare and Preview' },
+          { label: 'Show gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show gridlines on the build plate' },
           'sep',
-          { label: 'Show labels', shortcut: brimEarsKeys ? `${MOD}+E` : 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
-          { label: 'Show overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Show object overhang highlight in 3D scene.' },
-          { label: 'Show non-planar surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Color top surfaces by their slope against the print head's limit and show where curved top shells will be printed." },
-          { label: 'Show edges', role: 'menuitemcheckbox', checked: view.edges, action: () => toggleViewOption('edges'), tip: "Draw the parts' sharp edges in a darker shade of their colour." },
-          { label: 'Show selected outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Show outline around selected object in 3D scene.' },
-          { label: 'Show X-ray', role: 'menuitemcheckbox', checked: view.xray, action: () => toggleViewOption('xray'), tip: 'Draw models see-through, so hidden parts show.' },
-          { label: 'Show center of mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show the center of mass of each object in 3D scene.' },
-          { label: 'Show axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y and Z axes at the bed origin.' },
-          { label: 'Show wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show wireframes in 3D scene.' },
+          { label: 'Show labels', shortcut: brimEarsKeys ? `${MOD}+E` : 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object name labels in the 3D view' },
+          { label: 'Show overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Highlight steep overhangs on models in the 3D view' },
+          { label: 'Show non-planar surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Preview which top surfaces will print curved and check their slope angles against your print head's clearance." },
+          { label: 'Show edges', role: 'menuitemcheckbox', checked: view.edges, action: () => toggleViewOption('edges'), tip: "Highlight sharp model edges so contours are easier to see." },
+          { label: 'Show selected outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Draw a highlight outline around the selected object' },
+          { label: 'Show X-ray', role: 'menuitemcheckbox', checked: view.xray, action: () => toggleViewOption('xray'), tip: 'Make models semi-transparent so you can see inside hidden cavities and internal features.' },
+          { label: 'Show center of mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show each object\'s center of mass in the 3D view' },
+          { label: 'Show axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y, and Z axes at the bed origin' },
+          { label: 'Show wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show mesh wireframes in the 3D view' },
         ]}, ...(canCalibrate() ? [{label: 'Calibration', sub: [
           { label: 'Temperature', action: () => setState({ calibDialog: 'temperature' }), tip: 'Temperature Calibration' },
           { label: 'Max flowrate', action: () => setState({ calibDialog: 'max-flowrate' }), tip: 'Max flowrate' },
@@ -172,7 +172,7 @@ export function TopBar() {
           'sep',
           { label: 'Calibration guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
         ]} as MenuItem] : []), {label: 'Help', sub: [
-          ...(hasWhatYouCanDo ? [{ label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'What the web app does, with screenshots' }] : []),
+          ...(hasWhatYouCanDo ? [{ label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'Take a visual tour of PancakeSlicer\'s features' }] : []),
           { label: 'Keyboard shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, profiles, connection and filaments' },
         ]}];
@@ -221,7 +221,7 @@ export function TabBar() {
   const allExport = wide && plates && exportMode === 'all';
   const more: MenuEntry[] = [
     ...(folded ? [sliceMethods] : []),
-    ...(folded && changed ? [{label: 'Slice and compare', action: compareSlice, disabled: !printer || busy || !!outside, tip: 'Slice with the new settings and compare with the previous slice'}] : []),
+    ...(folded && changed ? [{label: 'Slice and compare', action: compareSlice, disabled: !printer || busy || !!outside, tip: 'Slice with your updated settings and compare side by side with the previous slice'}] : []),
     ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
     ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
     ...(tier === 'phone' && saved ? [{label: 'Version history', action: toggleHistory} satisfies MenuEntry] : []),
@@ -254,14 +254,14 @@ export function TabBar() {
           actions={[sliceMethods]} disabled={!printer || busy || (!plates && !hasObjects)} />}
         {!allSlice && !folded && changed && <button className="btn slant" disabled={!printer || busy || !!outside} onClick={compareSlice}>Slice and compare</button>}
         {!folded && <span className="export-actions">{allExport ? (
-          <button className={exportClass} disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
+          <button className={exportClass} disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced plates</button>
         ) : (
           <button className={exportClass} disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}
-        {wide && plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
-          onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
+        {wide && plates && <SideOptions options={[exportLabel, 'Export all sliced plates']} value={allExport ? 'Export all sliced plates' : exportLabel}
+          onChange={(v) => setExportMode(v === 'Export all sliced plates' ? 'all' : 'plate')} />}
         {wide && hasPrinters && (
           <button className="btn slant" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
             Send

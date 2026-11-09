@@ -33,11 +33,11 @@ export default function CanvasTools() {
         {surfaces !== 'off' && (
           <span className="canvas-surface-legend" role="status">
             {SURFACE_LEGEND.map(([colour, label]) => <span key={label}><i style={{ background: colour }} />{label}</span>)}
-            <span className="canvas-surface-source">{from === 'slice' ? 'From the slice' : from === 'plan' ? 'Plan until sliced' : 'Estimate until sliced'}</span>
+            <span className="canvas-surface-source">{from === 'slice' ? 'From the slice' : from === 'plan' ? 'Preview estimate (slice to finalize)' : 'Estimated (slice to confirm)'}</span>
           </span>
         )}
       </span>
-      <IconButton icon="canvas_zoom" size={28} title="Fit camera to scene or selected object." onClick={() => window.dispatchEvent(new CustomEvent('camera-fit'))} />
+      <IconButton icon="canvas_zoom" size={28} title="Fit camera to the plate or selected object" onClick={() => window.dispatchEvent(new CustomEvent('camera-fit'))} />
     </div>
   );
 }

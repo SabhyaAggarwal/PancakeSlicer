@@ -48,7 +48,7 @@ function Preferences() {
         <div className="form-row"><span>Theme</span><span className="seg" role="radiogroup" aria-label="Theme">{THEMES.map(([value, label]) =>
           <button key={value} type="button" role="radio" aria-checked={pref === value} data-autofocus={pref === value ? '' : undefined} onClick={() => setThemePref(value)}>{label}</button>)}</span></div>
         <h3 className="modal-group">Camera</h3>
-        <div className="form-row"><span>Mouse controls<InfoTip label="Mouse controls">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
+        <div className="form-row"><span>Mouse controls<InfoTip label="Mouse controls">{'Default: Left-drag to rotate, right- or middle-drag to pan.\nTouchpad: Alt+drag to rotate, Shift+drag to pan.'}</InfoTip></span>
           <span className="seg" role="radiogroup" aria-label="Camera style">{(['default', 'touchpad'] as const).map((value) =>
             <button key={value} type="button" role="radio" aria-checked={camera.style === value} onClick={() => setCameraPrefs({ style: value as CameraPrefs['style'] })}>{value === 'default' ? 'Default' : 'Touchpad'}</button>)}</span></div>
         <label className="form-row"><span>Orbit speed</span>

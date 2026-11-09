@@ -14,7 +14,7 @@ import './process-settings.css';
 const shortReason = (m: MethodAvailability) => m.recovery === 'update_engine' ? (toolArtifactManifest ? 'Not in this engine build' : 'Engine still starting')
   : m.recovery === 'repair_printer' ? 'Printer axes unknown'
   : /rotary/i.test(m.reason ?? '') ? 'Needs rotary axes'
-  : /Auto/.test(m.reason ?? '') ? 'Not guaranteed for this printer' : 'Not available';
+  : /Auto/.test(m.reason ?? '') ? 'Experimental on this printer' : 'Not available';
 const openMethodChoice = (key: string) => {
   const trigger = document.querySelector<HTMLElement>(`.opt-line[data-opt="${key}"] .dropdown`);
   trigger?.focus(); trigger?.click();
@@ -23,8 +23,8 @@ import { MODE_LABELS, MODE_HELP as BASE_MODE_HELP } from '../nonplanar-mode';
 const OFFERED_MODES = ['off', 'nonplanar_top', 'smooth_morph', 'slant', 'conformal_layers', 'auto'], ROTARY_MODES = ['multiplanar', 'field'];
 const MODE_HELP: Record<string, string> = {
   ...BASE_MODE_HELP,
-  multiplanar: 'Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.',
-  field: 'Rotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the nozzle.',
+  multiplanar: 'Multiplanar: splits the model into tilted flat-layer sections so overhangs need fewer supports.',
+  field: 'Rotary curved layers: prints the entire part in curved layers while the rotary table tilts to keep every pass level under the nozzle.',
 };
 export function methodModes(current: string, availability: MethodAvailabilityResult): {enum_values: string[]; enum_labels: string[]; tooltip: string} {
   const offered = [...OFFERED_MODES, ...availability.printer.rotary ? ROTARY_MODES : []];
@@ -115,14 +115,14 @@ export function SurfaceSettings({config,system,availability,editor,dirty,uiMode,
     [SLANT_DIRECTION]: () => autoOrValue(SLANT_DIRECTION, [['-1', 'Auto']], n => n < 0 ? '-1' : undefined, '0', 'Angle'),
     [MORPH]: () => {
       const layers = Number(value(MORPH)) || 0;
-      const toggle = row(MORPH, {label: 'Morphing', rowKey: `${MORPH}-on`, value: layers > 0 ? '1' : '0', definition: {type: 'bool', tooltip: 'On: the layers bend from flat into the tilt; off: the part is cut by the tilted start plane.'},
+      const toggle = row(MORPH, {label: 'Morphing', rowKey: `${MORPH}-on`, value: layers > 0 ? '1' : '0', definition: {type: 'bool', tooltip: "Off: transitions sharply at the slant plane (flat layers below, tilted layers above). On: smoothly bends layers from flat into the slant angle."},
         onSet: (_, v) => write(MORPH, ['1', 'true'].includes(String(v)) ? '10' : '0')});
       return layers > 0 ? [toggle, row(MORPH)] : [toggle];
     },
     [PLANE]: () => [<div key={PLANE} className="opt-line">
       <span className="opt-label"><span className="opt-label-text">Slant plane</span></span>
       <fieldset className="opt-field" disabled={readOnly || (!slantObject && !lone)}>
-        <button type="button" className="btn" title={slantObject || lone ? undefined : 'Select an object to define its slant plane'}
+        <button type="button" className="btn" title={slantObject || lone ? undefined : 'Select a model on the plate to set its slant plane'}
           onClick={() => { if (!slantObject && lone) setState({selected: {object: lone.id, instance: lone.instances[0].id}}); openSlantPlane(); }}>Define</button>
       </fieldset>
     </div>],

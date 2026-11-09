@@ -14,7 +14,7 @@ export function graphicsCapability(): GraphicsCapability {
     preserveDrawingBuffer: true, powerPreference: 'default', failIfMajorPerformanceCaveat: false });
   if (gl) probed = canvas;
   return graphics = gl ? { webgl2: true }
-    : { webgl2: false, reason: 'The 3D view needs WebGL2. Enable hardware acceleration or update your graphics driver.' };
+    : { webgl2: false, reason: 'Oops! The 3D viewport needs WebGL2 to run. Please enable hardware acceleration in your browser or update your graphics driver.' };
 }
 export function takeProbedCanvas(): HTMLCanvasElement | undefined {
   const canvas = probed;
@@ -41,7 +41,7 @@ export async function checkBrowserSupport(): Promise<void> {
       typeof ReadableStream === 'undefined' || typeof TransformStream === 'undefined' ||
       typeof DecompressionStream === 'undefined' || typeof ResizeObserver === 'undefined' ||
       typeof Blob === 'undefined' || typeof Blob.prototype.stream !== 'function')
-    throw new Error('Required worker, streaming or resize features are unavailable.');
+    throw new Error('Oops! Your browser is missing a few features PancakeSlicer needs (web workers, streaming, or ResizeObserver).');
 
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('./browser-support.worker.ts', import.meta.url), { type: 'module' });
@@ -51,12 +51,12 @@ export async function checkBrowserSupport(): Promise<void> {
       if (error) reject(new Error(error));
       else resolve();
     };
-    const timeout = setTimeout(() => finish('The module worker did not start. Check browser settings and reload.'), 15000);
+    const timeout = setTimeout(() => finish('Oops! A background worker couldn\'t start. Check your browser settings and reload the page.'), 15000);
     worker.onmessage = (event: MessageEvent<{ module: string; error: string }>) =>
-      finish(event.data.module ? event.data.error || undefined : 'Module workers are unavailable.');
+      finish(event.data.module ? event.data.error || undefined : 'Oops! Background workers aren\'t supported in this browser.');
     worker.onerror = (event) => {
       event.preventDefault();
-      finish('Module workers could not load. Check browser settings or ask your administrator to allow worker scripts.');
+      finish('Oops! Background workers couldn\'t load. Check your browser settings or ask your admin to allow worker scripts.');
     };
   });
 }

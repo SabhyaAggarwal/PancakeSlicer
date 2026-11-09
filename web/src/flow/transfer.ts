@@ -78,7 +78,7 @@ export function createPrinterSend() {
       if (machine.get().value === 'sending') follow(jobId, target, transfer.id);
       else if (machine.get().value === 'sent') rememberRecovery({ send: undefined });
     } catch (e) {
-      if (mine === epoch) machine.send({ type: 'FAIL', error: e instanceof Error ? e.message : 'Send interrupted. Reconnect to check its status.' });
+      if (mine === epoch) machine.send({ type: 'FAIL', error: e instanceof Error ? e.message : 'Oops! The connection dropped while sending your print. Reconnect to check if it went through.' });
     }
   };
   let retryRequest = Promise.resolve();
@@ -115,6 +115,6 @@ export type SendSnapshot = { value: 'idle' } | { value: Exclude<TransferState, '
 export function sendSnapshot(machine = printerSend.machine): SendSnapshot {
   const { value, context: c } = machine.get();
   if (value === 'idle') return { value };
-  if (!c.jobId || !c.target) throw new Error('Send target invariant');
+  if (!c.jobId || !c.target) throw new Error('Oops! Printer target details got out of sync.');
   return { value, jobId: c.jobId, target: c.target, transfer: c.transfer, error: c.error };
 }

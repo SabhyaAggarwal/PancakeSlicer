@@ -19,7 +19,7 @@ export async function exportModel(format: 'generic3mf' | 'drc') {
     const reasons = (record.fallback_reasons as string[] | undefined) ?? [];
     toast(record.best_effort ? `Draco export: best effort${reasons.length ? ` (${reasons.join(', ')})` : ''}; check the file` : 'Export finished');
   } catch (e) {
-    toast(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+    toast(`Oops! Export failed: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     busy = false;
   }

@@ -11,7 +11,7 @@ export function catalogWorker() {
     const error = new Error(message);
     for (const f of [...failures]) f(error);
   };
-  w.addEventListener('error', (e) => { e.preventDefault(); fail(e.message || 'Catalog worker failed'); });
+  w.addEventListener('error', (e) => { e.preventDefault(); fail(e.message || 'Oops! Profile catalog worker stopped'); });
   w.addEventListener('messageerror', () => fail('Catalog worker message unreadable'));
   return (worker = w);
 }

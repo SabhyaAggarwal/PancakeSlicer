@@ -95,7 +95,7 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 		return nil, err
 	}
 	if d.Schema != 1 || d.Projects == nil || d.Drafts == nil || d.Values == nil || d.Operations == nil || d.Adoptions == nil || d.Aliases == nil {
-		return nil, errors.New("invalid workspace schema")
+		return nil, errors.New("Invalid workspace data format.")
 	}
 	if d.Folders == nil {
 		d.Folders = map[string]workspaceFolder{}
@@ -107,12 +107,12 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 		}
 		if project.Record == nil {
 			if !project.Archived {
-				return nil, fmt.Errorf("active project %s has no retained record", id)
+				return nil, fmt.Errorf("Active project %s couldn't be found in storage.", id)
 			}
 			continue
 		}
 		if _, err := projectRecord(project.Record, id, project.Revision); err != nil {
-			return nil, fmt.Errorf("invalid retained project %s: %w", id, err)
+			return nil, fmt.Errorf("Saved project %s has corrupted data: %w", id, err)
 		}
 	}
 	if migrateWorkspace(&d, time.Now()) {
@@ -262,20 +262,20 @@ func canonicalWorkspaceProject(d *workspaceData, id string) (string, error) {
 			break
 		}
 		if seen[id] {
-			return "", errors.New("The project alias chain contains a cycle. Keep the original inventory and repair its aliases.")
+			return "", errors.New("Oops! A loop was found in your project shortcuts. Keep your existing files and repair the project links.")
 		}
 		seen[id] = true
 		if !workspaceID(next) {
-			return "", errors.New("The project alias points to an invalid identity. Keep the original inventory and repair its aliases.")
+			return "", errors.New("Oops! A project shortcut points to an invalid ID. Keep your existing files and repair the project links.")
 		}
 		id = next
 	}
 	if !workspaceID(id) {
-		return "", errors.New("Invalid project identity.")
+		return "", errors.New("Invalid project ID.")
 	}
 	if len(seen) > 0 {
 		if _, exists := d.Projects[id]; !exists {
-			return "", errors.New("The project alias points to a missing project. Keep the original inventory and repair its aliases.")
+			return "", errors.New("Oops! A project shortcut points to a missing project. Keep your existing files and repair the project links.")
 		}
 	}
 	return id, nil
@@ -391,7 +391,7 @@ func (st *workspaceStore) checkAssets(record json.RawMessage) error {
 	}
 	for key := range v.Doc.Files {
 		if _, err := os.Stat(st.assetPath(key)); err != nil {
-			return fmt.Errorf("model asset %s is missing; upload it before saving", key)
+			return fmt.Errorf("Model file %s is missing on the server—please re-upload it before saving.", key)
 		}
 	}
 	return nil
@@ -640,11 +640,11 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 			raw, _ := json.Marshal(record)
 			if action == "duplicate" {
 				if !workspaceID(in.NewID) {
-					err = errors.New("a new stable project ID is required")
+					err = errors.New("Please provide a new project ID.")
 				} else if _, ok := d.Projects[in.NewID]; ok {
-					err = errors.New("the duplicate ID already exists")
+					err = errors.New("A project with that duplicate ID already exists.")
 				} else if _, alias := d.Aliases[in.NewID]; alias {
-					err = errors.New("the duplicate ID is reserved by a project alias")
+					err = errors.New("That project ID is already in use.")
 				} else {
 					id = in.NewID
 					next.Revision = 1

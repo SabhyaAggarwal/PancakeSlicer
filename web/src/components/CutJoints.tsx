@@ -93,7 +93,7 @@ export default function CutJoints() {
         <Dropdown className="combo" value={mode} onValueChange={(next) => setCut({ mode: next as 'planar' | 'dovetail', ...(next === 'dovetail' ? { keepUpper: true, keepLower: true, toParts: false } : {}) })} options={[{ value: "planar", label: 'Planar' }, { value: "dovetail", label: 'Dovetail' }]} />
       </label>
       {mode === 'planar' ? (
-        <button className="btn" disabled={!both} title={both ? undefined : 'Connectors need both parts kept as separate objects'}
+        <button className="btn" disabled={!both} title={both ? undefined : 'To use connectors, keep both cut halves as separate objects.'}
           onClick={() => { setBefore(cut.connectors ?? []); setCut({ editing: true }); }}>
           {count ? `Edit connectors (${count})` : 'Add connectors'}
         </button>

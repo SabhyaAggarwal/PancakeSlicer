@@ -17,7 +17,7 @@ export function loadFolders(fresh = false): Promise<void> {
   if (loading && !fresh) return loading;
   const mine = ++reads;
   const read: Promise<void> = serviceJson<{ revision: number; folders: Folder[] }>('/api/folders').then((remote) => {
-    if (!remote || !Number.isSafeInteger(remote.revision) || !Array.isArray(remote.folders)) throw new Error('The folder list is invalid.');
+    if (!remote || !Number.isSafeInteger(remote.revision) || !Array.isArray(remote.folders)) throw new Error('Oops! Couldn\'t load your folders.');
     if (mine === reads) publish({ state: 'ready', revision: remote.revision, folders: remote.folders, error: null });
   }).catch((error: unknown) => {
     if (mine === reads) publish({ ...snapshot, state: 'failed', error: message(error) });
@@ -43,7 +43,7 @@ async function writeOnce(method: 'POST' | 'PATCH', path: string, body: Record<st
   try {
     for (let attempt = 0; ; attempt++) {
       if (snapshot.state !== 'ready') await loadFolders();
-      if (snapshot.state !== 'ready') throw new Error(snapshot.error ?? 'Folders are unavailable.');
+      if (snapshot.state !== 'ready') throw new Error(snapshot.error ?? 'Folders aren\'t available right now.');
       try {
         await serviceJson(path, jsonWrite(method, { operationId: projectId(), expectedRevision: snapshot.revision, ...body }));
         break;

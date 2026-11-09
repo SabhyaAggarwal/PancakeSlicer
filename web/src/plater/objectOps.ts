@@ -126,7 +126,7 @@ export async function exportVolumeStl(objectId: number, volumeId: number) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
   } catch (e) {
-    toast(`Export failed: ${e instanceof Error ? e.message : e}`);
+    toast(`Oops! Export failed: ${e instanceof Error ? e.message : e}`);
   }
 }
 

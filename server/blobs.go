@@ -73,12 +73,12 @@ func (b *blobStore) put(w http.ResponseWriter, r *http.Request, maxUpload int64)
 	}
 	dir := filepath.Dir(b.path(sum))
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		fail(w, 507, "blob storage is unavailable")
+		fail(w, 507, "Oops! File storage on the server isn't available right now.")
 		return
 	}
 	f, err := os.CreateTemp(dir, ".blob-*")
 	if err != nil {
-		fail(w, 507, "blob storage is unavailable")
+		fail(w, 507, "Oops! File storage on the server isn't available right now.")
 		return
 	}
 	defer os.Remove(f.Name())
@@ -89,22 +89,22 @@ func (b *blobStore) put(w http.ResponseWriter, r *http.Request, maxUpload int64)
 	var timeout net.Error
 	switch {
 	case errors.As(err, &tooLarge):
-		fail(w, 413, "upload exceeds max-upload")
+		fail(w, 413, "Oops! That file is larger than the server's maximum upload size.")
 		return
 	case errors.As(err, &timeout) && timeout.Timeout():
 		w.Header().Set("Connection", "close")
-		fail(w, http.StatusRequestTimeout, "upload read deadline exceeded")
+		fail(w, http.StatusRequestTimeout, "Oops! The upload took too long and timed out.")
 		return
 	case err != nil:
-		fail(w, 400, "upload did not complete")
+		fail(w, 400, "Oops! The file upload was interrupted before it finished.")
 		return
 	}
 	if hex.EncodeToString(hash.Sum(nil)) != sum {
-		fail(w, 400, "upload does not match its SHA-256")
+		fail(w, 400, "Oops! The uploaded file's checksum didn't match—please try uploading it again.")
 		return
 	}
 	if err := os.Chmod(f.Name(), 0400); err != nil || os.Rename(f.Name(), b.path(sum)) != nil {
-		fail(w, 507, "blob could not be stored")
+		fail(w, 507, "Oops! The server couldn't save the uploaded file.")
 		return
 	}
 	go b.evict()

@@ -126,7 +126,7 @@ export function explain(d: PreviewData, id: number, record: Record<string, unkno
   }
   return {
     title: `Curved pass of patch ${patchId}`,
-    body: `Shell ${st.shell[s] + 1}, band ${st.band[s] + 1}. Printed curved where the head clears it.`,
+    body: `Shell ${st.shell[s] + 1}, band ${st.band[s] + 1} — curved wherever the print head has clearance.`,
   };
 }
 

@@ -343,7 +343,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				}
 				log.Printf("%s %s panic: %v\n%s", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256), v, debug.Stack())
 				if recorder.status == 0 {
-					fail(recorder, 500, "internal server error")
+					fail(recorder, 500, "Oops! Something went wrong on the server.")
 				}
 			}
 			if recorder.status >= 400 && !s.cfg.RequestLog {
@@ -391,7 +391,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.BearerToken)) != 1 {
 				w.Header().Set("WWW-Authenticate", "Bearer")
-				fail(w, 401, "bearer token required")
+				fail(w, 401, "Access token required.")
 				return
 			}
 		}
@@ -402,7 +402,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			}
 		}
 		if headerBytes > 1<<20 {
-			fail(w, http.StatusRequestHeaderFieldsTooLarge, "request headers exceed 1 MiB")
+			fail(w, http.StatusRequestHeaderFieldsTooLarge, "Request headers exceed the 1 MiB limit.")
 			return
 		}
 		if (r.Method == "PUT" || r.Method == "POST" || r.Method == "PATCH") && r.URL.Path != "/api/jobs" && r.URL.Path != "/api/patch-preview" && r.URL.Path != "/api/top-surfaces/plan" {

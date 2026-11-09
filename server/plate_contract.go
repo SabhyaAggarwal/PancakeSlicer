@@ -44,10 +44,10 @@ func validatePlatePlacement(raw []byte, saving, native, meshPlates bool) error {
 		}
 	}
 	if plates > 1 && !meshPlates {
-		return fmt.Errorf("several plates require a tool with mesh plates")
+		return fmt.Errorf("Slicing multiple plates requires a slicing engine with multi-plate mesh support.")
 	}
 	if plates > 1 && !saving {
-		return fmt.Errorf("slice one plate at a time: send only its objects")
+		return fmt.Errorf("Please slice one plate at a time and send only that plate's objects.")
 	}
 	live := 0
 	for _, object := range plate.Objects {
@@ -69,7 +69,7 @@ func validatePlatePlacement(raw []byte, saving, native, meshPlates bool) error {
 		}
 	}
 	if !saving && live == 0 {
-		return fmt.Errorf("plate has no printable instances")
+		return fmt.Errorf("There are no printable objects on the build plate.")
 	}
 	return nil
 }

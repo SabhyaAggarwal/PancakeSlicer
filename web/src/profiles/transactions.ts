@@ -27,7 +27,7 @@ export function profileOriginIsCurrent(current:UserPreset|undefined,origin:UserP
   return current===origin || !!current && !!origin && !!ownAcknowledgements.get(origin) && equal(stored(current),stored(ownAcknowledgements.get(origin)!));
 }
 const signature=(records:UserPreset[],printers?:PrinterProfileLibrary,catalog?:SystemPreset[])=>JSON.stringify(ordered({records:records.map(stored),printers,catalog}));
-const ready=(s:State)=>{if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Wait for the saved profile library to load. Your draft is kept.');};
+const ready=(s:State)=>{if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Hang tight—waiting for your profile library to finish loading (your edits are safe!).');};
 function freezeWrite(s:State,write:ProfileLibraryWrite,records:UserPreset[],requestSignature:string,setupBaseline?:PrinterProfileLibrary):FrozenWrite{
   return {write:structuredClone(write),records,signature:requestSignature,retryable:true,setupBaseline,origins:new Map(records.map(p=>[profileKey(p),findProfile(s,p.type,profileKey(p))]))};
 }
@@ -74,28 +74,28 @@ export function profileBatchCreation(factory:(s:State)=>CreationPlan):ProfileBat
   let request:FrozenWrite|undefined,keys:string[]=[],reused:string[]=[],skipped:string[]=[],flight:Promise<CreationResult>|undefined,service:State['api'];
   return {get retryable(){return !!request && (request.retryable || !!request.acknowledged);},commit:()=>flight ??= serialize(async()=>{
     ready(getState());
-    if(request && getState().api!==service)throw conflict('The profile service changed. Retain this creation intent for recovery before adding again.');
+    if(request && getState().api!==service)throw conflict('Your profile library updated in the background. We kept your new profile draft—click Save again to finish adding it.');
     if(pending && pending!==request)await settleOutstanding();
     if(!request){
       const initial=getState();ready(initial);
       const remote=await readProfileLibrary(initial.api?.mock),latest=getState();ready(latest);
-      if(latest.api!==initial.api)throw new Error('The profile service changed while adding. Your current setup is kept.');
+      if(latest.api!==initial.api)throw new Error('The profile library updated while you were adding that. Your current setup is safe—try adding it again.');
       const records=remote.profiles.map(normalizeUserPreset);
-      if(records.some(p=>!p.id) || new Set(records.map(profileKey)).size!==records.length)throw new Error('The saved identities need recovery before adding.');
+      if(records.some(p=>!p.id) || new Set(records.map(profileKey)).size!==records.length)throw new Error('Please finish recovering your saved profiles before adding new ones.');
       const canonical={...latest,userPresets:records},plan=factory(canonical);
       reused=plan.reused ?? [];skipped=plan.skipped ?? [];
-      const existing=reused.map(key=>{const record=records.find(p=>profileKey(p)===key);if(!record)throw new Error('The reusable profile is unavailable.');return record;});
+      const existing=reused.map(key=>{const record=records.find(p=>profileKey(p)===key);if(!record)throw new Error('Oops! That shared profile isn\'t available right now.');return record;});
       if(existing.length)setState(s=>({profileLibraryRevision:Math.max(s.profileLibraryRevision,remote.revision),
         userPresets:[...s.userPresets.filter(p=>!existing.some(e=>profileKey(e)===profileKey(p) && !equal(stored(p),stored(e)))),...existing.filter(e=>!s.userPresets.some(p=>profileKey(p)===profileKey(e) && equal(stored(p),stored(e))))]}));
       if(!plan.records.length)return {keys:reused,skipped};
       const captured=structuredClone(plan.records);keys=captured.map(profileKey);service=initial.api;
       request=freezeWrite(canonical,{operationId:`create-profiles:${crypto.randomUUID()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,...captured.map(c=>storedProfile(prepareProfile(canonical,c)))]}},captured,signature(captured));
     }
-    if(getState().api!==service)throw conflict('The profile service changed. Retain this creation intent for recovery before adding again.');
+    if(getState().api!==service)throw conflict('Your profile library updated in the background. We kept your new profile draft—click Save again to finish adding it.');
     const ack=await acknowledge(request);
-    if(getState().api!==service)throw conflict('The profile service changed before acknowledgement. Retain this intent and its saved identities for recovery.');
+    if(getState().api!==service)throw conflict('Your profile library updated while saving. We kept your changes safe—try saving again.');
     publishAcknowledgement(ack);
-    if(keys.some(key=>ack.changed.has(key)) || ack.records.some(p=>p.archived))throw conflict('An added profile changed before selection. Its current record and your setup are kept.');
+    if(keys.some(key=>ack.changed.has(key)) || ack.records.some(p=>p.archived))throw conflict('That profile was updated right after being added. Don\'t worry, both the profile and your current setup are safe!');
     return {keys:[...reused,...keys],skipped};
   }).finally(()=>{flight=undefined;})};
 }
@@ -106,11 +106,11 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
 export function profileCopyCreation(source:UserPreset,name:string):ProfileCreation{
   const captured=structuredClone(source),service=getState().api;
   return profileCreation(s=>{
-    if(!captured.id || !name.trim())throw new Error('Choose a saved profile identity and enter a name for its copy.');
+    if(!captured.id || !name.trim())throw new Error('Pick a profile to copy and give your new copy a name.');
     if(!s.api || s.api!==service)throw conflict('The profile service changed before copying. Reopen the saved source; your requested copy is kept.');
     const current=findProfile(s,captured.type,captured.id);
-    if(!current || !equal(stored(current),stored(captured)))throw conflict('The saved source changed before copying. Review it before creating a new copy.');
-    if(s.userPresets.some(p=>p.type===captured.type && p.name===name))throw new Error('A profile already uses this name. Choose another name.');
+    if(!current || !equal(stored(current),stored(captured)))throw conflict('The profile you\'re copying was just updated elsewhere. Give it a quick look before duplicating.');
+    if(s.userPresets.some(p=>p.type===captured.type && p.name===name))throw new Error('You already have a profile with that name—try a different one!');
     return {...captured,id:`profile:${crypto.randomUUID()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
       provenance:{source:'profile',sourceId:captured.id,sourceName:captured.name,sourceRevision:captured.revision,operationId:crypto.randomUUID()}};
   });
@@ -120,24 +120,24 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
   const requestSignature=signature(records,printers,catalog),outstanding=pending;
   const priorAck=outstanding?await acknowledge(outstanding):undefined;
   if(priorAck && outstanding!.signature===requestSignature){
-    if(priorAck.changed.size || priorAck.setupsChanged){publishAcknowledgement(priorAck);throw conflict('The saved profile or printer setup changed after your write. Your draft is kept for comparison.');}
+    if(priorAck.changed.size || priorAck.setupsChanged){publishAcknowledgement(priorAck);throw conflict('This profile or printer setup was updated in another window right after you saved. We kept your draft so you can compare them.');}
     return priorAck;
   }
   if(priorAck)publishAcknowledgement(priorAck);
-  const current=()=>{if(setup && !setup.isCurrent())throw Object.assign(new Error('The printer setup context changed while waiting. Your newer setup is kept.'),{code:'setup_context_changed'});};
+  const current=()=>{if(setup && !setup.isCurrent())throw Object.assign(new Error('Your printer setup changed in the meantime—we kept your newest setup.'),{code:'setup_context_changed'});};
   current();
   const remote=priorAck?.document ?? await readProfileLibrary(s.api?.mock);
   current();
-  ready(getState());if(getState().api!==s.api)throw new Error('The profile service changed while saving. Your draft is kept.');
+  ready(getState());if(getState().api!==s.api)throw new Error('The profile library updated while saving. Don\'t worry, your draft edits are still here!');
   const profiles=new Map(remote.profiles.map(p=>[p.id,p]));
-  if(profiles.size!==remote.profiles.length || remote.profiles.some(p=>!p.id))throw conflict('The saved library contains duplicate or missing identities.');
+  if(profiles.size!==remote.profiles.length || remote.profiles.some(p=>!p.id))throw conflict('Oops! Your profile library has duplicate or missing IDs that need a quick repair.');
   const submitted:UserPreset[]=[];
   for(const p of records){
     const id=profileKey(p),prior=findProfile(s,p.type,id),raw=profiles.get(id),actual=raw && normalizeUserPreset(raw);
-    if(prior && !actual)throw Object.assign(new Error('This profile was removed from storage. Your draft is kept.'),{code:'profile_missing',recovery:'reload_profiles'});
+    if(prior && !actual)throw Object.assign(new Error('This profile was deleted elsewhere, but we kept your unsaved edits right here.'),{code:'profile_missing',recovery:'reload_profiles'});
     const own=prior && ownAcknowledgements.get(prior),ownAdvance=!!actual && !!own && equal(stored(actual),stored(own));
-    if(prior && actual && (actual.revision ?? 0)>(prior.revision ?? 0) && !ownAdvance)throw conflict('This profile changed in another window. Your draft is kept.');
-    if(prior && (p.revision ?? 0)<(prior.revision ?? 0) && !ownAdvance)throw conflict('This save belongs to an older profile revision. Your draft is kept.');
+    if(prior && actual && (actual.revision ?? 0)>(prior.revision ?? 0) && !ownAdvance)throw conflict('Heads up: this profile was updated in another window. Your current draft edits are still kept here.');
+    if(prior && (p.revision ?? 0)<(prior.revision ?? 0) && !ownAdvance)throw conflict('This profile was updated elsewhere since you started editing. Your draft edits are still kept here.');
     let prepared=prepareProfile(s,p);
     if(actual && equal({...stored(prepared),revision:0},{...stored(actual),revision:0})){submitted.push(actual);continue;}
     if(actual)prepared={...prepared,revision:Math.max(prepared.revision ?? 0,(actual.revision ?? 0)+1)};
@@ -150,7 +150,7 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
   if(equal(document,remote))return {request:freezeWrite(s,{operationId:operationId ?? '',expectedRevision:remote.revision,document},submitted,requestSignature),document:remote,records:submitted,changed:new Set()};
   const request=freezeWrite(s,{operationId:operationId ?? `save:${crypto.randomUUID()}`,expectedRevision:remote.revision,document},submitted,requestSignature,printers ? setup?.baseline ?? s.printerLibrary : undefined);
   const ack=await acknowledge(request);
-  if(ack.changed.size || ack.setupsChanged){publishAcknowledgement(ack);throw conflict('This profile or printer setup changed after your write. Your draft is kept for comparison.');}
+  if(ack.changed.size || ack.setupsChanged){publishAcknowledgement(ack);throw conflict('This profile or printer setup changed in another window. We kept your draft so you can compare them.');}
   return ack;
 }
 export function saveProfileRecords(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<void>{
@@ -159,7 +159,7 @@ export function saveProfileRecords(s:State,records:UserPreset[],operationId?:str
 export function commitProfileRecords(records:UserPreset[],options:{operationId?:string;printers?:PrinterProfileLibrary;bases?:SystemPreset[];apply?(s:State):Partial<State>}={}):Promise<void>{
   const expected=getState();
   return serialize(async()=>{
-    for(const p of records)if(!profileOriginIsCurrent(findProfile(getState(),p.type,profileKey(p)),findProfile(expected,p.type,profileKey(p))))throw conflict('This profile changed while waiting to save. Your draft is kept.');
+    for(const p of records)if(!profileOriginIsCurrent(findProfile(getState(),p.type,profileKey(p)),findProfile(expected,p.type,profileKey(p))))throw conflict('This profile was updated elsewhere while waiting to save. Your draft edits are safely kept here.');
     const ack=await performSave(expected,records,options.operationId,options.printers,options.bases);
     publishAcknowledgement(ack,s=>({...options.apply?.(s),...(options.bases?Object.fromEntries((['machine','process','filament'] as const).map(type=>{const key=type==='machine'?'machines':type==='process'?'processes':'filaments',incoming=options.bases!.filter(b=>b.type===type),incomingKeys=new Set(incoming.map(catalogKey));return[key,[...s[key].filter(b=>!incomingKeys.has(catalogKey(b))),...incoming]];})):{}),...(options.printers?{printerLibrary:ack.document.printers}:{})}));
   });
@@ -169,7 +169,7 @@ export async function ensureEditableMaster(type:PresetType,baseKey:string):Promi
   const s=getState(),existing=findProfile(s,type,baseKey);
   if(existing?.kind==='master' && profileKey(existing)===baseKey)return profileKey(existing);
   const base=findCatalogBase(s,type,baseKey).base;
-  if(!base)throw new Error('Choose the exact available catalog source before editing its master.');
+  if(!base)throw new Error('Pick the exact catalog template before editing its base profile.');
   const token=catalogKey(base);
   let creation=masterCreations.get(token);
   if(!creation){

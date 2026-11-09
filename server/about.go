@@ -26,7 +26,7 @@ func validateSourceURL(source string) error {
 	}
 	u, err := url.Parse(strings.ReplaceAll(source, "{revision}", "revision"))
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
-		return fmt.Errorf("source-url must be an HTTP(S) Corresponding Source repository or {revision} URL template")
+		return fmt.Errorf("Source URL must be a valid HTTP(S) repository link or include a {revision} placeholder.")
 	}
 	return nil
 }

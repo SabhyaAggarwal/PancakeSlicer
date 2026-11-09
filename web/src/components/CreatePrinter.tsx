@@ -36,7 +36,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
     if (have) { setLoaded(have); return; }
     let live = true;
     getState().api?.presets(templateVendor, [], undefined, [template]).then((c) => { if (live) setLoaded(c.machines.find((m) => m.name === template)); },
-      (e) => toast(`Template could not load: ${e instanceof Error ? e.message : String(e)}`));
+      (e) => toast(`Oops! Couldn't load template: ${e instanceof Error ? e.message : String(e)}`));
     return () => { live = false; };
   }, [onCurrent, template, templateVendor]);
   const base = onCurrent ? current : loaded?.name === template ? loaded : undefined;
@@ -51,8 +51,8 @@ export default function CreatePrinter({ close }: { close(): void }) {
   const [w, d] = size ?? [r.w, r.d], [ox, oy] = origin ?? [r.ox, r.oy];
   const h = height ?? (Number(shape.printable_height) || 250);
   const name = mode === 'nozzle' ? resolvePreset(s,'machine',s.printer).name ?? 'Printer' : `${vendor.trim()} ${model.trim()} ${nozzle} nozzle`;
-  const missing = mode === 'printer' && (!vendor.trim() || !model.trim()) ? 'Enter a vendor and a model.'
-    : !(Number(nozzle) > 0) ? 'Enter the nozzle diameter.'
+  const missing = mode === 'printer' && (!vendor.trim() || !model.trim()) ? 'Please enter both a brand and a printer model name.'
+    : !(Number(nozzle) > 0) ? 'Please enter a nozzle diameter.'
     : mode === 'printer' && s.userPresets.some((u) => u.type === 'machine' && !u.archived && u.name === name) ? `“${name}” already exists.` : '';
   const create = async () => {
     if (!base || missing) return;
@@ -68,10 +68,10 @@ export default function CreatePrinter({ close }: { close(): void }) {
       const profile=saveProfile(getState(),'machine',name,mode === 'nozzle' ? s.printer : base.name,{...shape,...overrides});
       await commitProfileRecords([profile]);
       if(mode === 'printer')switchPreset('machine',0,profileKey(profile));
-      toast(`Created printer ${name}`);
+      toast(`Added printer ${name}!`);
       close();
     } catch (e) {
-      toast(`Create printer failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast(`Oops! Couldn't create printer: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const num = (label: string, v: number, set: (n: number) => void, min = -1000) => <label className="form-row"><span>{label}</span>

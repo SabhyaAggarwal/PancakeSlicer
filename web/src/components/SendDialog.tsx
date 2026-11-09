@@ -147,7 +147,7 @@ function SendView({ close, printer, head, edit }: { close: () => void; printer: 
   const shownTransfer = useStore((s) => (mine && s.printerConnections.transfers.find((t) => t.id === mine.id)) || mine);
   const outcome = shownTransfer ? sendOutcome(shownTransfer) : busy ? { tone: 'progress' as const, title: `Sending to ${connection.name}`, detail: 'Connecting to the printer…' } : null;
   const running = status?.online && (status.state === 'printing' || status.state === 'paused' || status.state === 'busy');
-  const blocked = !jobId || !jobReady ? 'Slice the plate first.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
+  const blocked = !jobId || !jobReady ? 'Slice your plate first before sending it to the printer.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
   const needsNozzleMap = bambu && multiNozzle && (!sliced?.mapping || sliced.mapping.filament_map.length !== filaments.length);
   const unmapped = bambu && trays ? filaments.flatMap((f, i) => availableTrays(f, trays).some((t) => t.id === shown[i]) ? []
     : [`Filament ${i + 1} (${f.type}): ${availableTrays(f, trays).some((t) => t.type.toUpperCase() === f.type.toUpperCase()) ? 'choose a tray' : `no ${f.type} loaded${f.extruder !== undefined ? ' on its nozzle' : ''}; load it or choose another tray`}.`]) : [];
@@ -192,7 +192,7 @@ function SendView({ close, printer, head, edit }: { close: () => void; printer: 
     <ModalBody className="send-body">
       {head}
       {file}
-      {jobReady && needsNozzleMap && <div className={sliced?.error ? 'warning-text' : 'send-meta'} role={sliced?.error ? 'alert' : 'status'}>{sliced?.error ?? 'Reading sliced nozzle assignment…'}</div>}
+      {jobReady && needsNozzleMap && <div className={sliced?.error ? 'warning-text' : 'send-meta'} role={sliced?.error ? 'alert' : 'status'}>{sliced?.error ?? 'Checking nozzle settings from slice…'}</div>}
       {blocked && <div className="warning-text">{blocked}</div>}
       {bambu && fits && <div className="send-options" role="group" aria-label="Print options">
         <label className="modal-check"><Check checked={leveling} disabled={busy} onCheckedChange={setLeveling} />Bed leveling</label>
@@ -202,7 +202,7 @@ function SendView({ close, printer, head, edit }: { close: () => void; printer: 
       </div>}
       {bambu && fits && (
         <section className="send-section" aria-label="Filaments"><div className="send-section-head"><h3>Filaments</h3>
-          <button type="button" className="btn slant send-action" disabled={busy || syncing || !trays?.length} onClick={syncFromPrinter}>{syncing ? 'Reading the printer…' : 'Set from printer'}</button></div>
+          <button type="button" className="btn slant send-action" disabled={busy || syncing || !trays?.length} onClick={syncFromPrinter}>{syncing ? 'Checking printer…' : 'Match from printer'}</button></div>
           {trays ? <div className="ams-map">{filaments.map((f, i) => {
             const t = trays.find((x) => x.id === shown[i]);
             return (
@@ -215,13 +215,13 @@ function SendView({ close, printer, head, edit }: { close: () => void; printer: 
                 </span>
               </div>
             );
-          })}</div> : <p className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `AMS not read: ${amsError}` : 'Reading the printer\'s AMS…'}</p>}
+          })}</div> : <p className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `Couldn't read AMS: ${amsError}` : 'Checking printer\'s AMS…'}</p>}
           {unmapped.map((line) => <p key={line} className="warning-text">{line}</p>)}
         </section>
       )}
       {materialBlocks.map((row) => <div key={row.message} className="warning-text" role="alert">{row.message}</div>)}
       {warnings.map((warning) => <div key={warning} className="warning-text">{warning}</div>)}
-      {running && <p className="send-note" role="status">{connection.name} is {status!.state === 'paused' ? 'paused mid-print' : 'printing'}. Print is available when it finishes; Upload only still works.</p>}
+      {running && <p className="send-note" role="status">{connection.name} is {status!.state === 'paused' ? 'paused mid-print' : 'printing'}. You can start a new print once it finishes, or use Upload only right now.</p>}
       {error && <div role="alert" className="warning-text">{sentence(error)}</div>}
     </ModalBody>
     <ModalFooter>

@@ -53,7 +53,7 @@ const finiteBody = (b: HeadBox) => !b.nozzle && !b.infinite_x && !b.infinite_y;
 
 function fitClearance(base: Head, json: Record<string, unknown>, lastClean: number, gap: number, id: string, name: string) {
   const shroud: Head = { ...base, boxes: base.boxes.filter(finiteBody) };
-  if (!shroud.boxes.length) throw new Error('The head has no body above the nozzle to calibrate.');
+  if (!shroud.boxes.length) throw new Error('This print head model only defines the nozzle tip, so there\'s no upper body to calibrate.');
   const lowest = Math.min(...shroud.boxes.map((b) => b.min[2]));
   const needed = (k: number) => -stepClearance(shroud, STEPS[k - 1], gap);
   let shift = lastClean === 0 ? needed(1) - Math.max(gap, 0.1) : Math.max(...STEPS.slice(0, lastClean).map((_, k) => needed(k + 1)));
@@ -84,7 +84,7 @@ function fitClearance(base: Head, json: Record<string, unknown>, lastClean: numb
   };
 }
 
-const stepText = (k: number) => (k === 0 ? 'None (cone 1 already touched)' : `Cone ${k}: ${STEPS[k - 1].slope}°, ${STEPS[k - 1].relief} mm`);
+const stepText = (k: number) => (k === 0 ? 'None (the print head already touched Cone 1)' : `Cone ${k}: ${STEPS[k - 1].slope}°, ${STEPS[k - 1].relief} mm`);
 const firstTouchText = (k: number) => (k > STEPS.length ? 'no cone' : `cone ${k}`);
 const logValue = (log: string[] | undefined, key: string) => log?.find((l) => l.startsWith(`${key} `))?.slice(key.length + 1);
 const list = (v: ConfigValue | undefined) => (Array.isArray(v) ? v : String(v ?? '').split(/[,;]/)).map((x) => Number(x));
@@ -121,7 +121,7 @@ export default function NonplanarCalibDialog() {
   const [head, setHead] = useState<Head | null>(null);
   const [newId, setNewId] = useState(`${headId || 'generic-conservative'}-calibrated`);
   useEffect(() => setNewId(`${headId || 'generic-conservative'}-calibrated`), [headId]);
-  const [result, setResult] = useState<Record<number, [string, string][]>>({});
+  const [result, setResult] = useState<Record<number, { rows: [string, string][]; caption?: string }>>({});
   Object.assign(memo, { page, lastClean, tilt, speed, fan, verifyHead });
   useEffect(() => void loadHeadIndex().catch(() => undefined), []);
   useEffect(() => void loadHead(headId).then(setHead), [headId]);
@@ -134,17 +134,17 @@ export default function NonplanarCalibDialog() {
   };
   const writeHead = async () => {
     try {
-      if (headId === 'calibration-probe') throw new Error("The printer's head is the calibration probe. Select the printer's own head first.");
+      if (headId === 'calibration-probe') throw new Error("Your printer is currently set to the calibration test probe—pick your printer's actual print head first.");
       const json = await loadHeadJson(headId);
-      if (!head || !json) throw new Error('The generic conservative head has no head file to calibrate. Select the printer\'s own head first.');
+      if (!head || !json) throw new Error('The generic fallback head can\'t be calibrated directly—select your printer\'s own print head model first.');
       const fit = fitClearance(head, json, lastClean, layerHeight, newId, `${head.name} (calibrated)`);
       await saveUserHead(fit.json);
       setOption('machine', 'nonplanar_head', newId);
       setVerifyHead(newId);
-      setResult({ ...result, 0: [['Head', newId], ['Body moved', `${fit.shift.toFixed(2)} mm`], ['Steepest plane', `${fit.slopeCap.toFixed(1)}°`],
-        [`Relief at ${STEPS[STEPS.length - 1].slope}°`, `${fit.band.toFixed(2)} mm`], ['Gantry floor', `${fit.gantryFloor.toFixed(1)} mm`]] });
+      setResult({ ...result, 0: { rows: [['Head', newId], ['Body moved', `${fit.shift.toFixed(2)} mm`], ['Steepest plane', `${fit.slopeCap.toFixed(1)}°`],
+        [`Relief at ${STEPS[STEPS.length - 1].slope}°`, `${fit.band.toFixed(2)} mm`], ['Gantry floor', `${fit.gantryFloor.toFixed(1)} mm`]] } });
     } catch (e) {
-      toast(`Could not write the calibrated head.\n${e instanceof Error ? e.message : String(e)}`);
+      toast(`Oops! Couldn't save your calibrated print head.\n${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const writeTilt = () => {
@@ -152,23 +152,24 @@ export default function NonplanarCalibDialog() {
     if (base.length !== TILT_SLOPES.length || base.some((x) => !Number.isFinite(x))) base = TILT_SLOPES.map(() => 1);
     const curve = tilt.map((p, i) => Math.round(Math.min(1.5, Math.max(0.5, base[i] * TILT_MULTIPLIERS[p])) * 1000) / 1000);
     const value = curve.map(fmt).join(',');
-    writeProcess('Change setting "Curved top flow by slope"', { nonplanar_tilt_flow: value });
-    setResult({ ...result, 1: [['Tilt flow', value]] });
+    writeProcess('Update "Curved top flow by slope"', { nonplanar_tilt_flow: value });
+    setResult({ ...result, 1: { rows: [['Tilt flow', value]], caption: `Saved tilt flow ${value} to your print profile! Don't forget to save the profile to keep it.` } });
   };
   const writeTop = () => {
     writeProcess('Non-planar calibration - Curved-top quality', { nonplanar_top_speed_factor: `${TOP_SPEEDS[speed]}%`, nonplanar_top_fan_boost: `${TOP_FANS[fan]}%` });
-    setResult({ ...result, 2: [['Curved top speed', `${TOP_SPEEDS[speed]}%`], ['Fan boost', `${TOP_FANS[fan]}%`]] });
+    setResult({ ...result, 2: { rows: [['Curved top speed', `${TOP_SPEEDS[speed]}%`], ['Fan boost', `${TOP_FANS[fan]}%`]] } });
   };
   const check = () => {
     const job = getState().job, log = job.calibLog;
     const verified = Number(logValue(log, 'calib_verifier_first_touch')), model = Number(logValue(log, 'calib_model_first_touch'));
     if (job.calib !== 'nonplanar-verifier' || job.state !== 'done' || job.stale || !Number.isFinite(verified) || !Number.isFinite(model))
-      return toast('Generate and slice the clearance test plate first.');
+      return toast('Click Generate and slice the clearance test plate first.');
     const expected = verifyHead || 'generic-conservative';
-    if (logValue(log, 'calib_head') !== expected) return toast(`That plate was sliced with ${logValue(log, 'calib_head')}: generate and slice it again with ${expected}.`);
+    if (logValue(log, 'calib_head') !== expected) return toast(`That plate was sliced with ${logValue(log, 'calib_head')}—please generate and slice it again using ${expected}.`);
     const measured = lastClean + 1;
-    setResult({ ...result, 3: [['First touch, clearance check', firstTouchText(verified)], ['First touch, head model', firstTouchText(model)],
-      ['First touch, your print', firstTouchText(measured)], ['Clearance check', verified === measured ? 'Agrees' : 'Disagrees']] });
+    setResult({ ...result, 3: { rows: [['First touch, clearance check', firstTouchText(verified)], ['First touch, head model', firstTouchText(model)],
+      ['First touch, your print', firstTouchText(measured)], ['Clearance check', verified === measured ? 'Agrees' : 'Disagrees']],
+      caption: `First contact — Clearance check: ${firstTouchText(verified)} | Head model: ${firstTouchText(model)} | Your print: ${firstTouchText(measured)}.\n` + (verified === measured ? "Nice! The clearance check matches your test print." : "The clearance check doesn't quite match your print—head over to the Head clearance tab to calibrate your print head.") } });
   };
   const sliced = s.job.calib === 'nonplanar-clearance' && logValue(s.job.calibLog, 'calib_head') === (headId || 'generic-conservative') ? s.job.calibLog!.filter((l) => l.startsWith('calib_step ')) : [];
   const verdict = (k: number) => {
@@ -178,10 +179,10 @@ export default function NonplanarCalibDialog() {
   const steps = [`Head ${headId || 'generic-conservative'}, layer height ${layerHeight} mm:`, ...STEPS.map((_, k) => stepText(k + 1) + verdict(k))].join('\n');
   const heads = (s.heads ?? []).map((h) => h.id).filter((id) => id !== 'calibration-probe');
   const intro = [
-    'Eight cones, each steeper than the last: pick the highest one that printed clean.',
-    'Curved swatches at 0–40°, flow 0.90× to 1.10×: pick the smoothest at each angle.',
+    'This test prints eight cones—each steeper and taller than the last—with clearance safety turned off so you can see where your nozzle sock, fan duct, or gantry starts touching the print. Pick the last cone that printed cleanly, then click Write head to save a custom print head profile for your machine.',
+    'This test prints five rows of curved swatches at 0°, 10°, 20°, 30°, and 40° slopes, stepping flow from 0.90× to 1.10× across each row. Pick the smoothest swatch (no gaps or ridges) for each angle, then click Write tilt flow to save them to your profile.',
     'Front row: curved top speed 60–100%; right column: fan boost 0–100%; pick the cleanest of each.',
-    "The clearance check's first touch on the sliced plate should be the cone after your last clean one.",
+    'Checks your selected print head against the sliced test plate. The first cone it flags should match the cone right after the last clean one on your actual print. Click Generate, slice the plate, and then run the check.',
   ][page];
   return (
     <Modal size="l" label="Non-planar calibration" onClose={close}>
@@ -208,7 +209,8 @@ export default function NonplanarCalibDialog() {
         {page === 3 && <label className="form-row"><span>Head</span>
           <Dropdown className="combo" value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
         </label>}
-        {result[page] && <dl className="modal-grid" role="status">{result[page].map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{v}</dd></Fragment>)}</dl>}
+        {result[page] && <div role="status"><dl className="modal-grid">{result[page].rows.map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{v}</dd></Fragment>)}</dl>
+          {result[page].caption && <p className="ask-message">{result[page].caption}</p>}</div>}
       </ModalBody>
       <ModalFooter>
         <button type="button" className="btn" onClick={close}>Close</button>

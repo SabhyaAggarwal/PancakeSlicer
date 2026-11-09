@@ -20,7 +20,7 @@ func gzipJSON(next http.Handler) http.Handler {
 			z, err := gzip.NewReader(r.Body)
 			if err != nil {
 				log.Printf("%s %s 400: unreadable gzip request body", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256))
-				fail(w, 400, "gzip request body is unreadable")
+				fail(w, 400, "Couldn't read the compressed request data.")
 				return
 			}
 			r.Body = struct {

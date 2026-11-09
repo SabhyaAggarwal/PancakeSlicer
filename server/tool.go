@@ -299,7 +299,7 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 		return nil, err
 	}
 	if dump.Schema != "orca.presets.v1" {
-		return nil, fmt.Errorf("unsupported preset schema %q", dump.Schema)
+		return nil, fmt.Errorf("Unsupported profile schema version: %q", dump.Schema)
 	}
 	list := func(entries []entry) []Preset {
 		out := make([]Preset, 0, len(entries))

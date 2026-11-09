@@ -5,7 +5,7 @@ import { flushServiceSession, loadServiceSession, patchServiceSession } from '..
 import { requireWorkspaceService } from '../persist/service';
 export async function draftSession(newOwner: string): Promise<{ owner: string; previousOwner: string | null; previousOwners: readonly string[] }> {
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
-  if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Invalid service draft lineage');
+  if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Oops! Your local draft is out of sync with the saved project history.');
   const previousOwners = [...new Set(lineage as string[])].slice(0, 32), previousOwner = previousOwners[0] ?? null;
   return { owner: newOwner, previousOwner, previousOwners };
 }
@@ -13,7 +13,7 @@ async function registerDraftOwner(owner: string, storage: () => Promise<ProjectD
   await requireWorkspaceService();
   await flushServiceSession(true);
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
-  if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Invalid service draft lineage');
+  if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Oops! Your local draft is out of sync with the saved project history.');
   if (lineage.includes(owner)) return;
   const next = [owner, ...new Set(lineage as string[])];
   if (next.length > 32) {

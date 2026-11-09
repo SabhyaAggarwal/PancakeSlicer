@@ -6,7 +6,7 @@ import { getState } from '../state/store';
 
 export interface DemoResolveInput { printer: string; print: string; filaments: string[]; layerHeight?: number; project?: Config }
 export async function resolveDemo(input: DemoResolveInput) {
-  if (!input.printer || !input.print || !input.filaments?.length) throw new Error('Choose a printer, print profile and filament.');
+  if (!input.printer || !input.print || !input.filaments?.length) throw new Error('Please select a printer, print profile, and filament first.');
   const context = { ...getState(), printer: input.printer, process: input.print, filamentSlots: input.filaments,
     processVariant: input.layerHeight ? { layerHeight: input.layerHeight } : null, dirty: { machine: {}, process: {} },
     filamentEdits: {}, projectPresets: null, profileSnapshots: null, projectPlates: [] };

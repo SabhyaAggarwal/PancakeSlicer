@@ -115,15 +115,15 @@ const serviceDraftStore: ProjectDraftStore = {
     const metadata = await this.listMetadata(projectId);
     return Promise.all(metadata.map(async (meta) => {
       const draft = await this.load(meta.id);
-      if (!draft) throw new Error('A recovery draft changed while reading inventory. Refresh before mutation.');
+      if (!draft) throw new Error('Heads up: a recovery draft updated while loading. Refresh the page and try again.');
       return draft;
     }));
   },
   async listMetadata(projectId) {
     const records = await serviceJson<ServiceDraft[]>('/api/drafts');
-    if (!Array.isArray(records)) throw new Error('Invalid service draft inventory');
+    if (!Array.isArray(records)) throw new Error('Oops! Couldn\'t read the list of saved drafts from the server.');
     return records.map((record) => {
-      if (!validMetadata(record.metadata) || record.metadata.id !== record.id || record.metadata.sequence !== record.sequence) throw new Error('Incomplete service draft metadata');
+      if (!validMetadata(record.metadata) || record.metadata.id !== record.id || record.metadata.sequence !== record.sequence) throw new Error('Oops! A saved draft is missing some details.');
       return record.metadata;
     }).filter((meta) => projectId === undefined || meta.projectId === projectId).sort((a,b) => b.updatedAt - a.updatedAt);
   },
@@ -131,12 +131,12 @@ const serviceDraftStore: ProjectDraftStore = {
     const record = await serviceJson<ServiceDraft>(draftPath(id), undefined, true);
     if (!record) return null;
     const document = record.document;
-    if (!document || !validMetadata(document) || !document.doc || document.id !== id || document.sequence !== record.sequence) throw new Error('Invalid service recovery document');
+    if (!document || !validMetadata(document) || !document.doc || document.id !== id || document.sequence !== record.sequence) throw new Error('Oops! The recovery draft data looks corrupted.');
     return { ...document, blobs: {} };
   },
   async asset(key) {
     const blob = await readAsset(key);
-    if (!blob) throw new Error(`Recovery model asset is missing: ${key}`);
+    if (!blob) throw new Error(`Oops! A 3D model file needed for recovery is missing: ${key}`);
     return blob;
   },
   put: (draft) => mutate(draft.id, async () => {
@@ -149,11 +149,11 @@ const serviceDraftStore: ProjectDraftStore = {
     try { request = await preparation; } finally { capture.release(); }
     for (const key of Object.keys(draft.doc.files ?? {})) {
       const blob = draft.blobs[key];
-      if (!(blob instanceof Blob)) throw new Error(`Draft model file is missing: ${key}`);
+      if (!(blob instanceof Blob)) throw new Error(`Oops! A 3D model file in this draft is missing: ${key}`);
       await putAsset(key, blob);
     }
     const ack = await serviceJson<{sequence:number}>(draftPath(draft.id), request);
-    if (!ack || ack.sequence !== draft.sequence) throw new Error('Invalid draft acknowledgement');
+    if (!ack || ack.sequence !== draft.sequence) throw new Error('Oops! The server returned an unexpected response while saving your draft.');
     acknowledged.set(draft.id, Math.max(acknowledged.get(draft.id) ?? 0, ack.sequence));
     if (pendingDrafts.get(key) === preparation) pendingDrafts.delete(key);
   }),

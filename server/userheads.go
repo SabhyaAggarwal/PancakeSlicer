@@ -50,13 +50,13 @@ func (s *Server) saveUserHead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !userHeadID.MatchString(head.ID) {
-		fail(w, 400, "Head id must contain only letters, digits, hyphens and underscores.")
+		fail(w, 400, "Print head IDs can only use letters, numbers, hyphens (-), and underscores (_).")
 		return
 	}
 	dir := userHeadDir(s.cfg)
 	for _, existing := range []string{filepath.Join(s.cfg.Resources, "nonplanar", "heads", head.ID+".json"), filepath.Join(dir, head.ID+".json")} {
 		if _, err := os.Stat(existing); err == nil {
-			fail(w, 409, "A head with this id already exists. Choose a new user head id.")
+			fail(w, 409, "A print head profile with that ID already exists—please pick a different ID.")
 			return
 		}
 	}

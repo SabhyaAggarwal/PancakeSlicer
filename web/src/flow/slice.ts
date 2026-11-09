@@ -119,7 +119,7 @@ export const slice = createMachine<SliceStateName, SliceEvent, SliceContext>({
   context: { result: null, previous: null, target: null, pct: 0, stage: '', error: null },
   states: {
     editing: { note: 'not sliced', on: common },
-    stale: { note: 'out of date; last result remains visible', on: common },
+    stale: { note: 'Out of date—showing your previous slice until you slice again', on: common },
     slicing: {
       on: { ...common,
         PROGRESS: { action: (_, e) => ({ pct: e.pct, stage: e.stage }) },
