@@ -48,7 +48,6 @@
 :where(.orca-parity) .xf-actions, :where(.orca-parity) .xf-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 @media (pointer: fine) { :where(.orca-parity) .transform-floating :is(.xf-actions, .xf-rot-row) :is(.btn, .btn-ghost) { min-height: var(--h-compact); padding: 0 var(--s-3); } }
 :where(.orca-parity) .xf-foot { justify-content: space-between; }
-:where(.orca-parity) .xf-more { min-height: var(--h-compact); padding: 0 var(--s-2); color: var(--ink-2); }
 :where(.orca-parity) .xf-rot { display: grid; gap: var(--s-2); }
 :where(.orca-parity) .xf-rot-row { display: grid; grid-template-columns: 24px max-content minmax(0, 110px) max-content; justify-content: start; gap: var(--s-2); align-items: center; }
 :where(.orca-parity) .xf-rot-row .axis { font: var(--t-label); text-align: center; }

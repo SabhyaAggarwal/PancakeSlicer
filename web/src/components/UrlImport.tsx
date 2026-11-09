@@ -21,7 +21,7 @@ function UrlImportForm({ form, inline }: { form: string; inline: boolean }) {
     {s.phase === 'picking' && <div className="url-import-pick" role="group" aria-labelledby={`${form}-files`}>
       <div className="url-import-head">
         <span id={`${form}-files`}>{s.files.length} files</span>
-        <button type="button" className="btn-ghost" onClick={() => checkAllUrlFiles(!all)}>{all ? 'Clear' : 'Select all'}</button>
+        <button type="button" className="link" onClick={() => checkAllUrlFiles(!all)}>{all ? 'Clear' : 'Select all'}</button>
       </div>
       <div className="url-import-list">{s.files.map((file, i) => <label className="url-import-file" key={`${file.key ?? file.url}-${i}`} title={file.name}>
         <Check checked={s.checked[i]} onCheckedChange={(checked) => checkUrlFile(i, checked)} /><span>{file.name}</span>

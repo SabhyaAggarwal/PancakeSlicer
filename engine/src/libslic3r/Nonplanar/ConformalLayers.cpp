@@ -105,6 +105,27 @@ ConformalLayerField::Column ConformalLayerField::column(const Vec2d &xy) const
     return out;
 }
 
+std::vector<double> ConformalLayerField::levels(double first, double top) const
+{
+    std::vector<double> out;
+    const double band_from = std::max(first, m_level_anchor);
+    for (size_t k = 0; first + double(k) * m_body_height < band_from - EPSILON; ++k)
+        out.push_back(first + double(k) * m_body_height);
+    const size_t n = size_t(std::max(1., std::ceil((top - band_from) / m_band_height - 1e-6) + 1.));
+    for (size_t k = 0; k < n; ++k)
+        out.push_back(band_from + double(k) * m_band_height);
+    return out;
+}
+
+double ConformalLayerField::lowest_ramp_floor() const
+{
+    double lo = std::numeric_limits<double>::infinity();
+    for (const Column &col : m_cols)
+        if (col.omega > 0.)
+            lo = std::min(lo, col.zb);
+    return lo;
+}
+
 double ConformalLayerField::phi(const Vec3d &p) const { return this->column_phi(this->column(p.head<2>()), p.z()); }
 
 double ConformalLayerField::z_at(const Vec2d &xy, double level) const { return this->column_z(this->column(xy), level); }
@@ -195,7 +216,11 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     const size_t nx = F->m_nx, ny = F->m_ny, N = nx * ny;
     const double h = P.layer_height, K = double(std::max(1, P.shells));
     F->m_shell_depth    = K * h;
-    const double ident  = P.first_layer + double(std::max(1, P.flat_layers) - 1) * h;
+    const double body   = P.body_height > 0. ? P.body_height : h;
+    const double ident  = P.first_layer + double(std::max(1, P.flat_layers) - 1) * body;
+    const double anchor = P.level_anchor > 0. ? P.level_anchor : P.first_layer;
+    const double base   = std::max(ident, anchor);
+    F->m_level_anchor = anchor, F->m_band_height = h, F->m_body_height = body;
     F->m_identity_below = ident;
     const double tan_max = std::tan(P.max_angle * M_PI / 180.);
     const double cos_max = std::cos(P.max_angle * M_PI / 180.);
@@ -234,7 +259,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     for (size_t k = 0; k < N; ++k) {
         if (T[k] == Unset || c[k] < cos_max - 1e-9)
             continue;
-        const double kk = std::min(K, std::floor((T[k] - ident - MinRamp) * c[k] / h + 1e-9));
+        const double kk = std::min(K, std::floor((T[k] - base - MinRamp) * c[k] / h + 1e-9));
         if (kk < 1.) {
             low[k] = T[k] > ident + 1e-6;
             continue;
@@ -311,19 +336,19 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     label(comp, comps);
     std::vector<double> floor_z(N, ident);
     const auto floors = [&]() {
-        std::fill(floor_z.begin(), floor_z.end(), ident);
+        std::fill(floor_z.begin(), floor_z.end(), base);
         for (const std::vector<size_t> &cells : comps) {
             double tmin = std::numeric_limits<double>::infinity(), tmax = -tmin, shell_floor = tmin;
             for (size_t k : cells)
                 tmin = std::min(tmin, T[k]), tmax = std::max(tmax, T[k]), shell_floor = std::min(shell_floor, T[k] - D[k] / c[k]);
-            const double fz = std::max(ident, shell_floor - std::max(1., (tmax - tmin) / 4.));
+            const double fz = std::max(base, shell_floor - std::max(1., (tmax - tmin) / 4.));
             for (size_t k : cells)
                 floor_z[k] = fz;
         }
     };
     floors();
     std::vector<double> L(N, 0.), zb(N, 0.);
-    const auto level_of = [&](double z) { return P.first_layer + std::round((z - P.first_layer) / h) * h; };
+    const auto level_of = [&](double z) { return anchor + std::round((z - anchor) / h) * h; };
     const auto bounds = [&](size_t k) {
         const double wa = T[k] - D[k] / c[k] - floor_z[k], base = T[k] - D[k] * (1. / c[k] - 1.);
         return std::make_pair(base + s_lo * wa, base + s_hi * wa);
@@ -374,13 +399,13 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 a = std::min(a, l), b = std::max(b, u);
             }
             D[k] = d0;
-            for (long n = long(std::ceil((a - P.first_layer) / h - 1e-9)); n <= long(std::floor((b - P.first_layer) / h + 1e-9)); ++n)
+            for (long n = long(std::ceil((a - anchor) / h - 1e-9)); n <= long(std::floor((b - anchor) / h + 1e-9)); ++n)
                 ++votes[n];
         }
         double best = balanced;
         size_t most = 0;
         for (const auto &[n, v] : votes) {
-            const double lv = P.first_layer + double(n) * h;
+            const double lv = anchor + double(n) * h;
             if (v > most || (v == most && std::abs(lv - balanced) < std::abs(best - balanced)))
                 most = v, best = lv;
         }
@@ -453,6 +478,8 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             const double W    = need + (full - need) * smoothstep(std::clamp((edge_dist[k] - WallBand) / (rho - WallBand + 1e-9), 0., 1.));
             zb[k]             = T[k] - D[k] / c[k] - W;
             top.ramp       = std::max(top.ramp, W);
+            if (std::abs(L[k] - target) > 0.5 * h)
+                top.stepped_mm2 += g * g;
         }
         F->tops.push_back(top);
     }
@@ -492,7 +519,8 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                 const size_t s = nearest[k];
                 const double dk = D[s];
                 if (T[k] - dk / c[k] > zb[s] + 0.05 && std::abs(T[k] - T[s]) <= dist[k] * tan_max + 0.05)
-                    core[k] = 1, D[k] = dk, L[k] = L[s], zb[k] = std::min(zb[s], T[k] - dk / c[k] - 0.05), top_of[k] = comp[s];
+                    core[k] = 1, D[k] = dk, L[k] = L[s], top_of[k] = comp[s],
+                    zb[k] = std::min(std::max(base, std::min(zb[s], T[k] - dk / c[k] - 0.05)), T[k] - dk / c[k] - 0.01);
             }
     }
     std::vector<size_t> nearest;
@@ -773,8 +801,20 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
         return nullptr;
     }
     P.shells       = curved_top_layers(object);
-    P.min_ramp     = std::max(1, oc.nonplanar_conformal_ramp_layers.value) * P.layer_height;
-    std::shared_ptr<const ConformalLayerField> field = build_conformal_layer_field(slicing_frame_mesh(object), P);
+    constexpr double FineBand = 0.2;
+    const indexed_triangle_set mesh = slicing_frame_mesh(object);
+    if (P.layer_height > FineBand + EPSILON) {
+        P.body_height  = P.layer_height;
+        P.layer_height = FineBand;
+    }
+    P.min_ramp = std::max(1, oc.nonplanar_conformal_ramp_layers.value) * P.layer_height;
+    std::shared_ptr<const ConformalLayerField> field = build_conformal_layer_field(mesh, P);
+    if (field && P.body_height > 0.) {
+        if (const double floor_min = field->lowest_ramp_floor(); std::isfinite(floor_min)) {
+            P.level_anchor = P.first_layer + std::floor((floor_min - P.first_layer) / P.body_height + 1e-9) * P.body_height;
+            field          = build_conformal_layer_field(mesh, P);
+        }
+    }
     std::ostringstream out;
     size_t followed = 0;
     double area     = 0.;

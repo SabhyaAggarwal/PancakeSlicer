@@ -100,7 +100,7 @@ export function TransformPanel() {
           <span className="xf-key">{local ? 'Relative' : 'Position'}</span>
           {[0, 1].map((a) => <Num key={a} axis={AX[a]} label={`Position ${AX[a]}`} value={at[a]} onCommit={(val) => moveTo(a, val)} />)}
           {more ? <Num axis="Z" label="Position Z" value={at[2]} onCommit={(val) => moveTo(2, val)} /> : <span/>}<span/></div>
-        <div className="xf-foot"><button type="button" className="btn-ghost xf-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>
+        <div className="xf-foot"><button type="button" className="link" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Less' : 'More'}</button>
           {more && <CoordToggle value={coordinates} enabled onChange={(c) => { moveCoordinates = c; setCoordinates(c); }} />}</div>
       </>;
     } else if (gizmo === 'rotate') {

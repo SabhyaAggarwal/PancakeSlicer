@@ -34,8 +34,8 @@ export default function FilamentsDialog({ close }: { close(): void }) {
         </div>
         <div className="modal-pick">
           <div className="modal-pick-head">
-            <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), true)}>Select all</button>
-            <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), false)}>Clear</button>
+            <button type="button" className="link" onClick={() => mark(shown.map((p) => p.name), true)}>Select all</button>
+            <button type="button" className="link" onClick={() => mark(shown.map((p) => p.name), false)}>Clear</button>
           </div>
           <div className="modal-pick-list">{shown.map((p) => (
             <label key={p.name} className="modal-check"><Check checked={chosen.has(p.name)} onCheckedChange={(next) => mark([p.name], next)} /><span data-full-text={p.name}>{p.name}</span></label>

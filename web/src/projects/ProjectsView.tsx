@@ -437,7 +437,7 @@ function Projects() {
       {loading ? <div className="pj-empty" role="status">Loading…</div>
         : <div className="pj-scroll scroll-fade">
           {tiles}
-          {place.kind==='home' && !searching && shown.length>0 && <div className="pj-section"><h2>Recent</h2><button type="button" className="btn-ghost" onClick={()=>go({kind:'recent'})}>Show all</button></div>}
+          {place.kind==='home' && !searching && shown.length>0 && <div className="pj-section"><h2>Recent</h2><button type="button" className="link" onClick={()=>go({kind:'recent'})}>Show all</button></div>}
           {grid_ || (!(tiles && !searching && place.kind==='home') && <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
             : <><strong>{empty}</strong>{place.kind==='home' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>)}
         </div>}

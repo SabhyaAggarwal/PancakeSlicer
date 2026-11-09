@@ -491,9 +491,11 @@ std::vector<double> auto_top_angles(const Points &points, std::optional<double> 
     std::vector<double> out;
     if (level && !edges.empty() && width(wrap(*level)) <= 1.1 * edges.front().first)
         out.push_back(wrap(*level));
-    for (const auto &[w, a] : edges)
+    for (const auto &edge : edges) {
+        const double a = edge.second;
         if (int(out.size()) < AutoTopCandidates && std::all_of(out.begin(), out.end(), [&](double b) { return apart(a, b); }))
             out.push_back(a);
+    }
     return out;
 }
 

@@ -36,7 +36,7 @@ export default function CloneDialog({ close }: { close(): void }) {
         </label>
         <label className="modal-check"><Check checked={arrange} onCheckedChange={(next) => setArrange(next)} />Arrange the plate afterwards</label>
       </ModalBody>
-      <ModalFooter lead={<button type="button" className="btn-ghost" onClick={() => { fillBed(); close(); }}>Fill the plate</button>}>
+      <ModalFooter lead={<button type="button" className="link" onClick={() => { fillBed(); close(); }}>Fill the plate</button>}>
         <button type="button" className="btn" onClick={close}>Cancel</button>
         <button type="button" className="btn-primary" onClick={ok}>Clone</button>
       </ModalFooter>

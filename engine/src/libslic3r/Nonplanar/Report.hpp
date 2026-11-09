@@ -65,6 +65,7 @@ struct ReportObject
     size_t      bands         = 0;
     double      curved_top    = 0.;
     double      planar_top    = 0.;
+    double      stepped_top   = 0.;
     double      flat_top      = 0.;
     double      support_free  = 0.;
     std::string orientation;

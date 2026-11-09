@@ -821,8 +821,12 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     for (const stl_vertex &v : mesh.vertices)
         top = std::max(top, field->phi(v.cast<double>()));
     std::vector<double> tops, mids;
+    const auto *conformal_field = dynamic_cast<const ConformalLayerField *>(field.get());
+    const bool  banded = conformal_field != nullptr && std::abs(conformal_field->band_height() - conformal_field->body_height()) > EPSILON;
     if (const double t_max = adaptive_level_ratio(); t_max > 1.)
         tops = adaptive_levels(mesh, *field, first, top, h, t_max);
+    else if (banded)
+        tops = conformal_field->levels(first, top);
     else {
         const size_t K0 = size_t(std::max(1., std::ceil((top - first) / h - 1e-6) + 1.));
         for (size_t k = 0; k < K0; ++k)
@@ -906,13 +910,21 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     config.set_deserialize_strict("independent_support_layer_height", "0");
     if (native_planar_support())
         config.set_key_value("enable_support", new ConfigOptionBool(false));
-    const double            height = first + double(K - 1) * h;
+    const double            height = banded ? tops.back() : first + double(K - 1) * h;
     TriangleMesh            box    = make_cube(unscale<double>(bbox.size().x()), unscale<double>(bbox.size().y()), height);
     box.translate(float(unscale<double>(bbox.min.x())), float(unscale<double>(bbox.min.y())), 0.f);
     Model        model;
     ModelObject *model_object = model.add_object();
     model_object->name        = name;
     model_object->add_volume(std::move(box));
+    if (banded) {
+        const double anchor = std::max(first, conformal_field->level_anchor()), body = conformal_field->body_height();
+        std::vector<coordf_t> profile { 0., first, first - 1e-4, first };
+        if (anchor > first + EPSILON)
+            append(profile, std::vector<coordf_t> { first, body, anchor - 1e-4, body });
+        append(profile, std::vector<coordf_t> { anchor, conformal_field->band_height(), height, conformal_field->band_height() });
+        model_object->layer_height_profile.set(profile);
+    }
     model_object->add_instance();
     const NativeSliceOverride registered(name, std::move(shifted));
     Print                     print;
@@ -952,7 +964,11 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     std::vector<std::vector<const ExtrusionPath *>> support(n);
     size_t                                          support_paths = 0;
     for (const SupportLayer *layer : sliced.support_layers()) {
-        const long k = std::lround((layer->print_z - first) / h);
+        long k = std::lround((layer->print_z - first) / h);
+        if (banded && layer->print_z <= tops.back() + h)
+            k = long(std::min_element(tops.begin(), tops.end(), [z = layer->print_z](double a, double b) {
+                         return std::abs(a - z) < std::abs(b - z);
+                     }) - tops.begin());
         if (k >= 1 && size_t(k) < n) {
             flatten(&layer->support_fills, support[size_t(k)]);
             support_paths += support[size_t(k)].size();

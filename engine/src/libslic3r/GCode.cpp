@@ -3252,6 +3252,29 @@ static std::vector<int> get_imex_active_tools(const Print& print)
     return active_tools;
 }
 
+static bool whole_part_patch(const Nonplanar::ConformalPatch &patch)
+{
+    return patch.kind == Nonplanar::PatchKind::Volume || patch.kind == Nonplanar::PatchKind::Field;
+}
+
+static double level_top(const ExtrusionEntityCollection &level)
+{
+    double top = -std::numeric_limits<double>::infinity();
+    for (const ExtrusionEntity *ee : level.entities)
+        if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee))
+            for (const Point3 &p : path->polyline.points)
+                top = std::max(top, unscale<double>(p.z()));
+    return std::isfinite(top) ? top : 0.;
+}
+
+static float level_height(const ExtrusionEntityCollection &level)
+{
+    for (const ExtrusionEntity *ee : level.entities)
+        if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee))
+            return path->height;
+    return 0.f;
+}
+
 void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGeneratorCallback thumbnail_cb)
 {
     PROFILE_FUNC();
@@ -3297,6 +3320,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
             }
             m_nonplanar_deferral.emplace(object, planned != nullptr ? *planned : plan_nonplanar_deferral_reusing(*object, m_nonplanar_clearance, paths));
         }
+    this->band_curved_tops(print);
     this->queue_advanced_conformal(print);
     m_last_width = 0.f;
     m_last_layer_accumulated_mass = 0.0;
@@ -3370,6 +3394,14 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                     return true;
         return false;
     };
+    auto curved_levels = [](const PrintObject &object) {
+        size_t levels = 0;
+        for (const Nonplanar::ConformalPatch &patch : object.conformal().patches)
+            if (whole_part_patch(patch))
+                for (const ExtrusionEntityCollection &shell : patch.shell_paths)
+                    levels += Nonplanar::pass_prints(shell);
+        return (unsigned int)(levels * object.instances().size());
+    };
     if (print.config().print_sequence == PrintSequence::ByObject) {
         for (auto object : print.objects()) {
             std::vector<coordf_t> zs;
@@ -3391,7 +3423,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 if (abs(*it - *(it + 1)) < EPSILON)
                     temp_layer_count--;
             }
-            m_layer_count += (unsigned int)(object->instances().size() * temp_layer_count);
+            m_layer_count += (unsigned int)(object->instances().size() * temp_layer_count) + curved_levels(*object);
         }
     } else {
         std::vector<coordf_t> zs;
@@ -3416,6 +3448,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                     m_layer_count--;
             }
         }
+        for (const PrintObject *object : print.objects())
+            m_layer_count += curved_levels(*object);
     }
     print.throw_if_canceled();
 
@@ -8097,6 +8131,89 @@ std::string GCode::extrude_curved_tops(const Print &print, const std::vector<Obj
     return gcode;
 }
 
+void GCode::band_curved_tops(const Print &print)
+{
+    for (const PrintObject *object : print.objects()) {
+        const Nonplanar::RepairHints *hints = object->nonplanar_repair();
+        const auto planned = m_nonplanar_deferral.find(object);
+        if (!curved_tops_mode(object->config().nonplanar_mode.value) || hints == nullptr || hints->banded_surfaces.empty() ||
+            hints->band_height <= 0. || planned == m_nonplanar_deferral.end())
+            continue;
+        std::map<int, std::vector<double>> tops;
+        for (const NonplanarSurface &surface : object->nonplanar_surfaces())
+            if (hints->banded_surfaces.count(surface.stable_id) != 0) {
+                const double lo = surface.stats.min.z, hi = surface.stats.max.z;
+                const int    n  = std::max(1, int(std::ceil((hi - lo) / hints->band_height - 1e-6)));
+                for (int k = 1; k <= n; ++k)
+                    tops[surface.stable_id].push_back(lo + (hi - lo) * k / n);
+            }
+        if (tops.empty())
+            continue;
+        const auto &layers = object->layers();
+        auto band_slot = [&layers](double z) {
+            const auto it = std::lower_bound(layers.begin(), layers.end(), z - EPSILON,
+                                             [](const Layer *layer, double v) { return layer->print_z < v; });
+            return 2 * int(it == layers.end() ? layers.size() - 1 : size_t(it - layers.begin())) + 1;
+        };
+        NonplanarDeferral &plan = planned->second;
+        if (plan.layers.size() < layers.size())
+            plan.layers.resize(layers.size());
+        for (const Layer *layer : layers)
+            for (const LayerRegion *layerm : layer->regions()) {
+                std::vector<const ExtrusionPath *> paths;
+                std::function<void(const ExtrusionEntity *)> collect = [&](const ExtrusionEntity *e) {
+                    if (auto *path = dynamic_cast<const ExtrusionPath *>(e)) paths.push_back(path);
+                    else if (auto *loop = dynamic_cast<const ExtrusionLoop *>(e)) for (const ExtrusionPath &q : loop->paths) paths.push_back(&q);
+                    else if (auto *multi = dynamic_cast<const ExtrusionMultiPath *>(e)) for (const ExtrusionPath &q : multi->paths) paths.push_back(&q);
+                    else if (auto *c = dynamic_cast<const ExtrusionEntityCollection *>(e)) for (const ExtrusionEntity *child : c->entities) collect(child);
+                };
+                for (const ExtrusionEntity *e : layerm->perimeters.entities) collect(e);
+                for (const ExtrusionEntity *e : layerm->fills.entities) collect(e);
+                const int base = 2 * int(layer->id());
+                for (const ExtrusionPath *path : paths) {
+                    const auto band = tops.find(path->source_surface_id);
+                    const Points3 &pts = path->polyline.points;
+                    if (!path->nonplanar_source || band == tops.end() || pts.size() < 2)
+                        continue;
+                    bool reversed = false;
+                    if (plan.find(layer->id(), path->source_path_id, path->polyline, reversed) != nullptr)
+                        continue;
+                    std::vector<std::pair<double, int>> breaks;
+                    double s = 0.;
+                    bool   early = false;
+                    auto slot_of = [&](double z) {
+                        const auto top = std::lower_bound(band->second.begin(), band->second.end(), z - EPSILON);
+                        return std::min(base, band_slot(top == band->second.end() ? band->second.back() : *top));
+                    };
+                    for (size_t i = 1; i < pts.size(); ++i) {
+                        const double za = unscale<double>(pts[i - 1].z()), zb = unscale<double>(pts[i].z());
+                        const double length = (pts[i].to_point() - pts[i - 1].to_point()).cast<double>().norm();
+                        std::vector<double> cuts { 0. };
+                        for (const double level : band->second)
+                            if ((level - za) * (level - zb) < 0.)
+                                cuts.push_back((level - za) / (zb - za));
+                        std::sort(cuts.begin(), cuts.end());
+                        cuts.push_back(1.);
+                        for (size_t k = 0; k + 1 < cuts.size(); ++k) {
+                            const double t    = 0.5 * (cuts[k] + cuts[k + 1]);
+                            const int    slot = slot_of(za + t * (zb - za));
+                            early |= slot < base;
+                            if (breaks.empty() || breaks.back().second != slot)
+                                breaks.emplace_back(s + cuts[k] * length, slot);
+                        }
+                        s += length;
+                    }
+                    if (!early)
+                        continue;
+                    const Polyline xy = path->polyline.to_polyline();
+                    plan.layers[layer->id()][path->source_path_id].push_back(
+                        { xy.points.front(), xy.points[1], xy.points[xy.points.size() - 2], xy.points.back(), s, std::move(breaks) });
+                    ++plan.advanced_paths;
+                }
+            }
+    }
+}
+
 void GCode::queue_advanced_conformal(const Print &print)
 {
     for (const auto &entry : m_nonplanar_deferral) {
@@ -8290,7 +8407,46 @@ std::string GCode::emit_deferred_material(int slot, unsigned int extruder_id)
                 paths.insert(paths.end(), next.begin(), next.end());
                 emitted[end] = true;
             }
-            for (const auto &path : curved_roads(m_layer, paths, m_nonplanar_clearance, this->last_pos()))
+            std::vector<ExtrusionPath> roads = curved_roads(m_layer, paths, m_nonplanar_clearance, this->last_pos());
+            if (const auto *hints = m_layer != nullptr ? m_layer->object()->nonplanar_repair() : nullptr;
+                hints != nullptr && hints->banded_surfaces.count(surface) != 0 && roads.size() > 1) {
+                std::vector<ExtrusionPath> ordered;
+                ordered.reserve(roads.size());
+                std::vector<bool> used(roads.size(), false);
+                Point at = this->last_pos();
+                for (size_t n = 0; n < roads.size(); ++n) {
+                    size_t best = 0;
+                    bool   flip = false;
+                    double bd   = std::numeric_limits<double>::max();
+                    for (size_t j = 0; j < roads.size(); ++j) {
+                        if (used[j] || roads[j].polyline.points.empty()) continue;
+                        const double d0 = (roads[j].polyline.points.front().to_point() - at).cast<double>().squaredNorm();
+                        if (d0 < bd) bd = d0, best = j, flip = false;
+                        if (roads[j].can_reverse())
+                            if (const double d1 = (roads[j].polyline.points.back().to_point() - at).cast<double>().squaredNorm(); d1 < bd)
+                                bd = d1, best = j, flip = true;
+                    }
+                    if (bd == std::numeric_limits<double>::max()) break;
+                    used[best] = true;
+                    if (flip) roads[best].reverse();
+                    at = roads[best].polyline.points.back().to_point();
+                    ordered.push_back(std::move(roads[best]));
+                }
+                roads = std::move(ordered);
+                const double climb = std::tan(Geometry::deg2rad(std::max(1., m_config.nonplanar_curved_max_angle.value)));
+                for (size_t i = 1; i < roads.size(); ++i) {
+                    const Points3 &prev = roads[i - 1].polyline.points;
+                    Points3       &next = roads[i].polyline.points;
+                    if (prev.empty() || next.empty() || roads[i].role() != roads[i - 1].role() ||
+                        roads[i].distance_to_top != roads[i - 1].distance_to_top)
+                        continue;
+                    const Vec3d  gap = unscale(next.front()) - unscale(prev.back());
+                    const double xy  = gap.head<2>().norm();
+                    if (xy > 1e-3 && xy <= 2. * roads[i].width && std::abs(gap.z()) <= climb * xy)
+                        next.insert(next.begin(), prev.back());
+                }
+            }
+            for (const auto &path : roads)
                 gcode += this->extrude_path(path, is_perimeter(path.role()) ? "perimeter" : "infill");
         } else gcode += this->extrude_entity(*d.entity, d.description, d.speed);
         m_emitting_deferred = false;
@@ -8507,6 +8663,46 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
     return gcode;
 }
 
+static bool macro_moves_head(const std::string &gcode)
+{
+    std::istringstream in(gcode);
+    for (std::string line; std::getline(in, line);) {
+        const size_t b = line.find_first_not_of(" \t");
+        if (b == std::string::npos || (line[b] != 'G' && line[b] != 'g'))
+            continue;
+        const size_t e    = line.find_first_not_of("0123456789", b + 1);
+        const int    code = e == b + 1 ? -1 : std::atoi(line.substr(b + 1, e - b - 1).c_str());
+        if ((code >= 0 && code <= 3) || (code >= 28 && code <= 30))
+            return true;
+    }
+    return false;
+}
+
+std::string GCode::curved_level_marker(const Print &print, double z)
+{
+    std::string gcode;
+    char        buf[80];
+    gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Layer_Change) + "\n";
+    sprintf(buf, print.is_BBL_printer() ? "; Z_HEIGHT: %g\n" : ";Z:%g\n", z);
+    gcode += buf;
+    sprintf(buf, ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), m_last_height);
+    gcode += buf;
+    auto macro = [&](const char *key, const std::string &templ, int layer_num) {
+        if (templ.empty())
+            return std::string();
+        DynamicConfig config;
+        config.set_key_value("layer_num",   new ConfigOptionInt(layer_num));
+        config.set_key_value("layer_z",     new ConfigOptionFloat(z));
+        config.set_key_value("max_layer_z", new ConfigOptionFloat(m_max_layer_z));
+        std::string out = this->placeholder_parser_process(key, templ, m_writer.filament()->id(), &config) + "\n";
+        return macro_moves_head(out) ? std::string() : out;
+    };
+    gcode += macro("before_layer_change_gcode", print.config().before_layer_change_gcode.value, m_layer_index + 1);
+    gcode += m_writer.update_progress(++ m_layer_index, m_layer_count);
+    gcode += macro("layer_change_gcode", print.config().layer_change_gcode.value, m_layer_index);
+    return gcode;
+}
+
 std::string GCode::extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
                                              size_t single_object_instance_idx, bool before)
 {
@@ -8647,6 +8843,10 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     if (hold_before(k))
                         gcode += this->nonplanar_pass_hold(next < order.size() ? order[next] : nullptr);
                     this->nonplanar_pass_start(patch.footprint, ironing);
+                    if (! ironing && whole_part_patch(patch)) {
+                        m_last_height = level_height(pass(k));
+                        gcode += this->curved_level_marker(print, m_nominal_z + level_top(pass(k)));
+                    }
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
                     while (next < pass_end[k]) {
@@ -9372,6 +9572,10 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
     bool         glide        = false, glide_inside = false;
     const bool   infill_glide = field.given() && m_config.reduce_infill_retraction && m_config.sparse_infill_density.value > 0;
     for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
+        if (pass_prints(patch.shell_paths[k])) {
+            m_last_height = level_height(patch.shell_paths[k]);
+            gcode += this->curved_level_marker(*m_print, m_nominal_z + level_top(patch.shell_paths[k]));
+        }
         gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                  " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
         const ExtrusionEntitiesPtr &entities = patch.shell_paths[k].entities;

@@ -31,6 +31,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <boost/format.hpp>
 #include <cmath>
 #include <iterator>
 #include <limits>
@@ -204,8 +205,10 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
             out.planar_limit   = conformal_planar_limit(*object, out.planar_reason);
             if (out.planar_limit.empty())
                 if (const auto field = conformal_layers_field(*object))
-                    for (const ConformalTop &t : field->tops)
+                    for (const ConformalTop &t : field->tops) {
                         (t.fallback.empty() ? out.curved_top : out.planar_top) += t.area_mm2;
+                        out.stepped_top += t.stepped_mm2;
+                    }
         }
         out.layer_source         = conformal.layer_source;
         out.layer_source_refused = conformal.layer_source_refused;
@@ -312,6 +315,11 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.support_free = area(union_ex(supported)) * SCALING_FACTOR * SCALING_FACTOR;
         out.curved_band  = object->curved_band();
         out.warnings     = object_warnings(*object, out);
+        if (out.stepped_top > 0.1 * out.curved_top && out.stepped_top > 1.)
+            out.warnings.emplace_back((boost::format(_u8L("%1%: %2% mm² of the curved top steps between layers: its layers cannot thicken enough "
+                                                          "at this layer height to keep it on one layer. A lower layer height prints it as one surface.")) %
+                                       out.name % int(std::round(out.stepped_top)))
+                                          .str());
         if (index == 0 && !head_warning.empty())
             out.warnings.insert(out.warnings.begin(), head_warning);
     }
@@ -368,7 +376,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
         const ReportObject &o = objects[i];
         const auto  note      = orientation.find(o.model_object_id);
         json        jo{ { "name", o.name }, { "mode", o.mode }, { "top_patches", o.top_patches }, { "other_patches", o.other_patches },
-                        { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top },
+                        { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top }, { "stepped_top_mm2", o.stepped_top },
                         { "flat_top_mm2", o.flat_top }, { "curved_share", o.curved_share() }, { "support_free_mm2", o.support_free },
                         { "orientation", note != orientation.end() ? note->second : o.orientation }, { "warnings", o.warnings } };
         if (o.mode == "nonplanar_top") {

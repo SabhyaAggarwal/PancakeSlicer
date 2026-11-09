@@ -219,7 +219,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
           ))}
           {c.note && <p className="flush-note">{c.note}</p>}
         </ModalBody>
-        <ModalFooter lead={<a className="btn-ghost" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Guide</a>}>
+        <ModalFooter lead={<a className="link" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Guide</a>}>
           <button type="button" className="btn" onClick={close}>Cancel</button>
           <button type="submit" className="btn-primary">Create test</button>
         </ModalFooter>

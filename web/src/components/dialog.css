@@ -98,7 +98,7 @@
 
 :where(.orca-parity) .filament-filters { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
 :where(.orca-parity) .modal-pick { display: flex; flex-direction: column; min-height: 0; }
-:where(.orca-parity) .modal-pick-head { display: flex; gap: var(--s-2); margin-left: calc(-1 * var(--control-pad-x)); }
+:where(.orca-parity) .modal-pick-head { display: flex; gap: var(--s-4); }
 :where(.orca-parity) .modal-pick-list { max-height: 320px; overflow: auto; }
 :where(.orca-parity) .modal-pick-list > .modal-check > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

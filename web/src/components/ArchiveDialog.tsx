@@ -38,8 +38,8 @@ export default function ArchiveDialog({ files, close }: { files: (File & { path?
       <ModalBody>
         <div className="modal-pick">
           <div className="modal-pick-head">
-            <button type="button" className="btn-ghost" onClick={() => setChecked(files.map(() => true))}>Select all</button>
-            <button type="button" className="btn-ghost" onClick={() => setChecked(files.map(() => false))}>Clear</button>
+            <button type="button" className="link" onClick={() => setChecked(files.map(() => true))}>Select all</button>
+            <button type="button" className="link" onClick={() => setChecked(files.map(() => false))}>Clear</button>
           </div>
           <div className="modal-pick-list">{files.map((f, i) => (
             <label key={i} className="modal-check"><Check checked={checked[i]} onCheckedChange={(next) => setChecked(checked.map((c, j) => (j === i ? next : c)))} /><span data-full-text={f.path ?? f.name}>{f.path ?? f.name}</span></label>

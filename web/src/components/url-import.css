@@ -4,7 +4,6 @@
 :where(.orca-parity) .url-import-pick { display: flex; flex-direction: column; min-width: 0; }
 :where(.orca-parity) .url-import-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-width: 0;
   padding-bottom: var(--s-1); border-bottom: 1px solid var(--line); color: var(--ink-3); font: var(--t-small); }
-:where(.orca-parity) .url-import-head > .btn-ghost { min-height: 0; padding: var(--s-1) 0; font: var(--t-small); color: var(--ink-2); }
 :where(.orca-parity) .url-import-list { max-height: min(36dvh, 280px); overflow: auto; }
 :where(.orca-parity) .url-import-file { display: flex; align-items: center; gap: var(--s-3); min-width: 0; min-height: var(--h-control); cursor: pointer; }
 :where(.orca-parity) .url-import-file > :first-child { flex: none; }

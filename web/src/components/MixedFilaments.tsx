@@ -52,7 +52,7 @@ export default function MixedFilaments({ close }: { close(): void }) {
           })}
         </div>}
       </ModalBody>
-      <ModalFooter lead={slots.length > 1 && <button type="button" className="btn-ghost" onClick={removeAll}>Remove all</button>}>
+      <ModalFooter lead={slots.length > 1 && <button type="button" className="link" onClick={removeAll}>Remove all</button>}>
         <button type="button" className="btn" disabled={full} onClick={() => setDialog({ slot: null })}>Add mixed filament</button>
         <button type="button" className="btn-primary" onClick={close}>Done</button>
       </ModalFooter>

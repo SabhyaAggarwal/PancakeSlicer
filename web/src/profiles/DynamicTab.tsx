@@ -134,7 +134,7 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
           : <><span className="dyn-name">{nameOf(adding.key)}</span>
           <Choice label="Basis" value={adding.basis} options={BASES} onChange={(basis) => setAdding({ ...adding, basis: basis as ScaleBasis })}/>
           <button type="button" className="btn" onClick={add}>Add</button><button type="button" className="btn-ghost" onClick={() => setAdding(null)}>Cancel</button></>
-        : <button type="button" className="btn-ghost" onClick={() => setAdding({ key: '', basis: 'nozzle' })}>+ Add formula</button>}</li>}
+        : <button type="button" className="link" onClick={() => setAdding({ key: '', basis: 'nozzle' })}>+ Add formula</button>}</li>}
     </ul>
     {fromPrinter && Object.keys(fromPrinter.values).length > 0 && <ul className="dyn-formulas dyn-printer" aria-label={`From ${fromPrinter.name}`}>
       <li className="dyn-group">From {fromPrinter.name}</li>

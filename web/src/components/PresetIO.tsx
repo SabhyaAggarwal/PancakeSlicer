@@ -142,8 +142,8 @@ export function ExportDialog() {
           <Dropdown className="combo" value={kind} onValueChange={(k) => { setKind(k as ExportKind); setPicked(new Set()); }} options={KINDS.map(([k, label]) => ({ value: k, label }))} /></label>
         {choices.length === 0 ? <p>No saved profiles of this kind.</p> : <div className="modal-pick">
           <div className="modal-pick-head">
-            <button type="button" className="btn-ghost" onClick={() => setPicked(new Set(choices))}>Select all</button>
-            <button type="button" className="btn-ghost" onClick={() => setPicked(new Set())}>Clear</button>
+            <button type="button" className="link" onClick={() => setPicked(new Set(choices))}>Select all</button>
+            <button type="button" className="link" onClick={() => setPicked(new Set())}>Clear</button>
           </div>
           <div className="modal-pick-list" role="group" aria-label="Profiles to export">{choices.map((c) => (
             <label key={c} className="modal-check"><Check checked={picked.has(c)}

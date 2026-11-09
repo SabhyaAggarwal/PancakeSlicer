@@ -212,10 +212,11 @@ struct SliceGrid : Nonplanar::TopSurfaceGrid
                 const size_t k = size_t(y) * nx + x;
                 ++total;
                 if (!eligible[k]) continue;
+                const double error = bead[k] - mesh[k];
+                if (cliff[k] && std::abs(error) > 1.) continue;
                 ++eligible_cells;
                 z += mesh[k];
                 if (!owner.empty()) ++votes[owner[k]];
-                const double error = bead[k] - mesh[k];
                 if (!std::isfinite(error)) continue;
                 ++measured; squared += error * error; sum += error; curved_cells += conformal[k];
             }

@@ -26,6 +26,8 @@ struct ConformalLayersParams
     double min_ramp     = 0.4;
     double layer_height = 0.2;
     double first_layer  = 0.2;
+    double body_height  = 0.;
+    double level_anchor = 0.;
     int    flat_layers  = 3;
     double pitch        = 0.25;
     double min_area     = 0.;
@@ -40,6 +42,7 @@ struct ConformalTop
     double      z_min = 0., z_max = 0.;
     double      level = 0.;
     double      ramp  = 0.;
+    double      stepped_mm2 = 0.;
     std::string fallback;
 };
 
@@ -49,6 +52,11 @@ public:
     double phi(const Vec3d &p) const override;
     double z_at(const Vec2d &xy, double level) const override;
     double identity_below() const override { return m_identity_below; }
+    double level_anchor() const { return m_level_anchor; }
+    double band_height() const { return m_band_height; }
+    double body_height() const { return m_body_height; }
+    std::vector<double> levels(double first, double top) const;
+    double lowest_ramp_floor() const;
 
     std::vector<ConformalTop> tops;
 
@@ -63,6 +71,7 @@ private:
     double              m_pitch = 0.25;
     size_t              m_nx = 0, m_ny = 0;
     double              m_shell_depth = 0.;
+    double              m_level_anchor = 0., m_band_height = 0.2, m_body_height = 0.2;
     double              m_identity_below = 0.;
     std::vector<Column> m_cols;
 };

@@ -119,8 +119,8 @@ function AllJobs({ runningId, version, collapse }: { runningId?: string; version
   }, [count, version]);
   return <>{error && <p role="status" className="device-error">{error}</p>}
     <ol className="device-history" data-printers="true">{pages.sends.map((job) => <HistoryRow key={job.id} job={job} running={job.id === runningId} printer />)}</ol>
-    <div className="device-history-more">{pages.sends.length < pages.total && <button type="button" className="btn-ghost" onClick={() => setCount((n) => n + HISTORY_PAGE)}>Show more</button>}
-      <button type="button" className="btn-ghost" onClick={collapse}>Show less</button><span>{pages.sends.length} of {pages.total}</span></div></>;
+    <div className="device-history-more">{pages.sends.length < pages.total && <button type="button" className="link" onClick={() => setCount((n) => n + HISTORY_PAGE)}>Show more</button>}
+      <button type="button" className="link" onClick={collapse}>Show less</button><span>{pages.sends.length} of {pages.total}</span></div></>;
 }
 
 function DevicePanel({ connection, model, cover, status, live }: { connection: PrinterConnection; model: string; cover?: string; status?: PrinterStatus; live: boolean }) {
@@ -208,7 +208,7 @@ function DevicePanel({ connection, model, cover, status, live }: { connection: P
       {(history.length > 0 || historyError) && <Card title={allJobs ? 'All jobs' : 'Recent jobs'} className="device-recent">{historyError && <p role="status" className="device-error">{historyError}</p>}
         {allJobs ? <AllJobs runningId={runningId} version={transfers.map((t) => `${t.id}:${t.state}:${t.outcome}`).join(',')} collapse={() => showAllJobs(false)} /> : <>
           <ol className="device-history">{history.slice(0, 5).map((job) => <HistoryRow key={job.id} job={job} running={job.id === runningId} />)}</ol>
-          <div className="device-history-more"><button type="button" className="btn-ghost" onClick={() => showAllJobs(true)}>Show all</button></div></>}</Card>}
+          <div className="device-history-more"><button type="button" className="link" onClick={() => showAllJobs(true)}>Show all</button></div></>}</Card>}
     </div>
   </article>;
 }
