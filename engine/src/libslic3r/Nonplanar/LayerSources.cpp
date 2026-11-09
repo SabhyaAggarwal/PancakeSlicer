@@ -35,6 +35,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <map>
+#include <numeric>
 
 namespace Slic3r::Nonplanar {
 
@@ -557,13 +559,55 @@ std::vector<MorphPatch> morph_patches(const indexed_triangle_set &mesh, const He
                 }
             }
     });
-    for (size_t n = 0; n < columns.size(); ++n)
-        for (const Sample &s : columns[n]) {
-            auto &p = patches[size_t(s.patch)];
-            p.top.data()[n] = s.top;
-            p.bottom.data()[n] = s.bottom;
-            p.weight.data()[n] = 1.f;
-        }
+    {
+        const int    nx = grid.nx(), ny = grid.ny();
+        const double step = grid.pitch() * cap + 0.05;
+        std::vector<size_t> first(columns.size() + 1, 0);
+        for (size_t n = 0; n < columns.size(); ++n)
+            first[n + 1] = first[n] + columns[n].size();
+        std::vector<size_t> parent(first.back());
+        std::iota(parent.begin(), parent.end(), size_t(0));
+        auto root = [&parent](size_t a) {
+            while (parent[a] != a)
+                a = parent[a] = parent[parent[a]];
+            return a;
+        };
+        for (int y = 0; y < ny; ++y)
+            for (int x = 0; x < nx; ++x) {
+                const size_t n = size_t(y) * nx + x;
+                for (const auto &[dx, dy] : { std::pair(1, 0), std::pair(0, 1) }) {
+                    if (x + dx >= nx || y + dy >= ny)
+                        continue;
+                    const size_t m = size_t(y + dy) * nx + size_t(x + dx);
+                    for (size_t a = 0; a < columns[n].size(); ++a)
+                        for (size_t b = 0; b < columns[m].size(); ++b)
+                            if (columns[n][a].patch == columns[m][b].patch && std::abs(columns[n][a].top - columns[m][b].top) <= step)
+                                parent[root(first[n] + a)] = root(first[m] + b);
+                }
+            }
+        std::map<size_t, size_t> patch_of;
+        std::vector<MorphPatch> split;
+        for (size_t n = 0; n < columns.size(); ++n)
+            for (size_t a = 0; a < columns[n].size(); ++a) {
+                const Sample &s = columns[n][a];
+                const auto [it, added] = patch_of.try_emplace(root(first[n] + a), split.size());
+                if (added) {
+                    MorphPatch patch;
+                    patch.top = patch.bottom = patch.weight = grid;
+                    std::fill(patch.top.data().begin(), patch.top.data().end(), HeightField::NoData);
+                    std::fill(patch.bottom.data().begin(), patch.bottom.data().end(), float(P.z0));
+                    std::fill(patch.weight.data().begin(), patch.weight.data().end(), 0.f);
+                    split.push_back(std::move(patch));
+                }
+                MorphPatch &p = split[it->second];
+                if (p.weight.data()[n] > 0.f && p.top.data()[n] >= s.top)
+                    continue;
+                p.top.data()[n] = s.top;
+                p.bottom.data()[n] = s.bottom;
+                p.weight.data()[n] = 1.f;
+            }
+        patches = std::move(split);
+    }
     for (auto &p : patches) {
         std::queue<size_t> queue;
         std::vector<int> distance(grid.data().size(), -1);
@@ -746,7 +790,7 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::s
             double z = levels[size_t(k)][n];
             if (k > 0) {
                 const double prev = offset + field.data()[size_t(k - 1) * N + n];
-                z = std::clamp(z, prev + 0.25 * P.h, prev + 1.1 * P.h);
+                z = std::clamp(z, prev + 0.25 * P.h, prev + P.max_ratio * P.h);
             }
             field.data()[size_t(k) * N + n] = float(z - offset);
         }
