@@ -261,6 +261,7 @@ type clearanceVerdict struct {
 	DuctLimit      int
 	IgnoreDuct     bool
 	Settings       bool
+	Check          string
 }
 
 func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[string]any, warnings []string) {
@@ -296,6 +297,15 @@ func collidingObjects(raw json.RawMessage, c Config, j *Job) (failures []map[str
 		mode, _ := o["mode"].(string)
 		method := methodLabels[mode]
 		name, _ := o["name"].(string)
+		if mode == "slant" && checked && refuse && v.Check != "block" {
+			msg := name + ": May touch the part in " + strconv.Itoa(v.Hits) + " moves, up to " + strconv.FormatFloat(depth, 'f', 2, 64) +
+				" mm deep (Head clearance check is " + checkLabel(v.Check) + ")"
+			if duct > 0 {
+				msg += "; the fan duct in " + strconv.Itoa(duct)
+			}
+			warnings = append(warnings, msg)
+			continue
+		}
 		if !refuse {
 			if duct > 0 {
 				warnings = append(warnings, name+": May graze the part with the fan duct in "+strconv.Itoa(duct)+" spots")
@@ -413,7 +423,8 @@ func (j *Job) morphClearance(c Config) clearanceVerdict {
 				}
 			}
 		}
-		settings := gcodeSettings(gcode, "nonplanar_collision_tolerance", "nonplanar_duct_graze_limit", "nonplanar_ignore_duct")
+		settings := gcodeSettings(gcode, "nonplanar_collision_tolerance", "nonplanar_duct_graze_limit", "nonplanar_ignore_duct", "nonplanar_collision_check")
+		v.Check = settings["nonplanar_collision_check"]
 		defaults := optionDefaults(optionData)
 		for key, policy := range map[string]string{"nonplanar_collision_tolerance": "1", "nonplanar_duct_graze_limit": "200", "nonplanar_ignore_duct": "0"} {
 			if _, ok := settings[key]; ok {
@@ -461,4 +472,14 @@ func (j *Job) curveRefusal() string {
 		why = "no top surface could be curved (" + f.Limit + ")"
 	}
 	return "Could not slice " + f.Name + " with " + f.Method + ": " + why
+}
+
+func checkLabel(check string) string {
+	switch check {
+	case "off":
+		return "Off"
+	case "block":
+		return "Block export"
+	}
+	return "Warn"
 }

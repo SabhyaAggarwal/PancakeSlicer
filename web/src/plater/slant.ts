@@ -148,8 +148,8 @@ export async function refreshSlantLimit() {
     lo = Math.min(lo, p);
     hi = Math.max(hi, p);
   }
-  const duct = ['1', 'true'].includes(String(objectValue(s, t.o, 'nonplanar_ignore_duct') ?? process.nonplanar_ignore_duct ?? '0'));
-  const tolerance = num(objectValue(s, t.o, 'nonplanar_collision_tolerance') ?? OPTIONS.nonplanar_collision_tolerance?.default, 0);
+  const duct = ['1', 'true'].includes(String(process.nonplanar_ignore_duct ?? '0'));
+  const tolerance = num(process.nonplanar_collision_tolerance ?? OPTIONS.nonplanar_collision_tolerance?.default, 0);
   const limit = slantLimit(head, now.dir, Math.max(hi - lo, 1e-3), num(objectValue(s, t.o, 'layer_height'), 0.2), duct, tolerance);
   setState({ slant: { ...now, limit } });
 }

@@ -3,7 +3,7 @@ import type { ObjectResult } from './preview/explain-record';
 import { applyStyle } from './print-style';
 import { beginStep, undoable } from './state/history';
 import { onShellsChecked, topSlopes } from './plater/geometry';
-import { effectiveConfig, getState, setObjectOption, setOption, setState, subscribeStore, type PlateObject, type State } from './state/store';
+import { effectiveConfig, getState, setOption, setState, subscribeStore, type PlateObject, type State } from './state/store';
 import { styleOf } from './style-names';
 import { bareName } from './engine-warnings';
 
@@ -152,12 +152,8 @@ export function trySmoothest(f: CurveFailure) {
   sliceAgain();
 }
 
-export function tryIgnoreDuct(failures: CurveFailure[]) {
-  undoable('Ignore cooling duct', () => {
-    const own = failures.flatMap((f) => getState().objects.filter((o) => o.id === f.objectId && o.settings.nonplanar_ignore_duct !== undefined));
-    for (const o of own) setObjectOption(o.id, 'nonplanar_ignore_duct', '1');
-    if (own.length < failures.length) setOption('process', 'nonplanar_ignore_duct', '1');
-  });
+export function tryIgnoreDuct() {
+  undoable('Ignore cooling duct', () => setOption('process', 'nonplanar_ignore_duct', '1'));
   sliceAgain();
 }
 

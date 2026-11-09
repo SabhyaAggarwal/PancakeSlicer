@@ -335,7 +335,7 @@ export function SliceNotification() {
           <WarningLines warnings={ws.filter((w) => !/^Printed flat/.test(w.text ?? ''))} open={details.has(key)} onToggle={() => toggleDetails(key)} />
           <div className="notif-body notif-actions">
             <button type="button" className="notif-link" onClick={() => sliceFlatInstead([f])}>Slice flat instead</button>
-            {f.tryDuct && <button type="button" className="notif-link" onClick={() => tryIgnoreDuct([f])}>Try Ignore cooling duct</button>}
+            {f.tryDuct && <button type="button" className="notif-link" onClick={() => tryIgnoreDuct()}>Try Ignore cooling duct</button>}
             {f.mode === 'smooth_morph' && f.kind === 'hits' && <TrySmoothest f={f} />}
           </div>
         </div>
@@ -374,6 +374,7 @@ export { Toast } from './Notices';
 
 export function SlantPanel() {
   const e = useStore((s) => (s.gizmo === 'slant' ? s.slant : null));
+  const strict = useStore((s) => String(effectiveConfig(s, 'process').nonplanar_collision_check ?? 'warn') === 'block');
   if (!e) return null;
   const over = e.limit !== undefined && e.tilt > e.limit + 1e-6;
   const deg = (v: number) => `${v.toFixed(1)}°`;
@@ -387,7 +388,9 @@ export function SlantPanel() {
         <span>Start height</span><Num label="Start height" value={e.z} onCommit={(z) => setSlant({ z })} /><span>mm</span>
       </div>
       {e.limit !== undefined && (over
-        ? <div className="slant-warn" role="alert">Steeper than the head reaches ({deg(e.limit)}) in this direction</div>
+        ? <div className="slant-warn" role="alert">Steeper than the head reaches ({deg(e.limit)}) in this direction: {strict
+          ? `prints at ${deg(e.limit)}`
+          : 'prints as set, the head may touch the part'}</div>
         : <div className="slant-note">The head reaches {deg(e.limit)} in this direction</div>)}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button className="btn" disabled={e.auto} onClick={resetSlantAuto}>Reset to auto</button>
