@@ -2,7 +2,7 @@ import { FilamentNozzleAssignment, VariantSelector } from '../multinozzle/Nozzle
 import { ExtruderRows } from '../profiles/ExtruderRows';
 import { optionIndex, selectedOptionValues, type ExtruderSelection } from '../multinozzle/config';
 import { PresetBar } from '../profiles/PresetBar';
-import { methodModes, SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
+import { methodModes, RETIRED_GROUPS, SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
 import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
@@ -102,13 +102,18 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   };
   const focusKey = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus.key : null));
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
-    .map((p) => ({ ...p, groups: p.groups.filter((g) => !g.condition || condition(g.condition, env) !== false)
+    .map((p) => ({ ...p, groups: p.groups.filter((g) => (!g.condition || condition(g.condition, env) !== false) && !(type === 'process' && !overrides && RETIRED_GROUPS.has(g.title)))
       .map((g) => ({ ...g, lines: g.lines.filter((line) =>
         line.options.some((k) => splitKey(k)[0] === focusKey) || !line.options.some((k) => states[splitKey(k)[0]]?.visible === false) && !(line.options.length && line.options.every((k) => states[splitKey(k)[0]]?.enabled === false)))
         .map((line) => ({ ...line, options: line.options.filter((k) => fieldVisible(k, line)) }))
         .filter((line, _, all) => line.options.length || (customRow(line) && all.some((l) => l.options.includes('nonplanar_head')))) }))
       .filter((g) => g.lines.length) }))
     .filter((p) => p.groups.length), [desc, env, states, uiMode, config, availability, type, focusKey, overrides?.keys]);
+  const legacyKeys = useMemo(() => type !== 'process' || overrides ? [] : (desc?.pages ?? []).flatMap((p) => p.groups).filter((g) => RETIRED_GROUPS.has(g.title))
+    .flatMap((g) => g.lines.filter((line) => !line.options.some((k) => states[splitKey(k)[0]]?.visible === false)).flatMap((line) => line.options.filter((k) => {
+      const key = splitKey(k)[0], rank = lineMode(line, k);
+      return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && isMethodSettingSupported(key, config, availability);
+    }).map((k) => splitKey(k)[0]))), [desc, states, uiMode, config, availability, type, !!overrides]);
   const page = pages[Math.min(pageIdx, pages.length - 1)];
   const gcodeKeys = page ? page.groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]))).filter(isGcode) : [];
   const gcodeLabels = Object.fromEntries((page?.groups ?? []).flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]).filter(isGcode).map((k) => [k, (g.lines.length === 1 && g.title) || l.label || OPTIONS[k]?.label || k]))));
@@ -185,7 +190,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
         {type === 'machine' && !editor && <><NozzleField /><PlateTypeField /></>}
         {type === 'machine' && !overrides && <ExtruderRows config={editor ? config : undefined} onSet={editor?.set} disabled={readOnly} />}
         {type === 'filament' && !fields && <FilamentNozzleAssignment slot={slot} disabled={readOnly} />}
-        {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} uiMode={uiMode} readOnly={readOnly}/>}
+        {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} uiMode={uiMode} legacyKeys={legacyKeys} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && !overrides && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {groups.map((g) => {

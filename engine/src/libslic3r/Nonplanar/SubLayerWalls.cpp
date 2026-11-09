@@ -374,6 +374,8 @@ bool admitted(const PrintObject &object, const std::vector<LayerWalls> &layers)
                     outer_length += unscale<double>(ee->length());
     if (outer <= 0. || outer_length <= 0.)
         return false;
+    if (object.requested_nonplanar_mode() != NonplanarMode::Auto)
+        return true;
     const double cost = Overhead * length * outer / outer_length;
     BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " estimated " << total << " s, half-beads "
                             << cost << " s of a " << TimeBudget * total << " s budget";
@@ -453,18 +455,20 @@ ExPolygons curved_passes(const PrintObject &object, const Layer &layer, const La
 
 }
 
-void split_sublayer_walls(PrintObject &object)
+std::string split_sublayer_walls(PrintObject &object)
 {
     object.set_sublayer_walls_active(false);
     const NonplanarMode mode = object.config().nonplanar_mode.value;
     if ((mode != NonplanarMode::Auto && mode != NonplanarMode::Off && !curved_tops_mode(mode)) ||
-        object.object_extruders().size() > 1 || object.sublayer_walls_off())
-        return;
-    if (curved_tops_mode(mode) && !object.nonplanar_surfaces().empty())
-        return;
+        object.object_extruders().size() > 1)
+        return {};
+    if (curved_tops_mode(mode) && !object.nonplanar_surfaces().empty() &&
+        std::any_of(object.layers().begin(), object.layers().end(), [](const Layer *l) { return enabled(*l); }))
+        return "half-height walls print as single beads beside its curved tops: their upper half-beads would stand in the print "
+               "head's path to the curved tops";
     const LayerPtrs &layers = object.layers();
     if (std::none_of(layers.begin(), layers.end(), [](const Layer *l) { return enabled(*l); }))
-        return;
+        return {};
     bool zaa_walls = object.curved_fallback_zaa();
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
         zaa_walls |= object.printing_region(region_id).config().zaa_enabled.value;
@@ -499,7 +503,7 @@ void split_sublayer_walls(PrintObject &object)
     });
 
     if (!admitted(object, walls))
-        return;
+        return {};
     std::vector<double> stepped(layers.size(), 0.);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
@@ -650,6 +654,7 @@ void split_sublayer_walls(PrintObject &object)
         }
     });
     object.set_sublayer_walls_active(split);
+    return {};
 }
 
 }

@@ -1,4 +1,5 @@
 #include "Report.hpp"
+#include "CurvedTopsSurface.hpp"
 #include "OneShotField.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
@@ -177,7 +178,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     NonplanarReport report;
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
             return !curved_tops_mode(object->config().nonplanar_mode.value) && object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
-                   !conformal_requested(*object) &&
+                   !conformal_requested(*object) && morph_struck_hits(*object) == 0 &&
                    (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
         }))
         return report;
@@ -190,9 +191,16 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.name            = object->model_object()->name;
         out.model_object_id = object->model_object()->id().id;
         out.mode            = object->config().nonplanar_mode.serialize();
+        if (const size_t hits = morph_struck_hits(*object); hits > 0) {
+            out.mode            = "smooth_morph";
+            out.morph_hit_moves = hits;
+            out.planar_limit    = "hits";
+            out.planar_reason   = "Smooth morph would hit the part in " + std::to_string(hits) + " moves";
+        }
         if (conformal_requested(*object)) {
             out.mode           = "conformal_layers";
             out.conformal_rung = std::min(conformal_cap_step(*object->model_object()), ConformalSteps);
+            out.conformal_variant = conformal_variant_text(conformal_variant(object->config(), out.conformal_rung));
             out.planar_limit   = conformal_planar_limit(*object, out.planar_reason);
             if (out.planar_limit.empty())
                 if (const auto field = conformal_layers_field(*object))
@@ -210,7 +218,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         for (size_t r = 0; r < object->num_printing_regions(); ++r) {
             const PrintRegionConfig &config = object->printing_region(r).config();
             std::string              keys;
-            for (const char *key : { "top_shell_layers", "top_shell_thickness", "top_surface_pattern", "nonplanar_top_shells", "nonplanar_top_pattern",
+            for (const char *key : { "top_shell_layers", "top_shell_thickness", "top_surface_pattern", "nonplanar_top_shells", "nonplanar_top_pattern", "nonplanar_top_order",
                                      "sparse_infill_density", "wall_loops", "fuzzy_skin", "ironing_type" })
                 keys += std::string(keys.empty() ? "" : " ") + key + "=" + config.opt_serialize(key);
             out.regions.emplace_back(std::move(keys));
@@ -218,12 +226,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.slant = object->slant_choice();
         if (curved_tops_mode(object->config().nonplanar_mode.value)) {
             out.curved_tops = curved_tops_stats(*object);
-            out.curved_budget = ClearanceRepair::curved_budget_report(print, *object);
-            if (out.curved_tops.kept == 0 && !out.curved_budget.reason.empty()) {
-                out.curved_tops.planar_fallback_reason = out.curved_budget.reason;
-                out.curved_tops.planar_limit           = "budget";
-                out.curved_tops.reachable_slope_deg    = 0.;
-            }
+            const auto *asked = object->model_object()->config.get().option<ConfigOptionFloat>("nonplanar_curved_max_angle");
+            out.cap_requested = asked != nullptr ? asked->value : print.default_object_config().nonplanar_curved_max_angle.value;
             out.curved_cone_tolerance = curved_tops_cone_tolerance(print);
             out.top_patches = out.curved_tops.kept;
             out.curved_top = out.curved_tops.footprint_mm2;
@@ -233,7 +237,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
                 rp.id = surface.stable_id;
                 rp.kind = int(PatchKind::Top);
                 rp.top = true;
-                rp.shells = std::min(1, object->config().nonplanar_curved_shells.value);
+                rp.shells = curved_top_layers(*object);
                 const ExPolygons footprint = surface.horizontal_projection();
                 const BoundingBox box = get_extents(footprint);
                 rp.center = unscale(box.center());
@@ -306,6 +310,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         for (const ExPolygons &layer : conformal.self_supported)
             expolygons_append(supported, layer);
         out.support_free = area(union_ex(supported)) * SCALING_FACTOR * SCALING_FACTOR;
+        out.curved_band  = object->curved_band();
         out.warnings     = object_warnings(*object, out);
         if (index == 0 && !head_warning.empty())
             out.warnings.insert(out.warnings.begin(), head_warning);
@@ -320,6 +325,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     report.machine_hits = report_clearance.machine_hit_moves;
     report.clearance_override = report_clearance.clearance_override;
     report.duct_grazes  = report_clearance.duct_graze_moves;
+    report.max_contact  = report_clearance.max_contact;
     const size_t normal = size_t(PrintEstimatedStatistics::ETimeMode::Normal);
     report.time_s       = result.print_statistics.modes[normal].time;
     for (const GCodeProcessorResult::MoveVertex &move : result.moves)
@@ -349,7 +355,8 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
     json j;
     j["version"] = 1;
     j["head"]    = head;
-    j["clearance"] = verified ? json{ { "checked", true }, { "hits", hits }, { "body_hits", body_hits }, { "cone_graze_moves", cone_grazes }, { "machine_hits", machine_hits } } : json{ { "checked", false } };
+    j["clearance"] = verified ? json{ { "checked", true }, { "hits", hits }, { "body_hits", body_hits }, { "cone_graze_moves", cone_grazes }, { "machine_hits", machine_hits },
+                                      { "max_contact_mm", max_contact }, { "duct_grazes", duct_grazes } } : json{ { "checked", false } };
     if (clearance_override) {
         j["clearance"]["clearance_override"] = true;
         j["clearance"]["duct_graze_moves"]   = duct_grazes;
@@ -364,7 +371,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                         { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top },
                         { "flat_top_mm2", o.flat_top }, { "curved_share", o.curved_share() }, { "support_free_mm2", o.support_free },
                         { "orientation", note != orientation.end() ? note->second : o.orientation }, { "warnings", o.warnings } };
-        if (o.mode == "curved_tops" || o.mode == "nonplanar_top") {
+        if (o.mode == "nonplanar_top") {
             jo["effective_cone_tolerance_mm"] = o.curved_cone_tolerance;
             jo["curved_surfaces_kept"] = o.curved_tops.kept;
             jo["curved_surfaces_candidates"] = o.curved_tops.candidates;
@@ -375,42 +382,26 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
             jo["curved_top_area_denominator"] = "sum of XY-projected areas of all upward-facing mesh facets";
             if (!o.curved_tops.planar_fallback_reason.empty()) jo["planar_fallback_reason"] = o.curved_tops.planar_fallback_reason;
             jo["curved_max_angle_deg"] = o.curved_tops.max_angle_deg;
+            jo["cap_requested"]        = o.cap_requested;
+            jo["cap_used"]             = o.curved_tops.max_angle_deg;
             if (!o.curved_tops.planar_limit.empty()) jo["planar_limit"] = o.curved_tops.planar_limit;
+            if (!o.curved_tops.access_by.empty()) jo["access_by"] = o.curved_tops.access_by;
+            if (o.curved_band.second > o.curved_band.first)
+                jo["curved_band"] = { { "from", o.curved_band.first }, { "to", o.curved_band.second }, { "layer_height", 0.2 } };
             if (o.curved_tops.reachable_slope_deg > 0.) jo["reachable_slope_deg"] = o.curved_tops.reachable_slope_deg;
-            const auto &budget = o.curved_budget;
-            if (budget.measured || !budget.patches.empty() || !budget.reason.empty()) {
-                json patches = json::array();
-                for (const auto &p : budget.patches) patches.push_back({
-                    {"id", p.id}, {"planar_s", budget.measured ? json(p.planar_s) : json(nullptr)},
-                    {"curved_s", budget.measured ? json(p.curved_s) : json(nullptr)},
-                    {"time_cost_s", budget.measured ? json(p.cost_s) : json(nullptr)},
-                    {"planar_rms_mm", p.samples ? json(p.planar_rms_mm) : json(nullptr)},
-                    {"curved_rms_mm", p.samples ? json(p.curved_rms_mm) : json(nullptr)},
-                    {"whole_top_rms_gain_mm", p.samples ? json(p.rms_gain_mm) : json(nullptr)},
-                    {"cost_per_rms_gain", p.samples && p.rms_gain_mm > 0. ? json(p.cost_s / p.rms_gain_mm) : json(nullptr)},
-                    {"samples", p.samples}, {"dropped", p.dropped},
-                    {"reason", !p.reason.empty() ? p.reason : p.dropped ? (p.samples && p.curved_rms_mm > p.planar_rms_mm + 1e-9 ? "top_rms_worse_than_planar" :
-                        budget.measured ? "firmware_time_budget" : "firmware_time_unmeasured") : "retained"}});
-                jo["curved_top_budget"] = {{"measured", budget.measured}, {"within_budget", budget.measured ? json(budget.within_budget) : json(nullptr)},
-                    {"planar_fw_s", budget.measured ? json(budget.planar_s) : json(nullptr)},
-                    {"candidate_fw_s", budget.measured ? json(budget.candidate_s) : json(nullptr)},
-                    {"admission_limit_s", budget.measured ? json(budget.limit_s) : json(nullptr)},
-                    {"maximum_time_increase_percent", budget.time_budget_percent},
-                    {"admission_time_ratio", 1. + .01 * budget.time_budget_percent},
-                    {"time_model", "firmware_sim 3-axis Marlin/Bambu/RRF replay"},
-                    {"time_scope", "whole program for one instance; object motion plus shared outside time for multiple instances"},
-                    {"reason", budget.reason}, {"patches", std::move(patches)}};
-            }
         }
         if (o.conformal_rung >= 0) {
-            const ConformalVariant v = conformal_variant(o.conformal_rung);
             jo["conformal_rung"]    = o.conformal_rung;
-            jo["conformal_variant"] = v.flat ? std::string("flat") :
-                                               "shells rounded over " + std::to_string(int(v.round_sigma)) + " mm" + (v.cap15 ? ", 15 degree cap" : "");
+            jo["conformal_variant"] = o.conformal_variant;
             if (!o.planar_limit.empty()) {
                 jo["planar_limit"]           = o.planar_limit;
                 jo["planar_fallback_reason"] = o.planar_reason;
             }
+        }
+        if (o.morph_hit_moves > 0) {
+            jo["planar_limit"]           = o.planar_limit;
+            jo["planar_fallback_reason"] = o.planar_reason;
+            jo["hit_moves"]              = o.morph_hit_moves;
         }
         if (o.slant) {
             const SlantChoice &c = *o.slant;
@@ -418,7 +409,12 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                                 { "start_mm", c.start_mm }, { "morph_layers", c.morph_layers }, { "angle_lowered_steps", c.lowered }, { "full_tilt_mm", c.full_tilt_mm },
                                 { "morph_min_gap_mm", c.min_gap_mm }, { "morph_max_gap_mm", c.max_gap_mm },
                                 { "stair_step_mm2", c.steps }, { "overhang_mm2", c.overhang },
-                                { "planar_stair_step_mm2", c.planar_steps }, { "planar_overhang_mm2", c.planar_overhang } };
+                                { "planar_stair_step_mm2", c.planar_steps }, { "planar_overhang_mm2", c.planar_overhang },
+                                { "requested_deg", c.requested_deg } };
+            if (!c.limit.empty())
+                jo["slant"]["limit"] = c.limit;
+            if (!c.limit_reason.empty())
+                jo["slant"]["limit_reason"] = c.limit_reason;
             if (!c.planar_limit.empty()) {
                 jo["planar_limit"]           = c.planar_limit;
                 jo["planar_fallback_reason"] = c.reason;

@@ -1,7 +1,9 @@
 #include "ConformalLayers.hpp"
+#include "CurvedTopsSurface.hpp"
 
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -188,50 +190,17 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
                     T[k] = hi, c[k] = cc;
             }
 
-    constexpr double MinRamp = 0.4, Gamma = 0.25;
-    constexpr double ThinRatio = 0.3, ThickRatio = 1.7;
+    const double     MinRamp = P.min_ramp;
+    constexpr double Gamma   = 0.25;
+    constexpr double ThinRatio = 0.3;
+    const double     ThickRatio = P.max_thickness > 0. ? std::min(1.7, P.max_thickness / h) : 1.7;
     const double s_lo = 1. / ThickRatio - 1., s_hi = 1. / ThinRatio - 1.;
-    constexpr double Sigma = 1., MaxRelief = 0.2, SteepClear = 1., MinWidth = 1.;
-    std::vector<char> rough(N, 0);
-    {
-        std::vector<double> sum(N, 0.), wsum(N, 0.), tmp(N), wtmp(N);
-        for (size_t k = 0; k < N; ++k)
-            if (T[k] != Unset)
-                sum[k] = T[k], wsum[k] = 1.;
-        const long r = long(std::ceil(2. * Sigma / g));
-        std::vector<double> w(size_t(2 * r + 1));
-        for (long d = -r; d <= r; ++d)
-            w[size_t(d + r)] = std::exp(-0.5 * sqr(double(d) * g / Sigma));
-        for (int axis = 0; axis < 2; ++axis) {
-            for (size_t i = 0; i < nx; ++i)
-                for (size_t j = 0; j < ny; ++j) {
-                    double a = 0., b = 0.;
-                    for (long d = -r; d <= r; ++d) {
-                        const long ii = long(i) + (axis == 0 ? d : 0), jj = long(j) + (axis == 1 ? d : 0);
-                        if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
-                            continue;
-                        const size_t q = size_t(ii) * ny + size_t(jj);
-                        a += w[size_t(d + r)] * sum[q], b += w[size_t(d + r)] * wsum[q];
-                    }
-                    tmp[i * ny + j] = a, wtmp[i * ny + j] = b;
-                }
-            sum.swap(tmp), wsum.swap(wtmp);
-        }
-        std::vector<char> steep(N, 0);
-        for (size_t k = 0; k < N; ++k)
-            steep[k] = T[k] != Unset && c[k] < cos_max - 1e-9;
-        std::vector<size_t> nearest;
-        std::vector<double> dist;
-        nearest_source(steep, nx, ny, g, nearest, dist);
-        for (size_t k = 0; k < N; ++k)
-            if (T[k] != Unset)
-                rough[k] = (wsum[k] > 0. && std::abs(T[k] - sum[k] / wsum[k]) > MaxRelief) || dist[k] < SteepClear;
-    }
+    constexpr double MinWidth = 1.;
     std::vector<double> D(N, 0.);
     std::vector<char>   follow(N, 0);
     std::vector<char>   low(N, 0);
     for (size_t k = 0; k < N; ++k) {
-        if (T[k] == Unset || c[k] < cos_max - 1e-9 || rough[k])
+        if (T[k] == Unset || c[k] < cos_max - 1e-9)
             continue;
         const double kk = std::min(K, std::floor((T[k] - ident - MinRamp) * c[k] / h + 1e-9));
         if (kk < 1.) {
@@ -418,7 +387,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         for (size_t k : cells)
             top.z_min = std::min(top.z_min, T[k]), top.z_max = std::max(top.z_max, T[k]);
         if (top.area_mm2 < P.min_area) {
-            top.fallback = "smaller than " + std::to_string(int(P.min_area)) + " mm2";
+            top.fallback = "smaller than " + float_to_string_decimal_point(P.min_area) + " mm2";
             for (size_t k : cells)
                 follow[k] = 0;
             F->tops.push_back(top);
@@ -442,7 +411,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         for (size_t k = 0; k < N; ++k)
             if (low[k] && !follow[k])
                 low_area += g * g, low_z = std::max(low_z, T[k]);
-        if (low_area >= P.min_area) {
+        if (low_area > 0.) {
             ConformalTop top;
             top.area_mm2 = low_area, top.z_max = low_z;
             top.fallback = "too close to the flat base layers for a shell and a ramp";
@@ -478,7 +447,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             continue;
         }
         col.T = T[s], col.c = std::max(c[s], 0.5), col.L = L[s], col.zb = zb[s], col.d = D[s], col.tf = T[s] - D[s] / col.c;
-        const double rho = std::clamp(std::abs(L[s] - T[s]) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
+        const double rho = std::clamp(std::abs(L[s] - T[s]) / tan_max + 1., 1.5, 25.);
         col.omega        = std::clamp(1. - dist[k] / rho, 0., 1.);
     }
     {
@@ -486,7 +455,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         std::vector<char> standing(N, 0);
         bool any = false;
         for (size_t k = 0; k < N; ++k)
-            if (!core[k] && T[k] != Unset && nearest[k] != size_t(-1) && T[k] > T[nearest[k]] + StandClear)
+            if (!core[k] && T[k] != Unset && nearest[k] != size_t(-1) && std::abs(T[k] - T[nearest[k]]) > StandClear)
                 standing[k] = 1, any = true;
         if (any) {
             std::vector<size_t> by;
@@ -495,7 +464,7 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
             for (size_t k = 0; k < N; ++k) {
                 ConformalLayerField::Column &col = F->m_cols[k];
                 if (col.omega > 0. && by[k] != size_t(-1)) {
-                    const double rho = std::clamp(std::abs(col.L - col.T) / std::tan(20. * M_PI / 180.) + 1., 1.5, 25.);
+                    const double rho = std::clamp(std::abs(col.L - col.T) / tan_max + 1., 1.5, 25.);
                     col.omega        = std::min(col.omega, std::clamp(away[k] / rho, 0., 1.));
                 }
             }
@@ -553,7 +522,13 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
         for (size_t k = 0; k < N; ++k)
             if (core[k]) {
                 ConformalLayerField::Column &col = F->m_cols[k];
-                col.tf = std::clamp(tf[k], col.zb + 0.05, col.T - 0.6 * col.d / col.c);
+                double lo = col.zb + 0.05, hi = col.T - 0.6 * col.d / col.c;
+                if (P.max_thickness > 0.) {
+                    const double r = P.max_thickness / h;
+                    lo = std::max(lo, col.T - r * col.d / col.c);
+                    hi = std::min(hi, col.zb + r * std::max(col.L - col.d - col.zb, 0.));
+                }
+                col.tf = lo <= hi ? std::clamp(tf[k], lo, hi) : col.T - col.d / col.c;
             }
     }
     {
@@ -604,12 +579,27 @@ std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const ind
     return F;
 }
 
-ConformalVariant conformal_variant(int step)
+ConformalVariant conformal_variant(const PrintObjectConfig &config, int step)
 {
-    static const ConformalVariant ladder[] = { { 8., false, false }, { 2., false, false }, { 2., true, false }, { 8., true, false },
-                                               { 0., false, true } };
+    struct Rung { bool rounded, capped, flat; };
+    static const Rung ladder[] = { { true, false, false }, { false, false, false }, { false, true, false }, { true, true, false },
+                                   { false, false, true } };
     static_assert(std::size(ladder) == ConformalSteps + 1);
-    return ladder[std::clamp(step, 0, int(std::size(ladder)) - 1)];
+    const Rung      &rung     = ladder[std::clamp(step, 0, int(std::size(ladder)) - 1)];
+    const double     rounding = config.nonplanar_conformal_rounding.value;
+    ConformalVariant v;
+    v.flat        = rung.flat;
+    v.round_sigma = rung.flat ? 0. : rung.rounded ? rounding : std::min(2., rounding);
+    v.cap_deg     = rung.capped ? config.nonplanar_conformal_fallback_angle.value : 0.;
+    return v;
+}
+
+std::string conformal_variant_text(const ConformalVariant &v)
+{
+    if (v.flat)
+        return "flat";
+    return "shells rounded over " + float_to_string_decimal_point(v.round_sigma) + " mm" +
+           (v.cap_deg > 0. ? ", " + float_to_string_decimal_point(v.cap_deg) + " degree cap" : std::string());
 }
 
 std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObject &object, std::string *summary)
@@ -620,19 +610,21 @@ std::shared_ptr<const ConformalLayerField> conformal_layers_field(const PrintObj
     P.layer_height = oc.layer_height.value;
     P.first_layer  = object.print()->config().initial_layer_print_height.value;
     const int step = conformal_cap_step(*object.model_object());
-    const ConformalVariant variant = conformal_variant(step);
-    P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value > 12. + 1e-9 ? oc.nonplanar_curved_max_angle.value : 20., 1., 45.);
-    if (variant.cap15)
-        P.max_angle = std::min(P.max_angle, 15.);
+    const ConformalVariant variant = conformal_variant(oc, step);
+    P.max_angle    = std::clamp(oc.nonplanar_curved_max_angle.value, 1., 45.);
+    if (variant.cap_deg > 0.)
+        P.max_angle = std::min(P.max_angle, variant.cap_deg);
+    P.min_area    = oc.nonplanar_curved_min_area.value;
     P.round_sigma = variant.round_sigma;
+    P.max_thickness = 0.75 * object.print()->config().nozzle_diameter.get_at(0);
     P.struck      = conformal_struck_points(*object.model_object());
     if (variant.flat) {
         if (summary)
             *summary = "conformal layers: flat (the export check found the head meeting the curved layers)";
         return nullptr;
     }
-    P.shells       = std::max(rc.top_shell_layers.value, int(std::ceil(rc.top_shell_thickness.value / P.layer_height - 1e-6)));
-    P.shells       = std::clamp(P.shells, 2, 8);
+    P.shells       = curved_top_layers(object);
+    P.min_ramp     = std::max(1, oc.nonplanar_conformal_ramp_layers.value) * P.layer_height;
     std::shared_ptr<const ConformalLayerField> field = build_conformal_layer_field(slicing_frame_mesh(object), P);
     std::ostringstream out;
     size_t followed = 0;
@@ -672,7 +664,8 @@ std::string conformal_planar_limit(const PrintObject &object, std::string &reaso
     conformal_layers_field(object, &summary);
     const bool base = summary.find("too close to the flat base") != std::string::npos;
     reason = base ? "Conformal layers: no top stands far enough above the flat base layers for a shell and a ramp" :
-                    "Conformal layers: no top is large enough to follow (20 mm2)";
+                    "Conformal layers: no top is large enough to follow (" +
+                        float_to_string_decimal_point(object.config().nonplanar_curved_min_area.value) + " mm2)";
     return base ? "base" : "area";
 }
 
@@ -684,7 +677,7 @@ double conformal_band_height(const HeadEnvelope &head, double layer_height)
             lowest = std::min(lowest, b.min.z());
     if (!std::isfinite(lowest))
         return std::numeric_limits<double>::infinity();
-    return std::max(layer_height, lowest - head.margin - layer_height - 0.4);
+    return std::max(layer_height, lowest - head.margin - layer_height - 0.4 + head.contact_tolerance);
 }
 
 std::string contour_solid_angles(const LayerField &field, const std::vector<ExPolygons> &domains, const std::vector<double> &levels,
@@ -787,7 +780,7 @@ size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t la
                 const long ii = i + q.di, jj = j + q.dj;
                 if (ii < 0 || jj < 0 || ii >= long(nx) || jj >= long(ny))
                     continue;
-                if (top[size_t(ii) * ny + size_t(jj)] - q.h > z) {
+                if (top[size_t(ii) * ny + size_t(jj)] - q.h > z + head.contact_tolerance) {
                     ++conflicts;
                     break;
                 }
@@ -798,7 +791,7 @@ size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t la
 }
 
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats,
-                            const std::vector<std::pair<Vec3d, Vec3d>> *precede)
+                            const std::vector<std::pair<Vec3d, Vec3d>> *precede, const std::vector<ExPolygons> *domains)
 {
     FieldOrder out;
     if (layers == 0)
@@ -1036,6 +1029,34 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
             v.erase(std::remove_if(first_s, v.end(), road_is(h)), v.end());
             v.insert(std::find_if(v.begin(), v.end(), road_is(s)), moved.begin(), moved.end());
         }
+        constexpr double SimplifyTolerance = 0.01, ZSmooth = 1.;
+        for (ExtrusionEntity *e : group.entities) {
+            auto    *path = static_cast<ExtrusionPathConformal *>(e);
+            Points3 &pts  = path->polyline.points;
+            if (path->role() != erTopSolidInfill && pts.size() > 2) {
+                std::vector<double> s(pts.size(), 0.), z(pts.size());
+                for (size_t i = 0; i < pts.size(); ++i) {
+                    z[i] = unscale<double>(pts[i].z());
+                    if (i > 0)
+                        s[i] = s[i - 1] + (unscale(pts[i]) - unscale(pts[i - 1])).head<2>().norm();
+                }
+                size_t lo = 0, hi = 0;
+                for (size_t i = 0; i < pts.size(); ++i) {
+                    while (s[i] - s[lo] > 2. * ZSmooth)
+                        ++lo;
+                    while (hi + 1 < pts.size() && s[hi + 1] - s[i] <= 2. * ZSmooth)
+                        ++hi;
+                    double a = 0., w = 0.;
+                    for (size_t k = lo; k <= hi; ++k) {
+                        const double wk = std::exp(-0.5 * sqr((s[k] - s[i]) / ZSmooth));
+                        a += wk * z[k], w += wk;
+                    }
+                    const double fade = std::min({ 1., s[i] / ZSmooth, (s.back() - s[i]) / ZSmooth });
+                    pts[i].z() = scale_(z[i] + fade * std::clamp(a / w - z[i], -ConformalZSmoothMax, ConformalZSmoothMax));
+                }
+            }
+            path->simplify(SimplifyTolerance);
+        }
         constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
         for (size_t i = 1; i < group.entities.size(); ++i) {
             auto *prev = static_cast<ExtrusionPathConformal *>(group.entities[i - 1]);
@@ -1045,6 +1066,16 @@ FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double
             const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls : LinkMax;
             if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
                 continue;
+            if (domains != nullptr && key.second + 1 < domains->size()) {
+                const ExPolygons &area = (*domains)[key.second + 1];
+                bool              over = true;
+                for (double t = 0.15; t < 0.9 && over; t += 0.1) {
+                    const Point p((a.cast<double>() + t * (b - a).cast<double>()).head<2>().cast<coord_t>());
+                    over = std::any_of(area.begin(), area.end(), [&p](const ExPolygon &e) { return e.contains(p); });
+                }
+                if (!over)
+                    continue;
+            }
             next->polyline.points.insert(next->polyline.points.begin(), a);
             if (!next->bead_height.empty())
                 next->bead_height.insert(next->bead_height.begin(), next->bead_height.front());

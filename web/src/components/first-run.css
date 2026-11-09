@@ -39,7 +39,7 @@
 :where(.orca-parity) .fr-preview .seg.slant-seg { --h-control: var(--h-compact); align-self: stretch; display: flex; }
 :where(.orca-parity) .fr-preview .seg.slant-seg > button { flex: 1; padding: 0 var(--s-2); font: var(--t-small); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .fr-preview .seg.slant-seg > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-:where(.orca-parity) .fr-preview-hint { padding-bottom: var(--s-1); color: var(--ink-3); font: var(--t-small); white-space: nowrap; }
+:where(.orca-parity) .fr-preview-hint { max-width: 176px; padding-bottom: var(--s-1); color: var(--ink-3); font: var(--t-small); text-align: center; }
 @keyframes fr-turn { to { background-position: -3840px 0; } }
 :where(.orca-parity) .fr-sample[data-busy] { position: relative; color: transparent; text-decoration-color: transparent; cursor: progress; }
 :where(.orca-parity) .fr-sample[data-busy]::after { content: ''; position: absolute; inset: 0; margin: auto; width: 12px; height: 12px; box-sizing: border-box;

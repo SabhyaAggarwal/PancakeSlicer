@@ -35,7 +35,6 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 constexpr double MaxHelixAspect = 1.5;
-constexpr double MinHelixSlope = 12.;
 
 struct Ring
 {
@@ -234,21 +233,17 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
     return out.points.size() >= 2 ? out : Polyline();
 }
 
-bool helix_worthwhile(const HeightField &surface, const ExPolygons &area)
+bool helix_on_surface(const HeightField &surface, const ExPolygons &area)
 {
-    const Mask          mask = rasterize(area, surface);
-    std::vector<double> slopes;
+    const Mask mask = rasterize(area, surface);
     for (int iy = 0; iy < surface.ny(); ++iy)
         for (int ix = 0; ix < surface.nx(); ++ix)
             if (mask[size_t(iy) * surface.nx() + ix]) {
                 const Vec2d g = surface.gradient(surface.node(ix, iy));
                 if (!std::isnan(g.x()) && !std::isnan(g.y()))
-                    slopes.emplace_back(std::atan(g.norm()));
+                    return true;
             }
-    if (slopes.empty())
-        return false;
-    std::nth_element(slopes.begin(), slopes.begin() + slopes.size() / 2, slopes.end());
-    return slopes[slopes.size() / 2] >= Geometry::deg2rad(MinHelixSlope);
+    return false;
 }
 
 void ramp_helix_flow(ExtrusionPathConformal &path, const HelixRamp &ramp, bool reversed)

@@ -2,10 +2,14 @@
 #pragma once
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include <admesh/stl.h>
+
 #include "libslic3r/libslic3r.h"
+#include "libslic3r/PrintConfig.hpp"
 #include "CurvedTopsFacet.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
@@ -28,6 +32,8 @@ typedef struct {
 
 class PrintObject;
 class Print;
+bool   curved_cone_allowance(NonplanarMode mode);
+double curved_cone_tolerance(NonplanarMode mode);
 double curved_tops_cone_tolerance(const Print &print);
 struct CurvedTopsStats {
     size_t kept = 0, candidates = 0;
@@ -37,10 +43,13 @@ struct CurvedTopsStats {
     std::string planar_limit;
     double max_angle_deg = 0.;
     double reachable_slope_deg = 0.;
+    std::string access_by;
 };
 CurvedTopsStats curved_tops_stats(const PrintObject &object);
+int curved_top_layers(const PrintObject &object);
 struct CurvedSurfaceRejections { size_t height = 0, area = 0, collision = 0; bool head_unknown = false; };
 void note_curved_surface_rejections(const PrintObject &object, const CurvedSurfaceRejections &rejections);
+struct CurvedSurfaceDrop { int volume = -1; std::string reason; std::vector<int> facets; };
 
 class NonplanarSurface;
 
@@ -52,6 +61,7 @@ class NonplanarSurface
     std::map<int, NonplanarFacet> mesh;
     mesh_stats stats;
     int stable_id = -1;
+    int volume = -1;
     NonplanarSurface() {};
     ~NonplanarSurface() {};
     NonplanarSurface(std::map<int, NonplanarFacet> &_mesh);
@@ -66,10 +76,16 @@ class NonplanarSurface
     void mark_neighbor_surfaces(int id);
     bool check_max_printing_height(float height);
     void check_printable_surfaces(float max_angle);
-    bool check_surface_area();
+    bool check_surface_area(float min_area);
     ExPolygons horizontal_projection() const;
 
 };
+
+constexpr int       AutoTopCandidates = 2;
+std::vector<double> auto_top_angles(const Points &points, std::optional<double> level = std::nullopt);
+Points              surface_outline_points(const NonplanarSurface &surface);
+std::vector<double> auto_top_angles(const NonplanarSurface &surface, std::optional<double> level, double spacing);
+std::optional<double> mesh_auto_top_direction(const indexed_triangle_set &mesh);
 
 std::string nonplanar_location(double z, size_t layer_id);
 double      nonplanar_suggested_angle(double angle);

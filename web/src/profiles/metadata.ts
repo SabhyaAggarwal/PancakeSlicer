@@ -7,7 +7,7 @@ export function profileSummary(type: PresetType, config: Config, model?: string)
   if (type === 'filament') return [first(config.filament_type), first(config.filament_vendor) !== 'Generic' ? first(config.filament_vendor) : ''].filter(Boolean).join(SEP);
   const height = Number(first(config.layer_height));
   const mode = first(config.nonplanar_mode), wave = first(config.nonplanar_wave);
-  const top = wave && wave !== 'off' ? 'Waves' : mode === 'curved_tops' ? 'Curved top' : mode === 'off' || !mode ? 'Flat' : mode === 'auto' ? 'Automatic' : 'Custom surface';
+  const top = wave && wave !== 'off' ? 'Waves' : mode === 'nonplanar_top' ? 'Curved top' : mode === 'off' || !mode ? 'Flat' : mode === 'auto' ? 'Automatic' : 'Custom surface';
   return [height > 0 ? `${height.toFixed(2)} mm` : '', top].filter(Boolean).join(SEP);
 }
 

@@ -58,11 +58,15 @@ func overrides(raw string) ([][2]string, error) {
 	}
 	sort.Strings(keys)
 	out := make([][2]string, 0, len(keys))
-	for _, key := range keys {
+	for _, saved := range keys {
+		key := canonicalKey(saved)
+		if _, both := values[key]; both && key != saved {
+			continue
+		}
 		if !settingKey.MatchString(key) || hiddenSetting.MatchString(key) || configKinds[key] == "" {
 			return nil, fmt.Errorf("invalid override key %q", key)
 		}
-		value, err := configValue(key, values[key])
+		value, err := configValue(key, values[saved])
 		if err == nil && len(value) > 64<<10 {
 			err = errors.New("serialized value exceeds 64 KiB")
 		}
@@ -71,7 +75,7 @@ func overrides(raw string) ([][2]string, error) {
 		}
 		out = append(out, [2]string{key, value})
 	}
-	return out, nil
+	return migrateFastCurvedTops(out), nil
 }
 
 func escapeConfigString(value string) string {
@@ -151,4 +155,41 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 		return "", errors.New("scalar contains control characters")
 	}
 	return scalar, nil
+}
+
+var renamedKeys = map[string]string{"nonplanar_curved_shells": "nonplanar_curved_top_layers"}
+
+func canonicalKey(key string) string {
+	if to, ok := renamedKeys[key]; ok {
+		return to
+	}
+	return key
+}
+
+const fastCurvedTops, curvedTops = "curved_tops", "nonplanar_top"
+
+func migrateFastCurvedTops(pairs [][2]string) [][2]string {
+	fast := false
+	for i, kv := range pairs {
+		if kv[0] == "nonplanar_mode" && kv[1] == fastCurvedTops {
+			pairs[i][1], fast = curvedTops, true
+		}
+	}
+	if !fast {
+		return pairs
+	}
+	out := pairs[:0]
+	for _, kv := range pairs {
+		if kv[0] != "nonplanar_curved_top_layers" {
+			out = append(out, kv)
+		}
+	}
+	return append(out, [2]string{"nonplanar_curved_top_layers", "1"})
+}
+
+func migratedMethod(mode string) string {
+	if mode == fastCurvedTops {
+		return curvedTops
+	}
+	return mode
 }

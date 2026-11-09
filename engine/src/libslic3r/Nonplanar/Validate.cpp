@@ -85,7 +85,7 @@ static StringObjectException validate_native_support(const Print &print, std::ve
 
 double curved_max_angle_limit(NonplanarMode mode)
 {
-    return curved_tops_mode(mode) ? 30. : 0.;
+    return curved_tops_mode(mode) ? 45. : 0.;
 }
 
 StringObjectException validate(const Print &print, std::vector<StringObjectException> *warnings)
@@ -94,8 +94,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         return err;
     const PrintConfig &config = print.config();
     if (warnings != nullptr && config.nonplanar_ignore_duct.value && !clearance_override_active(config)) {
-        StringObjectException w{ _u8L("Ignore cooling duct has no effect on this printer: its print head does not mark the heater block, "
-                                      "so the whole head is checked."), nullptr, "nonplanar_ignore_duct" };
+        StringObjectException w{ _u8L("Ignore cooling duct has no effect on this printer: its print head model has no cooling duct."),
+                                 nullptr, "nonplanar_ignore_duct" };
         w.is_warning = true;
         warnings->push_back(std::move(w));
     }
@@ -139,12 +139,12 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             if (object->config().raft_layers.value > 0)
                 return { L("Slant cannot be printed on a raft."), object, "raft_layers" };
         }
-        if (mode == NonplanarMode::NonplanarTop && warnings != nullptr) {
+        if (curved_tops_mode(mode) && warnings != nullptr) {
             std::string unknown;
             resolve_head_envelope(config, &unknown);
             if (!unknown.empty() && std::none_of(warnings->begin(), warnings->end(), [](const StringObjectException &w) {
                     return w.opt_key == "nonplanar_head"; })) {
-                StringObjectException w{ _u8L("Smoothest tops can't plan head access without this printer's print head model, so its "
+                StringObjectException w{ _u8L("Curved tops can't plan head access without this printer's print head model, so its "
                                               "tops print flat. Select the printer's head on its Non-planar page."),
                                          nullptr, "nonplanar_head" };
                 w.is_warning = true;

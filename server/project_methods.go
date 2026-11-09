@@ -44,6 +44,9 @@ func savedProjectMethods(path string) (map[string]any, []map[string]any, error) 
 			}
 			for _, key := range []string{"nonplanar_mode", "nonplanar_wave"} {
 				if value, ok := config[key]; ok {
+					if text, ok := value.(string); ok {
+						value = migratedMethod(text)
+					}
 					global[key] = value
 				}
 			}
@@ -79,7 +82,7 @@ func savedProjectMethods(path string) (map[string]any, []map[string]any, error) 
 					return nil, nil, err
 				}
 			}
-			scopes = append(scopes, map[string]any{key: strings.TrimSpace(value)})
+			scopes = append(scopes, map[string]any{key: migratedMethod(strings.TrimSpace(value))})
 		}
 	}
 	return global, scopes, nil

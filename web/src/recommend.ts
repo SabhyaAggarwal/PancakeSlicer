@@ -57,10 +57,6 @@ function flatReason(r: ObjectResult, o: PlateObject | undefined, process: Config
       : moves ? `The print head would hit the part in ${Number(moves).toLocaleString('en-US')} moves` : 'The print head cannot reach this top' };
   }
   if (kind === 'angle') return { why: `${slope} is above your ${capDeg != null ? `${whole(capDeg)}° ` : ''}curved-top limit`, hint: 'try raising Max curved top angle' };
-  if (kind === 'height') {
-    const height = Number({ ...process, ...o?.settings }.nonplanar_curved_max_height);
-    return { why: `Top rises more than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height limit` };
-  }
   if (kind === 'area') {
     const area = Number({ ...process, ...o?.settings }.nonplanar_curved_min_area);
     return { why: `Top smaller than your ${Number.isFinite(area) ? `${area} mm² ` : ''}Minimum curved top area` };
@@ -85,14 +81,13 @@ function flatLine(r: ObjectResult, o: PlateObject | undefined, process: Config):
   return f ? `${f.why}${f.hint ? `; ${f.hint}` : ''}` : r.flatWhy || 'No top surface could be curved with the current limits';
 }
 
-function partialLine(r: ObjectResult, process: Config, o: PlateObject | undefined): string | undefined {
+function partialLine(r: ObjectResult): string | undefined {
   if (!r.curved || r.printedFlat || !r.tops || r.tops.kept >= r.tops.candidates || r.tops.kept < 1) return undefined;
   const whole = (v: number) => String(Math.round(v));
-  const limit = r.limit, height = Number({ ...process, ...o?.settings }.nonplanar_curved_max_height);
+  const limit = r.limit;
   const byLimit = !limit ? undefined
     : limit.kind === 'access' ? (limit.reachableDeg != null ? `steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${whole(limit.reachableDeg)}°)` : 'the print head cannot reach them')
     : limit.kind === 'angle' ? `above your ${limit.capDeg != null ? `${whole(limit.capDeg)}° ` : ''}curved-top limit`
-    : limit.kind === 'height' ? `taller than your ${Number.isFinite(height) ? `${height} mm ` : ''}curved-top height`
     : limit.kind === 'area' ? 'smaller than your Minimum curved top area'
     : limit.kind === 'base' ? 'too close to the bed'
     : 'a curved top would cost too much time or quality';
@@ -175,7 +170,7 @@ export function plateResults(s: State): PlateResult[] {
   const process = effectiveConfig(s, 'process');
   const out = results.flatMap((r) => {
     const o = s.objects.length === 1 && results.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(r.name));
-    const partial = partialLine(r, process, o);
+    const partial = partialLine(r);
     return [{ ...r, fact: o ? topFact(r, o, process) : r.fact, objectId: o?.id, label: bareName(o?.name ?? r.name), ...(r.printedFlat ? { flat: flatLine(r, o, process) } : {}), ...(partial ? { partial } : {}) }];
   });
   kept = { record, objects: s.objects, rec: s.recommendedStyle, out };

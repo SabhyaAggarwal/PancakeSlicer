@@ -511,6 +511,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             for (const float b : patch.base.data())
                 on_air |= !std::isnan(b) && b > first_top + EPSILON;
             std::vector<ShellFill> fills = plan_shell_fills(patch, rcfg, solid.spacing());
+            const bool             monotonic_top = nonplanar_top_monotonic(rcfg);
             if (rcfg.nonplanar_top_pattern.value == NonplanarTopPattern::Contour) {
                 const bool spiral = is_round(patch.footprint) && outline_is_contour(patch, h);
                 double     angle  = Geometry::deg2rad(rcfg.solid_infill_direction.value);
@@ -615,11 +616,13 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                         const float t = patch.surface.data()[n], b = patch.base.data()[n];
                         layer_surface.data()[n] = std::isnan(t) || std::isnan(b) ? HeightField::NoData : float(b + double(k) / L * (t - b));
                     }
-                    contour_roads(layer_surface, larea, 0., band_pitch, 0.5 * band_tolerance, flow, h, fill.angle, k == L, 0., roads, linked);
-                } else if (solid_layer)
-                    linked = shell_polylines(larea, fill, k == L || role == erBottomSurface ? ipMonotonic : ipRectilinear, flow.spacing(),
-                                             k == L || role == erBottomSurface, flow, 0., seam, MaxGlide, spaced ? &patch.surface.get() : nullptr);
-                else if (density > EPSILON) {
+                    contour_roads(layer_surface, larea, 0., band_pitch, 0.5 * band_tolerance, flow, h, fill.angle, k == L && monotonic_top, 0.,
+                                  roads, linked);
+                } else if (solid_layer) {
+                    const bool monotonic = (k == L && monotonic_top) || role == erBottomSurface;
+                    linked = shell_polylines(larea, fill, monotonic ? ipMonotonic : ipRectilinear, flow.spacing(), monotonic, flow, 0., seam,
+                                             MaxGlide, spaced ? &patch.surface.get() : nullptr);
+                } else if (density > EPSILON) {
                     fill        = ShellFill{};
                     fill.angle  = ply ? ply_angle(principal, L - k) : base_angle + (k % 2) * 0.5 * PI;
                     linked = shell_polylines(infill_area, fill, ipRectilinear, flow.spacing() / density, false, flow, 0., seam, MaxGlide);

@@ -4,6 +4,7 @@
 #include "libslic3r/Point.hpp"
 
 #include <memory>
+#include <optional>
 
 namespace Slic3r {
 class PrintObject;
@@ -21,6 +22,8 @@ struct SlantShape
     double start = 0.2;
     double h     = 0.2;
     int    morph = 10;
+    double gap_lo = 0.;
+    double gap_hi = 0.;
 };
 
 class SlantField final : public LayerField
@@ -30,7 +33,11 @@ public:
     double phi(const Vec3d &p) const override;
     double z_at(const Vec2d &xy, double level) const override;
     double identity_below() const override { return m_s.start; }
+    bool   cut() const { return m_s.morph <= 0; }
+    std::optional<double> cut_limit(int k) const;
     const SlantShape &shape() const { return m_s; }
+    double low_gap() const { return m_low; }
+    double dt() const { return m_dt; }
 
 private:
     double s_of(const Vec2d &xy) const;
@@ -40,6 +47,7 @@ private:
     double     m_k0  = 0.;
     double     m_dt  = 0.;
     double     m_low = 0.;
+    int        m_kmax = 0;
 };
 
 std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantChoice &choice);

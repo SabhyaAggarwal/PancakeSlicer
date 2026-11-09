@@ -32,6 +32,10 @@ struct RepairHints
     std::vector<Disc>       ordered_roads;
     std::map<int, int>      ordered_road_passes;
     std::set<int>           ordered_surfaces;
+    std::map<int, int>      top_angle_rungs;
+    std::map<int, std::vector<size_t>> top_angle_hits;
+    std::set<int>           top_angle_settled;
+    bool                    refill_tops = false;
     double                  travel_lift = 0.;
     std::vector<size_t>     travel_layers;
     enum class CurvedFinish : uint8_t { Blended, NativeFitted, NativeMesh };

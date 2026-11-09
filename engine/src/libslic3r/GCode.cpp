@@ -20,6 +20,7 @@
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/MaterialRules.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
+#include "Nonplanar/ConformalLayers.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/FieldChart.hpp"
 #include "Nonplanar/OrientationField.hpp"
@@ -3968,7 +3969,6 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 upward_area += stats.upward_area_mm2;
             }
             file.write_format("; nonplanar_curved_surfaces = %zu/%zu\n", kept, candidates);
-            file.write_format("; nonplanar_curved_cone_tolerance = %.3f\n", curved_tops_cone_tolerance(print));
             file.write_format("; nonplanar_curved_footprint_mm2 = %.3f\n", footprint);
             file.write_format("; curved_extrusion_length_mm = %.3f\n", curved_length);
             file.write_format("; curved_top_area_fraction = %.6f\n", upward_area > 0. ? std::clamp(footprint / upward_area, 0., 1.) : 0.);
@@ -7510,9 +7510,7 @@ void GCode::append_full_config(const Print &print, std::string &str)
             if (key == "wipe_tower_x" || key == "wipe_tower_y") {
                 ss << std::fixed << std::setprecision(3) << "; " << key << " = " << dynamic_cast<const ConfigOptionFloats*>(cfg.option(key))->get_at(print.get_plate_index()) << "\n";
             }
-            if (curved_tops && key == "nonplanar_curved_cone_tolerance")
-                ss << "; " << key << " = " << curved_tops_cone_tolerance(print) << "\n";
-            else if(key == "extruder_colour")
+            if(key == "extruder_colour")
                 ss << "; " << key << " = " << cfg.opt_serialize("filament_colour") << "\n";
             else
                 ss << "; " << key << " = " << cfg.opt_serialize(key) << "\n";
@@ -8049,7 +8047,7 @@ static std::vector<ExtrusionPath> curved_roads(const Layer *layer, const std::ve
                                                const Point &start)
 {
     const auto *hints = layer != nullptr ? layer->object()->nonplanar_repair() : nullptr;
-    if (layer == nullptr || paths.empty() || layer->object()->config().nonplanar_mode.value != NonplanarMode::NonplanarTop ||
+    if (layer == nullptr || paths.empty() || !curved_tops_mode(layer->object()->config().nonplanar_mode.value) ||
         (hints != nullptr && hints->ordered_surfaces.count(paths.front().source_surface_id) != 0))
         return order_curved_tops_paths(paths, head, start);
     if (hints == nullptr || hints->ordered_roads.empty())
@@ -9300,7 +9298,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             planar_stretch = std::abs(field.forward(m).z() - m.z()) < 1e-3;
         }
         if (fixed_conformal && !planar_stretch && (b - a).head<2>().norm() >= 1.) {
-            if (!in_layer || (b - a).head<2>().norm() > 15. || above > ends + 0.1)
+            if (!in_layer || (b - a).head<2>().norm() > 15. || above > ends + 0.1 + Nonplanar::ConformalZSmoothMax)
                 return false;
             const double level = 0.5 * (qa.z() + qb.z());
             double       sag   = 0.;
@@ -9608,9 +9606,13 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     if (m_writer.filament() != nullptr)
         params.glide_speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
     params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
-    if (path.role() == erTopSolidInfill && (path.patch_id >= 0 ||
-        (m_layer != nullptr && Nonplanar::wave_enabled(*m_layer->object())))) {
+    const NonplanarMode mode = m_config.nonplanar_mode.value;
+    const bool patch_top = path.role() == erTopSolidInfill && (path.patch_id >= 0 ||
+        (m_layer != nullptr && Nonplanar::wave_enabled(*m_layer->object())));
+    if (patch_top || (path.role() == erTopSolidInfill &&
+                      (mode == NonplanarMode::SmoothMorph || mode == NonplanarMode::ConformalLayers || mode == NonplanarMode::Slant)))
         params.e_per_mm3 *= m_config.nonplanar_top_finish_flow.value;
+    if (patch_top) {
         if (m_conformal_surface != nullptr && !m_config.nonplanar_flow_mod.value) {
             double slope = 0.;
             size_t n     = 0;
@@ -11088,8 +11090,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     }
 
     double e_per_mm = m_writer.filament()->e_per_mm3() * _mm3_per_mm;
-    if (z_absolute && path.nonplanar_source && path.role() == erTopSolidInfill)
-        e_per_mm *= m_config.nonplanar_top_finish_flow.value;
+    if (z_absolute && path.nonplanar_source)
+        e_per_mm *= path.role() == erTopSolidInfill ? m_config.nonplanar_top_finish_flow.value : m_config.nonplanar_curved_shell_flow.value;
     e_per_mm /= filament_flow_ratio;
 
     if (speed == -1) {
@@ -11138,6 +11140,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
 
     if (speed == 0)
         speed = filament_max_volumetric_speed / _mm3_per_mm;
+    const double curved_shell_speed = z_absolute && path.nonplanar_source ? 0.01 * m_config.nonplanar_curved_shell_speed.value : 1.;
+    if (curved_shell_speed > 1.)
+        speed *= curved_shell_speed;
 
     const int _layer = this->effective_layer_index_for_point(path_point_mm);
     const bool belt_band_tags   = m_enable_cooling_markers && m_config.belt_printer.value;
@@ -11533,6 +11538,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                     double feed = 60. * feeds[i - 1];
                     if (limits.segment_rate > 0.)
                         feed = std::min(feed, 60. * limits.segment_rate * line_length);
+                    if (curved_shell_speed < 1.)
+                        feed *= curved_shell_speed;
                     m_writer.set_speed(gcode, feed);
                     const double charged_length = (p3 - prev3).head<2>().norm();
                     gcode += m_writer.extrude_to_xyz(p3, e_per_mm * charged_length,
@@ -12022,8 +12029,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)))
         needs_retraction = true;
 
-    const bool half_height_walls = native_curved && m_layer->object()->sublayer_walls_active() &&
-        !m_layer->object()->sublayer_walls_off();
+    const bool half_height_walls = native_curved && m_layer->object()->sublayer_walls_active();
     bool contoured_walls = half_height_walls && m_layer->object()->curved_fallback_zaa();
     if (half_height_walls)
         for (const PrintRegion &region : m_layer->object()->all_regions())
@@ -12123,7 +12129,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
                 base + hop);
         bool sloped = false;
         double lift = 0.;
-        const bool short_hop = m_layer != nullptr && m_layer->object()->config().nonplanar_mode.value == NonplanarMode::NonplanarTop &&
+        const bool short_hop = m_layer != nullptr && curved_tops_mode(m_layer->object()->config().nonplanar_mode.value) &&
                                travel.size() == 2 && travel.length() < scale_(2.);
         if (travel.size() == 2 && !m_need_change_layer_lift_z &&
             (short_hop || (!m_force_safe_travel && m_writer.is_current_position_clear() && std::abs(target_z - m_writer.get_position().z()) > 0.03))) {

@@ -367,7 +367,8 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
     totals["verifier"] = {{"ran", clearance.ran}, {"hit_moves", clearance.hit_moves},
                           {"machine_hit_moves", clearance.machine_hit_moves}, {"tolerated_moves", clearance.tolerated_moves},
                           {"first_hits", hits}, {"worst", std::move(worst)},
-                          {"min_clearance_mm", clearance.min_clearance}, {"omissions", clearance.omissions}};
+                          {"min_clearance_mm", clearance.min_clearance}, {"max_contact_mm", clearance.max_contact},
+                          {"duct_graze_moves", clearance.duct_graze_moves}, {"omissions", clearance.omissions}};
     tool["fallback"] = Json::array();
     std::vector<uint16_t> face_owner;
     if (args.surface_grid)

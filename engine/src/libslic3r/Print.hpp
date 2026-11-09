@@ -71,6 +71,7 @@ class PrintObject;
 struct NonplanarDeferral;
 struct NonplanarPlanMemo;
 struct NonplanarClearanceModel;
+class CurvedTopsAccessError;
 class SupportLayer;
 class TreeSupportData;
 class TreeSupport;
@@ -320,9 +321,11 @@ public:
     const Transform3d&           trafo() const          { return m_trafo; }
     const NonplanarSurfaces&     nonplanar_surfaces() const { return m_nonplanar_surfaces; }
     size_t curved_surface_candidates() const { return m_curved_candidates; }
+    const std::vector<CurvedSurfaceDrop> &curved_dropped_surfaces() const { return m_curved_dropped; }
     size_t curved_surface_count() const { return m_nonplanar_surfaces.size(); }
     double curved_footprint() const;
     double curved_upward_area() const { return m_curved_upward_area; }
+    std::pair<double, double> curved_band() const { return m_curved_band; }
 
     Transform3d                  trafo_centered() const
         { Transform3d t = this->trafo(); t.pretranslate(Vec3d(- unscale<double>(m_center_offset.x()), - unscale<double>(m_center_offset.y()), 0)); return t; }
@@ -352,7 +355,6 @@ public:
     const Nonplanar::ConformalResult& conformal() const;
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
     bool sublayer_walls_active() const { return m_sublayer_walls_active; }
-    bool sublayer_walls_off() const { return m_sublayer_walls_off; }
     void set_sublayer_walls_active(bool active) { m_sublayer_walls_active = active; }
     bool curved_fallback_zaa() const { return m_curved_fallback_zaa; }
     bool auto_planar_pass() const { return m_auto_planar_pass; }
@@ -621,13 +623,14 @@ private:
     bool                    				m_typed_slices = false;
     NonplanarSurfaces                       m_nonplanar_surfaces;
     std::set<int>                          m_curved_planar_surfaces;
-    std::string                            m_curved_budget_reason;
+    std::vector<CurvedSurfaceDrop>         m_curved_dropped;
+    void                                   drop_curved_planar_surfaces();
     bool                                   m_sublayer_walls_active = false;
-    bool                                   m_sublayer_walls_off = false;
     bool                                   m_curved_fallback_zaa = false;
     bool                                   m_curved_fallback_off = false;
     size_t                                 m_curved_candidates = 0;
     double                                 m_curved_upward_area = 0.;
+    std::pair<double, double>              m_curved_band;
 
 
     FillAdaptive::RegionOctrees             m_adaptive_fill_octrees;
@@ -954,6 +957,7 @@ public:
     void                process(long long *time_cost_with_cache = nullptr, bool use_cache = false) override;
     std::string         export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb = nullptr,
                                     bool retain_raw_positions = false);
+    void                plan_curved_tops();
     int                 export_cached_data(const std::string& dir_path, bool with_space=false) override;
     int                 load_cached_data(const std::string& directory) override;
 
@@ -1214,6 +1218,7 @@ private:
 public:
     static const std::unordered_set<std::string> &gcode_only_options();
 private:
+    bool                drop_unreachable_curved_tops(const CurvedTopsAccessError &error, std::map<size_t, std::vector<std::string>> &warnings);
 
     void                _make_skirt();
     void                _make_wipe_tower();

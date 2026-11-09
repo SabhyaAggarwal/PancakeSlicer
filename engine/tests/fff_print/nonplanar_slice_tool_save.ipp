@@ -18,11 +18,16 @@ bool load_slice_config(const std::string &path, DynamicPrintConfig &config, bool
     if (saved.at("schema") != "orca.nonplanar_slice_tool.config.v1")
         throw std::runtime_error("unsupported saved slice configuration: " + path);
     DynamicPrintConfig loaded;
-    for (const auto &[key, value] : saved.at("settings").items()) {
+    for (const auto &[saved_key, saved_value] : saved.at("settings").items()) {
+        std::string key = saved_key, value = saved_value.get<std::string>();
+        PrintConfigDef::handle_legacy(key, value);
+        if (key.empty())
+            continue;
         ConfigOption *option = loaded.option(key, true);
-        if (!option || !option->deserialize(value.get<std::string>()))
-            throw std::runtime_error("invalid saved slice option: " + key);
+        if (!option || !option->deserialize(value))
+            throw std::runtime_error("invalid saved slice option: " + saved_key);
     }
+    PrintConfigDef::handle_legacy_composite(loaded);
     config = std::move(loaded);
     project_settings = saved.at("project_settings").get<bool>();
     return true;

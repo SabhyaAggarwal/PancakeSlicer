@@ -1,12 +1,12 @@
 import type { Config, ConfigValue } from './api/types';
 import { MODE_LABELS } from './nonplanar-mode';
 
-export type StyleId = 'standard' | 'smooth' | 'fast' | 'morph' | 'zaa' | 'multiplanar' | 'field';
+export type StyleId = 'standard' | 'smooth' | 'morph' | 'zaa' | 'multiplanar' | 'field';
 
 export type StyleName = StyleId | 'slant' | 'conformal' | 'custom';
 
 export const STYLE_NAMES: Record<StyleName, string> = {
-  standard: 'Standard', smooth: MODE_LABELS.nonplanar_top, fast: MODE_LABELS.curved_tops, morph: MODE_LABELS.smooth_morph, zaa: 'Z contour',
+  standard: 'Standard', smooth: MODE_LABELS.nonplanar_top, morph: MODE_LABELS.smooth_morph, zaa: 'Z contour',
   multiplanar: 'Tilted chunks', field: 'Rotary curved layers', slant: 'Slant', conformal: 'Conformal layers', custom: 'Custom',
 };
 
@@ -19,7 +19,6 @@ export function styleOf(c: Config): StyleName {
   if (mode === 'off') return zaa ? 'zaa' : 'standard';
   if (zaa) return 'custom';
   if (mode === 'nonplanar_top') return 'smooth';
-  if (mode === 'curved_tops') return 'fast';
   if (mode === 'smooth_morph') return 'morph';
   if (mode === 'multiplanar' || mode === 'field') return mode;
   if (mode === 'slant') return 'slant';

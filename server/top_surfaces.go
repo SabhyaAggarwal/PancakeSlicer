@@ -95,7 +95,7 @@ func (s *Server) topSurfaces(w http.ResponseWriter, r *http.Request) {
 		} `json:"meshes"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req) != nil || len(req.Meshes) == 0 || len(req.Meshes) > 256 {
-		fail(w, 400, `expected {"head", "mode", "max_angle", "max_height", "min_area", "ignore_duct", "meshes": [{"sha256", "rot_z"}...]}`)
+		fail(w, 400, `expected {"head", "mode", "max_angle", "min_area", "ignore_duct", "meshes": [{"sha256", "rot_z"}...]}`)
 		return
 	}
 	if !validHeadID(req.Head) {
@@ -146,7 +146,6 @@ func (s *Server) topSurfaces(w http.ResponseWriter, r *http.Request) {
 type surfaceSettings struct {
 	Mode       string  `json:"mode"`
 	MaxAngle   float64 `json:"max_angle"`
-	MaxHeight  float64 `json:"max_height"`
 	MinArea    float64 `json:"min_area"`
 	IgnoreDuct bool    `json:"ignore_duct"`
 }
@@ -171,13 +170,10 @@ func (h *headReach) clearArea(g surfaceRegion, parts []headObstacle, cap float64
 }
 
 func classifyObject(regions []surfaceRegion, h *headReach, c surfaceSettings) []surfaceStatus {
-	limit := map[string]float64{"curved_tops": 12, "conformal_layers": 20}[c.Mode]
-	if limit == 0 {
-		limit = 30
-	}
+	const limit = 45.
 	maxAngle := c.MaxAngle
 	if maxAngle <= 0 {
-		maxAngle = 12
+		maxAngle = 30
 	}
 	duct := c.IgnoreDuct && h.marked
 	parts := h.duct
@@ -185,19 +181,6 @@ func classifyObject(regions []surfaceRegion, h *headReach, c surfaceSettings) []
 		parts = h.block
 	}
 	cap := math.Min(maxAngle, limit)
-	wide := c.Mode != "curved_tops" && c.Mode != "conformal_layers" && math.Abs(maxAngle-12) < 1e-9
-	refused := false
-	if wide {
-		cap = limit
-		for _, g := range regions {
-			if _, blocked := h.clearArea(g, parts, limit); blocked >= 1 && (c.MaxHeight <= 0 || g.Span <= c.MaxHeight+1e-6) && g.Area >= c.MinArea {
-				refused = true
-			}
-		}
-		if refused {
-			cap = maxAngle
-		}
-	}
 	out := make([]surfaceStatus, len(regions))
 	for i, g := range regions {
 		var total float64
@@ -208,17 +191,12 @@ func classifyObject(regions []surfaceRegion, h *headReach, c surfaceSettings) []
 		switch {
 		case g.Span < 0.05 || g.SlopeMax < 1:
 			out[i] = surfaceStatus{"flat", "Flat, prints exactly", 0}
-		case c.MaxHeight > 0 && g.Span > c.MaxHeight+1e-6:
-			out[i] = surfaceStatus{"tall", fmt.Sprintf("Taller than your %s mm curved-top height", trimFloat(c.MaxHeight)), 0}
 		case c.MinArea > 0 && g.Area < c.MinArea:
 			out[i] = surfaceStatus{"small", fmt.Sprintf("Smaller than %s mm²", trimFloat(c.MinArea)), 0}
 		case total > 0 && clear >= total/2:
 			out[i] = surfaceStatus{"curves", "Curves", 0}
 		default:
 			ductCap := cap
-			if wide {
-				ductCap = limit
-			}
 			if blockClear, _ := h.clearArea(g, h.block, ductCap); !duct && h.marked && total > 0 && blockClear >= total/2 {
 				out[i] = surfaceStatus{"duct", "Needs Ignore cooling duct", math.Round(h.reachDeg(h.duct, g))}
 			} else if under, _ := h.clearArea(g, nil, ductCap); total > 0 && under < total/2 {
@@ -333,15 +311,14 @@ func loadHeadReach(c Config, id string) (*headReach, error) {
 	var head struct {
 		Margin float64 `json:"margin"`
 		Boxes  []struct {
+			Name      string     `json:"name"`
 			Min       [3]float64 `json:"min"`
 			Max       [3]float64 `json:"max"`
 			Nozzle    bool       `json:"nozzle"`
 			Block     bool       `json:"block"`
+			Duct      *bool      `json:"duct"`
 			InfiniteX bool       `json:"infinite_x"`
 		} `json:"boxes"`
-		Access *struct {
-			Blocks [][]float64 `json:"blocks"`
-		} `json:"access_model"`
 	}
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return nil, fmt.Errorf("print head %q cannot be read: %v", id, err)
@@ -360,21 +337,16 @@ func loadHeadReach(c Config, id string) (*headReach, error) {
 		}
 		o := box(b.Min[2], x0, x1, b.Min[1], b.Max[1])
 		h.duct = append(h.duct, o)
-		if b.Block {
-			h.block = append(h.block, o)
+		name := strings.ToLower(b.Name)
+		isDuct := !b.Block && (strings.Contains(name, "duct") || strings.Contains(name, "shroud"))
+		if b.Duct != nil {
+			isDuct = *b.Duct
+		}
+		if isDuct {
 			h.marked = true
+		} else {
+			h.block = append(h.block, o)
 		}
-	}
-	if head.Access != nil && len(head.Access.Blocks) > 0 {
-		h.duct = h.duct[:0:0]
-		for _, b := range head.Access.Blocks {
-			if len(b) == 5 {
-				h.duct = append(h.duct, box(b[0], b[1], b[2], b[3], b[4]))
-			}
-		}
-	}
-	if !h.marked {
-		h.block = h.duct
 	}
 	headReaches.Store(key, h)
 	return h, nil

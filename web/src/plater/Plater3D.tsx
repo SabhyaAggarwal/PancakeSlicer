@@ -833,8 +833,8 @@ void main() {
         return;
       }
       if (s.gizmo === 'slant' && s.slant) {
-        const t = slantTarget(s);
-        if (t) setSlant({ z: Math.max(0, slantProxy.position.z - instanceBox(t.o, t.inst).min.z) });
+        const base = slantPoint(s, { ...s.slant, z: 0 });
+        if (base) setSlant({ z: Math.max(0, slantProxy.position.z - base.z) });
         return;
       }
       if (!dragStart || !s.selected) return;

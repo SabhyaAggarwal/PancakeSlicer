@@ -31,6 +31,6 @@ private:
 
 std::unique_ptr<LayerField> build_layer_source(const PrintObject &object, std::string *why = nullptr);
 
-std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object);
+std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::string *limit = nullptr);
 
 }

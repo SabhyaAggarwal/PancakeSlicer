@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <exception>
@@ -328,7 +329,7 @@ double HeadEnvelope::reach() const
 bool operator==(const HeadBox &lhs, const HeadBox &rhs)
 {
     return lhs.name == rhs.name && lhs.min == rhs.min && lhs.max == rhs.max && lhs.infinite_x == rhs.infinite_x &&
-           lhs.infinite_y == rhs.infinite_y && lhs.nozzle == rhs.nozzle && lhs.block == rhs.block;
+           lhs.infinite_y == rhs.infinite_y && lhs.nozzle == rhs.nozzle && lhs.block == rhs.block && lhs.duct == rhs.duct;
 }
 
 bool operator==(const TipAllowance &lhs, const TipAllowance &rhs) { return lhs.radius == rhs.radius && lhs.height == rhs.height; }
@@ -483,7 +484,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
             const auto       &b = (*it)[i];
             if (!b.is_object())
                 bad_field(p, "must be an object");
-            warn_unknown(b, { "name", "min", "max", "infinite_x", "infinite_y", "nozzle", "block" }, p);
+            warn_unknown(b, { "name", "min", "max", "infinite_x", "infinite_y", "nozzle", "block", "duct" }, p);
             HeadBox box;
             box.name       = get_string(b, "name", p, false);
             box.min        = get_vec3(b, "min", p);
@@ -492,6 +493,10 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
             box.infinite_y = get_bool(b, "infinite_y", p, false);
             box.nozzle     = get_bool(b, "nozzle", p, false);
             box.block      = get_bool(b, "block", p, false);
+            std::string lower = box.name;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+            box.duct       = get_bool(b, "duct", p, !box.nozzle && !box.block &&
+                                                       (lower.find("duct") != std::string::npos || lower.find("shroud") != std::string::npos));
             for (int a = 0; a < 3; ++a)
                 if (box.min[a] > box.max[a] && !(a == 0 && box.infinite_x) && !(a == 1 && box.infinite_y))
                     bad_field(p + ".min", "must not exceed max");
@@ -531,6 +536,8 @@ std::string save_head_envelope(const HeadEnvelope &envelope)
             b["nozzle"] = true;
         if (box.block)
             b["block"] = true;
+        if (box.duct)
+            b["duct"] = true;
         boxes.emplace_back(std::move(b));
     }
     j["boxes"] = std::move(boxes);
@@ -683,12 +690,9 @@ const HeadEnvelope &HeadLibrary::generic_conservative()
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning)
 {
     HeadEnvelope head = resolve_full_head_envelope(config, warning);
-    if (!config.nonplanar_ignore_duct.value ||
-        std::none_of(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.block; }))
-        return head;
-    head.boxes.erase(std::remove_if(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return !box.nozzle && !box.block; }),
-                     head.boxes.end());
-    head.margin = head.lateral_margin = config.nonplanar_clearance_margin.value;
+    if (config.nonplanar_ignore_duct.value)
+        head.boxes.erase(std::remove_if(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.duct; }),
+                         head.boxes.end());
     return head;
 }
 
@@ -697,10 +701,10 @@ bool clearance_override_active(const PrintConfig &config)
     if (!config.nonplanar_ignore_duct.value)
         return false;
     const HeadEnvelope head = resolve_full_head_envelope(config);
-    return std::any_of(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.block; });
+    return std::any_of(head.boxes.begin(), head.boxes.end(), [](const HeadBox &box) { return box.duct; });
 }
 
-HeadEnvelope resolve_full_head_envelope(const PrintConfig &config, std::string *warning)
+static HeadEnvelope resolve_head_shape(const PrintConfig &config, std::string *warning)
 {
     if (warning != nullptr)
         warning->clear();
@@ -730,6 +734,14 @@ HeadEnvelope resolve_full_head_envelope(const PrintConfig &config, std::string *
         *warning = id.empty() ? _u8L("This printer has no print head profile. Using the generic conservative head.")
                               : (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded; using the generic conservative head.")) % id).str();
     return HeadLibrary::generic_conservative();
+}
+
+HeadEnvelope resolve_full_head_envelope(const PrintConfig &config, std::string *warning)
+{
+    HeadEnvelope head      = resolve_head_shape(config, warning);
+    head.contact_tolerance = std::max(0., config.nonplanar_collision_tolerance.value);
+    head.duct_graze_limit  = size_t(std::max(0, config.nonplanar_duct_graze_limit.value));
+    return head;
 }
 
 bool native_support_capable(const PrintConfig &config)

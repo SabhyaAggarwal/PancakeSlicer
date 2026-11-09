@@ -13,6 +13,7 @@
 
 namespace Slic3r {
 class PrintObject;
+class PrintObjectConfig;
 }
 
 namespace Slic3r::Nonplanar {
@@ -21,12 +22,14 @@ struct ConformalLayersParams
 {
     double max_angle    = 30.;
     int    shells       = 5;
+    double min_ramp     = 0.4;
     double layer_height = 0.2;
     double first_layer  = 0.2;
     int    flat_layers  = 3;
     double pitch        = 0.25;
-    double min_area     = 20.;
+    double min_area     = 0.;
     double round_sigma  = 8.;
+    double max_thickness = 0.;
     std::vector<Vec3d> struck;
 };
 
@@ -65,8 +68,9 @@ private:
 
 std::shared_ptr<const ConformalLayerField> build_conformal_layer_field(const indexed_triangle_set &mesh, const ConformalLayersParams &params);
 
-struct ConformalVariant { double round_sigma = 8.; bool cap15 = false, flat = false; };
-ConformalVariant conformal_variant(int step);
+struct ConformalVariant { double round_sigma = 8.; double cap_deg = 0.; bool flat = false; };
+ConformalVariant conformal_variant(const PrintObjectConfig &config, int step);
+std::string conformal_variant_text(const ConformalVariant &variant);
 constexpr int    ConformalSteps = 4;
 std::string conformal_planar_limit(const PrintObject &object, std::string &reason);
 bool conformal_requested(const PrintObject &object);
@@ -86,7 +90,10 @@ struct BandOrderStats
     size_t bands = 0, groups = 0, cut_roads = 0;
 };
 
+constexpr double ConformalZSmoothMax = 0.08;
+
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats = nullptr,
-                            const std::vector<std::pair<Vec3d, Vec3d>> *precede = nullptr);
+                            const std::vector<std::pair<Vec3d, Vec3d>> *precede = nullptr,
+                            const std::vector<ExPolygons> *domains = nullptr);
 
 }

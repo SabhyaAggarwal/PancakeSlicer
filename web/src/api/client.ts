@@ -207,7 +207,7 @@ export const canCurvedTops = () => validatedSurface('curved_tops');
 export const canSurfaceWaves = (mode = 'whole') => validatedSurface('nonplanar_wave') && toolArtifactManifest?.wave_modes?.includes(mode) === true;
 
 export function surfaceConfigBlocker(config: Config): string | undefined {
-  if (String(config.nonplanar_mode) === 'curved_tops' && !canCurvedTops()) return 'Curved layers need a newer slicing engine';
+  if (String(config.nonplanar_mode) === 'nonplanar_top' && !canCurvedTops()) return 'Curved layers need a newer slicing engine';
   const wave = String(config.nonplanar_wave ?? 'off');
   if (wave !== 'off' && !canSurfaceWaves(wave)) return 'Rippled top needs a newer slicing engine';
 }

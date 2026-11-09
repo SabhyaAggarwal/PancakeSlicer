@@ -40,6 +40,7 @@
 #include <initializer_list>
 #include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <utility>
@@ -310,12 +311,25 @@ bool swept_bead_contact(const Corners &bead, const Vec3d &a, const Vec3d &b, con
     }
     return true;
 }
+double swept_bead_lift(const Corners &bead, const Vec3d &a, const Vec3d &b, const Nonplanar::HeadBox &box, double limit)
+{
+    const Vec3d up = Vec3d::UnitZ();
+    if (swept_bead_contact(bead, a + limit * up, b + limit * up, box))
+        return limit;
+    double lo = 0., hi = limit;
+    while (hi - lo > 1e-4) {
+        const double mid = 0.5 * (lo + hi);
+        (swept_bead_contact(bead, a + mid * up, b + mid * up, box) ? lo : hi) = mid;
+    }
+    return hi;
+}
 thread_local uint32_t t_last_struck = uint32_t(-1);
 struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
 public:
     BeadGrid(const GCodeProcessorResult &result, bool rotary) : m_result(result), m_rotary(rotary) {}
+    void set_exact_depth(bool exact) { m_exact_depth = exact; }
     size_t size() const { return m_upright.size(); }
     void reserve(size_t beads) { m_upright.reserve(beads); }
     void deposit_upright(size_t move, size_t last, size_t run, int piece = 0, int pieces = 1)
@@ -399,8 +413,13 @@ public:
             const bool same_layer_ring = ring && gap < -ContactTolerance && gap >= -SameLayerTolerance &&
                                          m_result.moves[m_upright[id].move].layer_id == layer;
             if (gap > best && !same_layer_ring) return;
-            if (gap < -ContactTolerance && !infinite && !swept_bead_contact(corners(id), a, b, box))
-                gap = 0.;
+            if (gap < -ContactTolerance && !infinite) {
+                const Corners bead = corners(id);
+                if (!swept_bead_contact(bead, a, b, box))
+                    gap = 0.;
+                else if (m_exact_depth)
+                    gap = std::max(gap, -swept_bead_lift(bead, a, b, box, std::max(0., bh.z() - q.lo.z())));
+            }
             if (ring && gap < -ContactTolerance && gap >= -SameLayerTolerance && m_result.moves[m_upright[id].move].layer_id == layer) {
                 tolerated = true;
                 return;
@@ -481,6 +500,7 @@ private:
     }
     const GCodeProcessorResult                                      &m_result;
     bool                                                             m_rotary;
+    bool                                                             m_exact_depth = false;
     std::vector<UprightBead>                                         m_upright;
     std::vector<std::pair<Vec3d, Vec3d>>                             m_bounds;
     struct Cell { uint32_t begin, end; double top; };
@@ -1383,7 +1403,12 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     const size_t explain_move = explain_env != nullptr ? size_t(std::strtoull(explain_env, nullptr, 10)) : size_t(-1);
     const bool measure_planar = bar && std::getenv("NP_VERIFY_UPRIGHT_PLANAR") != nullptr && std::string(std::getenv("NP_VERIFY_UPRIGHT_PLANAR")) == "1";
     BeadGrid beads(result, rotary);
-    struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf; size_t tolerated = 0, land_strict = 0, cone_grazes = 0; };
+    beads.set_exact_depth(bar);
+    struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf, max_contact = 0.; size_t tolerated = 0, land_strict = 0, cone_grazes = 0; };
+    const double tolerance = params.head.contact_tolerance;
+    std::set<std::string> duct_boxes;
+    for (const Nonplanar::HeadBox &box : params.head.boxes)
+        if (box.duct) duct_boxes.insert(box.name);
     Nonplanar::HeadEnvelope tilted_head = params.head;
     if (bar) tilted_head.tip_allowance = { land_r, LandContactMax };
     if (measure_planar) tilted_head.tip_allowance = {};
@@ -1457,8 +1482,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             auto record = [&](double gap, const std::string &component, const Vec3d &tip, ClearanceHitClass cls) {
                 if (gap < best) { best = gap; hit.component = component; hit.tip = tip; hit.cls = cls; }
             };
-            const double land_allow = std::max(std::min(LandContactMax, LandContactShare * double(move_height[c.move])),
-                                               params.cone_tolerance >= 0.12 ? params.cone_tolerance : 0.);
+            const double land_allow = std::max({ std::min(LandContactMax, LandContactShare * double(move_height[c.move])),
+                                                 params.cone_tolerance >= 0.12 ? params.cone_tolerance : 0., tolerance });
             double       best_land  = Inf;
             std::string  land_component;
             Vec3d        land_tip = Vec3d::Zero();
@@ -1604,14 +1629,17 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             const bool land_hit = best_land + land_allow < -ContactTolerance;
             if (land_hit && best_land + land_allow < best)
                 hit.component = land_component, hit.tip = land_tip, hit.cls = ClearanceHitClass::Land;
-            const double clearance = std::min(best, best_land + land_allow);
+            const double clearance = std::min(best + tolerance, best_land + land_allow);
             report.per_move[c.move] = float(clearance);
+            if (bar && !(move.extrusion_role == erCustom && (c.move < first_print || c.move > last_print)) && duct_boxes.count(hit.component) == 0)
+                hits->max_contact = std::max({ hits->max_contact, -best, -best_land });
             if (cone_graze) ++hits->cone_grazes;
             if (!(move.extrusion_role == erCustom && (c.move < first_print || c.move > last_print)))
                 hits->min_clearance = std::min(hits->min_clearance, clearance);
             if (clearance < -ContactTolerance) {
-                hit.penetration = land_hit && best_land + land_allow < best ? -best_land : -best;
-                const uint32_t s = land_hit && best_land + land_allow < best ? best_land_struck : hit_struck;
+                hit.penetration = land_hit && best_land + land_allow < best + tolerance ? -best_land : -best;
+                hit.duct        = duct_boxes.count(hit.component) != 0;
+                const uint32_t s = land_hit && best_land + land_allow < best + tolerance ? best_land_struck : hit_struck;
                 hit.struck_move  = s;
                 if (static const char *path = std::getenv("NP_VERIFY_STRUCK"); path != nullptr) {
                     static std::mutex struck_mutex;
@@ -1737,8 +1765,15 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         });
     }
 
+    size_t duct_hits = 0;
+    for (const Hits &run : hits)
+        for (const ClearanceHit &hit : run.hits)
+            duct_hits += hit.duct && !(result.moves[hit.move_id].extrusion_role == erCustom && (hit.move_id < first_print || hit.move_id > last_print));
+    const bool duct_grazes = duct_hits > 0 && duct_hits <= params.head.duct_graze_limit;
+    report.duct_moves      = duct_hits;
     for (Hits &run : hits) {
         report.min_clearance = std::min(report.min_clearance, run.min_clearance);
+        report.max_contact = std::max(report.max_contact, run.max_contact);
         report.tolerated_moves += run.tolerated;
         report.cone_graze_moves += run.cone_grazes;
         report.land_strict_moves += run.land_strict;
@@ -1746,6 +1781,11 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             const size_t i = hit.move_id;
             if (result.moves[i].extrusion_role == erCustom && (i < first_print || i > last_print)) {
                 ++report.machine_hit_moves;
+                continue;
+            }
+            if (duct_grazes && hit.duct) {
+                ++report.duct_graze_moves;
+                report.per_move[i] = 0.f;
                 continue;
             }
             ++report.hit_moves;
@@ -1763,18 +1803,9 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         report.omissions.emplace_back("Rotary homing poses are undefined; the first explicit XYZ endpoint is checked without inventing its incoming sweep.");
     return report;
 }
-void count_duct_grazes(Print &print, GCodeProcessorResult &result, const ClearanceParams &params, const ToolKinematics &kinematics)
+void mark_clearance_override(const Print &print, GCodeProcessorResult &result)
 {
-    if (!Nonplanar::clearance_override_active(print.config()))
-        return;
-    ClearanceParams full = params;
-    full.head = Nonplanar::resolve_full_head_envelope(print.config());
-    const size_t grazes = verify_clearance(result, full, kinematics, [&print] { if (print.canceled()) throw CanceledException(); }).hit_moves;
-    result.clearance_report.clearance_override = true;
-    result.clearance_report.duct_graze_moves   = grazes;
-    print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
-        Slic3r::format(_u8L("Experimental: cooling duct not checked. %1% moves would graze the part-cooling duct or fan shroud."), grazes),
-        PrintStateBase::SlicingDuctGrazes);
+    result.clearance_report.clearance_override = Nonplanar::clearance_override_active(print.config());
 }
 
 void check_export_clearance(Print &print, GCodeProcessorResult &result)
@@ -1788,7 +1819,7 @@ void check_export_clearance(Print &print, GCodeProcessorResult &result)
     auto kinematics = make_tool_kinematics(print.config());
     result.clearance_report = verify_clearance(result, params, *kinematics, [&print] { if (print.canceled()) throw CanceledException(); });
     result.clearance = result.clearance_report.per_move;
-    count_duct_grazes(print, result, params, *kinematics);
+    mark_clearance_override(print, result);
     if (result.clearance_report.hit_moves == 0) return;
     const auto &hit = result.clearance_report.worst.front();
     const std::string message = Slic3r::format(_u8L("Moves that would hit printed material: %1% (worst %2$.3f mm, %3%, layer %4%, G-code line %5%)."),

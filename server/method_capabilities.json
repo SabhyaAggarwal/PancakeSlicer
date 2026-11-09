@@ -41,16 +41,6 @@
       ]
     },
     {
-      "id": "curved_tops",
-      "target": "mode",
-      "hardware": "known",
-      "feature": "curved_tops",
-      "readiness": "curved_tops",
-      "settingPrefixes": [
-        "nonplanar_curved_"
-      ]
-    },
-    {
       "id": "nonplanar_top",
       "target": "mode",
       "hardware": "known",

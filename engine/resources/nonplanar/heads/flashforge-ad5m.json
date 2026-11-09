@@ -115,7 +115,7 @@
     {"name": "rear plate leg left", "min": [-30.0, 16.7, 19.0], "max": [-14.0, 24.0, 26.0]},
     {"name": "rear plate leg right", "min": [14.0, 16.7, 19.0], "max": [30.0, 24.0, 26.0]},
     {"name": "X carriage behind rear plate", "min": [-32.0, 24.0, 24.0], "max": [32.0, 42.0, 99.0]},
-    {"name": "front cover centre bridge (arch over nozzle, houses part blower)", "min": [-30.0, -36.2, 25.0], "max": [30.0, -12.4, 107.0]},
+    {"name": "front cover centre bridge (arch over nozzle, houses part blower)", "min": [-30.0, -36.2, 25.0], "max": [30.0, -12.4, 107.0], "duct": true},
     {"name": "frame body (side walls, rear plate)", "min": [-30.0, -18.3, 26.0], "max": [30.0, 24.0, 99.0]},
     {"name": "x_gantry", "min": [0.0, 22.0, 26.7], "max": [0.0, 60.0, 100.0], "infinite_x": true}
   ]

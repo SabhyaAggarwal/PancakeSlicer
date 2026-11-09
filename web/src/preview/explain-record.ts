@@ -169,7 +169,7 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
     else fact = 'Flat top, prints as Standard';
     const why = reported.find((r) => r.name === name);
     const accessBy = why?.access_by === 'nozzle' || why?.access_by === 'head' ? (why.access_by as 'nozzle' | 'head') : undefined;
-    const limit = why?.planar_limit ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
+    const limit = why?.planar_limit && o.mode !== 'slant' ? { kind: why.planar_limit, capDeg: num(why.curved_max_angle_deg), reachableDeg: num(why.reachable_slope_deg), ...(accessBy ? { accessBy } : {}) } : undefined;
     const roads = num(why?.curved_extrusion_length_mm);
     const printedFlat = !!why && (why.planar_limit === 'hits' || !(o.cl && !o.cl.refused && (o.cl.layers ?? 1) > 0) && (roads != null ? roads <= 0 : !!why.planar_fallback_reason));
     const candidates = num(why?.curved_surfaces_candidates), kept = num(why?.curved_surfaces_kept);
@@ -330,7 +330,7 @@ export function nativeSurfaceSummary(record: Rec): string | null {
     mode?: string; curved_top_area_fraction?: number; curved_top_area_denominator_mm2?: number;
     curved_extrusion_length_mm?: number;
   }[] } | undefined;
-  const objects = report?.objects?.filter((o) => o.mode === 'curved_tops');
+  const objects = report?.objects?.filter((o) => o.mode === 'nonplanar_top');
   if (!objects?.length) return null;
   if (objects.reduce((sum, o) => sum + (Number(o.curved_extrusion_length_mm) || 0), 0) <= 0) return null;
   const valid = objects.every((o) => Number.isFinite(o.curved_top_area_fraction));

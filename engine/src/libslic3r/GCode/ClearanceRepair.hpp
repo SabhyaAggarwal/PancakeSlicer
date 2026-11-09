@@ -18,8 +18,6 @@ struct ClearanceReport;
 namespace Nonplanar {
 
 struct HeadEnvelope;
-class CurvedTopsBudget;
-struct CurvedTopBudgetReport;
 
 class ClearanceRepair
 {
@@ -31,11 +29,10 @@ public:
 
     static void check_export(Print &print, GCodeProcessorResult &result);
 
-    static CurvedTopBudgetReport curved_budget_report(const Print &print, const PrintObject &object);
-
     static size_t curved_contacts(const Print &print, const GCodeProcessorResult &result);
 
-    bool refuse_auto_morph(const GCodeProcessorResult &result);
+    bool refuse_struck_morph(const GCodeProcessorResult &result);
+    bool step_down_morph_direction(const GCodeProcessorResult &result);
     bool step_down_conformal(const GCodeProcessorResult &result);
     bool step_down_slant(const GCodeProcessorResult &result);
 
@@ -50,7 +47,7 @@ private:
     bool oneshot_step(GCodeProcessorResult &result);
     bool curved_tops_step(GCodeProcessorResult &result);
     int m_curved_pass = 0;
-    std::unique_ptr<CurvedTopsBudget> m_curved_budget;
+    int m_curved_angle_passes = 0;
     bool contact_guard(const GCodeProcessorResult &result, size_t contacts = 0);
 
     struct Planned
@@ -79,27 +76,23 @@ private:
 };
 
 bool auto_morph_refused(const ModelObject &object);
+size_t morph_struck_hits(const PrintObject &object);
 bool top_picks_morph();
-bool wide_tops_refused(const ModelObject &object);
-void refuse_wide_tops(const ModelObject &object);
 int conformal_cap_step(const ModelObject &object);
 void conformal_ladder_slice(const ModelObject &object);
-constexpr int SlantSteps = 4;
+constexpr int SlantSteps = 6;
 int    slant_step(const ModelObject &object);
 size_t slant_step_hits(const ModelObject &object);
 void   slant_ladder_slice(const ModelObject &object);
 std::vector<std::pair<Vec3d, Vec3d>> conformal_precedence(const ModelObject &object);
 size_t conformal_flat_hits(const ModelObject &object);
 std::vector<Vec3d> conformal_struck_points(const ModelObject &object);
-struct WideTopsRetry : std::runtime_error
+struct CurvedSurfacesRetry : std::runtime_error
 {
-    explicit WideTopsRetry(size_t id) : std::runtime_error("Smoothest tops: retry at 12 degrees"), object_id(id) {}
-    size_t object_id = 0;
-};
-struct PlanarTopsRetry : std::runtime_error
-{
-    explicit PlanarTopsRetry(size_t id) : std::runtime_error("Smoothest tops: planar tops"), object_id(id) {}
-    size_t object_id = 0;
+    CurvedSurfacesRetry(size_t id, std::vector<int> surfaces) :
+        std::runtime_error("curved tops: retry with surfaces planar"), object_id(id), surfaces(std::move(surfaces)) {}
+    size_t           object_id = 0;
+    std::vector<int> surfaces;
 };
 
 }

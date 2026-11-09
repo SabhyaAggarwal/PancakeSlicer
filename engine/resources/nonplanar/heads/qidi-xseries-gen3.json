@@ -101,8 +101,8 @@
     {"name": "nozzle_cone_1.00_06", "min": [-1.651, 0.952, 1.0], "max": [1.651, 1.43, 1.5], "nozzle": true},
     {"name": "nozzle_cone_1.00_07", "min": [-1.261, 1.429, 1.0], "max": [1.261, 1.906, 1.5], "nozzle": true},
     {"name": "nozzle shoulder", "min": [-3.73, -3.65, 1.5], "max": [3.73, 3.65, 2.7], "nozzle": true},
-    {"name": "X-series 3 inductive probe body (12 mm)", "min": [20.81, -0.22, 1.5], "max": [34.8, 13.75, 23.7]},
-    {"name": "Q1 Pro inductive probe body (12 mm)", "min": [11.61, -1.57, 1.7], "max": [23.6, 10.4, 23.7]},
+    {"name": "X-series 3 inductive probe body (12 mm)", "min": [20.81, -0.22, 1.5], "max": [34.8, 13.75, 23.7], "duct": false},
+    {"name": "Q1 Pro inductive probe body (12 mm)", "min": [11.61, -1.57, 1.7], "max": [23.6, 10.4, 23.7], "duct": false},
     {"name": "X-series 3 probe clamp collar (low ring)", "min": [19.8, -5.13, 2.22], "max": [36.3, 17.65, 6.0]},
     {"name": "silicone sock bottom nose (10 mm dia)", "min": [-5.19, -5.2, 2.3], "max": [5.19, 5.2, 4.0], "nozzle": true},
     {"name": "duct left outlet arm (bottom lip)", "min": [-21.83, -27.0, 2.41], "max": [-6.03, 8.65, 6.0]},
@@ -125,7 +125,7 @@
     {"name": "x_gantry", "min": [0.0, 16.5, 39.7], "max": [0.0, 31.5, 100.0], "infinite_x": true},
     {"name": "lower X-rod bearing pocket (in carriage mounts; rod itself is the gantry)", "min": [-31.2, 16.8, 40.0], "max": [31.2, 31.0, 54.0]},
     {"name": "toolhead mount back: lower belt clamp / bearing bulge", "min": [-31.2, 24.05, 40.5], "max": [31.2, 41.05, 56.0]},
-    {"name": "5015 part-cooling blower (front)", "min": [-22.0, -29.95, 41.11], "max": [29.3, -12.95, 92.18]},
+    {"name": "5015 part-cooling blower (front)", "min": [-22.0, -29.95, 41.11], "max": [29.3, -12.95, 92.18], "duct": true},
     {"name": "extruder cover (top)", "min": [-25.91, -8.15, 45.2], "max": [22.5, 11.85, 105.8]},
     {"name": "toolhead mount back: upper body", "min": [-31.2, 22.05, 56.0], "max": [31.2, 41.05, 123.9]}
   ]

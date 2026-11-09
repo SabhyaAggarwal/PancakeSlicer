@@ -184,7 +184,7 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 	return encoded
 }
 
-var methodLabels = map[string]string{"nonplanar_top": "Smoothest tops", "curved_tops": "Fast curved tops", "smooth_morph": "Smooth morph",
+var methodLabels = map[string]string{"nonplanar_top": "Curved tops", "smooth_morph": "Smooth morph",
 	"slant": "Slant", "conformal_layers": "Conformal layers", "multiplanar": "Multiplanar", "field": "Rotary curved layers"}
 
 func uncurvedObjects(raw, rawInputs json.RawMessage) []map[string]any {

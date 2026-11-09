@@ -23,7 +23,7 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
 
 constexpr size_t TopHelixMinRings = 8;
 
-bool helix_worthwhile(const HeightField &surface, const ExPolygons &area);
+bool helix_on_surface(const HeightField &surface, const ExPolygons &area);
 
 void ramp_helix_flow(ExtrusionPathConformal &path, const HelixRamp &ramp, bool reversed);
 

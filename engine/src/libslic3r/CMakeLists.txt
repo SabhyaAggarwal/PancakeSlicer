@@ -535,8 +535,6 @@ set(lisbslic3r_sources
     Nonplanar/CurvedTopsSurface.hpp
     Nonplanar/CurvedTopsBoundary.cpp
     Nonplanar/CurvedTopsSurface.cpp
-    Nonplanar/CurvedTopsBudget.hpp
-    Nonplanar/CurvedTopsBudget.cpp
     Nonplanar/CurvedTopsContinuous.cpp
     Nonplanar/CurvedTopsContinuous.hpp
     Nonplanar/Atom/border.cpp

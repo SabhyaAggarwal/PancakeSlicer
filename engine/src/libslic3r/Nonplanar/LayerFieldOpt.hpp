@@ -60,6 +60,7 @@ struct LayerFieldParams
     double max_layer_height   = 0.28;
     double flat_base_height   = 0.6;
     double max_slope          = 0.;
+    bool   force_field        = false;
     double overhang_angle     = 55.;
     double support_angle      = 60.;
     double w_conform          = 50.;

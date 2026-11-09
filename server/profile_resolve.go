@@ -17,11 +17,11 @@ type resolveRequest struct {
 	Project     map[string]json.RawMessage `json:"project,omitempty"`
 }
 type sliceConfig struct {
-	Config  map[string]json.RawMessage `json:"config"`
-	Sources map[string]string          `json:"sources"`
-	Speeds  map[string]resolvedSpeed   `json:"speeds,omitempty"`
+	Config          map[string]json.RawMessage `json:"config"`
+	Sources         map[string]string          `json:"sources"`
+	Speeds          map[string]resolvedSpeed   `json:"speeds,omitempty"`
 	engineOverrides map[string]bool
-	Engine struct {
+	Engine          struct {
 		Vendor    string   `json:"vendor"`
 		Printer   string   `json:"printer"`
 		Process   string   `json:"process"`
@@ -115,6 +115,12 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 	out.Engine.Vendor, out.Engine.Printer, out.Engine.Process = vendor.Vendor, machine.Name, process.Name
 	set := func(values map[string]json.RawMessage, source string) {
 		for k, v := range values {
+			if to := canonicalKey(k); to != k {
+				if _, both := values[to]; both {
+					continue
+				}
+				k = to
+			}
 			out.Config[k], out.Sources[k] = v, source
 		}
 	}
@@ -239,6 +245,12 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		for k := range values {
 			out.engineOverrides[k] = true
 		}
+	}
+	if firstConfigText(out.Config["nonplanar_mode"]) == fastCurvedTops {
+		out.Config["nonplanar_mode"] = json.RawMessage(`"` + curvedTops + `"`)
+		out.Config["nonplanar_curved_top_layers"] = json.RawMessage(`1`)
+		out.Sources["nonplanar_curved_top_layers"] = out.Sources["nonplanar_mode"]
+		out.engineOverrides["nonplanar_curved_top_layers"] = true
 	}
 	return out, nil
 }

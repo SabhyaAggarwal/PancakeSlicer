@@ -19,17 +19,38 @@
 
 namespace Slic3r::Nonplanar {
 
+namespace {
+constexpr double CutBand   = 1e-4;
+constexpr double CutMinGap = 0.1;
+}
+
 SlantField::SlantField(const SlantShape &shape) : m_s(shape)
 {
     m_k0  = (m_s.start - m_s.first) / m_s.h;
     m_dt  = m_s.tilt / std::max(1, m_s.morph);
     m_low = m_s.h - 0.5 * m_dt * m_s.width;
+    if (m_s.gap_hi > m_s.gap_lo)
+        m_low = std::max(m_s.gap_lo, std::min(m_low, m_s.gap_hi - m_dt * m_s.width));
+    if (this->cut())
+        m_kmax = int(std::floor((m_s.start + m_s.tilt * m_s.width - m_s.first) / m_s.h + 1e-9)) + 1;
 }
 
 double SlantField::s_of(const Vec2d &xy) const { return std::clamp(m_s.u_max - m_s.u.dot(xy), 0., m_s.width); }
 
 double SlantField::z_of(double k, double s) const
 {
+    if (this->cut()) {
+        const double plane = m_s.start + m_s.tilt * s;
+        const double fr    = std::floor((plane - m_s.first) / m_s.h + 1e-9);
+        const double flat  = m_s.first + fr * m_s.h;
+        if (k <= fr)
+            return m_s.first + k * m_s.h;
+        if (k <= fr + 1.)
+            return flat + (k - fr) * (plane - flat);
+        if (k <= m_kmax)
+            return plane + CutBand * (k - fr - 1.);
+        return plane + CutBand * (m_kmax - fr - 1.) + (k - m_kmax) * m_s.h;
+    }
     if (k <= m_k0)
         return m_s.first + k * m_s.h;
     const double j = std::min(k - m_k0, double(m_s.morph));
@@ -41,6 +62,20 @@ double SlantField::phi(const Vec3d &p) const
 {
     const double s = s_of(p.head<2>()), z = p.z();
     double       k;
+    if (this->cut()) {
+        const double plane = m_s.start + m_s.tilt * s;
+        const double fr    = std::floor((plane - m_s.first) / m_s.h + 1e-9);
+        const double flat  = m_s.first + fr * m_s.h, band = CutBand * (m_kmax - fr - 1.);
+        if (z <= flat)
+            k = (z - m_s.first) / m_s.h;
+        else if (z <= plane)
+            k = fr + (z - flat) / (plane - flat);
+        else if (z <= plane + band)
+            k = fr + 1. + (z - plane) / CutBand;
+        else
+            k = m_kmax + (z - plane - band) / m_s.h;
+        return m_s.first + k * m_s.h;
+    }
     if (z <= m_s.start)
         k = (z - m_s.first) / m_s.h;
     else if (const double top = z_of(m_k0 + m_s.morph, s); z <= top)
@@ -48,6 +83,16 @@ double SlantField::phi(const Vec3d &p) const
     else
         k = m_k0 + m_s.morph + (z - top) / m_s.h;
     return m_s.first + k * m_s.h;
+}
+
+std::optional<double> SlantField::cut_limit(int k) const
+{
+    if (!this->cut() || k < 1 || k > m_kmax || m_s.tilt <= 0.)
+        return std::nullopt;
+    const double s_k = (m_s.first + (k - 1) * m_s.h + CutMinGap * m_s.h - m_s.start) / m_s.tilt;
+    if (s_k <= 0.)
+        return std::nullopt;
+    return m_s.u_max - s_k;
 }
 
 double SlantField::z_at(const Vec2d &xy, double level) const { return z_of((level - m_s.first) / m_s.h, s_of(xy)); }
@@ -61,14 +106,14 @@ constexpr double StepWeight = 0.5;
 
 double slant_budget(const HeadEnvelope &head, double psi, double width, double h)
 {
-    const double rise = psi + M_PI;
-    double       tilt = head.max_slope(rise, h, width);
+    const double rise = psi + M_PI, tol = std::max(0., head.contact_tolerance);
+    double       tilt = head.max_slope(rise, h + tol, width);
     HeadEnvelope body = head;
     body.boxes.erase(std::remove_if(body.boxes.begin(), body.boxes.end(), [](const HeadBox &b) { return b.nozzle; }), body.boxes.end());
     if (!body.boxes.empty())
-        tilt = std::min(tilt, body.max_slope(rise, 0., width));
+        tilt = std::min(tilt, body.max_slope(rise, tol, width));
     if (const double gantry = head.gantry_clearance(); std::isfinite(gantry))
-        tilt = std::min(tilt, std::atan(std::max(0., gantry - head.margin) / width));
+        tilt = std::min(tilt, std::atan(std::max(0., gantry + tol - head.margin) / width));
     return tilt - SlopeMargin;
 }
 
@@ -138,9 +183,9 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
     const double first  = print.initial_layer_print_height.value;
     const double sin_th = std::sin(0.5 * M_PI - Geometry::deg2rad(config.multiplanar_overhang_threshold.value));
     const double nozzle = print.nozzle_diameter.get_at(0);
-    const double lo_h   = print.min_layer_height.get_at(0) > 0. ? print.min_layer_height.get_at(0) : 0.2 * nozzle;
-    const double hi_h   = print.max_layer_height.get_at(0) > 0. ? print.max_layer_height.get_at(0) : 0.75 * nozzle;
-    const double spread = std::max(1e-3, std::min(h - lo_h, hi_h - h));
+    const double lo_h   = 0.2 * nozzle;
+    const double hi_h   = 0.8 * nozzle;
+    const double range  = std::max(1e-3, hi_h - lo_h);
     const HeadEnvelope head = resolve_head_envelope(print);
     {
         const Score planar     = score(mesh, FlatField(), h, first, sin_th);
@@ -184,14 +229,19 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
         sh.width    = std::max(hi - lo, EPSILON);
         o.budget    = slant_budget(head, psi, sh.width, h);
         best_budget = std::max(best_budget, o.budget);
-        const double alpha = scale * (config.nonplanar_slant_angle.value > 0. ? std::min(Geometry::deg2rad(config.nonplanar_slant_angle.value), o.budget) : o.budget);
-        if (alpha < MinTilt)
+        const bool   user  = config.nonplanar_slant_angle.value > 0. && Geometry::deg2rad(config.nonplanar_slant_angle.value) <= o.budget;
+        const double alpha = scale * (user ? Geometry::deg2rad(config.nonplanar_slant_angle.value) : o.budget);
+        if (alpha < MinTilt && !(user && alpha > 0.))
             continue;
         sh.tilt  = std::tan(alpha);
         sh.first = first;
         sh.start = start;
         sh.h     = h;
-        sh.morph = std::max(std::max(1, config.nonplanar_slant_morph_layers.value), int(std::ceil(sh.tilt * sh.width / (2. * spread) - 1e-9)));
+        sh.morph  = config.nonplanar_slant_morph_layers.value <= 0
+                        ? 0
+                        : std::max(config.nonplanar_slant_morph_layers.value, int(std::ceil(sh.tilt * sh.width / range - 1e-9)));
+        sh.gap_lo = lo_h;
+        sh.gap_hi = hi_h;
         o.s      = score(mesh, SlantField(sh), h, first, sin_th);
         options.push_back(o);
     }
@@ -206,30 +256,65 @@ std::shared_ptr<const LayerField> slant_field(const PrintObject &object, SlantCh
         choice.overhang     = choice.planar_overhang;
         return {};
     }
+    if (config.nonplanar_slant_angle.value > 0.) {
+        const double asked = Geometry::deg2rad(config.nonplanar_slant_angle.value);
+        if (std::any_of(options.begin(), options.end(), [asked](const Option &x) { return x.budget >= asked; }))
+            options.erase(std::remove_if(options.begin(), options.end(), [asked](const Option &x) { return x.budget < asked; }), options.end());
+        else {
+            const double best = std::max_element(options.begin(), options.end(), [](const Option &a, const Option &b) { return a.budget < b.budget; })->budget;
+            options.erase(std::remove_if(options.begin(), options.end(), [best](const Option &x) { return x.budget < best - 1e-9; }), options.end());
+        }
+    }
     const Option &o = *std::min_element(options.begin(), options.end(), [](const Option &a, const Option &b) {
         return a.s.total() < b.s.total() - 1e-9 || (std::abs(a.s.total() - b.s.total()) <= 1e-9 && a.shape.tilt > b.shape.tilt);
     });
-    const SlantShape &sh = o.shape;
-    const double      dt = sh.tilt / sh.morph;
+    const SlantShape &sh    = o.shape;
+    const auto        field = std::make_shared<const SlantField>(sh);
+    const double      low   = field->low_gap(), dt = field->dt();
+    double            top   = 0.;
+    for (const stl_vertex &v : mesh.vertices)
+        top = std::max(top, double(v.z()));
     choice.angle_deg     = Geometry::rad2deg(std::atan(sh.tilt));
     choice.direction_deg = Geometry::rad2deg(std::atan2(sh.u.y(), sh.u.x()));
     if (choice.direction_deg < 0.)
         choice.direction_deg += 360.;
-    choice.budget_deg   = Geometry::rad2deg(o.budget);
-    choice.start_mm     = sh.start;
-    choice.morph_layers = sh.morph;
-    choice.lowered      = step;
-    choice.min_gap_mm   = sh.h - 0.5 * dt * sh.width;
-    choice.max_gap_mm   = sh.h + 0.5 * dt * sh.width;
-    choice.full_tilt_mm = sh.start + sh.morph * choice.min_gap_mm;
-    choice.steps        = o.s.steps;
-    choice.overhang     = o.s.overhang;
+    choice.budget_deg    = Geometry::rad2deg(o.budget);
+    choice.requested_deg = config.nonplanar_slant_angle.value;
+    choice.start_mm      = sh.start;
+    choice.morph_layers  = sh.morph;
+    choice.lowered       = step;
+    choice.min_gap_mm    = field->cut() ? CutMinGap * sh.h : low;
+    choice.max_gap_mm    = field->cut() ? sh.h : low + dt * sh.width;
+    choice.full_tilt_mm  = field->cut() ? sh.start : sh.start + sh.morph * low;
+    choice.steps         = o.s.steps;
+    choice.overhang      = o.s.overhang;
+    {
+        std::ostringstream why;
+        why << std::fixed << std::setprecision(1);
+        if (step > 0) {
+            choice.limit = "steps";
+            why << "its tilted layers met the print head, so the angle stepped down " << step << (step == 1 ? " time" : " times");
+        } else if (choice.angle_deg + 0.05 < choice.requested_deg) {
+            choice.limit = "head";
+            why << "the print head clears no layer steeper than " << choice.budget_deg << " deg in this direction";
+        }
+        if (choice.full_tilt_mm > top) {
+            const double reached = field->cut() ? 0. : Geometry::rad2deg(std::atan(dt * std::max(0., top - sh.start) / (low + 0.5 * dt * sh.width)));
+            if (!choice.limit.empty())
+                why << "; ";
+            if (choice.limit.empty())
+                choice.limit = "height";
+            why << "the part ends at " << top << " mm, before the full tilt at " << choice.full_tilt_mm << " mm, so its top layers lean "
+                << reached << " deg";
+        }
+        choice.limit_reason = why.str();
+    }
     BOOST_LOG_TRIVIAL(info) << "Slant " << object.model_object()->name << ": " << choice.angle_deg << " deg toward " << choice.direction_deg
                             << " deg (head limit " << choice.budget_deg << "), flat to " << choice.start_mm << " mm, " << choice.morph_layers
                             << " morph layers (gaps " << choice.min_gap_mm << ".." << choice.max_gap_mm << " mm), full tilt from "
                             << choice.full_tilt_mm << " mm at the low edge; stair-step " << choice.steps << " mm2 against "
                             << choice.planar_steps << " flat, overhang " << choice.overhang << " against " << choice.planar_overhang;
-    return std::make_shared<const SlantField>(sh);
+    return field;
 }
 
 }

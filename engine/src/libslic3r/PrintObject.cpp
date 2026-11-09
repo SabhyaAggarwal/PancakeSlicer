@@ -1,3 +1,4 @@
+#include "Nonplanar/CurvedTopsSurface.hpp"
 #include "Nonplanar/CurvedTopsContinuous.hpp"
 #include <cfloat>
 #include "ExPolygon.hpp"
@@ -865,6 +866,8 @@ void PrintObject::nonplanar_shells()
         auto        conformal = std::make_unique<Nonplanar::ConformalResult>();
         std::string why;
         if (Nonplanar::build_deform_slice(*this, *conformal, &why)) {
+            if (!why.empty())
+                this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, this->model_object()->name + ": " + why + ".");
             m_conformal = std::move(conformal);
             record_apply_inputs();
             m_print->throw_if_canceled();
@@ -1079,8 +1082,6 @@ void PrintObject::contour_z()
     imesh.ground_level_offset(ground_offset);
     imesh.enable_column_cache();
 
-    const bool own = m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && m_curved_candidates == 0 && m_curved_fallback_zaa;
-    std::vector<Layer::ContourGain> gains(own ? m_layers.size() : 0);
     std::mutex mtx;
     size_t completed = 0;
     tbb::parallel_for(
@@ -1088,9 +1089,7 @@ void PrintObject::contour_z()
         [&, this](const tbb::blocked_range<size_t>& range) {
             for (size_t layer_idx = range.begin(); layer_idx < range.end(); layer_idx++) {
                 m_print->throw_if_canceled();
-                Layer::contour_gain_sink() = own ? &gains[layer_idx] : nullptr;
                 m_layers[layer_idx]->make_contour_z(imesh);
-                Layer::contour_gain_sink() = nullptr;
 
                 std::scoped_lock lock(mtx);
                 completed++;
@@ -1099,26 +1098,11 @@ void PrintObject::contour_z()
             }
         }
     );
-    if (own) {
-        Layer::ContourGain total;
-        for (const Layer::ContourGain &g : gains) {
-            total.planar += g.planar;
-            total.contoured += g.contoured;
-        }
-        const double area         = std::max(m_curved_upward_area, EPSILON);
-        const bool   gains_enough = std::sqrt(total.planar / area) - std::sqrt(total.contoured / area) >= 0.005;
-        BOOST_LOG_TRIVIAL(warning) << std::setprecision(9) << "Smoothest tops contouring: " << this->model_object()->name << " top error "
-                                   << total.planar << " -> " << total.contoured << " mm^4, " << (gains_enough ? "contoured" : "kept planar");
-        if (!gains_enough) {
-            m_curved_fallback_zaa = false;
-            m_curved_fallback_off = true;
-            throw Nonplanar::PlanarTopsRetry(this->id().id);
-        }
-    }
     }
     m_print->throw_if_canceled();
     Nonplanar::texture_tops(*this);
-    Nonplanar::split_sublayer_walls(*this);
+    if (const std::string why = Nonplanar::split_sublayer_walls(*this); !why.empty())
+        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, this->model_object()->name + ": " + why + ".");
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - end";
 
     this->set_done(posContouring);
@@ -1517,10 +1501,10 @@ void PrintObject::plan_wide_tops()
             plan_nonplanar_deferral_reusing(*this, NonplanarClearanceModel::for_object(*this, m_config.layer_height.value), fingerprint));
         m_wide_plan_fingerprint = fingerprint;
         m_wide_plan = std::move(plan);
-    } catch (const CurvedTopsAccessError &) {
-        Nonplanar::refuse_wide_tops(*this->model_object());
-        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no collision-free deposition order at the wide slope cap; curved tops at 12 degrees";
-        throw Nonplanar::WideTopsRetry(this->id().id);
+    } catch (const CurvedTopsAccessError &error) {
+        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no collision-free deposition order for " << error.surfaces.size()
+                                   << " curved top surfaces; the export prints them planar";
+        m_wide_plan.reset();
     }
 }
 
@@ -1908,9 +1892,10 @@ const std::unordered_set<std::string> &PrintObject::gcode_only_options()
         "set_nonplanar_top_surface_flow_ratio",
         "nonplanar_top_surface_flow_ratio",
         "nonplanar_top_finish_flow",
+        "nonplanar_curved_shell_flow",
         "nonplanar_tilt_flow",
         "nonplanar_top_speed_factor",
-        "nonplanar_time_budget",
+        "nonplanar_curved_shell_speed",
         "nonplanar_top_fan_boost",
         "bottom_solid_infill_flow_ratio",
         "outer_wall_flow_ratio",
@@ -1938,16 +1923,11 @@ bool PrintObject::invalidate_state_by_config_options(
     if (opt_keys.empty())
         return false;
 
-    m_curved_budget_reason.clear();
     std::vector<PrintObjectStep> steps;
     bool invalidated = false;
     if (!m_curved_planar_surfaces.empty()) {
         m_curved_planar_surfaces.clear();
         steps.emplace_back(posSlice);
-    }
-    if (m_sublayer_walls_off) {
-        m_sublayer_walls_off = false;
-        steps.emplace_back(posPerimeters);
     }
     if (m_curved_fallback_zaa || m_curved_fallback_off) {
         m_curved_fallback_zaa = m_curved_fallback_off = false;
@@ -2334,7 +2314,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_max_surface_error"
             || opt_key == "nonplanar_min_patch_area"
             || opt_key == "nonplanar_top_pattern"
-            || opt_key == "nonplanar_top_direction"
+            || opt_key == "nonplanar_top_order"
             || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_spiral_top"
             || opt_key == "nonplanar_sublayer_walls"
@@ -2356,11 +2336,15 @@ bool PrintObject::invalidate_state_by_config_options(
             steps.emplace_back(posInfill);
             steps.emplace_back(posSupportMaterial);
         } else if (
-               opt_key == "nonplanar_curved_shells"
+               opt_key == "nonplanar_curved_top_layers"
             || opt_key == "nonplanar_continuous_top"
             || opt_key == "nonplanar_curved_max_angle"
-            || opt_key == "nonplanar_curved_max_height"
-            || opt_key == "nonplanar_curved_cone_tolerance") {
+            || opt_key == "nonplanar_curved_min_area"
+            || opt_key == "nonplanar_top_direction"
+            || opt_key == "nonplanar_morph_layers"
+            || opt_key == "nonplanar_conformal_rounding"
+            || opt_key == "nonplanar_conformal_fallback_angle"
+            || opt_key == "nonplanar_conformal_ramp_layers") {
             steps.emplace_back(posSlice);
         } else if (
                 opt_key == "wall_generator"
@@ -2979,15 +2963,14 @@ PrintObject::detect_nonplanar_surfaces()
                 m_config.layer_height.value, false).scaled_width();
             const auto *hints = nonplanar_repair();
             const bool native_mesh = curved_tops_mode(m_config.nonplanar_mode.value) &&
-                (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop ||
+                (curved_tops_mode(m_config.nonplanar_mode.value) ||
                  (hints != nullptr && hints->curved_finish == Nonplanar::RepairHints::CurvedFinish::NativeMesh));
             ExPolygons projection = native_mesh ? raw_projection : intersection_ex(raw_projection,
                 opening_ex(raw_projection, boundary_radius, jtRound, scale_(0.01)), ApplySafetyOffset::No);
             if (curved_tops_mode(m_config.nonplanar_mode.value) && !native_mesh)
                 projection = Nonplanar::smooth_curved_top_footprint(projection, unscale<double>(boundary_radius));
             float distance_to_top = 0.0f;
-            const int curved_shells = m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop ? m_config.nonplanar_curved_shells.value :
-                                                                                                    std::min(1, m_config.nonplanar_curved_shells.value);
+            const int curved_shells = curved_top_layers(*this);
             size_t previous_home = std::numeric_limits<size_t>::max();
             for (int shell_thickness = 0; curved_shells > shell_thickness; ++shell_thickness){
                 for (LayerPtrs::reverse_iterator home_layer_it = this->m_layers.rbegin(); home_layer_it != this->m_layers.rend(); ++home_layer_it){
@@ -4974,12 +4957,13 @@ PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObject
                !printer->belt_printer.value && object.volumes.size() == 1 && object.layer_config_ranges.empty() &&
                !object.is_mm_painted() && !Nonplanar::auto_morph_refused(object) && auto_single_curved_top(object);
     };
+    if (config.nonplanar_mode.value == NonplanarMode::CurvedTops)
+        throw Slic3r::SlicingError(object.name + ": Fast curved tops is now Curved tops (nonplanar_mode = nonplanar_top) with Curved top "
+                                                 "layers 1; the setting was not migrated.");
     if (config.nonplanar_mode.value == NonplanarMode::Auto && !legacy && fixed_head)
         config.nonplanar_mode.value = morph() ? NonplanarMode::SmoothMorph : NonplanarMode::NonplanarTop;
     else if (config.nonplanar_mode.value == NonplanarMode::NonplanarTop && fixed_head && Nonplanar::top_picks_morph() && morph())
         config.nonplanar_mode.value = NonplanarMode::SmoothMorph;
-    if (config.nonplanar_mode.value == NonplanarMode::NonplanarTop && std::abs(config.nonplanar_curved_max_angle.value - 12.) < 1e-9)
-        config.nonplanar_curved_max_angle.value = Nonplanar::wide_tops_refused(object) ? 12. : 20.;
     return config;
 }
 

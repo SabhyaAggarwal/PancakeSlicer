@@ -69,6 +69,7 @@ struct ClearanceHit
     Vec3d tip { Vec3d::Zero() };
     unsigned int layer = 0;
     uint32_t struck_move = uint32_t(-1);
+    bool duct = false;
 };
 struct ClearanceParams
 {
@@ -88,6 +89,8 @@ struct ClearanceReport
     size_t cone_graze_moves = 0;
     bool   clearance_override = false;
     size_t duct_graze_moves   = 0;
+    size_t duct_moves         = 0;
+    double max_contact = 0.;
     size_t land_strict_moves = 0;
     size_t hit_land_moves = 0, hit_cone_moves = 0, hit_body_moves = 0, hit_travel_moves = 0, hit_extrusion_moves = 0;
     double min_clearance = std::numeric_limits<double>::infinity();
@@ -112,6 +115,6 @@ private:
     const ToolKinematics  &m_kinematics;
     double                 m_margin;
 };
-void count_duct_grazes(Print &print, GCodeProcessorResult &result, const ClearanceParams &params, const ToolKinematics &kinematics);
+void mark_clearance_override(const Print &print, GCodeProcessorResult &result);
 void check_export_clearance(Print &print, GCodeProcessorResult &result);
 }

@@ -3,6 +3,7 @@
 #include "Repair.hpp"
 #include "Validate.hpp"
 #include "libslic3r/GCode/ClearanceRepair.hpp"
+#include "HeadEnvelope.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/Exception.hpp"
@@ -13,12 +14,15 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Geometry/ConvexHull.hpp"
 #include <tbb/parallel_for.h>
 #include <algorithm>
 #include <map>
 #include <cmath>
+#include <limits>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <list>
 #include <mutex>
 #include <set>
@@ -207,13 +211,13 @@ NonplanarSurface::check_max_printing_height(float height)
 }
 
 bool
-NonplanarSurface::check_surface_area()
+NonplanarSurface::check_surface_area(float min_area)
 {
     float area = 0.0f;
     for(auto& facet : this->mesh) {
         area += facet.second.calculate_surface_area();
     }
-    if (area < 20.0f) {
+    if (area < min_area) {
         BOOST_LOG_TRIVIAL(trace) << "Surface removed: area too small (" << area << " mm²)";
         return true;
     } else {
@@ -307,21 +311,28 @@ void throw_nonplanar_internal(const std::string &where, const std::string &detai
         "To slice now, turn off nonplanar layers for this object.", object_id);
 }
 
-double curved_tops_cone_tolerance(const Print &print)
+bool curved_cone_allowance(NonplanarMode mode)
 {
+    return curved_tops_mode(mode) || mode == NonplanarMode::SmoothMorph || mode == NonplanarMode::ConformalLayers || mode == NonplanarMode::Slant;
+}
+
+double curved_cone_tolerance(NonplanarMode mode)
+{
+    if (!curved_cone_allowance(mode))
+        return 0.05;
     double tolerance = 0.13;
-    bool any = false;
-    for (const PrintObject *object : print.objects())
-        if (curved_tops_mode(object->config().nonplanar_mode.value) || object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph ||
-            object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers || object->config().nonplanar_mode.value == NonplanarMode::Slant) {
-            if (object->config().nonplanar_mode.value == NonplanarMode::CurvedTops)
-                tolerance = std::min(tolerance, object->config().nonplanar_curved_cone_tolerance.value);
-            any = true;
-        }
-    if (!any) return 0.05;
     if (const char *value = std::getenv("NP_CONTACT_CONE_TOL"); value != nullptr)
         tolerance = std::atof(value);
     return std::clamp(tolerance, 0., 0.13);
+}
+
+double curved_tops_cone_tolerance(const Print &print)
+{
+    double tolerance = std::numeric_limits<double>::infinity();
+    for (const PrintObject *object : print.objects())
+        if (curved_cone_allowance(object->config().nonplanar_mode.value))
+            tolerance = std::min(tolerance, curved_cone_tolerance(object->config().nonplanar_mode.value));
+    return std::isfinite(tolerance) ? tolerance : 0.05;
 }
 
 namespace {
@@ -358,6 +369,21 @@ static double upward_area_between(const PrintObject &object, double low, double 
         }
     }
     return area;
+}
+
+int curved_top_layers(const PrintObject &object)
+{
+    if (const int set = object.config().nonplanar_curved_top_layers.value; set > 0)
+        return set;
+    switch (object.config().nonplanar_mode.value) {
+    case NonplanarMode::NonplanarTop: return 3;
+    default: break;
+    }
+    if (object.num_printing_regions() == 0)
+        throw Slic3r::SlicingError(object.model_object()->name + ": curved top layers asked before the object has regions");
+    const PrintRegionConfig &rc = object.printing_region(0).config();
+    const double h = std::max(EPSILON, object.config().layer_height.value);
+    return std::max(1, std::max(rc.top_shell_layers.value, int(std::ceil(rc.top_shell_thickness.value / h - 1e-6))));
 }
 
 CurvedTopsStats curved_tops_stats(const PrintObject &object)
@@ -424,11 +450,7 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
     }
     if (rejections.head_unknown)
         out.planar_limit = "head_unknown";
-    else if (Nonplanar::wide_tops_refused(*object.model_object()) &&
-        upward_area_between(object, out.max_angle_deg, limit) >= seen) {
-        out.planar_limit        = "access";
-        out.reachable_slope_deg = out.max_angle_deg;
-    } else if (out.kept == 0) {
+    else if (out.kept == 0) {
         if (out.candidates > 0 || rejections.collision > 0)
             out.planar_limit = "access";
         else if (upward_area_between(object, out.max_angle_deg, limit) >= seen)
@@ -438,6 +460,145 @@ CurvedTopsStats curved_tops_stats(const PrintObject &object)
         else if (rejections.area > 0)
             out.planar_limit = "area";
     }
+    if (out.planar_limit == "access")
+        out.access_by = Nonplanar::clearance_override_active(object.print()->config()) ? "nozzle" : "head";
+    return out;
+}
+
+std::vector<double> auto_top_angles(const Points &points, std::optional<double> level)
+{
+    const Polygon hull = Geometry::convex_hull(points);
+    if (hull.points.size() < 2)
+        return {};
+    const auto wrap  = [](double a) { a = std::fmod(a, M_PI); return a < 0. ? a + M_PI : a; };
+    const auto width = [&hull](double a) {
+        const Vec2d n(-std::sin(a), std::cos(a));
+        double lo = std::numeric_limits<double>::infinity(), hi = -lo;
+        for (const Point &p : hull.points)
+            lo = std::min(lo, n.dot(unscale(p))), hi = std::max(hi, n.dot(unscale(p)));
+        return hi - lo;
+    };
+    std::vector<std::pair<double, double>> edges;
+    for (size_t i = 0; i < hull.points.size(); ++i) {
+        const Vec2d d = unscale(hull.points[(i + 1) % hull.points.size()]) - unscale(hull.points[i]);
+        if (d.squaredNorm() > 0.)
+            edges.emplace_back(0., wrap(std::atan2(d.y(), d.x())));
+    }
+    for (auto &[w, a] : edges)
+        w = width(a);
+    std::stable_sort(edges.begin(), edges.end(), [](const auto &l, const auto &r) { return l.first < r.first; });
+    const auto apart = [](double a, double b) { const double d = std::abs(a - b); return std::min(d, M_PI - d) >= M_PI / 18.; };
+    std::vector<double> out;
+    if (level && !edges.empty() && width(wrap(*level)) <= 1.1 * edges.front().first)
+        out.push_back(wrap(*level));
+    for (const auto &[w, a] : edges)
+        if (int(out.size()) < AutoTopCandidates && std::all_of(out.begin(), out.end(), [&](double b) { return apart(a, b); }))
+            out.push_back(a);
+    return out;
+}
+
+Points surface_outline_points(const NonplanarSurface &surface)
+{
+    Points points;
+    points.reserve(3 * surface.mesh.size());
+    for (const auto &[id, facet] : surface.mesh)
+        for (const auto &v : facet.vertex)
+            points.emplace_back(Point::new_scale(double(v.x), double(v.y)));
+    return points;
+}
+
+std::optional<double> mesh_auto_top_direction(const indexed_triangle_set &mesh)
+{
+    Points points;
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3f a = mesh.vertices[f[0]], b = mesh.vertices[f[1]], c = mesh.vertices[f[2]];
+        const Vec3f n = (b - a).cross(c - a);
+        if (n.z() > 0.5f * n.norm())
+            for (const Vec3f &v : { a, b, c })
+                points.emplace_back(Point::new_scale(double(v.x()), double(v.y())));
+    }
+    const std::vector<double> angles = auto_top_angles(points);
+    if (angles.empty())
+        return std::nullopt;
+    return Geometry::rad2deg(angles.front());
+}
+
+std::vector<double> auto_top_angles(const NonplanarSurface &surface, std::optional<double> level, double spacing)
+{
+    if (spacing <= 0.)
+        throw Slic3r::InvalidArgument("auto_top_angles: line spacing must be positive");
+    const double x0 = surface.stats.min.x, y0 = surface.stats.min.y;
+    const double pitch = std::max(0.25, std::max(surface.stats.max.x - x0, surface.stats.max.y - y0) / 2000.);
+    const int    nx = std::max(1, int(std::ceil((surface.stats.max.x - x0) / pitch)) + 1);
+    const int    ny = std::max(1, int(std::ceil((surface.stats.max.y - y0) / pitch)) + 1);
+    std::vector<float> z(size_t(nx) * size_t(ny), std::numeric_limits<float>::quiet_NaN());
+    for (const auto &[id, f] : surface.mesh) {
+        const Vec3d a(f.vertex[0].x, f.vertex[0].y, f.vertex[0].z), b(f.vertex[1].x, f.vertex[1].y, f.vertex[1].z),
+                    c(f.vertex[2].x, f.vertex[2].y, f.vertex[2].z);
+        const double det = (b.x() - a.x()) * (c.y() - a.y()) - (c.x() - a.x()) * (b.y() - a.y());
+        if (std::abs(det) < 1e-12)
+            continue;
+        const int i0 = std::max(0, int(std::floor((std::min({ a.x(), b.x(), c.x() }) - x0) / pitch)));
+        const int i1 = std::min(nx - 1, int(std::ceil((std::max({ a.x(), b.x(), c.x() }) - x0) / pitch)));
+        const int j0 = std::max(0, int(std::floor((std::min({ a.y(), b.y(), c.y() }) - y0) / pitch)));
+        const int j1 = std::min(ny - 1, int(std::ceil((std::max({ a.y(), b.y(), c.y() }) - y0) / pitch)));
+        for (int j = j0; j <= j1; ++j)
+            for (int i = i0; i <= i1; ++i) {
+                const double px = x0 + i * pitch, py = y0 + j * pitch;
+                const double u = ((b.x() - px) * (c.y() - py) - (c.x() - px) * (b.y() - py)) / det;
+                const double v = ((c.x() - px) * (a.y() - py) - (a.x() - px) * (c.y() - py)) / det;
+                const double w = 1. - u - v;
+                if (u < -1e-9 || v < -1e-9 || w < -1e-9)
+                    continue;
+                float &cell = z[size_t(j) * size_t(nx) + size_t(i)];
+                const float h = float(u * a.z() + v * b.z() + w * c.z());
+                cell = std::isnan(cell) ? h : std::max(cell, h);
+            }
+    }
+    const auto at = [&](const Vec2d &p) {
+        const int i = int(std::lround((p.x() - x0) / pitch)), j = int(std::lround((p.y() - y0) / pitch));
+        return i < 0 || j < 0 || i >= nx || j >= ny ? std::numeric_limits<float>::quiet_NaN() : z[size_t(j) * size_t(nx) + size_t(i)];
+    };
+    const auto cost = [&](double angle) {
+        const Vec2d d(std::cos(angle), std::sin(angle)), n(-d.y(), d.x());
+        double lo = std::numeric_limits<double>::infinity(), hi = -lo, tlo = lo, thi = -lo;
+        for (const Vec2d &corner : { Vec2d(x0, y0), Vec2d(x0 + nx * pitch, y0), Vec2d(x0, y0 + ny * pitch), Vec2d(x0 + nx * pitch, y0 + ny * pitch) }) {
+            lo = std::min(lo, n.dot(corner)), hi = std::max(hi, n.dot(corner));
+            tlo = std::min(tlo, d.dot(corner)), thi = std::max(thi, d.dot(corner));
+        }
+        double roads = 0.;
+        for (double o = lo + 0.5 * spacing; o < hi; o += spacing) {
+            bool in = false;
+            for (double t = tlo; t <= thi; t += pitch) {
+                const bool on = !std::isnan(at(o * n + t * d));
+                roads += on && !in;
+                in = on;
+            }
+        }
+        return roads;
+    };
+    const auto wrap  = [](double a) { a = std::fmod(a, M_PI); return a < 0. ? a + M_PI : a; };
+    const auto apart = [](double a, double b) { const double d = std::abs(a - b); return std::min(d, M_PI - d) >= M_PI / 18.; };
+    std::vector<double> candidates;
+    const auto add = [&](double a) { a = wrap(a); if (std::all_of(candidates.begin(), candidates.end(), [&](double b) { return apart(a, b); })) candidates.push_back(a); };
+    if (level) add(*level);
+    for (double a : auto_top_angles(surface_outline_points(surface)))
+        add(a);
+    for (int k = 0; k < 4; ++k)
+        add(k * 0.25 * M_PI);
+    std::vector<std::pair<double, double>> scored;
+    for (double a : candidates)
+        scored.emplace_back(cost(a), a);
+    std::stable_sort(scored.begin(), scored.end(), [](const auto &l, const auto &r) { return l.first < r.first; });
+    if (scored.empty())
+        return {};
+    if (level)
+        if (const auto it = std::find_if(scored.begin(), scored.end(), [&](const auto &e) { return !apart(e.second, wrap(*level)); });
+            it != scored.end() && it->first <= 1.03 * scored.front().first)
+            std::rotate(scored.begin(), it, it + 1);
+    std::vector<double> out;
+    for (size_t i = 0; i < scored.size() && int(out.size()) < AutoTopCandidates; ++i)
+        out.push_back(scored[i].second);
     return out;
 }
 

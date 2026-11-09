@@ -12,7 +12,7 @@ export const WAVES_COMING = 'Needs a newer slicing engine';
 export const text = (v: ConfigValue | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(text(v));
 
-export const CURVED_DEFAULTS: Config = { nonplanar_curved_max_height: '5', nonplanar_curved_shells: '3' };
+export const CURVED_DEFAULTS: Config = {};
 export const WAVE_DEFAULTS: Config = { nonplanar_wave_amplitude: '0.4', nonplanar_wave_wavelength: '30', nonplanar_wave_direction: '45' };
 export const SURFACE_KEYS = ['nonplanar_mode', 'nonplanar_wave', 'nonplanar_deform', 'zaa_enabled'];
 
@@ -21,18 +21,18 @@ export function surfaceOf(config: Config): SurfaceId | 'custom' {
   const wave = text(config.nonplanar_wave) || 'off';
   if (on(config.zaa_enabled)) return 'custom';
   if (wave !== 'off') return ['top', 'whole', 'infill'].includes(wave) && mode === 'off' ? 'waves' : 'custom';
-  if (mode === 'curved_tops') return 'smooth';
+  if (mode === 'nonplanar_top') return 'smooth';
   return mode === 'off' ? 'flat' : 'custom';
 }
 
 export function surfaceUnavailable(id: SurfaceId): string | undefined {
-  if (id === 'smooth' && (!canCurvedTops() || !OPTIONS.nonplanar_mode?.enum_values?.includes('curved_tops'))) return SMOOTH_COMING;
+  if (id === 'smooth' && (!canCurvedTops() || !OPTIONS.nonplanar_mode?.enum_values?.includes('nonplanar_top'))) return SMOOTH_COMING;
   if (id === 'waves' && (!canSurfaceWaves() || !OPTIONS.nonplanar_wave?.enum_values?.includes('whole'))) return WAVES_COMING;
 }
 
 export function surfaceValues(id: SurfaceId): Config {
   return {
-    nonplanar_mode: id === 'smooth' ? 'curved_tops' : 'off',
+    nonplanar_mode: id === 'smooth' ? 'nonplanar_top' : 'off',
     nonplanar_deform: 'off', zaa_enabled: '0',
     ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'whole' : 'off' } : {}),
   };

@@ -46,7 +46,7 @@ constexpr double SagRatio = 1. / 80.;
 constexpr double MinSpan = 4.;
 constexpr double MinWidth = 1.;
 constexpr double AnchorReach = 1.5;
-constexpr double MinSag = 0.05;
+constexpr double AutoMinSag = 0.05, MinSag = 0.001;
 constexpr double FloorGap = 0.05;
 constexpr int MaxStack = 16;
 
@@ -120,6 +120,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
     const double       nozzle = region.flow(object, frSolidInfill, object.config().layer_height.value).nozzle_diameter();
     const bool         flow_mod = region.config().nonplanar_flow_mod.value;
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
+    const double       min_sag = object.requested_nonplanar_mode() == NonplanarMode::Auto ? AutoMinSag : MinSag;
     const double max_sag = layer_changes_filament(object) ? head_band_height(head) : std::numeric_limits<double>::infinity();
     auto one_filament = [&object](size_t r) {
         const PrintRegionConfig &cfg = object.printing_region(r).config();
@@ -258,7 +259,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 s_max    = std::max(s_max, double(s));
                 span_max = std::max(span_max, span);
             }
-            if (2 * anchored < nodes.size() || s_max < MinSag)
+            if (2 * anchored < nodes.size() || s_max < min_sag)
                 continue;
 
             int n_avail = 0;
@@ -296,7 +297,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                     const double room = layers[i]->print_z - bead - std::max(double(material.data()[size_t(n)]), first_top) - FloorGap;
                     k                 = std::min(k, std::max(0., room) / s);
                 }
-            for (int round = 0; round < 3 && k * s_max >= MinSag; ++round) {
+            for (int round = 0; round < 3 && k * s_max >= min_sag; ++round) {
                 const double k_round = k;
                 HeightField  below   = material;
                 for (int j = 0; j <= n_flat; ++j) {
@@ -323,7 +324,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 if (k >= k_round - 1e-6)
                     break;
             }
-            if (k * s_max < MinSag)
+            if (k * s_max < min_sag)
                 continue;
 
             bool mixed = false;

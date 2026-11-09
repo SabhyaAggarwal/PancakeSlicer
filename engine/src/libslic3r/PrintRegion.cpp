@@ -53,7 +53,10 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
         config_width = object.config().line_width;
     
     auto nozzle_diameter = float(nozzle_diameter_for_filament(print_config, this->extruder(role), object.print()->is_BBL_printer()));
-    return Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
+    Flow flow = Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
+    if (role == frTopSolidInfill && object.curved_band().second > object.curved_band().first && flow.width() > 1.05f * nozzle_diameter)
+        flow = flow.with_width(1.05f * nozzle_diameter);
+    return flow;
 }
 
 coordf_t PrintRegion::nozzle_dmr_avg(const PrintConfig &print_config) const

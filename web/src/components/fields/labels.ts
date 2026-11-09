@@ -7,7 +7,18 @@ export const SHORT_LABELS: Record<string, string> = {
   hole_to_polyhole: 'Holes to polyholes',
   only_one_wall_top: 'One wall on top',
   only_one_wall_first_layer: 'One wall, 1st layer',
-  nonplanar_surface_flow_mod: 'Flow modulation',
+  nonplanar_flow_mod: 'Flow modulation',
+  nonplanar_wave: 'Waves', nonplanar_wave_wavelength: 'Wavelength',
+  zaa_enabled: 'Z contouring', zaa_minimize_perimeter_height: 'Wall height angle', zaa_dont_alternate_fill_direction: 'Keep fill direction',
+  nonplanar_sublayer_walls: 'Half-height walls',
+  nonplanar_ignore_duct: 'Ignore cooling duct', nonplanar_curved_max_angle: 'Max surface angle', nonplanar_collision_check: 'Clearance check',
+  nonplanar_repair_iterations: 'Repair passes',
+  nonplanar_curved_top_layers: 'Top layers', nonplanar_top_direction: 'Top direction', nonplanar_top_finish_flow: 'Top flow', nonplanar_top_order: 'Line order',
+  nonplanar_top_speed_factor: 'Top speed', nonplanar_top_fan_boost: 'Top fan boost', nonplanar_road_cooling: 'Line cooling',
+  nonplanar_curved_shell_flow: 'Shell flow', nonplanar_curved_shell_speed: 'Shell speed', nonplanar_curved_min_area: 'Min top area',
+  nonplanar_max_patch_height: 'Max band height', nonplanar_conformal_ramp_layers: 'Ramp layers', nonplanar_conformal_rounding: 'Shell rounding',
+  nonplanar_conformal_fallback_angle: 'Fallback angle',
+  nonplanar_slant_angle: 'Angle', nonplanar_slant_direction: 'Direction', nonplanar_slant_start_height: 'Start height', nonplanar_slant_morph_layers: 'Morph layers',
 };
 
 const SWAPS: [RegExp, string][] = [

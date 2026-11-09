@@ -40,6 +40,7 @@
 #include <boost/format.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/log/trivial.hpp>
+#include "LocalesUtils.hpp"
 #include <boost/thread.hpp>
 #include <float.h>
 #include <string>
@@ -745,6 +746,24 @@ static const t_config_enum_values s_keys_map_NonplanarTopPattern = {
     { "concentric",  int(NonplanarTopPattern::Concentric)  }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarTopPattern)
+
+static const t_config_enum_values s_keys_map_NonplanarTopOrder = {
+    { "continuous", int(NonplanarTopOrder::Continuous) },
+    { "monotonic",  int(NonplanarTopOrder::Monotonic)  },
+    { "follow",     int(NonplanarTopOrder::Follow)     }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarTopOrder)
+
+bool nonplanar_top_monotonic(const PrintRegionConfig &config)
+{
+    switch (config.nonplanar_top_order.value) {
+    case NonplanarTopOrder::Monotonic: return true;
+    case NonplanarTopOrder::Follow:
+        return config.top_surface_pattern.value == ipMonotonic || config.top_surface_pattern.value == ipMonotonicLine;
+    case NonplanarTopOrder::Continuous: break;
+    }
+    return false;
+}
 
 static const t_config_enum_values s_keys_map_NonplanarFallback = {
     { "zaa",    int(NonplanarFallback::ZAA)    },
@@ -5205,17 +5224,38 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<NonplanarTopPattern>(NonplanarTopPattern::Contour));
 
+    def = this->add("nonplanar_top_order", coEnum);
+    def->label    = L("Curved top line order");
+    def->category = L("Quality");
+    def->tooltip  = L("How the lines of the outermost curved shell follow one another. Continuous zig-zag joins each line to the "
+                      "next at its end, as the solid layers under it print, so the nozzle stays on the surface without a stop, "
+                      "travel or lift between lines. Monotonic lays every line after its neighbour on one side, joined by "
+                      "moves without extrusion. As top surface pattern is monotonic when the top surface pattern is Monotonic or "
+                      "Monotonic line, and zig-zag otherwise; Smooth morph's, Conformal layers' and Slant's curved layers then "
+                      "use the top surface pattern itself. On Conformal layers, Monotonic line's separate lines step against "
+                      "each other on sloped layers and the export can step down to flat layers (chevron and pyramid samples)."
+                      " Default: Continuous zig-zag. Unit: unitless choice. Auto uses the same order.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarTopOrder>::get_enum_values();
+    def->enum_values.push_back("continuous");
+    def->enum_values.push_back("monotonic");
+    def->enum_values.push_back("follow");
+    def->enum_labels.push_back(L("Continuous zig-zag"));
+    def->enum_labels.push_back(L("Monotonic"));
+    def->enum_labels.push_back(L("As top surface pattern"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarTopOrder>(NonplanarTopOrder::Continuous));
+
     def = this->add("nonplanar_top_direction", coFloat);
     def->label    = L("Curved top direction");
     def->category = L("Quality");
-    def->tooltip  = L("Direction of the lines of the outermost curved shell, which sets how the surface looks. -1 lets each curved "
-                      "area choose the direction that keeps its lines most level."
-                      " Default: -1. Unit: degrees. Auto chooses the outer-shell direction per area.");
+    def->tooltip  = L("Angle of the lines on curved tops. Auto (-2): along each top's longest extent, the fewest lines and "
+                      "turns. -1: along the surface's level lines. A Custom angle is used exactly as set, in every method. "
+                      "Default: Auto. Unit: degrees.");
     def->sidetext = u8"°";
-    def->min      = -1;
-    def->max      = 360;
+    def->min      = -2;
+    def->max      = 180;
     def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(-1));
+    def->set_default_value(new ConfigOptionFloat(-2));
 
     def = this->add("nonplanar_surface_spacing", coBool);
     def->label    = L("Curved line spacing along surface");
@@ -5311,16 +5351,24 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionBool(false));
 
     def = this->add("nonplanar_top_finish_flow", coFloat);
-    def->label    = L("Curved top flow ratio");
+    def->label    = L("Curved top flow");
     def->category = L("Quality");
-    def->tooltip  = L("Flow of the outermost curved shell, on top of the top surface flow ratio. Slightly less material leaves the "
-                      "visible surface without ridges. With non-planar flow modulation off, this shell also slows on slopes steeper "
-                      "than 25°, down to 0.7 of its speed."
-                      " Default: 0.95. Unit: unitless multiplier. Auto retains this setting.");
+    def->tooltip  = L("Flow for curved top layers. Lower it if curved tops look over-extruded. Default: 0.95.");
+    def->sidetext = u8"×";
     def->min      = 0.5;
-    def->max      = 1.2;
-    def->mode     = comExpert;
+    def->max      = 1.5;
+    def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.95));
+
+    def = this->add("nonplanar_curved_shell_flow", coFloat);
+    def->label    = L("Curved shell flow");
+    def->category = L("Quality");
+    def->tooltip  = L("Flow for the curved shells under the curved top of Curved tops. Default: 1.");
+    def->sidetext = u8"×";
+    def->min      = 0.5;
+    def->max      = 1.5;
+    def->mode     = comExpert;
+    def->set_default_value(new ConfigOptionFloat(1.));
 
     def = this->add("nonplanar_tilt_flow", coFloats);
     def->label    = L("Curved top flow by slope");
@@ -5508,17 +5556,15 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Flat layers: every layer flat, as in standard OrcaSlicer; fastest.\n"
                       "Auto: on a fixed print head, Smooth morph for a single gentle curved top (a low dome, wave, ramp or lid) and "
-                      "Smoothest tops otherwise; on a printer with rotary axes, curved layers wherever the head clears them.\n"
+                      "Curved tops otherwise; on a printer with rotary axes, curved layers wherever the head clears them.\n"
                       "Manual: the curved settings below, as set.\n"
                       "Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.\n"
                       "Rotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the "
                       "nozzle. Needs two rotary axes.\n"
                       "One-shot field (advanced): rotary curved layers whose layer field is solved for the part from its surface "
                       "error, support, print time and head clearance, within a minute."
-                      "\nFast curved tops: curves a top only where it stays near flat print time; the other tops get mid-layer Z "
-                      "smoothing.\n"
-                      "Smoothest tops: bends the top and two shells below over every gentle top (fich-l's OrcaSlicer-Nonplanar "
-                      "method); lowest top error, 10-50 % slower than flat.\n"
+                      "\nCurved tops: bends the top layers (Curved top layers, 3 by default) over every gentle top the print head "
+                      "clears; flat tops get mid-layer Z smoothing.\n"
                       "Smooth morph: bends every layer from the flat base up to the top; lowest error on domes and lids, up to "
                       "about 1.4x flat time.\n"
                       "Slant: the whole part in layers tilted from the bed, as on a belt printer, on a fixed 3-axis head: a flat first "
@@ -5534,7 +5580,6 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("manual");
     def->enum_values.push_back("multiplanar");
     def->enum_values.push_back("field");
-    def->enum_values.push_back("curved_tops");
     def->enum_values.push_back("smooth_morph");
     def->enum_values.push_back("oneshot");
     def->enum_values.push_back("nonplanar_top");
@@ -5545,10 +5590,9 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Manual"));
     def->enum_labels.push_back(L("Multiplanar"));
     def->enum_labels.push_back(L("Rotary curved layers"));
-    def->enum_labels.push_back(L("Fast curved tops"));
     def->enum_labels.push_back(L("Smooth morph"));
     def->enum_labels.push_back(L("One-shot field (advanced)"));
-    def->enum_labels.push_back(L("Smoothest tops"));
+    def->enum_labels.push_back(L("Curved tops"));
     def->enum_labels.push_back(L("Slant"));
     def->enum_labels.push_back(L("Conformal layers"));
     def->mode     = comSimple;
@@ -5557,61 +5601,100 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_continuous_top", coBool);
     def->label = L("Continuous curved top");
     def->category = L("Quality");
-    def->tooltip = L("Generate a connected stripe field over each curved top to reduce transitions. Experimental; normal clearance and firmware time admission still apply.");
+    def->tooltip = L("Generate a connected stripe field over each curved top to reduce transitions. Experimental; normal clearance checks still apply.");
     def->mode = comDevelop;
     def->set_default_value(new ConfigOptionBool(false));
-
-    def = this->add("nonplanar_time_budget", coPercent);
-    def->label = L("Curved top time budget");
-    def->category = L("Quality");
-    def->tooltip = L("Maximum firmware time increase over the same part printed planar at the profile's layer height. "
-                      "Curved components with the least surface improvement per added second return to planar until the budget is met. "
-                      "Default: 15. Unit: percent.");
-    def->sidetext = L("%");
-    def->min = 0;
-    def->max = 1000;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionPercent(15));
 
     def = this->add("nonplanar_curved_max_angle", coFloat);
     def->label = L("Maximum curved top angle");
     def->category = L("Quality");
-    def->tooltip = L("Largest slope of a mesh surface selected for curved top shells on a fixed print head. The print head's reach still limits what curves; Ignore cooling duct lifts it. Supported range: 0–30 degrees. Default: 12. Unit: degrees.");
+    def->tooltip = L("Steepest surface every curved slicing method tries to follow. Where the head would collide deeper than the collision "
+                     "tolerance, the angle steps down (40, 35, 30, 25, 20, 16, 12) and the slice reports the angle it used. "
+                     "Supported range: 0–45 degrees. Default: 30. Unit: degrees.");
     def->sidetext = L("°");
     def->min = 0;
+    def->max = 45;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(30));
+
+    def = this->add("nonplanar_curved_top_layers", coInt);
+    def->label = L("Curved top layers");
+    def->category = L("Quality");
+    def->tooltip = L("How many layers on top follow the curved surface. A number is used exactly as set; only a head collision beyond "
+                     "the Head clearance limits flattens a patch. 0 (Auto): each method's own count, Curved tops 3, "
+                     "Conformal layers and Smooth morph the profile's top shell layers. Default: Auto. Unit: layers.");
+    def->sidetext = L("layers");
+    def->min = 0;
+    def->max = 20;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(0));
+
+    def = this->add("nonplanar_curved_min_area", coFloat);
+    def->label = L("Minimum curved top area");
+    def->category = L("Quality");
+    def->tooltip = L("Smaller tops print flat. Applies to Curved tops and Conformal layers. 0: every top. Default: 0. Unit: mm².");
+    def->sidetext = u8"mm²";
+    def->min = 0;
+    def->max = 10000;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_curved_shell_speed", coPercent);
+    def->label = L("Curved shell speed");
+    def->category = L("Speed");
+    // xgettext:no-c-format, no-boost-format
+    def->tooltip = L("Speed of the curved shells of Curved tops. Below 100%, a share of the speed each line "
+                     "would otherwise run after the slope and Z limits; above, a share of its flat speed, under the same limits. "
+                     "Default: 100. Unit: percent.");
+    def->sidetext = "%";
+    def->min = 10;
+    def->max = 200;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(100));
+
+    def = this->add("nonplanar_morph_layers", coInt);
+    def->label = L("Morph layers");
+    def->category = L("Quality");
+    def->tooltip = L("Fewest layers over which Smooth morph blends a curved top back into flat layers. More layers give a gentler "
+                     "blend. Default: 5. Unit: layers.");
+    def->sidetext = L("layers");
+    def->min = 2;
     def->max = 30;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(12));
+    def->set_default_value(new ConfigOptionInt(5));
 
-    def = this->add("nonplanar_curved_max_height", coFloat);
-    def->label = L("Maximum curved top height");
+    def = this->add("nonplanar_conformal_rounding", coFloat);
+    def->label = L("Shell rounding");
     def->category = L("Quality");
-    def->tooltip = L("Largest height span of a curved top surface. Taller surfaces keep planar shells. Default: 5. Unit: mm.");
+    def->tooltip = L("How far the shells under a curved top are smoothed, so the Z axis need not slow for every crest. The top "
+                     "layer stays exact. 0: follow the top exactly. Default: 8. Unit: mm.");
     def->sidetext = L("mm");
     def->min = 0;
-    def->max = 50;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(5));
+    def->max = 20;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(8));
 
-    def = this->add("nonplanar_curved_shells", coInt);
-    def->label = L("Maximum curved top shells");
+    def = this->add("nonplanar_conformal_fallback_angle", coFloat);
+    def->label = L("Fallback angle");
     def->category = L("Quality");
-    def->tooltip = L("Upper limit on shells projected onto each selected surface. Curved tops retains the profile's planar solid-top thickness and projects one visible finishing shell. Default upper limit: 3. Unit: layers.");
+    def->tooltip = L("Steepest top Conformal layers follows on its retry after the print head met the part. Only an angle under "
+                     "the maximum curved top angle changes the retry. Default: 15. Unit: degrees.");
+    def->sidetext = u8"°";
+    def->min = 5;
+    def->max = 45;
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionFloat(15));
+
+    def = this->add("nonplanar_conformal_ramp_layers", coInt);
+    def->label = L("Ramp layers");
+    def->category = L("Quality");
+    def->tooltip = L("Fewest layers of the ramp under Conformal layers' curved band, from the flat layers up to the band. Tops too "
+                     "close to the flat base for the band and this ramp print flat. Default: 2. Unit: layers.");
     def->sidetext = L("layers");
     def->min = 1;
     def->max = 20;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(3));
-
-    def = this->add("nonplanar_curved_cone_tolerance", coFloat);
-    def->label = L("Curved top cone contact tolerance");
-    def->category = L("Quality");
-    def->tooltip = L("Maximum nozzle cone contact depth accepted by the Curved tops export check. The printer head body must always clear. Default: 0.05. Unit: mm.");
-    def->sidetext = L("mm");
-    def->min = 0.;
-    def->max = 0.13;
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0.05));
+    def->mode = comExpert;
+    def->set_default_value(new ConfigOptionInt(2));
 
     def = this->add("nonplanar_deform", coEnum);
     def->label    = L("Curved layers through the whole part");
@@ -5673,13 +5756,14 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_slant_angle", coFloat);
     def->label    = L("Slant angle");
     def->category = L("Quality");
-    def->tooltip  = L("Tilt of Slant's layers from the bed. 0: the steepest the print head clears over this part (on an A1 "
-                      "mini about 25° front to back, 7° left to right). A larger angle is lowered to that limit. Default: 0. Unit: degrees.");
+    def->tooltip  = L("Tilt of Slant's layers from the bed, used as set. Only an angle at which the print head would hit the part "
+                      "is lowered, to the steepest it clears (on an A1 mini about 25° front to back, 7° left to right). "
+                      "Default: 15. Unit: degrees.");
     def->sidetext = u8"°";
-    def->min      = 0;
+    def->min      = 1;
     def->max      = 45;
     def->mode     = comExpert;
-    def->set_default_value(new ConfigOptionFloat(0));
+    def->set_default_value(new ConfigOptionFloat(15));
 
     def = this->add("nonplanar_slant_direction", coFloat);
     def->label    = L("Slant direction");
@@ -5706,13 +5790,14 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_slant_morph_layers", coInt);
     def->label    = L("Slant morph layers");
     def->category = L("Quality");
-    def->tooltip  = L("Layers over which Slant tilts from flat to the full angle, each a little more than the one below. A wide "
-                      "part or a steep angle takes more, so that no layer is thinner or thicker than the printer's layer height "
-                      "limits. Default: 10.");
-    def->min      = 1;
+    def->tooltip  = L("Slant morphing: layers over which Slant bends from flat to the full angle, each a little more than the "
+                      "one below. A wide part or a steep angle takes more, so that every layer stays between 0.2 and 0.8 of "
+                      "the nozzle diameter thick. 0 turns morphing off: the part is cut by the tilted start plane, flat layers "
+                      "below it with their top finished to the plane, tilted layers above it. Default: 0.");
+    def->min      = 0;
     def->max      = 1000;
     def->mode     = comExpert;
-    def->set_default_value(new ConfigOptionInt(10));
+    def->set_default_value(new ConfigOptionInt(0));
     def = this->add("nonplanar_auto_support", coBool);
     def->label    = L("Add support where a part would float");
     def->category = L("Support");
@@ -5849,15 +5934,25 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
-    def = this->add("nonplanar_clearance_margin", coFloat);
-    def->label    = L("Clearance margin");
+    def = this->add("nonplanar_collision_tolerance", coFloat);
+    def->label    = L("Collision tolerance");
     def->category = L("Quality");
-    def->tooltip  = L("Clearance kept around the nozzle and heater block when Ignore cooling duct is on. Default: 0.3. Unit: mm.");
+    def->tooltip  = L("How deep the nozzle, its cone or the heater block may touch printed plastic before every curved slicing method "
+                      "counts it as a collision and falls back. Default: 1. Unit: mm.");
     def->sidetext = L("mm");
     def->min      = 0;
-    def->max      = 2;
+    def->max      = 3;
     def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionFloat(0.3));
+    def->set_default_value(new ConfigOptionFloat(1.));
+
+    def = this->add("nonplanar_duct_graze_limit", coInt);
+    def->label    = L("Duct graze limit");
+    def->category = L("Quality");
+    def->tooltip  = L("Moves the cooling duct may brush printed plastic, deeper than the collision tolerance, before a curved slicing method "
+                      "counts them as collisions. Fewer are reported as a warning. Default: 200.");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(200));
 
     def = this->add("nonplanar_head_snapshot", coString);
     def->tooltip = L("Project-owned resolved print-head envelope. Default: empty. Unit: serialized head JSON. "
@@ -10435,6 +10530,17 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
         value = "-1";
     if (opt_key == "nonplanar_mode" && value == "conformal")
         value = "manual";
+    if (opt_key == "nonplanar_curved_cone_tolerance" || opt_key == "nonplanar_clearance_margin") {
+        BOOST_LOG_TRIVIAL(info) << opt_key << " = " << value << " folded into nonplanar_collision_tolerance";
+        const double old = opt_key == "nonplanar_curved_cone_tolerance" ? std::atof(value.c_str()) : 0.;
+        opt_key = "nonplanar_collision_tolerance";
+        value   = float_to_string_decimal_point(std::max(1., old));
+        return;
+    }
+    if (opt_key == "nonplanar_slant_angle" && std::atof(value.c_str()) <= 0.)
+        value = "15";
+    if (opt_key == "nonplanar_curved_shells")
+        opt_key = "nonplanar_curved_top_layers";
     if (opt_key == "use_nonplanar_layers") {
         opt_key = "nonplanar_mode";
         value   = value == "1" ? "nonplanar_top" : "off";
@@ -10681,6 +10787,8 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
         "belt_slice_rotation_global", "preslice_remap_x", "preslice_remap_y", "preslice_remap_z", "preslice_remap_global",
         "belt_support_z_offset_mode", "first_layer_plane", "first_layer_plane_offset",
         "belt_preslice_global", "gcode_back_transform", "belt_support_floor_mode", "first_layer_plane_thickness",
+        "nonplanar_time_budget",
+        "nonplanar_curved_max_height",
     };
 
     if (ignore.find(opt_key) != ignore.end()) {
@@ -10696,6 +10804,13 @@ void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &va
 
 void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
 {
+    if (const auto *mode = config.option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode"); mode != nullptr && mode->value == NonplanarMode::CurvedTops) {
+        config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::NonplanarTop));
+        config.set_key_value("nonplanar_curved_top_layers", new ConfigOptionInt(1));
+    }
+    if (config.has("nonplanar_curved_max_angle") && !config.has("nonplanar_duct_graze_limit") &&
+        std::abs(config.opt_float("nonplanar_curved_max_angle") - 12.) < 1e-6)
+        config.set_key_value("nonplanar_curved_max_angle", new ConfigOptionFloat(30.));
     if (config.has("thumbnails")) {
         std::string extention;
         if (config.has("thumbnails_format")) {

@@ -177,12 +177,6 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
             if (std::abs(d) > EPSILON) {
 				was_contoured = true;
 			}
-            if (Layer::ContourGain *gain = Layer::contour_gain_sink();
-                gain != nullptr && path.role() == erTopSolidInfill && hit_up.is_hit() && surface >= -height && surface <= max_up + 0.03) {
-                const double area = length_mm / num_segments * path.width;
-                gain->planar += surface * surface * area;
-                gain->contoured += (surface - d) * (surface - d) * area;
-            }
 
             Vec3d new_point = {p.x(), p.y(), d};
 
@@ -614,12 +608,6 @@ void order_textured(LayerRegion &region)
     t_tol      = OrderTol;
 }
 
-}
-
-Layer::ContourGain *&Layer::contour_gain_sink()
-{
-    static thread_local ContourGain *sink = nullptr;
-    return sink;
 }
 
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)

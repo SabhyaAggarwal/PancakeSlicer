@@ -187,7 +187,7 @@ export function AccessNotification() {
 function TrySmoothest({ f }: { f: CurveFailure }) {
   const share = useSmoothestShare(f.objectId);
   if (share == null) return null;
-  return <button type="button" className="notif-link" onClick={() => trySmoothest(f)}>Try Smoothest tops (plan: {Math.max(1, Math.round(share * 100))}% curved)</button>;
+  return <button type="button" className="notif-link" onClick={() => trySmoothest(f)}>Try Curved tops (plan: {Math.max(1, Math.round(share * 100))}% curved)</button>;
 }
 
 function WarningLines({ warnings, open, onToggle }: { warnings: PlainWarning[]; open: boolean; onToggle(): void }) {

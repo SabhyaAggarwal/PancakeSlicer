@@ -60,6 +60,7 @@ type workspaceData struct {
 	Aliases        map[string]string           `json:"aliases"`
 	Folders        map[string]workspaceFolder  `json:"folders,omitempty"`
 	FolderRevision uint64                      `json:"folderRevision,omitempty"`
+	Migrations     map[string]int64            `json:"migrations,omitempty"`
 }
 
 func newWorkspaceData() *workspaceData {
@@ -68,7 +69,7 @@ func newWorkspaceData() *workspaceData {
 func (d *workspaceData) clone() *workspaceData {
 	c := *d
 	c.Projects, c.Drafts, c.Values, c.Operations = maps.Clone(d.Projects), maps.Clone(d.Drafts), maps.Clone(d.Values), maps.Clone(d.Operations)
-	c.Adoptions, c.Aliases, c.Folders = maps.Clone(d.Adoptions), maps.Clone(d.Aliases), maps.Clone(d.Folders)
+	c.Adoptions, c.Aliases, c.Folders, c.Migrations = maps.Clone(d.Adoptions), maps.Clone(d.Aliases), maps.Clone(d.Folders), maps.Clone(d.Migrations)
 	return &c
 }
 func fileStamp(info os.FileInfo) [2]int64 { return [2]int64{info.Size(), info.ModTime().UnixNano()} }
@@ -113,6 +114,12 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 		if _, err := projectRecord(project.Record, id, project.Revision); err != nil {
 			return nil, fmt.Errorf("invalid retained project %s: %w", id, err)
 		}
+	}
+	if migrateWorkspace(&d, time.Now()) {
+		if err := st.save(&d); err != nil {
+			return nil, err
+		}
+		return &d, nil
 	}
 	st.cached, st.stamp, st.views = d.clone(), fileStamp(info), nil
 	return &d, nil

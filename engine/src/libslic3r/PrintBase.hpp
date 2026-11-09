@@ -70,7 +70,6 @@ public:
         SlicingEmptyGcodeLayers,
         SlicingGcodeOverlap,
         SlicingPreciseSeamWarning,
-        SlicingDuctGrazes
     };
 
     typedef size_t TimeStamp;

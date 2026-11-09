@@ -255,13 +255,14 @@ enum class ImexVizTheme {
 
 enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC };
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
+enum class NonplanarTopOrder : unsigned char { Continuous, Monotonic, Follow };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class TopTexture : unsigned char { None, Ribs, Knurl };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarWave : unsigned char { Off, Top, Whole, Infill };
 enum class NonplanarWavePattern : unsigned char { Waves, Ripple, Crosshatch };
 enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot, CurvedTops, SmoothMorph, NonplanarTop, Slant, ConformalLayers };
-inline bool curved_tops_mode(NonplanarMode mode) { return mode == NonplanarMode::CurvedTops || mode == NonplanarMode::NonplanarTop; }
+inline bool curved_tops_mode(NonplanarMode mode) { return mode == NonplanarMode::NonplanarTop; }
 enum class NonplanarRegionSource : unsigned char { Auto, PaintOnly };
 enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };
 
@@ -757,6 +758,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TpmsAdaptiveMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TpmsAdaptiveGradient)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RotaryLayout)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopOrder)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TopTexture)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
@@ -1276,12 +1278,15 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
     ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
-    ((ConfigOptionPercent, nonplanar_time_budget))
     ((ConfigOptionBool, nonplanar_continuous_top))
     ((ConfigOptionFloat, nonplanar_curved_max_angle))
-    ((ConfigOptionFloat, nonplanar_curved_max_height))
-    ((ConfigOptionInt, nonplanar_curved_shells))
-    ((ConfigOptionFloat, nonplanar_curved_cone_tolerance))
+    ((ConfigOptionInt, nonplanar_curved_top_layers))
+    ((ConfigOptionFloat, nonplanar_curved_min_area))
+    ((ConfigOptionPercent, nonplanar_curved_shell_speed))
+    ((ConfigOptionInt, nonplanar_morph_layers))
+    ((ConfigOptionFloat, nonplanar_conformal_rounding))
+    ((ConfigOptionFloat, nonplanar_conformal_fallback_angle))
+    ((ConfigOptionInt, nonplanar_conformal_ramp_layers))
     ((ConfigOptionEnum<NonplanarWave>, nonplanar_wave))
     ((ConfigOptionFloat, nonplanar_wave_amplitude))
     ((ConfigOptionFloat, nonplanar_wave_wavelength))
@@ -1529,6 +1534,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                     nonplanar_max_surface_error))
     ((ConfigOptionFloat,                     nonplanar_min_patch_area))
     ((ConfigOptionEnum<NonplanarTopPattern>, nonplanar_top_pattern))
+    ((ConfigOptionEnum<NonplanarTopOrder>, nonplanar_top_order))
     ((ConfigOptionFloat,                     nonplanar_top_direction))
     ((ConfigOptionBool,                      nonplanar_surface_spacing))
     ((ConfigOptionBool,                      nonplanar_spiral_top))
@@ -1539,6 +1545,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                      nonplanar_strength_roads))
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionFloat,                     nonplanar_top_finish_flow))
+    ((ConfigOptionFloat,                     nonplanar_curved_shell_flow))
     ((ConfigOptionFloats,                    nonplanar_tilt_flow))
     ((ConfigOptionPercent,                   nonplanar_top_speed_factor))
     ((ConfigOptionPercent,                   nonplanar_top_fan_boost))
@@ -1547,6 +1554,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<NonplanarFallback>,   nonplanar_fallback))
     ((ConfigOptionFloat,                     nonplanar_full_conformal_max_thickness))
     )
+
+bool nonplanar_top_monotonic(const PrintRegionConfig &config);
 
 PRINT_CONFIG_CLASS_DEFINE(
     MachineEnvelopeConfig,
@@ -1832,7 +1841,8 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionString,                   nonplanar_head))
     ((ConfigOptionString,                   nonplanar_head_snapshot))
     ((ConfigOptionBool,                     nonplanar_ignore_duct))
-    ((ConfigOptionFloat,                    nonplanar_clearance_margin))
+    ((ConfigOptionFloat,                    nonplanar_collision_tolerance))
+    ((ConfigOptionInt,                      nonplanar_duct_graze_limit))
     ((ConfigOptionFloat,                    nonplanar_segment_rate))
     ((ConfigOptionEnum<RotaryLayout>,       nonplanar_kinematics))
     ((ConfigOptionFloats,                   rotary_axis_limits))

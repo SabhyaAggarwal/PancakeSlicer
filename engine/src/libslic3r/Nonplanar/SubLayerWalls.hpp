@@ -1,11 +1,13 @@
 #pragma once
 
+#include <string>
+
 namespace Slic3r {
 class PrintObject;
 }
 
 namespace Slic3r::Nonplanar {
 
-void split_sublayer_walls(PrintObject &object);
+std::string split_sublayer_walls(PrintObject &object);
 
 }

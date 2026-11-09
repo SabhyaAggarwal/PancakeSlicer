@@ -14,10 +14,11 @@ export function setGroupOpen(id: string, open: boolean) {
 export const isGroupOpen = (id: string, byDefault = false) => expanded.has(id) || (byDefault && !folded.has(id));
 export const useSettingsGroups = () => useSyncExternalStore(subscribe, () => version);
 
-export const GroupHead = memo(function GroupHead({ id, title, modified, open, aside }: { id: string; title: string; modified: boolean; open: boolean; aside?: ReactNode }) {
+export const GroupHead = memo(function GroupHead({ id, title, modified, open, aside, tag }: { id: string; title: string; modified: boolean; open: boolean; aside?: ReactNode; tag?: string }) {
   const content = <>
     <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
     <span>{title}</span>
+    {tag && <span className="optgroup-tag">{tag}</span>}
     {modified && <span className="field-label-hidden">(changed)</span>}
   </>;
   const head = (

@@ -20,7 +20,6 @@
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/CurvedTopsSurface.hpp"
-#include "libslic3r/Nonplanar/CurvedTopsBudget.hpp"
 #include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
@@ -307,16 +306,6 @@ ClearanceRepair::ClearanceRepair(Print &print) : m_print(print)
 
 ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
 
-CurvedTopBudgetReport ClearanceRepair::curved_budget_report(const Print &print, const PrintObject &object)
-{
-    const auto *repair = print.m_clearance_repair;
-    auto report = repair != nullptr && repair->m_curved_budget ? repair->m_curved_budget->report(object) : CurvedTopBudgetReport{};
-    report.time_budget_percent = object.config().nonplanar_time_budget.value;
-    if (report.reason.empty() && !object.m_curved_budget_reason.empty())
-        report.reason = object.m_curved_budget_reason;
-    return report;
-}
-
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
     trim_free_memory();
@@ -461,7 +450,7 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
             ++conformal_hits;
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
-    count_duct_grazes(print, result, params, ThreeAxisKinematics());
+    mark_clearance_override(print, result);
     if (self->m_pass == 0 && hits == 0)
         return;
     if (params.contact_bar && hits > 0 && self->contact_guard(result, hits))
@@ -877,6 +866,18 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
 namespace {
 std::mutex       morph_refused_mutex;
 std::set<size_t> morph_refused;
+std::map<size_t, size_t> morph_struck;
+}
+
+size_t morph_struck_hits(const PrintObject &object)
+{
+    const auto *set = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+    const NonplanarMode requested = set ? set->value : object.print()->default_object_config().nonplanar_mode.value;
+    if (requested != NonplanarMode::SmoothMorph || object.config().nonplanar_mode.value != NonplanarMode::Off)
+        return 0;
+    const std::lock_guard<std::mutex> lock(morph_refused_mutex);
+    const auto it = morph_struck.find(object.model_object()->id().id);
+    return it == morph_struck.end() ? 0 : it->second;
 }
 
 bool auto_morph_refused(const ModelObject &object)
@@ -891,22 +892,6 @@ bool top_picks_morph()
     return on;
 }
 
-namespace {
-std::mutex       wide_refused_mutex;
-std::set<size_t> wide_refused;
-}
-
-bool wide_tops_refused(const ModelObject &object)
-{
-    const std::lock_guard<std::mutex> lock(wide_refused_mutex);
-    return wide_refused.count(object.id().id) != 0;
-}
-
-void refuse_wide_tops(const ModelObject &object)
-{
-    const std::lock_guard<std::mutex> lock(wide_refused_mutex);
-    wide_refused.insert(object.id().id);
-}
 
 namespace {
 std::mutex                                  conformal_step_mutex;
@@ -1126,8 +1111,14 @@ bool ClearanceRepair::step_down_slant(const GCodeProcessorResult &result)
         if (object->config().nonplanar_mode.value == NonplanarMode::Slant && object->slant_choice() && object->slant_choice()->angle_deg > 0. &&
             slant_step(*object->model_object()) < SlantSteps)
             picked.push_back(object);
-    const ClearanceReport &report = result.clearance_report;
-    if (picked.empty() || !result.nonplanar || report.hit_moves == 0)
+    if (picked.empty() || !result.nonplanar)
+        return false;
+    ClearanceParams params;
+    params.head           = resolve_head_envelope(m_print.config());
+    params.contact_bar    = true;
+    params.cone_tolerance = curved_tops_cone_tolerance(m_print);
+    const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
+    if (report.hit_moves == 0)
         return false;
     for (PrintObject *object : picked) {
         int step;
@@ -1146,18 +1137,26 @@ bool ClearanceRepair::step_down_slant(const GCodeProcessorResult &result)
     return true;
 }
 
-bool ClearanceRepair::refuse_auto_morph(const GCodeProcessorResult &result)
+bool ClearanceRepair::refuse_struck_morph(const GCodeProcessorResult &result)
 {
-    std::vector<PrintObject *> picked;
+    std::vector<PrintObject *> picked, chosen;
     for (PrintObject *object : m_print.m_objects) {
         const auto *set = object->model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
         const NonplanarMode requested = set ? set->value : m_print.default_object_config().nonplanar_mode.value;
-        if (object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph &&
-            (requested == NonplanarMode::Auto || (requested == NonplanarMode::NonplanarTop && top_picks_morph())))
+        if (object->config().nonplanar_mode.value != NonplanarMode::SmoothMorph)
+            continue;
+        if (requested == NonplanarMode::Auto || (requested == NonplanarMode::NonplanarTop && top_picks_morph()))
             picked.push_back(object);
+        else if (requested == NonplanarMode::SmoothMorph)
+            chosen.push_back(object);
     }
-    if (picked.empty() || !result.nonplanar)
+    if ((picked.empty() && chosen.empty()) || !result.nonplanar)
         return false;
+    {
+        const std::lock_guard<std::mutex> lock(morph_refused_mutex);
+        for (const PrintObject *object : chosen)
+            morph_struck.erase(object->model_object()->id().id);
+    }
     ClearanceParams params;
     params.head           = resolve_head_envelope(m_print.config());
     params.contact_bar    = true;
@@ -1171,12 +1170,48 @@ bool ClearanceRepair::refuse_auto_morph(const GCodeProcessorResult &result)
             morph_refused.insert(object->model_object()->id().id);
         }
         object->m_config.nonplanar_mode.value = NonplanarMode::NonplanarTop;
-        if (std::abs(object->m_config.nonplanar_curved_max_angle.value - 12.) < 1e-9 && !wide_tops_refused(*object->model_object()))
-            object->m_config.nonplanar_curved_max_angle.value = 20.;
         object->invalidate_step(posSlice);
-        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Auto printed Smoothest tops: Smooth morph's roads would touch the "
+        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Auto printed Curved tops: Smooth morph's roads would touch the "
                                                        "nozzle in %2% moves."), object->model_object()->name, hits));
         BOOST_LOG_TRIVIAL(warning) << "Auto Smooth morph refused: " << object->model_object()->name << ", " << hits << " contact-bar hits";
+    }
+    for (PrintObject *object : chosen) {
+        {
+            const std::lock_guard<std::mutex> lock(morph_refused_mutex);
+            morph_struck[object->model_object()->id().id] = hits;
+        }
+        object->m_config.nonplanar_mode.value = NonplanarMode::Off;
+        object->invalidate_step(posSlice);
+        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: Smooth morph would hit the part in %2% moves; printed flat."),
+                                                  object->model_object()->name, hits));
+        BOOST_LOG_TRIVIAL(warning) << "Smooth morph struck: " << object->model_object()->name << ", " << hits << " contact-bar hits; printed flat";
+    }
+    return true;
+}
+
+bool ClearanceRepair::step_down_morph_direction(const GCodeProcessorResult &result)
+{
+    std::vector<PrintObject *> picked;
+    for (PrintObject *object : m_print.m_objects)
+        if (object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph &&
+            object->printing_region(0).config().nonplanar_top_direction.value <= -2. &&
+            (!object->m_nonplanar_repair || object->m_nonplanar_repair->top_angle_rungs.count(-1) == 0))
+            picked.push_back(object);
+    if (picked.empty() || !result.nonplanar)
+        return false;
+    ClearanceParams params;
+    params.head           = resolve_head_envelope(m_print.config());
+    params.contact_bar    = true;
+    params.cone_tolerance = curved_tops_cone_tolerance(m_print);
+    const size_t hits = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); }).hit_moves;
+    if (hits == 0)
+        return false;
+    for (PrintObject *object : picked) {
+        if (!object->m_nonplanar_repair) object->m_nonplanar_repair = std::make_shared<RepairHints>();
+        object->m_nonplanar_repair->top_angle_rungs[-1] = AutoTopCandidates;
+        object->invalidate_step(posSlice);
+        BOOST_LOG_TRIVIAL(warning) << "Smooth morph Curved top direction Auto: " << object->model_object()->name << ", " << hits
+                                   << " contact-bar hits; the top takes the host's direction";
     }
     return true;
 }
@@ -1291,11 +1326,14 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             return true;
         }
         const bool nonplanar_top = std::any_of(m_print.objects().begin(), m_print.objects().end(), [](const PrintObject *object) {
-            return object->config().nonplanar_mode.value == NonplanarMode::NonplanarTop;
+            return curved_tops_mode(object->config().nonplanar_mode.value);
         });
         const int disc_passes = nonplanar_top ? (clearance_override_active(m_print.config()) ? 8 : 5) : 2;
-        if (m_curved_pass >= disc_passes + 1)
+        const int pass = m_curved_pass - m_curved_angle_passes;
+        if (pass >= disc_passes + 1)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after its surface repair passes; export blocked.");
+        bool angled = false, repaired = false;
+        std::map<std::pair<PrintObject *, int>, size_t> angled_now;
         std::set<std::pair<const PrintObject *, int>> ordered_now;
         std::set<std::pair<const PrintObject *, int>> roads_now;
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
@@ -1325,7 +1363,14 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 }
             }
             if (owner == nullptr) continue;
-            if (owner->config().nonplanar_mode.value == NonplanarMode::NonplanarTop) {
+            if (owner->printing_region(0).config().nonplanar_top_direction.value <= -2. &&
+                (!owner->m_nonplanar_repair || owner->m_nonplanar_repair->top_angle_settled.count(surface_id) == 0)) {
+                ++angled_now[{ owner, surface_id }];
+                angled = true;
+                continue;
+            }
+            repaired = true;
+            if (curved_tops_mode(owner->config().nonplanar_mode.value)) {
                 if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
                 RepairHints &hints = *owner->m_nonplanar_repair;
                 if (hints.ordered_surfaces.count(surface_id) == 0) {
@@ -1346,9 +1391,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                     continue;
                 }
             }
-            if (m_curved_pass < disc_passes) {
-                int disc_pass = m_curved_pass;
-                if (owner->config().nonplanar_mode.value == NonplanarMode::NonplanarTop) {
+            if (pass < disc_passes) {
+                int disc_pass = pass;
+                if (curved_tops_mode(owner->config().nonplanar_mode.value)) {
                     disc_pass = 0;
                     if (owner->m_nonplanar_repair) {
                         const Vec2d xy = tip.head<2>() - owner_shift;
@@ -1379,6 +1424,23 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 owner->m_curved_planar_surfaces.insert(surface_id);
             if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
         }
+        for (const auto &[key, hits] : angled_now) {
+            PrintObject *owner = key.first;
+            if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
+            RepairHints &hints = *owner->m_nonplanar_repair;
+            int  &rung = hints.top_angle_rungs[key.second];
+            auto &seen = hints.top_angle_hits[key.second];
+            seen.resize(size_t(std::max(rung + 1, int(seen.size()))));
+            seen[size_t(rung)] = hits;
+            if (rung < AutoTopCandidates)
+                ++rung;
+            else {
+                rung = int(std::min_element(seen.begin(), seen.end()) - seen.begin());
+                hints.top_angle_settled.insert(key.second);
+            }
+            hints.refill_tops = true;
+            if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
+        }
         if (m_repick.empty())
             throw Slic3r::SlicingError("Curved tops: a head clearance hit cannot be attributed to an active curved surface; export blocked.");
         for (PrintObject *object : m_repick)
@@ -1386,79 +1448,22 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 const std::string warning = object->model_object()->name + ": Curved tops printed planar: every curved surface was struck by the head clearance check.";
                 m_guard_warnings.push_back(warning);
                 BOOST_LOG_TRIVIAL(warning) << warning;
-            } else if (m_curved_pass < disc_passes) {
+            } else if (repaired && pass < disc_passes) {
                 const std::string warning = object->model_object()->name +
                     ": Curved tops returned the head-strike neighbourhood to planar layers and retained the remaining cap for clearance verification.";
                 m_guard_warnings.push_back(warning);
                 BOOST_LOG_TRIVIAL(warning) << warning;
             }
         ++m_curved_pass;
+        if (angled && !repaired)
+            ++m_curved_angle_passes;
     }
     restore_planar_remainders();
-    if (report.hit_moves == 0 && m_repick.empty()) {
-        if (!m_curved_budget) m_curved_budget = std::make_unique<CurvedTopsBudget>();
-        for (const auto &entry : m_curved_budget->reject(m_print, result)) {
-            const auto object = entry.first;
-            const auto id = entry.second;
-            if (id == CurvedTopsBudget::NativeRoads) {
-                if (!object->m_nonplanar_repair) object->m_nonplanar_repair = std::make_shared<RepairHints>();
-                auto &finish = object->m_nonplanar_repair->curved_finish;
-                finish = finish == RepairHints::CurvedFinish::Blended && curved_tops_stats(*object).area_fraction >= .5 ?
-                    RepairHints::CurvedFinish::NativeFitted : RepairHints::CurvedFinish::NativeMesh;
-                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
-                m_guard_warnings.push_back(object->model_object()->name +
-                    ": trying native curved roads before dropping a top for the process time budget.");
-                continue;
-            }
-            if (id == CurvedTopsBudget::Fallback) {
-                object->m_curved_fallback_zaa = false;
-                object->m_curved_fallback_off = true;
-                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
-                m_guard_warnings.push_back(object->model_object()->name + ": its tops print flat layers instead of mid-layer Z contouring, " +
-                                           m_curved_budget->report(*object).reason.substr(std::string("mid-layer ZAA ").size()) + ".");
-                continue;
-            }
-            if (id == CurvedTopsBudget::Walls) {
-                object->m_sublayer_walls_off = true;
-                if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
-                const bool air = m_curved_budget->report(*object).reason == "half-height walls add road over air";
-                m_guard_warnings.push_back(object->model_object()->name + (air ?
-                    ": half-height walls print as single beads, where half-beads would lie over air." :
-                    ": half-height walls print as single beads to keep firmware time within the time budget of the planar profile."));
-                continue;
-            }
-            if (!object->m_curved_planar_surfaces.insert(id).second) continue;
-            const auto decision = m_curved_budget->report(*object);
-            if (std::all_of(decision.patches.begin(), decision.patches.end(),
-                            [](const CurvedTopBudgetPatch &patch) { return patch.dropped; })) {
-                for (const auto &surface : object->nonplanar_surfaces())
-                    object->m_curved_planar_surfaces.insert(surface.stable_id);
-            }
-            if (std::find(m_repick.begin(), m_repick.end(), object) == m_repick.end()) m_repick.push_back(object);
-            std::ostringstream budget;
-            budget << decision.time_budget_percent;
-            const auto patch = std::find_if(decision.patches.begin(), decision.patches.end(),
-                [id](const CurvedTopBudgetPatch &p) { return p.id == id; });
-            const bool quality = patch != decision.patches.end() && patch->samples > 0 &&
-                patch->curved_rms_mm > patch->planar_rms_mm + 1e-9;
-            m_guard_warnings.push_back(object->model_object()->name + ": curved top " + std::to_string(id) +
-                (object->config().nonplanar_mode.value == NonplanarMode::NonplanarTop ?
-                 " prints planar: the curved top measures rougher than the planar print." :
-                 patch != decision.patches.end() && patch->reason == "half_height_walls_have_lower_normal_rms" ?
-                 " prints planar to retain half-height walls with lower measured whole-surface RMS." :
-                 quality ? " prints planar because its predicted top RMS is worse than the planar profile." :
-                 " prints planar to keep firmware time within " + budget.str() + "% of the planar profile."));
-        }
-        for (PrintObject *object : m_print.objects()) {
-            const auto decision = m_curved_budget->report(*object);
-            if (!decision.reason.empty()) object->m_curved_budget_reason = decision.reason;
-        }
-    }
     for (const auto &warning : m_guard_warnings)
         m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     result.clearance_report = std::move(report);
     result.clearance = result.clearance_report.per_move;
-    count_duct_grazes(m_print, result, params, ThreeAxisKinematics());
+    mark_clearance_override(m_print, result);
     return true;
 }
 
@@ -1500,7 +1505,8 @@ bool ClearanceRepair::apply()
                 if (surfaces.empty() && !object->m_curved_planar_surfaces.empty() && !walls)
                     object->m_curved_fallback_zaa = !object->m_curved_fallback_off;
                 const auto scaffold = object->m_nonplanar_repair ? object->m_nonplanar_repair->curved_scaffold : nullptr;
-                if (scaffold && scaffold->owner == object && !scaffold->regions.empty() &&
+                const bool refill = object->m_nonplanar_repair && std::exchange(object->m_nonplanar_repair->refill_tops, false);
+                if (!refill && scaffold && scaffold->owner == object && !scaffold->regions.empty() &&
                     !object->need_z_contouring() && !m_print.m_pipeline_plugin_active) {
                     scaffold->restore();
                     object->invalidate_steps({posNonplanarProjection, posNonplanar, posContouring});

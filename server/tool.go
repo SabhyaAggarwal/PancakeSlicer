@@ -223,7 +223,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 	oneshot, curvedTops, wave := false, false, false
 	for _, mode := range modes {
 		oneshot = oneshot || mode == "oneshot"
-		curvedTops = curvedTops || mode == "curved_tops"
+		curvedTops = curvedTops || mode == "nonplanar_top"
 	}
 	waveModes, _ := options["nonplanar_wave"]["enum_values"].([]any)
 	for _, mode := range waveModes {

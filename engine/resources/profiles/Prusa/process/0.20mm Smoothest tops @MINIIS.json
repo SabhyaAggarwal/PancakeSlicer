@@ -8,7 +8,6 @@
 	"instantiation": "true",
 	"top_layer_direction": "45",
 	"nonplanar_sublayer_walls": "1",
-	"nonplanar_time_budget": "16",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"nonplanar_ironing": "1",

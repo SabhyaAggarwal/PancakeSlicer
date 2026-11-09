@@ -20,6 +20,8 @@
 #include "../Geometry.hpp"
 #include "../Layer.hpp"
 #include "../Print.hpp"
+#include "../Nonplanar/CurvedTopsSurface.hpp"
+#include "../Nonplanar/Repair.hpp"
 #include "../PrintConfig.hpp"
 #include "../Surface.hpp"
 
@@ -839,6 +841,24 @@ void split_solid_surface(size_t layer_id, const SurfaceFill &fill, ExPolygons &n
 #endif
 }
 
+static std::optional<double> auto_top_angle(const LayerRegion &layerm, int surface_id, std::optional<double> level)
+{
+    const double       spacing = layerm.flow(frTopSolidInfill).spacing();
+    for (const NonplanarSurface &surface : layerm.nonplanar_surfaces()) {
+        if (surface.stable_id != surface_id)
+            continue;
+        const std::vector<double> angles = auto_top_angles(surface, level, spacing);
+        int rung = 0;
+        if (const Nonplanar::RepairHints *hints = layerm.layer()->object()->nonplanar_repair())
+            if (const auto it = hints->top_angle_rungs.find(surface_id); it != hints->top_angle_rungs.end())
+                rung = it->second;
+        if (rung < int(angles.size()))
+            return angles[size_t(rung)];
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
 static std::optional<double> level_shell_angle(const LayerRegion &layerm, int surface_id)
 {
     for (const NonplanarSurface &surface : layerm.nonplanar_surfaces()) {
@@ -920,8 +940,7 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
 
                 if (surface.is_nonplanar()) {
                     if (surface.surface_type == stTopNonplanar)
-                        params.pattern = (region_config.top_surface_pattern == ipMonotonic || region_config.top_surface_pattern == ipMonotonicLine) ?
-                            ipMonotonic : ipRectilinear;
+                        params.pattern = nonplanar_top_monotonic(region_config) ? ipMonotonic : ipRectilinear;
                     else
                         params.pattern = level_shell_angle(layerm, surface.source_surface_id) ? ipRectilinear : ipConcentric;
                     params.density = 100.f;
@@ -1047,8 +1066,14 @@ std::vector<SurfaceFill> group_fills(const Layer &layer, LockRegionParam &lock_p
                             "fill surface without target surface or shell offset", layer.object()->id().id);
                     params.nonplanar_surface_id   = surface.source_surface_id;
                     params.nonplanar_shell_offset = surface.distance_to_top;
-                    if (const std::optional<double> level = level_shell_angle(layerm, surface.source_surface_id)) {
-                        params.angle       = float(*level);
+                    const double             direction = region_config.nonplanar_top_direction.value;
+                    const std::optional<double> level  = level_shell_angle(layerm, surface.source_surface_id);
+                    const std::optional<double> top    = surface.surface_type != stTopNonplanar ? std::nullopt :
+                                                         direction >= 0.  ? std::optional<double>(Geometry::deg2rad(direction)) :
+                                                         direction <= -2. ? auto_top_angle(layerm, surface.source_surface_id, level) :
+                                                                            std::nullopt;
+                    if (const std::optional<double> angle = top ? top : level) {
+                        params.angle       = float(*angle);
                         params.fixed_angle = true;
                     }
                 } else {

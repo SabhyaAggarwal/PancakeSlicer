@@ -203,7 +203,7 @@ function Widget({ def, label, value, onCommit, glyph }: { def: OptionDef; label:
     const v = asText(value);
     const known = def.enum_values.includes(v);
     const labels = def.enum_values.map((ev, i) => def.enum_labels?.[i] ?? ev);
-    if (known && !def.enum_notes?.some(Boolean) && segmented(labels)) return <Choice label={def.full_label || def.label || def.key} value={v} disabled={def.readonly} onChange={onCommit}
+    if (known && !def.enum_notes?.some(Boolean) && def.gui_type !== 'select_close' && segmented(labels)) return <Choice label={def.full_label || def.label || def.key} value={v} disabled={def.readonly} onChange={onCommit}
       options={def.enum_values.map((ev, i) => ({ id: ev, label: labels[i], disabled: def.enum_disabled?.includes(ev) }))} />;
     return (
       <Dropdown className="combo" {...named} value={v} disabled={def.readonly} onValueChange={onCommit} options={[...(!known ? [{ value: v, label: v }] : []), ...def.enum_values.map((ev, i) => (

@@ -67,11 +67,11 @@ var starterProfiles = []struct {
 	auto                  autoProfile
 }{
 	{"everyday", "Everyday", "Curved tops, balanced speed and strength", [2]float64{0.3, 0.6},
-		map[string]string{"nonplanar_mode": "curved_tops", "top_shell_layers": "4", "bottom_shell_layers": "3"}, autoProfile{Schema: 3, Scales: defaultScales}},
+		map[string]string{"nonplanar_mode": "nonplanar_top", "top_shell_layers": "4", "bottom_shell_layers": "3"}, autoProfile{Schema: 3, Scales: defaultScales}},
 	{"strong", "Strong", "Four walls, 25 % infill and thicker shells for load-bearing parts", [2]float64{0.4, 0.6},
-		map[string]string{"nonplanar_mode": "curved_tops", "wall_loops": "4", "sparse_infill_density": "25%", "top_shell_layers": "6", "bottom_shell_layers": "5"}, autoProfile{Schema: 3, Scales: defaultScales}},
+		map[string]string{"nonplanar_mode": "nonplanar_top", "wall_loops": "4", "sparse_infill_density": "25%", "top_shell_layers": "6", "bottom_shell_layers": "5"}, autoProfile{Schema: 3, Scales: defaultScales}},
 	{"fine-detail", "Fine detail", "Thin layers and extra shells for small, detailed parts", [2]float64{0.2, 0.4},
-		map[string]string{"nonplanar_mode": "curved_tops", "top_shell_layers": "5", "bottom_shell_layers": "4"},
+		map[string]string{"nonplanar_mode": "nonplanar_top", "top_shell_layers": "5", "bottom_shell_layers": "4"},
 		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.12)}},
 	{"draft", "Draft", "Flat, thick layers and 10 % infill for quick test prints", [2]float64{0.6, 0.7},
 		map[string]string{"nonplanar_mode": "off", "top_shell_layers": "3", "bottom_shell_layers": "3", "sparse_infill_density": "10%"},

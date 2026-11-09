@@ -17,6 +17,7 @@
 #include <vector>
 #include <utility>
 
+#include "Nonplanar/CurvedTopsSurface.hpp"
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
 #include "ElephantFootCompensation.hpp"
@@ -729,6 +730,55 @@ static double floating_seed_area(const PrintObject &object)
     return largest;
 }
 
+static std::pair<double, double> curved_top_band(PrintObject &object, const SlicingParameters &params, std::vector<coordf_t> &profile)
+{
+    constexpr double BandHeight = 0.2;
+    const PrintObjectConfig &config = object.config();
+    if (!curved_tops_mode(config.nonplanar_mode.value))
+        return {};
+    const std::vector<coordf_t> layers = generate_object_layers(params, profile, config.precise_z_height.value);
+    double coarsest = 0.;
+    for (size_t i = 2; i + 1 < layers.size(); i += 2)
+        coarsest = std::max(coarsest, layers[i + 1] - layers[i]);
+    if (coarsest <= BandHeight + EPSILON)
+        return {};
+    const double cos_low = std::cos(Geometry::deg2rad(1.)), cos_high = std::cos(Geometry::deg2rad(config.nonplanar_curved_max_angle.value));
+    const indexed_triangle_set mesh = Nonplanar::slicing_frame_mesh(object);
+    double lo = std::numeric_limits<double>::max(), hi = std::numeric_limits<double>::lowest();
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3d a = mesh.vertices[f[0]].cast<double>(), b = mesh.vertices[f[1]].cast<double>(), c = mesh.vertices[f[2]].cast<double>();
+        const Vec3d n = (b - a).cross(c - a);
+        const double length = n.norm();
+        if (length < 0.02 || n.z() <= 0.)
+            continue;
+        const double nz = n.z() / length;
+        if (nz >= cos_low || nz < cos_high)
+            continue;
+        lo = std::min({ lo, a.z(), b.z(), c.z() });
+        hi = std::max({ hi, a.z(), b.z(), c.z() });
+    }
+    if (lo > hi)
+        return {};
+    const int shells = curved_top_layers(object);
+    lo -= (shells + 1) * coarsest;
+    std::vector<double> banded;
+    bool changed = false;
+    for (size_t i = 0; i + 1 < layers.size(); i += 2) {
+        double h = layers[i + 1] - layers[i];
+        if (i > 0 && layers[i + 1] >= lo && layers[i] <= hi && h > BandHeight + EPSILON) {
+            h = BandHeight;
+            changed = true;
+        }
+        banded.push_back(layers[i]);
+        banded.push_back(h);
+    }
+    if (!changed)
+        return {};
+    profile = smooth_height_profile(banded, params, HeightProfileSmoothingParams(5, true));
+    BOOST_LOG_TRIVIAL(info) << object.model_object()->name << ": curved top band " << lo << "-" << hi << " mm at " << BandHeight << " mm layers";
+    return { std::max(0., lo), hi };
+}
+
 void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
@@ -839,6 +889,7 @@ void PrintObject::slice()
     else if (Nonplanar::field_layers_considered(*this, m_auto_planar && !m_auto_planar_exact))
         if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
             layer_height_profile = std::move(field);
+    m_curved_band = curved_top_band(*this, m_slicing_params, layer_height_profile);
     m_print->throw_if_canceled();
     m_typed_slices = false;
     m_belt_min_z              = 0.;
@@ -968,9 +1019,28 @@ static bool smoothest_tops_head_known(const PrintConfig &config)
     return warning.empty();
 }
 
+static void note_curved_drop(std::vector<CurvedSurfaceDrop> &drops, const NonplanarSurface &surface, const char *reason)
+{
+    CurvedSurfaceDrop &dropped = drops.emplace_back();
+    dropped.volume = surface.volume;
+    dropped.reason = reason;
+    for (const auto &facet : surface.mesh)
+        dropped.facets.push_back(facet.first);
+}
+
+void PrintObject::drop_curved_planar_surfaces()
+{
+    const auto planar = [this](const NonplanarSurface &surface) { return m_curved_planar_surfaces.count(surface.stable_id) != 0; };
+    for (const NonplanarSurface &surface : m_nonplanar_surfaces)
+        if (planar(surface))
+            note_curved_drop(m_curved_dropped, surface, "access");
+    m_nonplanar_surfaces.erase(std::remove_if(m_nonplanar_surfaces.begin(), m_nonplanar_surfaces.end(), planar), m_nonplanar_surfaces.end());
+}
+
 void
 PrintObject::find_nonplanar_surfaces()
 {
+    m_curved_dropped.clear();
     if(!curved_tops_mode(m_config.nonplanar_mode.value)) {
         BOOST_LOG_TRIVIAL(debug) << "Find nonplanar surfaces - disabled";
         return;
@@ -984,13 +1054,13 @@ PrintObject::find_nonplanar_surfaces()
 
     BOOST_LOG_TRIVIAL(info) << "Find nonplanar surfaces - start";
 
-    if (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && !smoothest_tops_head_known(m_print->config())) {
+    if (curved_tops_mode(m_config.nonplanar_mode.value) && !smoothest_tops_head_known(m_print->config())) {
         m_nonplanar_surfaces.clear();
         m_curved_upward_area = 0.;
         CurvedSurfaceRejections rejections;
         rejections.head_unknown = true;
         note_curved_surface_rejections(*this, rejections);
-        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no print head model for this printer; Smoothest tops prints flat tops";
+        BOOST_LOG_TRIVIAL(warning) << this->model_object()->name << ": no print head model for this printer; Curved tops prints flat tops";
         return;
     }
 
@@ -1001,6 +1071,7 @@ PrintObject::find_nonplanar_surfaces()
     const ModelVolumePtrs volumes = this->model_object()->volumes;
     for (ModelVolumePtrs::const_iterator it = volumes.begin(); it != volumes.end(); ++ it) {
         if (! (*it)->is_modifier()) {
+            const int volume = int(it - volumes.begin());
             TriangleMesh tmesh = (*it)->mesh();
             tmesh.transform(this->trafo_centered() * (*it)->get_matrix(), true);
             AABBMesh mesh(tmesh, true);
@@ -1037,6 +1108,8 @@ PrintObject::find_nonplanar_surfaces()
             NonplanarSurface nf = NonplanarSurface(facets);
 
             NonplanarSurfaces volume_surfaces = nf.group_surfaces();
+            for (NonplanarSurface &surface : volume_surfaces)
+                surface.volume = volume;
 
 #ifdef SLIC3R_DEBUG_SLICE_PROCESSING
             for (size_t id = 0; id < volume_surfaces.size(); ++ id) {
@@ -1051,6 +1124,7 @@ PrintObject::find_nonplanar_surfaces()
             for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
                 if((*it).stats.max.z - (*it).stats.min.z < 0.03f) {
                     BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface below 0.03 mm height variation";
+                    note_curved_drop(m_curved_dropped, *it, "flat");
                     it = volume_surfaces.erase(it);
                 } else {
                     it++;
@@ -1058,20 +1132,10 @@ PrintObject::find_nonplanar_surfaces()
             }
 
             for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
-                if(m_config.nonplanar_mode.value != NonplanarMode::NonplanarTop &&
-                   (*it).check_max_printing_height(m_config.nonplanar_curved_max_height.value)) {
-                    BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to max printing height constraint";
-                    ++rejections.height;
-                    it = volume_surfaces.erase(it);
-                }else {
-                    it++;
-                }
-            }
-
-            for (NonplanarSurfaces::iterator it = volume_surfaces.begin(); it!=volume_surfaces.end();) {
-                if((*it).check_surface_area()) {
+                if((*it).check_surface_area(float(m_config.nonplanar_curved_min_area.value))) {
                     BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to print area too small";
                     ++rejections.area;
+                    note_curved_drop(m_curved_dropped, *it, "area");
                     it = volume_surfaces.erase(it);
                 }else {
                     it++;
@@ -1082,6 +1146,7 @@ PrintObject::find_nonplanar_surfaces()
                 if(check_nonplanar_collisions((*it))) {
                     BOOST_LOG_TRIVIAL(trace) << "Find nonplanar surfaces - deleted one surface due to collision";
                     ++rejections.collision;
+                    note_curved_drop(m_curved_dropped, *it, "access");
                     it = volume_surfaces.erase(it);
                 } else {
                     it++;
@@ -1109,10 +1174,8 @@ PrintObject::find_nonplanar_surfaces()
     m_curved_candidates = m_nonplanar_surfaces.size();
     for (size_t i = 0; i < m_nonplanar_surfaces.size(); ++i)
         m_nonplanar_surfaces[i].stable_id = int(i);
-    m_nonplanar_surfaces.erase(std::remove_if(m_nonplanar_surfaces.begin(), m_nonplanar_surfaces.end(),
-        [this](const NonplanarSurface &surface) { return m_curved_planar_surfaces.count(surface.stable_id) != 0; }),
-        m_nonplanar_surfaces.end());
-    if (m_config.nonplanar_mode.value == NonplanarMode::NonplanarTop && m_curved_candidates == 0 && !m_curved_fallback_off &&
+    this->drop_curved_planar_surfaces();
+    if (curved_tops_mode(m_config.nonplanar_mode.value) && m_curved_candidates == 0 && !m_curved_fallback_off &&
         smoothest_tops_head_known(m_print->config())) {
         bool walls = false;
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)

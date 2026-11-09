@@ -8,10 +8,13 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
+#include "CurvedTopsSurface.hpp"
+#include "Repair.hpp"
 #include "HeadEnvelope.hpp"
 #include "LayerSources.hpp"
 #include "Multiplanar.hpp"
@@ -166,6 +169,18 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     set("enable_prime_tower", "0");
     set("enable_arc_fitting", "0");
     set("ironing_type", "no ironing");
+    if (object.config().nonplanar_mode.value == NonplanarMode::SmoothMorph) {
+        set("top_shell_layers", std::to_string(curved_top_layers(object)));
+        set("top_shell_thickness", "0");
+    }
+    if (object.config().nonplanar_mode.value == NonplanarMode::SmoothMorph) {
+        const double direction = object.printing_region(0).config().nonplanar_top_direction.value;
+        const auto  *hints     = object.nonplanar_repair();
+        const bool   stepped   = hints != nullptr && hints->top_angle_rungs.count(-1) != 0;
+        if (const std::optional<double> top = direction >= 0.               ? std::optional<double>(direction) :
+                                              direction <= -2. && !stepped ? mesh_auto_top_direction(slicing_frame_mesh(object)) : std::nullopt)
+            set("top_layer_direction", float_to_string_decimal_point(*top));
+    }
     set("adaptive_layer_height_error", "0");
     set("overhang_layer_contact", "0%");
     if (!given)
@@ -174,6 +189,8 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     const double top_w  = object.printing_region(0).config().top_surface_line_width.get_abs_value(nozzle);
     if (top_w <= 0. || top_w > 0.75 * nozzle)
         set("top_surface_line_width", float_to_string_decimal_point(0.75 * nozzle));
+    if (const PrintRegionConfig &rcfg = object.printing_region(0).config(); rcfg.nonplanar_top_order.value != NonplanarTopOrder::Follow)
+        set("top_surface_pattern", nonplanar_top_monotonic(rcfg) ? "monotonic" : "rectilinear");
     if (!std::isnan(road_angle)) {
         const std::string deg = float_to_string_decimal_point(Geometry::rad2deg(road_angle));
         set("solid_infill_direction", deg);
@@ -2091,8 +2108,9 @@ bool build_deform_slice(PrintObject &object, ConformalResult &result, std::strin
     }
     std::shared_ptr<const LayerField> source;
     const bool morph = object.config().nonplanar_mode.value == NonplanarMode::SmoothMorph;
+    std::string morph_limit;
     if (morph) {
-        source = build_smooth_morph(object);
+        source = build_smooth_morph(object, &morph_limit);
     } else if (object.config().nonplanar_deform.value != NonplanarDeform::On) {
         source = build_layer_source(object, why);
         if (!source)
@@ -2105,6 +2123,8 @@ bool build_deform_slice(PrintObject &object, ConformalResult &result, std::strin
         slice.field = source;
     result.layer_source = morph ? "smooth_morph" : object.config().nonplanar_deform.serialize();
     apply_deform_slice(object, std::move(slice), result);
+    if (why != nullptr)
+        *why = morph_limit;
     return true;
 }
 

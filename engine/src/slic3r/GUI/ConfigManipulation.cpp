@@ -1028,10 +1028,12 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
 
     bool has_ironing = (config->opt_enum<IroningType>("ironing_type") != IroningType::NoIroning);
     const NonplanarMode nonplanar_mode   = config->opt_enum<NonplanarMode>("nonplanar_mode");
-    for (auto key : {"nonplanar_curved_max_angle", "nonplanar_curved_max_height", "nonplanar_curved_shells", "nonplanar_curved_cone_tolerance"})
-        toggle_line(key, curved_tops_mode(nonplanar_mode));
-    toggle_line("nonplanar_ignore_duct", curved_tops_mode(nonplanar_mode));
-    toggle_line("nonplanar_clearance_margin", curved_tops_mode(nonplanar_mode) && config->opt_bool("nonplanar_ignore_duct"));
+    toggle_line("nonplanar_curved_max_angle", curved_tops_mode(nonplanar_mode));
+    toggle_line("nonplanar_curved_top_layers", curved_tops_mode(nonplanar_mode) || nonplanar_mode == NonplanarMode::ConformalLayers ||
+                                                   nonplanar_mode == NonplanarMode::SmoothMorph);
+    toggle_line("nonplanar_conformal_ramp_layers", nonplanar_mode == NonplanarMode::ConformalLayers);
+    for (auto key : {"nonplanar_ignore_duct", "nonplanar_collision_tolerance", "nonplanar_duct_graze_limit"})
+        toggle_line(key, nonplanar_mode != NonplanarMode::Off);
     const bool          nonplanar_manual = nonplanar_mode == NonplanarMode::Manual || nonplanar_mode == NonplanarMode::Multiplanar;
     const bool has_nonplanar_shells = nonplanar_mode == NonplanarMode::Auto ||
                                       (nonplanar_manual && (config->opt_int("nonplanar_top_shells") != 0 ||
@@ -1056,7 +1058,7 @@ void ConfigManipulation::toggle_print_fff_options(DynamicPrintConfig *config, in
         toggle_line(el, has_nonplanar_shells);
     toggle_line("nonplanar_tilt_flow", has_nonplanar_shells, 0);
     const bool nonplanar_on = nonplanar_mode != NonplanarMode::Off;
-    for (auto el : {"nonplanar_full_conformal_max_thickness", "nonplanar_collision_check", "nonplanar_road_cooling"})
+    for (auto el : {"nonplanar_full_conformal_max_thickness", "nonplanar_collision_check", "nonplanar_road_cooling", "nonplanar_top_order"})
         toggle_line(el, nonplanar_on);
     toggle_line("nonplanar_repair_iterations",
                 nonplanar_on && config->opt_enum<NonplanarCollisionCheck>("nonplanar_collision_check") != NonplanarCollisionCheck::Off);

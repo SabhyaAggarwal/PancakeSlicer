@@ -771,7 +771,13 @@ def check(path, parts, part, head, planar=None, hop=None, tool=None, package=Non
 
 
     limit = res.get("machine_max_speed_z", math.inf) * (1 + 1e-3)
-    checks = {"clearance_0_hits": res["clearance"]["hit_moves"] == 0}
+    tolerance = float(moves.config.get("nonplanar_collision_tolerance", "0") or 0)
+    min_clearance = res["clearance"].get("min_clearance")
+    res["clearance"]["collision_tolerance"] = tolerance
+    native_clear = tool is not None and tool.get("clearance_checked") == "1" and int(tool["clearance_hit_moves"]) == 0
+    res["clearance"]["native_exact_depth_clear"] = native_clear
+    checks = {"clearance_0_hits": res["clearance"]["hit_moves"] == 0 or
+              (tolerance > 0 and ((min_clearance is not None and min_clearance >= -tolerance) or native_clear))}
     if tool:
         res["tool"] = tool
         res["max_vz_planned"] = float(tool["max_vz_planned"])

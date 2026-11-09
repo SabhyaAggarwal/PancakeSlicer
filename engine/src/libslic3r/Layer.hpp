@@ -198,8 +198,6 @@ public:
                                                     bool spiral_mode,
                                                     bool is_topmost_layer);
     void                    make_contour_z(const sla::IndexedMesh &mesh);
-    struct ContourGain { double planar = 0., contoured = 0.; };
-    static ContourGain *&contour_gain_sink();
 
     void                    export_region_slices_to_svg(const char *path) const;
     void                    export_region_fill_surfaces_to_svg(const char *path) const;

@@ -12,17 +12,22 @@ import './first-run.css';
 
 const SETUP_KEY = 'orca.setup';
 const assets = import.meta.glob<string>('../samples/*.{drc,webp}', { eager: true, query: '?url', import: 'default' });
-type Variant = { slope?: number; file: string; model: string; preview: string };
+type Variant = { slope?: number; hint?: string; file: string; model: string; preview: string };
 type SampleDef = { label: string; variants: Variant[] };
 const asset = (name: string) => assets[`../samples/${name}`];
-const relief = (label: string, name: string, slopes = [10, 15]): SampleDef => ({ label, variants: slopes.map((slope) => {
-  const file = `${name}${slope === 10 ? '' : `-${slope}`}`;
-  return { slope, file: `${file}.drc`, model: asset(`${file}.drc`), preview: asset(`${file}.webp`) };
+const ANY = 'Any curved method', TOPS = 'Smoothest tops or Conformal layers', STEEP = 'Conformal layers or Smooth morph';
+const ANGLE45 = ' · Max curved top angle 45°';
+const relief = (label: string, name: string, title: string, slopes: [number, string][]): SampleDef => ({ label, variants: slopes.map(([slope, hint]) => {
+  const stem = `${name}${slope === 10 ? '' : `-${slope}`}`;
+  return { slope, hint: slope > 20 ? hint + ANGLE45 : hint, file: `${title} ${slope}°.drc`, model: asset(`${stem}.drc`), preview: asset(`${stem}.webp`) };
 }) });
 const SAMPLES: SampleDef[] = [
   { label: 'Benchy', variants: [{ file: '3DBenchy.drc', model: asset('benchy.drc'), preview: asset('benchy.webp') }] },
-  relief('Waves', 'serpentine_waves'), relief('Pyramids', 'four_pyramids'), relief('Ridges', 'chevron_ridges'),
-  relief('Ripples', 'ripple_cylinder'), relief('Cylinder', 'wavy_cylinder', [10, 15, 20]),
+  relief('Waves', 'serpentine_waves', 'Serpentine waves', [[10, ANY], [15, ANY], [27, STEEP], [43, STEEP], [47, 'Smooth morph']]),
+  relief('Pyramids', 'four_pyramids', 'Four pyramids', [[10, ANY], [15, ANY], [27, STEEP], [43, STEEP]]),
+  relief('Ridges', 'chevron_ridges', 'Chevron ridges', [[10, ANY], [15, ANY], [27, STEEP], [43, STEEP]]),
+  relief('Ripples', 'ripple_cylinder', 'Ripple cylinder', [[10, TOPS], [15, TOPS], [27, TOPS], [43, TOPS]]),
+  relief('Cylinder', 'wavy_cylinder', 'Wavy cylinder', [[10, TOPS], [15, TOPS], [20, TOPS], [27, TOPS], [43, STEEP]]),
 ];
 const models = new Map<string, Promise<string>>();
 function modelBlobUrl(url: string) {
@@ -101,7 +106,7 @@ function Sample({ label, variants }: SampleDef) {
             aria-label={`Add ${label}, ${v.slope}° top slope`} onPointerEnter={() => setShown(i)} onFocus={() => setShown(i)}
             onClick={() => void pick(v)}>{v.slope}°</button>)}
         </div>
-        <div className="fr-preview-hint">Steeper needs Ignore cooling duct</div>
+        <div className="fr-preview-hint">{variants[shown].hint}</div>
       </>}
     </HoverCard.Content>
   </HoverCard.Root>;

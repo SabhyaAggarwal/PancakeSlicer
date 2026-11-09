@@ -1101,11 +1101,17 @@ StackLayerField solve_layer_field(const indexed_triangle_set &mesh, const LayerF
     for (int i = 2; pick == n && i < n; i += 3)
         if (same_or_less(feat[i]))
             pick = i;
-    if (pick != n && pick % 3 == 2 && top_rms_angle(fields[pick], cols) > top_rms_angle(planar, cols) - 2.)
+    if (!params.force_field && pick != n && pick % 3 == 2 && top_rms_angle(fields[pick], cols) > top_rms_angle(planar, cols) - 2.)
         pick = n;
     std::vector<double> est(n + 1);
     for (int i = 0; i <= n; ++i)
         est[i] = estimate_support(feat[i]);
+    if (params.force_field && pick == n && n > 0) {
+        pick = 0;
+        for (int i = 1; i < n; ++i)
+            if (est[i] < est[pick])
+                pick = i;
+    }
     std::ostringstream log;
     log << "support estimate planar " << est[n] << " (P " << fp.perimeter_height << ")";
     auto name = [&](int i) {

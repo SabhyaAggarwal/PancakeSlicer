@@ -3,7 +3,6 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
 #include "CurvedTopsSurface.hpp"
-#include "CurvedTopsBudget.hpp"
 #include "SlantChoice.hpp"
 
 #include <cstddef>
@@ -58,7 +57,7 @@ struct ReportObject
     size_t      model_object_id = 0;
     std::string mode;
     CurvedTopsStats curved_tops;
-    CurvedTopBudgetReport curved_budget;
+    std::pair<double, double> curved_band { 0., 0. };
     double curved_cone_tolerance = 0.05;
     std::string layer_source, layer_source_refused;
     size_t      top_patches   = 0;
@@ -77,10 +76,13 @@ struct ReportObject
     std::vector<std::string> warnings;
     std::optional<SlantChoice> slant;
     int         conformal_rung = -1;
+    std::string conformal_variant;
     std::string planar_limit, planar_reason;
+    size_t      morph_hit_moves = 0;
+    double      cap_requested = 0.;
 
     double curved_share() const {
-        if (mode == "curved_tops" || mode == "nonplanar_top") return curved_tops.area_fraction;
+        if (mode == "nonplanar_top") return curved_tops.area_fraction;
         if (!planar_limit.empty()) return 0.;
         return curved_top + planar_top > 0. ? curved_top / (curved_top + planar_top) : 1.;
     }
@@ -99,14 +101,14 @@ struct NonplanarReport
     size_t      machine_hits = 0;
     bool        clearance_override = false;
     size_t      duct_grazes  = 0;
+    double      max_contact  = 0.;
     double      time_s        = 0.;
     double      curved_time_s = 0.;
     bool empty() const {
         if (!patches.empty() || !fallbacks.empty()) return false;
         for (const auto &object : objects)
-            if ((object.mode == "curved_tops" || object.mode == "nonplanar_top") && (object.curved_budget.measured ||
-                !object.curved_budget.patches.empty() || !object.curved_budget.reason.empty() ||
-                !object.curved_tops.planar_limit.empty())) return false;
+            if (object.morph_hit_moves > 0 || ((object.mode == "nonplanar_top") && (
+                !object.curved_tops.planar_limit.empty()))) return false;
         return true;
     }
     const ReportPatch *find_patch(int id, const Point &pos) const;

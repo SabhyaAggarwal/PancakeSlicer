@@ -1248,10 +1248,8 @@ static void check_nonplanar_projected(const ExtrusionEntity *entity, const Layer
         for (const Point3 &p : path.polyline.points)
             if (p.z() <= 0) {
                 const PrintObject &object = *layer.object();
-                if (curved_tops_mode(object.config().nonplanar_mode.value) && object.config().nonplanar_curved_max_angle.value > 12.) {
-                    Nonplanar::refuse_wide_tops(*object.model_object());
-                    throw Nonplanar::WideTopsRetry(object.id().id);
-                }
+                if (curved_tops_mode(object.config().nonplanar_mode.value) && object.config().nonplanar_curved_max_angle.value > 12.)
+                    throw Nonplanar::CurvedSurfacesRetry(object.id().id, path.source_surface_id >= 0 ? std::vector<int>{ path.source_surface_id } : std::vector<int>{});
                 throw_nonplanar_internal(nonplanar_location(layer.print_z, layer_id),
                     "path " + std::to_string(path.source_path_id) + " was not projected onto its surface", layer.object()->id().id);
             }
@@ -1385,14 +1383,14 @@ std::vector<ExtrusionPath> LayerRegion::project_nonplanar_path(const ExtrusionPa
 
     const double floor_z = this->layer()->object()->layers().front()->print_z;
     std::vector<ExtrusionPath> result;
-    ExtrusionPath current(source);
-    current.polyline.points.clear();
+    ExtrusionPath blank(source);
+    blank.polyline.points = Points3();
+    ExtrusionPath current(blank);
     int current_owner = -3;
     auto flush = [&]() {
         if (current.polyline.points.size() >= 2)
             result.emplace_back(std::move(current));
-        current = ExtrusionPath(source);
-        current.polyline.points.clear();
+        current = blank;
     };
 
     for (size_t i = 1; i < source.polyline.points.size(); ++i) {

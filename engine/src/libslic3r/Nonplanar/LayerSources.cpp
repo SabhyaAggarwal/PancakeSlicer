@@ -25,6 +25,8 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -60,6 +62,7 @@ struct SourceParams
     double cap;
     double min_ratio;
     double max_ratio;
+    int    morph_layers;
     double ka() const { return 1. / min_ratio - 1.; }
     double kb() const { return 1. - 1. / max_ratio; }
 };
@@ -72,9 +75,10 @@ SourceParams source_params(const PrintObject &object)
     P.first     = pc.initial_layer_print_height.value;
     P.nozzle    = pc.nozzle_diameter.values.empty() ? 0.4 : pc.nozzle_diameter.values.front();
     P.z0        = P.first + 2. * P.h;
-    P.cap       = P.h / (0.75 * P.nozzle);
+    P.cap       = std::tan(Geometry::deg2rad(std::clamp(object.config().nonplanar_curved_max_angle.value, 0.5, 89.)));
     P.min_ratio = 0.5;
     P.max_ratio = std::min(1.5, 0.8 * P.nozzle / P.h);
+    P.morph_layers = object.config().nonplanar_morph_layers.value;
     return P;
 }
 
@@ -420,6 +424,7 @@ std::unique_ptr<LayerField> build_optimized(const PrintObject &object, const ind
     lp.flat_base_height  = P.z0;
     lp.max_slope         = std::atan(P.cap);
     lp.head              = &head;
+    lp.force_field       = object.requested_nonplanar_mode() != NonplanarMode::Auto;
     lp.throw_if_canceled = [&object]() { throw_if_canceled(object); };
     LayerFieldReport report;
     StackLayerField  f = solve_layer_field(mesh, lp, &report);
@@ -480,6 +485,7 @@ HeadEnvelope morph_body(const HeadEnvelope &head, double inflation, bool mirror)
     out.boxes.clear();
     for (HeadBox box : head.boxes)
         if (!box.nozzle && !box.infinite_x && !box.infinite_y) {
+            box.min.z() += head.contact_tolerance;
             if (mirror) {
                 const Vec3d lo = box.min;
                 box.min.head<2>() = -box.max.head<2>();
@@ -636,7 +642,7 @@ std::vector<MorphPatch> morph_patches(const indexed_triangle_set &mesh, const He
         p.level = P.first + P.h * std::ceil((highest_fit - P.first - 1e-5) / P.h);
         p.level = std::max(p.level, P.z0 + P.h);
         const double relief = p.level - *std::min_element(p.top.data().begin(), p.top.data().end());
-        p.depth = std::max(5. * P.h, relief / 0.65);
+        p.depth = std::max(P.morph_layers * P.h, relief / 0.65);
         p.begin = std::max(P.z0, floor);
         p.end = p.level;
         for (size_t n = 0; n < distance.size(); ++n)
@@ -657,7 +663,7 @@ std::vector<MorphPatch> morph_patches(const indexed_triangle_set &mesh, const He
 
 }
 
-std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object)
+std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::string *limit)
 {
     const SourceParams P = source_params(object);
     const indexed_triangle_set mesh = slicing_frame_mesh(object);
@@ -669,7 +675,8 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object)
     const double inflation = 0.6 * P.nozzle + 0.25 + 0.3;
     const HeadEnvelope body = morph_body(head, inflation, false), body_mirror = morph_body(head, inflation, true);
     double cap = P.cap;
-    if (object.has_support() || object.print()->objects().size() > 1 || object.instances().size() > 1)
+    const bool banded = object.has_support() || object.print()->objects().size() > 1 || object.instances().size() > 1;
+    if (banded)
         for (const HeadBox &box : head.boxes) {
             if (box.infinite_x || box.infinite_y) continue;
             const double grow = box.nozzle ? 0. : head.lateral_margin;
@@ -680,10 +687,17 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object)
                 floor = std::max(floor, head.tip_allowance.height);
                 if (floor >= box.max.z()) continue;
             }
-            cap = std::min(cap, std::max(0., floor - (box.nozzle ? 0. : head.margin)) / (radius + inflation));
+            cap = std::min(cap, std::max(0., floor + head.contact_tolerance - (box.nozzle ? 0. : head.margin)) / (radius + inflation));
         }
-    const double user_slope = object.printing_region(0).config().nonplanar_max_slope.value;
-    if (user_slope > 0.) cap = std::min(cap, std::tan(Geometry::deg2rad(user_slope)));
+    if (limit != nullptr && cap < P.cap - 1e-9) {
+        std::ostringstream why;
+        why << std::fixed << std::setprecision(1) << "Smooth morph followed tops up to " << Geometry::rad2deg(std::atan(cap))
+            << " deg (your Max curved top angle is " << object.config().nonplanar_curved_max_angle.value << " deg): with "
+            << (object.has_support() ? "support" : "other objects or copies on the plate")
+            << " it prints in height bands, and a steeper level would hit the print head over the neighbouring band; steeper "
+               "tops print flat there";
+        *limit = why.str();
+    }
     auto patches = morph_patches(mesh, grid, P, cap, body);
     const double offset = P.first - P.h;
     double highest = bbox.max.z();

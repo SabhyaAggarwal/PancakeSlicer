@@ -11,7 +11,7 @@ import { slicedFlatReason } from './recommend';
 import { plateSignature } from './slice-input';
 import { effectiveConfig, getState, subscribeStore, toast, type PlateObject, type State } from './state/store';
 
-export type SurfaceStatus = 'curves' | 'duct' | 'steep' | 'tall' | 'small' | 'flat';
+export type SurfaceStatus = 'curves' | 'duct' | 'steep' | 'small' | 'flat';
 export type Verdict = 'curves' | 'duct' | 'no' | 'flat';
 export interface Surface { estimate: SurfaceStatus; reason: string; slope: number; span: number; area: number;
   verdict: Verdict;
@@ -72,7 +72,7 @@ window.addEventListener('keydown', (e) => {
 function settingsOf(s: State, o: PlateObject) {
   const c = { ...effectiveConfig(s, 'process'), ...o.settings };
   const num = (k: string) => Number(Array.isArray(c[k]) ? (c[k] as unknown[])[0] : c[k]);
-  return { mode: String(c.nonplanar_mode ?? 'off'), max_angle: num('nonplanar_curved_max_angle') || 12, max_height: num('nonplanar_curved_max_height') || 0,
+  return { mode: String(c.nonplanar_mode ?? 'off'), max_angle: num('nonplanar_curved_max_angle') || 30,
     min_area: num('nonplanar_min_patch_area') || 0, ignore_duct: ['1', 'true'].includes(String(c.nonplanar_ignore_duct ?? '0')) };
 }
 
@@ -271,12 +271,12 @@ function applyOutcome() {
       if (f.estimate === 'flat') return;
       const share = total[k] > 0 ? done[k] / total[k] : 0;
       const deg = (v: number) => `${Math.round(v)}°`, limit = flat?.limit;
-      const why = f.estimate === 'tall' || f.estimate === 'small' ? f.reason
+      const why = f.estimate === 'small' ? f.reason
         : limit?.kind === 'access' && limit.reachableDeg != null ? `Slope up to ${deg(f.slope)} is steeper than the ${limit.accessBy === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg(limit.reachableDeg)})`
         : limit?.kind === 'angle' && limit.capDeg != null ? `Slope up to ${deg(f.slope)} is above your ${deg(limit.capDeg)} curved-top limit`
         : flat?.why ?? 'The slice kept it flat';
       inst.surfaces[k] = share >= 0.5 ? { ...f, verdict: 'curves', line: 'Curves', why: undefined, share }
-        : (flat?.tryDuct || (flat?.head && ductIgnorable && !ignoring)) && f.estimate !== 'tall' && f.estimate !== 'small'
+        : (flat?.tryDuct || (flat?.head && ductIgnorable && !ignoring)) && f.estimate !== 'small'
           ? { ...f, verdict: 'duct', line: 'Needs Ignore cooling duct', why, share }
           : { ...f, verdict: 'no', line: "Can't curve here", why, share };
     });
@@ -289,12 +289,11 @@ interface PlanRegion { object: number; facets: string; curved: boolean; curved_s
   access_by?: 'nozzle' | 'head'; ignore_duct?: { curved: boolean }; area_xy: number; span: number; slope_max: number }
 interface PlanTops { schema: string; ignore_duct: boolean; regions: PlanRegion[] }
 
-function planReason(r: PlanRegion, maxHeight: number): string {
+function planReason(r: PlanRegion): string {
   const slope = `Slope up to ${Math.round(r.slope_max)}°`, deg = r.reachable_slope_deg != null ? `${Math.round(r.reachable_slope_deg)}°` : null;
   switch (r.planar_limit) {
     case 'access': return deg ? `${slope} is steeper than the ${r.access_by === 'nozzle' ? 'nozzle can follow' : 'print head reaches'} (${deg})` : 'The print head cannot reach it';
     case 'angle': return deg ? `${slope} is above the ${deg} curved-top limit` : `${slope} is above the curved-top limit`;
-    case 'height': return `Taller than your ${maxHeight ? `${maxHeight} mm ` : ''}curved-top height`;
     case 'area': return 'Too small for a curved top';
     case 'head_unknown': return 'This printer has no print head model';
     case 'flat': return 'Flat, prints exactly';
@@ -316,11 +315,11 @@ async function planned(s: State, objects: PlateObject[], mine: number): Promise<
   const plan = status.record as PlanTops | undefined;
   if (plan?.schema !== 'orca.nonplanar.plan_tops.v1') throw new Error('the slicer returned no curved tops plan');
   return objects.flatMap((o) => {
-    const oi = s.objects.indexOf(o), height = settingsOf(s, o).max_height;
+    const oi = s.objects.indexOf(o);
     const regions: RegionIn[] = plan.regions.filter((r) => r.object === oi).map((r) => {
       const status: SurfaceStatus = r.curved ? 'curves' : r.planar_limit === 'flat' ? 'flat' : !plan.ignore_duct && r.ignore_duct?.curved ? 'duct'
-        : r.planar_limit === 'height' ? 'tall' : r.planar_limit === 'area' ? 'small' : 'steep';
-      return { facets: r.facets, status, reason: planReason(r, height), slope_max: r.slope_max, span: r.span, area: r.area_xy, share: r.curved_share };
+        : r.planar_limit === 'area' ? 'small' : 'steep';
+      return { facets: r.facets, status, reason: planReason(r), slope_max: r.slope_max, span: r.span, area: r.area_xy, share: r.curved_share };
     });
     return o.instances.map((inst) => build(o, inst.id, regions));
   });

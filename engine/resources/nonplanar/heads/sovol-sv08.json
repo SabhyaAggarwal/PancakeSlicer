@@ -151,7 +151,7 @@
     {"name": "air duct 5020 [z4.8-7.3]", "min": [7.5, -27.9, 4.82], "max": [25.34, 8.82, 7.32]},
     {"name": "extruder install plate [z5.8-11.8]", "min": [-31.4, 17.22, 5.82], "max": [-12.22, 25.72, 11.82]},
     {"name": "extruder cover 5020 (front shroud) [z5.9-11.9]", "min": [-31.32, -36.68, 5.9], "max": [29.68, 17.82, 11.9]},
-    {"name": "inductive probe (NPN proximity switch) [z5.9-11.9]", "min": [-22.82, 4.23, 5.9], "max": [-10.82, 18.47, 11.9]},
+    {"name": "inductive probe (NPN proximity switch) [z5.9-11.9]", "min": [-22.82, 4.23, 5.9], "max": [-10.82, 18.47, 11.9], "duct": false},
     {"name": "air deflector 2 (rear 3010 duct) [z6.9-12.9]", "min": [-10.78, 12.47, 6.88], "max": [18.18, 30.52, 12.88]},
     {"name": "extruder install plate [z11.8-26.8]", "min": [-31.4, 15.22, 11.82], "max": [29.75, 25.72, 26.82]},
     {"name": "extruder sliding panel [z19.4-20.0]", "min": [-28.43, 25.72, 19.4], "max": [-20.04, 27.72, 20.0]},

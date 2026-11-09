@@ -87,7 +87,7 @@
     {"name": "left_duct_riser", "min": [-35.0, -20.0, 14.0], "max": [-10.0, 12.0, 30.0]},
     {"name": "right_duct_riser", "min": [10.0, -20.0, 14.0], "max": [35.0, 12.0, 30.0]},
     {"name": "front_housing", "min": [-35.0, -25.0, 18.0], "max": [35.0, 0.0, 80.0]},
-    {"name": "part_cooling_fan", "min": [-22.0, -23.0, 22.0], "max": [22.0, -5.0, 63.0]},
+    {"name": "part_cooling_fan", "min": [-22.0, -23.0, 22.0], "max": [22.0, -5.0, 63.0], "duct": true},
     {"name": "hotend_fan", "min": [-14.25, -8.0, 15.0], "max": [10.75, 8.0, 40.0]},
     {"name": "carriage", "min": [-35.0, 8.0, 24.0], "max": [35.0, 33.0, 100.0]},
     {"name": "x_gantry", "min": [0.0, -33.0, 34.0], "max": [0.0, 33.0, 100.0], "infinite_x": true}

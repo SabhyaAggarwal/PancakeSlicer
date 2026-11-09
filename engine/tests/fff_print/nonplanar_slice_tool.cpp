@@ -57,6 +57,9 @@
 #include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/RegionDetect.hpp"
+#include "libslic3r/Nonplanar/CurvedTopsSurface.hpp"
+#include "libslic3r/Nonplanar/Validate.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 #include "libslic3r/Nonplanar/Multiplanar.hpp"
 #include "libslic3r/Nonplanar/NpField.hpp"
 #include "libslic3r/Nonplanar/OrientationField.hpp"
@@ -146,6 +149,7 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string detect_regions;
+    std::string plan_tops;
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
                 tip_out, planned_out, verify_gcode, field_file, dump_field, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets,
                 preset_cache, stage_cache;
@@ -233,6 +237,7 @@ Model read_input(const std::string &file)
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       --detect-regions OUT.json MODEL [--printer NAME --vendor VENDOR] (no slicing)\n"
+                 "       --plan-tops OUT.json: with the print arguments and no -o, the curved tops plan per detected region\n"
                  "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--field-file FIELD.npz] [--dump-field FIELD.npz]\n"
@@ -506,6 +511,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--project") a.project = next();
         else if (arg == "--detect-regions") a.detect_regions = next();
+        else if (arg == "--plan-tops") a.plan_tops = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
         else if (arg == "--tip-out") a.tip_out = next();
         else if (arg == "--planned-out") a.planned_out = next();
@@ -658,7 +664,7 @@ Args parse_args(int argc, char **argv)
         return a;
     }
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
-        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty() && a.wipe_tower_only.empty()) ||
+        (a.output.empty() && ! a.orient_only && a.plan_tops.empty() && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty() && a.wipe_tower_only.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
         usage("--printer, --process, --filament, -o and one of a model, --plate, --project or --calib are required");
     if (a.surface_grid && a.json.empty())
@@ -1189,6 +1195,141 @@ void apply_layer_profile(const Args &args, Model &model, Print &print, const Dyn
         }
     }
     print.apply(model, config);
+}
+
+struct CurvedTopsPlan {
+    std::map<std::pair<int, int>, std::string> facets;
+    double max_angle = 0.;
+    bool   head_unknown = false;
+    std::string access_by;
+    std::pair<double, double> band;
+};
+
+CurvedTopsPlan curved_tops_plan(const PrintObject &object)
+{
+    CurvedTopsPlan plan;
+    plan.max_angle    = object.config().nonplanar_curved_max_angle.value;
+    plan.head_unknown = curved_tops_stats(object).planar_limit == "head_unknown";
+    plan.band         = object.curved_band();
+    plan.access_by    = Nonplanar::clearance_override_active(object.print()->config()) ? "nozzle" : "head";
+    for (const CurvedSurfaceDrop &drop : object.curved_dropped_surfaces())
+        for (int facet : drop.facets)
+            plan.facets.emplace(std::make_pair(drop.volume, facet), drop.reason);
+    for (const NonplanarSurface &surface : object.nonplanar_surfaces())
+        for (const auto &facet : surface.mesh)
+            plan.facets[{ surface.volume, facet.first }] = "curved";
+    return plan;
+}
+
+std::vector<std::optional<CurvedTopsPlan>> plan_curved_tops(Print &print, const Model &model, const DynamicPrintConfig &config)
+{
+    print.apply(model, config);
+    print.plan_curved_tops();
+    std::vector<std::optional<CurvedTopsPlan>> plans(model.objects.size());
+    for (size_t i = 0; i < model.objects.size(); ++i)
+        for (const PrintObject *object : print.objects())
+            if (object->model_object()->id() == model.objects[i]->id())
+                plans[i] = curved_tops_plan(*object);
+    return plans;
+}
+
+nlohmann::json region_plan(const Nonplanar::Region &region, int volume, const std::vector<double> &areas, const std::vector<double> &slopes,
+                           const CurvedTopsPlan &plan, double asked_angle)
+{
+    double curved = 0., total = 0.;
+    std::map<std::string, double> flat;
+    for (int facet : region.facets) {
+        total += areas[facet];
+        std::string why = "other";
+        if (plan.head_unknown)
+            why = "head_unknown";
+        else if (const auto it = plan.facets.find({ volume, facet }); it != plan.facets.end())
+            why = it->second;
+        else if (slopes[facet] > plan.max_angle)
+            why = "angle";
+        (why == "curved" ? curved : flat[why]) += areas[facet];
+    }
+    const double share = total > 0. ? curved / total : 0.;
+    nlohmann::json out = { { "curved", share >= 0.5 }, { "curved_share", share }, { "planar_limit", nullptr }, { "reachable_slope_deg", nullptr } };
+    const auto limit = std::max_element(flat.begin(), flat.end(), [](const auto &a, const auto &b) { return a.second < b.second; });
+    if (limit != flat.end() && total - curved >= 0.01 * total) {
+        out["planar_limit"] = limit->first;
+        if (limit->first == "access" || limit->first == "angle")
+            out["reachable_slope_deg"] = plan.max_angle;
+        if (limit->first == "access")
+            out["access_by"] = plan.access_by;
+    }
+    return out;
+}
+
+void write_plan_tops(const Args &args, Model &model, const DynamicPrintConfig &given, Print &print)
+{
+    DynamicPrintConfig config = given;
+    if (!curved_tops_mode(config.opt_enum<NonplanarMode>("nonplanar_mode")))
+        config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::NonplanarTop));
+    const NonplanarMode mode        = config.opt_enum<NonplanarMode>("nonplanar_mode");
+    const double        asked_angle = config.opt_float("nonplanar_curved_max_angle");
+    DynamicPrintConfig  duct        = config;
+    duct.set_key_value("nonplanar_ignore_duct", new ConfigOptionBool(true));
+    duct.set_key_value("nonplanar_curved_max_angle", new ConfigOptionFloat(std::max(asked_angle, Nonplanar::curved_max_angle_limit(mode))));
+
+    auto t0 = std::chrono::steady_clock::now();
+    const auto asked = plan_curved_tops(print, model, config);
+    const auto head  = Nonplanar::resolve_head_envelope(print.config());
+    const double asked_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    t0 = std::chrono::steady_clock::now();
+    Print duct_print;
+    duct_print.is_BBL_printer() = print.is_BBL_printer();
+    const auto ducted = plan_curved_tops(duct_print, model, duct);
+    const double duct_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+
+    nlohmann::json report = { { "schema", "orca.nonplanar.plan_tops.v1" }, { "label", "plan" }, { "head", head.id }, { "model", args.model },
+                              { "mode", config.opt_serialize("nonplanar_mode") }, { "max_angle_deg", asked_angle },
+                              { "ignore_duct", config.opt_bool("nonplanar_ignore_duct") },
+                              { "ignore_duct_pass", { { "max_angle_deg", duct.opt_float("nonplanar_curved_max_angle") } } },
+                              { "seconds", { { "plan", asked_s }, { "ignore_duct_pass", duct_s } } },
+                              { "not_planned", nlohmann::json::array({ "clearance repair", "time and quality guards" }) },
+                              { "objects", nlohmann::json::array() }, { "regions", nlohmann::json::array() } };
+    for (size_t oi = 0; oi < model.objects.size(); ++oi) {
+        if (!asked[oi] || !ducted[oi])
+            continue;
+        const ModelObject &object = *model.objects[oi];
+        nlohmann::json jo = { { "object", oi }, { "name", object.name }, { "max_angle_deg", asked[oi]->max_angle },
+                              { "ignore_duct_max_angle_deg", ducted[oi]->max_angle } };
+        if (asked[oi]->band.second > asked[oi]->band.first)
+            jo["curved_band"] = { { "from", asked[oi]->band.first }, { "to", asked[oi]->band.second }, { "layer_height", 0.2 } };
+        report["objects"].push_back(std::move(jo));
+        const Transform3d instance = object.instances.empty() ? Transform3d::Identity() : object.instances.front()->get_matrix();
+        for (size_t vi = 0; vi < object.volumes.size(); ++vi) {
+            const ModelVolume &volume = *object.volumes[vi];
+            if (!volume.is_model_part())
+                continue;
+            const Transform3d          transform = instance * volume.get_matrix();
+            const indexed_triangle_set &its      = volume.mesh().its;
+            std::vector<double>        areas(its.indices.size()), slopes(its.indices.size());
+            for (size_t f = 0; f < its.indices.size(); ++f) {
+                const Vec3d a = transform * its.vertices[its.indices[f](0)].cast<double>(), b = transform * its.vertices[its.indices[f](1)].cast<double>(),
+                            c = transform * its.vertices[its.indices[f](2)].cast<double>();
+                const Vec3d n = (b - a).cross(c - a);
+                areas[f]      = 0.5 * n.norm();
+                slopes[f]     = n.norm() > 0. ? Geometry::rad2deg(std::acos(std::clamp(std::abs(n.z()) / n.norm(), 0., 1.))) : 90.;
+            }
+            for (const Nonplanar::Region &r : Nonplanar::detect_nonplanar_regions(volume, transform, head)) {
+                nlohmann::json jr = { { "object", oi }, { "volume", vi }, { "kind", Nonplanar::region_kind_name(r.kind) }, { "area", r.area },
+                                      { "slope", { r.min_slope, r.max_slope } }, { "z_range", { r.min_z, r.max_z } },
+                                      { "centroid", { r.centroid.x(), r.centroid.y(), r.centroid.z() } } };
+                jr.update(region_plan(r, int(vi), areas, slopes, *asked[oi], asked_angle));
+                jr["ignore_duct"] = region_plan(r, int(vi), areas, slopes, *ducted[oi], duct.opt_float("nonplanar_curved_max_angle"));
+                jr["facets"]      = r.facets;
+                report["regions"].push_back(std::move(jr));
+            }
+        }
+    }
+    boost::nowide::ofstream out(args.plan_tops, std::ios::binary);
+    out << report.dump(2) << "\n";
+    if (!out)
+        throw std::runtime_error("cannot write " + args.plan_tops);
+    std::cout << "plan_tops regions " << report["regions"].size() << " seconds " << asked_s + duct_s << "\n";
 }
 
 void place(const Args &args, Model &model, DynamicPrintConfig &config, bool saved = false)
@@ -3203,12 +3344,7 @@ int main(int argc, char **argv)
             params.contact_bar = true;
             if (full.nonplanar_mode.value == NonplanarMode::Auto && full.nonplanar_kinematics.value == RotaryLayout::None)
                 full.nonplanar_mode.value = NonplanarMode::NonplanarTop;
-            if (curved_tops_mode(full.nonplanar_mode.value) || full.nonplanar_mode.value == NonplanarMode::SmoothMorph ||
-                full.nonplanar_mode.value == NonplanarMode::ConformalLayers) {
-                params.cone_tolerance = full.nonplanar_mode.value == NonplanarMode::CurvedTops ? full.nonplanar_curved_cone_tolerance.value : 0.13;
-                if (const char *value = std::getenv("NP_CONTACT_CONE_TOL"); value != nullptr)
-                    params.cone_tolerance = std::clamp(std::atof(value), 0., 0.13);
-            }
+            params.cone_tolerance = curved_cone_tolerance(full.nonplanar_mode.value);
             GCodeProcessorResult &result = processor.result();
             result.clearance_report = verify_clearance(result, params, *make_tool_kinematics(full));
             const ClearanceReport &report = result.clearance_report;
@@ -3223,6 +3359,7 @@ int main(int argc, char **argv)
                 std::cout << "clearance_hit line " << hit.gcode_line << " move " << hit.move_id << " " << hit.component << " "
                           << hit.penetration << " mm\n";
             std::cout << "clearance_cone_graze_moves " << report.cone_graze_moves << "\n";
+            std::cout << "clearance_duct_moves " << report.duct_moves << "\n";
             std::cout << "clearance_hit_classes land " << report.hit_land_moves << " cone " << report.hit_cone_moves << " body "
                       << report.hit_body_moves << " travel " << report.hit_travel_moves << " extrusion " << report.hit_extrusion_moves << "\n";
             if (const char *lines = std::getenv("NP_VERIFY_LINES")) {
@@ -3530,6 +3667,10 @@ int main(int argc, char **argv)
             throw std::runtime_error("validate: " + err.string);
         for (const StringObjectException &w : warnings)
             std::cerr << "warning: " << w.string << "\n";
+        if (!args.plan_tops.empty()) {
+            write_plan_tops(args, model, config, print);
+            return 0;
+        }
         const auto   t_process = std::chrono::steady_clock::now();
         const double c_process = process_cpu_seconds();
         progress("load", 100);
@@ -3829,11 +3970,7 @@ int main(int argc, char **argv)
             ClearanceParams params;
             params.head               = Nonplanar::resolve_head_envelope(print.config());
             params.contact_bar        = true;
-            if (std::any_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
-                    return curved_tops_mode(object->config().nonplanar_mode.value) ||
-                           object->config().nonplanar_mode.value == NonplanarMode::SmoothMorph ||
-                           object->config().nonplanar_mode.value == NonplanarMode::ConformalLayers;
-                })) params.cone_tolerance = curved_tops_cone_tolerance(print);
+            params.cone_tolerance     = curved_tops_cone_tolerance(print);
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }
         if (!args.moves_out.empty() && args.moves_extended)

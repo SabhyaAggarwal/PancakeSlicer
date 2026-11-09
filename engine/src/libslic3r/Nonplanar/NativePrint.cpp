@@ -13,6 +13,7 @@
 #include "OneShotField.hpp"
 #include "OrientationField.hpp"
 #include "PatchTools.hpp"
+#include "Slant.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
@@ -23,6 +24,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Layer.hpp"
@@ -836,9 +838,23 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     const std::vector<Native::Layer> layers = Native::extract_layers(mesh, *field, mids, np);
     std::vector<ExPolygons>          domains(K);
     BoundingBox                      bbox;
+    const auto *cut = dynamic_cast<const SlantField *>(field.get());
+    if (cut != nullptr && !cut->cut())
+        cut = nullptr;
     for (size_t k = 0; k < K; ++k)
         if (!layers[k].pieces.empty()) {
             domains[k] = layers[k].pieces.front().domain;
+            if (cut != nullptr)
+                if (const std::optional<double> limit = cut->cut_limit(int(std::lround((tops[k] - first) / h)))) {
+                    const Vec2d u = cut->shape().u, v(-u.y(), u.x());
+                    const double L = 1e4;
+                    Polygon      half;
+                    for (const Vec2d &q : { Vec2d(u * *limit - v * L), Vec2d(u * *limit + v * L), Vec2d(u * (*limit - L) + v * L),
+                                            Vec2d(u * (*limit - L) - v * L) })
+                        half.points.emplace_back(scaled(q));
+                    half.make_counter_clockwise();
+                    domains[k] = intersection_ex(domains[k], ExPolygons{ ExPolygon(half) });
+                }
             bbox.merge(get_extents(domains[k]));
         }
     if (!bbox.defined)
@@ -858,15 +874,18 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     config.set_deserialize_strict("ironing_type", "no ironing");
     const bool conformal = object.config().nonplanar_mode.value == NonplanarMode::ConformalLayers ||
                            object.config().nonplanar_mode.value == NonplanarMode::Slant;
+    const bool slant = object.config().nonplanar_mode.value == NonplanarMode::Slant;
     if (conformal) {
-        config.set_deserialize_strict("top_surface_pattern", "rectilinear");
+        if (const PrintRegionConfig &rcfg = object.printing_region(0).config(); rcfg.nonplanar_top_order.value != NonplanarTopOrder::Follow)
+            config.set_deserialize_strict("top_surface_pattern", nonplanar_top_monotonic(rcfg) ? "monotonic" : "rectilinear");
         config.set_deserialize_strict("internal_solid_infill_pattern", "rectilinear");
         config.set_deserialize_strict("infill_wall_overlap", "-30%");
         config.set_deserialize_strict("top_bottom_infill_wall_overlap", "-15%");
         if (const auto *pattern = config.option<ConfigOptionEnum<InfillPattern>>("sparse_infill_pattern");
             pattern != nullptr && (pattern->value == ipGrid || pattern->value == ipTriangles || pattern->value == ipStars || pattern->value == ipCubic))
             config.set_deserialize_strict("sparse_infill_pattern", "rectilinear");
-        config.set_deserialize_strict("top_layer_direction", "-1");
+        const double direction = object.printing_region(0).config().nonplanar_top_direction.value;
+        config.set_deserialize_strict("top_layer_direction", direction >= 0. ? float_to_string_decimal_point(direction) : "-1");
         config.set_deserialize_strict("bottom_layer_direction", "-1");
         double dominant = -1.;
         config.set_deserialize_strict("solid_infill_rotate_template",
@@ -879,6 +898,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             config.set_deserialize_strict("sparse_infill_rotate_template",
                                           contour_solid_angles(*field, domains, tops, object.printing_region(0).config().infill_direction.value, true));
     }
+    if (slant)
+        config.set_deserialize_strict("gap_fill_target", "nowhere");
     for (const std::string &key : object.config().keys())
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
             config.set_key_value(key, object.config().option(key)->clone());
@@ -980,7 +1001,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             for (size_t i = 0; i < m; ++i) {
                 const Vec3d a = upright ? Vec3d::UnitZ() : Native::tool_axis(*field, tips[i], tilt_cap);
                 axes[i]       = a.cast<float>();
-                heights[i]    = float(std::clamp(Native::bead_height(*field, tips[i], tops[k - 1], tops[k], a), (conformal ? 0.25 : 0.5) * h, (conformal ? 1.8 : 1.6) * h));
+                heights[i]    = float(std::clamp(Native::bead_height(*field, tips[i], tops[k - 1], tops[k], a), (cut != nullptr ? 0.1 : conformal ? 0.25 : 0.5) * h,
+                                                 (conformal ? 1.8 : 1.6) * h));
                 const Vec3d t = tips[std::min(i + 1, m - 1)] - tips[i > 0 ? i - 1 : 0];
                 double      fac = 1.;
                 const Vec3d g   = field->gradient(tips[i]);
@@ -1117,8 +1139,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                                 << " cells where whole layers would meet the head";
     const std::vector<std::pair<Vec3d, Vec3d>> precede = conformal ? conformal_precedence(*object.model_object()) :
                                                                      std::vector<std::pair<Vec3d, Vec3d>>();
-    FieldOrder     order = conformal ? band_order_roads(roads, n - 1, conflicts > 0 ? conformal_band_height(op.head, h) :
-                                                                                      std::numeric_limits<double>::infinity(), &band_stats, &precede) :
+    FieldOrder     order = conformal ? band_order_roads(roads, n - 1, conflicts > op.head.duct_graze_limit ? conformal_band_height(op.head, h) :
+                                                                                      std::numeric_limits<double>::infinity(), &band_stats, &precede, &domains) :
                                        layer_order_field_roads(roads, op);
     if (conformal)
         BOOST_LOG_TRIVIAL(info) << "Conformal layers " << object.model_object()->name << ": band " << band_stats.band << " mm from z "

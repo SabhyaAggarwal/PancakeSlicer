@@ -20,6 +20,7 @@ struct HeadBox
     bool        infinite_y = false;
     bool        nozzle     = false;
     bool        block      = false;
+    bool        duct       = false;
 };
 
 struct TipAllowance
@@ -45,6 +46,8 @@ struct HeadEnvelope
     double               margin = 0.3;
     double               lateral_margin = 0.3;
     bool                 calibrated = false;
+    double               contact_tolerance = 0.;
+    size_t               duct_graze_limit  = 0;
     std::string          provenance;
     std::string extensions;
 

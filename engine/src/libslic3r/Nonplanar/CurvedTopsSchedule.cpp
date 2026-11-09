@@ -40,12 +40,20 @@
 
 namespace Slic3r {
 
+static Nonplanar::HeadEnvelope planning_head(const PrintConfig &config)
+{
+    Nonplanar::HeadEnvelope head = Nonplanar::resolve_full_head_envelope(config);
+    head.boxes.erase(std::remove_if(head.boxes.begin(), head.boxes.end(), [](const Nonplanar::HeadBox &box) { return box.duct; }), head.boxes.end());
+    return head;
+}
+
 NonplanarClearanceModel NonplanarClearanceModel::from_print(const PrintConfig &config, double height)
 {
     NonplanarClearanceModel out;
-    const auto head = Nonplanar::resolve_head_envelope(config);
+    const auto head = planning_head(config);
     if (head.empty()) throw Slic3r::SlicingError("Curved tops requires a printer head envelope.");
     out.tip_radius_mm = head.tip_flat_radius;
+    out.contact_tolerance = head.contact_tolerance;
     out.contact_allowance_mm = std::min(0.1, 0.5 * height);
     std::map<double, double> radius;
     for (const auto &box : head.boxes) {
@@ -66,50 +74,13 @@ NonplanarClearanceModel NonplanarClearanceModel::from_print(const PrintConfig &c
     return out;
 }
 
-static bool access_model_of(const Nonplanar::HeadEnvelope &head, NonplanarClearanceModel &out)
-{
-    if (head.extensions.empty())
-        return false;
-    const nlohmann::json extensions = nlohmann::json::parse(head.extensions);
-    const auto it = extensions.find("access_model");
-    if (it == extensions.end())
-        return false;
-    const nlohmann::json &m = *it;
-    out = NonplanarClearanceModel();
-    out.tip_radius_mm        = m.at("tip_radius").get<double>();
-    out.contact_allowance_mm = m.at("contact_allowance").get<double>();
-    out.safety_mm            = m.at("safety").get<double>();
-    out.bead_margin          = m.at("bead_margin").get<double>();
-    out.sample_step          = m.at("sample_step").get<double>();
-    out.nozzle.push_back({out.contact_allowance_mm, out.tip_radius_mm});
-    const nlohmann::json &cone = m.at("cone");
-    const double cone_bottom = cone.at("bottom").get<double>(), cone_top = cone.at("top").get<double>(),
-                 r_bottom = cone.at("r_bottom").get<double>(), r_top = cone.at("r_top").get<double>(),
-                 inflation = cone.at("inflation").get<double>();
-    const int    slices = cone.at("slices").get<int>();
-    if (slices <= 0 || !(cone_top > cone_bottom))
-        throw Slic3r::SlicingError("Head " + head.id + ": its access_model cone is empty.");
-    const double step = (cone_top - cone_bottom) / slices;
-    for (int k = 0; k < slices; ++k) {
-        const double low = cone_bottom + k * step, high = low + step;
-        out.nozzle.push_back({low - inflation, r_bottom + (r_top - r_bottom) * (high - cone_bottom) / (cone_top - cone_bottom) + inflation});
-    }
-    for (const nlohmann::json &b : m.at("blocks"))
-        out.boxes.push_back({b.at(0).get<double>(), b.at(1).get<double>(), b.at(2).get<double>(), b.at(3).get<double>(), b.at(4).get<double>()});
-    return true;
-}
-
 NonplanarClearanceModel NonplanarClearanceModel::for_object(const PrintObject &object, double height)
 {
-    if (object.config().nonplanar_mode.value != NonplanarMode::NonplanarTop)
-        return from_print(object.print()->config(), height);
     std::string warning;
-    const Nonplanar::HeadEnvelope head = Nonplanar::resolve_head_envelope(object.print()->config(), &warning);
+    Nonplanar::resolve_head_envelope(object.print()->config(), &warning);
     if (!warning.empty())
-        throw Slic3r::SlicingError(object.model_object()->name + ": Smoothest tops needs this printer's print head model to plan head access. " + warning);
-    NonplanarClearanceModel model;
-    return !Nonplanar::clearance_override_active(object.print()->config()) && access_model_of(head, model) ? model
-                                                                                                        : from_print(object.print()->config(), height);
+        throw Slic3r::SlicingError(object.model_object()->name + ": Curved tops needs this printer's print head model to plan head access. " + warning);
+    return from_print(object.print()->config(), height);
 }
 
 const NonplanarDeferral::PathPlan* NonplanarDeferral::find(size_t layer_id, size_t source_path_id,
@@ -499,17 +470,17 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         min_bottom = std::min(min_bottom, b.bottom);
         box_reach = std::max({ box_reach, std::abs(b.x_min), std::abs(b.x_max), std::abs(b.y_min), std::abs(b.y_max) });
     }
-    const double threshold = min_bottom - model.safety_mm;
+    const double threshold = min_bottom - model.safety_mm + model.contact_tolerance;
     auto blocks = [&m_model](const Sample &m, const Sample &t, bool tolerant = false) {
         const double dz = m.z - t.z - (tolerant ? m_model.safety_mm + 0.001 : 0.);
         const double grow = m.half_width + m_model.bead_margin + (tolerant ? 0. : m_model.safety_mm + m_model.sample_step);
         const double d = std::hypot(m.x - t.x, m.y - t.y);
         for (const NonplanarClearanceModel::Ring &r : m_model.ring_list)
-            if (dz > r.bottom - m_model.safety_mm && d < r.radius + grow)
+            if (dz > r.bottom - m_model.safety_mm + m_model.contact_tolerance && d < r.radius + grow)
                 return true;
         const double rx = m.x - t.x, ry = m.y - t.y;
         for (const NonplanarClearanceModel::Box &b : m_model.boxes)
-            if (dz > b.bottom - m_model.safety_mm &&
+            if (dz > b.bottom - m_model.safety_mm + m_model.contact_tolerance &&
                 rx > b.x_min - grow && rx < b.x_max + grow && ry > b.y_min - grow && ry < b.y_max + grow)
                 return true;
         return false;
@@ -578,9 +549,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     grid.sort_cells(z_of);
     double block_dz_min = std::numeric_limits<double>::max();
     for (const NonplanarClearanceModel::Ring &r : m_model.ring_list)
-        block_dz_min = std::min(block_dz_min, r.bottom - m_model.safety_mm);
+        block_dz_min = std::min(block_dz_min, r.bottom - m_model.safety_mm + m_model.contact_tolerance);
     for (const NonplanarClearanceModel::Box &b : m_model.boxes)
-        block_dz_min = std::min(block_dz_min, b.bottom - m_model.safety_mm);
+        block_dz_min = std::min(block_dz_min, b.bottom - m_model.safety_mm + m_model.contact_tolerance);
     block_dz_min -= 1e-6;
 
     constexpr double coarse_cell = 2.;
@@ -614,12 +585,12 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         const double full = full_ring_reach;
         const size_t cell = size_t(grid.cell_slot(grid.index(tool.x), grid.index(tool.y)));
         const double dz = std::min(local_top[cell], material_top) - tool.z;
-        if (!boxes_by_bottom.empty() && dz > boxes_by_bottom.front().bottom - model.safety_mm) return full;
+        if (!boxes_by_bottom.empty() && dz > boxes_by_bottom.front().bottom - model.safety_mm + model.contact_tolerance) return full;
         const double pad = std::max(0.5 + model.sample_step,
             max_half_width + model.bead_margin + model.safety_mm + model.sample_step);
         double radius = 0.;
         for (const auto &ring : m_model.ring_list)
-            if (dz > ring.bottom - model.safety_mm) radius = std::max(radius, ring.radius + pad);
+            if (dz > ring.bottom - model.safety_mm + model.contact_tolerance) radius = std::max(radius, ring.radius + pad);
         return std::min(full, radius);
     };
     double box_x_min = 0., box_x_max = 0., box_y_min = 0., box_y_max = 0.;
@@ -633,7 +604,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         const Sample &s0 = all[t];
         double lowest_floor = std::numeric_limits<double>::max();
         for (const NonplanarClearanceModel::Box &b : model.boxes)
-            lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
+            lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm + model.contact_tolerance);
         if (zmax <= lowest_floor)
             return;
         for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
@@ -647,7 +618,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                 const double cell_zmax = coarse_zmax[size_t(k)];
                 bool covered = false;
                 for (const NonplanarClearanceModel::Box &b : boxes_by_bottom) {
-                    if (cell_zmax <= s0.z + b.bottom - model.safety_mm)
+                    if (cell_zmax <= s0.z + b.bottom - model.safety_mm + model.contact_tolerance)
                         break;
                     if (cx >= std::floor((s0.x + b.x_min - 0.5) / coarse_cell) && cx <= std::floor((s0.x + b.x_max + 0.5) / coarse_cell) &&
                         cy >= std::floor((s0.y + b.y_min - 0.5) / coarse_cell) && cy <= std::floor((s0.y + b.y_max + 0.5) / coarse_cell)) {
@@ -731,7 +702,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         const Sample &s0 = all[size_t(t)];
         double lowest_floor = std::numeric_limits<double>::max();
         for (const NonplanarClearanceModel::Box &b : model.boxes)
-            lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
+            lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm + model.contact_tolerance);
         if (material_top <= lowest_floor)
             return;
         for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
@@ -743,7 +714,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                     continue;
                 const size_t stamp = unit_zmin.size() + fine_groups.size() + size_t(key);
                 if (!verify_dependents && marker[stamp] == u) continue;
-                const double unit_floor = unit_zmin[size_t(u)] + boxes_by_bottom.front().bottom - model.safety_mm;
+                const double unit_floor = unit_zmin[size_t(u)] + boxes_by_bottom.front().bottom - model.safety_mm + model.contact_tolerance;
                 bool complete = true;
                 for (const CellGroup &g : cell_groups[size_t(key)]) {
                     if (g.unit == u || marker[size_t(g.unit)] == u || g.zmax <= unit_floor ||
@@ -751,7 +722,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         continue;
                     bool covered = false;
                     for (const NonplanarClearanceModel::Box &b : boxes_by_bottom) {
-                        if (g.zmax <= s0.z + b.bottom - model.safety_mm)
+                        if (g.zmax <= s0.z + b.bottom - model.safety_mm + model.contact_tolerance)
                             break;
                         if (cx >= std::floor((s0.x + b.x_min - 0.5) / coarse_cell) && cx <= std::floor((s0.x + b.x_max + 0.5) / coarse_cell) &&
                             cy >= std::floor((s0.y + b.y_min - 0.5) / coarse_cell) && cy <= std::floor((s0.y + b.y_max + 0.5) / coarse_cell)) {
@@ -783,9 +754,9 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         const double grow = max_half_width + model.bead_margin + model.safety_mm + model.sample_step;
         bool possible = dz > 0.1 && bounds.min.z() - s0.z < 0.35 && dx * dx + dy * dy < sqr(max_half_width + 1e-6);
         for (const auto &ring : m_model.ring_list)
-            possible |= dz > ring.bottom - model.safety_mm && dx * dx + dy * dy < sqr(ring.radius + grow + 1e-6);
+            possible |= dz > ring.bottom - model.safety_mm + model.contact_tolerance && dx * dx + dy * dy < sqr(ring.radius + grow + 1e-6);
         for (const auto &box : model.boxes)
-            possible |= dz > box.bottom - model.safety_mm &&
+            possible |= dz > box.bottom - model.safety_mm + model.contact_tolerance &&
                 bounds.max.x() > s0.x + box.x_min - grow - 1e-6 && bounds.min.x() < s0.x + box.x_max + grow + 1e-6 &&
                 bounds.max.y() > s0.y + box.y_min - grow - 1e-6 && bounds.min.y() < s0.y + box.y_max + grow + 1e-6;
         if (!possible) return;
@@ -812,7 +783,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         if (! model.boxes.empty()) {
             double lowest_floor = std::numeric_limits<double>::max();
             for (const NonplanarClearanceModel::Box &b : model.boxes)
-                lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm);
+                lowest_floor = std::min(lowest_floor, s0.z + b.bottom - model.safety_mm + model.contact_tolerance);
             if (zmax > lowest_floor)
                 for (double cx = std::max(std::floor((s0.x + box_x_min - 0.5) / coarse_cell), double(coarse.x0()));
                      cx <= std::min(std::floor((s0.x + box_x_max + 0.5) / coarse_cell), double(coarse.x1())); cx += 1.)
@@ -824,7 +795,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
                         const double cell_zmax = coarse_zmax[size_t(k)];
                         bool covered = false;
                         for (const NonplanarClearanceModel::Box &b : boxes_by_bottom) {
-                            if (cell_zmax <= s0.z + b.bottom - model.safety_mm)
+                            if (cell_zmax <= s0.z + b.bottom - model.safety_mm + model.contact_tolerance)
                                 break;
                             if (cx >= std::floor((s0.x + b.x_min - 0.5) / coarse_cell) && cx <= std::floor((s0.x + b.x_max + 0.5) / coarse_cell) &&
                                 cy >= std::floor((s0.y + b.y_min - 0.5) / coarse_cell) && cy <= std::floor((s0.y + b.y_max + 0.5) / coarse_cell)) {
@@ -866,7 +837,6 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
     bool rebuild_units = true;
     const bool wide_cap = curved_tops_mode(object.config().nonplanar_mode.value) &&
         object.config().nonplanar_curved_max_angle.value > 12. + EPSILON;
-    const bool duct_ignored = Nonplanar::clearance_override_active(object.print()->config());
     constexpr size_t MaxWork = 2000000000;
     size_t work = 0;
     bool   out_of_work = false;
@@ -1345,7 +1315,7 @@ NonplanarDeferral plan_nonplanar_deferral(const PrintObject &object, const Nonpl
         }
         bool progress = false;
         out_of_work = work > MaxWork;
-        const bool exhausted = (wide_cap && attempt >= 200 && !duct_ignored) || out_of_work;
+        const bool exhausted = out_of_work;
         for (size_t k = 0; k < cycle.size() && ! exhausted; ++ k) {
             throw_if_canceled();
             const int c = cycle[k];

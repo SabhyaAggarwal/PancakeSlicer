@@ -100,7 +100,7 @@
     {"name": "nozzle_cone_1.00_05", "min": [-1.663, 0.429, 1.0], "max": [1.663, 0.859, 1.5], "nozzle": true},
     {"name": "nozzle_cone_1.00_06", "min": [-1.487, 0.858, 1.0], "max": [1.487, 1.288, 1.5], "nozzle": true},
     {"name": "nozzle_cone_1.00_07", "min": [-1.136, 1.287, 1.0], "max": [1.136, 1.717, 1.5], "nozzle": true},
-    {"name": "inductive probe body (dia 12), z datum +/-0.6 extended down", "min": [-30.5, 12.9, 1.2], "max": [-18.5, 27.4, 41.6]},
+    {"name": "inductive probe body (dia 12), z datum +/-0.6 extended down", "min": [-30.5, 12.9, 1.2], "max": [-18.5, 27.4, 41.6], "duct": false},
     {"name": "cover bottom lip / left 4015 duct outlet (inner part)", "min": [-29.0, -16.5, 1.2], "max": [-11.5, 15.0, 4.5]},
     {"name": "cover bottom lip / right 4015 duct outlet (inner part)", "min": [11.5, -16.5, 1.2], "max": [29.0, 15.0, 4.5]},
     {"name": "nozzle_cone_1.50_00", "min": [-1.413, -2.137, 1.5], "max": [1.413, -1.602, 2.0], "nozzle": true},

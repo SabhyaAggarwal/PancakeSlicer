@@ -372,14 +372,14 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 		})
 	})
 	mux.HandleFunc("GET /api/versions/{id}/{v}", func(w http.ResponseWriter, r *http.Request) {
-		version(w, r, func(_ *workspaceData, id string, _ *versionIndex, v *projectVersion) {
+		version(w, r, func(d *workspaceData, id string, _ *versionIndex, v *projectVersion) {
 			raw, err := os.ReadFile(filepath.Join(st.versionDir(id), "records", v.Record+".json"))
 			if err != nil {
 				workspaceFailure(w, 503, "version_unavailable", "This version could not be read.", "retry_storage", 0)
 				return
 			}
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-			writeJSON(w, 200, json.RawMessage(raw))
+			writeJSON(w, 200, json.RawMessage(migrateVersionRecord(d, raw, v.At)))
 		})
 	})
 	mux.HandleFunc("GET /api/versions/{id}/{v}/summary", func(w http.ResponseWriter, r *http.Request) {

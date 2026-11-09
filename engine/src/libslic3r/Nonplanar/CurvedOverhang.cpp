@@ -1268,7 +1268,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             return total;
         }();
         constexpr double MaxShareOfPlanar = 0.5, MinPlanarFloating = 10.;
-        if (floating > MaxFloatingRoad && (floating > MaxShareOfPlanar * planar_floating || planar_floating < MinPlanarFloating)) {
+        if (support_free(object.config()) && floating > MaxFloatingRoad && (floating > MaxShareOfPlanar * planar_floating || planar_floating < MinPlanarFloating)) {
             BOOST_LOG_TRIVIAL(info) << "Curved overhang of " << object.model_object()->name << " left to planar layers: " << floating
                                     << " mm of its roads would start in air, against " << planar_floating << " mm of planar walls";
             root_roads[root_layer].resize(root_before);

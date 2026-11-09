@@ -2557,10 +2557,10 @@ void TabPrint::build()
         optgroup->append_single_option_line("nonplanar_region_source");
         optgroup->append_single_option_line("nonplanar_curved_max_angle");
         optgroup->append_single_option_line("nonplanar_ignore_duct");
-        optgroup->append_single_option_line("nonplanar_clearance_margin");
-        optgroup->append_single_option_line("nonplanar_curved_max_height");
-        optgroup->append_single_option_line("nonplanar_curved_shells");
-        optgroup->append_single_option_line("nonplanar_curved_cone_tolerance");
+        optgroup->append_single_option_line("nonplanar_collision_tolerance");
+        optgroup->append_single_option_line("nonplanar_duct_graze_limit");
+        optgroup->append_single_option_line("nonplanar_curved_top_layers");
+        optgroup->append_single_option_line("nonplanar_conformal_ramp_layers");
         optgroup->append_single_option_line("nonplanar_deform");
         optgroup->append_single_option_line("multiplanar_max_planes");
         optgroup->append_single_option_line("multiplanar_overhang_threshold");
@@ -2580,6 +2580,7 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Curved top finish"), L"param_wall_surface");
         optgroup->append_single_option_line("nonplanar_top_pattern");
+        optgroup->append_single_option_line("nonplanar_top_order");
         optgroup->append_single_option_line("nonplanar_top_direction");
         optgroup->append_single_option_line("nonplanar_spiral_top");
         optgroup->append_single_option_line("nonplanar_top_finish_flow");

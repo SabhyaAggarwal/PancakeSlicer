@@ -80,6 +80,7 @@
 #include "GCode/ClearanceRepair.hpp"
 #include "Nonplanar/StageCache.hpp"
 #include "Nonplanar/CurvedTopsAccess.hpp"
+#include "Nonplanar/CurvedTopsSchedule.hpp"
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/Report.hpp"
@@ -514,7 +515,9 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
             || opt_key == "rotary_pivot"
             || opt_key == "rotary_tool_length"
             || opt_key == "rotary_table_height"
-            || opt_key == "rotary_tool_mount") {
+            || opt_key == "rotary_tool_mount"
+            || opt_key == "nonplanar_collision_tolerance"
+            || opt_key == "nonplanar_duct_graze_limit") {
             osteps.emplace_back(posSlice);
         }
         else if (opt_key == "z_hop_types") {
@@ -3446,22 +3449,72 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     }
             }();
             return;
-        } catch (const Nonplanar::WideTopsRetry &retry) {
+        } catch (const Nonplanar::CurvedSurfacesRetry &retry) {
             PrintObject *object = nullptr;
             for (PrintObject *o : m_objects)
                 if (o->id().id == retry.object_id) object = o;
             if (object == nullptr)
                 throw;
-            BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no road or deposition order at the wide slope cap; curved tops at 12 degrees";
-            object->m_config.nonplanar_curved_max_angle.value = 12.;
-            object->invalidate_step(posSlice);
-        } catch (const Nonplanar::PlanarTopsRetry &retry) {
-            PrintObject *object = nullptr;
-            for (PrintObject *o : m_objects)
-                if (o->id().id == retry.object_id) object = o;
-            if (object == nullptr)
+            bool dropped = false;
+            for (const NonplanarSurface &surface : object->m_nonplanar_surfaces)
+                if (retry.surfaces.empty() || std::find(retry.surfaces.begin(), retry.surfaces.end(), surface.stable_id) != retry.surfaces.end())
+                    dropped |= object->m_curved_planar_surfaces.insert(surface.stable_id).second;
+            if (!dropped)
                 throw;
+            BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": curved top surfaces print planar where no road or collision-free order exists";
+            object->drop_curved_planar_surfaces();
             object->invalidate_step(posPerimeters);
+        }
+    }
+}
+
+bool Print::drop_unreachable_curved_tops(const CurvedTopsAccessError &error, std::map<size_t, std::vector<std::string>> &warnings)
+{
+    bool changed = false;
+    for (PrintObject *object : m_objects) {
+        if (object->id().id != error.objectId() || !curved_tops_mode(object->config().nonplanar_mode.value))
+            continue;
+        std::vector<int> surfaces = error.surfaces;
+        if (surfaces.empty())
+            for (const NonplanarSurface &surface : object->m_nonplanar_surfaces)
+                surfaces.push_back(surface.stable_id);
+        for (int surface : surfaces)
+            if (object->m_curved_planar_surfaces.insert(surface).second) {
+                const std::string warning = object->model_object()->name + ": curved top surface " +
+                    std::to_string(surface) + " prints planar because no collision-free deposition order exists beside the body.";
+                warnings[object->id().id].push_back(warning);
+                BOOST_LOG_TRIVIAL(warning) << warning;
+                changed = true;
+            }
+        if (changed) {
+            object->drop_curved_planar_surfaces();
+            object->invalidate_step(posPerimeters);
+        }
+    }
+    return changed;
+}
+
+void Print::plan_curved_tops()
+{
+    std::map<size_t, std::vector<std::string>> warnings;
+    for (bool changed = true; changed;) {
+        this->process();
+        changed = false;
+        for (PrintObject *object : m_objects) {
+            if (!curved_tops_mode(object->config().nonplanar_mode.value))
+                continue;
+            size_t       planned_paths = 0;
+            const size_t paths         = nonplanar_plan_fingerprint(*object);
+            if (object->wide_tops_plan(planned_paths) != nullptr && planned_paths == paths)
+                continue;
+            try {
+                plan_nonplanar_deferral_reusing(*object, NonplanarClearanceModel::for_object(*object, object->config().layer_height.value), paths);
+            } catch (const CurvedTopsAccessError &error) {
+                if (!this->drop_unreachable_curved_tops(error, warnings))
+                    throw;
+                changed = true;
+                break;
+            }
         }
     }
 }
@@ -3501,35 +3554,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         try {
             gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
         } catch (const CurvedTopsAccessError &error) {
-            bool changed = false;
-            for (PrintObject *object : m_objects) {
-                if (object->id().id != error.objectId() || !curved_tops_mode(object->config().nonplanar_mode.value))
-                    continue;
-                if (object->config().nonplanar_curved_max_angle.value > 12. &&
-                    !Nonplanar::wide_tops_refused(*object->model_object())) {
-                    Nonplanar::refuse_wide_tops(*object->model_object());
-                    object->m_config.nonplanar_curved_max_angle.value = 12.;
-                    object->invalidate_step(posSlice);
-                    BOOST_LOG_TRIVIAL(warning) << object->model_object()->name << ": no collision-free deposition order at the wide slope cap; curved tops at 12 degrees";
-                    changed = true;
-                    continue;
-                }
-                for (int surface : error.surfaces)
-                    if (object->m_curved_planar_surfaces.insert(surface).second) {
-                        const std::string warning = object->model_object()->name + ": curved top surface " +
-                            std::to_string(surface) + " prints planar because no collision-free deposition order exists beside the body.";
-                        curved_access_warnings[object->id().id].push_back(warning);
-                        BOOST_LOG_TRIVIAL(warning) << warning;
-                        changed = true;
-                    }
-                if (changed) {
-                    auto &surfaces = object->m_nonplanar_surfaces;
-                    surfaces.erase(std::remove_if(surfaces.begin(), surfaces.end(), [object](const NonplanarSurface &surface) {
-                        return object->m_curved_planar_surfaces.count(surface.stable_id) != 0; }), surfaces.end());
-                    object->invalidate_step(posPerimeters);
-                }
-            }
-            if (!changed)
+            if (!this->drop_unreachable_curved_tops(error, curved_access_warnings))
                 throw;
             this->process();
             continue;
@@ -3538,7 +3563,11 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
                 throw;
             throw Slic3r::SlicingError(_u8L("One-shot field: out of memory exporting the field."));
         }
-        if (result != nullptr && repair.refuse_auto_morph(*result)) {
+        if (result != nullptr && repair.step_down_morph_direction(*result)) {
+            this->process();
+            continue;
+        }
+        if (result != nullptr && repair.refuse_struck_morph(*result)) {
             this->process();
             continue;
         }

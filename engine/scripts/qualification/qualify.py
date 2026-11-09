@@ -183,10 +183,13 @@ def main():
             pc = json.loads((out/'print_check.json').read_text())
             checks = pc['checks']
             passed = sum(v is True or isinstance(v, dict) and v.get('ok', v.get('pass')) is True for v in checks.values())
-            hits = pc['clearance'].get('hit_moves')
+            contacts = pc['clearance'].get('hit_moves')
+            hits = 0 if checks.get('clearance_0_hits') is True else contacts
             good = pc.get('ok') is True and passed == len(checks) == case['audit_checks'] and hits == 0 and verifier_hits == 0 and machine_hits == 0
             result['audits'][name] = {'passed': passed, 'total': len(checks), 'expected': case['audit_checks'],
-                                     'hit_moves': hits, 'clearance_hit_moves': hits, 'verifier': verifier, 'ok': good, 'gcode_sha256': digest(out/'out.gcode'),
+                                     'hit_moves': hits, 'clearance_hit_moves': hits, 'contact_moves': contacts,
+                                     'collision_tolerance': pc['clearance'].get('collision_tolerance'),
+                                     'verifier': verifier, 'ok': good, 'gcode_sha256': digest(out/'out.gcode'),
                                      'package_sha256': digest(out/'out.gcode.3mf'), 'report_sha256': digest(out/'print_check.json')}
             write(args.output/'qualification.json', result)
             if not good:

@@ -4,6 +4,7 @@ import { effectiveConfig, getState, setState, updateObject, type Instance, type 
 import type { Config } from '../api/types';
 import { instanceBox } from './geometry';
 import { loadHead, type Head } from '../heads';
+import { OPTIONS } from '../options';
 
 const DEG = Math.PI / 180;
 const KEYS = ['nonplanar_slant_angle', 'nonplanar_slant_direction', 'nonplanar_slant_start_height'] as const;
@@ -33,7 +34,18 @@ export function slantPoint(s: State, e: SlantEdit): THREE.Vector3 | null {
   const t = slantTarget(s);
   if (!t) return null;
   const b = instanceBox(t.o, t.inst);
-  return new T3.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + e.z);
+  let rise = 0;
+  if (num(objectValue(s, t.o, 'nonplanar_slant_morph_layers'), 0) <= 0) {
+    const d = e.dir * DEG, u = [Math.cos(d), Math.sin(d)];
+    let lo = Infinity, hi = -Infinity;
+    for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) {
+      const p = x * u[0] + y * u[1];
+      lo = Math.min(lo, p);
+      hi = Math.max(hi, p);
+    }
+    rise = Math.tan(e.tilt * DEG) * (hi - lo) / 2;
+  }
+  return new T3.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + e.z + rise);
 }
 
 const num = (v: unknown, fallback: number) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? fallback : Number(v));
@@ -42,7 +54,8 @@ const objectValue = (s: State, o: PlateObject, key: string) => o.settings[key] ?
 export function initialSlant(s: State = getState()): SlantEdit | null {
   const t = slantTarget(s);
   if (!t) return null;
-  const angle = num(objectValue(s, t.o, 'nonplanar_slant_angle'), 0), dir = num(objectValue(s, t.o, 'nonplanar_slant_direction'), -1);
+  const own = t.o.settings.nonplanar_slant_angle, angle = own === undefined ? 0 : num(own, 0);
+  const dir = num(objectValue(s, t.o, 'nonplanar_slant_direction'), -1);
   const start = num(objectValue(s, t.o, 'nonplanar_slant_start_height'), 0);
   return { z: start, tilt: angle > 0 ? Math.min(angle, MAX_TILT) : 10, dir: dir >= 0 ? dir : 90, dirAuto: dir < 0, auto: angle <= 0 && dir < 0 && start <= 0 };
 }
@@ -136,7 +149,7 @@ export async function refreshSlantLimit() {
     hi = Math.max(hi, p);
   }
   const duct = ['1', 'true'].includes(String(objectValue(s, t.o, 'nonplanar_ignore_duct') ?? process.nonplanar_ignore_duct ?? '0'));
-  const limit = slantLimit(head, now.dir, Math.max(hi - lo, 1e-3), num(objectValue(s, t.o, 'layer_height'), 0.2), duct,
-    num(objectValue(s, t.o, 'nonplanar_collision_tolerance'), 0));
+  const tolerance = num(objectValue(s, t.o, 'nonplanar_collision_tolerance') ?? OPTIONS.nonplanar_collision_tolerance?.default, 0);
+  const limit = slantLimit(head, now.dir, Math.max(hi - lo, 1e-3), num(objectValue(s, t.o, 'layer_height'), 0.2), duct, tolerance);
   setState({ slant: { ...now, limit } });
 }

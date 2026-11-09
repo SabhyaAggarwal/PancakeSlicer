@@ -157,7 +157,7 @@ struct WidthRoads
 };
 
 void contour_roads(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow,
-                   double layer_height, double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines);
+                   double layer_height, double angle, bool monotonic, double z, WidthRoads &roads, std::vector<Polylines> &lines);
 
 bool outline_is_contour(const ConformalPatch &patch, double tolerance);
 

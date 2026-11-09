@@ -12,6 +12,7 @@
 #include <boost/nowide/fstream.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -22,6 +23,7 @@
 #include <mutex>
 #include <random>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <unordered_set>
 #include <vector>
@@ -357,14 +359,6 @@ void stage_cache_prime(Print &print)
         if (object->is_step_done(posSlice) || !object->m_stage_cache_key.empty())
             continue;
         object->m_stage_cache_key = stage_cache_key(*object);
-        std::string refused;
-        if (curved_tops_mode(object->config().nonplanar_mode.value) && object->config().nonplanar_curved_max_angle.value > 12. &&
-            !wide_tops_refused(*object->model_object()) && stage_cache_read(object->m_stage_cache_key, "wide", refused) && refused == "refused") {
-            refuse_wide_tops(*object->model_object());
-            object->m_config.nonplanar_curved_max_angle.value = 12.;
-            BOOST_LOG_TRIVIAL(warning) << object->model_object()->name
-                                       << ": no collision-free deposition order at the wide slope cap (stage cache); curved tops at 12 degrees";
-        }
         std::string bytes;
         if (curved_tops_mode(object->config().nonplanar_mode.value) && !object->m_nonplanar_repair &&
             stage_cache_read(object->m_stage_cache_key, "hints", bytes)) {
@@ -449,13 +443,6 @@ void stage_cache_record(const Print &print)
                 stage_cache_write(object->m_stage_cache_key, "hints", settled_bytes(settled));
         }
     }
-    for (const PrintObject *object : print.objects())
-        if (!object->m_stage_cache_key.empty() && curved_tops_mode(object->config().nonplanar_mode.value) &&
-            wide_tops_refused(*object->model_object())) {
-            std::string cached;
-            if (!stage_cache_read(object->m_stage_cache_key, "wide", cached))
-                stage_cache_write(object->m_stage_cache_key, "wide", "refused");
-        }
 }
 
 }

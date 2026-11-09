@@ -13,6 +13,8 @@ struct SlantChoice
     double      min_gap_mm = 0., max_gap_mm = 0.;
     double      steps = 0., overhang = 0., planar_steps = 0., planar_overhang = 0.;
     std::string planar_limit, reason;
+    double      requested_deg = 0.;
+    std::string limit, limit_reason;
 };
 
 }

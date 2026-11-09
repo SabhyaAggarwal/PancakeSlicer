@@ -472,7 +472,7 @@ static bool flat_middle(const HeightField &local)
 }
 
 void contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow, double layer_height,
-                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines, const Point *seam = nullptr,
+                  double angle, bool monotonic, double z, WidthRoads &roads, std::vector<Polylines> &lines, const Point *seam = nullptr,
                   const HeightField *samples = nullptr, ArachneCache *cache = nullptr,
                   double flat_angle = std::numeric_limits<double>::quiet_NaN())
 {
@@ -500,7 +500,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
         append(pieces, expolygons_simplify(intersection_ex(stripped, runs_to_expolygons(runs, fine)), scale_(0.5 * fine.pitch())));
     if (!flat_ground.empty()) {
         const ExPolygons lined = intersection_ex(offset_ex(flat_ground, float(scale_(0.25 * flow.spacing()))), area);
-        if (Polylines pl = fill_solid(lined, outer ? ipMonotonic : ipRectilinear, flow.spacing(), flat_angle, outer, flow, z); !pl.empty())
+        if (Polylines pl = fill_solid(lined, monotonic ? ipMonotonic : ipRectilinear, flow.spacing(), flat_angle, monotonic, flow, z); !pl.empty())
             append(lines, link_paths(chain_polylines(std::move(pl)), offset_ex(flat_ground, float(scale_(0.5 * flow.spacing()))),
                                      flow.spacing(), MaxGlide));
     }
@@ -555,7 +555,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
                 continue;
             }
             const ExPolygons lined = intersection_ex(offset_ex(middle, float(scale_(0.25 * flow.spacing()))), ExPolygons{ piece });
-            Polylines pl = fill_solid(lined, outer ? ipMonotonic : ipRectilinear, flow.spacing(), a, outer, flow, z);
+            Polylines pl = fill_solid(lined, monotonic ? ipMonotonic : ipRectilinear, flow.spacing(), a, monotonic, flow, z);
             pl.erase(std::remove_if(pl.begin(), pl.end(), [&middle](const Polyline &l) { return intersection_pl(Polylines{ l }, middle).empty(); }),
                      pl.end());
             if (!pl.empty())
@@ -1182,6 +1182,8 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                                      double host_z, double resample, const Polyline &seam_line, const BandedFill *banded = nullptr)
 {
     const PrintRegion        &region  = object.printing_region(size_t(patch.region_id));
+    const bool                monotonic_top = nonplanar_top_monotonic(region.config());
+    const InfillPattern       top_pattern   = monotonic_top ? ipMonotonic : ipRectilinear;
     const bool                outer   = k == patch.shells;
     const bool                sparse  = banded != nullptr && k <= banded->sparse;
     const bool                plug    = banded != nullptr && !sparse && k <= banded->hidden;
@@ -1310,10 +1312,10 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                 single = diff_ex(single, part);
                 const double w          = std::max({ double(flow.width()), SteepLineWidth * flow.nozzle_diameter(), tallest });
                 const Flow   thick_flow = flow.with_width(float(w)).with_height(float(patch.shell_height));
-                thick.push_back({ shell_polylines(off_voids(part, thick_flow.spacing()), down, ipMonotonic, thick_flow.spacing(), true, thick_flow,
+                thick.push_back({ shell_polylines(off_voids(part, thick_flow.spacing()), down, top_pattern, thick_flow.spacing(), monotonic_top, thick_flow,
                                                   host_z, start, MaxGlide, nullptr, &seam_line), thick_flow });
             }
-            append(linked, shell_polylines(off_voids(single, flow.spacing()), down, ipMonotonic, flow.spacing(), true, flow, host_z,
+            append(linked, shell_polylines(off_voids(single, flow.spacing()), down, top_pattern, flow.spacing(), monotonic_top, flow, host_z,
                                            start, MaxGlide, nullptr, &seam_line));
             rest = diff_ex(rest, face.area);
             append(fall_lines, face.area);
@@ -1374,13 +1376,13 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         if (!fall_lines.empty())
             contours = diff_ex(contours, fall_lines);
         contour_fill(patch.surface, contours, drop,
-                     banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked,
+                     banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer && monotonic_top, host_z, roads, linked,
                      outer ? &start : nullptr, banded->contour, banded->arachne,
                      std::isnan(banded->flat_angle) || outer ? banded->flat_angle : banded->flat_angle + 0.5 * PI);
     } else if (!rest.empty() && ct1_climb_requested() && !sparse && !plug)
         append(linked, climbing_lines(patch.surface.get(), off_voids(rest, flow.spacing()), flow, host_z, start));
     else if (!rest.empty())
-        append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
+        append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? top_pattern : ipRectilinear, flow.spacing(), outer && monotonic_top, flow,
                                        host_z, start, MaxGlide, surface_spaced ? &patch.surface.get() : nullptr, &seam_line, &ramp));
     if (std::getenv("NP_CT1_TRACE"))
         BOOST_LOG_TRIVIAL(warning) << "ct1 shell patch " << patch.id << " k " << k << " outer " << outer << " sparse " << sparse << " plug " << plug
@@ -1561,9 +1563,9 @@ void taper_top(ConformalPatch &patch)
 }
 
 void contour_roads(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow,
-                   double layer_height, double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines)
+                   double layer_height, double angle, bool monotonic, double z, WidthRoads &roads, std::vector<Polylines> &lines)
 {
-    contour_fill(surface, area, drop, strip_height, strip_offset, flow, layer_height, angle, outer, z, roads, lines);
+    contour_fill(surface, area, drop, strip_height, strip_offset, flow, layer_height, angle, monotonic, z, roads, lines);
     if (cover_has_gaps(offset_ex(area, -float(scale_(0.5 * flow.spacing()))), lines, flow.width(), roads.polylines, roads.widths, flow.spacing())) {
         Polygons cover = width_cover(roads);
         append(cover, linked_cover(lines, flow.width()));
@@ -2690,7 +2692,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             const double overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
             const ExPolygons area = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
             std::vector<ShellFill> fills = plan_shell_fills(patch, region.config(), line_width);
-            const bool helix = spiral_top_enabled(region.config(), object.config()) && helix_worthwhile(patch.surface, area);
+            const bool helix = spiral_top_enabled(region.config(), object.config()) && helix_on_surface(patch.surface, area);
             if (!fills.empty())
                 fills.back().helix = fills.back().spiral && helix;
             std::vector<ShellFill> banded_fills = fills;
