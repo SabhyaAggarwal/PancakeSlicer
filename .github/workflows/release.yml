@@ -159,6 +159,7 @@ jobs:
       - name: Check and publish native dependencies
         if: steps.deps.outputs.hit == 'false'
         env:
+          CMAKE_APPLE_SILICON_PROCESSOR: ${{ matrix.target == 'mac-x64' && 'x86_64' || '' }}
           GH_TOKEN: ${{ github.token }}
         run: |
           # Publish only a prefix the engine configures against.
@@ -175,6 +176,8 @@ jobs:
           restore-keys: ccache-v2-${{ matrix.runner }}-${{ matrix.arch }}-
       - name: Build Release engine
         if: steps.engine.outputs.hit != 'true'
+        env:
+          CMAKE_APPLE_SILICON_PROCESSOR: ${{ matrix.target == 'mac-x64' && 'x86_64' || '' }}
         run: .github/scripts/build/engine.sh ${{ matrix.os }} ${{ matrix.arch }}
       - name: Save compiler cache
         if: always() && steps.ccache.outcome == 'success'
