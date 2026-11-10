@@ -254,7 +254,7 @@ jobs:
             --image "pancakeslicer-check:${GITHUB_SHA::10}"
       - name: Package installers
         run: |
-          cp web/public/logo-256.png desktop/build/icon.png
+          cp desktop/icon-256.png desktop/build/icon.png
           if [ "${{ matrix.os }}" = linux ]; then cp -a build-native/tool/lib desktop/build/engine-linux-x64/lib; chmod -R a+rX desktop/build/engine-linux-x64/lib; fi
           case "${{ matrix.target }}" in
             mac-x64) npm run dist:mac-x64 --prefix desktop ;;
