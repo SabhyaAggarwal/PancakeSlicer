@@ -76,8 +76,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: engine/deps/build/OrcaSlicer_dep
-          key: native-v2-ubuntu-24.04-x64-${{ hashFiles('engine/deps/**', 'engine/deps_src/**') }}
-          restore-keys: native-v2-ubuntu-24.04-x64-
+          key: native-v3-ubuntu-24.04-x64-${{ hashFiles('engine/deps/**', 'engine/deps_src/**') }}
+          restore-keys: native-v3-ubuntu-24.04-x64-
       - name: Build native dependencies
         if: steps.deps.outputs.cache-matched-key == ''
         run: |

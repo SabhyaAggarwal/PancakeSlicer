@@ -58,9 +58,9 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             if [ -f "$notes" ]; then gh release edit "$TAG" --notes-file "$notes"; fi
           elif [ -f "$notes" ]; then
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes-file "$notes"
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes-file "$notes"
           else
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes ""
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes ""
           fi
           source="PancakeSlicer-${TAG#v}-source.tar.gz"
           if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "$source"; then
@@ -84,6 +84,7 @@ jobs:
       packages: write
     env:
       CMAKE_POLICY_VERSION_MINIMUM: '3.10'
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'   # FFmpeg's make otherwise runs unbounded -j and exhausts macOS process slots
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       PYTHONUTF8: '1'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -149,10 +150,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: engine/deps/build/OrcaSlicer_dep
-          key: native-v2-${{ matrix.runner }}-${{ matrix.arch }}-${{ hashFiles('engine/deps/**', 'engine/deps_src/**') }}
-          restore-keys: |
-            native-v2-${{ matrix.runner }}-${{ matrix.arch }}-
-            native-v1-${{ matrix.runner }}-${{ matrix.arch }}-
+          key: native-v3-${{ matrix.runner }}-${{ matrix.arch }}-${{ hashFiles('engine/deps/**', 'engine/deps_src/**') }}
+          restore-keys: native-v3-${{ matrix.runner }}-${{ matrix.arch }}-
       - name: Build native dependencies
         if: steps.deps.outputs.cache-matched-key == ''
         run: |

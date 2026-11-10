@@ -448,17 +448,20 @@ if(NOT FREETYPE_FOUND)
 endif()
 
 execute_process(
-    COMMAND ${GIT_EXECUTABLE} rev-parse --is-inside-work-tree
+    COMMAND ${GIT_EXECUTABLE} rev-parse --show-toplevel
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     RESULT_VARIABLE REV_PARSE_RESULT
-    OUTPUT_VARIABLE REV_PARSE_OUTPUT
+    OUTPUT_VARIABLE GIT_TOPLEVEL
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-# Will output "true" and have a 0 return code if within a git repo
-if((REV_PARSE_RESULT EQUAL 0) AND (REV_PARSE_OUTPUT STREQUAL "true"))
+# Inside a git work tree, `git apply` resolves patch paths against the top level, which is not the engine
+# directory when the engine is vendored as a subdirectory (PancakeSlicer's engine/).
+if(REV_PARSE_RESULT EQUAL 0)
     set(IN_GIT_REPO TRUE)
-    # Find relative path from root to source used for adjusting patch command
-    file(RELATIVE_PATH BINARY_DIR_REL  ${CMAKE_SOURCE_DIR}/.. ${CMAKE_BINARY_DIR})
+    file(REAL_PATH "${GIT_TOPLEVEL}" GIT_TOPLEVEL)
+    file(REAL_PATH "${CMAKE_BINARY_DIR}" _binary_dir_real)
+    file(RELATIVE_PATH BINARY_DIR_REL ${GIT_TOPLEVEL} ${_binary_dir_real})
 endif ()
 
 include(OCCT/OCCT.cmake)
