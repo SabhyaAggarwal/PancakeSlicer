@@ -26,9 +26,8 @@ def main():
     exists=subprocess.run(['gh','release','view',args.tag],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
     if exists:
         raise RuntimeError('Release tag already exists; refusing to replace it')
-    notes=ROOT/'.github/release-notes'/(args.tag+'.md')
     subprocess.run(['gh','release','create',args.tag,*map(str,files),'--target',args.main,'--draft','--prerelease','--latest=false',
-                    '--title','PancakeSlicer '+args.tag[1:],*(['--notes-file',str(notes)] if notes.is_file() else ['--notes',''])],check=True)
+                    '--title','PancakeSlicer '+args.tag[1:],'--notes',''],check=True)
 
 
 if __name__=='__main__':

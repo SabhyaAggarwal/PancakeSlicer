@@ -37,7 +37,7 @@ case "$cmd" in
     tar -czf "$tmp/$asset" -C "$dir" "$@"
     if ! gh release view "$release" --repo "$repo" >/dev/null 2>&1; then
       gh release create "$release" --repo "$repo" --prerelease --title 'Prebuilt CI build products' \
-        --notes 'Native dependency prefixes and compiled engines keyed by the hash of their inputs. Written by CI; do not edit.' \
+        --notes '' \
         || gh release view "$release" --repo "$repo" >/dev/null   # another job created it first
     fi
     if grep -qxF "$asset" <<<"$(assets)"; then

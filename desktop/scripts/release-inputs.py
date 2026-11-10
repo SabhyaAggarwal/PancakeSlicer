@@ -26,8 +26,7 @@ def main():
             package=json.loads((ROOT/name/filename).read_text(encoding='utf-8'))
             if package['version']!=version or filename.endswith('-lock.json') and package['packages']['']['version']!=version:
                 raise RuntimeError(name+'/'+filename+' does not match the release tag')
-    notes=ROOT/'.github/release-notes'/(args.tag+'.md')
-    print(json.dumps({'tag':args.tag,'version':version,'publication_main_sha':actual,'notes':notes.relative_to(ROOT).as_posix() if notes.is_file() else None,'draft':True},indent=2))
+    print(json.dumps({'tag':args.tag,'version':version,'publication_main_sha':actual,'draft':True},indent=2))
 
 
 if __name__=='__main__':

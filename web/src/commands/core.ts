@@ -1,3 +1,4 @@
+import { reportProblem } from '../build-info';
 import { openUrlImport } from '../url-import';
 import { savePreferences } from '../saved-preferences';
 import { addInstance, arrangeAll, canBoolean, canExport, cancelSlice, download, fillBed, openFileDialog, outputKind,
@@ -140,6 +141,7 @@ export const CORE: Command[] = [
   { id: 'help.develop', title: 'Develop mode', group: 'Help', keywords: 'developer expert debug', get detail() { return s().developerMode ? 'On' : 'Off'; }, run: () => { const on = !s().developerMode; savePreferences({'orca.developer_mode': on ? '1' : '0'}); setState({ developerMode: on }); } },
   { id: 'help.setup', title: 'Setup', group: 'Help', run: app('setup') },
   { id: 'help.about', title: 'About PancakeSlicer', group: 'Help', keywords: 'version licence', run: app('about') },
+  { id: 'help.report', title: 'Report a problem', group: 'Help', keywords: 'bug issue feedback github', run: reportProblem },
   { id: 'help.calibguide', title: 'Calibration guide', group: 'Help', run: () => void window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener') },
   ...CALIB.map(([k, title]): Command => ({ id: `calib.${k}`, title: `Calibrate: ${title}`, group: 'Calibration', enabled: () => canCalibrate() || 'Not with this tool', run: () => setState({ calibDialog: k }) })),
 

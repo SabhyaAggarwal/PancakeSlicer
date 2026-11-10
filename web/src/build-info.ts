@@ -32,3 +32,9 @@ export function buildLine(i: BuildInfo): string {
   return [`PancakeSlicer v${APP_VERSION}`, i.about?.revision && `build ${shortSha(i.about.revision)}`,
     i.engine && `engine ${i.engine}${i.engineSha ? ` ${shortSha(i.engineSha)}` : ''}`].filter(Boolean).join(SEP);
 }
+
+/** Opens a new GitHub issue with this build's version filled in. */
+export function reportProblem() {
+  const body = `**What happened**\n\n\n**What you expected**\n\n\n**Steps or model**\n\n\n---\nPancakeSlicer v${APP_VERSION}, ${navigator.userAgent}`;
+  window.open(`${GITHUB_URL}/issues/new?body=${encodeURIComponent(body)}`, '_blank', 'noopener');
+}

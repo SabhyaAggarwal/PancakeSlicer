@@ -34,7 +34,15 @@ app.commandLine.appendSwitch('disable-features',
 
 
 
-app.setPath('userData', process.env.ORCA_DESKTOP_USER_DATA ?? path.join(app.getPath('appData'), 'OrcaSlicer Web'));
+// Projects live in the OS app-data dir under the product's name. Data from builds that used "OrcaSlicer Web" moves
+// over once, before anything opens it. Walks and scratch runs use their own profile.
+function productUserData(): string {
+  const appData = app.getPath('appData'), current = path.join(appData, 'PancakeSlicer'), old = path.join(appData, 'OrcaSlicer Web');
+  if (!fs.existsSync(current) && fs.existsSync(old)) fs.renameSync(old, current);
+  fs.rmSync(path.join(appData, 'OrcaSlicer Web Cache'), { recursive: true, force: true });
+  return current;
+}
+app.setPath('userData', process.env.ORCA_DESKTOP_USER_DATA ?? productUserData());
 
 
 
@@ -48,7 +56,7 @@ const legacyRenderer = new LegacyRendererSource(originalUserData, originalSessio
   && app.hasSingleInstanceLock() && app.getPath('userData') === originalUserData
   && originalSessionData === originalUserData
   && !['user-data-dir', 'profile-directory', 'session-data-dir'].some((name) => app.commandLine.hasSwitch(name)));
-const sessionCacheRoot = path.join(app.getPath('appData'), 'OrcaSlicer Web Cache');
+const sessionCacheRoot = path.join(app.getPath('appData'), 'PancakeSlicer Cache');
 let ownedSessionDirectory: { path: string; dev: number; ino: number } | null = null;
 
 function cleanSessionDirectory() {
@@ -168,7 +176,10 @@ async function startServer(): Promise<string> {
   const data = app.getPath('userData');
   const logs = path.join(data, 'logs');
   fs.mkdirSync(logs, { recursive: true });
-  const log = fs.openSync(path.join(logs, 'server.log'), 'w');
+  // The previous launch's log stays as server.prev.log, so a crash can still be reported after a restart.
+  const current = path.join(logs, 'server.log');
+  if (fs.existsSync(current)) fs.renameSync(current, path.join(logs, 'server.prev.log'));
+  const log = fs.openSync(current, 'w');
   const lib = path.join(engine, 'lib');
   const surfaceManifest = path.join(engine, 'surface-manifest.json');
   const qualification = path.join(engine, 'artifact-qualification.ready');
@@ -283,6 +294,14 @@ function menu() {
       ],
     },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        { label: 'Report a problem…', click: () => void shell.openExternal('https://github.com/ZimengXiong/PancakeSlicer/issues/new?body=' +
+          encodeURIComponent(`PancakeSlicer v${app.getVersion()}, ${process.platform} ${process.arch}\n\nAttach server.log from Help > Open logs folder.`)) },
+        { label: 'Open logs folder', click: () => void shell.openPath(path.join(app.getPath('userData'), 'logs')) },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

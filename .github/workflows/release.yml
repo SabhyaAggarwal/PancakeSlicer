@@ -54,12 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes=.github/release-notes/$TAG.md
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            if [ -f "$notes" ]; then gh release edit "$TAG" --notes-file "$notes"; fi
-          elif [ -f "$notes" ]; then
-            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes-file "$notes"
-          else
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "PancakeSlicer ${TAG#v}" --notes ""
           fi
           source="PancakeSlicer-${TAG#v}-source.tar.gz"
