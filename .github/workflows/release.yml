@@ -130,7 +130,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build autoconf automake libtool texinfo \
             pkgconf nasm yasm gettext ccache libcurl4-openssl-dev libssl-dev libgl-dev libdbus-1-dev libfontconfig1-dev \
-            libfreetype-dev libx11-dev libudev-dev libva-dev libjpeg-turbo8-dev liblzma-dev rpm fakeroot
+            libfreetype-dev libx11-dev libudev-dev libva-dev libjpeg-turbo8-dev liblzma-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols extra-cmake-modules libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libegl-dev rpm fakeroot
       - name: Set up MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
