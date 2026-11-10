@@ -4,5 +4,5 @@
 4. Do not write commits unless told so.
 5. Do not write comments unless told so.
 6. Do not prematurely write tests during development, write tests only when the user tells you to.
-7. Do not write to README.md or Docs, or any other long form writing intended for human-consumption.
+7. Do not write to README.md or Docs or any markdown, or any other long form writing intended for human-consumption.
 8. If tasked with triaging an issue, if the issue seems to be a bug, prompt the user asking them to consider a PR.
