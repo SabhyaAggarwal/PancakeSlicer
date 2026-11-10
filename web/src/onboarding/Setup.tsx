@@ -51,7 +51,7 @@ function Frame({ step, children, foot, title }: { step: string; children: ReactN
     <div className="setup" role="dialog" aria-modal="true" aria-label="Setup">
       <div className={`setup-panel${step === 'welcome' ? ' setup-panel-welcome' : ''}`}>
         <header className="setup-head">
-          <img src="/logo-48.png" width={24} height={24} alt="" />
+          <img src="/logo.svg" width={24} height={24} alt="" />
           {title && <h1 className="setup-title">{title}</h1>}
           {at >= 0 && <div className="setup-dots" aria-label={`Step ${at + 1} of ${STEPS.length}`}>{STEPS.map((s, i) => <span key={s} className={i <= at ? 'on' : ''} />)}</div>}
           <button type="button" className="icon-btn setup-close" aria-label="Close setup" onClick={() => send({ type: 'CLOSE' })}><Glyph name="close" /></button>
@@ -290,7 +290,7 @@ async function applyChoices() {
 function Done() {
   const finish = () => { savePreferences({ 'orca.setup': '1' }); setState({ tab: 'prepare' }); send({ type: 'CLOSE' }); };
   return <Frame step="done" foot={<><Back /><span className="setup-grow" /><Next label="Start printing" onClick={finish} /></>}>
-    <div className="setup-hero"><img src="/logo-256.png" width={96} height={96} alt="" /><h1>Ready</h1></div>
+    <div className="setup-hero"><img src="/logo.svg" width={96} height={96} alt="" /><h1>Ready</h1></div>
   </Frame>;
 }
 

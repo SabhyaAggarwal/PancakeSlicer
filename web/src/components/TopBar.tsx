@@ -177,7 +177,7 @@ export function TopBar() {
           { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, profiles, connection and filaments' },
         ]}];
   return <header className="topbar compact-topbar">
-    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo-48.png" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
+    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo.svg" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
     {update && <button type="button" className="update-pill" aria-label={`Update available: v${update.version}`} onClick={() => openUpdate(update)}><span>Update</span></button>}

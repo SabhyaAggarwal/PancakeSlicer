@@ -224,7 +224,7 @@ def main():
         return
     if args.os == 'mac':
         run('git', 'archive', '--format=tar.gz', '--output=' + str(build / 'source.tar.gz'), 'HEAD', cwd=ROOT)
-    png = (ROOT / 'web/public/logo-256.png').read_bytes()
+    png = (ROOT / 'desktop/icon-256.png').read_bytes()
 
     chunk = b'ic08' + struct.pack('>I', len(png) + 8) + png
     (build / 'icon.icns').write_bytes(b'icns' + struct.pack('>I', len(chunk) + 8) + chunk)

@@ -23,7 +23,7 @@ export default function About({ close }: { close: () => void }) {
   return <Modal size="m" label="About PancakeSlicer" onClose={close}>
     <ModalTitle title="About PancakeSlicer" onClose={close} />
     <ModalBody>
-      <div className="about-head"><img src="/logo-256.png" width={56} height={56} alt="" /><div><strong>PancakeSlicer</strong><span>v{APP_VERSION}</span></div></div>
+      <div className="about-head"><img src="/logo.svg" width={56} height={56} alt="" /><div><strong>PancakeSlicer</strong><span>v{APP_VERSION}</span></div></div>
       <AboutContent info={info} />
       {info.state === 'loading' && <p role="status">Loading…</p>}
       {info.state === 'failed' && <p role="alert">Oops! Couldn't load build info from the slicing service.</p>}
