@@ -108,7 +108,7 @@ func parseConfig() Config {
 	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
 	flag.StringVar(&c.PrinterNetwork, "printer-network", env("ORCA_WEB_PRINTER_NETWORK", "lan"), "where printers may live, for printer connections and Send: lan (private IPv4/IPv6 ranges), CIDRs and host names, or off (ORCA_WEB_PRINTER_NETWORK)")
-	flag.StringVar(&c.ReleaseFeed, "release-feed", env("ORCA_WEB_RELEASE_FEED", ""), "GitHub owner/repo whose latest release the update notice offers; empty offers none (ORCA_WEB_RELEASE_FEED)")
+	flag.StringVar(&c.ReleaseFeed, "release-feed", env("ORCA_WEB_RELEASE_FEED", "ZimengXiong/PancakeSlicer"), "GitHub owner/repo whose latest release the update notice offers; empty offers none (ORCA_WEB_RELEASE_FEED)")
 	flag.StringVar(&c.ReleaseToken, "release-token", env("ORCA_WEB_RELEASE_TOKEN", ""), "token for a private -release-feed, sent only to GitHub's API (ORCA_WEB_RELEASE_TOKEN)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()

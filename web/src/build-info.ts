@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { version } from '../package.json';
+import { version } from '../../desktop/package.json';
 import { readHealth } from './api/health';
 import { SEP } from './separator';
 

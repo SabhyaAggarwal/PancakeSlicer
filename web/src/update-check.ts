@@ -36,13 +36,8 @@ const newer = (tag: string, than: string) => {
   return false;
 };
 
-function target(release: Release): string {
-  const page = release.html_url ?? RELEASES;
-  if (!(window as { orcaDesktop?: unknown }).orcaDesktop) return page;
-  const ua = navigator.userAgent;
-  const kind = /Mac/.test(ua) ? /\.dmg$/i : /Windows/.test(ua) ? /\.(exe|msi)$/i : /\.(AppImage|deb)$/i;
-  return release.assets?.find((a) => a.name && kind.test(a.name))?.browser_download_url ?? page;
-}
+/** The release page, where each system picks its own download. */
+const target = (release: Release): string => release.html_url ?? RELEASES;
 
 async function latest(): Promise<Release | null> {
   try {
