@@ -81,7 +81,14 @@ jobs:
         if: steps.deps.outputs.cache-matched-key == ''
         run: |
           cmake -S engine/deps -B engine/deps/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSLIC3R_CAD=OFF -DSLIC3R_GUI=OFF
-          cmake --build engine/deps/build --target deps --parallel 4
+          # wxWidgets and wxInspector are GUI-only and need GTK; build the headless engine's dependencies.
+          targets=()
+          for t in dep_Boost dep_TBB dep_OpenSSL dep_CURL dep_Cereal dep_Draco dep_NLopt dep_OpenVDB dep_SLVS dep_OpenCV dep_Eigen \
+                   dep_CGAL dep_GLFW dep_OCCT dep_FREETYPE dep_PNG dep_JPEG dep_ZLIB dep_EXPAT dep_libnoise dep_python3 dep_FFMPEG \
+                   dep_Assimp dep_DataChannel dep_Qhull; do
+            if ninja -C engine/deps/build -t targets all | grep -q "^$t:"; then targets+=("$t"); fi
+          done
+          cmake --build engine/deps/build --target "${targets[@]}" --parallel 4
       - name: Cache native dependencies
         if: steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
