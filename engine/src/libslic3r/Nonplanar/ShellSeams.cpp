@@ -103,7 +103,7 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
 }
 
 void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::vector<ExtrusionPathConformal> &storage,
-                       double min_rise)
+                       double min_rise, bool chain_inside)
 {
     storage.clear();
     storage.reserve(order.size());
@@ -120,6 +120,11 @@ void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::
         const bool loop = (last.to_point() - first.to_point()).cast<double>().norm() <= 1.5 * scale_(path.width);
         if (joined || tucked || loop || last.z() >= first.z() - rise)
             continue;
+        if (chain_inside && i > 0 && (path.role() == erInternalInfill || path.role() == erSolidInfill || path.role() == erPerimeter)) {
+            const Point from = order[i - 1]->polyline.points.back().to_point();
+            if ((last.to_point() - from).cast<double>().squaredNorm() > (first.to_point() - from).cast<double>().squaredNorm())
+                continue;
+        }
         if (!path.bead_height.empty() && (path.bead_height.front() <= 0.f || path.bead_height.back() <= 0.f))
             continue;
         storage.emplace_back(path);

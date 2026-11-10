@@ -983,7 +983,7 @@ size_t layer_order_head_conflicts(const std::vector<FieldRoad> &roads, size_t la
     return conflicts;
 }
 
-void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area)
+void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area, double fill_reach)
 {
     constexpr double LinkMax = 1.5, LinkWalls = 3.5, LinkRise = 0.3;
     for (size_t i = 1; i < roads.size(); ++i) {
@@ -991,7 +991,10 @@ void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area)
         auto *next = static_cast<ExtrusionPathConformal *>(roads[i]);
         const Point3 &a = prev->polyline.points.back(), &b = next->polyline.points.front();
         const Vec3d   d = unscale(b) - unscale(a);
-        const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls : LinkMax;
+        const bool   fills = prev->role() == erInternalInfill && next->role() == erInternalInfill;
+        const double reach = is_perimeter(prev->role()) && is_perimeter(next->role()) ? LinkWalls :
+                             fills                                                     ? std::max(LinkMax, fill_reach) :
+                                                                                         LinkMax;
         if (d.head<2>().norm() > reach || std::abs(d.z()) > LinkRise || d.norm() < 1e-4)
             continue;
         if (area != nullptr) {

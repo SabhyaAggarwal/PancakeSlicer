@@ -8794,7 +8794,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                             Nonplanar::order_pass_roads(order, b, pass_end[k], reordered);
                     }
                 std::vector<ExtrusionPathConformal> oriented;
-                Nonplanar::orient_free_roads(order, oriented);
+                Nonplanar::orient_free_roads(order, oriented, 0.1, patch.kind == Nonplanar::PatchKind::Volume && object.conformal().morph_strips);
                 std::deque<ExtrusionPathConformal> fuzzed;
                 if (patch.kind == Nonplanar::PatchKind::Overhang || patch.kind == Nonplanar::PatchKind::Volume) {
                     const FuzzySkinConfig fuzzy = Feature::FuzzySkin::fuzzy_skin_config(region.config(), int(layer->id()));

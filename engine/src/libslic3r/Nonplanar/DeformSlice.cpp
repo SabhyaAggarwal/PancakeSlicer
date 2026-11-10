@@ -1260,9 +1260,12 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         },
         [](double a, double b) { return std::max(a, b); });
     const bool   planar_beside = std::any_of(out.planar.begin(), out.planar.end(), [](const auto &p) { return p && p->curved; });
+    HeadEnvelope body = head;
+    if (morph)
+        body.boxes.erase(std::remove_if(body.boxes.begin(), body.boxes.end(), [](const HeadBox &b) { return b.nozzle; }), body.boxes.end());
     const double reach = object.has_support() || shared_plate || planar_beside ? head_band_height(head) :
-                         morph                                                 ? Inf :
-                                                                                 deform_band_height(head, slope, inflation);
+                         morph && field->whole_levels()                        ? Inf :
+                                                                                 deform_band_height(body, slope, inflation);
     double       cap   = multi_material_patch_height(object, head, ocfg.nonplanar_max_patch_height.value);
     cap                = cap > 0. ? std::min(cap, reach) : reach;
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);
@@ -1314,6 +1317,8 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             delete p;
     }
     out.patches.clear();
+    const ConfigOptionFloatOrPercent &anchor_max  = object.printing_region(0).config().infill_anchor_max;
+    const double                      fill_anchor = anchor_max.percent ? 0.01 * anchor_max.value * nozzle : anchor_max.value;
     for (auto &[key, patch] : bands) {
         const auto [b, slab] = key;
         Point last(0, 0);
@@ -1326,7 +1331,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             ExPolygons area = sliced.layers()[shell_layer[key][si]]->lslices;
             translate(area, sliced.center_offset());
             link_pieces(shell, last, false, &area);
-            link_roads(shell.entities, &area);
+            link_roads(shell.entities, &area, field->whole_levels() ? 0. : fill_anchor);
         }
         patch.kind         = PatchKind::Volume;
         patch.band         = b;
@@ -2171,6 +2176,7 @@ bool build_deform_slice(PrintObject &object, ConformalResult &result, std::strin
     if (source)
         slice.field = source;
     result.layer_source = morph ? "smooth_morph" : object.config().nonplanar_deform.serialize();
+    result.morph_strips = morph && !source->whole_levels();
     apply_deform_slice(object, std::move(slice), result);
     if (why != nullptr)
         *why = morph_limit;

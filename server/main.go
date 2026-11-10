@@ -82,7 +82,7 @@ func envBool(key string) bool {
 func parseConfig() Config {
 	var c Config
 	flag.StringVar(&c.SurfaceManifest, "surface-manifest", env("ORCA_WEB_SURFACE_MANIFEST", env("ORCA_WEB_ARTIFACT_MANIFEST", "")), "native identity manifest")
-	flag.StringVar(&c.ArtifactQualification, "artifact-qualification", env("ORCA_WEB_ARTIFACT_QUALIFICATION", ""), "exact native reference qualification ready record")
+	flag.StringVar(&c.ArtifactQualification, "artifact-qualification", env("ORCA_WEB_ARTIFACT_QUALIFICATION", ""), "release check result for the bundled engine")
 	flag.StringVar(&c.SourceArchive, "source-archive", env("ORCA_WEB_SOURCE_ARCHIVE", ""), "mounted Corresponding Source archive matching build metadata (ORCA_WEB_SOURCE_ARCHIVE)")
 	flag.StringVar(&c.SourceURL, "source-url", env("ORCA_WEB_SOURCE_URL", ""), "Corresponding Source repository URL or exact URL containing {revision} (ORCA_WEB_SOURCE_URL)")
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")

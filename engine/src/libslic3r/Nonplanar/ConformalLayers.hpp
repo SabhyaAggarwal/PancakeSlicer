@@ -100,7 +100,7 @@ struct BandOrderStats
     size_t bands = 0, groups = 0, cut_roads = 0;
 };
 
-void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area);
+void link_roads(ExtrusionEntitiesPtr &roads, const ExPolygons *area, double fill_reach = 0.);
 
 FieldOrder band_order_roads(std::vector<FieldRoad> &roads, size_t layers, double band, BandOrderStats *stats = nullptr,
                             const std::vector<std::pair<Vec3d, Vec3d>> *precede = nullptr,

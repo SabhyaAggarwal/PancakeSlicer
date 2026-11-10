@@ -455,13 +455,14 @@ struct MorphPatch
     HeightField top, bottom, weight;
     double level = 0., begin = 0., end = 0., depth = 0.;
     bool flat = false;
+    bool blocked = false;
 };
 
 class SmoothMorphField final : public LayerField
 {
 public:
-    SmoothMorphField(StackLayerField field, double base, double offset, double slope)
-        : m_field(std::move(field)), m_base(base), m_offset(offset), m_slope(slope) {}
+    SmoothMorphField(StackLayerField field, double base, double offset, double slope, bool whole_levels)
+        : m_field(std::move(field)), m_base(base), m_offset(offset), m_slope(slope), m_whole_levels(whole_levels) {}
     double phi(const Vec3d &p) const override
     {
         return p.z() <= m_base ? p.z() : m_field.phi(p - Vec3d(0., 0., m_offset)) + m_offset;
@@ -476,9 +477,11 @@ public:
     }
     double identity_below() const override { return m_base; }
     double max_slope_near(const Vec2d &, double level) const override { return level <= m_base ? 0. : m_slope; }
+    bool   whole_levels() const override { return m_whole_levels; }
 private:
     StackLayerField m_field;
     double m_base, m_offset, m_slope;
+    bool   m_whole_levels;
 };
 
 HeadEnvelope morph_body(const HeadEnvelope &head, double inflation, bool mirror)
@@ -640,7 +643,11 @@ std::vector<MorphPatch> morph_patches(const indexed_triangle_set &mesh, const He
             if (p.weight.data()[n] > 0.f) {
                 queue.push(n); distance[n] = 0;
                 floor = std::min(floor, double(p.bottom.data()[n]));
-                if (measured.data()[n] < c || -cone.data()[n] > measured.data()[n] + 0.01) continue;
+                if (-cone.data()[n] > measured.data()[n] + 0.01) continue;
+                if (measured.data()[n] < c) {
+                    p.blocked = true;
+                    continue;
+                }
                 targets[n] = 0;
                 low = std::min(low, double(p.top.data()[n]));
                 high = std::max(high, double(p.top.data()[n]));
@@ -716,7 +723,7 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::s
     const HeightField grid(BoundingBoxf(bbox.min.head<2>() - Vec2d(3., 3.), bbox.max.head<2>() + Vec2d(3., 3.)), pitch, 0.f);
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
     const double inflation = 0.6 * P.nozzle + 0.25 + 0.3;
-    const HeadEnvelope body = morph_body(head, inflation, false), body_mirror = morph_body(head, inflation, true);
+    HeadEnvelope body = morph_body(head, inflation, false), body_mirror = morph_body(head, inflation, true);
     double cap = P.cap;
     const bool banded = object.has_support() || object.print()->objects().size() > 1 || object.instances().size() > 1;
     if (banded)
@@ -742,6 +749,12 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::s
         *limit = why.str();
     }
     auto patches = morph_patches(mesh, grid, P, cap, body);
+    const bool whole_levels = std::none_of(patches.begin(), patches.end(), [](const MorphPatch &p) { return p.blocked; });
+    if (!whole_levels) {
+        body.boxes.clear();
+        body_mirror.boxes.clear();
+        patches = morph_patches(mesh, grid, P, cap, body);
+    }
     const double offset = P.first - P.h;
     double highest = bbox.max.z();
     for (const auto &p : patches) highest = std::max(highest, p.end + p.depth);
@@ -797,7 +810,7 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::s
     BOOST_LOG_TRIVIAL(info) << "Smooth morph " << object.model_object()->name << ": " << patches.size()
                             << " local top patches, " << nk << " field levels, head " << head.id
                             << ", shell slope cap " << Geometry::rad2deg(std::atan(cap)) << " deg";
-    return std::make_unique<SmoothMorphField>(std::move(field), P.z0, offset, cap);
+    return std::make_unique<SmoothMorphField>(std::move(field), P.z0, offset, cap, whole_levels);
 }
 
 OffsetLayerField::OffsetLayerField(HeightField S, double z0, double ramp) : m_S(std::move(S)), m_z0(z0), m_ramp(ramp) {}

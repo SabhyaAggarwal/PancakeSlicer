@@ -37,7 +37,7 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
 
 constexpr double StartTuck = 2.;
 void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::vector<ExtrusionPathConformal> &storage,
-                       double min_rise = 0.1);
+                       double min_rise = 0.1, bool chain_inside = false);
 
 void order_pass_roads(std::vector<const ExtrusionPathConformal *> &order, size_t begin, size_t end,
                       std::deque<ExtrusionPathConformal> &storage);

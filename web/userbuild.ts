@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { brotliCompress, constants } from 'node:zlib';
@@ -53,6 +53,8 @@ async function build(sha: string) {
     run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit', '-p', '.'], web),
     run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--mode', 'production', '--logLevel', 'warn', '--outDir', out + '.tmp', '--emptyOutDir'], web),
   ]);
+  // The AGPL licence ships beside the app as /licence.txt, as desktop/scripts/stage-ci.py does for releases.
+  await copyFile(path.join(tree, 'LICENSE.txt'), path.join(out + '.tmp', 'licence.txt'));
   await precompress(out + '.tmp');
   await rm(out, { recursive: true, force: true });
   await rename(out + '.tmp', out);

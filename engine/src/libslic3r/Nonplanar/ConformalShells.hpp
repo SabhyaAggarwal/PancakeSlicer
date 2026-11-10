@@ -147,6 +147,7 @@ struct ConformalResult
     std::vector<std::pair<double, unsigned int>> tool_changes;
     bool                          ordered_plan = false;
     std::string                   layer_source, layer_source_refused;
+    bool                          morph_strips = false;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

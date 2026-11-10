@@ -1478,6 +1478,7 @@ var qualifiedNativeSources = map[string]bool{
 	"7a08dfb9c5a1eabf8184205a7aa66baf94b3bb69": true,
 	"aed5c316d4804de61f55f06a7d2988e495b2e300": true,
 	"0497bdacea31cde9777f3929982a9832d032f368": true,
+	"d3551b425c5ebf488a18bdef6b2db675d02114e2": true,
 }
 
 var engineTransitions = map[HealthState]map[HealthState]bool{
@@ -1523,7 +1524,7 @@ func (h *engineHealth) setEngine(next HealthState) {
 }
 
 func (h *engineHealth) setArtifact(next HealthState) {
-	moveHealth(artifactTransitions, &h.artifactState, next, "artifact qualification")
+	moveHealth(artifactTransitions, &h.artifactState, next, "engine release check")
 }
 
 func (h *engineHealth) wireState() HealthState {
