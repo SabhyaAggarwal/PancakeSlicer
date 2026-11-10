@@ -722,7 +722,7 @@ std::unique_ptr<LayerField> build_smooth_morph(const PrintObject &object, std::s
     const double pitch = std::clamp(std::max(bbox.size().x(), bbox.size().y()) / 250., 0.5, 1.);
     const HeightField grid(BoundingBoxf(bbox.min.head<2>() - Vec2d(3., 3.), bbox.max.head<2>() + Vec2d(3., 3.)), pitch, 0.f);
     const HeadEnvelope head = resolve_head_envelope(object.print()->config());
-    const double inflation = 0.6 * P.nozzle + 0.25 + 0.3;
+    const double inflation = 0.6 * P.nozzle + 0.25 + 0.3 + 0.5 * pitch;
     HeadEnvelope body = morph_body(head, inflation, false), body_mirror = morph_body(head, inflation, true);
     double cap = P.cap;
     const bool banded = object.has_support() || object.print()->objects().size() > 1 || object.instances().size() > 1;
