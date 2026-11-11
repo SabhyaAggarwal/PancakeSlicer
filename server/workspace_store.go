@@ -416,7 +416,6 @@ func projectMeta(p workspaceProject) json.RawMessage {
 	return raw
 }
 func (st *workspaceStore) register(mux *http.ServeMux) {
-	st.adoptionRoutes(mux)
 	st.leaseRoutes(mux)
 	st.folderRoutes(mux)
 	st.thumbnailRoutes(mux)

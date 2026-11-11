@@ -22,7 +22,6 @@ type Config struct {
 	SurfaceManifest       string
 	ArtifactQualification string
 	NativeHealth          *engineHealth
-	FallbackBackend       string
 	SourceURL             string
 	SourceArchive         string
 	DataDir               string
@@ -86,7 +85,6 @@ func parseConfig() Config {
 	flag.StringVar(&c.SourceArchive, "source-archive", env("ORCA_WEB_SOURCE_ARCHIVE", ""), "mounted Corresponding Source archive matching build metadata (ORCA_WEB_SOURCE_ARCHIVE)")
 	flag.StringVar(&c.SourceURL, "source-url", env("ORCA_WEB_SOURCE_URL", ""), "Corresponding Source repository URL or exact URL containing {revision} (ORCA_WEB_SOURCE_URL)")
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
-	flag.StringVar(&c.FallbackBackend, "fallback-backend", env("ORCA_WEB_FALLBACK_BACKEND", ""), "comma-separated previous loopback backends for read-only historical jobs")
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
 	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
 	flag.StringVar(&c.Resources, "resources", env("ORCA_WEB_RESOURCES", "resources"), "resources directory holding profiles/ and nonplanar/ (ORCA_WEB_RESOURCES)")
@@ -112,9 +110,6 @@ func parseConfig() Config {
 	flag.StringVar(&c.ReleaseToken, "release-token", env("ORCA_WEB_RELEASE_TOKEN", ""), "token for a private -release-feed, sent only to GitHub's API (ORCA_WEB_RELEASE_TOKEN)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
-	if _, err := fallbackOrigins(c.FallbackBackend); err != nil {
-		log.Fatal(err)
-	}
 	if err := validateSourceURL(c.SourceURL); err != nil {
 		log.Fatal(err)
 	}

@@ -135,7 +135,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex) http.Handler {
 	if c.Metrics {
 		mux.HandleFunc("GET /metrics", s.metrics)
 	}
-	return gzipJSON(s.middleware(revalidate(s.fallbackJobReads(mux))))
+	return gzipJSON(s.middleware(revalidate(mux)))
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
