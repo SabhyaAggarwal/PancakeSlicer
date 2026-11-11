@@ -4,7 +4,7 @@ import { getState, useStore } from '../state/store';
 import type { PrinterSlots } from '../printers/slots';
 import { findProfile } from './identity';
 
-export interface OnPrinter { where: string[]; remaining: number | null }
+export interface OnPrinter { where: string[] }
 
 export function useOnPrinter(enabled: boolean): ReadonlyMap<string, OnPrinter> {
   const connections = useStore((s) => s.printerConnections.connections);
@@ -25,9 +25,8 @@ export function useOnPrinter(enabled: boolean): ReadonlyMap<string, OnPrinter> {
     const nameOf = (printer: string) => connections.find((c) => c.printer === printer)?.name || findProfile(getState(), 'machine', printer)?.name || 'Printer';
     for (const [printer, p] of Object.entries(printers)) for (const m of p.slots) {
       if (!m.filament) continue;
-      const entry = out.get(m.filament) ?? { where: [], remaining: null };
+      const entry = out.get(m.filament) ?? { where: [] };
       entry.where.push(`${nameOf(printer)}, ${m.label}`);
-      entry.remaining ??= m.remaining;
       out.set(m.filament, entry);
     }
     return out;

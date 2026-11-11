@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties } from 'react';
+import { memo, useState } from 'react';
 import { Check } from '../components/Check';
 import { DynamicBadge } from '../components/DynamicBadge';
 import type { UserPreset } from '../api/types';
@@ -20,7 +20,6 @@ export interface ManagerProfileRowItem {
   flag?: string;
   method?: string;
   loaded?: string;
-  remaining?: number | null;
   user?: UserPreset;
 }
 
@@ -62,7 +61,6 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     {item.loaded ? <span className="pf-row-stack">{label}<span role="gridcell" className="pf-row-sub">{item.loaded}</span></span> : label}
     {item.flag && <span role="gridcell" className="pf-row-flag">{item.flag}</span>}
     {item.method && <span role="gridcell" className="pf-row-method" aria-label={item.method} data-truncated="true" data-full-text={item.method}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden><path d={METHOD[item.method] ?? METHOD.Flat}/></svg></span>}
-    {item.loaded && item.remaining != null && <span role="gridcell" className="pf-row-left" aria-label={`${item.remaining}% left`}><span className="pf-loaded-bar" aria-hidden style={{'--left': `${item.remaining}%`} as CSSProperties}/>{item.remaining}%</span>}
     {item.slot !== undefined && <span role="gridcell" className="pf-row-used">In use</span>}
   </div>;
 });

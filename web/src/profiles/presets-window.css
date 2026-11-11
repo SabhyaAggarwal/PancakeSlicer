@@ -106,10 +106,7 @@
 :where(.orca-parity) .pf-row-stack { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 6px 0; }
 :where(.orca-parity) .pf-row-stack > .pf-row-label { flex: none; }
 :where(.orca-parity) .pf-row-sub { min-width: 0; font: var(--t-small); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:where(.orca-parity) .pf-row-left { flex: none; display: flex; align-items: center; gap: var(--s-1); margin-left: auto; font: var(--t-small); color: var(--muted); font-variant-numeric: tabular-nums; }
-:where(.orca-parity) .pf-loaded-bar { width: 24px; height: 4px; border-radius: 2px; background: linear-gradient(to right, currentColor var(--left), color-mix(in srgb, currentColor 25%, transparent) var(--left)); }
-:where(.orca-parity) .pf-row-left + .pf-row-used { margin-left: var(--s-3); }
-:where(.orca-parity) .pf-item.is-on :is(.pf-row-sub, .pf-row-left) { color: inherit; }
+:where(.orca-parity) .pf-item.is-on .pf-row-sub { color: inherit; }
 :where(.orca-parity) .pf-item.is-on :is(.pf-row-lead, .pf-row-method) { color: inherit; }
 @media (pointer: coarse), (hover: none) { :where(.orca-parity) .pf-list { --pf-row: 44px; } :where(.orca-parity) .pf-group[data-depth='0'] > .pf-group-head .pf-group-toggle { min-height: 44px; } }
 :where(.orca-parity) .pf-profile-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-7) var(--s-4); color: var(--muted); text-align: center; }

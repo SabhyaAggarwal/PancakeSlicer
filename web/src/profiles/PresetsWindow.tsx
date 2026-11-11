@@ -52,7 +52,7 @@ const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Fi
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[]; catalog?: CatalogModel | CatalogFamily; fits?: string[]; loaded?: string; remaining?: number | null; pinned?: boolean }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[]; catalog?: CatalogModel | CatalogFamily; fits?: string[]; loaded?: string; pinned?: boolean }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
@@ -259,7 +259,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const tag=at && !scoped && models.length ? models[0]+(models.length > 1 ? ` +${models.length-1}` : '') : '';
     const on=onPrinter.get(i.key);
     return {...i,fullName:title === i.name ? undefined : i.name,name:title,note:rowDetail(title,[{value:i.material},vendorField(i.vendor)],[group]),meta:[i.meta,tag].filter(Boolean).join(SEP) || undefined,
-      ...(on ? {loaded:on.where[0]+(on.where.length > 1 ? ` +${on.where.length-1}` : ''),remaining:on.remaining} : {})};
+      ...(on ? {loaded:on.where[0]+(on.where.length > 1 ? ` +${on.where.length-1}` : '')} : {})};
   };
   const colourFamilies=(list:Item[])=>{
     const keys=new Set(list.map(i=>i.key)),parentOf=(i:Item)=>i.user?.parentId && keys.has(i.user.parentId) ? i.user.parentId : undefined;
