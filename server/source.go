@@ -68,8 +68,10 @@ func (s *Server) source(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", `attachment; filename="source.tar.gz"`)
+	_, version := buildVersion()
+	name := "pancakeslicer-source-" + version + ".tar.gz"
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("ETag", fmt.Sprintf(`"sha256:%s"`, sourceSHA256()))
-	http.ServeContent(w, r, "source.tar.gz", stat.ModTime(), file)
+	http.ServeContent(w, r, name, stat.ModTime(), file)
 }

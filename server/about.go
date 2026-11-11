@@ -31,9 +31,8 @@ func validateSourceURL(source string) error {
 	return nil
 }
 
-func buildAbout(c Config) About {
-	source := c.SourceURL
-	revision := env("ORCA_BUILD_REVISION", buildRevision)
+func buildVersion() (revision, version string) {
+	revision = env("ORCA_BUILD_REVISION", buildRevision)
 	if revision == "" {
 		if info, ok := debug.ReadBuildInfo(); ok {
 			for _, setting := range info.Settings {
@@ -51,13 +50,19 @@ func buildAbout(c Config) About {
 	if revision == "" {
 		revision = "unknown"
 	}
-	version := revision
+	version = revision
 	if len(version) > 12 {
 		version = version[:12]
 	}
 	if strings.HasSuffix(revision, "-dirty") {
 		version += "-dirty"
 	}
+	return revision, version
+}
+
+func buildAbout(c Config) About {
+	source := c.SourceURL
+	revision, version := buildVersion()
 	if source == "" {
 		if file, err := openSourceArchive(c); err == nil {
 			file.Close()
