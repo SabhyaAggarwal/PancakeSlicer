@@ -257,8 +257,12 @@ jobs:
       - name: Build web UI and desktop shell dependencies
         run: |
           npm ci --prefix web
-          npm run build --prefix web
           npm ci --prefix desktop
+          if [ "$PUBLISH" = true ]; then
+            npm pkg set version="${TAG#v}" --prefix desktop
+            npm pkg set version="${TAG#v}" --prefix web
+          fi
+          npm run build --prefix web
       - name: Bundle engine shared libraries
         run: |
           mkdir -p build-native/tool/lib
@@ -321,10 +325,6 @@ jobs:
           echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           for repo in ghcr.io/zimengxiong/pancakeslicer docker.io/zimengxiong/pancakeslicer; do
-            if docker manifest inspect "$repo:$version" >/dev/null 2>&1; then
-              echo "$repo:$version is already published"
-              continue
-            fi
             for t in "$version" latest; do docker tag pancakeslicer:ci "$repo:$t"; docker push "$repo:$t"; done
           done
           docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/zimengxiong/pancakeslicer:$version
@@ -384,8 +384,12 @@ jobs:
       - name: Build web UI and desktop shell dependencies
         run: |
           npm ci --prefix web
-          npm run build --prefix web
           npm ci --prefix desktop
+          if [ "$PUBLISH" = true ]; then
+            npm pkg set version="${TAG#v}" --prefix desktop
+            npm pkg set version="${TAG#v}" --prefix web
+          fi
+          npm run build --prefix web
       - name: Qualify and stage the payload
         run: |
           suffix=''; [ "${{ matrix.os }}" = win ] && suffix=.exe
