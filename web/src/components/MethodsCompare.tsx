@@ -13,16 +13,15 @@ function facts(run: MethodRun): { main?: string; detail: string; warn?: boolean 
   const s = readRecord(record);
   const main = s ? [s.timeS != null ? shortTime(s.timeS) : null, s.grams != null ? `${s.grams.toFixed(1)} g` : null].filter(Boolean).join(' · ') : undefined;
   if (!s) return { main, detail: '' };
-  const hits = s.verifier?.ran ? s.verifier.hits : null;
-  const head = hits != null ? `${hits} ${hits === 1 ? 'hit' : 'hits'}` : null;
-  const error = s.topErrorMm != null ? `${Math.round(s.topErrorMm * 1000)} µm` : null;
+  const hits = s.verifier?.ran ? s.verifier.hits : 0;
+  const head = hits ? `Head hits part ${hits}×` : null;
   if (run.method !== 'off' && !s.curved) {
     const why = objectResults(record).find((o) => o.printedFlat)?.flatWhy ?? s.refusedWhy;
     return { main, detail: ['Flat', why].filter(Boolean).join(': '), warn: true };
   }
   const tilt = objectResults(record).find((o) => o.slant)?.slant?.angle, pct = curvedTopPercent(record);
   const top = run.method === 'off' ? null : tilt != null ? `Tilt ${Math.round(tilt)}°` : s.wholePart ? 'Full-part curved layers' : pct != null ? `${pct}% of top curved` : null;
-  return { main, detail: [top, error, head].filter(Boolean).join(' · '), warn: !!hits };
+  return { main, detail: [top, head].filter(Boolean).join(' · '), warn: !!hits };
 }
 
 export function DoneMethods() {
