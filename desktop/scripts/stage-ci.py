@@ -236,9 +236,9 @@ def main():
     if args.os == 'mac':
         run('git', 'archive', '--format=tar.gz', '--output=' + str(build / 'source.tar.gz'), 'HEAD', cwd=ROOT)
     png = (ROOT / 'desktop/icon-256.png').read_bytes()
-
-    chunk = b'ic08' + struct.pack('>I', len(png) + 8) + png
-    (build / 'icon.icns').write_bytes(b'icns' + struct.pack('>I', len(chunk) + 8) + chunk)
+    large = (ROOT / 'desktop/icon-1024.png').read_bytes()
+    chunks = b''.join(kind + struct.pack('>I', len(data) + 8) + data for kind, data in ((b'ic10', large), (b'ic08', png)))
+    (build / 'icon.icns').write_bytes(b'icns' + struct.pack('>I', len(chunks) + 8) + chunks)
     (build / 'icon.ico').write_bytes(struct.pack('<HHH', 0, 1, 1) +
         struct.pack('<BBBBHHII', 0, 0, 0, 0, 1, 32, len(png), 22) + png)
     print(f'Staged {revision}: {count} resources for {args.os}/{args.arch}')

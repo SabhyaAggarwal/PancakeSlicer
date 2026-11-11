@@ -288,7 +288,7 @@ jobs:
         run: .github/scripts/build/compare-reference.sh "$BASE" desktop/build/reference "${{ steps.keys.outputs.reference }}"
       - name: Package installers
         run: |
-          cp desktop/icon-256.png desktop/build/icon.png
+          cp desktop/icon-1024.png desktop/build/icon.png
           cp -a build-native/tool/lib desktop/build/engine-linux-x64/lib
           chmod -R a+rX desktop/build/engine-linux-x64/lib
           npm run dist:linux --prefix desktop
@@ -408,7 +408,7 @@ jobs:
             sudo sysctl -w kern.maxfiles=524288 kern.maxfilesperproc=262144
             ulimit -n 262144
           fi
-          cp desktop/icon-256.png desktop/build/icon.png
+          cp desktop/icon-1024.png desktop/build/icon.png
           case "${{ matrix.target }}" in
             mac-x64) npm run dist:mac-x64 --prefix desktop ;;
             *) npm run dist:${{ matrix.os }} --prefix desktop ;;
