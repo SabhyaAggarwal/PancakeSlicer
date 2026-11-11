@@ -1,0 +1,49 @@
+name: Retire a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version X.Y.Z to remove from the releases, tags, GHCR and Docker Hub
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "v$VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          elif gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/v$VERSION" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/v$VERSION"
+          fi
+      - name: Delete the GHCR image version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          ids=$(gh api --paginate "users/$owner/packages/container/pancakeslicer/versions" \
+            --jq ".[] | select(.metadata.container.tags | index(\"$VERSION\")) | .id")
+          for id in $ids; do gh api -X DELETE "users/$owner/packages/container/pancakeslicer/versions/$id"; echo "deleted GHCR version $id"; done
+          [ -n "$ids" ] || echo "no GHCR version tagged $VERSION"
+      - name: Delete the Docker Hub tag
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          jwt=$(curl -fsS -H 'Content-Type: application/json' -d "{\"username\":\"$DOCKERHUB_USERNAME\",\"password\":\"$DOCKERHUB_TOKEN\"}" \
+            https://hub.docker.com/v2/users/login | jq -r .token)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: JWT $jwt" \
+            "https://hub.docker.com/v2/repositories/zimengxiong/pancakeslicer/tags/$VERSION/")
+          case $code in 204) echo "deleted Docker Hub tag $VERSION" ;; 404) echo "no Docker Hub tag $VERSION" ;; *) echo "Docker Hub returned $code"; exit 1 ;; esac
