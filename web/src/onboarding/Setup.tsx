@@ -8,7 +8,6 @@ import { catalogKey } from '../profiles/model';
 import { createProfileFromBase } from '../profiles/catalog';
 import { addCatalogFamilies, useCatalog } from '../profiles/catalog-add';
 import { FIRST_SCREEN, loadedCatalog, PRINTER_CATALOG, printerCatalog, type CatalogFamily, type CatalogVendor } from '../profiles/catalog-reads';
-import { archiveProfiles } from '../profiles/transactions';
 import { profileKey } from '../profiles/identity';
 import { nozzleOf } from '../profiles/machines';
 import { discoverPrinters, saveConnection, testConnection, type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered } from '../printers/connections';
@@ -25,8 +24,8 @@ const VENDOR_NAMES: Record<string, string> = { BBL: 'Bambu Lab' };
 const vendorName = (id: string, name = id) => VENDOR_NAMES[id] ?? name;
 
 interface PrinterModel { id: string; vendor: string; vendorName: string; model: string; cover?: string; nozzles: number[]; machines: Record<string, string>; presets: SystemPreset[] }
-interface Choices { model: PrinterModel | null; nozzles: number[]; profiles: Set<string> | null; connection: ConnectionEdit | null; filaments: Set<string> | null; families: CatalogFamily[] }
-let choices: Choices = { model: null, nozzles: [], profiles: null, connection: null, filaments: null, families: [] };
+interface Choices { model: PrinterModel | null; nozzles: number[]; connection: ConnectionEdit | null; filaments: Set<string> | null; families: CatalogFamily[] }
+let choices: Choices = { model: null, nozzles: [], connection: null, filaments: null, families: [] };
 
 const toModels = (vendors: CatalogVendor[]): PrinterModel[] => vendors.flatMap((v) => v.models.map((m) => ({ id: `${v.id}|${m.id}`, vendor: v.id,
   vendorName: vendorName(v.id, v.name), model: m.name, cover: m.cover, nozzles: m.nozzles.map(Number).filter((n) => n > 0), machines: m.machines ?? {}, presets: [] })));
@@ -44,7 +43,7 @@ async function loadModel(m: PrinterModel, nozzles: number[]): Promise<SystemPres
   return mine();
 }
 
-const STEPS = ['printer', 'profiles', 'connect', 'filaments'] as const;
+const STEPS = ['printer', 'connect', 'filaments'] as const;
 function Frame({ step, children, foot, title }: { step: string; children: ReactNode; foot?: ReactNode; title?: string }) {
   const at = STEPS.indexOf(step as (typeof STEPS)[number]);
   return (
@@ -145,19 +144,6 @@ function Printer() {
   </Frame>;
 }
 
-function Profiles() {
-  const users = useStore((s) => s.userPresets);
-  const rows = useMemo(() => users.filter((p) => p.type === 'process' && !p.archived && (p.kind ?? 'profile') === 'profile'), [users]);
-  const [on, setOn] = useState<Set<string>>(() => choices.profiles ?? new Set(rows.map((p) => profileKey(p))));
-  const flip = (k: string) => setOn((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
-  const next = () => { choices = { ...choices, profiles: on }; send({ type: 'NEXT' }); };
-  return <Frame step="profiles" foot={<><Back /><span className="setup-grow" /><span className="setup-count">{on.size} selected</span><Next disabled={!on.size} onClick={next} /></>}>
-    <h2>Print profiles</h2>
-    <div className="setup-list">{rows.map((p) => { const k = profileKey(p); return (
-      <label key={k} className="setup-check"><input type="checkbox" checked={on.has(k)} onChange={() => flip(k)} /><span>{p.name}</span></label>); })}</div>
-  </Frame>;
-}
-
 const KINDS: [ConnectionKind, string][] = [['bambu-lan', 'Bambu LAN'], ['moonraker', 'Moonraker'], ['octoprint', 'OctoPrint']];
 function Connect() {
   const [edit, setEdit] = useState<ConnectionEdit>(choices.connection ?? { kind: 'bambu-lan', name: 'Printer' });
@@ -175,7 +161,7 @@ function Connect() {
   const runTest = async () => { setTest('testing'); try { setTest(await testConnection('', edit)); } catch (e) { setTest({ ok: false, stage: 'error', message: e instanceof Error ? e.message : String(e) }); } };
   const filled = edit.kind === 'bambu-lan' ? !!(edit.host && edit.serial && edit.access_code) : !!edit.url;
   const next = () => { choices = { ...choices, connection: filled ? edit : null }; send({ type: 'NEXT' }); };
-  return <Frame step="connect" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => { choices = { ...choices, connection: null }; send({ type: 'SKIP' }); }}>Skip</button><span className="setup-grow" /><Next disabled={!filled} onClick={next} /></>}>
+  return <Frame step="connect" foot={<><Back /><span className="setup-grow" /><Next label={filled ? 'Next' : 'Skip'} onClick={next} /></>}>
     <h2>Connect your printer</h2>
     <div className="setup-row">
       <button type="button" className="btn" disabled={found === 'looking'} onClick={() => void discover()}>{found === 'looking' ? 'Looking…' : 'Find printers'}</button>
@@ -262,7 +248,7 @@ function Filaments({ error }: { error: string | null }) {
 
 async function applyChoices() {
   try {
-    const { model, nozzles, profiles, connection } = choices;
+    const { model, nozzles, connection } = choices;
     let printerKey: string | null = null;
     if (model) for (const n of nozzles) {
       const preset = model.presets.find((p) => Math.abs(nozzleOf(p) - n) < 1e-6);
@@ -272,26 +258,15 @@ async function applyChoices() {
     }
     {
       const s = getState();
-      const live = s.userPresets.filter((p) => p.type === 'process' && !p.archived && (p.kind ?? 'profile') === 'profile');
-      const drop = profiles ? live.filter((p) => !profiles.has(profileKey(p))).map((p) => profileKey(p)) : [];
-      const keep = (profiles && [...profiles][0]) ?? live.map((p) => profileKey(p))[0];
-      const current = s.userPresets.find((p) => p.type === 'process' && (p.name === s.process || profileKey(p) === s.process));
-      if (keep && (!current || drop.includes(profileKey(current)))) requestPreset('process', 0, keep);
-      if (drop.length) await archiveProfiles('process', drop);
+      const first = s.userPresets.find((p) => p.type === 'process' && !p.archived && (p.kind ?? 'profile') === 'profile');
+      if (first && !s.userPresets.some((p) => p.type === 'process' && (p.name === s.process || profileKey(p) === s.process))) requestPreset('process', 0, profileKey(first));
     }
     if (connection && printerKey) await saveConnection(printerKey, { ...connection, name: model?.model ?? 'Printer' }).catch((e) => toast(`Couldn't save connection: ${e instanceof Error ? e.message : e}`));
     const added = choices.families.length ? await addCatalogFamilies(choices.families.map((family) => ({ family }))) : undefined;
     const first = added?.chosen[0];
     if (first) requestPreset('filament', 0, first);
-    send({ type: 'APPLIED' });
+    savePreferences({ 'orca.setup': '1' }); setState({ tab: 'prepare' }); send({ type: 'APPLIED' });
   } catch (e) { send({ type: 'FAILED', error: e instanceof Error ? e.message : String(e) }); }
-}
-
-function Done() {
-  const finish = () => { savePreferences({ 'orca.setup': '1' }); setState({ tab: 'prepare' }); send({ type: 'CLOSE' }); };
-  return <Frame step="done" foot={<><Back /><span className="setup-grow" /><Next label="Start printing" onClick={finish} /></>}>
-    <div className="setup-hero"><img src="/logo.svg" width={96} height={96} alt="" /><h1>Ready</h1></div>
-  </Frame>;
 }
 
 export default function Setup() {
@@ -327,16 +302,14 @@ export default function Setup() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [value]);
-  useEffect(() => { if (value === 'closed') choices = { model: null, nozzles: [], profiles: null, connection: null, filaments: null, families: [] }; }, [value]);
+  useEffect(() => { if (value === 'closed') choices = { model: null, nozzles: [], connection: null, filaments: null, families: [] }; }, [value]);
   switch (value) {
     case 'closed': return null;
     case 'welcome': return <Welcome />;
     case 'tour': return <Tour page={context.page} />;
     case 'printer': return <Printer />;
-    case 'profiles': return <Profiles />;
     case 'connect': return <Connect />;
     case 'filaments': return <Filaments error={context.error} />;
     case 'applying': return <Frame step="filaments" foot={<span className="setup-count">Setting up…</span>}><div className="setup-hero"><span className="setup-spin" /></div></Frame>;
-    case 'done': return <Done />;
   }
 }

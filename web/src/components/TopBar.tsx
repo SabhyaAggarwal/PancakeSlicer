@@ -174,7 +174,7 @@ export function TopBar() {
         ]} as MenuItem] : []), {label: 'Help', sub: [
           ...(hasWhatYouCanDo ? [{ label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'Take a visual tour of PancakeSlicer\'s features' }] : []),
           { label: 'Keyboard shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
-          { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, profiles, connection and filaments' },
+          { label: 'Setup', action: () => openSetup('printer'), tip: 'Printer, connection and filaments' },
         ]}];
   return <header className="topbar compact-topbar">
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><img src="/logo.svg" width={20} height={20} alt="" draggable={false}/><Caret className="app-menu-caret"/></MenuButton>
