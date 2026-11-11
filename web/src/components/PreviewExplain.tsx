@@ -129,17 +129,6 @@ export function ExplainLegend(props: {
           ))}
         </>
       ) : <>
-      {!compare && (
-        <div className="np-stats">
-          {rows.filter(([label]) => !['Time', 'Filament'].includes(label)).map(([label, , b]) => (
-            <span key={label}>
-              <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label === 'Curved top' ? 'Top curved' : label}</span>
-              <span className="np-v">{b}</span>
-            </span>
-          ))}
-          {s.flat.length > 0 && <span><span className="np-k">Kept flat</span><span className="np-v">{area(s.flat.reduce((a, f) => a + f.area, 0))}</span></span>}
-        </div>
-      )}
       {compare && <table className="lg-table np-table">
         <thead>
           <tr>

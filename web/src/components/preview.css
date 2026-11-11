@@ -80,10 +80,6 @@
 :where(.orca-parity) .np-head { position: sticky; top: 0; z-index: 1; padding: var(--s-1) 0 var(--s-1); background: var(--raised); }
 :where(.orca-parity) .np-legend + .lg-body { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
 :where(.orca-parity) .lg-switch { display: flex; align-items: center; gap: var(--s-3); min-height: 26px; cursor: pointer; white-space: nowrap; }
-:where(.orca-parity) .np-stats { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin-top: var(--s-2); }
-:where(.orca-parity) .np-stats > span { display: inline-flex; align-items: baseline; gap: var(--s-2); white-space: nowrap; }
-:where(.orca-parity) .np-k { color: var(--ink-2); }
-:where(.orca-parity) .np-v { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .np-table td:first-child { color: var(--ink-2); }
 :where(.orca-parity) .np-good { color: var(--accent-text); font-weight: 600; }
 :where(.orca-parity) .np-warn img { margin-right: var(--s-3); }
