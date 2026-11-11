@@ -218,6 +218,7 @@ jobs:
             --image "pancakeslicer-check:${GITHUB_SHA::10}"
       - name: Package installers
         run: |
+          ulimit -n 65536 2>/dev/null || true
           cp desktop/icon-256.png desktop/build/icon.png
           if [ "${{ matrix.os }}" = linux ]; then cp -a build-native/tool/lib desktop/build/engine-linux-x64/lib; chmod -R a+rX desktop/build/engine-linux-x64/lib; fi
           case "${{ matrix.target }}" in
