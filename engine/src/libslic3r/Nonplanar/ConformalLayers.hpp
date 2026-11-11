@@ -1,5 +1,6 @@
 #pragma once
 
+#include <admesh/stl.h>
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Point.hpp"
