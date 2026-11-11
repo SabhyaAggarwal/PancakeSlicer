@@ -338,7 +338,7 @@ func mqttSession(ctx context.Context, p *PrinterConfig, secret string) (*tls.Con
 	rand.Read(id)
 	var connect []byte
 	connect = append(connect, 0, 4, 'M', 'Q', 'T', 'T', 4, 0xC2, 0, 60)
-	connect = append(connect, mqttString("orca-web-"+hex.EncodeToString(id))...)
+	connect = append(connect, mqttString("pancakeslicer-"+hex.EncodeToString(id))...)
 	connect = append(connect, mqttString(bambuUser)...)
 	connect = append(connect, mqttString(secret)...)
 	conn.SetDeadline(time.Now().Add(15 * time.Second))
@@ -552,7 +552,7 @@ func testBambu(ctx context.Context, p *PrinterConfig, secret string) PrinterTest
 	defer conn.Close()
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	mqttPublish(conn, p, map[string]any{"info": map[string]any{"sequence_id": sequence, "command": "get_version"}})
-	mqttPublish(conn, p, map[string]any{"print": map[string]any{"sequence_id": sequence, "command": "gcode_line", "param": "; orca-web connection test\n"}})
+	mqttPublish(conn, p, map[string]any{"print": map[string]any{"sequence_id": sequence, "command": "gcode_line", "param": "; PancakeSlicer connection test\n"}})
 	model, answered := "", false
 	conn.SetDeadline(time.Now().Add(8 * time.Second))
 	for model == "" || !answered {
