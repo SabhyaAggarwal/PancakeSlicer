@@ -166,7 +166,7 @@ export async function importFiles(files: FileList | File[], opts: { sourceUrl?: 
         : { geometry: await loadMesh(f, (pct) => { if (task.current()) { task.progress(pct, 'meshing'); const label = `Loading ${f.name} ${Math.round(pct)}%`; if (busy) busy.relabel(label); else busy = beginBusy(label, task.signal); } }), source: f };
       if (!task.current()) { geometry.dispose(); break; }
       added.push({
-        id: newId(), name: f.name, geometry, simplification: geometry.userData.simplification, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {}, ...(opts.sourceUrl ? { sourceUrl: opts.sourceUrl } : {}),
+        id: newId(), name: source.name, geometry, simplification: geometry.userData.simplification, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {}, ...(opts.sourceUrl ? { sourceUrl: opts.sourceUrl } : {}),
         instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }],
       });
     } catch (e) {
