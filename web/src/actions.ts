@@ -172,7 +172,8 @@ export async function importFiles(files: FileList | File[], opts: { sourceUrl?: 
     } catch (e) {
       if (!task.current()) break;
       task.fail(e);
-      toast(String(e instanceof Error ? e.message : e));
+      const message = String(e instanceof Error ? e.message : e);
+      toast(message.startsWith('Oops') ? message : `Oops! Couldn't load ${f.name}: ${message}`);
     } finally {
       busy?.end();
     }
