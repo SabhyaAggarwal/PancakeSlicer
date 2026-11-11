@@ -24,7 +24,7 @@ Accessible non-planar slicing is the main goal of this project (everything else 
 </details>
 
 
-Currently, we have support for four modes:
+Currently, we have support for four modes, you can play around with all of them in the [demo](https://demo.pancake.cooking/) (I'm wayy too tired and I don't want to capture more screenshots so please watch the yt video or play with the demo sorry maybe sometime soon I'll update this section):
 
 <img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/341f383d-551d-4d7f-a7bc-3c459c9d09ef" />
 
