@@ -3,7 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'deploy/docker-compose*.yml'
+      - 'deploy/caddy/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - 'deploy/docker-compose*.yml'
+      - 'deploy/caddy/**'
   workflow_dispatch:
 
 permissions:
@@ -11,11 +23,46 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+      server: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.server == 'true' }}
+      desktop: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true' }}
+      engine: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.engine == 'true' || steps.filter.outputs.pipeline == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            web:
+              - 'web/**'
+              - '!**/*.md'
+            server:
+              - 'server/**'
+              - '!**/*.md'
+            desktop:
+              - 'desktop/**'
+              - '!**/*.md'
+            engine:
+              - 'engine/**'
+              - '!**/*.md'
+            pipeline:
+              - '{.github/workflows/release.yml,.github/scripts/build/**,desktop/scripts/stage-ci.py,deploy/Dockerfile,deploy/test.sh,server/Dockerfile}'
+
   web:
     name: Web (tsc + build)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +76,8 @@ jobs:
 
   server:
     name: Service (go vet + test)
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -43,6 +92,8 @@ jobs:
 
   desktop:
     name: Desktop shell (tsc)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -56,6 +107,8 @@ jobs:
 
   engine:
     name: Engine, qualification and Docker (Linux)
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
