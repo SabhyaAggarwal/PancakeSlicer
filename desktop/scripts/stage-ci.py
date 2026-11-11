@@ -133,6 +133,7 @@ def main():
     parser.add_argument('--arch', choices=['arm64', 'x64'], required=True)
     parser.add_argument('--tool', type=Path, required=True)
     parser.add_argument('--reference', type=Path, required=True)
+    parser.add_argument('--engine-source', required=True)
     parser.add_argument('--image')
     parser.add_argument('--dependency-prefix',type=Path)
     args = parser.parse_args()
@@ -148,7 +149,7 @@ def main():
         shutil.rmtree(web)
     shutil.copytree(ROOT / 'web/dist', web, ignore=shutil.ignore_patterns('*.map', '*.pdb', '*.d.ts', 'bundle-report.json'))
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
-    engine_source = json.loads((ROOT / 'engine/scripts/engine-source.json').read_text())['engine_source_sha']
+    engine_source = args.engine_source
     suffix = '.exe' if args.os == 'win' else ''
     native = engine / ('nonplanar_slice_tool' + suffix)
     shutil.copy2(tool, native)
@@ -194,6 +195,8 @@ def main():
     if qualification.exists():
         shutil.rmtree(qualification)
     qualification.mkdir(parents=True)
+    reference = args.reference.resolve()
+    reference.mkdir(parents=True, exist_ok=True)
     command_prefix = []
     image = args.image or f'pancakeslicer:{revision[:10]}'
     if args.os == 'linux':
@@ -202,10 +205,18 @@ def main():
         command_prefix = ['docker', 'run', '--rm', '--network', 'none', '--memory', '2g', '--memory-swap', '2g', '--cpus', '1', '--user', f'{os.getuid()}:{os.getgid()}',
                           '--mount', f'type=bind,src={engine},dst={engine},readonly',
                           '--mount', f'type=bind,src={qualification},dst={qualification}',
+                          '--mount', f'type=bind,src={reference},dst={reference}',
                           '--entrypoint', '', image]
+    if not (reference / 'qualification.json').is_file():
+        if args.os != 'linux' or args.arch != 'x64':
+            raise RuntimeError('Only the Linux x86_64 build can produce the engine reference')
+        run(sys.executable, ROOT / 'engine/scripts/qualification/qualify.py', '--command-prefix', json.dumps(command_prefix), '--tool', native,
+            '--resources', resources, '--engine-source', engine_source, '--output', reference)
+        if not json.loads((reference / 'qualification.json').read_text())['audits_passed']:
+            raise RuntimeError('The engine reference failed its audits')
     run(sys.executable, ROOT / 'engine/scripts/qualification/qualify.py', '--command-prefix', json.dumps(command_prefix), '--tool', native,
         '--resources', resources, '--engine-source', engine_source, '--publication-source', revision,
-        '--reference', args.reference.resolve(), '--output', qualification)
+        '--reference', reference, '--output', qualification)
     run(sys.executable, ROOT / 'engine/scripts/qualification/finalize.py', '--engine', engine,
         '--qualification', qualification, '--evidence-archive', build / f'PancakeSlicer-{args.os}-{args.arch}-qualification.zip')
     components = {'client_source': revision, 'server_source': revision, 'native_source': engine_source,

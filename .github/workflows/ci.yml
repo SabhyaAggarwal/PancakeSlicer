@@ -55,75 +55,10 @@ jobs:
       - run: npm run compile --prefix desktop
 
   engine:
-    name: Engine (Linux Release + test slice)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    name: Engine, qualification and Docker (Linux)
+    uses: ./.github/workflows/release.yml
     permissions:
-      contents: write   # publishes hash-named build products to the prebuilt release
-    env:
-      CMAKE_POLICY_VERSION_MINIMUM: '3.10'
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_SLOPPINESS: pch_defines,time_macros,include_file_mtime,include_file_ctime
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build autoconf automake libtool texinfo \
-            pkgconf nasm yasm gettext ccache libcurl4-openssl-dev libssl-dev libgl-dev libdbus-1-dev libfontconfig1-dev \
-            libfreetype-dev libx11-dev libudev-dev libva-dev libjpeg-turbo8-dev liblzma-dev \
-            libxkbcommon-dev libwayland-dev wayland-protocols extra-cmake-modules libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libegl-dev
-      - name: Name the prebuilt assets
-        id: keys
-        run: .github/scripts/build/keys.sh linux-x64 linux
-      - name: Fetch the compiled engine
-        id: engine
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          rc=0; .github/scripts/build/prebuilt.sh fetch "${{ steps.keys.outputs.engine }}" build-native/tool || rc=$?
-          case $rc in 0) echo "hit=true" >> "$GITHUB_OUTPUT" ;; 3) echo "hit=false" >> "$GITHUB_OUTPUT" ;; *) exit $rc ;; esac
-      - name: Fetch native dependencies
-        id: deps
-        if: steps.engine.outputs.hit != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          rc=0; .github/scripts/build/prebuilt.sh fetch "${{ steps.keys.outputs.deps }}" engine/deps/build || rc=$?
-          case $rc in 0) echo "hit=true" >> "$GITHUB_OUTPUT" ;; 3) echo "hit=false" >> "$GITHUB_OUTPUT" ;; *) exit $rc ;; esac
-      - name: Build native dependencies
-        if: steps.deps.outputs.hit == 'false'
-        run: .github/scripts/build/deps.sh linux x64
-      - name: Check and publish native dependencies
-        if: steps.deps.outputs.hit == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          .github/scripts/build/engine.sh linux x64 --configure-only
-          if [ "${{ github.event_name }}" != pull_request ]; then
-            .github/scripts/build/prebuilt.sh publish "${{ steps.keys.outputs.deps }}" engine/deps/build OrcaSlicer_dep
-          fi
-      - name: Restore compiler cache
-        if: steps.engine.outputs.hit != 'true'
-        id: ccache
-        uses: actions/cache/restore@v6
-        with:
-          path: .ccache
-          key: ccache-v2-ubuntu-24.04-x64-${{ github.run_id }}
-          restore-keys: ccache-v2-ubuntu-24.04-x64-
-      - name: Build nonplanar_slice_tool
-        if: steps.engine.outputs.hit != 'true'
-        run: .github/scripts/build/engine.sh linux x64
-      - name: Save compiler cache
-        if: always() && steps.ccache.outcome == 'success'
-        uses: actions/cache/save@v6
-        with:
-          path: .ccache
-          key: ${{ steps.ccache.outputs.cache-primary-key }}
-      - name: Publish the compiled engine
-        if: steps.engine.outputs.hit != 'true' && github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: .github/scripts/build/prebuilt.sh publish "${{ steps.keys.outputs.engine }}" build-native/tool .
-      - name: Check that the engine starts
-        run: ldd build-native/tool/nonplanar_slice_tool && (build-native/tool/nonplanar_slice_tool --help || true) | head -20
+      contents: write
+      packages: write
+    with:
+      targets: linux-x64
