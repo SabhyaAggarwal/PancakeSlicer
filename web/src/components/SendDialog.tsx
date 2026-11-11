@@ -49,7 +49,7 @@ export default function SendDialog({ close: dismiss }: { close: () => void }) {
   const connection = useStore((s) => connectionOf(s.printerConnections, printer));
   const status = useStore((s) => s.printerConnections.status[printer]);
   const [editing, setEditing] = useState(false);
-  const title = 'Send to printer';
+  const title = !connection || editing ? 'Printer connection' : 'Send to printer';
   const live = useStore((s) => s.printerConnections.live);
   const presence = connection && presenceStatus(live, connection, status);
   const head = <>
