@@ -93,8 +93,9 @@ function partialLine(r: ObjectResult): string | undefined {
     : 'a curved top would cost too much time or quality';
   const budget: Record<string, string> = { firmware_time_budget: 'a curved top would cost too much time', top_rms_worse_than_planar: 'flat layers print them smoother' };
   const reasons = [...new Set([byLimit, ...r.tops.dropped.map((d) => budget[d])].filter((w): w is string => !!w))];
+  if (!reasons.length) return undefined;
   const n = r.tops.candidates - r.tops.kept;
-  return `${n} ${n === 1 ? 'top' : 'tops'} flat${reasons.length ? `: ${reasons.join('; ')}` : ''}`;
+  return `${n} ${n === 1 ? 'top' : 'tops'} flat: ${reasons.join('; ')}`;
 }
 
 export interface CurveFailure { objectId?: number; label: string; method: string; why: string; tryDuct: boolean;
