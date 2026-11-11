@@ -3637,7 +3637,7 @@ int main(int argc, char **argv)
         }
 
         std::mutex progress_mutex;
-        int last_percent = 0;
+        int last_percent = 0, export_percent = 0;
         Print print;
         if (classic_params)
             print.set_calib_params(*classic_params);
@@ -3685,7 +3685,11 @@ int main(int argc, char **argv)
         } catch (const SlicingErrors &errors) {
             throw std::runtime_error(print.slicing_errors_message(errors));
         }
-        if (args.progress) print.set_status_default();
+        if (args.progress) print.set_status_callback([&](const PrintBase::SlicingStatus &status) {
+            std::lock_guard<std::mutex> lock(progress_mutex);
+            const int percent = std::min(99, (status.percent - 80) * 5);
+            if (percent > 0 && percent > export_percent) { export_percent = percent; progress("export", percent); }
+        });
         for (const PrintObject *object : print.objects())
             for (const PrintStateBase::Warning &w : object->step_state_with_warnings(posSupportMaterial).warnings)
                 std::cerr << "warning: " << w.message << "\n";
@@ -3706,6 +3710,7 @@ int main(int argc, char **argv)
             return list;
         }, args.verify || !args.json.empty());
         GCodeWriter::planned_moves = nullptr;
+        if (args.progress) print.set_status_default();
         for (const PrintStateBase::Warning &w : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cerr << "warning: " << w.message << "\n";
         if (!args.planned_out.empty()) {

@@ -1292,9 +1292,11 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
     params.head = resolve_head_envelope(m_print.config());
     params.contact_bar = true;
     params.cone_tolerance = curved_tops_cone_tolerance(m_print);
+    const auto      started = std::chrono::steady_clock::now();
     ClearanceReport report = verify_clearance(result, params, ThreeAxisKinematics(), [this] { m_print.throw_if_canceled(); });
     BOOST_LOG_TRIVIAL(warning) << "Curved tops clearance pass " << m_curved_pass << ": " << report.hit_moves
-                               << " hits, " << report.hit_body_moves << " body hits, " << report.cone_graze_moves << " grazes";
+                               << " hits, " << report.hit_body_moves << " body hits, " << report.cone_graze_moves << " grazes, verify "
+                               << std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() << " s";
     if (report.hit_moves > 0) {
         for (const ClearanceHit &hit : report.worst) {
             const auto &move = result.moves[hit.move_id];
@@ -1336,9 +1338,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
         if (pass >= disc_passes + 1)
             throw Slic3r::SlicingError("Curved tops: head clearance still fails after its surface repair passes; export blocked.");
         bool angled = false, repaired = false;
-        std::map<std::pair<PrintObject *, int>, size_t> angled_now;
-        std::set<std::pair<const PrintObject *, int>> ordered_now;
-        std::set<std::pair<const PrintObject *, int>> roads_now;
+        std::vector<CurvedHit> hits;
         for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i) {
             const auto &move = result.moves[i];
             if (report.per_move[i] >= -1e-5f || move.extrusion_role == erCustom) continue;
@@ -1366,12 +1366,21 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 }
             }
             if (owner == nullptr) continue;
-            if (owner->printing_region(0).config().nonplanar_top_direction.value <= -2. &&
-                (!owner->m_nonplanar_repair || owner->m_nonplanar_repair->top_angle_settled.count(surface_id) == 0)) {
-                ++angled_now[{ owner, surface_id }];
-                angled = true;
-                continue;
-            }
+            hits.push_back({ owner, surface_id, owner_shift, tip, tip_of(result, i == 0 ? i : i - 1), report.per_move[i] });
+        }
+        std::map<SurfaceKey, size_t> surface_hits;
+        for (const CurvedHit &hit : hits)
+            ++surface_hits[{ hit.owner, hit.surface_id }];
+        for (const auto &key : m_curved_roads_last)
+            if (surface_hits[key] > 0 && surface_hits[key] >= m_curved_hits_last[key])
+                m_curved_roads_stalled.insert(key);
+        std::set<std::pair<const PrintObject *, int>> ordered_now;
+        std::set<std::pair<const PrintObject *, int>> roads_now;
+        auto repair_hit = [&](const CurvedHit &hit) {
+            PrintObject *owner       = hit.owner;
+            const int    surface_id  = hit.surface_id;
+            const Vec2d &owner_shift = hit.shift;
+            const Vec3d &tip         = hit.tip;
             repaired = true;
             if (curved_tops_mode(owner->config().nonplanar_mode.value)) {
                 if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
@@ -1384,9 +1393,9 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                     hints.banded_surfaces.insert(surface_id);
                     hints.band_height = band;
                     if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
-                    continue;
+                    return;
                 }
-                if (hints.ordered_surfaces.count(surface_id) == 0) {
+                if (hints.ordered_surfaces.count(surface_id) == 0 && m_curved_roads_stalled.count({ owner, surface_id }) == 0) {
                     if (roads_now.count({ owner, surface_id }) == 0 && ordered_now.count({ owner, surface_id }) == 0) {
                         if (hints.ordered_road_passes[surface_id] < 3) {
                             roads_now.insert({ owner, surface_id });
@@ -1401,7 +1410,7 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 }
                 if (roads_now.count({ owner, surface_id }) != 0 || ordered_now.count({ owner, surface_id }) != 0) {
                     if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
-                    continue;
+                    return;
                 }
             }
             if (pass < disc_passes) {
@@ -1417,12 +1426,12 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
                 double radius = 2.5 * (std::max(0, disc_pass) + 1);
                 for (const HeadBox &box : params.head.boxes)
                     if (box.nozzle && !box.infinite_x && !box.infinite_y &&
-                        box.min.z() <= -double(report.per_move[i]) + EPSILON)
+                        box.min.z() <= -double(hit.depth) + EPSILON)
                         radius = std::max(radius, 2.5 * (std::max(0, disc_pass) + 1) +
                             std::max({-box.min.x(), box.max.x(), -box.min.y(), box.max.y()}));
                 if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
                 auto &discs = owner->m_nonplanar_repair->planar;
-                const Vec3d from = tip_of(result, i == 0 ? i : i - 1);
+                const Vec3d &from = hit.from;
                 const int samples = std::max(1, int(std::ceil((tip - from).head<2>().norm() / (0.5 * radius))));
                 for (int k = 0; k <= samples; ++k) {
                     const Vec3d p = from + (double(k) / samples) * (tip - from);
@@ -1436,24 +1445,44 @@ bool ClearanceRepair::curved_tops_step(GCodeProcessorResult &result)
             } else
                 owner->m_curved_planar_surfaces.insert(surface_id);
             if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
+        };
+        std::map<std::pair<PrintObject *, int>, std::vector<CurvedHit>> angled_now;
+        for (const CurvedHit &hit : hits) {
+            PrintObject *owner = hit.owner;
+            if (owner->printing_region(0).config().nonplanar_top_direction.value <= -2. &&
+                (!owner->m_nonplanar_repair || owner->m_nonplanar_repair->top_angle_settled.count(hit.surface_id) == 0)) {
+                angled_now[{ owner, hit.surface_id }].push_back(hit);
+                angled = true;
+                continue;
+            }
+            repair_hit(hit);
         }
-        for (const auto &[key, hits] : angled_now) {
+        for (auto &[key, struck] : angled_now) {
             PrintObject *owner = key.first;
             if (!owner->m_nonplanar_repair) owner->m_nonplanar_repair = std::make_shared<RepairHints>();
             RepairHints &hints = *owner->m_nonplanar_repair;
             int  &rung = hints.top_angle_rungs[key.second];
             auto &seen = hints.top_angle_hits[key.second];
             seen.resize(size_t(std::max(rung + 1, int(seen.size()))));
-            seen[size_t(rung)] = hits;
+            seen[size_t(rung)] = struck.size();
+            auto &rung_hits = m_curved_rung_hits[{ owner, key.second }];
+            rung_hits[rung] = std::move(struck);
             if (rung < AutoTopCandidates)
                 ++rung;
             else {
                 rung = int(std::min_element(seen.begin(), seen.end()) - seen.begin());
                 hints.top_angle_settled.insert(key.second);
+                if (const auto it = rung_hits.find(rung); it != rung_hits.end()) {
+                    for (const CurvedHit &hit : it->second)
+                        repair_hit(hit);
+                    surface_hits[key] = it->second.size();
+                }
             }
             hints.refill_tops = true;
             if (std::find(m_repick.begin(), m_repick.end(), owner) == m_repick.end()) m_repick.push_back(owner);
         }
+        m_curved_roads_last = roads_now;
+        m_curved_hits_last  = std::move(surface_hits);
         if (m_repick.empty())
             throw Slic3r::SlicingError("Curved tops: a head clearance hit cannot be attributed to an active curved surface; export blocked.");
         for (PrintObject *object : m_repick)

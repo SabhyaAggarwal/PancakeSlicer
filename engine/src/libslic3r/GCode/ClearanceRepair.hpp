@@ -1,8 +1,10 @@
 #pragma once
 #include "libslic3r/Nonplanar/Repair.hpp"
+#include "libslic3r/Point.hpp"
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -48,6 +50,19 @@ private:
     bool curved_tops_step(GCodeProcessorResult &result);
     int m_curved_pass = 0;
     int m_curved_angle_passes = 0;
+    struct CurvedHit
+    {
+        PrintObject *owner      = nullptr;
+        int          surface_id = -1;
+        Vec2d        shift;
+        Vec3d        tip, from;
+        float        depth = 0.f;
+    };
+    using SurfaceKey = std::pair<const PrintObject *, int>;
+    std::map<SurfaceKey, std::map<int, std::vector<CurvedHit>>> m_curved_rung_hits;
+    std::set<SurfaceKey>         m_curved_roads_last;
+    std::map<SurfaceKey, size_t> m_curved_hits_last;
+    std::set<SurfaceKey>         m_curved_roads_stalled;
     bool contact_guard(const GCodeProcessorResult &result, size_t contacts = 0);
 
     struct Planned

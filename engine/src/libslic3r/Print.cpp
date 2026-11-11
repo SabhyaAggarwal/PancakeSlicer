@@ -3537,6 +3537,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         if (std::vector<std::string> cached = Nonplanar::stage_cache_access_warnings(object->id().id); !cached.empty())
             curved_access_warnings[object->id().id] = std::move(cached);
     std::unique_ptr<GCode> gcode;
+    int exports = 0;
     for (;;) {
         if (repair.restore_planar_remainders()) {
             repair.apply();
@@ -3551,6 +3552,8 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         this->update_imex_slice_offset();
         const Vec2d imex_off = this->get_imex_slice_offset();
         gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
+        if (++exports > 1)
+            this->set_status(80 + 19 * (exports - 1) / exports, message);
         try {
             gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
         } catch (const CurvedTopsAccessError &error) {
