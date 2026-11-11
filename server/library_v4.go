@@ -338,7 +338,7 @@ func (s *Server) libraryRoutes(mux *http.ServeMux) {
 		}
 		in.Document["revision"] = json.RawMessage(fmt.Sprint(revision + 1))
 		e.Document = in.Document
-		e.Operations[in.OperationID] = libraryReceipt{Digest: digest, Revision: revision + 1}
+		putReceipt(e.Operations, in.OperationID, libraryReceipt{Digest: digest, Revision: revision + 1})
 		if err := l.write(e); err != nil {
 			libraryFailure(w, 507, "library_write_failed", "Profiles could not be saved. Free storage and retry.", "retry_storage", revision)
 			return

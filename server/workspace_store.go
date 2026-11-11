@@ -49,6 +49,7 @@ type workspaceValue struct {
 type workspaceReceipt struct {
 	Digest   string          `json:"digest"`
 	Response json.RawMessage `json:"response"`
+	Seq      uint64          `json:"seq,omitempty"`
 }
 type workspaceData struct {
 	Schema         int                         `json:"schema"`
@@ -346,7 +347,7 @@ func workspaceReplay(w http.ResponseWriter, d *workspaceData, op, digest string)
 }
 func (st *workspaceStore) commit(w http.ResponseWriter, d *workspaceData, op, digest string, response any) bool {
 	raw, _ := json.Marshal(response)
-	d.Operations[op] = workspaceReceipt{digest, raw}
+	putReceipt(d.Operations, op, workspaceReceipt{Digest: digest, Response: raw})
 	if err := st.save(d); err != nil {
 		workspaceFailure(w, 507, "workspace_write_failed", "Saved work could not be committed. Your draft must be kept; free storage and retry the same operation.", "free_storage_and_retry", 0)
 		return false

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -25,7 +27,40 @@ func validProfileName(name string) error {
 type libraryReceipt struct {
 	Digest   string `json:"digest"`
 	Revision uint64 `json:"revision"`
+	Seq      uint64 `json:"seq,omitempty"`
 }
+
+const maxReceipts = 256
+
+func (r libraryReceipt) seq() uint64                         { return r.Seq }
+func (r libraryReceipt) withSeq(n uint64) libraryReceipt     { r.Seq = n; return r }
+func (r workspaceReceipt) seq() uint64                       { return r.Seq }
+func (r workspaceReceipt) withSeq(n uint64) workspaceReceipt { r.Seq = n; return r }
+
+func putReceipt[R interface {
+	seq() uint64
+	withSeq(uint64) R
+}](ops map[string]R, op string, receipt R) {
+	next := uint64(0)
+	for _, r := range ops {
+		next = max(next, r.seq())
+	}
+	ops[op] = receipt.withSeq(next + 1)
+	if len(ops) <= maxReceipts {
+		return
+	}
+	keys := make([]string, 0, len(ops))
+	for k := range ops {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		return cmp.Or(cmp.Compare(ops[a].seq(), ops[b].seq()), strings.Compare(a, b))
+	})
+	for _, k := range keys[:len(ops)-maxReceipts] {
+		delete(ops, k)
+	}
+}
+
 type libraryError struct {
 	Message  string `json:"error"`
 	Code     string `json:"code"`
