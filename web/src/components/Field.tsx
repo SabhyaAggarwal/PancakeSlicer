@@ -249,7 +249,7 @@ export function NumberBox({ labelledBy, label, value, min, max, unit, readOnly, 
   return <LabelId.Provider value={labelledBy}><span className="opt-field number-box"><TextBox numeric spin value={String(Math.round(value))} label={label} def={def} readOnly={readOnly} onCommit={(v) => onCommit(Number(v))} /></span></LabelId.Provider>;
 }
 
-const DESKTOP_ONLY_HINT = 'Runs in OrcaSlicer desktop';
+const DESKTOP_ONLY_HINT = 'Runs in the desktop app';
 
 function TextBox(props: { value: string; label?: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; placeholder?: string; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
