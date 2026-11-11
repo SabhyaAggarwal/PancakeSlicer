@@ -1,11 +1,11 @@
 import { setState, useStore, type OrientSlice } from '../state/store';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { supportText } from '../preview/explain-record';
-import { shortTime } from '../preview/format';
+import { spacedTime } from '../preview/format';
 
 const FLOAT_MARGIN_MM = 10;
 
-const time = (s: OrientSlice | undefined) => (s?.time_s == null ? '…' : shortTime(s.time_s));
+const time = (s: OrientSlice | undefined) => (s?.time_s == null ? '…' : spacedTime(s.time_s));
 const support = (s: OrientSlice | undefined) => (s ? supportText(s.support_g) : '…');
 const area = (mm2: number) => `${Math.round(mm2)} mm²`;
 const floating = (s: OrientSlice | undefined) => (!s ? '…' : s.floating_mm == null ? '–' : `${s.floating_mm.toFixed(1)} mm`);

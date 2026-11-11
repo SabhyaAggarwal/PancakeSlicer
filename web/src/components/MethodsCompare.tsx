@@ -1,6 +1,6 @@
 import { cancelMethods, closeMethods, keepMethod, useMethods, viewMethod, type MethodRun } from '../methods';
 import { curvedTopPercent, objectResults, readRecord } from '../preview/explain-record';
-import { shortTime } from '../preview/format';
+import { spacedTime } from '../preview/format';
 import { useStore } from '../state/store';
 import './methods-compare.css';
 
@@ -11,7 +11,7 @@ function facts(run: MethodRun): { main?: string; detail: string; warn?: boolean 
   if (run.state === 'failed') return { detail: run.error, warn: true };
   const record = run.job.status?.record;
   const s = readRecord(record);
-  const main = s ? [s.timeS != null ? shortTime(s.timeS) : null, s.grams != null ? `${s.grams.toFixed(1)} g` : null].filter(Boolean).join(' · ') : undefined;
+  const main = s ? [s.timeS != null ? spacedTime(s.timeS) : null, s.grams != null ? `${s.grams.toFixed(1)} g` : null].filter(Boolean).join(' · ') : undefined;
   if (!s) return { main, detail: '' };
   const hits = s.verifier?.ran ? s.verifier.hits : 0;
   const head = hits ? `Head hits part ${hits}×` : null;
@@ -20,7 +20,7 @@ function facts(run: MethodRun): { main?: string; detail: string; warn?: boolean 
     return { main, detail: ['Flat', why].filter(Boolean).join(': '), warn: true };
   }
   const tilt = objectResults(record).find((o) => o.slant)?.slant?.angle, pct = curvedTopPercent(record);
-  const top = run.method === 'off' ? null : tilt != null ? `Tilt ${Math.round(tilt)}°` : s.wholePart ? 'Full-part curved layers' : pct != null ? `${pct}% of top curved` : null;
+  const top = run.method === 'off' ? null : tilt != null ? `Tilt ${Math.round(tilt)}°` : s.wholePart ? 'Whole part curved' : pct != null ? `${pct}% of top curved` : null;
   return { main, detail: [top, head].filter(Boolean).join(' · '), warn: !!hits };
 }
 

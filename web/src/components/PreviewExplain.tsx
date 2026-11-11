@@ -4,7 +4,7 @@ import { forgetCompare, setStandardData, showPrevious, startCompare, stopCompare
 import { drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
 import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
 import { area, curvedTopPercent, wholePartLayers, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
-import { MoveType, shortTime } from '../preview/format';
+import { MoveType, spacedTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
 import { plateResults, type PlateResult } from '../recommend';
@@ -42,7 +42,7 @@ function flatLines(results: PlateResult[]): string[] {
   return [...[...byReason].map(([why, labels]) => `Printed flat: ${named ? `${labels.join(', ')}: ` : ''}${why}`), ...partial];
 }
 
-const time = (s: number | null) => (s == null ? '–' : shortTime(s));
+const time = (s: number | null) => (s == null ? '–' : spacedTime(s));
 
 export function ViewSwitches({ ui, setUi, hasSurfaceGrid }: { ui: PreviewUi; setUi(f: (u: PreviewUi) => PreviewUi): void; hasSurfaceGrid: boolean }) {
   const previous = useRef<Pick<PreviewUi, 'view' | 'nonplanar'>>({ view: 'feature', nonplanar: 'shell' });
