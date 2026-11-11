@@ -7,6 +7,7 @@ import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
+import { canonicalKeys } from '../renamed-keys';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { preloadable } from '../preloadable';
 import type { Config, ConfigValue, PresetType } from '../api/types';
@@ -70,7 +71,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   const userPresets = useStore((s) => s.userPresets);
   const machines = useStore(s => s.machines), processes = useStore(s => s.processes), filaments = useStore(s => s.filaments);
   const projectConfig = useStore(s => effectiveConfig(s, type, slot));
-  const config = fields?.config ?? projectConfig;
+  const config = useMemo(() => fields ? canonicalKeys(fields.config) : projectConfig, [fields?.config, projectConfig]);
   const unedited = useMemo(() => {
     const s = getState();
     return effectiveConfig(type === 'filament' ? {...s, filamentEdits: {...s.filamentEdits, [presetName ?? '']: {}}} : {...s, dirty: {...s.dirty, [type]: {}}}, type, slot);
