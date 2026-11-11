@@ -11,6 +11,7 @@ Here are a lot of things that make it unique:
 - [Self-hostable](#self-hostable)
 - [Dynamic Profiles](#dynamic-profiles)
 - [Other Features](#other-features)
+- [A familiar user experience for users and developers](#a-familiar-user-experience-for-users-and-developers)
 - [Too long, you probably shouldn't read](#too-long-you-probably-shouldnt-read)
 
 ## Non-Planar
