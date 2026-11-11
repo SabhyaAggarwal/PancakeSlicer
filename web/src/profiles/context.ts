@@ -4,7 +4,7 @@ import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './model';
 import { clampHeight, heightsFor, ruleHeight, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
 import { chainApplicability, type ChainLink } from './chain';
-import { findProfile, profileKey } from './identity';
+import { profileKey } from './identity';
 import { dynamicSpeedBase, resolveDynamicSpeeds, speedModelOf, SPEED_FEATURES } from './speed-rules';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
@@ -22,14 +22,12 @@ const snapshots = new WeakMap<ProfileContextState, Map<string, Config>>();
 const scalar = (value: Config[string] | undefined) => Array.isArray(value) ? value[0] : typeof value === 'string' ? value.split(/[;,]/)[0] : value;
 const number = (value: Config[string] | undefined) => { const x = Number(scalar(value)); return Number.isFinite(x) ? x : 0; };
 const chains = new WeakMap<ResolvedProfile, ChainLink[]>();
-export function profileChain(s: ProfileContextState, type: PresetType, resolved: ResolvedProfile): ChainLink[] {
+export function profileChain(type: PresetType, resolved: ResolvedProfile): ChainLink[] {
   let links = chains.get(resolved);
   if (links) return links;
   links = [];
-  for (let p = resolved.user, seen = new Set<string>(); p && links.length < 4 && !seen.has(String(p.id)); p = p.parentId ? findProfile(s, type, p.parentId) : undefined) {
-    seen.add(String(p.id));
-    links.unshift({ ...(p as unknown as ChainLink), type, id: p.id, name: p.name, overlay: p.overlay ?? p.overrides ?? {} });
-  }
+  const p = resolved.user;
+  if (p) links.push({ ...(p as unknown as ChainLink), type, id: p.id, name: p.name, overlay: p.overlay ?? p.overrides ?? {} });
   chains.set(resolved, links);
   return links;
 }
@@ -167,7 +165,7 @@ export function profileContext(s: ProfileContextState, overrides: {printer?: str
     const resolved = resolveProfile(s, type, key), raw = resolved.source;
     const selected = type === 'machine' ? key === s.printer : type === 'process' ? key === s.process : key === s.filamentSlots?.[slot];
     return {...resolved, id: resolved.key, revision: raw?.revision ?? 0, baseName: resolved.base?.name, baseVendor: resolved.base?.vendor,
-      parentName: raw?.parentId ? resolveProfile(s,type,raw.parentId).source?.name : raw?.parent ?? raw?.inherits,
+      parentName: raw?.parent ?? raw?.inherits,
       config: selected ? effectiveProfileValues(s,type,key,slot) : resolved.config};
   };
   const printer = entry('machine', printerKey), process = entry('process', processKey);

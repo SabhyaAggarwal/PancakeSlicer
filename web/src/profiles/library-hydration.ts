@@ -28,7 +28,7 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
   const selected=(type:PresetType,key:string):string=>{
     const known=findProfile(next,type,key);
     if(known)return profileKey(known);
-    const wrappers=owned(type).filter(p=>p.base?.name===key && !p.parent && !p.parentId && !Object.keys(p.overlay ?? p.overrides).length);
+    const wrappers=owned(type).filter(p=>p.base?.name===key && !p.parent && !Object.keys(p.overlay ?? p.overrides).length);
     if(wrappers.length===1)return profileKey(wrappers[0]);
     return key;
   };

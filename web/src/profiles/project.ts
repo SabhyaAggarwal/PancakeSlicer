@@ -38,7 +38,7 @@ export function recoverProjectProfile(s:ProfileContextState,snapshot:ProjectProf
   const base=findCatalogBase(s,snapshot.type,baseKey).base;if(!base)throw new Error('Pick an available base template first to recover this profile.');
   const config=snapshot.profileConfig ?? snapshot.profile?.snapshot?.config ?? snapshot.config,overlay=changedKeys(config,base.config);
   return {...snapshot.profile,id:`profile:${crypto.randomUUID()}`,name,type:snapshot.type,kind:snapshot.profile?.kind ?? 'profile',revision:0,archived:undefined,
-    base:catalogAnchor(base),inherits:base.name,parent:undefined,parentId:undefined,masterId:undefined,overlay,overrides:overlay,
+    base:catalogAnchor(base),inherits:base.name,parent:undefined,masterId:undefined,overlay,overrides:overlay,
     snapshot:{base:catalogAnchor(base),config},provenance:{source:'import',sourceId:snapshot.id,sourceName:snapshot.name,operationId:`recover:${crypto.randomUUID()}`}};
 }
 export const projectProfileIds=(s:Pick<State,'printer'|'process'|'filamentSlots'> & Partial<ProfileContextState>)=>{

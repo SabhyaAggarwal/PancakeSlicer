@@ -33,7 +33,6 @@ export interface SystemPreset {
 export interface ProfileOverlay extends ProfileOwnership {
   id?: string;
   aliases?: string[];
-  parentId?: string;
   name: string;
   type: PresetType;
   base: ProfileBaseAnchor;
@@ -46,7 +45,6 @@ export interface ProfileOverlay extends ProfileOwnership {
 export interface UserPreset extends ProfileOwnership {
   id?: string;
   aliases?: string[];
-  parentId?: string;
   name: string;
   type: PresetType;
   inherits: string;

@@ -32,5 +32,5 @@ export function linkedProfiles(s: ProfileCatalog, type: PresetType, masterKey: s
   const master = findProfile(s,type,masterKey); if (!master) return [];
   const base = master.base && findCatalogBase(s,type,master.base).base;
   return s.userPresets.filter(p => p.type === type && profileKey(p) !== profileKey(master) &&
-    (p.masterId === profileKey(master) || p.parentId === profileKey(master) || !p.masterId && p.kind !== 'master' && !!base && !!p.base && findCatalogBase(s,type,p.base).base === base));
+    (p.masterId === profileKey(master) || !p.masterId && p.kind !== 'master' && !!base && !!p.base && findCatalogBase(s,type,p.base).base === base));
 }

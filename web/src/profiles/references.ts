@@ -20,12 +20,12 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
   let complete = projects.complete && defaults.complete;
   const keys = s.userPresets.map(profileKey);
   if (new Set(keys).size !== keys.length) complete = false;
-  for (const p of s.userPresets) if ((p.parentId || p.parent) && !findProfile(s, p.type, p.parentId ?? p.parent!)) complete = false;
+  for (const p of s.userPresets) if (p.parent && !findProfile(s, p.type, p.parent)) complete = false;
   const add = (type: PresetType, key: string, reference: ProfileReference) => {
     if (!key) return;
     let profile = findProfile(s, type, key);
     if (!profile) {
-      const wrappers = s.userPresets.filter((p) => p.type === type && (p.base?.name ?? p.inherits) === key && !p.parent && !p.parentId && !Object.keys(p.overlay ?? p.overrides).length);
+      const wrappers = s.userPresets.filter((p) => p.type === type && (p.base?.name ?? p.inherits) === key && !p.parent && !Object.keys(p.overlay ?? p.overrides).length);
       if (wrappers.length > 1) { complete = false; return; }
       profile = wrappers[0];
     }
@@ -92,8 +92,8 @@ function publish(s: State, status: ProfileReferenceSnapshot['status'], error: st
       if (s.project || s.projectName) push(profileKey(profile), {kind: 'project', label: s.projectName ?? s.project?.name ?? 'Current project'});
     });
   }
-  for (const child of s.userPresets) if (child.parentId || child.parent) {
-    const parent = findProfile(s, child.type, child.parentId ?? child.parent!);
+  for (const child of s.userPresets) if (child.parent) {
+    const parent = findProfile(s, child.type, child.parent);
     if (parent) push(profileKey(parent), {kind: 'inheritance', label: child.name, owner: profileKey(child)});
   }
   for (const item of source.references) push(item.key, item.reference);

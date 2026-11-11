@@ -12,7 +12,7 @@ const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):v
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
 const sameSetups=(a:PrinterProfileLibrary|undefined,b:PrinterProfileLibrary|undefined)=>equal(a?.setups ?? {},b?.setups ?? {});
 const stored=(p:UserPreset)=>{
-  const {snapshot:_s,baseline:_b,kind:_k,aliases:_a,provenance:_p,masterId:_m,printerId:_pr,parentId:_pi,parent:_pa,metadata,base,name,...rest}=storedProfile(normalizeUserPreset(p)) as ReturnType<typeof storedProfile>&Record<string,unknown>;
+  const {snapshot:_s,baseline:_b,kind:_k,aliases:_a,provenance:_p,masterId:_m,printerId:_pr,parent:_pa,metadata,base,name,...rest}=storedProfile(normalizeUserPreset(p)) as ReturnType<typeof storedProfile>&Record<string,unknown>;
   const family=(metadata as Record<string,unknown>|undefined)?.family;
   return {...rest,name:String(name).replace(/\s+@.*$/,'').trim() || name,base:{name:base?.name,vendor:base?.vendor},...(family ? {family} : {})};
 };

@@ -53,14 +53,14 @@ export const findProfile = (s: Pick<State, 'userPresets'>, type: PresetType, key
 export function profileReferenceInventory(s: State, type: PresetType, key: ProfileKey, external?: ProfileReferenceSource): ProfileReferenceInventory {
   const p = findProfile(s, type, key);
   if (!p) return { complete: false, references: [] };
-  const id = profileKey(p), references: ProfileReference[] = [];
+  const references: ProfileReference[] = [];
   const selected = type === 'machine' ? [s.printer] : type === 'process' ? [s.process] : s.filamentSlots;
   selected.forEach((selectedKey, slot) => {
     if (!matchesProfile(p, selectedKey)) return;
     references.push({ kind: 'active', label: type === 'filament' ? `Filament ${slot + 1}` : type === 'machine' ? 'Printer' : 'Process' });
     if (s.project || s.projectName) references.push({ kind: 'project', label: s.projectName ?? s.project?.name ?? 'Current project' });
   });
-  for (const child of s.userPresets) if (child.type === type && (child.parentId === id || child.parent && matchesProfile(p, child.parent)))
+  for (const child of s.userPresets) if (child.type === type && child.parent && matchesProfile(p, child.parent))
     references.push({ kind: 'inheritance', label: child.name, owner: profileKey(child) });
   for (const item of external?.references ?? []) if (item.type === type && matchesProfile(p, item.key)) references.push(item.reference);
   return { complete: external?.complete === true, references };

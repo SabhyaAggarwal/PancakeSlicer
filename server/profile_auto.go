@@ -25,9 +25,6 @@ var settingKeyShape = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 func validateAuto(p map[string]json.RawMessage, typ string) error {
 	raw, has := p["auto"]
-	if _, linked := p["parentId"]; linked && typ == "process" {
-		return errors.New("Print profiles don't use a base template—duplicating creates a standalone copy.")
-	}
 	if !has {
 		return nil
 	}

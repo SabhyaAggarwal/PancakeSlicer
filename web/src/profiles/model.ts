@@ -158,7 +158,7 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
     if (!base) return unavailable(result.ambiguous ? 'ambiguous' : 'missing-profile', name, result.ambiguous ? 'Multiple catalog templates match this reference.' : 'This profile is missing from your library. Re-import it or recover its saved settings from the project.');
     return { base, name: base.name, engineName: base.engine_base ?? base.name, config: base.config, status: 'ready' };
   }
-  const parentName = user.parentId ?? user.parent ?? (!user.base && findProfile(s, type, user.inherits) ? user.inherits : undefined);
+  const parentName = user.parent ?? (!user.base && findProfile(s, type, user.inherits) ? user.inherits : undefined);
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   if (parent?.issue && parent.status !== 'archived' || parentName && !parent?.source)
     return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'This profile\'s parent template is missing. Recover its saved settings to keep editing.', user);
@@ -213,7 +213,7 @@ export function prepareProfile(s: ProfileCatalog, input: UserPreset): UserPreset
   const metadata: Config = { ...p.metadata };
   for (const [key, value] of Object.entries(p.overrides)) if (PRESET_META.test(key)) metadata[key] = value;
   return { ...p, base: catalogAnchor(base), snapshot: {config: { ...resolved.config, ...p.overrides }, base: catalogAnchor(base)},
-    parentId: resolved.source ? profileKey(resolved.source) : undefined, parent: resolved.user ? p.inherits : undefined, inherits: base.name, overlay, overrides: overlay,
+    parent: resolved.user ? p.inherits : undefined, inherits: base.name, overlay, overrides: overlay,
     baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])), metadata };
 }
 
@@ -231,16 +231,8 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
   const prior = resolved.source && prepareProfile(s, resolved.source), base = resolved.base!;
   const same = !!prior && (name === current || name === prior.name || name === profileKey(prior));
   const label = same ? prior!.name : name;
-  let parentId = same ? prior?.parentId : prior ? profileKey(prior) : undefined;
-  let parent = same ? prior?.parent : prior?.name;
-  const destination = findProfile(s, type, label), ancestors = new Set<string>();
-  for (let key = parentId ?? parent; key && !ancestors.has(key);) {
-    const ancestor = findProfile(s, type, key);
-    if (destination && ancestor && profileKey(destination) === profileKey(ancestor)) { parent = undefined; parentId = undefined; break; }
-    ancestors.add(key); key = ancestor?.parentId ?? ancestor?.parent;
-  }
   const linkedMaster = prior?.masterId ? findProfile(s,type,prior.masterId) : type && s.userPresets.find(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
-  const below = parentId || parent ? resolveProfile(s, type, parentId ?? parent!).config : prior?.kind !== 'master' && linkedMaster ? resolveProfile(s,type,profileKey(linkedMaster)).config : base.config;
+  const below = prior?.kind !== 'master' && linkedMaster ? resolveProfile(s,type,profileKey(linkedMaster)).config : base.config;
   const overlay = changedKeys(values, below);
   const baseline = Object.fromEntries(Object.keys(overlay).map(key => [key,
     same && prior?.overlay && sameValue(key, overlay[key], prior.overlay[key]) && key in (prior.baseline ?? {})
@@ -249,7 +241,7 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
     name: label, type, kind: prior?.kind ?? 'profile', revision: same ? (prior?.revision ?? 0) + 1 : 0,
     printerId: prior?.printerId, inherits: base.name, base: same && prior?.base ? prior.base : catalogAnchor(base),
     snapshot: { config: { ...values }, base: same && prior?.base ? prior.base : catalogAnchor(base) },
-    parentId, parent, overlay, overrides: overlay, baseline, metadata: prior?.metadata };
+    parent: undefined, overlay, overrides: overlay, baseline, metadata: prior?.metadata };
 
 }
 

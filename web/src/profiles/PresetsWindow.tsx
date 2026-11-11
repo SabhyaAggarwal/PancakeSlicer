@@ -261,10 +261,6 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return {...i,fullName:title === i.name ? undefined : i.name,name:title,note:rowDetail(title,[{value:i.material},vendorField(i.vendor)],[group]),meta:[i.meta,tag].filter(Boolean).join(SEP) || undefined,
       ...(on ? {loaded:on.where[0]+(on.where.length > 1 ? ` +${on.where.length-1}` : '')} : {})};
   };
-  const colourFamilies=(list:Item[])=>{
-    const keys=new Set(list.map(i=>i.key)),parentOf=(i:Item)=>i.user?.parentId && keys.has(i.user.parentId) ? i.user.parentId : undefined;
-    return list.filter(i=>!parentOf(i)).flatMap(parent=>[parent,...list.filter(i=>parentOf(i) === parent.key).map(i=>({...i,child:true}))]);
-  };
   const groups=useMemo(():Group[]=>{
     const found=matching.filter(i=>!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query)));
     const rows=type === 'process' ? found : found.filter(i=>!i.flag),stray=type === 'process' ? [] : found.filter(i=>i.flag).map(i=>({...i,flag:undefined}));
@@ -272,7 +268,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const bucket=(list:Item[],labelOf:(i:Item)=>string)=>{const m=new Map<string,Item[]>();for(const i of list){const g=labelOf(i);m.set(g,[...m.get(g) ?? [],i]);}return [...m].sort(([a],[b])=>byLabel(a,b));};
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
     if(type !== 'process')return [...bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other').sort(([a],[b])=>type === 'filament' ? materialRank(a)-materialRank(b) || byLabel(a,b) : 0)
-      .map(([label,list])=>({key:label,label,rows:adding ? sortRows(list) : type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
+      .map(([label,list])=>({key:label,label,rows:adding ? sortRows(list) : type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : sortRows(list.map(i=>filamentRow(i,label)))) : sortRows(list)})),...strayGroup];
     const mine=rows.filter(i=>i.user && i.user.kind !== 'master').map(i=>({...i,fullName:i.name,note:'',meta:undefined,dynamic:isDynamic(i.user)}));
     return [{key:'mine',label:'My profiles',rows:sortRows(mine)}];
   },[matching,query,type,machines,printerFilter,printer,onPrinter]);

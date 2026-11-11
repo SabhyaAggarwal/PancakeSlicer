@@ -137,7 +137,7 @@ function dependencies(catalog: ProfileCatalog) {
   const record=(profile:UserPreset|ProfileOverlay)=>{
     if(visited.has(profile))return;visited.add(profile);
     add(profile.type,profile.base ?? ('inherits' in profile?{name:profile.inherits,version:''}:undefined));
-    for(const key of [profile.parentId,profile.parent,profile.masterId])if(key)reference(profile.type,key);
+    for(const key of [profile.parent,profile.masterId])if(key)reference(profile.type,key);
     if(profile.snapshot)add(profile.type,profile.snapshot.base);
   };
   const reference=(type:PresetType,key:unknown)=>{
