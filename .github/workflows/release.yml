@@ -280,6 +280,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: .github/scripts/build/prebuilt.sh publish "${{ steps.keys.outputs.reference }}" desktop/build/reference .
+      - name: Compare the engine reference with the base
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: .github/scripts/build/compare-reference.sh "$BASE" desktop/build/reference "${{ steps.keys.outputs.reference }}"
       - name: Package installers
         run: |
           cp desktop/icon-256.png desktop/build/icon.png
