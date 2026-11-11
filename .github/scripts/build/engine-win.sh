@@ -1,4 +1,4 @@
-# Ninja with cl and ccache. ccache cannot cache cl precompiled headers or /Zi objects, so both are off.
+# Ninja with cl and ccache. ccache cannot cache /Zi objects, so PDBs are off.
 configure() {
   export PATH="$(dirname "$(command -v cl)"):$PATH"
   local wv2=engine/deps/WebView2/lib/win-x64/WebView2Loader.dll
@@ -10,5 +10,5 @@ configure() {
     python -c "import sys, zipfile; open(sys.argv[2], 'wb').write(zipfile.ZipFile(sys.argv[1]).read('build/native/x64/WebView2Loader.dll'))" "$tmp/webview2.zip" "$wv2"
   fi
   cmake -S engine -B build-native -G 'Ninja Multi-Config' -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl "${common[@]}" "${ccache[@]}" \
-    -DSLIC3R_PCH=OFF -DSLIC3R_MSVC_PDB=OFF
+    -DSLIC3R_MSVC_PDB=OFF
 }
