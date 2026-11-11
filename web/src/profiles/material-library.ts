@@ -6,7 +6,7 @@ import { methodAvailability } from './method-context';
 import { methodSelectionProblem } from './capabilities';
 import type { Config, UserPreset } from '../api/types';
 import { findProfile, profileKey, withProfileIdentity, type ProfileKey } from './identity';
-import { catalogAnchor, changedKeys, normalizeUserPreset, resolveProfile, type ProfileCatalog } from './model';
+import { catalogAnchor, changedKeys, resolveProfile, type ProfileCatalog } from './model';
 import { emptyPrinterLibrary, emptyPrinterSetup, type PrinterProfileLibrary, type PrinterMaterialSetup, type ProfileRecovery } from './ownership';
 import { SEP } from '../separator';
 
@@ -88,27 +88,6 @@ export function capturePrinterMaterials(s: MaterialLibraryState): PrinterProfile
   const next = { ...setup, ...(s.process ? {processId:findProfile(s,'process',s.process)?.id ?? s.process} : {}), slots, materialIds: [...new Set([...setup.materialIds, ...slots.map(slot => slot.materialId)])], tuning, mixes: clone(s.mixes) };
   if (JSON.stringify({ ...next, revision: 0 }) === JSON.stringify({ ...setup, revision: 0 })) return library;
   return putSetup(library, next);
-}
-
-export function planMaterialMigration(input: MaterialLibraryState): PrinterMaterialsPlan {
-  let s = { ...input, userPresets: input.userPresets.map(p => p.id && p.kind && p.revision !== undefined ? p : normalizeUserPreset(p)) };
-  if (s.userPresets.every((p, i) => p === input.userPresets[i])) s.userPresets = input.userPresets;
-  const printer = findProfile(s, 'machine', s.printer), id = printer && profileKey(printer);
-  const result: PrinterMaterialsPlan = { userPresets: s.userPresets, printerLibrary: libraryOf(s), printer: id ?? s.printer,
-    filamentSlots: [...s.filamentSlots], slotColours: [...s.slotColours], filamentEdits: { ...s.filamentEdits }, mixes: clone(s.mixes), referenceMap: {}, recoveries: [] };
-  if (!id) { result.recoveries.push({ type: 'machine', key: s.printer, reason: 'missing-owner' }); return result; }
-  for (const [index, key] of s.filamentSlots.entries()) {
-    const source = findProfile(s, 'filament', key, id) ?? findProfile(s, 'filament', key);
-    const sourceId = source ? profileKey(source) : key;
-    const added = planAddMaterial({ ...s, userPresets: result.userPresets, printerLibrary: result.printerLibrary }, sourceId,
-      { printerId: id, operationId: `migration:1:${id}:${sourceId}` });
-    result.userPresets = added.userPresets; result.printerLibrary = added.printerLibrary; result.recoveries.push(...added.recoveries);
-    if (!added.materialId) continue;
-    result.filamentSlots[index] = added.materialId; result.referenceMap[key] = added.materialId;
-    if (s.filamentEdits[key]) { result.filamentEdits[added.materialId] = clone(s.filamentEdits[key]); if (key !== added.materialId) delete result.filamentEdits[key]; }
-  }
-  result.printerLibrary = capturePrinterMaterials({ ...s, ...result });
-  return result;
 }
 
 export function planPrinterSwitch(s: MaterialLibraryState, printerKey: string): PrinterMaterialsPlan {
