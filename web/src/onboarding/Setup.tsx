@@ -73,7 +73,7 @@ function Welcome() {
   return ready
     ? <Frame step="welcome" title="Want a quick 1-minute tour?">
       <div className="setup-welcome">
-        <p>Take a quick peek at what makes PancakeSlicer different: smooth curved tops, dynamic profiles, and cloud-synced projects.</p>
+        <p>Take a quick peek at what makes PancakeSlicer different: smooth curved tops, dynamic profiles, and projects that keep every version.</p>
         <div className="setup-welcome-actions"><button type="button" className="btn-ghost" onClick={() => send({ type: 'CLOSE' })}>Not now</button><Next label="Start tour" /></div>
       </div>
     </Frame>
