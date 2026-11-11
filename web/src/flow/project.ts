@@ -12,6 +12,7 @@ import { currentRoute, writeRoute } from './routes';
 import type { createDraftJournal } from './project-journal';
 import { importing } from './import';
 import { writesDiscarded } from '../api/access';
+import { predecessorSessions, sessionId } from '../api/session';
 import { versionShown, versionView, versionWanted } from './version-view';
 import { acquireLease, followProjectLease, leaseRefused, leaseSettled, leaseWritable } from './project-lease';
 
@@ -68,7 +69,7 @@ const activeWrite = (id: string, gen: number, version: number) =>
   id === project.get().context.id && gen === documentGeneration() && version === epoch;
 
 const draftStorage = async () => (await import('../persist/drafts')).projectDraftStore();
-const session = { owner: newKey(), previousOwners: [] as readonly string[] };
+const session = { owner: sessionId, previousOwners: [] as readonly string[], tab: [sessionId] as readonly string[] };
 let leaseFor: string | null = null;
 async function leaseForSave(): Promise<boolean> {
   const { id, revision } = project.get().context;
@@ -328,6 +329,7 @@ async function start(ready: Promise<unknown>) {
   const [recovery, drafts, { createDraftJournal }] = await modules;
   recoveryCore = recovery; draftActivity = drafts;
   store = await listed ?? await projectStore(true);
+  session.tab = [sessionId, ...await predecessorSessions()];
   try { if (store) Object.assign(session, await lineage.catch(() => journalTools().then((tools) => tools.draftSession(session.owner)))); }
   catch (error) { toast(errorText(error)); }
   journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));

@@ -20,7 +20,7 @@ export interface RecoveryRuntime {
   previous(id: string): void; restored(): ProjectDraftMeta | null; setRestored(draft: ProjectDraftMeta | null): void; resetCaptured(): void;
   checkpointRecovered(id: string, revision: number, failure: ProjectFailure | null): unknown;
   activeWrite(id: string, gen: number, epoch: number): boolean;
-  known: Set<string>; session: { owner: string; previousOwners: readonly string[] };
+  known: Set<string>; session: { owner: string; previousOwners: readonly string[]; tab: readonly string[] };
   publish(type: 'saved' | 'deleted', id: string): void; refreshList(): void;
   drafts(): Promise<ProjectDraftStore>; refreshDrafts(): Promise<ProjectDraftInventory>;
 }
@@ -43,7 +43,9 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   const failure = runtime.removed.has(draft.projectId) ? projectFailure({ name: 'ProjectDeletedError', message: 'Heads up: this project was deleted elsewhere. You can save your current draft as a new copy!' }, draft.projectId, draft.baseRevision)
     : canonical && (canonical.revision ?? 0) !== draft.baseRevision ? conflictFailure(draft.projectId, draft.baseRevision)
     : draft.failure?.kind === 'conflict' ? draft.failure
-    : null;
+    : runtime.session.tab.includes(draft.owner) && (canonical ? canonical.revision ?? 0 : 0) === draft.baseRevision ? null
+    : { kind: 'interrupted', name: 'ProjectInterruptedError', projectId: draft.projectId, expectedRevision: draft.baseRevision,
+      message: 'We recovered your unsaved changes! Click Retry to save them, or reload the last saved version.' } satisfies ProjectFailure;
   runtime.previous(project.get().context.id);
   runtime.adopt(() => {
     leaveDocument(); clearPlateJobs();
@@ -63,8 +65,7 @@ export async function resumeUnsavedProject(runtime: RecoveryRuntime, id: string)
     runtime.drafts().then((storage) => storage.listMetadata(id)).catch(() => [] as ProjectDraftMeta[])]);
   if (!runtime.isCurrent(mine)) return true;
   if (rec) { await openProject(runtime, id, { history: false }); return true; }
-  const owners = [runtime.session.owner, ...runtime.session.previousOwners];
-  const newest = drafts.filter((d) => d.kind === 'dirty' && d.baseRevision === 0 && owners.includes(d.owner))
+  const newest = drafts.filter((d) => d.kind === 'dirty' && d.baseRevision === 0 && runtime.session.tab.includes(d.owner))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const draft = newest && await (await runtime.drafts()).load(newest.id);
   if (!draft || !runtime.isCurrent(mine)) return !!draft;
