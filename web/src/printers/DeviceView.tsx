@@ -235,6 +235,6 @@ export function DeviceView() {
     })}{!printers.length && <p className="device-muted">No printers connected</p>}</div>
       <div className="device-list-actions">{current && <button type="button" className="btn slant" onClick={() => openConnection(current.printer)}>Connection</button>}
         <button type="button" className="btn slant device-manage" onClick={() => setState({ presetUx: { kind: 'presets', type: 'machine' } })}>Manage printers</button></div></aside>
-    {current && shown ? <DevicePanel key={current.printer} connection={{ ...current, name: shown.name }} model={shown.model || current.model || ''} cover={printerCover(shown.vendor, shown.config, shown.model)} status={connections.status[current.printer]} live={connections.live} /> : <div className="device-empty"><h1>Connect a printer</h1><p>Connect your printer in its settings to watch live progress and control it from here.</p></div>}
+    {current && shown ? <DevicePanel key={current.printer} connection={{ ...current, name: shown.name }} model={shown.model || current.model || ''} cover={printerCover(shown.vendor, shown.config, shown.model)} status={connections.status[current.printer]} live={connections.live} /> : <div className="device-empty"><h1>Connect a printer</h1><p>Watch live progress and control your printer from here.</p><button type="button" className="btn-primary" onClick={() => setState({ appDialog: 'send' })}>Connect</button></div>}
   </main>;
 }
