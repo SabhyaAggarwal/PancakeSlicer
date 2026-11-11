@@ -1,4 +1,4 @@
-import { dynamicSpeedBase, SPEED_KEYS } from './speed-rules';
+import { SPEED_KEYS } from './speed-rules';
 import { useEffect, useState } from 'react';
 import type { Config, UserPreset } from '../api/types';
 import { getState, type State } from '../state/store';
@@ -33,7 +33,7 @@ export async function printDefaults({ vendor, model, nozzle }: PrinterChoice): P
   if (!machine) throw new Error(`${model.name} doesn't have a ${nozzle} mm nozzle preset.`);
   const preset = findCatalogBase(getState(), 'machine', machine).base ?? (api && (await api.presets(vendor, [], undefined, [machine])).machines.find((p) => p.name === machine));
   const supplied = (preset as { print_defaults?: Config } | undefined)?.print_defaults;
-  return supplied && Object.fromEntries(Object.entries(supplied).filter(([key]) => !SPEED_KEYS.has(key) || !dynamicSpeedBase(vendor, model.id, {})));
+  return supplied && Object.fromEntries(Object.entries(supplied).filter(([key]) => !SPEED_KEYS.has(key)));
 }
 const owned = (s: State) => s.userPresets.filter((p) => !p.archived);
 const namer = (s: State) => {

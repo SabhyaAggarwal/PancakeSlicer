@@ -78,8 +78,8 @@ function FormulaLine({ f, nozzle, height, readOnly, onFactor, onRemove }: { f: F
   </li>;
 }
 
-export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedModel, onUseMultiplier, rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter, config = {} }: {
-  speedModel?: SpeedModel; speeds?: Record<string, SpeedDetail>; missingReference?: boolean; onSpeedModel?(model: SpeedModel): void; onUseMultiplier?(key: string): void;
+export function DynamicTab({ speedModel, speeds = {}, onSpeedModel, onUseMultiplier, rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter, config = {} }: {
+  speedModel?: SpeedModel; speeds?: Record<string, SpeedDetail>; onSpeedModel?(model: SpeedModel): void; onUseMultiplier?(key: string): void;
   rows: ScaleRow[]; nozzle: number; height: number; minHeight?: number; maxHeight?: number; readOnly?: boolean; onChange(rows: ScaleRow[]): void;
    config?: Config;
    fromPrinter?: { name: string; values: Record<string, unknown> };
@@ -114,8 +114,8 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
         <label>Outer-wall ceiling <span><input className="text num" type="number" min="1" max="2000" step="5" aria-label="Outer-wall ceiling" value={speedModel.outerWallCeiling} disabled={readOnly}
           onChange={e => {const n = Number(e.target.value); if (n > 0 && n <= 2000) onSpeedModel?.({...speedModel, outerWallCeiling: n});}}/> mm/s</span></label>
       </div>
-      {!missingReference && <p className="hint-text">Speed = printer base speed × multiplier (automatically capped by your hotend's max flow rate and printer speed limits). Adjust any multiplier to tune print speed.</p>}
-      {missingReference ? <p role="status">This printer doesn't have base speed values for dynamic profiles yet—pick a regular print profile instead.</p> : <div className="dyn-speed-scroll"><table className="dyn-table dyn-speed-table">
+      <p className="hint-text">Speed = printer base speed × multiplier (automatically capped by your hotend's max flow rate and printer speed limits). Adjust any multiplier to tune print speed.</p>
+      <div className="dyn-speed-scroll"><table className="dyn-table dyn-speed-table">
         <thead><tr><th>Feature</th>{SPEED_HEADS.map(([label, tip, n]) => <th key={label} className={n ? 'n' : undefined} data-truncated="true" data-full-text={tip}>{label}</th>)}</tr></thead>
         <tbody>{SPEED_FEATURES.map(f => {const d = speeds[f.key]; if (!d) return null; return <tr key={f.key}>
           <th scope="row">{f.label}</th><td className="n">{Math.round(d.base)}</td>
@@ -124,7 +124,7 @@ export function DynamicTab({ speedModel, speeds = {}, missingReference, onSpeedM
           {d.limit ? <td className="n" data-capped data-truncated="true" data-full-text={`Capped from ${Math.round(d.requested)} by ${d.limit.toLowerCase()}`}>↓ {Math.round(d.speed)}</td> : <td className="n">{Math.round(d.speed)}</td>}<td><span>{d.limit || 'None'}</span>{d.override && <span className="dyn-speed-override">Absolute override ({Math.round(d.requested)} mm/s){!readOnly && onUseMultiplier && <button type="button" className="btn-ghost" onClick={() => onUseMultiplier(f.key)}>Use multiplier</button>}</span>}</td>
           <td className="n">{mm(d.acceleration)}</td>
         </tr>;})}</tbody>
-      </table></div>}
+      </table></div>
     </section>}
 
     <div className="dyn-rows"><ul className="dyn-formulas">

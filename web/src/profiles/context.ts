@@ -5,7 +5,7 @@ import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './mod
 import { clampHeight, heightsFor, ruleHeight, scaleValues, scalesOf, type AutoRecord } from './auto-rules';
 import { chainApplicability, type ChainLink } from './chain';
 import { profileKey } from './identity';
-import { dynamicSpeedBase, resolveDynamicSpeeds, speedModelOf, SPEED_FEATURES } from './speed-rules';
+import { resolveDynamicSpeeds, speedModelOf, SPEED_FEATURES } from './speed-rules';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
   printer: string; process: string; filamentSlots?: string[];
@@ -90,11 +90,10 @@ function withAuto(s: ProfileContextState, type: PresetType, resolved: ResolvedPr
   if (!value) byInputs.set(id, (value = { ...config, ...scaleValues(scales, { nozzle, layerHeight }), layer_height: String(layerHeight) }));
   return value;
 }
-export function dynamicSpeeds(s: ProfileContextState, resolved: ResolvedProfile, config: Config, extra: Config = {}, model = speedModelOf(resolved.source)): ReturnType<typeof resolveDynamicSpeeds> & { missingReference?: boolean } {
+export function dynamicSpeeds(s: ProfileContextState, resolved: ResolvedProfile, config: Config, extra: Config = {}, model = speedModelOf(resolved.source)): ReturnType<typeof resolveDynamicSpeeds> {
   if (!model) return { values: {}, details: {} };
-  const printer = resolveProfile(s, 'machine', s.printer), machine = effectiveProfileValues(s, 'machine', s.printer);
-  const base = dynamicSpeedBase(printer.base?.vendor ?? '', String(scalar(machine.printer_model) ?? ''), resolved.base?.config ?? {});
-  if (!base) return { values: {}, details: {}, missingReference: true };
+  const machine = effectiveProfileValues(s, 'machine', s.printer);
+  const base: Config = { ...resolved.base?.config };
   const own = resolved.source?.overlay ?? resolved.source?.overrides ?? {}, po = printerOverrides(s);
   const caps = (s.filamentSlots ?? []).flatMap((key, slot) => [effectiveProfileValues(s, 'filament', key, slot).filament_max_volumetric_speed ?? []].flat().map(String));
   const inputs: Config = { ...machine, ...config, filament_max_volumetric_speed: caps };
@@ -115,7 +114,6 @@ function withSpeeds(s: ProfileContextState, resolved: ResolvedProfile, config: C
   let cache = speedSnapshots.get(s); if (!cache) speedSnapshots.set(s, cache = new WeakMap());
   const prior = cache.get(config); if (prior) return prior;
   const result = dynamicSpeeds(s, resolved, config, extra), value = { ...config, ...result.values };
-  if (result.missingReference) for (const f of SPEED_FEATURES) delete value[f.key];
   cache.set(config, value); return value;
 }
 const resolvedAuto = new WeakMap<ResolvedProfile, WeakMap<Config, ResolvedProfile>>();

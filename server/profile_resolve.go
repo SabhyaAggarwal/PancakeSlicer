@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"math"
 	"net/http"
 	"strconv"
@@ -208,10 +209,7 @@ func (s *Server) resolveProfiles(profiles map[string]*v4Record, in resolveReques
 		if model == nil {
 			return nil, errors.New("This dynamic profile is missing its speed multipliers—try reloading your profiles.")
 		}
-		base := dynamicSpeedBase(printer.Vendor, printer.Model, process.Config)
-		if base == nil {
-			return nil, errors.New("Dynamic speeds aren't available for " + printer.Model + " yet—pick a regular print profile instead.")
-		}
+		base := maps.Clone(process.Config)
 		for _, f := range profileRules.SpeedFeatures {
 			if v, ok := printer.PrintOverrides[f.Key]; ok {
 				base[f.Key] = v

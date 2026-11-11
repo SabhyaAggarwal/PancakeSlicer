@@ -1,6 +1,5 @@
 import type { Config } from '../api/types';
 import rules from '../../../server/profile_rules.json';
-import baselines from '../../../server/profile_speed_bases.json';
 export interface SpeedModel { schema: 2; multipliers: Record<string, number>; outerWallCeiling: number }
 export interface SpeedDetail { base: number; multiplier: number; requested: number; speed: number;  limit: string; override?: string; flowCap?: number; printerMax?: number; width: number; height: number; acceleration: number }
 export const SPEED_FEATURES = rules.speedFeatures;
@@ -16,10 +15,6 @@ export function newSpeedModel(seed = 'standard'): SpeedModel {
 }
 export function speedModelOf(profile: unknown): SpeedModel | undefined {
   return (profile as { auto?: { speedModel?: SpeedModel } } | undefined)?.auto?.speedModel;
-}
-export function dynamicSpeedBase(vendor: string, model: string, fallback: Config): Config | undefined {
-  const reference = (baselines.models as Record<string, { values: Config }>)[`${vendor}/${model}`];
-  return reference ? { ...fallback, ...reference.values } : undefined;
 }
 export function resolveDynamicSpeeds(model: SpeedModel | undefined, base: Config, config: Config, overrides: Config, overrideSources: Record<string, string>, nozzle: number, height: number): { values: Config; details: Record<string, SpeedDetail> } {
   const values: Config = {}, details: Record<string, SpeedDetail> = {};

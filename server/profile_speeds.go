@@ -1,44 +1,12 @@
 package main
 
 import (
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"math"
 	"strconv"
 	"strings"
 )
-
-//go:embed profile_speed_bases.json
-var speedBaseData []byte
-var speedBases = func() map[string]struct {
-	Values map[string]json.RawMessage `json:"values"`
-} {
-	var table struct {
-		Models map[string]struct {
-			Values map[string]json.RawMessage `json:"values"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(speedBaseData, &table); err != nil {
-		panic(err)
-	}
-	return table.Models
-}()
-
-func dynamicSpeedBase(vendor, model string, fallback map[string]json.RawMessage) map[string]json.RawMessage {
-	reference, ok := speedBases[vendor+"/"+model]
-	if !ok {
-		return nil
-	}
-	out := map[string]json.RawMessage{}
-	for k, v := range fallback {
-		out[k] = v
-	}
-	for k, v := range reference.Values {
-		out[k] = v
-	}
-	return out
-}
 
 type speedModel struct {
 	Schema           int                `json:"schema"`
