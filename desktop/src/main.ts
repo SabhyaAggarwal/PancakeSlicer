@@ -5,12 +5,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { ProjectStore } from './projects';
-import { LegacyWorkspaceSource, type LegacyRead } from './legacy-workspace';
-import { DESKTOP_ORIGIN, LegacyRendererSource, type LegacyRendererPartRead } from './legacy-renderer';
 
 const MAC = process.platform === 'darwin';
 const EXE = process.platform === 'win32' ? '.exe' : '';
+const DESKTOP_ORIGIN = 'http://127.0.0.1:29731';
 
 let server: ChildProcess | null = null;
 let origin = '';
@@ -18,7 +16,6 @@ let win: BrowserWindow | null = null;
 let quitting = false;
 let quitReady = false;
 let closing = false;
-let projects: ProjectStore | null = null;
 
 
 
@@ -48,14 +45,6 @@ app.setPath('userData', process.env.ORCA_DESKTOP_USER_DATA ?? productUserData())
 
 const originalUserData = app.getPath('userData');
 const originalSessionData = app.getPath('sessionData');
-const legacyRenderer = new LegacyRendererSource(originalUserData, originalSessionData, () =>
-
-
-
-  process.versions.electron === '45.2.1' && (process.platform === 'linux' || process.platform === 'darwin')
-  && app.hasSingleInstanceLock() && app.getPath('userData') === originalUserData
-  && originalSessionData === originalUserData
-  && !['user-data-dir', 'profile-directory', 'session-data-dir'].some((name) => app.commandLine.hasSwitch(name)));
 const sessionCacheRoot = path.join(app.getPath('appData'), 'PancakeSlicer Cache');
 let ownedSessionDirectory: { path: string; dev: number; ino: number } | null = null;
 
@@ -191,7 +180,6 @@ async function startServer(): Promise<string> {
   delete env.ORCA_BUILD_REVISION;
   delete env.ORCA_BUILD_IMAGE;
 
-  env.ORCA_WEB_FALLBACK_BACKEND = '';
   delete env.ORCA_WEB_SURFACE_MANIFEST;
   delete env.ORCA_WEB_ARTIFACT_MANIFEST;
   delete env.ORCA_WEB_ARTIFACT_QUALIFICATION;
@@ -309,52 +297,7 @@ function menu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function storage() {
-  const store = new ProjectStore(app.getPath('userData'));
-  const legacy = new LegacyWorkspaceSource(app.getPath('userData'));
-  projects = store;
-  let legacyReady: Promise<void> | null = null;
-  let exporting = false;
-  const pendingWrites = new Set<Promise<unknown>>();
-  const readers = new Set(['list', 'load', 'getBlob', 'hasBlob']);
-  const ops = ['list', 'load', 'save', 'rename', 'duplicate', 'remove', 'restore', 'putBlob', 'getBlob', 'hasBlob', 'emptyTrash'] as const;
-  for (const op of ops) {
-    ipcMain.handle(`orca-desktop:projects:${op}`, async (e, ...args: unknown[]) => {
-      if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-      if (exporting && !readers.has(op)) throw new Error('Hang tight—saving to the old workspace is paused while we migrate your files. Try migrating again (your original files are safe!).');
-
-      const operation = (legacyReady ??= store.init()).then(() => (store[op] as (...a: unknown[]) => Promise<unknown>).apply(store, args));
-      if (!readers.has(op)) pendingWrites.add(operation);
-      try { return await operation; }
-      catch (error) {
-
-        if (error instanceof Error && ['ProjectConflictError', 'ProjectDeletedError'].includes(error.name))
-          return { __orcaProjectError: { name: error.name, message: error.message } };
-        throw error;
-      } finally { pendingWrites.delete(operation); }
-    });
-  }
-  ipcMain.handle('orca-desktop:legacy-projects:inventory', async (e) => {
-    if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-
-
-    exporting = true;
-    await Promise.all([...pendingWrites]);
-    await store.flush();
-    return legacy.inventory();
-  });
-  ipcMain.handle('orca-desktop:legacy-projects:read-file', (e, request: LegacyRead) => {
-    if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-    return legacy.readFile(request);
-  });
-  ipcMain.handle('orca-desktop:legacy-renderer:inventory', (e) => {
-    if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-    return legacyRenderer.inventory();
-  });
-  ipcMain.handle('orca-desktop:legacy-renderer:read-part', (e, request: LegacyRendererPartRead) => {
-    if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
-    return legacyRenderer.readPart(request);
-  });
+function ipc() {
   ipcMain.handle('orca-desktop:bambu-connect', (e, jobId: unknown, filename: unknown) => {
     if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
     return openInBambuConnect(jobId, filename);
@@ -402,8 +345,9 @@ function restrictNetwork(target: Electron.Session) {
 async function start() {
   restrictNetwork(session.defaultSession);
   menu();
-  const serving = Promise.all([startServer(), storage()]);
-  if (app.commandLine.hasSwitch('service-only')) { [origin] = await serving; return; }
+  ipc();
+  const serving = startServer();
+  if (app.commandLine.hasSwitch('service-only')) { origin = await serving; return; }
   const rendererSession = session.fromPartition('orca-service-renderer', { cache: false });
   restrictNetwork(rendererSession);
   if (rendererSession.isPersistent() || rendererSession.getStoragePath() !== null) throw new Error('Oops! The app window needs an isolated in-memory session to run safely.');
@@ -449,7 +393,7 @@ async function start() {
     return { action: 'deny' };
   });
   await win.loadURL(`data:text/html,<html style="background:%23363636"></html>`);
-  [origin] = await serving;
+  origin = await serving;
   if (win && !closing) await win.loadURL(origin);
 }
 
@@ -483,7 +427,6 @@ async function prepareQuit() {
       const contents = win?.webContents;
       if (origin && contents && !contents.isDestroyed() && !contents.isCrashed() && contents.getURL().startsWith(origin))
         await contents.executeJavaScript('window.orcaDesktop?.flushBeforeClose?.()');
-      await projects?.flush();
     };
     const finished = await Promise.race([
       flush().then(() => true),
