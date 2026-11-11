@@ -62,7 +62,7 @@ export interface PresetCatalog {
   filaments: SystemPreset[];
 }
 
-export type JobState = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+export type JobState = 'idle' | 'queued' | 'preparing' | 'slicing' | 'storing' | 'done' | 'failed' | 'canceling' | 'cancelled' | 'interrupted' | 'stale';
 
 export interface JobStatus {
   id: string;

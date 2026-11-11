@@ -23,7 +23,6 @@ const (
 	StateQueued      JobState = "queued"
 	StatePreparing   JobState = "preparing"
 	StateSlicing     JobState = "slicing"
-	StateRunning              = StateSlicing
 	StateStoring     JobState = "storing"
 	StateCanceling   JobState = "canceling"
 	StateDone        JobState = "done"
@@ -49,21 +48,6 @@ var jobTransitions = map[JobState]map[JobState]bool{
 
 func (s JobState) Finished() bool {
 	return s == StateDone || s == StateFailed || s == StateCancelled || s == StateInterrupted || s == StateStale
-}
-
-func (s JobState) legacy() JobState {
-	switch s {
-	case StateIdle:
-		return StateQueued
-	case StatePreparing, StateSlicing, StateStoring, StateCanceling:
-		return "running"
-	case StateCancelled:
-		return "canceled"
-	case StateInterrupted, StateStale:
-		return StateFailed
-	default:
-		return s
-	}
 }
 
 type JobTransition struct {
@@ -144,7 +128,7 @@ func (j *Job) setStateLocked(s JobState, reason string) bool {
 	if s == StateDone {
 		pct = 100
 	}
-	e := Event{Type: eventType, State: s.legacy(), LifecycleState: s, Error: reason, QueuePosition: &pos, Stage: string(s), Pct: &pct}
+	e := Event{Type: eventType, State: s, Error: reason, QueuePosition: &pos, Stage: string(s), Pct: &pct}
 	if !s.Finished() {
 		j.progressLocked(&e)
 	} else {

@@ -225,7 +225,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "# HELP orca_download_bytes_total Response body bytes written for successful job downloads.\n# TYPE orca_download_bytes_total counter")
 	fmt.Fprintf(w, "orca_download_bytes_total %d\n", m.downloadBytes)
 	fmt.Fprintln(w, "# HELP orca_jobs Retained jobs by state.\n# TYPE orca_jobs gauge")
-	for _, state := range []JobState{StateQueued, StateRunning, StateDone, StateFailed, StateCancelled} {
+	for _, state := range []JobState{StateIdle, StateQueued, StatePreparing, StateSlicing, StateStoring, StateCanceling, StateDone, StateFailed, StateCancelled, StateInterrupted, StateStale} {
 		fmt.Fprintf(w, "orca_jobs{state=%q} %d\n", state, counts[state])
 	}
 	fmt.Fprintln(w, "# HELP orca_slice_duration_seconds Running job duration, including failed and canceled slices.\n# TYPE orca_slice_duration_seconds histogram")

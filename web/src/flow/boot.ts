@@ -76,7 +76,7 @@ export async function startFlows() {
     if (s.job.id === job.get().context.job?.id) {
       if (s.job.state === 'canceled') void cancelTrackedJob();
       if (s.job.stale && job.get().value === 'done' && s.job.status)
-        job.send({ type: 'STATUS', status: { ...s.job.status, lifecycle_state: 'stale' } });
+        job.send({ type: 'STATUS', status: { ...s.job.status, state: 'stale' } });
     }
   };
   subscribeStore(observe); observe();

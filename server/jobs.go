@@ -75,19 +75,18 @@ type JobRequest struct {
 }
 
 type Event struct {
-	Seq            uint64   `json:"seq"`
-	QueuePosition  *int     `json:"queue_position,omitempty"`
-	ETA            *float64 `json:"eta_seconds,omitempty"`
-	ReplayGap      bool     `json:"replay_gap,omitempty"`
-	ID             int      `json:"id"`
-	Type           string   `json:"type"`
-	Stream         string   `json:"stream,omitempty"`
-	Line           string   `json:"line,omitempty"`
-	State          JobState `json:"state,omitempty"`
-	LifecycleState JobState `json:"lifecycle_state,omitempty"`
-	Error          string   `json:"error,omitempty"`
-	Stage          string   `json:"stage,omitempty"`
-	Pct            *float64 `json:"pct,omitempty"`
+	Seq           uint64   `json:"seq"`
+	QueuePosition *int     `json:"queue_position,omitempty"`
+	ETA           *float64 `json:"eta_seconds,omitempty"`
+	ReplayGap     bool     `json:"replay_gap,omitempty"`
+	ID            int      `json:"id"`
+	Type          string   `json:"type"`
+	Stream        string   `json:"stream,omitempty"`
+	Line          string   `json:"line,omitempty"`
+	State         JobState `json:"state,omitempty"`
+	Error         string   `json:"error,omitempty"`
+	Stage         string   `json:"stage,omitempty"`
+	Pct           *float64 `json:"pct,omitempty"`
 }
 
 const maxEvents = 20000
@@ -139,7 +138,6 @@ type JobView struct {
 	Stage          string          `json:"stage,omitempty"`
 	Progress       *float64        `json:"progress,omitempty"`
 	State          JobState        `json:"state"`
-	LifecycleState JobState        `json:"lifecycle_state"`
 	Created        time.Time       `json:"created"`
 	Started        *time.Time      `json:"started,omitempty"`
 	Finished       *time.Time      `json:"finished,omitempty"`
@@ -171,7 +169,7 @@ func (j *Job) View() JobView {
 func (j *Job) snapshotView() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	v := JobView{ID: j.ID, RetryOf: j.RetryOf, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
+	v := JobView{ID: j.ID, RetryOf: j.RetryOf, State: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
 		Stage: j.stage, Progress: j.progress, Request: j.Request, QueuePosition: j.queuePosition, ETA: j.eta, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice,
 		ResultReady: j.resultReady && !j.state.Finished()}
 	if !j.started.IsZero() {
@@ -274,7 +272,7 @@ func (j *Job) EventsSince(after int) ([]Event, <-chan struct{}, bool) {
 		id := j.events[0].ID - 1
 		pos := j.queuePosition
 		out = append(out, Event{ID: id, Seq: uint64(id), Type: "reset", ReplayGap: true,
-			State: j.state.legacy(), LifecycleState: j.state, Stage: j.stage, Pct: j.progress,
+			State: j.state, Stage: j.stage, Pct: j.progress,
 			ETA: j.eta, QueuePosition: &pos})
 	}
 	for _, e := range j.events {
@@ -1044,7 +1042,7 @@ func (m *JobManager) publishResult(j *Job) {
 		return
 	}
 	j.slice, j.resultReady = raw, true
-	j.appendLocked(Event{Type: "result", State: j.state.legacy(), LifecycleState: j.state})
+	j.appendLocked(Event{Type: "result", State: j.state})
 }
 
 func scanLines(r io.Reader, fn func(string)) {

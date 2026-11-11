@@ -66,11 +66,11 @@ function fixtureStatus(name: string) {
 }
 function phase(j: DemoJob) {
   const elapsed = Date.now() - j.created;
-  return j.cancelled ? { state: 'canceled', lifecycle_state: 'cancelled', stage: 'canceled', progress: 0 }
-    : elapsed < 350 ? { state: 'queued', lifecycle_state: 'queued', stage: 'queued', progress: 0 }
-    : elapsed < 2300 ? { state: 'running', lifecycle_state: 'slicing', stage: 'slicing', progress: Math.min(90, Math.round((elapsed - 350) / 22)) }
-    : elapsed < 2900 ? { state: 'running', lifecycle_state: 'storing', stage: 'storing', progress: 95 }
-    : { state: 'done', lifecycle_state: 'done', stage: 'done', progress: 100 };
+  return j.cancelled ? { state: 'cancelled', stage: 'cancelled', progress: 0 }
+    : elapsed < 350 ? { state: 'queued', stage: 'queued', progress: 0 }
+    : elapsed < 2300 ? { state: 'slicing', stage: 'slicing', progress: Math.min(90, Math.round((elapsed - 350) / 22)) }
+    : elapsed < 2900 ? { state: 'storing', stage: 'storing', progress: 95 }
+    : { state: 'done', stage: 'done', progress: 100 };
 }
 async function snapshot(j: DemoJob) {
   const p = phase(j), raw = p.state === 'done' ? await fixtureStatus(j.fixture) : {};
@@ -84,7 +84,7 @@ function events(j: DemoJob, signal: AbortSignal, after: number) {
       const close = () => { if (closed) return; closed = true; timers.forEach(clearTimeout); controller.close(); };
       const emit = async (seq: number) => {
         if (closed) return;
-        const p = phase(j), done = p.state === 'done' || p.state === 'canceled';
+        const p = phase(j), done = p.state === 'done' || p.state === 'cancelled';
         const data = done ? await snapshot(j) : { ...p, id: j.id, pct: p.progress };
         if (closed) return;
         if (seq > after) controller.enqueue(new TextEncoder().encode(`id: ${seq}\nevent: ${done ? 'done' : 'state'}\ndata: ${JSON.stringify(data)}\n\n`));
