@@ -17,6 +17,14 @@ on:
         description: Space-separated targets to build (mac-arm64 mac-x64 win-x64 linux-x64); empty builds all
         type: string
         default: ''
+      deps_from_run:
+        description: Run ID whose saved dependency prefix to resume from instead of a cold dependency build
+        type: string
+        default: ''
+      deps_targets:
+        description: Space-separated deps targets to build on top of the resumed prefix
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -153,9 +161,26 @@ jobs:
         run: |
           rc=0; .github/scripts/build/prebuilt.sh fetch "${{ steps.keys.outputs.deps }}" engine/deps/build || rc=$?
           case $rc in 0) echo "hit=true" >> "$GITHUB_OUTPUT" ;; 3) echo "hit=false" >> "$GITHUB_OUTPUT" ;; *) exit $rc ;; esac
+      - name: Resume the dependency prefix of an earlier run
+        id: resume
+        if: steps.deps.outputs.hit == 'false' && inputs.deps_from_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.deps_from_run }}" --repo "$GITHUB_REPOSITORY" --name "deps-prefix-${{ matrix.target }}" --dir .
+          mkdir -p engine/deps/build && tar -xf deps-prefix.tar -C engine/deps/build && rm deps-prefix.tar
       - name: Build native dependencies
         if: steps.deps.outputs.hit == 'false'
-        run: .github/scripts/build/deps.sh ${{ matrix.os }} ${{ matrix.arch }}
+        env:
+          DEPS_TARGETS: ${{ inputs.deps_targets }}
+        run: |
+          if [ "${{ steps.resume.outcome }}" = success ]; then
+            source .github/scripts/build/deps-${{ matrix.os }}.sh
+            configure ${{ matrix.arch }}
+            if [ -n "$DEPS_TARGETS" ]; then cmake --build engine/deps/build --config Release --target $DEPS_TARGETS --parallel 4; fi
+          else
+            .github/scripts/build/deps.sh ${{ matrix.os }} ${{ matrix.arch }}
+          fi
       - name: Check and publish native dependencies
         if: steps.deps.outputs.hit == 'false'
         env:
@@ -165,6 +190,16 @@ jobs:
           # Publish only a prefix the engine configures against.
           .github/scripts/build/engine.sh ${{ matrix.os }} ${{ matrix.arch }} --configure-only
           .github/scripts/build/prebuilt.sh publish "${{ steps.keys.outputs.deps }}" engine/deps/build OrcaSlicer_dep
+      - name: Save the dependency prefix for a resumed run
+        if: failure() && steps.deps.outputs.hit == 'false'
+        run: tar -cf deps-prefix.tar -C engine/deps/build OrcaSlicer_dep
+      - name: Upload the dependency prefix for a resumed run
+        if: failure() && steps.deps.outputs.hit == 'false'
+        uses: actions/upload-artifact@v7
+        with:
+          name: deps-prefix-${{ matrix.target }}
+          path: deps-prefix.tar
+          retention-days: 7
 
       - name: Restore compiler cache
         if: steps.engine.outputs.hit != 'true'
