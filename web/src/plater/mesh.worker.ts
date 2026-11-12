@@ -1,3 +1,4 @@
+import { sha256 } from '../sha256';
 import { bakeStl, centre, creaseSplit, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
 import { buildBvh, type Bvh } from './bvh';
 import { split } from './split';
@@ -71,21 +72,6 @@ function checkShells(id: number, positions: Float32Array, index: Uint32Array, it
   shellsWorker.postMessage({ id: request, positions, index } satisfies ShellsIn);
 }
 
-async function contentHash(array: Float32Array | Uint32Array): Promise<string> {
-  if (globalThis.crypto?.subtle) {
-    const digest = await crypto.subtle.digest('SHA-256', array.buffer as ArrayBuffer);
-    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-  }
-  const words = new Uint32Array(array.buffer, array.byteOffset, array.length);
-  let a = 0x811c9dc5, b = 0x9e3779b9, c = 0x85ebca6b, d = 0xc2b2ae35;
-  for (const word of words) {
-    a = Math.imul(a ^ word, 0x01000193);
-    b = Math.imul(b ^ word, 0x85ebca6b);
-    c = Math.imul(c ^ word, 0xc2b2ae35);
-    d = Math.imul(d ^ word, 0x27d4eb2f);
-  }
-  return [words.length, a >>> 0, b >>> 0, c >>> 0, d >>> 0].map((n) => n.toString(16)).join('-');
-}
 
 function crisp(positions: Float32Array, index: Uint32Array, edges: boolean): DisplayMesh {
   const split = creaseSplit(positions, index);
@@ -108,7 +94,7 @@ async function finish(id: number, soup: Float32Array, item?: number, progress?: 
   const cx = (box.min[0] + box.max[0]) / 2, cy = (box.min[1] + box.max[1]) / 2, cz = (box.min[2] + box.max[2]) / 2;
   for (let i = 0; i < positions.length; i += 3)
     r2 = Math.max(r2, (positions[i] - cx) ** 2 + (positions[i + 1] - cy) ** 2 + (positions[i + 2] - cz) ** 2);
-  const contentSignature = (await Promise.all([contentHash(positions), contentHash(index)])).join(':');
+  const contentSignature = (await Promise.all([sha256(positions), sha256(index)])).join(':');
   const displayResult = await simplifyMesh(positions, index, { minTriangles: 100_000, target: 50_000 }).catch(() => null);
   const display = displayResult ? { positions: displayResult.positions, index: displayResult.index }
     : displayLod(positions, index, normals, box.min, box.max);

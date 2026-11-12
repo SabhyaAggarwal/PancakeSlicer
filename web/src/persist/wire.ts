@@ -1,5 +1,4 @@
 const tag = '$orcaBinary';
-export const sha256 = async (bytes: BufferSource) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 const arrays = { Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, Uint32Array,
   Float32Array, Float64Array, BigInt64Array, BigUint64Array };
 export function bytesBase64(bytes: Uint8Array): string {

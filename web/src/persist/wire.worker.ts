@@ -1,4 +1,5 @@
-import { prepareDocumentText, parseDocument, sha256 } from './wire';
+import { prepareDocumentText, parseDocument } from './wire';
+import { sha256 } from '../sha256';
 import type { WireRequest, WireResponse } from './wire-protocol';
 
 const captures = new Map<number, { value: Record<string, unknown>; stringify: (value: unknown) => string }>();

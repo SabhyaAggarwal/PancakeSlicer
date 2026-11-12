@@ -1,4 +1,5 @@
 import { mutation, type ApiError } from './access';
+import { sha256 } from '../sha256';
 
 export interface JobFile { name: string; blob: Blob }
 
@@ -9,9 +10,7 @@ const formFiles = new WeakMap<FormData, Map<string, Blob>>();
 export function blobDigest(blob: Blob): Promise<string> {
   let digest = digests.get(blob);
   if (!digest) {
-    if (!crypto.subtle) throw new Error('Uploading models requires a secure connection (HTTPS or localhost).');
-    digest = blob.arrayBuffer().then((b) => crypto.subtle.digest('SHA-256', b)).then((h) =>
-      Array.from(new Uint8Array(h), (x) => x.toString(16).padStart(2, '0')).join(''));
+    digest = sha256(blob);
     digests.set(blob, digest);
     digest.catch(() => digests.delete(blob));
   }
