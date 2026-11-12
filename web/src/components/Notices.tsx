@@ -6,6 +6,7 @@ import { noticeKind, noticeMs, sliceFailure } from '../notice-text';
 import { setState, useStore } from '../state/store';
 import { InTopLayer, useModalCount } from './Modal';
 import './notices.css';
+import { copyToClipboard } from '../clipboard';
 
 
 export function Toast() {
@@ -86,7 +87,7 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
         <details>
           <summary>Details</summary>
           <pre className="slice-failed-raw">{error}</pre>
-          <button type="button" className="notif-link" onClick={() => void navigator.clipboard?.writeText(error).then(() => setCopied(true))}>
+          <button type="button" className="notif-link" onClick={() => setCopied(copyToClipboard(error))}>
             {copied ? 'Copied' : 'Copy'}
           </button>
         </details>

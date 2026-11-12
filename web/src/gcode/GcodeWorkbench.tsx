@@ -7,6 +7,7 @@ import { OPTIONS } from '../options';
 import { resetOption, setOption } from '../state/store';
 import { GcodeEditor, openSearchPanel } from './GcodeEditor';
 import './gcode.css';
+import { copyToClipboard } from '../clipboard';
 
 type Editor = { set(key: string, value: ConfigValue): void; reset(key: string): void };
 const text = (v: ConfigValue | undefined): string => Array.isArray(v) ? String(v[0] ?? '') : v == null ? '' : String(v);
@@ -67,7 +68,7 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
         <div className="gcode-tools" role="toolbar" aria-label="G-code tools">
           {modified(key) && !readOnly && <button type="button" className="icon-btn" aria-label="Reset to template" onClick={() => { reset(key); setDiff(false); }}><Svg d={ICONS.reset} /></button>}
           <button type="button" className="icon-btn" aria-label="Compare with template" aria-pressed={diff} onClick={() => setDiff(!diff)}><Svg d={ICONS.diff} /></button>
-          <button type="button" className="icon-btn" aria-label="Copy" onClick={() => void navigator.clipboard?.writeText(view?.state.doc.toString() ?? value(key))}><Svg d={ICONS.copy} /></button>
+          <button type="button" className="icon-btn" aria-label="Copy" onClick={() => void copyToClipboard(view?.state.doc.toString() ?? value(key))}><Svg d={ICONS.copy} /></button>
           <button type="button" className="icon-btn" aria-label="Find" onClick={() => { if (view) { openSearchPanel(view); } }}><Svg d={ICONS.find} /></button>
         </div>
       </div>
@@ -87,7 +88,7 @@ function CompactHook({ k, label, fullLabel, value, template, modified, readOnly,
       <div className="gcode-tools is-small" role="toolbar" aria-label="G-code tools">
         {modified && !readOnly && <button type="button" className="reset-icon" aria-label="Reset to template" onClick={() => { onReset(); setDiff(false); }}><Svg d={ICONS.reset} /></button>}
         <button type="button" className="icon-btn" aria-label="Compare with template" aria-pressed={diff} onClick={() => setDiff(!diff)}><Svg d={ICONS.diff} /></button>
-        <button type="button" className="icon-btn" aria-label="Copy" onClick={() => void navigator.clipboard?.writeText(view?.state.doc.toString() ?? value)}><Svg d={ICONS.copy} /></button>
+        <button type="button" className="icon-btn" aria-label="Copy" onClick={() => void copyToClipboard(view?.state.doc.toString() ?? value)}><Svg d={ICONS.copy} /></button>
         <button type="button" className="icon-btn" aria-label="Find" onClick={() => { if (view) openSearchPanel(view); }}><Svg d={ICONS.find} /></button>
       </div>
       <GcodeEditor optionKey={k} label={fullLabel} value={value} template={template} diff={diff} readOnly={readOnly} configKeys={configKeys} empty="No G-code yet" compact

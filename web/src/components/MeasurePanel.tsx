@@ -5,6 +5,7 @@ import { instanceMatrix } from '../plater/geometry';
 import { getState, updateObject } from '../state/store';
 import { promptDialog } from '../actions';
 import { IconButton } from './Icon';
+import { copyToClipboard } from '../clipboard';
 
 async function editToScale(current: number) {
   const text = await promptDialog('Edit to scale', fmt(current));
@@ -26,7 +27,7 @@ export default function MeasurePanel() {
   const { first, second } = useSyncExternalStore(subscribeMeasure, measureState);
   const m = first && second ? measure(first, second) : null;
   const xyz = m && distanceComponents(m);
-  const copy = (label: string, value: string) => void navigator.clipboard?.writeText(`${label}: ${value}`);
+  const copy = (label: string, value: string) => void copyToClipboard(`${label}: ${value}`);
   return (
     <div className="manip-panel">
       <div className="manip-title">Measure</div>

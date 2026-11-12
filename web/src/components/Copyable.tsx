@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { toast } from '../state/store';
+import { copyToClipboard } from '../clipboard';
 
 export function copyText(text: string) {
-  void navigator.clipboard?.writeText(text).then(() => toast(`Copied ${text}`), () => toast('Your browser blocked clipboard access'));
+  toast(copyToClipboard(text) ? `Copied ${text}` : 'Your browser blocked clipboard access');
 }
 
 export function Copyable({ value, children }: { value: string; children?: ReactNode }) {
