@@ -2,8 +2,41 @@
 
 PancakeSlicer is a Self-hostable and Non-planar 3D Printer Slicer built on the OrcaSlicer Engine. Try a demo [here](https://demo.pancake.cooking/)! Watch the video explainer [here (yt)](TBD). Docs are a WIP, but you can message me on [Discord](https://discord.gg/tyfAV6R7DW).
 
-Here are a lot of things that make it unique:
 
+<details>
+<summary><b>Install</b></summary>
+
+### Desktop
+Download the latest build from [Releases](https://github.com/ZimengXiong/PancakeSlicer/releases/latest).
+
+PancakeSlicer is not signed for Mac (yet), you should run  `xattr -dr com.apple.quarantine /Applications/PancakeSlicer.app` after installing and before first launch
+
+### Docker
+Compose file is recommended. See [`deploy/docker-compose.yml`](deploy/docker-compose.yml). An image is also avail. at `ghcr.io/zimengxiong/pancakeslicer`.
+
+</details>
+
+<details>
+<summary><b>Supported printers</b></summary>
+
+Printers listed below have their non-planar paths checked against a model of each printer's print head for collisons. Printers not listed here are still able to slice, but they're checked against a generic (oversized) head, which may limit non-planarness and be incorrect (watch out for collisions).
+
+| Brand | Printers | Curved tops |
+|---|---|---|
+| Bambu Lab | A1, A1 mini, A2L, P1P, P1S, P2S, X1, X1 Carbon, X1E, H2S | ✅ |
+| Bambu Lab | H2D, H2D Pro, H2C, X2D | ⚠️ very limited/not recommended (second nozzle drastically limits clearance) |
+| Prusa | MK4, MK4S, CORE One (incl. HF / MMU3) | ✅ |
+| Prusa | MINI, MINI IS, MK3S | ⚠️ very limited/not recommended (probe sits 1.5 mm above the nozzle) |
+| Creality | Ender-3 V3, V3 Plus, V3 KE, K1, K1C, K1 SE, K1 Max, K2, K2 Plus, K2 Pro, K2 SE | ✅ |
+| Voron | 0.1, 2.4, Trident, Switchwire (Stealthburner) | ✅ |
+| RatRig | V-Core 3, V-Core 4, V-Core 4 HYBRID | ✅ |
+| Sovol | SV06, SV06 Plus, SV06 ACE, SV06 Plus ACE, SV08, SV08 MAX | ✅ |
+| Anycubic | Kobra 2 (Neo / Plus / Pro / Max), Kobra 3, Kobra 3 V2, Kobra 3 Max | ✅ |
+| Elegoo | Neptune 4, 4 Plus, 4 Pro, 4 Max | ✅ |
+| Flashforge | Adventurer 5M, 5M Pro, A5, AD5X, Creator 5, Creator 5 Pro, Guider4, Guider4 Pro | ✅ |
+| Qidi | Q1 Pro, X-Max 3 | ✅ |
+
+</details>
 
 ## Table of Contents
 
