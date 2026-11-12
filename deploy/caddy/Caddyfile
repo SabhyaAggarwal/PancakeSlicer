@@ -2,7 +2,7 @@
 	request_body {
 		max_size 512MiB
 	}
-	reverse_proxy pancakeslicer:8080 {
+	reverse_proxy pancakeslicer:6868 {
 		# Slice progress and printer status use Server-Sent Events: stream them unbuffered.
 		flush_interval -1
 		transport http {

@@ -8,7 +8,7 @@ services:
     container_name: pancakeslicer
     restart: unless-stopped
     expose:
-      - "8080"
+      - "6868"
     environment:
       ORCA_WEB_MAX_JOBS: "2"
       ORCA_WEB_PRINTER_NETWORK: lan

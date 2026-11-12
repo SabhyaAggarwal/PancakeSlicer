@@ -1,5 +1,5 @@
 #!/bin/sh
-# Release test against a running PancakeSlicer service: deploy/test.sh http://127.0.0.1:8080
+# Release test against a running PancakeSlicer service: deploy/test.sh http://127.0.0.1:6868
 # Fails unless the engine passed its release check, the UI loads, and printer covers and bed models are served.
 set -eu
 base=${1:?base URL}

@@ -1,6 +1,6 @@
 # PancakeSlicer: web UI, service and slicing engine in one container.
 #   docker compose -f deploy/docker-compose.yml up -d
-# Then open http://<host>:8080.
+# Then open http://<host>:6868.
 name: pancakeslicer
 services:
   pancakeslicer:
@@ -8,7 +8,7 @@ services:
     container_name: pancakeslicer
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "6868:6868"
     environment:
       ORCA_WEB_MAX_JOBS: "2"                 # slices running at once; more queue
       ORCA_WEB_PRINTER_NETWORK: lan           # lan | off | comma-separated CIDRs/host names

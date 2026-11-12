@@ -315,9 +315,9 @@ jobs:
           docker build --file deploy/Dockerfile --build-arg VERSION="${TAG#v}" --build-arg REVISION="$GITHUB_SHA" \
             --build-arg SOURCE_SHA256="$(sha256sum desktop/build/engine-linux-x64/source.tar.gz | cut -d' ' -f1)" \
             --tag pancakeslicer:ci desktop/build
-          docker run -d --name test -p 8080:8080 pancakeslicer:ci
-          for i in $(seq 30); do curl -fsS http://127.0.0.1:8080/api/healthz && break; sleep 2; done
-          sh deploy/test.sh http://127.0.0.1:8080
+          docker run -d --name test -p 6868:6868 pancakeslicer:ci
+          for i in $(seq 30); do curl -fsS http://127.0.0.1:6868/api/healthz && break; sleep 2; done
+          sh deploy/test.sh http://127.0.0.1:6868
           docker rm -f test
       - name: Push the Docker image
         if: env.PUBLISH == 'true'
