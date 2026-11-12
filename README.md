@@ -1,6 +1,6 @@
 <img width="4000" height="1570" alt="file-fb400ae5d364dd356a93be6d37d2c888" src="https://github.com/user-attachments/assets/f6981d62-8efd-4ead-937a-9fa43abb82ce" />
 
-PancakeSlicer is a Self-hostable and Non-planar 3D Printer Slicer built on the OrcaSlicer Engine. Try a demo [here](https://demo.pancake.cooking/)! Watch the video explainer [here (yt)](TBD). Docs are a WIP, but you can message me on [Discord](https://discord.gg/tyfAV6R7DW).
+PancakeSlicer is a Self-hostable and Non-planar 3D Printer Slicer built on the OrcaSlicer Engine. Try a demo [here](https://demo.pancake.cooking/)! Watch the video explainer [here (yt)](TBD). 
 
 ## Table of Contents
 
