@@ -2,6 +2,7 @@
 	"type": "machine",
 	"name": "Bambu Lab P2S 0.4 nozzle",
 	"inherits": "fdm_bbl_3dp_001_common",
+	"nonplanar_head": "bambu-p2s",
 	"from": "system",
 	"setting_id": "GM049",
 	"instantiation": "true",

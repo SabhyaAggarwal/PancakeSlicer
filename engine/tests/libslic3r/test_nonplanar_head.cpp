@@ -246,7 +246,7 @@ TEST_CASE("Every bundled head loads and round-trips through JSON", "[Nonplanar][
         }
         ids.push_back(head.id);
     }
-    for (const char *id : { "prusa-mini", "prusa-mk4-nextruder", "bambu-a1", "bambu-x1-p1", "bambu-h2d-left", "bambu-h2d-right",
+    for (const char *id : { "prusa-mini", "prusa-mk4-nextruder", "bambu-a1", "bambu-x1-p1", "bambu-h2d", "bambu-h2s", "bambu-p2s", "bambu-x2d",
                             "prodcan3", "generic-conservative" })
         CHECK(std::find(ids.begin(), ids.end(), id) != ids.end());
 }

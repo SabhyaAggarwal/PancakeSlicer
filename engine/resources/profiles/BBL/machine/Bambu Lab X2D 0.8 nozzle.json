@@ -2,6 +2,7 @@
     "type": "machine",
     "name": "Bambu Lab X2D 0.8 nozzle",
     "inherits": "Bambu Lab X2D 0.4 nozzle",
+    "nonplanar_head": "bambu-x2d-nozzle-08",
     "from": "system",
     "setting_id": "GM048",
     "instantiation": "true",
