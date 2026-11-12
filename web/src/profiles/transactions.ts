@@ -5,6 +5,7 @@ import { emptyPrinterLibrary, type PrinterProfileLibrary, type ProfileLibraryWri
 import { findProfile, profileKey } from './identity';
 import { catalogKey, findCatalogBase, normalizeUserPreset, prepareProfile, storedProfile } from './model';
 import { editableMaster, archiveProfile, restoreArchivedProfile } from './library-actions';
+import { randomId } from '../random-id';
 let tail:Promise<unknown>=Promise.resolve();
 const serialize = <T>(action:()=>Promise<T>):Promise<T> => {const result=tail.then(action);tail=result.catch(()=>{});return result;};
 export const serializeProfileWrite=serialize;
@@ -89,7 +90,7 @@ export function profileBatchCreation(factory:(s:State)=>CreationPlan):ProfileBat
         userPresets:[...s.userPresets.filter(p=>!existing.some(e=>profileKey(e)===profileKey(p) && !equal(stored(p),stored(e)))),...existing.filter(e=>!s.userPresets.some(p=>profileKey(p)===profileKey(e) && equal(stored(p),stored(e))))]}));
       if(!plan.records.length)return {keys:reused,skipped};
       const captured=structuredClone(plan.records);keys=captured.map(profileKey);service=initial.api;
-      request=freezeWrite(canonical,{operationId:`create-profiles:${crypto.randomUUID()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,...captured.map(c=>storedProfile(prepareProfile(canonical,c)))]}},captured,signature(captured));
+      request=freezeWrite(canonical,{operationId:`create-profiles:${randomId()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,...captured.map(c=>storedProfile(prepareProfile(canonical,c)))]}},captured,signature(captured));
     }
     if(getState().api!==service)throw conflict('Your profile library updated in the background. We kept your new profile draft—click Save again to finish adding it.');
     const ack=await acknowledge(request);
@@ -111,8 +112,8 @@ export function profileCopyCreation(source:UserPreset,name:string):ProfileCreati
     const current=findProfile(s,captured.type,captured.id);
     if(!current || !equal(stored(current),stored(captured)))throw conflict('The profile you\'re copying was just updated elsewhere. Give it a quick look before duplicating.');
     if(s.userPresets.some(p=>p.type===captured.type && p.name===name))throw new Error('You already have a profile with that name—try a different one!');
-    return {...captured,id:`profile:${crypto.randomUUID()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
-      provenance:{source:'profile',sourceId:captured.id,sourceName:captured.name,sourceRevision:captured.revision,operationId:crypto.randomUUID()}};
+    return {...captured,id:`profile:${randomId()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
+      provenance:{source:'profile',sourceId:captured.id,sourceName:captured.name,sourceRevision:captured.revision,operationId:randomId()}};
   });
 }
 async function performSave(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<Acknowledgement>{
@@ -148,7 +149,7 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
   const catalogKeys=new Set(catalog?.map(catalogKey));
   const document={...remote,profiles:[...profiles.values()],...(catalog?.length?{catalog:[...(remote.catalog ?? []).filter(p=>!catalogKeys.has(catalogKey(p))),...catalog]}:{}),printers:printers ?? remote.printers ?? s.printerLibrary ?? emptyPrinterLibrary()};
   if(equal(document,remote))return {request:freezeWrite(s,{operationId:operationId ?? '',expectedRevision:remote.revision,document},submitted,requestSignature),document:remote,records:submitted,changed:new Set()};
-  const request=freezeWrite(s,{operationId:operationId ?? `save:${crypto.randomUUID()}`,expectedRevision:remote.revision,document},submitted,requestSignature,printers ? setup?.baseline ?? s.printerLibrary : undefined);
+  const request=freezeWrite(s,{operationId:operationId ?? `save:${randomId()}`,expectedRevision:remote.revision,document},submitted,requestSignature,printers ? setup?.baseline ?? s.printerLibrary : undefined);
   const ack=await acknowledge(request);
   if(ack.changed.size || ack.setupsChanged){publishAcknowledgement(ack);throw conflict('This profile or printer setup changed in another window. We kept your draft so you can compare them.');}
   return ack;
@@ -190,7 +191,7 @@ export async function ensureEditableMaster(type:PresetType,baseKey:string):Promi
 }
 export interface ProfileArchiveUndo {type:PresetType;keys:string[];operationId:string}
 export async function archiveProfiles(type:PresetType,keys:readonly string[]):Promise<ProfileArchiveUndo>{
-  const s=getState(),operationId=`archive:${crypto.randomUUID()}`,records=keys.map(key=>archiveProfile(s,type,key,operationId));
+  const s=getState(),operationId=`archive:${randomId()}`,records=keys.map(key=>archiveProfile(s,type,key,operationId));
   await commitProfileRecords(records,{operationId});return{type,keys:records.map(profileKey),operationId};
 }
 export async function restoreProfiles(undo:ProfileArchiveUndo):Promise<void>{

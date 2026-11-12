@@ -1,6 +1,7 @@
 import type { PresetType, UserPreset } from '../api/types';
 import { findProfile, profileKey, withProfileIdentity } from './identity';
 import { catalogAnchor, findCatalogBase, resolveProfile, type ProfileCatalog } from './model';
+import { randomId } from '../random-id';
 export const visibleProfiles = (s: Pick<ProfileCatalog,'userPresets'>, type: PresetType, kind: 'profile' | 'master' = 'profile') =>
   s.userPresets.filter(p => p.type === type && (p.kind ?? 'profile') === kind && !p.archived);
 export function archiveProfile(s: ProfileCatalog, type: PresetType, key: string, operationId: string): UserPreset {
@@ -24,7 +25,7 @@ export function editableMaster(s: ProfileCatalog, type: PresetType, baseKey: str
   const masters = s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
   if (masters.length > 1) throw new Error('Multiple custom profiles share this base template. Please pick the exact one you want to use.');
   if (masters[0]) return masters[0];
-  return {id:`profile:${crypto.randomUUID()}`,name:base.name,type,kind:'master',revision:0,base:catalogAnchor(base),inherits:base.name,
+  return {id:`profile:${randomId()}`,name:base.name,type,kind:'master',revision:0,base:catalogAnchor(base),inherits:base.name,
     overlay:{},overrides:{},baseline:{},snapshot:{base:catalogAnchor(base),config:structuredClone(base.config)},
     provenance:{source:'catalog',sourceName:base.name,operationId:`master:${type}:${base.vendor}:${base.name}`}};
 }

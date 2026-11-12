@@ -4,6 +4,7 @@ import { catalogAnchor, catalogKey, changedKeys, findCatalogBase, profilesFor, r
 import { selectCompatibility } from './compatibility';
 import { findProfile, profileKey } from './identity';
 import type { ProfileCreation } from './transactions';
+import { randomId } from '../random-id';
 export { catalogKey } from './model';
 
 export interface ProfileRow {
@@ -50,7 +51,7 @@ export function uniqueName(s: State, type: PresetType, desired: string): string 
 }
 export function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {
   const overlay = changedKeys(values, base.config);
-  return { id: `profile:${crypto.randomUUID()}`, revision: 0, kind: 'profile', name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: catalogAnchor(base), snapshot: {base: catalogAnchor(base),config: {...base.config,...overlay}},
+  return { id: `profile:${randomId()}`, revision: 0, kind: 'profile', name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: catalogAnchor(base), snapshot: {base: catalogAnchor(base),config: {...base.config,...overlay}},
     overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };
 }
 

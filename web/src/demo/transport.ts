@@ -1,4 +1,5 @@
 import type { ServicePresets } from '../api/catalog';
+import { randomId } from '../random-id';
 type Row = Record<string, any>;
 interface Seed { library: Row; preferences: Row; session: Row; health: Row; options: Row; tooltips: Row;
   printers: Row; filaments: Row; presets: ServicePresets; projects: Row[]; assets: Record<string, string>; covers: Record<string, string> }
@@ -209,7 +210,7 @@ async function handle(request: Request): Promise<Response> {
     const input = JSON.parse(String(form.get('library') ?? '{}'));
     const settings = { ...s.library.profiles.find((p: Row) => p.id === input.print)?.intent, ...input.project };
     const curved = !form.has('force_planar') && settings.nonplanar_mode === 'nonplanar_top', height = Number(input.layerHeight || settings.layer_height || 0.2);
-    const fixture = curved ? 'benchy-curved-020' : height < 0.16 ? 'benchy-flat-012' : 'benchy-flat-020', id = `demo-${fixture}-${crypto.randomUUID()}`;
+    const fixture = curved ? 'benchy-curved-020' : height < 0.16 ? 'benchy-flat-012' : 'benchy-flat-020', id = `demo-${fixture}-${randomId()}`;
     s.jobs[id] = { id, fixture, created: Date.now() }; save(s); return json({ id });
   }
   if (path.startsWith('jobs/')) {

@@ -1,4 +1,5 @@
-export const sessionId: string = crypto.randomUUID().replace(/-/g, '');
+import { randomId } from '../random-id';
+export const sessionId: string = randomId().replace(/-/g, '');
 const KEY = 'orca.sessions', KEEP = 8, lockName = (id: string) => `orca-session:${id}`;
 let prior: string[] = [];
 try {

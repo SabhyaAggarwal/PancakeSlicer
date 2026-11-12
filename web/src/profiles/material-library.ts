@@ -9,6 +9,7 @@ import { findProfile, profileKey, withProfileIdentity, type ProfileKey } from '.
 import { catalogAnchor, changedKeys, resolveProfile, type ProfileCatalog } from './model';
 import { emptyPrinterLibrary, emptyPrinterSetup, type PrinterProfileLibrary, type PrinterMaterialSetup, type ProfileRecovery } from './ownership';
 import { SEP } from '../separator';
+import { randomId } from '../random-id';
 
 export interface MaterialLibraryState extends ProfileCatalog {
   printer: string;
@@ -60,7 +61,7 @@ export function planAddMaterial(s: MaterialLibraryState, sourceKey: string, opti
     const config = clone(resolved.config);
     const overlay = resolved.base ? changedKeys(config, resolved.base.config) : config;
     material = {
-      id: `profile:${crypto.randomUUID()}`, type: 'filament', kind: 'profile',
+      id: `profile:${randomId()}`, type: 'filament', kind: 'profile',
       name: source?.name ?? resolved.name ?? sourceKey, revision: 0, base: clone(anchor), inherits: anchor.name,
       overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map(key => [key, resolved.base?.config[key] ?? null])),
       metadata: source?.metadata && clone(source.metadata), snapshot: { config, base: clone(anchor) },
@@ -79,7 +80,7 @@ export function capturePrinterMaterials(s: MaterialLibraryState): PrinterProfile
   const library = libraryOf(s), printer = findProfile(s, 'machine', s.printer);
   if (!printer) return library;
   const id = profileKey(printer), setup = library.setups[id] ?? emptyPrinterSetup(id);
-  const slots = s.filamentSlots.map((key, index) => ({ ...setup.slots[index], id: setup.slots[index]?.id ?? `slot:${crypto.randomUUID()}`,
+  const slots = s.filamentSlots.map((key, index) => ({ ...setup.slots[index], id: setup.slots[index]?.id ?? `slot:${randomId()}`,
     materialId: findProfile(s,'filament',key) ? profileKey(findProfile(s, 'filament', key)!) : key, colour: undefined }));
   const tuning = { ...setup.tuning, ...Object.fromEntries(Object.entries(s.filamentEdits).flatMap(([key, config]) => {
     const material = findProfile(s, 'filament', key); return material ? [[profileKey(material), clone(config)]] : [];

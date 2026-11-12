@@ -1,5 +1,6 @@
 import type { PresetType, UserPreset } from '../api/types';
 import type { State } from '../state/store';
+import { randomId } from '../random-id';
 
 export type ProfileKey = string;
 export interface ProfileReference {
@@ -17,7 +18,7 @@ const assigned = new WeakMap<UserPreset, ProfileKey>();
 export function profileKey(profile: UserPreset): ProfileKey {
   if (profile.id) return profile.id;
   let id = assigned.get(profile);
-  if (!id) { id = `profile:${crypto.randomUUID()}`; assigned.set(profile, id); }
+  if (!id) { id = `profile:${randomId()}`; assigned.set(profile, id); }
   return id;
 }
 export const withProfileIdentity = (profile: UserPreset): UserPreset => profile.id ? profile : { ...profile, id: profileKey(profile) };

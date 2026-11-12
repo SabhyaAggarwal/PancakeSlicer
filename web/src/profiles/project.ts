@@ -3,6 +3,7 @@ import type { State } from '../state/store';
 import { effectiveProfileValues, type ProfileContextState } from './context';
 import { catalogAnchor, changedKeys, findCatalogBase, resolveProfile, storedProfile } from './model';
 import type { ProjectProfileReferences, ProjectProfileSnapshot, ProfileRecovery } from './ownership';
+import { randomId } from '../random-id';
 const cache=new WeakMap<ProfileContextState,ProjectProfileReferences>();
 const shared=new WeakMap<UserPreset[],{inputs:unknown[];value:ProjectProfileReferences}>();
 export function captureProjectProfiles(s:ProfileContextState & Partial<Pick<State,'printerLibrary'|'slotColours'>>):ProjectProfileReferences{
@@ -37,9 +38,9 @@ export function restoreProjectProfiles(s:ProfileContextState,snapshots:ProjectPr
 export function recoverProjectProfile(s:ProfileContextState,snapshot:ProjectProfileSnapshot,baseKey:string,name=snapshot.name):UserPreset{
   const base=findCatalogBase(s,snapshot.type,baseKey).base;if(!base)throw new Error('Pick an available base template first to recover this profile.');
   const config=snapshot.profileConfig ?? snapshot.profile?.snapshot?.config ?? snapshot.config,overlay=changedKeys(config,base.config);
-  return {...snapshot.profile,id:`profile:${crypto.randomUUID()}`,name,type:snapshot.type,kind:snapshot.profile?.kind ?? 'profile',revision:0,archived:undefined,
+  return {...snapshot.profile,id:`profile:${randomId()}`,name,type:snapshot.type,kind:snapshot.profile?.kind ?? 'profile',revision:0,archived:undefined,
     base:catalogAnchor(base),inherits:base.name,parent:undefined,masterId:undefined,overlay,overrides:overlay,
-    snapshot:{base:catalogAnchor(base),config},provenance:{source:'import',sourceId:snapshot.id,sourceName:snapshot.name,operationId:`recover:${crypto.randomUUID()}`}};
+    snapshot:{base:catalogAnchor(base),config},provenance:{source:'import',sourceId:snapshot.id,sourceName:snapshot.name,operationId:`recover:${randomId()}`}};
 }
 export const projectProfileIds=(s:Pick<State,'printer'|'process'|'filamentSlots'> & Partial<ProfileContextState>)=>{
   const name=(type:PresetType,key:string,slot=0)=>{

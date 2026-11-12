@@ -7,6 +7,7 @@ import { effectiveProfileValues } from './context';
 import { profileKey } from './identity';
 import { restoreArchivedProfile } from './library-actions';
 import { commitProfileRecords, profileCopyCreation, profileCreation } from './transactions';
+import { randomId } from '../random-id';
 
 export interface PrintMaster { id: string; name: string; description: string; layers: [number, number]; record: V4Record }
 
@@ -54,6 +55,6 @@ export function createPrintProfile(base: { profile: UserPreset } | { master: Pri
   if ('profile' in base) return profileCopyCreation(base.profile, name.trim()).commit();
   return profileCreation((s) => {
     if (printProfiles(s).some((p) => p.name === name.trim())) throw new Error('You already have a profile with that name—try a different one!');
-    return { ...printFromV4({ ...base.master.record, id: `profile:${crypto.randomUUID()}`, revision: 0 }), name: name.trim() } as UserPreset;
+    return { ...printFromV4({ ...base.master.record, id: `profile:${randomId()}`, revision: 0 }), name: name.trim() } as UserPreset;
   }).commit();
 }

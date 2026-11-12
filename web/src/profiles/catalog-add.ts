@@ -7,6 +7,7 @@ import { uniqueName } from './catalog';
 import { profileKey } from './identity';
 import { profileBatchCreation } from './transactions';
 import { filamentCatalogPath, loadedCatalog, PRINTER_CATALOG, readCatalog, type CatalogFamily, type CatalogModel, type CatalogRead } from './catalog-reads';
+import { randomId } from '../random-id';
 
 export function useCatalog(type: 'machine' | 'filament' | 'process', vendor: string, adding: boolean): { data?: CatalogRead; error?: string } {
   const [state, setState] = useState<{ path: string; data?: CatalogRead; error?: string }>({ path: '' });
@@ -52,7 +53,7 @@ export async function addCatalogPrinters(choices: PrinterChoice[]): Promise<AddR
       const { vendor, model, nozzle } = choice, machine = model.machines[nozzle], label = plain(nozzle === '0.4' || model.nozzles.length === 1 ? model.name : `${model.name} ${nozzle} nozzle`);
       if (taken.has(machine)) { skipped.push(label); existing.push(taken.get(machine)!); chosen.push(taken.get(machine)!); return; }
       taken.set(machine, '');
-      const id = `profile:${crypto.randomUUID()}`; chosen.push(id);
+      const id = `profile:${randomId()}`; chosen.push(id);
       records.push(names.keep({ id, type: 'machine', kind: 'profile', name: names.name('machine', label), revision: 0, inherits: machine,
         base: anchor(machine, vendor), overlay: {}, overrides: {}, ...(defaults[i] && Object.keys(defaults[i]!).length ? { printOverrides: { ...defaults[i] } } : {}) } as UserPreset));
     });
@@ -80,7 +81,7 @@ export async function addCatalogFamilies(choices: FamilyChoice[]): Promise<AddRe
       if (has.has(key)) { skipped.push(wanted); existing.push(has.get(key)!); chosen.push(has.get(key)!); continue; }
       has.set(key, '');
       const overlay: Config = colour ? { filament_colour: [colour] } : {};
-      const id = `profile:${crypto.randomUUID()}`; chosen.push(id);
+      const id = `profile:${randomId()}`; chosen.push(id);
       records.push(names.keep({ id, type: 'filament', kind: 'profile', name: names.name('filament', wanted), revision: 0,
         inherits: variant, base: anchor(variant, family.id.split('/')[0]), overlay, overrides: overlay, metadata: { family: family.id } } as UserPreset));
     }

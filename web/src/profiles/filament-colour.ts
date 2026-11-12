@@ -4,6 +4,7 @@ import { undoable } from '../state/history';
 import { findProfile, profileKey } from './identity';
 import { paletteName } from '../components/filament-palette';
 import { DEFAULT_FILAMENT_COLOUR as DEFAULT_COLOUR } from './metadata';
+import { randomId } from '../random-id';
 
 const hex = (value: unknown): string | undefined => {
   const v = String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
@@ -77,7 +78,7 @@ export async function saveFilamentAsColour(slot: number, colour: string): Promis
   const id = await profileCreation((st) => {
     const taken = (name: string) => st.userPresets.some((p) => p.type === 'filament' && p.name === name && !p.archived);
     let name = stem; for (let n = 2; taken(name); n++) name = `${stem} ${n}`;
-    return { ...saveProfile(st, 'filament', name, key, withColour(resolvePreset(st, 'filament', key).config, value)), id: `profile:${crypto.randomUUID()}`, revision: 0 };
+    return { ...saveProfile(st, 'filament', name, key, withColour(resolvePreset(st, 'filament', key).config, value)), id: `profile:${randomId()}`, revision: 0 };
   }).commit();
   (await import('../components/PresetCombo')).requestPreset('filament', slot, id);
   setState((st) => (st.filamentSlots[slot] === id ? followProfile(st, slot) : {}));

@@ -3,6 +3,7 @@ import { createMachine } from '../flow/fsm';
 import { saveProfileRecords } from './transactions';
 import { documentGeneration } from '../state/history';
 import type { PrinterProfileLibrary } from './ownership';
+import { randomId } from '../random-id';
 export interface PrinterSetupPersistence {state:'idle'|'saving'|'error';error:string|null;recovery?:'adopt_browser_inventory'|'reload_profiles'}
 interface SetupIntent {snapshot:State;baseline:PrinterProfileLibrary;isCurrent():boolean}
 type SetupState='unhydrated'|'blocked'|'idle'|'saving'|'failed';
@@ -30,7 +31,7 @@ const setups=createMachine<SetupState,SetupEvent,SetupContext>({
 });
 export const printerSetupsMachine=setups;
 async function write(intent:SetupIntent,request:number){
-  try{await saveProfileRecords(intent.snapshot,[],`printer-setup:${crypto.randomUUID()}`,intent.snapshot.printerLibrary,undefined,intent);setups.send({type:'DONE',request});}
+  try{await saveProfileRecords(intent.snapshot,[],`printer-setup:${randomId()}`,intent.snapshot.printerLibrary,undefined,intent);setups.send({type:'DONE',request});}
   catch(error){setups.send({type:'FAIL',request,error:error instanceof Error?error.message:String(error),changed:(error as {code?:string}).code==='setup_context_changed'});}
 }
 const view=():PrinterSetupPersistence=>{const {value,context}=setups.get();

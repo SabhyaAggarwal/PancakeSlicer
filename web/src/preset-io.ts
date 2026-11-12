@@ -6,6 +6,7 @@ import { compatible, getState, listFor, PRESET_META, resolvePreset, type State }
 import { findProfile, profileKey } from './profiles/identity';
 import { validWorksWith } from './profiles/works-with';
 import { baseVersion, normalizeUserPreset, saveProfile, storedProfile } from './profiles/model';
+import { randomId } from './random-id';
 
 export const PRESET_VERSION = '02.08.01.55';
 const SETTINGS_ID: Record<PresetType, string> = { machine: 'printer_settings_id', process: 'print_settings_id', filament: 'filament_settings_id' };
@@ -233,7 +234,7 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
 
 export async function applyImportPlans(plans: ImportPlan[]): Promise<{ profiles: number; bases: number; connections: number; problems: string[] }> {
   const accepted = plans.filter(p => p.status !== 'skip'), bases = accepted.flatMap(p => p.base ? [p.base] : []), profiles = accepted.flatMap(p => p.preset ? [p.preset] : []);
-  if(profiles.length || bases.length){const {commitProfileRecords}=await import('./profiles/transactions');await commitProfileRecords(profiles,{bases,operationId:`import:${crypto.randomUUID()}`});}
+  if(profiles.length || bases.length){const {commitProfileRecords}=await import('./profiles/transactions');await commitProfileRecords(profiles,{bases,operationId:`import:${randomId()}`});}
   const migrated = await migrateHosts(accepted);
   return {profiles:profiles.length,bases:bases.length,...migrated};
 }

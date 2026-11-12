@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { confirmDialog } from './components/Ask';
 import { discardPendingWrites } from './api/access';
+import { randomId } from './random-id';
 
 let enabled = false, asked = false;
 const listeners = new Set<() => void>();
@@ -28,7 +29,7 @@ export async function startOver(): Promise<void> {
     return;
   }
   discardPendingWrites();
-  const r = await fetch('/api/dev/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: crypto.randomUUID() }) });
+  const r = await fetch('/api/dev/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operationId: randomId() }) });
   if (!r.ok) { discardPendingWrites(false); throw new Error(`${r.status} ${r.statusText}: /api/dev/reset`); }
   await Promise.allSettled([
     caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n)))),

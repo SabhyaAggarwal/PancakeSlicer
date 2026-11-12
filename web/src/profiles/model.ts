@@ -5,6 +5,7 @@ import { OPTIONS } from '../options';
 import { findProfile, lookupProfile, profileKey, withProfileIdentity } from './identity';
 import type { ProfileBaseAnchor, ProfileRecoveryReason } from './ownership';
 import { filamentCatalogPath, loadedCatalog, type CatalogFamily } from './catalog-reads';
+import { randomId } from '../random-id';
 
 export function familyVariantName(family: string, machine: string | undefined): string | undefined {
   const f = loadedCatalog<{ families: CatalogFamily[] }>(filamentCatalogPath(family.split('/')[0]))?.families.find((x) => x.id === family);
@@ -237,7 +238,7 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
   const baseline = Object.fromEntries(Object.keys(overlay).map(key => [key,
     same && prior?.overlay && sameValue(key, overlay[key], prior.overlay[key]) && key in (prior.baseline ?? {})
       ? prior.baseline![key] : base.config[key] ?? null]));
-  return { ...(same ? prior : undefined), id: same ? profileKey(prior!) : `profile:${crypto.randomUUID()}`,
+  return { ...(same ? prior : undefined), id: same ? profileKey(prior!) : `profile:${randomId()}`,
     name: label, type, kind: prior?.kind ?? 'profile', revision: same ? (prior?.revision ?? 0) + 1 : 0,
     printerId: prior?.printerId, inherits: base.name, base: same && prior?.base ? prior.base : catalogAnchor(base),
     snapshot: { config: { ...values }, base: same && prior?.base ? prior.base : catalogAnchor(base) },

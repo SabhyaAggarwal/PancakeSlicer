@@ -4,6 +4,7 @@ import { selectChanges } from '../state/changes';
 import { sameValue } from '../state/value-equality';
 import { getState, presetEdits, resolvePreset, setState, type State } from '../state/store';
 import { profileKey } from './identity';
+import { randomId } from '../random-id';
 export interface ProjectProfileChanges {
   id:string;type:PresetType;key:string;slot:number;generation:number;
   deltas:Config;edits:Config;project:Config|null;
@@ -13,7 +14,7 @@ export function captureProjectProfileChanges(type:PresetType,slot=0):ProjectProf
   const resolved=resolvePreset(s,type,key);
   if(!resolved.source || resolved.error)throw new Error(resolved.error ?? 'Select one of your custom profiles (or save as a new profile) to save these changes.');
   const deltas=Object.fromEntries(selectChanges(s,type,slot).filter(c=>c.scope === 'project' && c.owner.plate === undefined).map(c=>[c.key,c.now]));
-  return {id:crypto.randomUUID(),type,key:profileKey(resolved.source),slot,generation:documentGeneration(),deltas:structuredClone(deltas),edits:structuredClone(presetEdits(s,type,slot)),project:structuredClone((type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type]) ?? null)};
+  return {id:randomId(),type,key:profileKey(resolved.source),slot,generation:documentGeneration(),deltas:structuredClone(deltas),edits:structuredClone(presetEdits(s,type,slot)),project:structuredClone((type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type]) ?? null)};
 }
 export function reviewProjectProfileChanges(type:PresetType,slot=0) {
   const stage=captureProjectProfileChanges(type,slot);

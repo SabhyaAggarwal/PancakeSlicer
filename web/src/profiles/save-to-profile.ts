@@ -12,6 +12,7 @@ import { saveProfile } from './model';
 import { acknowledgeProjectProfileChanges, captureProjectProfileChanges } from './project-draft';
 import { archiveProfiles, commitProfileRecords, profileCreation } from './transactions';
 import { scalesOf } from './auto-rules';
+import { randomId } from '../random-id';
 
 const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -142,7 +143,7 @@ export async function saveAsNewProfile(type: PresetType, slot: number, name: str
     const { auto: _auto, ...copy } = structuredClone(source) as UserPreset & { auto?: object }, overlay = { ...source.overlay, ...own };
     const auto = type !== 'process' ? {} : autoOf(source, chosen ? chosen.rows : kind === 'regular' ? [] : scales, kind === 'regular' ? null : undefined);
     if (chosen) for (const r of chosen.rows) delete overlay[r.key];
-    return { ...copy, id: `profile:${crypto.randomUUID()}`, kind: 'profile', name: name.trim(), revision: 0, aliases: [], archived: undefined, overlay, overrides: overlay,
+    return { ...copy, id: `profile:${randomId()}`, kind: 'profile', name: name.trim(), revision: 0, aliases: [], archived: undefined, overlay, overrides: overlay,
       ...auto } as UserPreset;
   }).commit()
     : await createProfileFromBase(type, resolved.base.name, name.trim(), { ...resolved.config, ...deltas });
