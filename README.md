@@ -2,24 +2,31 @@
 
 PancakeSlicer is a Self-hostable and Non-planar 3D Printer Slicer built on the OrcaSlicer Engine. Try a demo [here](https://demo.pancake.cooking/)! Watch the video explainer [here (yt)](TBD). Docs are a WIP, but you can message me on [Discord](https://discord.gg/tyfAV6R7DW).
 
+## Table of Contents
 
-<details>
-<summary><b>Install</b></summary>
+- [Install](#install)
+- [Supported Printers](#supported-printers)
+- [Non-planar](#non-planar)
+- [Self-hostable](#self-hostable)
+- [Dynamic Profiles](#dynamic-profiles)
+- [Other Features](#other-features)
+- [A familiar user experience for users and developers](#a-familiar-user-experience-for-users-and-developers)
+- [Too long, you probably shouldn't read](#too-long-you-probably-shouldnt-read)
 
+## Install
 ### Desktop
 Download the latest build from [Releases](https://github.com/ZimengXiong/PancakeSlicer/releases/latest).
 
 PancakeSlicer is not signed for Mac (yet), you should run  `xattr -dr com.apple.quarantine /Applications/PancakeSlicer.app` after installing and before first launch
 
 ### Docker
-Compose file is recommended. See [`deploy/docker-compose.yml`](deploy/docker-compose.yml). An image is also avail. at `ghcr.io/zimengxiong/pancakeslicer`.
+Running via compose file is recommended. See [`deploy/docker-compose.yml`](deploy/docker-compose.yml). An image is also avail. at `ghcr.io/zimengxiong/pancakeslicer`.
 
-</details>
+## Supported Printers
+Printers listed below have their non-planar paths checked against a model of their print head for collisons. Printers not listed here are still able to slice, but they're checked against a generic (oversized) head, which may limit non-planarness and be incorrect (watch out for collisions!).
 
-<details>
-<summary><b>Supported printers</b></summary>
-
-Printers listed below have their non-planar paths checked against a model of each printer's print head for collisons. Printers not listed here are still able to slice, but they're checked against a generic (oversized) head, which may limit non-planarness and be incorrect (watch out for collisions).
+> [!CAUTION]
+> Non-Planar in PancakeSlicer is experimental. We make no guarantees that, even when listed below, that this WON'T cause PERMANENT DAMAGE to your printer. **Use common sense and review the G-Code preview.** We recommend you only use non-planar under supervision (cartesian printers are better for visiblity sake).
 
 | Brand | Printers | Curved tops |
 |---|---|---|
@@ -35,17 +42,6 @@ Printers listed below have their non-planar paths checked against a model of eac
 | Elegoo | Neptune 4, 4 Plus, 4 Pro, 4 Max | ✅ |
 | Flashforge | Adventurer 5M, 5M Pro, A5, AD5X, Creator 5, Creator 5 Pro, Guider4, Guider4 Pro | ✅ |
 | Qidi | Q1 Pro, X-Max 3 | ✅ |
-
-</details>
-
-## Table of Contents
-
-- [Non-planar](#non-planar)
-- [Self-hostable](#self-hostable)
-- [Dynamic Profiles](#dynamic-profiles)
-- [Other Features](#other-features)
-- [A familiar user experience for users and developers](#a-familiar-user-experience-for-users-and-developers)
-- [Too long, you probably shouldn't read](#too-long-you-probably-shouldnt-read)
 
 ## Non-Planar
 
