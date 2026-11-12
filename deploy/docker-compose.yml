@@ -1,6 +1,6 @@
 # PancakeSlicer: web UI, service and slicing engine in one container.
 #   docker compose -f deploy/docker-compose.yml up -d
-# Then open http://<host>:8080. See docs/self-hosting.md.
+# Then open http://<host>:8080.
 name: pancakeslicer
 services:
   pancakeslicer:
