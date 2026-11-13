@@ -49,11 +49,7 @@ Printers listed below have their non-planar paths checked against a model of the
 
 Accessible non-planar slicing is the main goal of this project (everything else surrounding aims to just make this experience pleasant).
 
-<details>
-  <summary>Video Demo</summary>
-  <p><a href="https://github.com/user-attachments/assets/be7bebe1-bed5-4b60-bb04-9381344389ad" target="_blank">View Asset</a></p>
-</details>
-
+https://github.com/user-attachments/assets/be7bebe1-bed5-4b60-bb04-9381344389ad
 
 Currently, we have support for four modes, you can play around with all of them in the [demo](https://demo.pancake.cooking/) (I'm wayy too tired and I don't want to capture more screenshots so please watch the yt video or play with the demo sorry maybe sometime soon I'll update this section):
 
