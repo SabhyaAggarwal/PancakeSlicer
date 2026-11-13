@@ -179,7 +179,8 @@ Here were the UI mockups I did :) and some BTS. Enjoy.
 <img width="1600" height="943" alt="image" src="https://github.com/user-attachments/assets/7ea30137-ba8c-4f39-867d-f3beee2aa945" />
 <img width="828" height="584" alt="image" src="https://github.com/user-attachments/assets/8dc6b38e-131b-4329-b8ee-61443cb201a9" />
 <img width="820" height="648" alt="image" src="https://github.com/user-attachments/assets/7c1b212f-02e4-4b2a-9e3b-fd66049854fc" />
-<img width="820" height="648" alt="image" src="https://github.com/user-attachments/assets/423ee28a-1fa9-4e40-b328-03196acab218" />
+<img width="556" height="745" alt="image" src="https://github.com/user-attachments/assets/d1986b74-42f3-4ad9-ac9c-97692a8fcfce" />
+
 
 
 
