@@ -17,6 +17,10 @@ let quitting = false;
 let quitReady = false;
 let closing = false;
 
+const STARTING_PAGE = '<!doctype html><title>PancakeSlicer</title><body style="margin:0;height:100vh;display:flex;'
+  + 'align-items:center;justify-content:center;background:#363636;color:#d0d0d0;font:15px system-ui,sans-serif;'
+  + 'user-select:none;cursor:default">PancakeSlicer is starting…</body>';
+
 
 
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
@@ -165,8 +169,9 @@ async function startServer(): Promise<string> {
   const data = app.getPath('userData');
   const logs = path.join(data, 'logs');
   fs.mkdirSync(logs, { recursive: true });
-  // The previous launch's log stays as server.prev.log, so a crash can still be reported after a restart.
   const current = path.join(logs, 'server.log');
+  const details = `Details are in ${current}`;
+  // The previous launch's log stays as server.prev.log, so a crash can still be reported after a restart.
   if (fs.existsSync(current)) fs.renameSync(current, path.join(logs, 'server.prev.log'));
   const log = fs.openSync(current, 'w');
   const lib = path.join(engine, 'lib');
@@ -188,7 +193,7 @@ async function startServer(): Promise<string> {
   if (fs.existsSync(qualification)) env.ORCA_WEB_ARTIFACT_QUALIFICATION = qualification;
 
   if (process.platform === 'linux' && fs.existsSync(lib)) env.LD_LIBRARY_PATH = [lib, env.LD_LIBRARY_PATH].filter(Boolean).join(':');
-  let lastError = 'Oops! The local slicing service took too long to start up.';
+  let lastError = '';
   const child = spawn(path.join(engine, `orca-webapp-server${EXE}`), [
     '--listen', '127.0.0.1:29731',
     '--static', web,
@@ -204,12 +209,12 @@ async function startServer(): Promise<string> {
   let exited = false, ready = false;
   child.on('exit', (code, signal) => {
     exited = true;
-    lastError = `Bundled service exited (${signal ?? code}); the fixed desktop origin may be occupied.`;
-    if (ready && server === child && !quitting) fail('Oops! The local slicing service stopped unexpectedly.');
+    lastError ||= `Bundled service exited (${signal ?? code}); the fixed desktop origin may be occupied.\n${details}`;
+    if (ready && server === child && !quitting) fail(`Oops! The local slicing service stopped unexpectedly.\n${details}`);
   });
-  child.on('error', () => { exited = true; lastError = 'Oops! We couldn\'t start the local slicing service.'; });
-  const deadline = Date.now() + 30000;
-  while (!exited && Date.now() < deadline) {
+  child.on('error', () => { exited = true; lastError = `Oops! We couldn't start the local slicing service.\n${details}`; });
+  // A cold start on a slow PC with on-access virus scanning can take minutes, so wait for as long as the service lives.
+  while (!exited) {
     if (await healthy(nonce, expected) && !exited) { ready = true; return DESKTOP_ORIGIN; }
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -392,7 +397,7 @@ async function start() {
     } else if (url.protocol === 'https:' && url.origin !== origin) void shell.openExternal(target);
     return { action: 'deny' };
   });
-  await win.loadURL(`data:text/html,<html style="background:%23363636"></html>`);
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(STARTING_PAGE)}`);
   origin = await serving;
   if (win && !closing) await win.loadURL(origin);
 }
