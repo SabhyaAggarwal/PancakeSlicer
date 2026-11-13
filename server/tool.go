@@ -95,6 +95,11 @@ func toolDump(c Config, args ...string) ([]byte, error) {
 }
 
 func probeUsage(c Config, f *ToolFeatures) {
+	presets := make(chan []byte, 1)
+	go func() {
+		dump, _ := toolDump(c, "--dump-presets", "Prusa")
+		presets <- dump
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.Tool, "--help")
@@ -142,17 +147,15 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ExportGeneric3MF = strings.Contains(usage, "--export-3mf-generic IN.3mf OUT.3mf")
 	f.ExportDRC = strings.Contains(usage, "--export-drc IN OUT.drc")
 	f.CutConnectors = strings.Contains(usage, "--cut-connectors") && strings.Contains(usage, "--cut-mode planar|dovetail")
-	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
-		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
-	}
+	f.PresetCompat = bytes.Contains(<-presets, []byte(`"compatible_printers_evaluated"`))
 }
 
-func probeTool(c Config) (ToolFeatures, *cachedResponse) {
+func probeTool(c Config, f *ToolFeatures) *cachedResponse {
 	fallback := cacheResponse(optionData)
 	b, err := toolDump(c, "--dump-options")
 	if err != nil {
 		log.Printf("using legacy tool contract: %v", err)
-		return ToolFeatures{}, fallback
+		return fallback
 	}
 	var dump struct {
 		Schema  string            `json:"schema"`
@@ -160,7 +163,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 	}
 	if err := json.Unmarshal(b, &dump); err != nil || dump.Schema != "orca.options.v1" || len(dump.Options) == 0 {
 		log.Print("using legacy tool contract: invalid options dump")
-		return ToolFeatures{}, fallback
+		return fallback
 	}
 	nativeSupport := false
 	options := map[string]map[string]any{}
@@ -170,7 +173,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		var value map[string]any
 		if json.Unmarshal(raw, &option) != nil || json.Unmarshal(raw, &value) != nil || option.Key == "" || option.Type == "" {
 			log.Print("using legacy tool contract: invalid option entry")
-			return ToolFeatures{}, fallback
+			return fallback
 		}
 		if option.Key == "support_style" {
 			if values, ok := value["enum_values"].([]any); ok {
@@ -216,7 +219,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 	response, err := cacheJSON(options)
 	if err != nil {
 		log.Printf("using legacy tool contract: %v", err)
-		return ToolFeatures{}, fallback
+		return fallback
 	}
 	configKinds = kinds
 	modes, _ := options["nonplanar_mode"]["enum_values"].([]any)
@@ -230,7 +233,9 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		wave = wave || mode == "whole"
 	}
 	log.Printf("using native v1 tool contract (%d options)", len(options))
-	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot, CurvedTops: curvedTops, NonplanarWave: wave, NativeSupport: nativeSupport}, response
+	f.DumpOptions, f.DumpPresets, f.Progress, f.MovesOut, f.ObjectSettings = true, true, true, true, true
+	f.OneShot, f.CurvedTops, f.NonplanarWave, f.NativeSupport = oneshot, curvedTops, wave, nativeSupport
+	return response
 }
 
 func nativeStrings(value string) []string {

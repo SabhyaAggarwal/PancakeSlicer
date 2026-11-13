@@ -29,16 +29,16 @@ import (
 )
 
 type Server struct {
-	cfg       Config
-	jobs      *JobManager
-	presets   *PresetIndex
-	libraryV4 *libraryStore
-	workspace *workspaceStore
-	sends     *SendManager
-	blobs     *blobStore
-	fontsOnce sync.Once
-	fonts     []byte
-	fontsErr  error
+	cfg           Config
+	jobs          *JobManager
+	presets       *PresetIndex
+	libraryV4     *libraryStore
+	workspace     *workspaceStore
+	sends         *SendManager
+	blobs         *blobStore
+	fontsOnce     sync.Once
+	fonts         []byte
+	fontsErr      error
 	filamentSlots *filamentSlotStore
 }
 
@@ -263,7 +263,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, status, "Oops! The upload took too long and timed out.")
 			return
 		}
-		fail(w, status, "Invalid file upload: " + err.Error())
+		fail(w, status, "Invalid file upload: "+err.Error())
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
@@ -905,7 +905,7 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.jobs.Remove(j); err != nil {
-		fail(w, 500, "Couldn't remove job: " + err.Error())
+		fail(w, 500, "Couldn't remove job: "+err.Error())
 		return
 	}
 	w.WriteHeader(204)
@@ -1409,7 +1409,6 @@ const (
 	HealthUnqualified HealthState = "unqualified"
 )
 
-
 var engineTransitions = map[HealthState]map[HealthState]bool{
 	HealthUnknown:  {HealthHealthy: true, HealthDegraded: true},
 	HealthHealthy:  {HealthDegraded: true},
@@ -1483,7 +1482,7 @@ func bundleFileHash(name string) (string, error) {
 }
 
 func bundleResourceHash(root string) (string, error) {
-	h := sha256.New()
+	var names []string
 	err := filepath.WalkDir(root, func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -1494,21 +1493,58 @@ func bundleResourceHash(root string) (string, error) {
 		if !d.Type().IsRegular() {
 			return errors.New("nonregular resource")
 		}
-		digest, err := bundleFileHash(name)
-		if err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(root, name)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(h, "%s\x00%s\n", filepath.ToSlash(relative), digest)
+		names = append(names, name)
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
+	digests, errs := make([]string, len(names)), make([]error, len(names))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(len(names), max(4, 2*runtime.NumCPU())) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				digests[i], errs[i] = bundleFileHash(names[i])
+			}
+		}()
+	}
+	for i := range names {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	h := sha256.New()
+	for i, name := range names {
+		if errs[i] != nil {
+			return "", errs[i]
+		}
+		relative, err := filepath.Rel(root, name)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%s\x00%s\n", filepath.ToSlash(relative), digests[i])
+	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+type bundleDigest struct {
+	binary, resources       string
+	binaryErr, resourcesErr error
+}
+
+func newBundleDigest(tool, resources string) func() bundleDigest {
+	return sync.OnceValue(func() bundleDigest {
+		var d bundleDigest
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() { defer wg.Done(); d.binary, d.binaryErr = bundleFileHash(tool) }()
+		d.resources, d.resourcesErr = bundleResourceHash(resources)
+		wg.Wait()
+		return d
+	})
 }
 
 func newEngineHealth(c Config) *engineHealth {
@@ -1572,9 +1608,9 @@ func newEngineHealth(c Config) *engineHealth {
 		h.setEngine(HealthDegraded)
 		return h
 	}
-	binary, binaryErr := bundleFileHash(c.Tool)
-	resources, resourceErr := bundleResourceHash(c.Resources)
-	if binaryErr != nil || resourceErr != nil || manifest.Binary != binary || manifest.Resources != resources || !manifest.Available {
+	digest := c.BundleDigest()
+	binary, resources := digest.binary, digest.resources
+	if digest.binaryErr != nil || digest.resourcesErr != nil || manifest.Binary != binary || manifest.Resources != resources || !manifest.Available {
 		h.reason = "artifact identity mismatch"
 		h.setEngine(HealthDegraded)
 		return h

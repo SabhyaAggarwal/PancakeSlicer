@@ -50,6 +50,7 @@ type Config struct {
 	PrinterStore          *printerStore
 	Features              ToolFeatures
 	Options               *cachedResponse
+	BundleDigest          func() bundleDigest
 }
 
 func env(key, def string) string {
@@ -175,22 +176,31 @@ func main() {
 			log.Printf("WARNING: printer connections are on without a bearer token; anyone who can reach this service can add printers and start prints")
 		}
 	}
-	cfg.Features, cfg.Options = probeTool(cfg)
-	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
-	if cfg.Features.DumpPresets {
-		tool := cfg
-		presets.tool = &tool
+	cfg.BundleDigest = newBundleDigest(cfg.Tool, cfg.Resources)
+	if cfg.SurfaceManifest != "" {
+		go cfg.BundleDigest()
 	}
+	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
 	var placementErr, plateIndexErr, presetErr error
 	var colour map[string]bool
-	usage := cfg.Features
+	var features ToolFeatures
+	var options *cachedResponse
+	probe := cfg
 	var wg sync.WaitGroup
 	for _, run := range []func(){
-		func() { placementErr = probePlatePlacement(cfg) },
-		func() { plateIndexErr = probePlateIndex(cfg) },
-		func() { colour = probeColourChange(cfg) },
-		func() { probeUsage(cfg, &usage) },
-		func() { presetErr = warmPresets(presets) },
+		func() {
+			options = probeTool(probe, &features)
+			if features.DumpPresets {
+				tool := probe
+				tool.Options = options
+				presets.tool = &tool
+			}
+			presetErr = warmPresets(presets)
+		},
+		func() { placementErr = probePlatePlacement(probe) },
+		func() { plateIndexErr = probePlateIndex(probe) },
+		func() { colour = probeColourChange(probe) },
+		func() { probeUsage(probe, &features) },
 	} {
 		wg.Add(1)
 		go func() { defer wg.Done(); run() }()
@@ -199,7 +209,7 @@ func main() {
 	if presetErr != nil {
 		log.Fatal(presetErr)
 	}
-	cfg.Features = usage
+	cfg.Features, cfg.Options = features, options
 	if placementErr != nil {
 		log.Printf("R238 placement unavailable; plate z/printable and loaded project saves require an upgraded tool: %v", placementErr)
 	} else {
