@@ -174,3 +174,12 @@ To the anti-Electron crowd, I am sorry to disappoint you. I think it would be in
 Our engine is built on top of OrcaSlicer's slicing engine, written in C++. This allows us to easily merge slicing improvements from upstream when necessary.
 
 Finally, the actual service is written in Golang, managing projects, 3D models, drafts, printer profiles, preferences, and send history. We spin up a slicing engine (max 2 concurrently) on demand. These engines are isolated child processes with their own working directory, and stream progress to the browser via SSE. We chose not to run the C++ engine inside of the Go service with something like CGo (I had the idea and asked some agents to go (haha, get it) implement it) because it introduced severe crash risks (a LOT of stalls during development) and shared engine mutations. Moving them to child processes increased slice times on average by only ~0.2s due to cold starts. Isolating the engine is increasingly important as we will continue to make major changes to the core slicing engine, and we don't want segfaults or memory spikes killing the entire service.
+
+Here were the UI mockups I did :) and some BTS. Enjoy.
+<img width="1600" height="943" alt="image" src="https://github.com/user-attachments/assets/7ea30137-ba8c-4f39-867d-f3beee2aa945" />
+<img width="828" height="584" alt="image" src="https://github.com/user-attachments/assets/8dc6b38e-131b-4329-b8ee-61443cb201a9" />
+<img width="820" height="648" alt="image" src="https://github.com/user-attachments/assets/7c1b212f-02e4-4b2a-9e3b-fd66049854fc" />
+<img width="820" height="648" alt="image" src="https://github.com/user-attachments/assets/423ee28a-1fa9-4e40-b328-03196acab218" />
+
+
+
