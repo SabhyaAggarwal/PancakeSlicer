@@ -89,7 +89,7 @@ func parseConfig() Config {
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
 	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
 	flag.StringVar(&c.Resources, "resources", env("ORCA_WEB_RESOURCES", "resources"), "resources directory holding profiles/ and nonplanar/ (ORCA_WEB_RESOURCES)")
-	flag.StringVar(&c.JobRoot, "job-root", env("ORCA_WEB_JOB_ROOT", filepath.Join(os.TempDir(), "orca-webapp-jobs")), "scratch directory for job files (ORCA_WEB_JOB_ROOT)")
+	flag.StringVar(&c.JobRoot, "job-root", env("ORCA_WEB_JOB_ROOT", filepath.Join(os.TempDir(), "ps-jobs")), "scratch directory for job files (ORCA_WEB_JOB_ROOT)")
 	flag.StringVar(&c.StaticDir, "static", env("ORCA_WEB_STATIC", "web/dist"), "static front end to serve at / when it exists (ORCA_WEB_STATIC)")
 	flag.IntVar(&c.MaxJobs, "max-jobs", envInt("ORCA_WEB_MAX_JOBS", 2), "slices running at once; more jobs queue (ORCA_WEB_MAX_JOBS)")
 	flag.DurationVar(&c.JobTimeout, "job-timeout", envDuration("ORCA_WEB_JOB_TIMEOUT", 15*time.Minute), "wall-clock limit of one slice; 0 disables (ORCA_WEB_JOB_TIMEOUT)")

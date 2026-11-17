@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -371,7 +372,19 @@ type JobManager struct {
 	downloadBytes uint64
 }
 
-var jobIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
+// longPathPrefix adds the Windows long path prefix (\\?\) to a path if on Windows.
+// This allows paths longer than MAX_PATH (260 characters) to work correctly.
+func longPathPrefix(path string) string {
+	if runtime.GOOS == "windows" {
+		abs, err := filepath.Abs(path)
+		if err == nil && !strings.HasPrefix(abs, `\\?\`) {
+			return `\\?\` + abs
+		}
+	}
+	return path
+}
+
+var jobIDPattern = regexp.MustCompile(`^[0-9a-f]{24}$`)
 
 func NewJobManager(cfg Config) (*JobManager, error) {
 	if err := os.MkdirAll(cfg.JobRoot, 0o755); err != nil {
@@ -408,7 +421,7 @@ func (m *JobManager) newJobLocked(client string) (*Job, error) {
 		return nil, err
 	}
 
-	var b [16]byte
+	var b [12]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
 	}
@@ -817,8 +830,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.setState(StateFailed, sanitizeToolError(commandErr))
 		return
 	}
-	cmd.Dir = j.Dir
-	cmd.Env = append(os.Environ(), "TMPDIR="+filepath.Join(j.Dir, "tmp"), "TMP="+filepath.Join(j.Dir, "tmp"), "TEMP="+filepath.Join(j.Dir, "tmp"))
+	cmd.Dir = longPathPrefix(j.Dir)
+	tmpDir := longPathPrefix(filepath.Join(j.Dir, "tmp"))
+	cmd.Env = append(os.Environ(), "TMPDIR="+tmpDir, "TMP="+tmpDir, "TEMP="+tmpDir)
 	if err := limitJobMemory(cmd); err != nil {
 		j.setState(StateFailed, err.Error())
 		return
