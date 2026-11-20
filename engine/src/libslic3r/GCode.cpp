@@ -12210,6 +12210,12 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         if (m_force_safe_travel)
             safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance,
                 base + hop);
+        if (travel.size() == 2 && m_material_columns) {
+            const Vec2d from_xy = this->point_to_gcode(travel.points[0]);
+            const Vec2d to_xy = this->point_to_gcode(travel.points[1]);
+            double col_safe = this->nonplanar_travel_z(&from_xy, &to_xy, true);
+            safe = std::max(safe, col_safe);
+        }
         bool sloped = false;
         double lift = 0.;
         const bool short_hop = m_layer != nullptr && curved_tops_mode(m_layer->object()->config().nonplanar_mode.value) &&
