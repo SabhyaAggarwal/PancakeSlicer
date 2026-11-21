@@ -3360,7 +3360,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                                           Nonplanar::bottom_shells_enabled(config, object->config());
         }
     for (const PrintObject *object : print.objects())
-        m_track_nonplanar_material |= !object->conformal().patches.empty();
+        m_track_nonplanar_material |= curved_tops_mode(object->config().nonplanar_mode.value) || !object->conformal().patches.empty();
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
         m_writer.set_tool_kinematics(make_tool_kinematics(print.config()));
         m_writer.set_min_joint_move_time(Nonplanar::full_orientation(print.config()) ? 0. :
